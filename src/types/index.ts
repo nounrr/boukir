@@ -97,6 +97,7 @@ export interface CreateProductData {
 // Types pour les contacts
 export interface Contact {
   id: number;
+  reference?: string; // Référence auto-générée
   nom_complet: string;
   type: 'Client' | 'Fournisseur';
   telephone?: string;
@@ -105,6 +106,7 @@ export interface Contact {
   rib?: string;
   ice?: string;
   solde: number;
+  plafond?: number; // Plafond de crédit (clients)
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -112,6 +114,7 @@ export interface Contact {
 }
 
 export interface CreateContactData {
+  reference?: string;
   nom_complet: string;
   type: 'Client' | 'Fournisseur';
   telephone?: string;
@@ -120,6 +123,7 @@ export interface CreateContactData {
   rib?: string;
   ice?: string;
   solde?: number;
+  plafond?: number;
 }
 
 // Types pour les bons
@@ -132,7 +136,7 @@ export interface Bon {
   client_id?: number;
   fournisseur_id?: number;
   montant_total: number;
-  statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir';
+  statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente';
   vehicule?: string;
   lieu_chargement?: string;
   bon_origine_id?: number; // Pour les avoirs, lien vers le bon d'origine
@@ -150,6 +154,7 @@ export interface BonItem {
   quantite: number;
   prix_unitaire: number;
   montant_ligne: number;
+  designation_custom?: string; // Désignation personnalisée modifiable
   produit?: Product;
 }
 
