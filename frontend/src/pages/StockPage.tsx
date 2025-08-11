@@ -1,0 +1,346 @@
+import React, { useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import type { Product, Category } from '../types';
+import { Plus, Edit, Trash2, Search, Package, Settings } from 'lucide-react';
+import { useFormik } from 'formik';
+import * as Yup from 'yup';
+import { selectProducts } from '../store/slices/productsSlice';
+import { selectCategories } from '../store/slices/categoriesSlice';
+import { useCreateCategoryMutation } from '../store/api/categoriesApi';
+import { useGetProductsQuery } from '../store/api/productsApi';
+import { useGetCategoriesQuery } from '../store/api/categoriesApi';
+import { showError, showSuccess, showConfirmation } from '../utils/notifications';
+import ProductFormModal from '../components/ProductFormModal';
+import { useDeleteProductMutation } from '../store/api/productsApi';
+
+const categoryValidationSchema = Yup.object({
+  nom: Yup.string().required('Nom de la catégorie requis'),
+  description: Yup.string(),
+});
+
+const StockPage: React.FC = () => {
+  const dispatch = useDispatch();
+  // Load from backend
+  const { data: productsApiData } = useGetProductsQuery();
+  const { data: categoriesApiData } = useGetCategoriesQuery();
+  // Keep legacy selectors as fallback during transition
+  const productsState = useSelector(selectProducts);
+  const categoriesState = useSelector(selectCategories);
+  const products = productsApiData ?? productsState;
+  const categories = categoriesApiData ?? categoriesState;
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [deleteProductMutation] = useDeleteProductMutation();
+
+  const [createCategory] = useCreateCategoryMutation();
+  const categoryFormik = useFormik({
+    initialValues: {
+      nom: '',
+      description: '',
+    },
+    validationSchema: categoryValidationSchema,
+  onSubmit: async (values, { resetForm }) => {
+      try {
+    await createCategory({ nom: values.nom, description: values.description, created_by: 1 }).unwrap();
+        setIsCategoryModalOpen(false);
+        resetForm();
+    console.log('Catégorie créée via backend');
+      } catch (error) {
+        console.error('Erreur lors de la création de la catégorie:', error);
+      }
+    },
+  });
+
+  const handleEdit = (product: Product) => {
+    setEditingProduct(product);
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    const result = await showConfirmation(
+      'Cette action est irréversible.',
+      'Êtes-vous sûr de vouloir supprimer ce produit ?',
+      'Oui, supprimer',
+      'Annuler'
+    );
+    
+    if (result.isConfirmed) {
+      try {
+        await deleteProductMutation({ id }).unwrap();
+        showSuccess('Produit supprimé avec succès');
+        console.log('Produit supprimé via Redux Persist');
+      } catch (error) {
+        console.error('Erreur lors de la suppression:', error);
+        showError('Erreur lors de la suppression du produit');
+      }
+    }
+  };
+
+  const filteredProducts = products.filter((product: Product) => {
+    const refStr = (product.reference ?? String(product.id) ?? '').toLowerCase();
+    const matchesSearch = product.designation.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         refStr.includes(searchTerm.toLowerCase());
+    const matchesCategory = !filterCategory || product.categorie_id.toString() === filterCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Gestion du Stock</h1>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setIsCategoryModalOpen(true)}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors"
+          >
+            <Settings size={20} />
+            Nouvelle Catégorie
+          </button>
+          <button
+            onClick={() => {
+              setEditingProduct(null);
+              setIsModalOpen(true);
+            }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+          >
+            <Plus size={20} />
+            Nouveau Produit
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder="Rechercher par ID ou désignation..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+        <select
+          value={filterCategory}
+          onChange={(e) => setFilterCategory(e.target.value)}
+          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="">Toutes les catégories</option>
+          {categories.map((category: Category) => (
+            <option key={category.id} value={category.id.toString()}>{category.nom}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <Package className="text-blue-600" size={32} />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Total Produits</p>
+              <p className="text-3xl font-bold text-gray-900">{products.length}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <Settings className="text-green-600" size={32} />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Services</p>
+              <p className="text-3xl font-bold text-gray-900">
+                {products.filter(p => p.est_service).length}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <Package className="text-purple-600" size={32} />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Catégories</p>
+              <p className="text-3xl font-bold text-gray-900">{categories.length}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix d'achat</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coût de revient</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix gros</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix vente</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredProducts.map((product: Product) => (
+                <tr key={product.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{product.reference ?? product.id}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-medium text-gray-900">{product.designation}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                      {product.categorie?.nom || 'N/A'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {product.est_service ? '-' : product.quantite}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {product.prix_achat.toFixed(2)} DH
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {product.cout_revient.toFixed(2)} DH
+                    <span className="text-xs text-gray-500 ml-1">({product.cout_revient_pourcentage}%)</span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {product.prix_gros.toFixed(2)} DH
+                    <span className="text-xs text-gray-500 ml-1">({product.prix_gros_pourcentage}%)</span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {product.prix_vente.toFixed(2)} DH
+                    <span className="text-xs text-gray-500 ml-1">({product.prix_vente_pourcentage}%)</span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      product.est_service
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-green-100 text-green-800'
+                    }`}>
+                      {product.est_service ? 'Service' : 'Produit'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEdit(product)}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(product.id)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal Nouveau/Modifier Produit */}
+      <ProductFormModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingProduct(null);
+        }}
+        editingProduct={editingProduct}
+        onProductAdded={(newProduct) => {
+          console.log('Nouveau produit ajouté:', newProduct);
+          showSuccess('Produit ajouté avec succès !');
+        }}
+        onProductUpdated={(updatedProduct) => {
+          console.log('Produit mis à jour:', updatedProduct);
+          showSuccess('Produit mis à jour avec succès !');
+        }}
+      />
+
+      {/* Modal Nouvelle Catégorie */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md">
+            <div className="bg-green-600 px-6 py-4 rounded-t-lg">
+              <h2 className="text-xl font-bold text-white">Nouvelle catégorie</h2>
+            </div>
+            
+            <form onSubmit={categoryFormik.handleSubmit} className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="nom" className="block text-sm font-medium text-gray-700 mb-1">
+                    Nom de la catégorie *
+                  </label>
+                  <input
+                    id="nom"
+                    type="text"
+                    name="nom"
+                    value={categoryFormik.values.nom}
+                    onChange={categoryFormik.handleChange}
+                    onBlur={categoryFormik.handleBlur}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="Ex: Électronique"
+                  />
+                  {categoryFormik.touched.nom && categoryFormik.errors.nom && (
+                    <p className="text-red-500 text-sm mt-1">{categoryFormik.errors.nom}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    value={categoryFormik.values.description}
+                    onChange={categoryFormik.handleChange}
+                    onBlur={categoryFormik.handleBlur}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="Description de la catégorie..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCategoryModalOpen(false);
+                    categoryFormik.resetForm();
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
+                >
+                  Créer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default StockPage;

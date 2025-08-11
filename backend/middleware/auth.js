@@ -1,0 +1,20 @@
+import jwt from 'jsonwebtoken';
+
+export function verifyToken(req, res, next) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ message: 'Token manquant' });
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    req.user = payload;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Token invalide' });
+  }
+}
+
+export function signToken(payload) {
+  const secret = process.env.JWT_SECRET || 'dev-secret';
+  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+  return jwt.sign(payload, secret, { expiresIn });
+}

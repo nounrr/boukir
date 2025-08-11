@@ -1,0 +1,110 @@
+import { Router } from 'express';
+import pool from '../db/pool.js';
+import bcrypt from 'bcryptjs';
+
+const router = Router();
+
+// Helper: convert undefined, null, or empty/whitespace-only strings to null; trim strings
+function clean(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') {
+    const t = value.trim();
+    return t === '' ? null : t;
+  }
+  return value;
+}
+
+router.get('/', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, created_by, updated_by, created_at, updated_at FROM employees ORDER BY id DESC');
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.get('/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
+    const emp = rows[0];
+    if (!emp) return res.status(404).json({ message: 'Employé introuvable' });
+    res.json(emp);
+  } catch (err) { next(err); }
+});
+
+router.post('/', async (req, res, next) => {
+  try {
+    const { nom_complet, cin, date_embauche, role, password, created_by } = req.body;
+
+    // Required: CIN and password
+    const cinTrim = typeof cin === 'string' ? cin.trim() : cin;
+    if (!cinTrim) {
+      return res.status(400).json({ message: 'CIN requis' });
+    }
+    if (!password || typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({ message: 'Mot de passe requis' });
+    }
+
+    // Uniqueness check for CIN
+    const [exists] = await pool.query('SELECT id FROM employees WHERE cin = ?', [cinTrim]);
+    if (exists.length > 0) return res.status(400).json({ message: 'Ce CIN existe déjà' });
+
+    const now = new Date();
+    const hashed = await bcrypt.hash(password.trim(), 10);
+    const [result] = await pool.query(
+      'INSERT INTO employees (nom_complet, cin, date_embauche, role, password, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [clean(nom_complet), cinTrim, clean(date_embauche), clean(role), hashed, clean(created_by), now, now]
+    );
+    const id = result.insertId;
+    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
+    res.status(201).json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+router.put('/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { nom_complet, cin, date_embauche, role, password, updated_by } = req.body;
+    const [rows0] = await pool.query('SELECT * FROM employees WHERE id = ?', [id]);
+    if (rows0.length === 0) return res.status(404).json({ message: 'Employé introuvable' });
+    if (cin !== undefined) {
+      const cinTrim = typeof cin === 'string' ? cin.trim() : cin;
+      if (!cinTrim) return res.status(400).json({ message: 'CIN requis' });
+      const [dups] = await pool.query('SELECT id FROM employees WHERE cin = ? AND id <> ?', [cinTrim, id]);
+      if (dups.length > 0) return res.status(400).json({ message: 'Ce CIN existe déjà' });
+    }
+    const now = new Date();
+    const fields = [];
+    const values = [];
+    if (nom_complet !== undefined) { fields.push('nom_complet = ?'); values.push(clean(nom_complet)); }
+    if (cin !== undefined) { fields.push('cin = ?'); values.push(typeof cin === 'string' ? cin.trim() : cin); }
+    if (date_embauche !== undefined) { fields.push('date_embauche = ?'); values.push(clean(date_embauche)); }
+    if (role !== undefined) { fields.push('role = ?'); values.push(clean(role)); }
+    if (password && typeof password === 'string' && password.trim()) {
+      const hashed = await bcrypt.hash(password.trim(), 10);
+      fields.push('password = ?'); values.push(hashed);
+    }
+    if (updated_by !== undefined) { fields.push('updated_by = ?'); values.push(clean(updated_by)); }
+    fields.push('updated_at = ?'); values.push(now);
+    const sql = `UPDATE employees SET ${fields.join(', ')} WHERE id = ?`;
+    values.push(id);
+    await pool.query(sql, values);
+    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const [empRows] = await pool.query('SELECT role FROM employees WHERE id = ?', [id]);
+    if (empRows.length === 0) return res.status(404).json({ message: 'Employé introuvable' });
+    if (empRows[0].role === 'PDG') {
+      const [pdgCountRows] = await pool.query("SELECT COUNT(*) as cnt FROM employees WHERE role = 'PDG'");
+      if (pdgCountRows[0].cnt <= 1) return res.status(400).json({ message: 'Impossible de supprimer le dernier PDG' });
+    }
+    await pool.query('DELETE FROM employees WHERE id = ?', [id]);
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
+
+export default router;
