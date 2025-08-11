@@ -87,7 +87,8 @@ L'application sera disponible sur `http://localhost:5174`
 ## 📁 Structure du projet
 
 ```
-src/
+frontend/
+  └── src/
 ├── components/           # Composants réutilisables
 │   ├── auth/            # Authentification (Login, ProtectedRoute)
 │   └── layout/          # Layout (Header, Sidebar, Layout)
@@ -188,3 +189,21 @@ export default tseslint.config([
 ])
 ```
 # boukir
+
+## Backend (Express + MySQL)
+
+Un serveur Express minimal est inclus (dossier `backend/`) pour démarrer la partie backend par la table `employees`.
+
+1) Copier `backend/.env.example` en `backend/.env` et ajuster les variables MySQL.
+
+2) Créer la base de données et la table `employees` en important `backend/schema.sql`.
+
+3) Installer les dépendances puis lancer le front et l'API ensemble:
+
+```bash
+npm install
+npm run dev:full
+```
+
+En mode dev, le front appelle `/api/*` et Vite proxie vers `http://localhost:3001` (configuré dans `vite.config.ts`).
+
