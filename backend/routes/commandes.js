@@ -222,12 +222,12 @@ router.patch('/:id/statut', async (req, res) => {
 });
 
 // PUT /commandes/:id - Mettre à jour un bon de commande
+// PUT /commandes/:id - Mettre à jour un bon de commande
 router.put('/:id', async (req, res) => {
   const connection = await pool.getConnection();
-  
   try {
     await connection.beginTransaction();
-    
+
     const { id } = req.params;
     const {
       numero,
@@ -238,23 +238,30 @@ router.put('/:id', async (req, res) => {
       montant_total,
       statut,
       items = []
-    } = req.body;
+    } = req.body || {};
 
-    // Mettre à jour le bon de commande
+    // validations minimales
+    if (!numero || !date_creation || montant_total == null || !statut) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Champs requis manquants (numero, date_creation, montant_total, statut)' });
+    }
+
+    // Normalisation: undefined -> null
+    const fId = fournisseur_id ?? null;
+    const vId = vehicule_id ?? null;
+    const lieu = lieu_chargement ?? null;
+    const st  = statut ?? 'Brouillon';
+
     await connection.execute(`
-      UPDATE bons_commande SET
-        numero = ?, date_creation = ?, fournisseur_id = ?,
-        vehicule_id = ?, lieu_chargement = ?, montant_total = ?, statut = ?
-      WHERE id = ?
-    `, [
-      numero, date_creation, fournisseur_id,
-      vehicule_id, lieu_chargement, montant_total, statut, id
-    ]);
+      UPDATE bons_commande
+         SET numero = ?, date_creation = ?, fournisseur_id = ?, vehicule_id = ?,
+             lieu_chargement = ?, montant_total = ?, statut = ?, updated_at = NOW()
+       WHERE id = ?
+    `, [numero, date_creation, fId, vId, lieu, montant_total, st, id]);
 
-    // Supprimer les anciens items
+    // On remplace tous les items
     await connection.execute('DELETE FROM commande_items WHERE bon_commande_id = ?', [id]);
 
-    // Recréer les items
     for (const item of items) {
       const {
         product_id,
@@ -263,30 +270,32 @@ router.put('/:id', async (req, res) => {
         remise_pourcentage = 0,
         remise_montant = 0,
         total
-      } = item;
+      } = item || {};
+
+      if (!product_id || quantite == null || prix_unitaire == null || total == null) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Item invalide: product_id, quantite, prix_unitaire, total requis' });
+      }
 
       await connection.execute(`
         INSERT INTO commande_items (
           bon_commande_id, product_id, quantite, prix_unitaire,
           remise_pourcentage, remise_montant, total
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [
-        id, product_id, quantite, prix_unitaire,
-        remise_pourcentage, remise_montant, total
-      ]);
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
     }
 
     await connection.commit();
-
     res.json({ message: 'Bon de commande mis à jour avec succès' });
   } catch (error) {
     await connection.rollback();
     console.error('Erreur lors de la mise à jour du bon de commande:', error);
-    res.status(500).json({ message: 'Erreur du serveur' });
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
   } finally {
     connection.release();
   }
 });
+
 
 // DELETE /commandes/:id - Supprimer un bon de commande
 router.delete('/:id', async (req, res) => {
@@ -352,3 +361,77 @@ router.patch('/:id/statut', async (req, res) => {
 });
 
 export default router;
+/* =========================
+   POST /commandes/:id/mark-avoir
+   Créer un avoir fournisseur depuis un bon de commande et marquer le bon en "Avoir"
+   ========================= */
+router.post('/:id/mark-avoir', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { id } = req.params;
+    const { created_by } = req.body || {};
+    if (!created_by) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'created_by requis' });
+    }
+
+    const [rows] = await connection.execute('SELECT * FROM bons_commande WHERE id = ? LIMIT 1', [id]);
+    if (rows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Commande non trouvée' });
+    }
+    const bc = rows[0];
+
+    const today = new Date().toISOString().split('T')[0];
+    const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
+    // Some databases may not have bon_commande_id column yet; detect and adapt
+    const [colCheck] = await connection.execute(
+      `SELECT COUNT(*) AS cnt
+         FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'avoirs_fournisseur'
+          AND COLUMN_NAME = 'bon_commande_id'`
+    );
+    const hasBonCommandeId = Number(colCheck?.[0]?.cnt || 0) > 0;
+
+    const insertSql = hasBonCommandeId
+      ? `INSERT INTO avoirs_fournisseur (
+            numero, date_creation, fournisseur_id, bon_commande_id, montant_total, statut, created_by
+         ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)`
+      : `INSERT INTO avoirs_fournisseur (
+            numero, date_creation, fournisseur_id, montant_total, statut, created_by
+         ) VALUES (?, ?, ?, ?, 'En attente', ?)`;
+
+    const insertParams = hasBonCommandeId
+      ? [tmpNumero, today, bc.fournisseur_id ?? null, bc.id, bc.montant_total, created_by]
+      : [tmpNumero, today, bc.fournisseur_id ?? null, bc.montant_total, created_by];
+
+    const [insAvoir] = await connection.execute(insertSql, insertParams);
+    const avoirId = insAvoir.insertId;
+    const finalNumero = `avf${avoirId}`;
+    await connection.execute('UPDATE avoirs_fournisseur SET numero = ? WHERE id = ?', [finalNumero, avoirId]);
+
+    const [items] = await connection.execute('SELECT * FROM commande_items WHERE bon_commande_id = ?', [id]);
+    for (const it of items) {
+      await connection.execute(
+        `INSERT INTO avoir_fournisseur_items (
+           avoir_fournisseur_id, product_id, quantite, prix_unitaire, total
+         ) VALUES (?, ?, ?, ?, ?)`,
+        [avoirId, it.product_id, it.quantite, it.prix_unitaire, it.total]
+      );
+    }
+
+    await connection.execute('UPDATE bons_commande SET statut = "Avoir", updated_at = NOW() WHERE id = ?', [id]);
+
+    await connection.commit();
+    return res.json({ success: true, avoir_id: avoirId, numero: finalNumero });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Erreur POST /commandes/:id/mark-avoir:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  } finally {
+    connection.release();
+  }
+});

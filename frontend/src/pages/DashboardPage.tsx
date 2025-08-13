@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/redux';
 import { 
@@ -9,20 +9,57 @@ import {
   TrendingUp,
   AlertTriangle
 } from 'lucide-react';
+import { useGetEmployeesQuery } from '../store/api/employeesApi';
+import { useGetProductsQuery } from '../store/api/productsApi';
+import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Données simulées pour le dashboard
-  const stats = {
-    employees: 4,
-    products: 12,
-    orders: 25,
-    revenue: 15420.50,
-    lowStock: 3,
-    pendingOrders: 8
+  // Live data
+  const { data: employees = [] } = useGetEmployeesQuery();
+  const { data: products = [] } = useGetProductsQuery();
+  const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
+  const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
+  const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
+
+  // Helpers
+  const isSameMonth = (iso?: string) => {
+    if (!iso) return false;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return false;
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
   };
+
+  // Rules
+  // - Orders card = sales documents only: Sortie + Comptant (flow of sales)
+  // - Revenue = sum of montant_total for Sortie + Comptant of current month
+  // - Low stock = products with quantite <= 5
+  // - Pending orders = docs not finalized: statuses in ['Brouillon','En attente','En cours'] across Sortie + Commande
+  const stats = useMemo(() => {
+    const salesDocs = [...sorties, ...comptants];
+    const orders = salesDocs.length; // sales-related documents only
+
+    const revenue = salesDocs
+      .filter((b: any) => isSameMonth(b.date_creation))
+      .reduce((sum: number, b: any) => sum + Number(b.montant_total || 0), 0);
+
+    const lowStock = products.filter((p: any) => Number(p.quantite || 0) <= 5).length;
+
+    const pendingStatuses = new Set(['Brouillon', 'En attente', 'En cours']);
+    const pendingOrders = [...sorties, ...commandes].filter((b: any) => pendingStatuses.has(b.statut)).length;
+
+    return {
+      employees: employees.length,
+      products: products.length,
+      orders,
+      revenue,
+      lowStock,
+      pendingOrders,
+    };
+  }, [employees, products, sorties, comptants, commandes]);
 
   return (
     <div className="p-6">
@@ -37,9 +74,10 @@ const DashboardPage: React.FC = () => {
       
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
-        <div 
+        <button 
+          type="button"
           onClick={() => navigate('/employees')}
-          className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+          className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
         >
           <div className="flex items-center">
             <Users className="text-blue-500" size={24} />
@@ -48,11 +86,12 @@ const DashboardPage: React.FC = () => {
               <p className="text-2xl font-semibold text-gray-900">{stats.employees}</p>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div 
+        <button 
+          type="button"
           onClick={() => navigate('/stock')}
-          className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+          className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
         >
           <div className="flex items-center">
             <Package className="text-green-500" size={24} />
@@ -61,33 +100,35 @@ const DashboardPage: React.FC = () => {
               <p className="text-2xl font-semibold text-gray-900">{stats.products}</p>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div 
+        <button 
+          type="button"
           onClick={() => navigate('/bons')}
-          className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+          className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
         >
           <div className="flex items-center">
             <FileText className="text-purple-500" size={24} />
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">Commandes</p>
+              <p className="text-sm font-medium text-gray-500">Bons (Sortie + Comptant)</p>
               <p className="text-2xl font-semibold text-gray-900">{stats.orders}</p>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div 
+        <button 
+          type="button"
           onClick={() => navigate('/caisse')}
-          className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+          className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
         >
           <div className="flex items-center">
             <DollarSign className="text-yellow-500" size={24} />
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">Chiffre d'affaires</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.revenue.toFixed(2)} €</p>
+              <p className="text-sm font-medium text-gray-500">Chiffre d'affaires (mois en cours)</p>
+              <p className="text-2xl font-semibold text-gray-900">{stats.revenue.toFixed(2)} DH</p>
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Alerts & Quick Actions */}

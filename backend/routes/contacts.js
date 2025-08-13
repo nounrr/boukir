@@ -61,8 +61,13 @@ router.post('/', async (req, res) => {
     } = req.body;
 
     // Validation
-    if (!nom_complet || !type) {
-      return res.status(400).json({ error: 'nom_complet and type are required' });
+    if (!type) {
+      return res.status(400).json({ error: 'type is required' });
+    }
+
+    // Pour les Clients, le nom complet est requis. Pour les Fournisseurs, il est optionnel.
+    if (type === 'Client' && (!nom_complet || String(nom_complet).trim() === '')) {
+      return res.status(400).json({ error: 'nom_complet is required for Client' });
     }
 
     if (!['Client', 'Fournisseur'].includes(type)) {
@@ -73,7 +78,7 @@ router.post('/', async (req, res) => {
       `INSERT INTO contacts 
        (nom_complet, type, telephone, email, adresse, rib, ice, solde, plafond, created_by, created_at, updated_at) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [nom_complet, type, telephone || null, email || null, adresse || null, rib || null, ice || null, solde, plafond || null, created_by]
+  [(nom_complet ?? ''), type, telephone || null, email || null, adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, created_by || null]
     );
 
     // Fetch the created contact

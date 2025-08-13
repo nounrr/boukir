@@ -233,6 +233,71 @@ export const bonsApi = api.injectEndpoints({
         ];
       },
     }),
+
+    // Transformer un devis vers Sortie/Comptant/Commande
+    transformDevis: builder.mutation<
+      any,
+      { id: number } & {
+        target_type?: 'Sortie' | 'Comptant' | 'Commande';
+        target?: 'sortie' | 'comptant' | 'commande';
+        client_id?: number | null;
+        fournisseur_id?: number | null;
+        vehicule_id?: number | null;
+        lieu_chargement?: string | null;
+        created_by: number;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/devis/${id}/transform`,
+        method: 'POST',
+        body,
+      }),
+      // Invalidate lists so UI refreshes without full reload
+      invalidatesTags: () => [
+        // Object LIST tags for endpoints that use id-based providesTags
+        { type: 'Devis', id: 'LIST' },
+        { type: 'Sortie', id: 'LIST' },
+        { type: 'Comptant', id: 'LIST' },
+        { type: 'Commande', id: 'LIST' },
+        // Simple string tags for endpoints that provide only the type
+        'Devis',
+        'Sortie',
+        'Comptant',
+        'Commande',
+      ],
+    }),
+
+    // Marquer un bon comme Avoir (crée un avoir lié et change le statut du bon)
+    markBonAsAvoir: builder.mutation<
+      any,
+      { id: number; type: 'Sortie' | 'Comptant' | 'Commande'; created_by: number }
+    >({
+      query: ({ id, type, created_by }) => {
+        let endpoint = '';
+        switch (type) {
+          case 'Sortie':
+            endpoint = `/sorties/${id}/mark-avoir`;
+            break;
+          case 'Comptant':
+            endpoint = `/comptant/${id}/mark-avoir`;
+            break;
+          case 'Commande':
+            endpoint = `/commandes/${id}/mark-avoir`;
+            break;
+          default:
+            throw new Error('Type non supporté pour mark-avoir');
+        }
+        return { url: endpoint, method: 'POST', body: { created_by } };
+      },
+      invalidatesTags: (_result, _error, { type }) => {
+        const tags: any[] = [];
+        // Invalidate source list and avoirs list
+        if (type === 'Sortie') tags.push({ type: 'Sortie', id: 'LIST' }, { type: 'AvoirClient', id: 'LIST' });
+        if (type === 'Comptant') tags.push({ type: 'Comptant', id: 'LIST' }, { type: 'AvoirClient', id: 'LIST' });
+        if (type === 'Commande') tags.push({ type: 'Commande', id: 'LIST' }, { type: 'AvoirFournisseur', id: 'LIST' });
+        return tags;
+      },
+    }),
   }),
 });
 
@@ -244,4 +309,6 @@ export const {
   useUpdateBonMutation,
   useDeleteBonMutation,
   useUpdateBonStatusMutation,
+  useTransformDevisMutation,
+  useMarkBonAsAvoirMutation,
 } = bonsApi;

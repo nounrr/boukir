@@ -317,3 +317,92 @@ router.patch('/:id/statut', async (req, res) => {
 
 
 export default router;
+/* =========================
+   POST /comptant/:id/mark-avoir
+   Créer un avoir client depuis un bon comptant et marquer le bon en "Avoir"
+   ========================= */
+router.post('/:id/mark-avoir', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { id } = req.params;
+    const { created_by } = req.body || {};
+
+    if (!created_by) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'created_by requis' });
+    }
+
+    const [rows] = await connection.execute('SELECT * FROM bons_comptant WHERE id = ? LIMIT 1', [id]);
+    if (rows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon comptant non trouvé' });
+    }
+    const bc = rows[0];
+
+    const today = new Date().toISOString().split('T')[0];
+    const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
+
+    // Vérifier si les colonnes bon_origine_id et bon_origine_type existent
+    const [columnsCheck] = await connection.execute(
+      "SHOW COLUMNS FROM avoirs_client WHERE Field IN ('bon_origine_id', 'bon_origine_type')"
+    );
+    const existingColumns = columnsCheck.map(row => row.Field);
+    const hasBonOrigineId = existingColumns.includes('bon_origine_id');
+    const hasBonOrigineType = existingColumns.includes('bon_origine_type');
+
+    let insertQuery, insertValues;
+    if (hasBonOrigineId && hasBonOrigineType) {
+      insertQuery = `INSERT INTO avoirs_client (
+         numero, date_creation, client_id, bon_origine_id, bon_origine_type,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, ?, 'comptant', ?, ?, 'En attente', ?)`;
+      insertValues = [tmpNumero, today, bc.client_id ?? null, bc.id, bc.lieu_chargement ?? null, bc.montant_total, created_by];
+    } else if (hasBonOrigineId) {
+      insertQuery = `INSERT INTO avoirs_client (
+         numero, date_creation, client_id, bon_origine_id,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)`;
+      insertValues = [tmpNumero, today, bc.client_id ?? null, bc.id, bc.lieu_chargement ?? null, bc.montant_total, created_by];
+    } else if (hasBonOrigineType) {
+      insertQuery = `INSERT INTO avoirs_client (
+         numero, date_creation, client_id, bon_origine_type,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, 'comptant', ?, ?, 'En attente', ?)`;
+      insertValues = [tmpNumero, today, bc.client_id ?? null, bc.lieu_chargement ?? null, bc.montant_total, created_by];
+    } else {
+      insertQuery = `INSERT INTO avoirs_client (
+         numero, date_creation, client_id,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)`;
+      insertValues = [tmpNumero, today, bc.client_id ?? null, bc.lieu_chargement ?? null, bc.montant_total, created_by];
+    }
+
+    const [insAvoir] = await connection.execute(insertQuery, insertValues);
+    const avoirId = insAvoir.insertId;
+    const finalNumero = `av${avoirId}`;
+    await connection.execute('UPDATE avoirs_client SET numero = ? WHERE id = ?', [finalNumero, avoirId]);
+
+    const [items] = await connection.execute('SELECT * FROM comptant_items WHERE bon_comptant_id = ?', [id]);
+    for (const it of items) {
+      await connection.execute(
+        `INSERT INTO avoir_client_items (
+           avoir_client_id, product_id, quantite, prix_unitaire, total
+         ) VALUES (?, ?, ?, ?, ?)`,
+        [avoirId, it.product_id, it.quantite, it.prix_unitaire, it.total]
+      );
+    }
+
+    await connection.execute('UPDATE bons_comptant SET statut = "Avoir", updated_at = NOW() WHERE id = ?', [id]);
+
+    await connection.commit();
+    return res.json({ success: true, avoir_id: avoirId, numero: finalNumero });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Erreur POST /comptant/:id/mark-avoir:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  } finally {
+    connection.release();
+  }
+});

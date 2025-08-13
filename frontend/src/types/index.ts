@@ -165,7 +165,7 @@ export interface Bon {
   client_id?: number;
   fournisseur_id?: number;
   montant_total: number;
-  statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente';
+  statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente' | 'Envoyé' | 'Accepté' | 'Refusé' | 'Expiré' | 'Facturé';
   vehicule?: string;
   lieu_chargement?: string;
   bon_origine_id?: number; // Pour les avoirs, lien vers le bon d'origine
@@ -215,6 +215,7 @@ export interface Payment {
   date_echeance?: string;
   banque?: string;
   personnel?: string; // Nom de la personne
+  code_reglement?: string; // Code/référence libre (chèque/virement/traite)
   // Champ spécifique pour Virement
   reference_virement?: string;
   // Nouveaux champs pour compatibilité CaissePage

@@ -40,6 +40,10 @@ const EmployeePage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [changePassword, setChangePassword] = useState(false); // only used when editing
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(30);
 
   const formik = useFormik({
     initialValues: {
@@ -89,18 +93,6 @@ const EmployeePage: React.FC = () => {
     },
   });
 
-  // Vérification des droits d'accès
-  if (user?.role !== 'PDG') {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Accès refusé</h2>
-          <p className="text-gray-600">Seul le PDG peut accéder à la gestion des employés.</p>
-        </div>
-      </div>
-    );
-  }
-
   const handleEdit = (employee: Employee) => {
     setEditingEmployee(employee);
     formik.setValues({
@@ -141,8 +133,32 @@ const EmployeePage: React.FC = () => {
     return name.includes(q) || cin.includes(q);
   });
 
+  // Pagination
+  const totalItems = filteredEmployees.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedEmployees = filteredEmployees.slice(startIndex, endIndex);
+
+  // Réinitialiser la page quand on change de recherche
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   if (isLoading) {
     return <div className="flex justify-center items-center h-64">Chargement...</div>;
+  }
+
+  // Check if user is PDG before rendering content
+  if (user?.role !== 'PDG') {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Accès refusé</h2>
+          <p className="text-gray-600">Seul le PDG peut accéder à la gestion des employés.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -179,6 +195,34 @@ const EmployeePage: React.FC = () => {
         </div>
       </div>
 
+      {/* Contrôles de pagination */}
+      <div className="mb-4 flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-gray-700">
+            Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} employés
+          </span>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">Employés par page:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="border border-gray-300 rounded px-2 py-1 text-sm"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={30}>30</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
@@ -192,7 +236,7 @@ const EmployeePage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredEmployees.map((employee: Employee) => (
+            {paginatedEmployees.map((employee: Employee) => (
               <tr key={employee.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {employee.cin}
@@ -237,6 +281,56 @@ const EmployeePage: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Navigation de pagination */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex justify-center items-center gap-2">
+          <button
+            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Précédent
+          </button>
+          
+          <div className="flex gap-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+              
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`px-3 py-2 border rounded-md ${
+                    currentPage === pageNum
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+          </div>
+          
+          <button
+            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Suivant
+          </button>
+        </div>
+      )}
 
       {/* Modal */}
       {isModalOpen && (

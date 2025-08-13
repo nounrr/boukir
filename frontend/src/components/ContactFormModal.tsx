@@ -7,16 +7,36 @@ import { showSuccess, showError } from '../utils/notifications';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 
-// Schema de validation pour les contacts
-const contactValidationSchema = Yup.object({
+// Schemas de validation dynamiques
+const clientSchema = Yup.object({
   nom_complet: Yup.string().required('Nom complet requis'),
-  telephone: Yup.string(),
-  email: Yup.string().email('Format d\'email invalide'),
-  adresse: Yup.string(),
-  ice: Yup.string(),
-  rib: Yup.string(),
-  solde: Yup.number().required('Solde requis').min(0, 'Le solde ne peut pas être négatif'),
-  plafond: Yup.number().nullable().min(0, 'Le plafond ne peut pas être négatif'),
+  telephone: Yup.string().nullable(),
+  email: Yup.string().email("Format d'email invalide").nullable(),
+  adresse: Yup.string().nullable(),
+  ice: Yup.string().nullable(),
+  rib: Yup.string().nullable(),
+  solde: Yup.number()
+    .typeError('Solde invalide')
+    .required('Solde requis')
+    .min(0, 'Le solde ne peut pas être négatif'),
+  plafond: Yup.number()
+    .nullable()
+    .transform((value, originalValue) => (originalValue === '' ? null : value))
+    .min(0, 'Le plafond ne peut pas être négatif'),
+});
+
+const fournisseurSchema = Yup.object({
+  nom_complet: Yup.string().nullable(),
+  telephone: Yup.string().nullable(),
+  email: Yup.string().email("Format d'email invalide").nullable(),
+  adresse: Yup.string().nullable(),
+  ice: Yup.string().nullable(),
+  rib: Yup.string().nullable(),
+  solde: Yup.number()
+    .nullable()
+    .transform((value, originalValue) => (originalValue === '' ? null : value))
+    .min(0, 'Le solde ne peut pas être négatif'),
+  plafond: Yup.mixed().notRequired().nullable(),
 });
 
 interface ContactFormModalProps {
@@ -65,7 +85,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
         <h3 className="text-lg font-medium text-gray-900 mb-4">{title}</h3>
         <Formik
           initialValues={defaultValues}
-          validationSchema={contactValidationSchema}
+          validationSchema={contactType === 'Client' ? clientSchema : fournisseurSchema}
           enableReinitialize={true}
           onSubmit={async (values) => {
             try {
@@ -76,14 +96,15 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
 
               // Préparer les données du contact
               const contactData = {
-                nom_complet: values.nom_complet,
+                // Pour Fournisseur, le nom peut être vide; on envoie une chaîne vide pour rester compatible DB
+                nom_complet: (values.nom_complet || '').toString(),
                 telephone: values.telephone || '',
                 email: values.email || '',
                 adresse: values.adresse || '',
                 ice: values.ice || '',
                 rib: values.rib || '',
                 type: contactType,
-                solde: values.solde || 0,
+                solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
                 ...(contactType === 'Client' && { plafond: values.plafond || undefined })
               };
 
@@ -121,7 +142,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               {/* Nom complet - pleine largeur */}
               <div>
                 <label htmlFor="nom_complet" className="block text-sm font-medium text-gray-700 mb-1">
-                  Nom complet *
+                  {contactType === 'Client' ? 'Nom complet *' : 'Nom complet (optionnel)'}
                 </label>
                 <Field
                   id="nom_complet"
@@ -246,7 +267,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 {/* Solde */}
                 <div>
                   <label htmlFor="solde" className="block text-sm font-medium text-gray-700 mb-1">
-                    {contactType === 'Client' ? 'Solde à recevoir' : 'Solde à payer'} *
+                    {contactType === 'Client' ? 'Solde à recevoir *' : 'Solde à payer (optionnel)'}
                   </label>
                   <Field
                     id="solde"
