@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 import type { Contact } from '../types';
 import { showSuccess, showError } from '../utils/notifications';
-import { useGetClientsQuery } from '../store/api/contactsApi';
-import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from '../store';
-import { api } from '../store/api/apiSlice';
+import { useGetClientsQuery } from '../store/api/contactsApi';
+import { useTransformDevisMutation } from '../store/api/bonsApi';
 
 interface DevisTransformModalProps {
   isOpen: boolean;
@@ -19,9 +19,9 @@ const DevisTransformModal: React.FC<DevisTransformModalProps> = ({
   devis,
   onTransformComplete,
 }) => {
-  const dispatch = useDispatch();
   const { user } = useSelector((state: RootState) => state.auth);
   const { data: clients = [] } = useGetClientsQuery();
+  const [transformDevis, { isLoading: isTransforming } ] = useTransformDevisMutation();
 
   const [transformationType, setTransformationType] = useState<'choice' | 'sortie'>('choice'); // 'choice' pour le choix initial, 'sortie' pour le select client
   const [selectedClientForSortie, setSelectedClientForSortie] = useState('');
@@ -40,38 +40,16 @@ const DevisTransformModal: React.FC<DevisTransformModalProps> = ({
     );
   });
 
-  // Transformer le devis en bon comptant (créer directement un bon comptant depuis le devis)
+  // Transformer le devis en bon comptant (sans client spécifique)
   const handleTransformToComptant = async () => {
     try {
-      // Le backend ne fournit pas de transformation directe vers Comptant depuis le devis.
-      // On crée donc un bon comptant avec les infos du devis.
-      const createRes = await fetch('/api/comptant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          numero: `COM${Date.now()}`,
-          date_creation: new Date().toISOString().split('T')[0],
-          client_id: null, // pas de client
-          vehicule_id: null,
-          lieu_chargement: devis.lieu_chargement || null,
-          montant_total: devis.montant_total,
-          statut: 'En attente',
-          created_by: user?.id || 1,
-          items: (devis.items || []).map((it: any) => ({
-            product_id: it.product_id,
-            quantite: it.quantite,
-            prix_unitaire: it.prix_unitaire,
-            remise_pourcentage: it.remise_pourcentage || 0,
-            remise_montant: it.remise_montant || 0,
-            total: it.total,
-          }))
-        })
-      });
-
-      if (!createRes.ok) throw new Error('Création du bon comptant échouée');
-      const comp = await createRes.json();
-  showSuccess(`Devis transformé en bon comptant (${comp?.numero})`);
-  dispatch(api.util.invalidateTags(['Devis', 'Comptant']));
+      const result: any = await transformDevis({
+        id: devis.id,
+        target_type: 'Comptant',
+        created_by: user?.id || 1,
+      }).unwrap();
+      
+      showSuccess(`Devis transformé en bon comptant avec succès! (${result.numero})`);
       
       if (onTransformComplete) {
         onTransformComplete();
@@ -83,34 +61,17 @@ const DevisTransformModal: React.FC<DevisTransformModalProps> = ({
     }
   };
 
-  // Transformer le devis en bon de sortie (avec sélection client)
-  const handleTransformToSortie = async () => {
-    if (!selectedClientForSortie) {
-      alert('Veuillez sélectionner un client');
-      return;
-    }
-
+  // Transformer le devis en bon de sortie avec le client du devis
+  const handleTransformToSortieWithDevisClient = async () => {
     try {
-      const response = await fetch(`/api/devis/${devis.id}/transform`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          created_by: user?.id || 1,
-          target: 'sortie',
-          client_id: Number(selectedClientForSortie)
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la transformation');
-      }
-
-      const result = await response.json();
+      const result: any = await transformDevis({
+        id: devis.id,
+        target_type: 'Sortie',
+        client_id: devis.client_id,
+        created_by: user?.id || 1,
+      }).unwrap();
       
-  showSuccess(`Devis transformé en bon de sortie avec succès! (${result.sortie_numero || result.numero})`);
-  dispatch(api.util.invalidateTags(['Devis', 'Sortie']));
+      showSuccess(`Devis transformé en bon de sortie avec succès! (${result.numero})`);
       
       if (onTransformComplete) {
         onTransformComplete();
@@ -119,6 +80,34 @@ const DevisTransformModal: React.FC<DevisTransformModalProps> = ({
       onClose();
     } catch (error: any) {
       showError(`Erreur lors de la transformation: ${error.message}`);
+    }
+  };
+
+  // Transformer le devis en bon de sortie
+  const handleTransformToSortie = async () => {
+    if (!selectedClientForSortie) {
+      alert('Veuillez sélectionner un client');
+      return;
+    }
+
+    try {
+      const result: any = await transformDevis({
+        id: devis.id,
+        target_type: 'Sortie',
+        client_id: parseInt(selectedClientForSortie),
+        created_by: user?.id || 1,
+      }).unwrap();
+      
+      showSuccess(`Devis transformé en bon de sortie avec succès! (${result.numero})`);
+      
+      if (onTransformComplete) {
+        onTransformComplete();
+      }
+      
+      onClose();
+    } catch (error: any) {
+      const message = error?.data?.message || error?.message || 'Erreur lors de la transformation';
+      showError(`Erreur lors de la transformation: ${message}`);
     }
   };
 
@@ -141,24 +130,46 @@ const DevisTransformModal: React.FC<DevisTransformModalProps> = ({
             </div>
           </div>
 
-      {/* Étape 1: Choix du type de transformation */}
+          {/* Étape 1: Choix du type de transformation */}
           {transformationType === 'choice' && (
             <div className="space-y-3">
               <p className="text-gray-600 mb-4">Choisissez le type de transformation :</p>
               
-              <button
-                onClick={handleTransformToComptant}
-                className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-        Transformer en Bon Comptant (sans client)
-              </button>
+              {/* Si le devis a un client, proposer transformation directe en sortie */}
+              {devis.client_id ? (
+                <>
+                  <button
+                    onClick={handleTransformToSortieWithDevisClient}
+                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    Transformer en Bon de Sortie (Client actuel)
+                  </button>
 
-              <button
-                onClick={() => setTransformationType('sortie')}
-                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-        Sélectionner un client et transformer en Bon de Sortie
-              </button>
+                  <button
+                    onClick={() => setTransformationType('sortie')}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Transformer en Bon de Sortie (Autre client)
+                  </button>
+                </>
+              ) : (
+                /* Si le devis n'a pas de client, proposer comptant ou sortie avec choix client */
+                <>
+                  <button
+                    onClick={handleTransformToComptant}
+                    className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    Transformer en Bon Comptant (sans client)
+                  </button>
+
+                  <button
+                    onClick={() => setTransformationType('sortie')}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Transformer en Bon de Sortie (avec client)
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -240,14 +251,14 @@ const DevisTransformModal: React.FC<DevisTransformModalProps> = ({
               
               <button
                 onClick={handleTransformToSortie}
-                disabled={!selectedClientForSortie}
+                disabled={!selectedClientForSortie || isTransforming}
                 className={`w-full px-4 py-2 rounded-md text-white transition-colors ${
                   selectedClientForSortie 
                     ? 'bg-blue-600 hover:bg-blue-700' 
                     : 'bg-gray-400 cursor-not-allowed'
                 }`}
               >
-                Transformer en Bon de Sortie
+                {isTransforming ? 'Transformation...' : 'Transformer en Bon de Sortie'}
               </button>
             </div>
           )}

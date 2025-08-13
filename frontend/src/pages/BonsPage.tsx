@@ -1,16 +1,19 @@
-import { useState } from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import React, { useState } from 'react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer } from 'lucide-react';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
   import ContactFormModal from '../components/ContactFormModal';
   import DevisTransformModal from '../components/DevisTransformModal';
   import BonFormModal from '../components/BonFormModal';
   import AvoirFormModal from '../components/AvoirFormModal';
+  import ThermalPrintModal from '../components/ThermalPrintModal';
+  import BonPrintModal from '../components/BonPrintModal';
 
   import { 
     useGetBonsByTypeQuery, 
     useDeleteBonMutation, 
-  useUpdateBonStatusMutation
+  useUpdateBonStatusMutation,
+  useMarkBonAsAvoirMutation
   } from '../store/api/bonsApi';
   import { 
     useGetClientsQuery, 
@@ -19,8 +22,7 @@ import { useState } from 'react';
   import { useGetProductsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
   import { formatDateDMY, formatDateSpecial } from '../utils/dateUtils';
-  import { useDispatch, useSelector } from 'react-redux';
-  import { api } from '../store/api/apiSlice';
+  import { useSelector } from 'react-redux';
   import type { RootState } from '../store';
 
 const BonsPage = () => {
@@ -39,14 +41,15 @@ const BonsPage = () => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isDevisTransformModalOpen, setIsDevisTransformModalOpen] = useState(false);
   const [selectedDevisToTransform, setSelectedDevisToTransform] = useState<any>(null);
-  const [, setSelectedClientForSortie] = useState('');
-  const [, setTransformationType] = useState<'choice' | 'sortie'>('choice');
-  const [, setClientSearchTerm] = useState('');
-  const [, setShowClientDropdown] = useState(false);
-  const [, setSelectedProductsForAvoir] = useState<number[]>([]);
-  const [, setSelectedProductsForAvoirClient] = useState<number[]>([]);
+  const [isThermalPrintModalOpen, setIsThermalPrintModalOpen] = useState(false);
+  const [selectedBonForPrint, setSelectedBonForPrint] = useState<any>(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedBonForPDFPrint, setSelectedBonForPDFPrint] = useState<any>(null);
 
-  const dispatch = useDispatch();
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(30);
+
   // Auth context
   const currentUser = useSelector((state: RootState) => state.auth.user);
 
@@ -57,28 +60,14 @@ const BonsPage = () => {
   const { data: products = [], isLoading: productsLoading } = useGetProductsQuery();
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
+  const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
   const handleChangeStatus = async (bon: any, statut: 'Validé' | 'En attente' | 'Annulé' | 'Accepté' | 'Envoyé' | 'Refusé') => {
     try {
-      // Si c'est un devis et qu'on l'accepte
+      // Si c'est un devis et qu'on l'accepte, ouvrir le modal de transformation
       if (bon.type === 'Devis' && statut === 'Accepté') {
-        if (bon.client_id) {
-          // Auto-transformer en bon de sortie avec le client existant
-          await fetch(`/api/devis/${bon.id}/transform`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ created_by: currentUser?.id || 1, target: 'sortie', client_id: Number(bon.client_id) })
-          }).then(async (r) => {
-            if (!r.ok) throw new Error('Transformation échouée');
-            const res = await r.json();
-            showSuccess(`Devis transformé en sortie (${res?.numero || res?.sortie_numero})`);
-            dispatch(api.util.invalidateTags(['Devis', 'Sortie']));
-          });
-        } else {
-          // Pas de client → ouvrir le modal de transformation (choix Comptant ou Sélection client → Sortie)
-          setSelectedDevisToTransform(bon);
-          setIsDevisTransformModalOpen(true);
-        }
+        setSelectedDevisToTransform(bon);
+        setIsDevisTransformModalOpen(true);
         return;
       }
       
@@ -100,6 +89,18 @@ const BonsPage = () => {
       (bon.statut?.toLowerCase() || '').includes(searchTerm.toLowerCase()))
     );
 
+  // Pagination
+  const totalItems = filteredBons.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedBons = filteredBons.slice(startIndex, endIndex);
+
+  // Réinitialiser la page quand on change d'onglet ou de recherche
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [currentTab, searchTerm]);
+
   const handleDelete = async (bonToDelete: any) => {
       const result = await showConfirmation(
         'Cette action est irréversible.',
@@ -118,6 +119,34 @@ const BonsPage = () => {
         }
       }
     };
+  
+  // Marquer un bon comme Avoir: Sortie/Comptant -> Avoir Client, Commande -> Avoir Fournisseur
+  const handleMarkAsAvoir = async (bon: any) => {
+    try {
+      if (!currentUser?.id) {
+        showError('Utilisateur non authentifié');
+        return;
+      }
+      const type = (bon.type || currentTab) as 'Sortie' | 'Comptant' | 'Commande';
+      if (!['Sortie', 'Comptant', 'Commande'].includes(type)) {
+        showError('Action non disponible pour ce type');
+        return;
+      }
+      const confirm = await showConfirmation(
+        'Créer un avoir et marquer ce bon comme Avoir',
+        `Confirmer la création d'un avoir pour le bon ${bon.numero} ?`,
+        'Oui, créer l\'avoir',
+        'Annuler'
+      );
+      if (!confirm.isConfirmed) return;
+
+      await markBonAsAvoir({ id: bon.id, type, created_by: currentUser.id }).unwrap();
+      showSuccess('Avoir créé et bon marqué comme Avoir');
+    } catch (error: any) {
+      console.error('mark as avoir error', error);
+      showError(error?.data?.message || error?.message || 'Erreur lors de la création de l\'avoir');
+    }
+  };
     
 
   // Annuler un avoir (changer son statut en "Annulé")
@@ -231,6 +260,34 @@ const BonsPage = () => {
           </div>
         </div>
 
+        {/* Contrôles de pagination */}
+        <div className="mb-4 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-700">
+              Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} bons
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-700">Bons par page:</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="border border-gray-300 rounded px-2 py-1 text-sm"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={30}>30</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         {/* Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">
@@ -258,14 +315,14 @@ const BonsPage = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredBons.length === 0 ? (
+                {paginatedBons.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTab}
                     </td>
                   </tr>
                 ) : (
-                  filteredBons.map((bon) => (
+                  paginatedBons.map((bon) => (
                     <tr key={bon.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2 text-sm">{bon.numero}</td>
                       <td className="px-4 py-2 text-sm">{formatDateDMY(bon.date_creation)}</td>
@@ -275,16 +332,7 @@ const BonsPage = () => {
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
                       </td>
                       <td className="px-4 py-2">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            bon.statut === 'Brouillon' ? 'bg-gray-200 text-gray-700' :
-                            (String(bon.statut) === 'Validé' || String(bon.statut) === 'Accepté') ? 'bg-green-200 text-green-700' :
-                            (String(bon.statut) === 'En attente' || String(bon.statut) === 'Envoyé') ? 'bg-blue-200 text-blue-700' :
-                            bon.statut === 'Livré' ? 'bg-green-200 text-green-700' :
-                            bon.statut === 'Avoir' ? 'bg-purple-200 text-purple-700' :
-                            'bg-red-200 text-red-700'
-                          }`}
-                        >
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(bon.statut)}`}>
                           {bon.statut || '-'}
                         </span>
                       </td>
@@ -298,6 +346,13 @@ const BonsPage = () => {
                                 title="Marquer Validé"
                               >
                                 <CheckCircle2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleMarkAsAvoir(bon)}
+                                className="text-purple-600 hover:text-purple-800"
+                                title="Marquer en Avoir"
+                              >
+                                A
                               </button>
                               <button
                                 onClick={() => handleChangeStatus(bon, 'En attente')}
@@ -366,6 +421,26 @@ const BonsPage = () => {
                             </>
                           )}
                           <button
+                            onClick={() => { 
+                              setSelectedBonForPrint(bon); 
+                              setIsThermalPrintModalOpen(true); 
+                            }}
+                            className="text-purple-600 hover:text-purple-800"
+                            title="Imprimer (Thermique 5cm)"
+                          >
+                            <Printer size={16} />
+                          </button>
+                          <button
+                            onClick={() => { 
+                              setSelectedBonForPDFPrint(bon); 
+                              setIsPrintModalOpen(true); 
+                            }}
+                            className="text-green-600 hover:text-green-800"
+                            title="Imprimer PDF (A4/A5)"
+                          >
+                            <Printer size={16} />
+                          </button>
+                          <button
                             onClick={() => { setSelectedBon(bon); setIsViewModalOpen(true); }}
                             className="text-gray-600 hover:text-gray-900"
                             title="Voir"
@@ -396,6 +471,56 @@ const BonsPage = () => {
           </div>
         </div>
 
+        {/* Navigation de pagination */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex justify-center items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Précédent
+            </button>
+            
+            <div className="flex gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-2 border rounded-md ${
+                      currentPage === pageNum
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Suivant
+            </button>
+          </div>
+        )}
+
         {/* Modal de création/édition */}
         <BonFormModal
           isOpen={isCreateModalOpen}
@@ -407,35 +532,6 @@ const BonsPage = () => {
             showSuccess(`${currentTab} ${newBon.numero} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
             setIsCreateModalOpen(false);
             setSelectedBon(null);
-
-            // Si un devis vient d'être créé: gérer la transformation immédiate
-            try {
-              const type = newBon?.type || currentTab;
-              const clientId = newBon?.client_id;
-              if (type === 'Devis') {
-                if (clientId) {
-                  // Auto-transformer en sortie
-                  fetch(`/api/devis/${newBon.id}/transform`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ created_by: currentUser?.id || 1, target: 'sortie', client_id: Number(clientId) })
-                  })
-                    .then(async (r) => {
-                      if (!r.ok) throw new Error('Transformation échouée');
-                      const res = await r.json();
-                      showSuccess(`Devis transformé en sortie (${res?.numero || res?.sortie_numero})`);
-                      dispatch(api.util.invalidateTags(['Devis', 'Sortie']));
-                    })
-                    .catch((e) => showError(e.message || 'Erreur transformation'));
-                } else {
-                  // Pas de client → ouvrir le modal de transformation
-                  setSelectedDevisToTransform({ id: newBon?.id, numero: newBon?.numero, montant_total: newBon?.montant_total, date_creation: newBon?.date_creation });
-                  setIsDevisTransformModalOpen(true);
-                }
-              }
-            } catch (e) {
-              console.error('Erreur post-création devis:', e);
-            }
           }}
         />
 
@@ -470,14 +566,7 @@ const BonsPage = () => {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Statut:</p>
-                      <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${
-                        selectedBon.statut === 'Brouillon' ? 'bg-gray-200 text-gray-700' :
-                        selectedBon.statut === 'Validé' || selectedBon.statut === 'Accepté' ? 'bg-green-200 text-green-700' :
-                        selectedBon.statut === 'En attente' || selectedBon.statut === 'Envoyé' ? 'bg-blue-200 text-blue-700' :
-                        selectedBon.statut === 'Livré' ? 'bg-green-200 text-green-700' :
-                        selectedBon.statut === 'Avoir' ? 'bg-purple-200 text-purple-700' :
-                        'bg-red-200 text-red-700'
-                      }`}>
+                        <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusClasses(selectedBon.statut)}`}>
                         {selectedBon.statut}
                       </span>
                     </div>
@@ -631,24 +720,17 @@ const BonsPage = () => {
                   type_vehicule: ''
                 }}
                 onSubmit={(values) => {
-                  try {
-                    // TODO: Créer un slice Redux pour les véhicules ou les intégrer dans les contacts
-                    // Pour l'instant, on simule la création du véhicule
-                    console.log('Nouveau véhicule:', values);
-                    showSuccess(`Véhicule ${values.immatriculation} créé avec succès!`);
-                    setIsNewVehicleModalOpen(false);
-                    // Note: Le véhicule sera ajouté à la liste déroulante lors de l'implémentation du slice véhicules
-                  } catch (error) {
-                    showError('Erreur lors de la création du véhicule');
-                  }
+                  // Simulation de création de véhicule
+                  console.log('Nouveau véhicule:', values);
+                  showSuccess(`Véhicule ${values.immatriculation} créé avec succès!`);
+                  setIsNewVehicleModalOpen(false);
                 }}
               >
                 <Form className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Immatriculation
-                    </label>
+                    <label htmlFor="veh-immatriculation" className="block text-sm font-medium text-gray-700 mb-1">Immatriculation</label>
                     <Field
+                      id="veh-immatriculation"
                       name="immatriculation"
                       type="text"
                       placeholder="Ex: 12-A-3456"
@@ -657,10 +739,9 @@ const BonsPage = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Marque
-                    </label>
+                    <label htmlFor="veh-marque" className="block text-sm font-medium text-gray-700 mb-1">Marque</label>
                     <Field
+                      id="veh-marque"
                       name="marque"
                       type="text"
                       placeholder="Ex: Mercedes, Renault, Peugeot"
@@ -668,10 +749,9 @@ const BonsPage = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Modèle
-                    </label>
+                    <label htmlFor="veh-modele" className="block text-sm font-medium text-gray-700 mb-1">Modèle</label>
                     <Field
+                      id="veh-modele"
                       name="modele"
                       type="text"
                       placeholder="Ex: Actros, Master, Boxer"
@@ -679,10 +759,9 @@ const BonsPage = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Type de véhicule
-                    </label>
+                    <label htmlFor="veh-type" className="block text-sm font-medium text-gray-700 mb-1">Type de véhicule</label>
                     <Field
+                      id="veh-type"
                       name="type_vehicule"
                       as="select"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -721,14 +800,12 @@ const BonsPage = () => {
           onClose={() => {
             setIsCreateAvoirModalOpen(false);
             setSelectedBonForAvoir(null);
-            setSelectedProductsForAvoir([]);
           }}
           bonOrigine={selectedBonForAvoir}
           onAvoirCreated={() => {
             showSuccess('Avoir fournisseur créé avec succès');
             setIsCreateAvoirModalOpen(false);
             setSelectedBonForAvoir(null);
-            setSelectedProductsForAvoir([]);
             setCurrentTab('AvoirFournisseur');
           }}
         />
@@ -739,28 +816,44 @@ const BonsPage = () => {
           onClose={() => {
             setIsCreateAvoirClientModalOpen(false);
             setSelectedBonForAvoirClient(null);
-            setSelectedProductsForAvoirClient([]);
           }}
           bonOrigine={selectedBonForAvoirClient}
           onAvoirCreated={() => {
             showSuccess('Avoir client créé avec succès');
             setIsCreateAvoirClientModalOpen(false);
             setSelectedBonForAvoirClient(null);
-            setSelectedProductsForAvoirClient([]);
             setCurrentTab('Avoir');
           }}
         />
 
+        {/* Modal Impression Thermique */}
+        <ThermalPrintModal
+          isOpen={isThermalPrintModalOpen}
+          onClose={() => {
+            setIsThermalPrintModalOpen(false);
+            setSelectedBonForPrint(null);
+          }}
+          bon={selectedBonForPrint}
+          type={currentTab === 'Avoir' ? 'AvoirClient' : currentTab}
+          contact={(() => {
+            if (!selectedBonForPrint) return null;
+            if (currentTab === 'Devis') {
+              return clients.find(c => c.id === selectedBonForPrint.client_id);
+            }
+            if (currentTab === 'Commande' || currentTab === 'AvoirFournisseur') {
+              return suppliers.find(s => s.id === selectedBonForPrint.contact_id);
+            }
+            return clients.find(c => c.id === selectedBonForPrint.contact_id);
+          })()}
+          items={selectedBonForPrint?.items || []}
+        />
+
         {/* Modal Transformation Devis */}
-        <DevisTransformModal 
+  <DevisTransformModal 
           isOpen={isDevisTransformModalOpen}
           onClose={() => {
             setIsDevisTransformModalOpen(false);
             setSelectedDevisToTransform(null);
-            setTransformationType('choice');
-            setSelectedClientForSortie('');
-            setClientSearchTerm('');
-            setShowClientDropdown(false);
           }}
           devis={selectedDevisToTransform}
           onTransformComplete={() => {
@@ -779,8 +872,47 @@ const BonsPage = () => {
             showSuccess('Produit ajouté avec succès !');
           }}
         />
+
+        {/* Modal Impression PDF */}
+        <BonPrintModal
+          isOpen={isPrintModalOpen}
+          onClose={() => {
+            setIsPrintModalOpen(false);
+            setSelectedBonForPDFPrint(null);
+          }}
+          bon={selectedBonForPDFPrint}
+          client={(() => {
+            if (!selectedBonForPDFPrint) return undefined;
+            return clients.find(c => c.id === selectedBonForPDFPrint.client_id);
+          })()}
+          fournisseur={(() => {
+            if (!selectedBonForPDFPrint) return undefined;
+            return suppliers.find(s => s.id === selectedBonForPDFPrint.fournisseur_id || s.id === selectedBonForPDFPrint.contact_id);
+          })()}
+        />
       </div>
     );
   };
 
   export default BonsPage;
+  function getStatusClasses(statut?: string) {
+    switch (statut) {
+      case 'Brouillon':
+        return 'bg-gray-200 text-gray-700';
+      case 'Validé':
+      case 'Accepté':
+      case 'Livré':
+        return 'bg-green-200 text-green-700';
+      case 'En attente':
+      case 'Envoyé':
+        return 'bg-blue-200 text-blue-700';
+      case 'Avoir':
+        return 'bg-purple-200 text-purple-700';
+      case 'Annulé':
+      case 'Refusé':
+      case 'Expiré':
+        return 'bg-red-200 text-red-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  }

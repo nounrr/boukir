@@ -11,6 +11,7 @@ import productsRouter from './routes/products.js';
 import contactsRouter from './routes/contacts.js';
 import vehiculesRouter from './routes/vehicules.js';
 // Nouvelles routes pour chaque type de document
+import bonsRouter from './routes/bons.js';
 import commandesRouter from './routes/commandes.js';
 import sortiesRouter from './routes/sorties.js';
 import comptantRouter from './routes/comptant.js';
@@ -18,8 +19,12 @@ import devisRouter from './routes/devis.js';
 import avoirsClientRouter from './routes/avoirs_client.js';
 import avoirsFournisseurRouter from './routes/avoirs_fournisseur.js';
 import pool from './db/pool.js';
-import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
+import paymentsRouter from './routes/payments.js';
+import uploadRouter from './routes/upload.js';
+import importRouter from './routes/import.js';
+import importProuctsRouter from './routes/importProducts.js';
+import importContactsRouter from'./routes/importContacts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -27,8 +32,12 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
 app.use(morgan('dev'));
+// Static serving for uploaded files (images, etc.)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'bpukir-backend', ts: new Date().toISOString() });
@@ -73,18 +82,24 @@ app.use('/api/products', productsRouter);
 app.use('/api/contacts', contactsRouter);
 app.use('/api/vehicules', vehiculesRouter);
 // Nouvelles routes séparées par type de document
+app.use('/api/bons', bonsRouter);
 app.use('/api/commandes', commandesRouter);
 app.use('/api/sorties', sortiesRouter);
 app.use('/api/comptant', comptantRouter);
 app.use('/api/devis', devisRouter);
 app.use('/api/avoirs_client', avoirsClientRouter);
 app.use('/api/avoirs_fournisseur', avoirsFournisseurRouter);
+app.use('/api/payments', paymentsRouter);
+app.use('/api/upload', uploadRouter);
+// app.use('/api/import', importRouter);
+app.use('/api/import/products-excel', importProuctsRouter);
+app.use('/api/import/contacts-excel', importContactsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not Found', path: req.path });
 });
 
-// eslint-disable-next-line no-unused-vars
+ 
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
   const status = err.status || 500;
@@ -103,15 +118,8 @@ app.use((err, _req, res, _next) => {
 
 // Ensure DB and tables exist at startup
 async function ensureDb() {
-  const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
-  const conn = await mysql.createConnection({
-    host: DB_HOST || 'localhost',
-    port: Number(DB_PORT || 3306),
-    user: DB_USER || 'root',
-    password: DB_PASSWORD || '',
-    multipleStatements: true,
-  });
-  
+  // Reserved for future DB bootstrap if needed
+  return Promise.resolve();
 }
 
 // Optional: migrate any plaintext passwords to bcrypt at startup (best-effort)

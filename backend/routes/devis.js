@@ -303,9 +303,11 @@ router.post('/:id/transform', async (req, res) => {
     const { id } = req.params;
     const {
       created_by,
-      target = 'sortie',             // défaut : bon de sortie (comportement historique)
-      client_id,
-      fournisseur_id,
+      // legacy name 'target' and new 'target_type' both supported
+      target: bodyTarget,
+      target_type: bodyTargetType,
+      client_id: rawClientId,
+      fournisseur_id: rawFournisseurId,
       vehicule_id = null,
       lieu_chargement: rawLieu = null
     } = req.body || {};
@@ -328,10 +330,15 @@ router.post('/:id/transform', async (req, res) => {
 
     // 2) Selon la cible
     const today = new Date().toISOString().split('T')[0];
+    // Normalize target/casing
+    const targetRaw = (bodyTarget ?? bodyTargetType ?? 'sortie');
+    const target = (typeof targetRaw === 'string' ? targetRaw.toLowerCase() : 'sortie');
+    const client_id = rawClientId != null && rawClientId !== '' ? Number(rawClientId) : null;
+    const fournisseur_id = rawFournisseurId != null && rawFournisseurId !== '' ? Number(rawFournisseurId) : null;
 
     if (target === 'sortie') {
       // client: fourni dans le payload sinon on reuse celui du devis
-      const clientId = client_id ?? devis.client_id;
+      const clientId = (client_id ?? devis.client_id);
       if (!clientId) {
         await connection.rollback();
         return res.status(400).json({ message: 'client_id requis pour une transformation en bon de sortie' });
@@ -376,7 +383,7 @@ router.post('/:id/transform', async (req, res) => {
       });
     }
 
-    if (target === 'commande') {
+  if (target === 'commande') {
       // fournisseur obligatoire
       if (!fournisseur_id) {
         await connection.rollback();
@@ -422,8 +429,47 @@ router.post('/:id/transform', async (req, res) => {
       });
     }
 
+    // Nouveau: transformation en bon comptant (client optionnel)
+    if (target === 'comptant') {
+      const tmp = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
+      const [ins] = await connection.execute(`
+        INSERT INTO bons_comptant (
+          numero, date_creation, client_id, vehicule_id, lieu_chargement,
+          montant_total, statut, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)
+      `, [tmp, today, client_id, vehicule_id, lieu, devis.montant_total, created_by]);
+
+      const bctId = ins.insertId;
+      const numero = `bct${bctId}`;
+      await connection.execute('UPDATE bons_comptant SET numero = ? WHERE id = ?', [numero, bctId]);
+
+      // Copier les items
+      const [items] = await connection.execute('SELECT * FROM devis_items WHERE devis_id = ?', [id]);
+      for (const it of items) {
+        await connection.execute(`
+          INSERT INTO comptant_items (
+            bon_comptant_id, product_id, quantite, prix_unitaire,
+            remise_pourcentage, remise_montant, total
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [bctId, it.product_id, it.quantite, it.prix_unitaire, it.remise_pourcentage, it.remise_montant, it.total]);
+      }
+
+      // Marquer le devis comme Accepté si souhaité
+      await connection.execute('UPDATE devis SET statut = "Accepté" WHERE id = ?', [id]);
+
+      await connection.commit();
+      return res.json({
+        message: 'Devis transformé en bon comptant',
+        type: 'Comptant',
+        id: bctId,
+        numero,
+        comptant_id: bctId,
+        comptant_numero: numero,
+      });
+    }
+
     await connection.rollback();
-    return res.status(400).json({ message: 'target invalide (attendu: "sortie" ou "commande")' });
+    return res.status(400).json({ message: 'target invalide (attendu: "sortie", "commande" ou "comptant")' });
   } catch (error) {
     await connection.rollback();
     console.error('Erreur POST /devis/:id/transform:', error);
