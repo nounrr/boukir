@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useAppSelector } from '../hooks/redux';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
@@ -18,9 +18,13 @@ import {
   LogOut,
   X
 } from 'lucide-react';
-import type { Payment, Bon } from '../types';
+import type { Payment, Bon, Contact } from '../types';
+import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
+import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
-import { addPayment, deletePayment, resetFilters, updatePayment } from '../store/slices/paymentsSlice';
+import { resetFilters } from '../store/slices/paymentsSlice';
+import { useGetPaymentsQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery } from '../store/api/paymentsApi';
+import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
 import { logout } from '../store/slices/authSlice';
 
 const CaissePage = () => {
@@ -35,105 +39,36 @@ const CaissePage = () => {
   const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite'>('all');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [uploadingImage, setUploadingImage] = useState<boolean>(false);
 
   // Redux data
   const user = useAppSelector(state => state.auth.user);
-  const payments = useAppSelector(state => (state as any).payments?.payments || []);
-  const bons = useAppSelector(state => (state as any).bons?.bons || []);
-
-  // Mock data - initialiser le store si vide
-  const mockPayments = [
-    {
-      id: 1,
-      numero: 'PAY-2024-001',
-      type_paiement: 'Client' as const,
-      contact_id: 5,
-      bon_id: 1,
-      montant_total: 17650.00,
-      montant: 17650.00, // Alias
-      mode_paiement: 'Virement' as const,
-      date_paiement: '2024-01-20',
-      designation: 'Paiement commande CMD-2024-001',
-      notes: 'Paiement commande CMD-2024-001', // Alias
-      reference_virement: 'VIR20240120001',
-      reference: 'VIR20240120001', // Alias
-      created_by: 2,
-      created_at: '2024-01-20T16:00:00Z',
-      updated_at: '2024-01-20T16:00:00Z',
-    },
-    {
-      id: 2,
-      numero: 'PAY-2024-002',
-      type_paiement: 'Client' as const,
-      contact_id: 6,
-      bon_id: 2,
-      montant_total: 9600.00,
-      montant: 9600.00, // Alias
-      mode_paiement: 'Chèque' as const,
-      date_paiement: '2024-01-22',
-      designation: 'Paiement bon de sortie SOR-2024-001',
-      notes: 'Paiement bon de sortie SOR-2024-001', // Alias
-      reference: 'CHQ1234567', // Numéro de chèque
-      banque: 'BMCE Bank',
-      personnel: 'Ahmed Benali',
-      date_echeance: '2024-02-22',
-      image_url: 'https://via.placeholder.com/400x200/3B82F6/FFFFFF?text=Ch%C3%A8que+DEMO', // URL d'image de démo
-      created_by: 3,
-      created_at: '2024-01-22T09:00:00Z',
-      updated_at: '2024-01-22T09:00:00Z',
-    },
-    {
-      id: 3,
-      numero: 'PAY-2024-003',
-      type_paiement: 'Client' as const,
-      contact_id: 7,
-      bon_id: 3,
-      montant_total: 4000.00,
-      montant: 4000.00, // Alias
-      mode_paiement: 'Espèces' as const,
-      date_paiement: '2024-01-25',
-      designation: 'Paiement comptant CPT-2024-001',
-      notes: 'Paiement comptant CPT-2024-001', // Alias
-      created_by: 2,
-      created_at: '2024-01-25T11:30:00Z',
-      updated_at: '2024-01-25T11:30:00Z',
-    },
-    {
-      id: 4,
-      numero: 'PAY-2024-004',
-      type_paiement: 'Fournisseur' as const,
-      contact_id: 1,
-      montant_total: 1500.00,
-      montant: 1500.00, // Alias
-      mode_paiement: 'Traite' as const,
-      date_paiement: '2024-02-05',
-      designation: 'Paiement divers - achat fournitures',
-      notes: 'Paiement divers - achat fournitures', // Alias
-      reference: 'TRAITE20240205001',
-      banque: 'Attijariwafa Bank',
-      personnel: 'Fatima Zohra',
-      date_echeance: '2024-03-05',
-      image_url: 'https://via.placeholder.com/400x200/F97316/FFFFFF?text=Traite+DEMO', // URL d'image de démo
-      created_by: 4,
-      created_at: '2024-02-05T13:00:00Z',
-      updated_at: '2024-02-05T13:00:00Z',
-    }
+  const { data: clients = [] } = useGetClientsQuery();
+  const { data: fournisseurs = [] } = useGetFournisseursQuery();
+  const { data: paymentsApi = [] } = useGetPaymentsQuery();
+  const payments = paymentsApi;
+  const [createPayment] = useCreatePaymentMutation();
+  const [updatePaymentApi] = useUpdatePaymentMutation();
+  const [deletePaymentApi] = useDeletePaymentMutation();
+  const [uploadPaymentImage] = useUploadPaymentImageMutation();
+  const [deletePaymentImage] = useDeletePaymentImageMutation();
+  const { data: personnelNames = [] } = useGetPersonnelNamesQuery();
+  // Bons from database: only Sorties and Comptant (client-linked only)
+  const { data: sorties = [], isLoading: sortiesLoading } = useGetBonsByTypeQuery('Sortie');
+  const { data: comptantsRaw = [], isLoading: comptantsLoading } = useGetBonsByTypeQuery('Comptant');
+  const bonsLoading = sortiesLoading || comptantsLoading;
+  const bons: Bon[] = [
+    ...(Array.isArray(sorties) ? sorties : []),
+    ...(Array.isArray(comptantsRaw) ? comptantsRaw.filter((b: any) => !!b.client_id) : []),
   ];
 
-  // Initialiser le store avec des données de test si vide
-  useEffect(() => {
-    if (payments.length === 0) {
-      mockPayments.forEach(payment => {
-        dispatch(addPayment(payment));
-      });
-    }
-  }, [payments.length, dispatch]);
+  // Backend now provides payments; no mock seeding
 
   // Filtrer les paiements
   const filteredPayments = payments.filter((payment: Payment) => {
-    const matchesSearch = payment.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         payment.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         payment.reference?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = String(payment.id).includes(searchTerm) ||
+                         payment.numero?.toLowerCase?.().includes(searchTerm.toLowerCase()) ||
+                         payment.notes?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesDate = !dateFilter || payment.date_paiement === dateFilter;
     
@@ -143,19 +78,20 @@ const CaissePage = () => {
   });
 
   // Calculs statistiques
-  const totalEncaissements = filteredPayments.reduce((total: number, payment: Payment) => total + (payment.montant || payment.montant_total), 0);
+  const amountOf = (p: Payment) => Number(p.montant ?? p.montant_total ?? 0);
+  const totalEncaissements = filteredPayments.reduce((total: number, p: Payment) => total + amountOf(p), 0);
   const totalEspeces = filteredPayments
     .filter((p: Payment) => p.mode_paiement === 'Espèces')
-    .reduce((total: number, payment: Payment) => total + (payment.montant || payment.montant_total), 0);
+    .reduce((total: number, p: Payment) => total + amountOf(p), 0);
   const totalCheques = filteredPayments
     .filter((p: Payment) => p.mode_paiement === 'Chèque')
-    .reduce((total: number, payment: Payment) => total + (payment.montant || payment.montant_total), 0);
+    .reduce((total: number, p: Payment) => total + amountOf(p), 0);
   const totalVirements = filteredPayments
     .filter((p: Payment) => p.mode_paiement === 'Virement')
-    .reduce((total: number, payment: Payment) => total + (payment.montant || payment.montant_total), 0);
+    .reduce((total: number, p: Payment) => total + amountOf(p), 0);
   const totalTraites = filteredPayments
     .filter((p: Payment) => p.mode_paiement === 'Traite')
-    .reduce((total: number, payment: Payment) => total + (payment.montant || payment.montant_total), 0);
+    .reduce((total: number, p: Payment) => total + amountOf(p), 0);
 
   const handleDelete = async (id: number) => {
     const result = await showConfirmation(
@@ -167,7 +103,7 @@ const CaissePage = () => {
     
     if (result.isConfirmed) {
       try {
-        dispatch(deletePayment(id));
+        await deletePaymentApi({ id }).unwrap();
         showSuccess('Paiement supprimé avec succès');
       } catch (error) {
         console.error('Erreur lors de la suppression:', error);
@@ -211,32 +147,59 @@ const CaissePage = () => {
   };
 
   // Schéma de validation
-  const paymentValidationSchema = Yup.object().shape({
-    numero: Yup.string().required('Numéro est requis'),
-    montant: Yup.number().required('Montant est requis').positive('Le montant doit être positif'),
-    mode_paiement: Yup.string().required('Mode de paiement est requis'),
-    date_paiement: Yup.date().required('Date de paiement est requise'),
-    reference: Yup.string().when('mode_paiement', {
-      is: (val: string) => val === 'Chèque' || val === 'Virement' || val === 'Traite',
-      then: (schema) => schema.required('Référence est requise pour ce mode de paiement'),
-      otherwise: (schema) => schema,
+ const toNull = (v: any, orig: any) => (orig === '' ? null : v);
+
+ // On traite les dates comme des chaînes 'YYYY-MM-DD' pour éviter les conversions en Date par Yup
+ const ymdRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+const paymentValidationSchema = Yup.object({
+  montant: Yup.number()
+    .typeError('Le montant doit être un nombre')
+    .required('Montant est requis')
+    .positive('Le montant doit être positif'),
+
+  mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'>()
+    .oneOf(['Espèces','Chèque','Virement','Traite'], 'Mode invalide')
+    .required('Mode de paiement est requis'),
+
+  date_paiement: Yup.string()
+    .required('Date de paiement est requise')
+    .matches(ymdRegex, 'Date de paiement invalide (format attendu YYYY-MM-DD)'),
+
+  contact_id: Yup.number()
+    .transform((v, orig) => (orig === '' ? null : v))
+    .typeError('Contact invalide')
+    .integer('Contact invalide')
+    .when('contact_optional', {
+      is: true,
+      then: (schema) => schema.nullable().notRequired(),
+      otherwise: (schema) => schema.required('Contact est requis'),
     }),
-    banque: Yup.string().when('mode_paiement', {
-      is: (val: string) => val === 'Chèque' || val === 'Traite',
-      then: (schema) => schema.required('Banque est requise pour ce mode de paiement'),
-      otherwise: (schema) => schema,
+
+  code_reglement: Yup.string()
+    .transform(toNull)
+    .nullable(),
+
+  banque: Yup.string()
+    .transform(toNull)
+    .nullable(),
+
+  personnel: Yup.string()
+    .transform(toNull)
+    .nullable(),
+
+  date_echeance: Yup.string()
+    .transform((v, orig) => (orig === '' ? null : v))
+    .nullable()
+    .test('ymd-format', 'Date d\'échéance invalide (format attendu YYYY-MM-DD)', (val) => {
+      if (val == null || val === '') return true;
+      return ymdRegex.test(val);
     }),
-    personnel: Yup.string().when('mode_paiement', {
-      is: (val: string) => val === 'Chèque' || val === 'Traite',
-      then: (schema) => schema.required('Nom de la personne est requis pour ce mode de paiement'),
-      otherwise: (schema) => schema,
-    }),
-    date_echeance: Yup.date().when('mode_paiement', {
-      is: (val: string) => val === 'Chèque' || val === 'Traite',
-      then: (schema) => schema.required('Date d\'échéance est requise pour ce mode de paiement'),
-      otherwise: (schema) => schema,
-    }),
-  });
+
+  notes: Yup.string().transform(toNull).nullable(),
+  bon_id: Yup.number().transform((v, orig) => (orig === '' ? null : v)).nullable(),
+});
+
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -265,83 +228,183 @@ const CaissePage = () => {
   };
 
   const removeImage = () => {
+    // Si c'est une image existante sur le serveur, on peut la supprimer
+    if (selectedPayment?.image_url && !selectedImage) {
+      deleteImageFromServer(selectedPayment.image_url);
+    }
     setSelectedImage(null);
     setImagePreview('');
   };
 
-  // Fonction pour simuler l'upload (en production, cela devrait être une API)
+  // Ajuster type/contact selon le bon choisi
+  const onBonChange = (e: React.ChangeEvent<HTMLSelectElement>, setFieldValue: (f: string, v: any) => void, currentType: 'Client'|'Fournisseur') => {
+    const val = e.target.value;
+    setFieldValue('bon_id', val);
+    const bon = bons.find((b: Bon) => String(b.id) === String(val));
+    if (bon) {
+      // Respect current selected payer type; just populate matching contact
+      if (currentType === 'Fournisseur') {
+        setFieldValue('contact_optional', false);
+        const fid = bon.fournisseur_id;
+        if (fid) setFieldValue('contact_id', String(fid));
+      } else {
+        if (bon.type === 'Comptant' && !bon.client_id) {
+          setFieldValue('contact_optional', true);
+          setFieldValue('contact_id', '');
+        } else {
+          setFieldValue('contact_optional', false);
+          const cid = bon.client_id;
+          if (cid) setFieldValue('contact_id', String(cid));
+        }
+      }
+    } else {
+      setFieldValue('type_paiement', 'Client');
+      setFieldValue('contact_optional', false);
+    }
+  };
+
+  // Fonction pour uploader l'image vers le serveur
   const uploadImageToServer = async (file: File): Promise<string> => {
-    // Simulation d'upload - en production, utilisez une vraie API
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Créer une URL fake pour la demo
-        const fakeUrl = `uploads/cheques/${Date.now()}_${file.name}`;
-        resolve(fakeUrl);
-      }, 1000);
-    });
+    try {
+      setUploadingImage(true);
+      const result = await uploadPaymentImage(file).unwrap();
+      if (result.success) {
+        return result.imageUrl;
+      } else {
+        throw new Error(result.message || 'Erreur lors de l\'upload');
+      }
+    } catch (error: any) {
+      console.error('Erreur upload image:', error);
+      showError(error?.data?.message || error?.message || 'Erreur lors de l\'upload de l\'image');
+      throw error;
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  // Fonction pour supprimer une image du serveur
+  const deleteImageFromServer = async (imageUrl: string): Promise<void> => {
+    try {
+      // Extraire le nom du fichier depuis l'URL
+      const filename = imageUrl.split('/').pop();
+      if (filename) {
+        await deletePaymentImage(filename).unwrap();
+      }
+    } catch (error: any) {
+      console.error('Erreur suppression image:', error);
+      // Ne pas afficher d'erreur à l'utilisateur car c'est optionnel
+    }
   };
 
   const getInitialValues = () => {
     if (selectedPayment) {
-      // Initialiser la preview de l'image si elle existe
-      if (selectedPayment.image_url) {
-        setImagePreview(selectedPayment.image_url);
+      const normDate = (d?: string) => {
+        if (!d) return '';
+        const s = String(d).slice(0, 10);
+        if (s === '0000-00-00') return '';
+        return s;
+      };
+      // Déterminer si le contact est optionnel (bon comptant sans client)
+      let contactOptional = false;
+      if (selectedPayment.bon_id) {
+        const related = bons.find((b: Bon) => b.id === selectedPayment.bon_id);
+        if (related && related.type === 'Comptant' && !related.client_id) {
+          contactOptional = true;
+        }
       }
-      
       return {
-        numero: selectedPayment.numero,
+        type_paiement: selectedPayment.type_paiement || 'Client',
+        contact_optional: contactOptional,
+        contact_id: selectedPayment.contact_id || '',
         bon_id: selectedPayment.bon_id || '',
         montant: selectedPayment.montant || selectedPayment.montant_total,
         mode_paiement: selectedPayment.mode_paiement,
-        date_paiement: selectedPayment.date_paiement,
-        reference: selectedPayment.reference || selectedPayment.reference_virement || '',
+        date_paiement: normDate(selectedPayment.date_paiement),
+  // champs référence supprimés
         notes: selectedPayment.notes || selectedPayment.designation || '',
         banque: selectedPayment.banque || '',
         personnel: selectedPayment.personnel || '',
-        date_echeance: selectedPayment.date_echeance || '',
+        date_echeance: normDate(selectedPayment.date_echeance) || '',
+  code_reglement: selectedPayment.code_reglement || '',
       };
     }
     
-    return {
-      numero: `PAY-${new Date().getFullYear()}-${String(Date.now()).substring(8)}`,
+  return {
+      type_paiement: 'Client',
+      contact_optional: false,
+      contact_id: '',
       bon_id: '',
       montant: 0,
       mode_paiement: 'Espèces',
       date_paiement: new Date().toISOString().split('T')[0],
-      reference: '',
+  // champs référence supprimés
       notes: '',
       banque: '',
       personnel: '',
       date_echeance: '',
+  code_reglement: '',
     };
+  };
+
+  const toYMD = (val: any): string | null => {
+    if (!val && val !== 0) return null;
+    // Already in YYYY-MM-DD format
+    if (typeof val === 'string') {
+      if (val.match(/^\d{4}-\d{2}-\d{2}$/)) return val;
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+      return null;
+    }
+    if (val instanceof Date) {
+      if (isNaN(val.getTime())) return null;
+      const y = val.getFullYear();
+      const m = String(val.getMonth() + 1).padStart(2, '0');
+      const day = String(val.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    return null;
   };
 
   const handleSubmit = async (values: any) => {
     try {
       // Upload de l'image si présente
-      let imageUrl = '';
+      let imageUrl: string | null = selectedPayment?.image_url || '';
       if (selectedImage && (values.mode_paiement === 'Chèque' || values.mode_paiement === 'Traite')) {
         imageUrl = await uploadImageToServer(selectedImage);
+      } else if (selectedPayment && !selectedImage && !imagePreview && selectedPayment.image_url) {
+        // L'utilisateur a supprimé l'image existante
+        imageUrl = null;
       }
 
-      const paymentData: Payment = {
+      // Normaliser les champs optionnels (éviter '' pour les colonnes DATE/NULLABLE)
+  const cleanedDatePaiement = toYMD(values.date_paiement);
+      const cleanedBanque = values.banque?.trim() ? values.banque : null;
+      const cleanedPersonnel = values.personnel?.trim() ? values.personnel : null;
+  const cleanedDateEcheance = toYMD(values.date_echeance);
+      const cleanedCodeReglement = values.code_reglement?.trim() ? values.code_reglement : null;
+
+      const paymentData: any = {
         id: selectedPayment ? selectedPayment.id : Date.now(),
-        numero: values.numero,
-        type_paiement: 'Client', // Par défaut, à adapter selon les besoins
-        contact_id: 1, // Par défaut, à adapter selon les besoins
-        bon_id: values.bon_id ? Number(values.bon_id) : undefined,
+        type_paiement: values.type_paiement || 'Client',
+        contact_id: values.contact_id ? Number(values.contact_id) : null,
+        bon_id: values.bon_id ? Number(values.bon_id) : null,
         montant_total: Number(values.montant),
         montant: Number(values.montant), // Alias
         mode_paiement: values.mode_paiement,
-        date_paiement: values.date_paiement,
+        date_paiement: cleanedDatePaiement,
         designation: values.notes || '',
         notes: values.notes || '', // Alias
-        reference_virement: values.mode_paiement === 'Virement' ? values.reference : undefined,
-        reference: values.reference || '', // Alias
-        banque: values.banque,
-        personnel: values.personnel,
-        date_echeance: values.date_echeance,
-        image_url: imageUrl,
+        // champs optionnels normalisés
+        banque: cleanedBanque,
+        personnel: cleanedPersonnel,
+        date_echeance: cleanedDateEcheance,
+        code_reglement: cleanedCodeReglement,
+  image_url: imageUrl,
         created_by: user?.id || 1,
         updated_by: selectedPayment ? user?.id || 1 : undefined,
         created_at: selectedPayment ? selectedPayment.created_at : new Date().toISOString(),
@@ -349,10 +412,26 @@ const CaissePage = () => {
       };
 
       if (selectedPayment) {
-        dispatch(updatePayment(paymentData));
+  const { id: _id, created_at: _ca, updated_at: _ua, ...rest } = paymentData;
+        await updatePaymentApi({ id: selectedPayment.id, updated_by: user?.id || 1, ...rest }).unwrap();
         showSuccess('Paiement mis à jour avec succès');
       } else {
-        dispatch(addPayment(paymentData));
+        const body: any = {
+          type_paiement: paymentData.type_paiement,
+          bon_id: paymentData.bon_id,
+          montant_total: paymentData.montant_total,
+          mode_paiement: paymentData.mode_paiement,
+          date_paiement: paymentData.date_paiement,
+          designation: paymentData.designation,
+          date_echeance: paymentData.date_echeance,
+          banque: paymentData.banque,
+          personnel: paymentData.personnel,
+          code_reglement: paymentData.code_reglement,
+          image_url: paymentData.image_url,
+          created_by: user?.id || 1,
+        };
+        if (paymentData.contact_id !== null) body.contact_id = paymentData.contact_id;
+        await createPayment(body).unwrap();
         showSuccess('Paiement enregistré avec succès');
       }
       
@@ -387,16 +466,32 @@ const CaissePage = () => {
     }
   };
 
+  // Format date as YYYY-MM-DD for table display
+  const formatYMD = (d?: string) => {
+    if (!d) return '';
+    if (d === '0000-00-00') return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+    if (d.includes('T')) return d.slice(0, 10);
+    const dt = new Date(d);
+    if (!isNaN(dt.getTime())) {
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const day = String(dt.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    return d;
+  };
+
   const getReferencePlaceholder = (mode: string) => {
     switch (mode) {
       case 'Chèque':
-        return 'Numéro de chèque';
+  return 'Code/Numéro de chèque';
       case 'Virement':
-        return 'Référence virement';
+  return 'Code/Numéro de virement';
       case 'Traite':
-        return 'Numéro de traite';
+  return 'Code/Numéro de traite';
       default:
-        return 'Référence (optionnel)';
+  return 'Code règlement (optionnel)';
     }
   };
 
@@ -571,11 +666,12 @@ const CaissePage = () => {
                   Bon associé
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Mode de paiement
+                  Client / Fournisseur
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Référence
+                  Mode de paiement
                 </th>
+                
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Montant
                 </th>
@@ -595,13 +691,35 @@ const CaissePage = () => {
                 filteredPayments.map((payment: Payment) => (
                   <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{payment.numero}</div>
+                      <div className="text-sm font-medium text-gray-900">{payment.id}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{payment.date_paiement}</div>
+                      <div className="text-sm text-gray-900">{formatYMD(payment.date_paiement)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{getBonInfo(payment.bon_id)}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2 text-sm text-gray-900">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            payment.type_paiement === 'Fournisseur'
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {payment.type_paiement}
+                        </span>
+                        <span className="truncate max-w-[220px]" title={
+                          payment.type_paiement === 'Fournisseur'
+                            ? (fournisseurs.find(f => f.id === payment.contact_id)?.nom_complet || '-')
+                            : (clients.find(c => c.id === payment.contact_id)?.nom_complet || '-')
+                        }>
+                          {payment.type_paiement === 'Fournisseur'
+                            ? (fournisseurs.find(f => f.id === payment.contact_id)?.nom_complet || '-')
+                            : (clients.find(c => c.id === payment.contact_id)?.nom_complet || '-')}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
@@ -614,9 +732,7 @@ const CaissePage = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{payment.reference || '-'}</div>
-                    </td>
+                    
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-semibold text-gray-900">{Number(payment.montant ?? payment.montant_total ?? 0).toFixed(2)} DH</div>
                     </td>
@@ -671,25 +787,63 @@ const CaissePage = () => {
             
             <Formik
               initialValues={getInitialValues()}
+              enableReinitialize
               validationSchema={paymentValidationSchema}
               onSubmit={handleSubmit}
             >
-              {({ values }) => (
+              {({ values, setFieldValue }) => {
+                const isFournisseurPayment = values.type_paiement === 'Fournisseur';
+                return (
                 <Form className="space-y-6">
                   {/* Adjust grid for three inputs per row */}
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <label htmlFor="numero" className="block text-sm font-medium text-gray-700 mb-1">
-                        Numéro *
+                      <label htmlFor="type_paiement" className="block text-sm font-medium text-gray-700 mb-1">
+                        Type de paiement
+                      </label>
+            <Field
+                        as="select"
+                        id="type_paiement"
+                        name="type_paiement"
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e: any) => {
+                          setFieldValue('type_paiement', e.target.value);
+                          // reset contact to avoid mismatch between client/fournisseur lists
+                          setFieldValue('contact_id', '');
+              // also reset bon to force re-selection based on new filter
+              setFieldValue('bon_id', '');
+                        }}
+                      >
+                        <option value="Client">Client</option>
+                        <option value="Fournisseur">Fournisseur</option>
+                      </Field>
+                    </div>
+                    <div>
+                      <label htmlFor="contact_id" className="block text-sm font-medium text-gray-700 mb-1">
+                        {isFournisseurPayment ? 'Fournisseur payeur' : 'Client payeur'} {values.contact_optional ? '' : '*'}
                       </label>
                       <Field
-                        id="numero"
-                        name="numero"
-                        type="text"
+                        as="select"
+                        id="contact_id"
+                        name="contact_id"
                         className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <ErrorMessage name="numero" component="div" className="text-red-500 text-sm mt-1" />
+                      >
+                        <option value="">{isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}</option>
+                        {isFournisseurPayment
+                          ? fournisseurs.map((f: Contact) => (
+                              <option key={`f-${f.id}`} value={f.id}>
+                                {f.nom_complet || `Fournisseur #${f.id}`}
+                              </option>
+                            ))
+                          : clients.map((c: Contact) => (
+                              <option key={`c-${c.id}`} value={c.id}>
+                                {c.nom_complet || `Client #${c.id}`}
+                              </option>
+                            ))}
+                      </Field>
+                      <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
                     </div>
+                    {/* Numéro supprimé: il sera égal à l'ID automatiquement */}
 
                     <div>
                       <label htmlFor="date_paiement" className="block text-sm font-medium text-gray-700 mb-1">
@@ -748,9 +902,19 @@ const CaissePage = () => {
                         id="bon_id"
                         name="bon_id"
                         className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e: any) => onBonChange(e, setFieldValue, (values.type_paiement as 'Client'|'Fournisseur'))}
                       >
-                        <option value="">Paiement libre</option>
-            {bons.map((bon: Bon) => (
+                        <option value="" disabled={bonsLoading}>
+                          {bonsLoading ? 'Chargement des bons…' : 'Paiement libre'}
+                        </option>
+            {bons
+              .filter((bon: Bon) => {
+                if (bon.type === 'Avoir' || bon.type === 'AvoirFournisseur') return false;
+                return values.type_paiement === 'Fournisseur'
+                  ? bon.type === 'Commande'
+                  : bon.type === 'Sortie' || bon.type === 'Comptant';
+              })
+              .map((bon: Bon) => (
                           <option key={bon.id} value={bon.id}>
               {bon.type} {bon.numero} - {Number(bon.montant_total ?? 0).toFixed(2)} DH
                           </option>
@@ -759,96 +923,121 @@ const CaissePage = () => {
                     </div>
 
                     <div>
-                      <label htmlFor="reference" className="block text-sm font-medium text-gray-700 mb-1">
-                        Référence {(values.mode_paiement !== 'Espèces') && '*'}
+                      <label htmlFor="code_reglement" className="block text-sm font-medium text-gray-700 mb-1">
+                        Code règlement (optionnel)
                       </label>
                       <Field
-                        id="reference"
-                        name="reference"
+                        id="code_reglement"
+                        name="code_reglement"
                         type="text"
                         placeholder={getReferencePlaceholder(values.mode_paiement)}
                         className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <ErrorMessage name="reference" component="div" className="text-red-500 text-sm mt-1" />
+                      <ErrorMessage name="code_reglement" component="div" className="text-red-500 text-sm mt-1" />
                     </div>
 
-                    {/* Champs spécifiques aux chèques et traites */}
+                    {/* Champs optionnels pour tous les types de paiement */}
+                    <div>
+                      <label htmlFor="banque" className="block text-sm font-medium text-gray-700 mb-1">
+                        Banque (optionnel)
+                      </label>
+                      <Field
+                        id="banque"
+                        name="banque"
+                        type="text"
+                        placeholder="Ex: BMCE Bank"
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <ErrorMessage name="banque" component="div" className="text-red-500 text-sm mt-1" />
+                    </div>
+
+                    <div>
+                      <label htmlFor="personnel" className="block text-sm font-medium text-gray-700 mb-1">
+                        Nom de la personne (optionnel)
+                      </label>
+                      <div>
+                        <Field
+                          id="personnel"
+                          name="personnel"
+                          list="personnel_list"
+                          placeholder="Rechercher ou saisir un nom"
+                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <datalist id="personnel_list">
+                          {personnelNames.map((n) => (
+                            <option key={n} value={n} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        💡 Tapez pour rechercher dans la liste ou ajoutez un nouveau nom
+                      </p>
+                      <ErrorMessage name="personnel" component="div" className="text-red-500 text-sm mt-1" />
+                    </div>
+
+                    <div>
+                      <label htmlFor="date_echeance" className="block text-sm font-medium text-gray-700 mb-1">
+                        Date d'échéance (optionnel)
+                      </label>
+                      <Field
+                        id="date_echeance"
+                        name="date_echeance"
+                        type="date"
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <ErrorMessage name="date_echeance" component="div" className="text-red-500 text-sm mt-1" />
+                    </div>
+
+                    {/* Upload d'image seulement pour Chèque et Traite */}
                     {(values.mode_paiement === 'Chèque' || values.mode_paiement === 'Traite') && (
-                      <>
-                        <div>
-                          <label htmlFor="banque" className="block text-sm font-medium text-gray-700 mb-1">
-                            Banque *
-                          </label>
-                          <Field
-                            id="banque"
-                            name="banque"
-                            type="text"
-                            placeholder="Ex: BMCE Bank"
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      <div className="col-span-2">
+                        <label htmlFor="file_input" className="block text-sm font-medium text-gray-700 mb-1">
+                          📷 Image du {values.mode_paiement === 'Chèque' ? 'chèque' : 'traite'} (optionnel)
+                        </label>
+                        <div className="space-y-3">
+                          {imagePreview && (
+                            <div className="relative inline-block">
+                              <img
+                                src={imagePreview.startsWith('http') || imagePreview.startsWith('blob:') 
+                                  ? imagePreview 
+                                  : `http://localhost:3001${imagePreview}`}
+                                alt="Preview"
+                                className="w-full max-w-xs h-32 object-cover rounded-lg border shadow-sm"
+                                onError={(e) => {
+                                  console.error('Erreur chargement preview:', imagePreview);
+                                  e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjRkZGIiBzdHJva2U9IiNEREQiLz4KPHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHg9IjMwIiB5PSIzMCI+CjxwYXRoIGQ9Ik04MCAyMEgyMEM5LjcgMjAgMCA5LjMgMCAyMFYzMEgxMDBWMjBDMTAwIDkuMyA5MC4zIDIwIDgwIDIwWiIgZmlsbD0iI0NDQyIvPgo8L3N2Zz4KPC9zdmc+';
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={removeImage}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow-md"
+                                title="Supprimer l'image"
+                                disabled={uploadingImage}
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          )}
+                          {uploadingImage && (
+                            <div className="flex items-center gap-2 text-blue-600">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                              <span className="text-sm">Upload en cours...</span>
+                            </div>
+                          )}
+                          <input
+                            id="file_input"
+                            type="file"
+                            accept="image/jpeg,image/jpg,image/png,image/gif"
+                            onChange={handleImageUpload}
+                            disabled={uploadingImage}
+                            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           />
-                          <ErrorMessage name="banque" component="div" className="text-red-500 text-sm mt-1" />
+                          <p className="text-xs text-gray-500">
+                            📁 Formats acceptés: JPEG, JPG, PNG, GIF (max 5MB)
+                          </p>
                         </div>
-
-                        <div>
-                          <label htmlFor="personnel" className="block text-sm font-medium text-gray-700 mb-1">
-                            Nom de la personne *
-                          </label>
-                          <Field
-                            id="personnel"
-                            name="personnel"
-                            type="text"
-                            placeholder="Ex: Ahmed Benali"
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <ErrorMessage name="personnel" component="div" className="text-red-500 text-sm mt-1" />
-                        </div>
-
-                        <div>
-                          <label htmlFor="date_echeance" className="block text-sm font-medium text-gray-700 mb-1">
-                            Date d'échéance *
-                          </label>
-                          <Field
-                            id="date_echeance"
-                            name="date_echeance"
-                            type="date"
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <ErrorMessage name="date_echeance" component="div" className="text-red-500 text-sm mt-1" />
-                        </div>
-
-                        {/* Upload d'image */}
-                        <div className="col-span-2">
-                          <label htmlFor="file_input" className="block text-sm font-medium text-gray-700 mb-1">
-                            📷 Image du {values.mode_paiement === 'Chèque' ? 'chèque' : 'traite'} (optionnel)
-                          </label>
-                          <div className="space-y-3">
-                            {imagePreview && (
-                              <div className="relative inline-block">
-                                <img
-                                  src={imagePreview}
-                                  alt="Preview"
-                                  className="w-full max-w-xs h-32 object-cover rounded-lg border shadow-sm"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={removeImage}
-                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow-md"
-                                  title="Supprimer l'image"
-                                >
-                                  <X size={16} />
-                                </button>
-                              </div>
-                            )}
-                            <input
-                              id="file_input"
-                              type="file"
-                              accept="image/jpeg,image/jpg,image/png"
-                              onChange={handleImageUpload}
-                              className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                            />
-                          </div>
-                        </div>
-                      </>
+                      </div>
                     )}
                   </div>
 
@@ -882,7 +1071,8 @@ const CaissePage = () => {
                     </button>
                   </div>
                 </Form>
-              )}
+                );
+              }}
             </Formik>
           </div>
         </div>
@@ -893,7 +1083,7 @@ const CaissePage = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">Détails du Paiement {selectedPayment.numero}</h2>
+              <h2 className="text-lg font-semibold">Détails du Paiement {selectedPayment.id}</h2>
               <button
                 onClick={() => setIsViewModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -906,11 +1096,11 @@ const CaissePage = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Numéro:</p>
-                  <p className="text-lg">{selectedPayment.numero}</p>
+                  <p className="text-lg">{selectedPayment.id}</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Date de paiement:</p>
-                  <p className="text-lg">{selectedPayment.date_paiement}</p>
+                  <p className="text-lg">{formatYMD(selectedPayment.date_paiement)}</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Montant:</p>
@@ -927,16 +1117,17 @@ const CaissePage = () => {
                   <p className="text-sm font-semibold text-gray-600">Bon associé:</p>
                   <p className="text-lg">{getBonInfo(selectedPayment.bon_id)}</p>
                 </div>
-                {selectedPayment.reference && (
-                  <div>
-                    <p className="text-sm font-semibold text-gray-600">Référence:</p>
-                    <p className="text-lg">{selectedPayment.reference}</p>
-                  </div>
-                )}
                 
-                {/* Affichage des champs spécifiques aux chèques et traites */}
-                {(selectedPayment.mode_paiement === 'Chèque' || selectedPayment.mode_paiement === 'Traite') && (
+                
+                {/* Affichage des champs spécifiques aux chèques, traites et virements */}
+                {(selectedPayment.mode_paiement === 'Chèque' || selectedPayment.mode_paiement === 'Traite' || selectedPayment.mode_paiement === 'Virement') && (
                   <>
+          {selectedPayment.code_reglement && (
+                      <div>
+                        <p className="text-sm font-semibold text-gray-600">Code règlement:</p>
+            <p className="text-lg">{selectedPayment.code_reglement}</p>
+                      </div>
+                    )}
                     {selectedPayment.banque && (
                       <div>
                         <p className="text-sm font-semibold text-gray-600">Banque:</p>
@@ -949,10 +1140,10 @@ const CaissePage = () => {
                         <p className="text-lg">{selectedPayment.personnel}</p>
                       </div>
                     )}
-                    {selectedPayment.date_echeance && (
+          {selectedPayment.date_echeance && (
                       <div>
                         <p className="text-sm font-semibold text-gray-600">Date d'échéance:</p>
-                        <p className="text-lg">{selectedPayment.date_echeance}</p>
+            <p className="text-lg">{formatYMD(selectedPayment.date_echeance)}</p>
                       </div>
                     )}
                   </>
@@ -968,14 +1159,31 @@ const CaissePage = () => {
                   <div className="border rounded-lg overflow-hidden shadow-sm bg-gray-50 p-2">
                     <button
                       type="button"
-                      onClick={() => window.open(selectedPayment.image_url, '_blank')}
+                      onClick={() => {
+                        // Construire l'URL complète de l'image
+                        const imageUrl = selectedPayment.image_url || '';
+                        const fullImageUrl = imageUrl.startsWith('http') 
+                          ? imageUrl 
+                          : `http://localhost:3001${imageUrl}`;
+                        window.open(fullImageUrl, '_blank');
+                      }}
                       className="w-full focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
                       title="Cliquer pour agrandir"
                     >
                       <img
-                        src={selectedPayment.image_url}
-                        alt={`${selectedPayment.mode_paiement} ${selectedPayment.numero}`}
+                        src={(() => {
+                          const imageUrl = selectedPayment.image_url || '';
+                          return imageUrl.startsWith('http') 
+                            ? imageUrl 
+                            : `http://localhost:3001${imageUrl}`;
+                        })()}
+                        alt={`${selectedPayment.mode_paiement} ${selectedPayment.id}`}
                         className="w-full max-w-lg h-auto max-h-64 object-contain mx-auto rounded hover:opacity-90 transition-opacity"
+                        onError={(e) => {
+                          // En cas d'erreur de chargement, masquer l'image
+                          console.error('Erreur chargement image:', selectedPayment.image_url);
+                          e.currentTarget.style.display = 'none';
+                        }}
                       />
                     </button>
                     <p className="text-xs text-gray-500 text-center mt-2">

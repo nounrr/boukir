@@ -319,4 +319,119 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+/* =========================
+   POST /sorties/:id/mark-avoir
+   Créer un avoir client depuis un bon de sortie et marquer le bon en "Avoir"
+   ========================= */
+router.post('/:id/mark-avoir', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { id } = req.params;
+    const { created_by } = req.body || {};
+
+    if (!created_by) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'created_by requis' });
+    }
+
+    // Charger le bon de sortie
+    const [rows] = await connection.execute(
+      'SELECT * FROM bons_sortie WHERE id = ? LIMIT 1',
+      [id]
+    );
+    if (rows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon de sortie non trouvé' });
+    }
+    const bs = rows[0];
+
+    // Créer l'avoir client (numero temporaire -> av{id})
+    const today = new Date().toISOString().split('T')[0];
+    const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
+
+    // Vérifier si les colonnes bon_origine_id et bon_origine_type existent
+    const [columnsCheck] = await connection.execute(
+      "SHOW COLUMNS FROM avoirs_client WHERE Field IN ('bon_origine_id', 'bon_origine_type')"
+    );
+    const existingColumns = columnsCheck.map(row => row.Field);
+    const hasBonOrigineId = existingColumns.includes('bon_origine_id');
+    const hasBonOrigineType = existingColumns.includes('bon_origine_type');
+
+    let insertQuery, insertValues;
+    if (hasBonOrigineId && hasBonOrigineType) {
+      insertQuery = `INSERT INTO avoirs_client (
+         numero, date_creation, client_id, bon_origine_id, bon_origine_type,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, ?, 'sortie', ?, ?, 'En attente', ?)`;
+      insertValues = [tmpNumero, today, bs.client_id ?? null, bs.id, bs.lieu_chargement ?? null, bs.montant_total, created_by];
+    } else if (hasBonOrigineId) {
+      insertQuery = `INSERT INTO avoirs_client (
+         numero, date_creation, client_id, bon_origine_id,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)`;
+      insertValues = [tmpNumero, today, bs.client_id ?? null, bs.id, bs.lieu_chargement ?? null, bs.montant_total, created_by];
+    } else if (hasBonOrigineType) {
+      insertQuery = `INSERT INTO avoirs_client (
+         numero, date_creation, client_id, bon_origine_type,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, 'sortie', ?, ?, 'En attente', ?)`;
+      insertValues = [tmpNumero, today, bs.client_id ?? null, bs.lieu_chargement ?? null, bs.montant_total, created_by];
+    } else {
+      insertQuery = `INSERT INTO avoirs_client (
+         numero, date_creation, client_id,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)`;
+      insertValues = [tmpNumero, today, bs.client_id ?? null, bs.lieu_chargement ?? null, bs.montant_total, created_by];
+    }
+
+    const [insAvoir] = await connection.execute(insertQuery, insertValues);
+    const avoirId = insAvoir.insertId;
+    const finalNumero = `av${avoirId}`;
+    await connection.execute(
+      'UPDATE avoirs_client SET numero = ? WHERE id = ?',
+      [finalNumero, avoirId]
+    );
+
+    // Copier les items
+    const [items] = await connection.execute(
+      'SELECT * FROM sortie_items WHERE bon_sortie_id = ?',
+      [id]
+    );
+    for (const it of items) {
+      await connection.execute(
+        `INSERT INTO avoir_client_items (
+           avoir_client_id, product_id, quantite, prix_unitaire,
+           remise_pourcentage, remise_montant, total
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          avoirId,
+          it.product_id,
+          it.quantite,
+          it.prix_unitaire,
+          it.remise_pourcentage || 0,
+          it.remise_montant || 0,
+          it.total,
+        ]
+      );
+    }
+
+    // Marquer le bon de sortie comme "Avoir"
+    await connection.execute(
+      'UPDATE bons_sortie SET statut = "Avoir", updated_at = NOW() WHERE id = ?',
+      [id]
+    );
+
+    await connection.commit();
+    return res.json({ success: true, avoir_id: avoirId, numero: finalNumero });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Erreur POST /sorties/:id/mark-avoir:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  } finally {
+    connection.release();
+  }
+});
+
 export default router;

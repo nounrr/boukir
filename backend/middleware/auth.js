@@ -18,3 +18,13 @@ export function signToken(payload) {
   const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
   return jwt.sign(payload, secret, { expiresIn });
 }
+
+// Simple role guard
+export function requireRole(role) {
+  return function (req, res, next) {
+    const u = req.user || {};
+    if (!u?.role) return res.status(403).json({ message: 'Accès refusé' });
+    if (u.role !== role) return res.status(403).json({ message: 'Rôle insuffisant' });
+    next();
+  };
+}

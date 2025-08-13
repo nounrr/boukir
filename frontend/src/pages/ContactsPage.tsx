@@ -15,7 +15,10 @@ import {
 } from '../store/api/contactsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import { useGetProductsQuery } from '../store/api/productsApi';
+import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
+import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
+import { formatDateDMY } from '../utils/dateUtils';
 
 // Validation du formulaire de contact
 const contactValidationSchema = Yup.object({
@@ -48,164 +51,148 @@ const ContactsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(30);
 
-  // Données mock pour les bons, commandes et paiements
-  const mockTransactions = {
-    bons: [
-      { id: 1, numero: 'BON-001', type: 'Commande', contact_id: 5, date: '15-01-24', montant: 15000, statut: 'Validé' },
-      { id: 2, numero: 'BON-002', type: 'Sortie', contact_id: 5, date: '20-01-24', montant: 8500, statut: 'En cours' },
-      { id: 3, numero: 'BON-003', type: 'Devis', contact_id: 6, date: '25-01-24', montant: 12000, statut: 'Validé' },
-      { id: 4, numero: 'BON-004', type: 'Avoir', contact_id: 7, date: '01-02-24', montant: 3500, statut: 'Validé' },
-      { id: 5, numero: 'BON-005', type: 'Commande', contact_id: 1, date: '10-02-24', montant: 25000, statut: 'Validé' },
-      { id: 6, numero: 'BON-006', type: 'Sortie', contact_id: 2, date: '15-02-24', montant: 15600, statut: 'Livré' },
-      { id: 7, numero: 'BON-007', type: 'Commande', contact_id: 5, date: '15-07-25', montant: 9000, statut: 'Validé' },
-      { id: 8, numero: 'BON-008', type: 'Sortie', contact_id: 6, date: '20-07-25', montant: 6500, statut: 'En cours' },
-    ],
-    payments: [
-      { id: 1, numero: 'PAY-CLT-001', contact_id: 5, date: '20-01-24', montant: 5000, mode: 'Espèces', type: 'Client' },
-      { id: 2, numero: 'PAY-CLT-002', contact_id: 6, date: '22-01-24', montant: 8500, mode: 'Chèque', type: 'Client' },
-      { id: 3, numero: 'PAY-CLT-003', contact_id: 7, date: '25-01-24', montant: 2000, mode: 'Virement', type: 'Client' },
-      { id: 4, numero: 'PAY-FRS-001', contact_id: 1, date: '15-02-24', montant: 12000, mode: 'Virement', type: 'Fournisseur' },
-      { id: 5, numero: 'PAY-FRS-002', contact_id: 2, date: '20-02-24', montant: 7800, mode: 'Chèque', type: 'Fournisseur' },
-      { id: 6, numero: 'PAY-CLT-004', contact_id: 5, date: '25-07-25', montant: 4000, mode: 'Virement', type: 'Client' },
-      { id: 7, numero: 'PAY-CLT-005', contact_id: 6, date: '30-07-25', montant: 3200, mode: 'Espèces', type: 'Client' },
-    ],
-  };
+  // Charger les bons réels (selon type). Chargés globalement pour stats/solde.
+  const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
+  const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
+  const { data: devis = [] } = useGetBonsByTypeQuery('Devis');
+  const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
+  const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsFournisseur = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
+  const { data: payments = [] } = useGetPaymentsQuery();
 
-  // Détails de produits par bon
-  const mockBonDetails = [
-    { bon_id: 1, product_id: 1, quantite: 5, prix_unitaire: 1200, total: 6000 },
-    { bon_id: 1, product_id: 2, quantite: 3, prix_unitaire: 800, total: 2400 },
-    { bon_id: 1, product_id: 3, quantite: 2, prix_unitaire: 3300, total: 6600 },
-    { bon_id: 2, product_id: 1, quantite: 2, prix_unitaire: 1200, total: 2400 },
-    { bon_id: 2, product_id: 4, quantite: 4, prix_unitaire: 1525, total: 6100 },
-    { bon_id: 3, product_id: 2, quantite: 8, prix_unitaire: 800, total: 6400 },
-    { bon_id: 3, product_id: 5, quantite: 3, prix_unitaire: 1867, total: 5600 },
-    { bon_id: 7, product_id: 1, quantite: 3, prix_unitaire: 1200, total: 3600 },
-    { bon_id: 7, product_id: 3, quantite: 1, prix_unitaire: 3300, total: 3300 },
-    { bon_id: 7, product_id: 6, quantite: 2, prix_unitaire: 1050, total: 2100 },
-    { bon_id: 8, product_id: 2, quantite: 4, prix_unitaire: 800, total: 3200 },
-    { bon_id: 8, product_id: 4, quantite: 2, prix_unitaire: 1525, total: 3050 },
-  ];
+  // Agrégats pour calculer les soldes des clients
+  const salesByClient = useMemo(() => {
+    const map = new Map<number, number>();
+    const add = (clientId?: number, amount?: any) => {
+      if (!clientId) return;
+      const val = Number(amount || 0);
+      map.set(clientId, (map.get(clientId) || 0) + val);
+    };
+    sorties.forEach((b: any) => add(b.client_id, b.montant_total));
+    comptants.forEach((b: any) => add(b.client_id, b.montant_total));
+    return map;
+  }, [sorties, comptants]);
 
-  // Utils
-  const convertDisplayToISO = (displayDate: string) => {
-    if (!displayDate) return '';
-    const [day, month, year] = displayDate.split('-');
-    const fullYear = year.length === 2 ? `20${year}` : year;
-    return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  };
-
-  const getFilteredTransactions = (transactions: any[], contactId: number) => {
-    return transactions.filter((transaction) => {
-      const matchesContact = transaction.contact_id === contactId;
-      if (!dateFrom && !dateTo) return matchesContact;
-
-      const transactionISO = convertDisplayToISO(transaction.date);
-      if (!transactionISO) return matchesContact;
-
-      const transactionDate = new Date(transactionISO);
-      const fromDate = dateFrom ? new Date(dateFrom) : null;
-      const toDate = dateTo ? new Date(dateTo) : null;
-
-      let dateMatches = true;
-      if (fromDate && transactionDate < fromDate) dateMatches = false;
-      if (toDate && transactionDate > toDate) dateMatches = false;
-      return matchesContact && dateMatches;
+  const paymentsByContact = useMemo(() => {
+    const map = new Map<number, number>();
+    payments.forEach((p: any) => {
+      const cid = p.contact_id; // peut être undefined dans les mocks => 0 par défaut
+      if (!cid) return;
+      const amt = Number(p.montant ?? p.montant_total ?? 0);
+      map.set(cid, (map.get(cid) || 0) + amt);
     });
+    return map;
+  }, [payments]);
+
+  // Agrégats pour calculer les soldes des fournisseurs (Commandes)
+  const purchasesByFournisseur = useMemo(() => {
+    const map = new Map<number, number>();
+    const add = (fournisseurId?: number, amount?: any) => {
+      if (!fournisseurId) return;
+      const val = Number(amount || 0);
+      map.set(fournisseurId, (map.get(fournisseurId) || 0) + val);
+    };
+    commandes.forEach((b: any) => add(b.fournisseur_id, b.montant_total));
+    return map;
+  }, [commandes]);
+
+  // Util
+  const isWithinDateRange = (isoDate?: string | null) => {
+    if (!isoDate) return !(dateFrom || dateTo);
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return true; // si date invalide, ne filtre pas
+    const from = dateFrom ? new Date(dateFrom) : null;
+    const to = dateTo ? new Date(dateTo) : null;
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
   };
 
-  // Historique combiné (mémoïsé pour éviter les recalculs multiples dans le rendu)
+  // Bons du contact sélectionné
+  const bonsForContact = useMemo(() => {
+    if (!selectedContact) return [] as any[];
+    const isClient = selectedContact.type === 'Client';
+    const id = selectedContact.id;
+    const list: any[] = [];
+
+    // Pour un client: sorties, devis, comptants, avoirs client
+    if (isClient) {
+      for (const b of sorties) if (b.client_id === id) list.push({ ...b, type: 'Sortie' });
+      for (const b of devis) if (b.client_id === id) list.push({ ...b, type: 'Devis' });
+      for (const b of comptants) if (b.client_id === id) list.push({ ...b, type: 'Comptant' });
+      for (const b of avoirsClient) if (b.client_id === id) list.push({ ...b, type: 'Avoir' });
+    } else {
+      // Fournisseur: commandes, avoirs fournisseur
+      for (const b of commandes) if (b.fournisseur_id === id) list.push({ ...b, type: 'Commande' });
+      for (const b of avoirsFournisseur) if (b.fournisseur_id === id) list.push({ ...b, type: 'AvoirFournisseur' });
+    }
+
+    // Filtre période + tri
+    const filtered = list.filter((b) => isWithinDateRange(b.date_creation));
+    filtered.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
+    return filtered;
+  }, [selectedContact, sorties, devis, comptants, avoirsClient, commandes, avoirsFournisseur, dateFrom, dateTo]);
+
+  // Historique combiné (à partir des bons réels). Les paiements ne sont pas utilisés ici tant que l'API n'est pas prête.
   const combinedTransactions = useMemo(() => {
-    if (!selectedContact) return [];
-    const contactId = selectedContact.id;
-    const filteredBons = getFilteredTransactions(mockTransactions.bons, contactId);
-    const filteredPayments = getFilteredTransactions(mockTransactions.payments, contactId);
-
-    const combined = [
-      ...filteredBons.map((bon: any) => ({
-        id: `bon-${bon.id}`,
-        numero: bon.numero,
-        type: bon.type,
-        date: bon.date,
-        montant: bon.montant,
-        statut: bon.statut,
-        isPayment: false,
-        mode: null,
-      })),
-      ...filteredPayments.map((payment: any) => ({
-        id: `payment-${payment.id}`,
-        numero: payment.numero,
-        type: 'Paiement',
-        date: payment.date,
-        montant: payment.montant,
-        statut: 'Payé',
-        isPayment: true,
-        mode: payment.mode,
-      })),
-    ];
-
-    combined.sort((a, b) => {
-      const [dayA, monthA, yearA] = a.date.split('-');
-      const [dayB, monthB, yearB] = b.date.split('-');
-      const fullYearA = yearA.length === 2 ? `20${yearA}` : yearA;
-      const fullYearB = yearB.length === 2 ? `20${yearB}` : yearB;
-      const dateA = new Date(`${fullYearA}-${monthA}-${dayA}`);
-      const dateB = new Date(`${fullYearB}-${monthB}-${dayB}`);
-      return dateA.getTime() - dateB.getTime();
-    });
-
-    let soldeCumulatif = selectedContact?.solde || 0;
-    return combined.map((t) => {
-      soldeCumulatif += t.isPayment ? -t.montant : t.montant;
-      return { ...t, soldeCumulatif };
-    });
-  }, [selectedContact, dateFrom, dateTo]);
-
-  const productHistory = useMemo(() => {
-    if (!selectedContact) return [];
-    const contactId = selectedContact.id;
-    const contactBons = getFilteredTransactions(mockTransactions.bons, contactId);
-
-    const productHistoryItems: any[] = [];
-  contactBons.forEach((bon) => {
-      const bonDetails = mockBonDetails.filter((d) => d.bon_id === bon.id);
-      bonDetails.forEach((detail) => {
-    const product = products.find((p) => p.id === detail.product_id);
-        if (product) {
-          productHistoryItems.push({
-            id: `${bon.id}-${detail.product_id}`,
-            bon_numero: bon.numero,
-            bon_type: bon.type,
-            bon_date: bon.date,
-            bon_statut: bon.statut,
-            product_reference: String(product.reference ?? product.id),
-            product_designation: product.designation,
-            quantite: detail.quantite,
-            prix_unitaire: detail.prix_unitaire,
-            total: detail.total,
-            type: 'produit',
-          });
-        }
-      });
-    });
-
-    const contactPayments = getFilteredTransactions(mockTransactions.payments, contactId).map((p) => ({
-      id: `payment-${p.id}`,
-      bon_numero: p.numero,
-      bon_type: 'Paiement',
-      bon_date: p.date,
-      bon_statut: 'Payé',
-      product_reference: '-',
-      product_designation: 'Paiement',
-      quantite: 1,
-      prix_unitaire: p.montant,
-      total: p.montant,
-      mode: p.mode,
-      type: 'paiement',
+    if (!selectedContact) return [] as any[];
+    const combined = bonsForContact.map((b) => ({
+      id: `bon-${b.id}`,
+      numero: b.numero,
+      type: b.type,
+      dateISO: b.date_creation,
+      date: formatDateDMY(b.date_creation),
+      montant: Number(b.montant_total) || 0,
+      statut: b.statut,
+      isPayment: false,
+      mode: null,
     }));
 
-    const all = [...productHistoryItems, ...contactPayments].sort((a, b) => {
+    combined.sort((a, b) => new Date(a.dateISO).getTime() - new Date(b.dateISO).getTime());
+
+    let soldeCumulatif = Number(selectedContact?.solde ?? 0);
+    return combined.map((t) => {
+      const montant = Number(t.montant) || 0;
+      soldeCumulatif += montant; // ajuster le signe si besoin par type
+      return { ...t, soldeCumulatif };
+    });
+  }, [selectedContact, bonsForContact]);
+
+  const productHistory = useMemo(() => {
+    if (!selectedContact) return [] as any[];
+    const items: any[] = [];
+    for (const b of bonsForContact) {
+      const bDate = formatDateDMY(b.date_creation);
+      const bonItems = Array.isArray(b.items) ? b.items : [];
+      for (const it of bonItems) {
+        const prod = products.find((p) => p.id === it.product_id);
+        const ref = prod ? String(prod.reference ?? prod.id) : String(it.product_id);
+        const des = prod ? prod.designation : (it.designation || '');
+        const prixUnit = Number(it.prix_unitaire) || 0;
+        const total = Number((it as any).total ?? (it as any).montant_ligne ?? 0) || 0;
+        items.push({
+          id: `${b.id}-${it.product_id}-${it.id ?? Math.random()}`,
+          bon_numero: b.numero,
+          bon_type: b.type,
+          bon_date: bDate,
+          bon_statut: b.statut,
+          product_reference: ref,
+          product_designation: des,
+          quantite: Number(it.quantite) || 0,
+          prix_unitaire: prixUnit,
+          total,
+          type: 'produit',
+        });
+      }
+    }
+
+    // Tri par date
+    items.sort((a, b) => {
       const [da, ma, ya] = a.bon_date.split('-');
       const [db, mb, yb] = b.bon_date.split('-');
       const YA = ya.length === 2 ? `20${ya}` : ya;
@@ -213,12 +200,13 @@ const ContactsPage: React.FC = () => {
       return new Date(`${YA}-${ma}-${da}`).getTime() - new Date(`${YB}-${mb}-${db}`).getTime();
     });
 
-    let soldeCumulatif = selectedContact?.solde || 0;
-    return all.map((item) => {
-      soldeCumulatif += item.type === 'paiement' ? -item.total : item.total;
+    let soldeCumulatif = Number(selectedContact?.solde ?? 0);
+    return items.map((item) => {
+      const total = Number(item.total) || 0;
+      soldeCumulatif += total;
       return { ...item, soldeCumulatif };
     });
-  }, [selectedContact, dateFrom, dateTo]);
+  }, [selectedContact, bonsForContact, products]);
 
   // Ouvrir détails
   const handleViewDetails = (contact: Contact) => {
@@ -233,8 +221,8 @@ const ContactsPage: React.FC = () => {
   const handlePrint = () => {
     if (!selectedContact) return;
 
-    const filteredBons = getFilteredTransactions(mockTransactions.bons, selectedContact.id);
-    const filteredPayments = getFilteredTransactions(mockTransactions.payments, selectedContact.id);
+  const filteredBons = bonsForContact;
+  const filteredPayments: any[] = [];
 
     const printContent = `
       <html>
@@ -262,7 +250,7 @@ const ContactsPage: React.FC = () => {
             <table>
               <tr><th>Numéro</th><th>Type</th><th>Date</th><th>Montant</th><th>Statut</th></tr>
               ${filteredBons.map(bon =>
-                `<tr><td>${bon.numero}</td><td>${bon.type}</td><td>${bon.date}</td><td>${bon.montant.toFixed(2)} DH</td><td>${bon.statut}</td></tr>`
+                `<tr><td>${bon.numero}</td><td>${bon.type}</td><td>${formatDateDMY(bon.date_creation)}</td><td>${Number(bon.montant_total||0).toFixed(2)} DH</td><td>${bon.statut}</td></tr>`
               ).join('')}
             </table>
           </div>
@@ -272,15 +260,15 @@ const ContactsPage: React.FC = () => {
             <table>
               <tr><th>Numéro</th><th>Date</th><th>Montant</th><th>Mode</th></tr>
               ${filteredPayments.map(payment =>
-                `<tr><td>${payment.numero}</td><td>${payment.date}</td><td>${payment.montant.toFixed(2)} DH</td><td>${payment.mode}</td></tr>`
+                `<tr><td>${payment.numero}</td><td>${payment.date}</td><td>${Number(payment.montant||payment.montant_total||0).toFixed(2)} DH</td><td>${payment.mode||payment.mode_paiement||''}</td></tr>`
               ).join('')}
             </table>
           </div>
 
           <div class="section">
             <h3>Résumé</h3>
-            <p><strong>Total Bons:</strong> ${filteredBons.reduce((s, b) => s + b.montant, 0).toFixed(2)} DH</p>
-            <p><strong>Total Paiements:</strong> ${filteredPayments.reduce((s, p) => s + p.montant, 0).toFixed(2)} DH</p>
+            <p><strong>Total Bons:</strong> ${filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</p>
+            <p><strong>Total Paiements:</strong> ${filteredPayments.reduce((s, p) => s + Number(p.montant||p.montant_total||0), 0).toFixed(2)} DH</p>
           </div>
         </body>
       </html>
@@ -376,6 +364,18 @@ const ContactsPage: React.FC = () => {
     (contact.email?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  // Pagination
+  const totalItems = filteredContacts.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedContacts = filteredContacts.slice(startIndex, endIndex);
+
+  // Réinitialiser la page quand on change d'onglet ou de recherche
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchTerm]);
+
   return (
     <div className="p-6">
       {/* Header + onglets */}
@@ -469,6 +469,34 @@ const ContactsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Contrôles de pagination */}
+      <div className="mb-4 flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-gray-700">
+            Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} éléments
+          </span>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">Éléments par page:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="border border-gray-300 rounded px-2 py-1 text-sm"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={30}>30</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* Liste */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
@@ -491,14 +519,14 @@ const ContactsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredContacts.length === 0 ? (
+              {paginatedContacts.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun {activeTab === 'clients' ? 'client' : 'fournisseur'} trouvé
                   </td>
                 </tr>
               ) : (
-                filteredContacts.map((contact) => (
+                paginatedContacts.map((contact) => (
                   <tr key={contact.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{contact.nom_complet}</div>
@@ -540,21 +568,22 @@ const ContactsPage: React.FC = () => {
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div
-                        className={`flex items-center gap-2 text-sm font-semibold ${
-                          (Number(contact.solde) || 0) > 0 ? 'text-green-600' : 'text-gray-900'
-                        }`}
-                      >
-                        {(Number(contact.solde) || 0).toFixed(2)} DH
-                        {activeTab === 'clients' &&
-                          typeof contact.plafond === 'number' &&
-                          contact.plafond > 0 &&
-                          (Number(contact.solde) || 0) > contact.plafond && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              Dépasse plafond
-                            </span>
-                          )}
-                      </div>
+                      {(() => {
+                        const base = Number(contact.solde) || 0;
+                        const sales = activeTab === 'clients' ? (salesByClient.get(contact.id) || 0) : 0;
+                        const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
+                        const paid = paymentsByContact.get(contact.id) || 0;
+                        const display = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
+                        const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
+                        return (
+                          <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                            {display.toFixed(2)} DH
+                            {overPlafond && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex gap-2">
@@ -588,6 +617,57 @@ const ContactsPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Navigation de pagination */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex justify-center items-center gap-2">
+          <button
+            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Précédent
+          </button>
+          
+          {/* Affichage des numéros de page */}
+          <div className="flex gap-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+              
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`px-3 py-2 border rounded-md ${
+                    currentPage === pageNum
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+          </div>
+          
+          <button
+            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Suivant
+          </button>
+        </div>
+      )}
 
       {/* Modal: ajouter / modifier */}
       <ContactFormModal
@@ -845,7 +925,7 @@ const ContactsPage: React.FC = () => {
                                       : 'text-gray-600'
                                   }`}
                                 >
-                                  {t.soldeCumulatif.toFixed(2)} DH
+                                  {Number(t.soldeCumulatif ?? 0).toFixed(2)} DH
                                 </div>
                               </td>
                             </tr>
@@ -879,7 +959,7 @@ const ContactsPage: React.FC = () => {
                                 : 'text-red-600'
                             }`}
                           >
-                            {combinedTransactions[combinedTransactions.length - 1].soldeCumulatif.toFixed(2)} DH
+                            {Number(combinedTransactions[combinedTransactions.length - 1].soldeCumulatif ?? 0).toFixed(2)} DH
                           </p>
                         </div>
                       </div>
@@ -891,25 +971,18 @@ const ContactsPage: React.FC = () => {
                     <h3 className="font-bold text-lg mb-3">Résumé de la période</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="text-center">
-                        <p className="text-2xl font-bold text-blue-600">
-                          {getFilteredTransactions(mockTransactions.bons, selectedContact.id).length}
-                        </p>
-                        <p className="text-sm text-gray-600">Bons & Commandes</p>
+                        <p className="text-2xl font-bold text-blue-600">{bonsForContact.length}</p>
+                        <p className="text-sm text-gray-600">Bons</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-2xl font-bold text-green-600">
-                          {getFilteredTransactions(mockTransactions.payments, selectedContact.id).length}
-                        </p>
+                        <p className="text-2xl font-bold text-green-600">0</p>
                         <p className="text-sm text-gray-600">Paiements</p>
                       </div>
                       <div className="text-center">
                         <p className="text-2xl font-bold text-purple-600">
-                          {(
-                            getFilteredTransactions(mockTransactions.bons, selectedContact.id).reduce((s, b) => s + b.montant, 0) +
-                            getFilteredTransactions(mockTransactions.payments, selectedContact.id).reduce((s, p) => s + p.montant, 0)
-                          ).toFixed(2)} DH
+                          {bonsForContact.reduce((s: number, b: any) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH
                         </p>
-                        <p className="text-sm text-gray-600">Total</p>
+                        <p className="text-sm text-gray-600">Total Bons</p>
                       </div>
                     </div>
                   </div>
@@ -1028,7 +1101,7 @@ const ContactsPage: React.FC = () => {
                                       : 'text-gray-600'
                                   }`}
                                 >
-                                  {item.soldeCumulatif.toFixed(2)} DH
+                                  {Number(item.soldeCumulatif ?? 0).toFixed(2)} DH
                                 </div>
                               </td>
                             </tr>

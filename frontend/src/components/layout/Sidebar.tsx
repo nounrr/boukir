@@ -11,6 +11,9 @@ import {
   CreditCard,
   BarChart3,
   Home,
+  Tags,
+  Activity,
+  Upload,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -25,6 +28,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       name: 'Tableau de bord',
       href: '/dashboard',
       icon: Home,
+      show: true,
+    },
+    {
+      name: 'Catégories',
+      href: '/categories',
+      icon: Tags,
       show: true,
     },
     {
@@ -68,6 +77,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       href: '/reports',
       icon: BarChart3,
       show: user?.role === 'PDG',
+    },
+    {
+      name: 'Stats détaillées',
+      href: '/reports/details',
+      icon: Activity,
+      show: user?.role === 'PDG',
+    },
+    {
+      name: 'Import Excel',
+      href: '/import',
+      icon: Upload,
+      show: user?.role !== undefined,
     },
   ];
 

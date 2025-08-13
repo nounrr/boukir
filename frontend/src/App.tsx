@@ -19,6 +19,9 @@ import BonsPage from './pages/BonsPage';
 import VehiculesPage from './pages/VehiculesPage';
 import CaissePage from './pages/CaissePage';
 import ReportsPage from './pages/ReportsPage';
+import CategoriesPage from './pages/CategoriesPage';
+import StatsDetailPage from './pages/StatsDetailPage';
+import ExcelUploadPage from './pages/ExcelUploadPage';
 
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
@@ -97,6 +100,17 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/categories"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <CategoriesPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/vehicules"
           element={
             <ProtectedRoute>
@@ -125,6 +139,28 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <ReportsPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/reports/details"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <StatsDetailPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/import"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ExcelUploadPage />
               </Layout>
             </ProtectedRoute>
           }

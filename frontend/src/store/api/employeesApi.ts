@@ -3,7 +3,7 @@ import type { Employee, CreateEmployeeData } from '../../types';
 import { mockEmployees, getNextId } from '../../data/mockData';
 
 // Store local simulé pour les employés
-let employees = [...mockEmployees];
+const employees = [...mockEmployees];
 
 const employeesApi = api.injectEndpoints({
   endpoints: (builder) => ({
