@@ -107,8 +107,9 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return d.toLocaleDateString('fr-FR');
   };
 
-  const formatPrice = (price: number) => {
-    return price?.toFixed(2) + ' DH' || '0.00 DH';
+  const formatPrice = (price: any) => {
+    const numPrice = parseFloat(price);
+    return !isNaN(numPrice) ? numPrice.toFixed(2) + ' DH' : '0.00 DH';
   };
 
   const getTypeLabel = (type: string) => {
