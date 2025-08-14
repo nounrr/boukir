@@ -217,58 +217,620 @@ const ContactsPage: React.FC = () => {
     setDetailsTab('transactions');
   };
 
-  // Impression
+  // Impression avec détails des produits et transactions
   const handlePrint = () => {
     if (!selectedContact) return;
 
-  const filteredBons = bonsForContact;
-  const filteredPayments: any[] = [];
+    const filteredBons = bonsForContact;
+    const filteredPayments: any[] = [];
+    const filteredProducts = productHistory.filter(item => 
+      isWithinDateRange(new Date(`${item.bon_date.split('-').reverse().join('-')}`).toISOString())
+    );
+
+    // Calcul des statistiques par produit
+    const productStats = filteredProducts.reduce((acc: any, item: any) => {
+      const key = `${item.product_reference}-${item.product_designation}`;
+      if (!acc[key]) {
+        acc[key] = {
+          reference: item.product_reference,
+          designation: item.product_designation,
+          quantite_totale: 0,
+          montant_total: 0,
+          nombre_commandes: 0,
+          prix_moyen: 0
+        };
+      }
+      acc[key].quantite_totale += item.quantite;
+      acc[key].montant_total += item.total;
+      acc[key].nombre_commandes++;
+      acc[key].prix_moyen = acc[key].montant_total / acc[key].quantite_totale;
+      return acc;
+    }, {});
+
+    const productStatsArray = Object.values(productStats).sort((a: any, b: any) => b.montant_total - a.montant_total);
 
     const printContent = `
       <html>
         <head>
-          <title>Détails ${selectedContact.nom_complet}</title>
+          <title>Rapport Détaillé - ${selectedContact.nom_complet}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1, h2 { color: #333; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f5f5f5; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .section { margin-bottom: 30px; }
+            body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+            h1, h2, h3 { color: #333; margin-bottom: 10px; }
+            h1 { font-size: 20px; }
+            h2 { font-size: 16px; }
+            h3 { font-size: 14px; }
+            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+            .section { margin-bottom: 25px; page-break-inside: avoid; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 15px 0; }
+            .info-box { border: 1px solid #ddd; padding: 10px; background: #f9f9f9; }
+            .numeric { text-align: right; }
+            .total-row { font-weight: bold; background-color: #e8f4f8; }
+            @media print {
+              body { margin: 10mm; }
+              .section { page-break-inside: avoid; }
+            }
           </style>
         </head>
         <body>
           <div class="header">
-            <h1>Détails du ${selectedContact.type}</h1>
-            <h2>${selectedContact.nom_complet}</h2>
-            <p>Période: ${dateFrom || '...'} au ${dateTo || '...'}</p>
+            <h1>RAPPORT DÉTAILLÉ</h1>
+            <h2>${selectedContact.type.toUpperCase()}: ${selectedContact.nom_complet}</h2>
+            <p><strong>Période:</strong> ${dateFrom ? formatDateDMY(dateFrom) : 'Début'} → ${dateTo ? formatDateDMY(dateTo) : 'Fin'}</p>
+            <p><strong>Date d'impression:</strong> ${formatDateDMY(new Date().toISOString())}</p>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-box">
+              <h3>Informations Contact</h3>
+              <p><strong>Nom:</strong> ${selectedContact.nom_complet || 'N/A'}</p>
+              <p><strong>Téléphone:</strong> ${selectedContact.telephone || 'N/A'}</p>
+              <p><strong>Email:</strong> ${selectedContact.email || 'N/A'}</p>
+              <p><strong>Adresse:</strong> ${selectedContact.adresse || 'N/A'}</p>
+            </div>
+            <div class="info-box">
+              <h3>Informations Financières</h3>
+              <p><strong>Solde Initial:</strong> ${Number(selectedContact.solde || 0).toFixed(2)} DH</p>
+              <p><strong>Plafond:</strong> ${Number(selectedContact.plafond || 0).toFixed(2)} DH</p>
+              <p><strong>RIB:</strong> ${selectedContact.rib || 'N/A'}</p>
+              <p><strong>ICE:</strong> ${selectedContact.ice || 'N/A'}</p>
+            </div>
           </div>
 
           <div class="section">
-            <h3>Bons et Commandes (${filteredBons.length})</h3>
+            <h3>📊 STATISTIQUES PAR PRODUIT (${productStatsArray.length} produits)</h3>
             <table>
-              <tr><th>Numéro</th><th>Type</th><th>Date</th><th>Montant</th><th>Statut</th></tr>
-              ${filteredBons.map(bon =>
-                `<tr><td>${bon.numero}</td><td>${bon.type}</td><td>${formatDateDMY(bon.date_creation)}</td><td>${Number(bon.montant_total||0).toFixed(2)} DH</td><td>${bon.statut}</td></tr>`
+              <tr>
+                <th>Référence</th>
+                <th>Désignation</th>
+                <th class="numeric">Qté Totale</th>
+                <th class="numeric">Montant Total</th>
+                <th class="numeric">Prix Moyen</th>
+                <th class="numeric">Nb Commandes</th>
+              </tr>
+              ${productStatsArray.map((stat: any) =>
+                `<tr>
+                  <td>${stat.reference}</td>
+                  <td>${stat.designation}</td>
+                  <td class="numeric">${stat.quantite_totale}</td>
+                  <td class="numeric">${stat.montant_total.toFixed(2)} DH</td>
+                  <td class="numeric">${stat.prix_moyen.toFixed(2)} DH</td>
+                  <td class="numeric">${stat.nombre_commandes}</td>
+                </tr>`
               ).join('')}
+              <tr class="total-row">
+                <td colspan="2"><strong>TOTAL</strong></td>
+                <td class="numeric"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.quantite_totale, 0)}</strong></td>
+                <td class="numeric"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.montant_total, 0).toFixed(2)} DH</strong></td>
+                <td colspan="2"></td>
+              </tr>
             </table>
           </div>
 
           <div class="section">
-            <h3>Paiements (${filteredPayments.length})</h3>
+            <h3>📋 DÉTAIL DES TRANSACTIONS (${filteredBons.length} documents)</h3>
             <table>
-              <tr><th>Numéro</th><th>Date</th><th>Montant</th><th>Mode</th></tr>
-              ${filteredPayments.map(payment =>
-                `<tr><td>${payment.numero}</td><td>${payment.date}</td><td>${Number(payment.montant||payment.montant_total||0).toFixed(2)} DH</td><td>${payment.mode||payment.mode_paiement||''}</td></tr>`
-              ).join('')}
+              <tr>
+                <th>N° Bon</th>
+                <th>Type</th>
+                <th>Date</th>
+                <th class="numeric">Montant</th>
+                <th>Statut</th>
+                <th class="numeric">Articles</th>
+              </tr>
+              ${filteredBons.map(bon => {
+                const bonItems = Array.isArray(bon.items) ? bon.items : [];
+                return `<tr>
+                  <td>${bon.numero}</td>
+                  <td>${bon.type}</td>
+                  <td>${formatDateDMY(bon.date_creation)}</td>
+                  <td class="numeric">${Number(bon.montant_total||0).toFixed(2)} DH</td>
+                  <td>${bon.statut}</td>
+                  <td class="numeric">${bonItems.length}</td>
+                </tr>`;
+              }).join('')}
+              <tr class="total-row">
+                <td colspan="3"><strong>TOTAL</strong></td>
+                <td class="numeric"><strong>${filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</strong></td>
+                <td colspan="2"></td>
+              </tr>
             </table>
           </div>
 
           <div class="section">
-            <h3>Résumé</h3>
-            <p><strong>Total Bons:</strong> ${filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</p>
-            <p><strong>Total Paiements:</strong> ${filteredPayments.reduce((s, p) => s + Number(p.montant||p.montant_total||0), 0).toFixed(2)} DH</p>
+            <h3>🛍️ DÉTAIL DES ACHATS PAR PRODUIT (${filteredProducts.length} lignes)</h3>
+            <table>
+              <tr>
+                <th>Date</th>
+                <th>N° Bon</th>
+                <th>Type</th>
+                <th>Référence</th>
+                <th>Produit</th>
+                <th class="numeric">Qté</th>
+                <th class="numeric">Prix Unit.</th>
+                <th class="numeric">Total</th>
+              </tr>
+              ${filteredProducts.map(item =>
+                `<tr>
+                  <td>${item.bon_date}</td>
+                  <td>${item.bon_numero}</td>
+                  <td>${item.bon_type}</td>
+                  <td>${item.product_reference}</td>
+                  <td>${item.product_designation}</td>
+                  <td class="numeric">${item.quantite}</td>
+                  <td class="numeric">${item.prix_unitaire.toFixed(2)} DH</td>
+                  <td class="numeric">${item.total.toFixed(2)} DH</td>
+                </tr>`
+              ).join('')}
+              <tr class="total-row">
+                <td colspan="5"><strong>TOTAL</strong></td>
+                <td class="numeric"><strong>${filteredProducts.reduce((s, p) => s + p.quantite, 0)}</strong></td>
+                <td></td>
+                <td class="numeric"><strong>${filteredProducts.reduce((s, p) => s + p.total, 0).toFixed(2)} DH</strong></td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="section">
+            <h3>📈 RÉSUMÉ EXÉCUTIF</h3>
+            <div class="info-grid">
+              <div class="info-box">
+                <h4>Volumes</h4>
+                <p><strong>Nombre de documents:</strong> ${filteredBons.length}</p>
+                <p><strong>Nombre de produits différents:</strong> ${productStatsArray.length}</p>
+                <p><strong>Quantité totale achetée:</strong> ${filteredProducts.reduce((s, p) => s + p.quantite, 0)}</p>
+              </div>
+              <div class="info-box">
+                <h4>Montants</h4>
+                <p><strong>Chiffre d'affaires total:</strong> ${filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</p>
+                <p><strong>Panier moyen:</strong> ${filteredBons.length > 0 ? (filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0) / filteredBons.length).toFixed(2) : '0.00'} DH</p>
+                <p><strong>Solde actuel:</strong> ${combinedTransactions.length > 0 ? combinedTransactions[combinedTransactions.length - 1].soldeCumulatif.toFixed(2) : Number(selectedContact.solde || 0).toFixed(2)} DH</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
+            <p>Rapport généré le ${formatDateDMY(new Date().toISOString())} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+            <p>Application de Gestion Commerciale - ${selectedContact.type} ${selectedContact.nom_complet}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
+
+  // Impression rapide d'un contact depuis la liste
+  const handleQuickPrint = (contact: Contact) => {
+    // Calculer les bons pour ce contact
+    const isClient = contact.type === 'Client';
+    const id = contact.id;
+    const list: any[] = [];
+
+    if (isClient) {
+      for (const b of sorties) if (b.client_id === id) list.push({ ...b, type: 'Sortie' });
+      for (const b of devis) if (b.client_id === id) list.push({ ...b, type: 'Devis' });
+      for (const b of comptants) if (b.client_id === id) list.push({ ...b, type: 'Comptant' });
+      for (const b of avoirsClient) if (b.client_id === id) list.push({ ...b, type: 'Avoir' });
+    } else {
+      for (const b of commandes) if (b.fournisseur_id === id) list.push({ ...b, type: 'Commande' });
+      for (const b of avoirsFournisseur) if (b.fournisseur_id === id) list.push({ ...b, type: 'AvoirFournisseur' });
+    }
+
+    // Calculer solde
+    const base = Number(contact.solde) || 0;
+    const sales = isClient ? (salesByClient.get(id) || 0) : 0;
+    const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
+    const paid = paymentsByContact.get(id) || 0;
+    const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
+
+    const printContent = `
+      <html>
+        <head>
+          <title>Fiche ${contact.nom_complet}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+            h1, h2, h3 { color: #333; margin-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 15px 0; }
+            .info-box { border: 1px solid #ddd; padding: 10px; background: #f9f9f9; }
+            .numeric { text-align: right; }
+            .total-row { font-weight: bold; background-color: #e8f4f8; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>FICHE ${contact.type.toUpperCase()}</h1>
+            <h2>${contact.nom_complet}</h2>
+            <p><strong>Date d'impression:</strong> ${formatDateDMY(new Date().toISOString())}</p>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-box">
+              <h3>Informations Contact</h3>
+              <p><strong>Nom:</strong> ${contact.nom_complet || 'N/A'}</p>
+              <p><strong>Téléphone:</strong> ${contact.telephone || 'N/A'}</p>
+              <p><strong>Email:</strong> ${contact.email || 'N/A'}</p>
+              <p><strong>Adresse:</strong> ${contact.adresse || 'N/A'}</p>
+            </div>
+            <div class="info-box">
+              <h3>Informations Financières</h3>
+              <p><strong>Solde Initial:</strong> ${base.toFixed(2)} DH</p>
+              <p><strong>Solde Actuel:</strong> <strong>${soldeActuel.toFixed(2)} DH</strong></p>
+              <p><strong>Plafond:</strong> ${Number(contact.plafond || 0).toFixed(2)} DH</p>
+              <p><strong>ICE:</strong> ${contact.ice || 'N/A'}</p>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>📋 TRANSACTIONS (${list.length} documents)</h3>
+            <table>
+              <tr>
+                <th>N° Bon</th>
+                <th>Type</th>
+                <th>Date</th>
+                <th class="numeric">Montant</th>
+                <th>Statut</th>
+              </tr>
+              ${list.map(bon =>
+                `<tr>
+                  <td>${bon.numero}</td>
+                  <td>${bon.type}</td>
+                  <td>${formatDateDMY(bon.date_creation)}</td>
+                  <td class="numeric">${Number(bon.montant_total||0).toFixed(2)} DH</td>
+                  <td>${bon.statut}</td>
+                </tr>`
+              ).join('')}
+              <tr class="total-row">
+                <td colspan="3"><strong>TOTAL</strong></td>
+                <td class="numeric"><strong>${list.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</strong></td>
+                <td></td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
+            <p>Fiche générée le ${formatDateDMY(new Date().toISOString())} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+            <p>Application de Gestion Commerciale - ${contact.type} ${contact.nom_complet}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
+
+  // Impression globale de tous les contacts
+  const handleGlobalPrint = () => {
+    const contactsList = filteredContacts; // Utilise les filtres appliqués
+    const typeLabel = activeTab === 'clients' ? 'CLIENTS' : 'FOURNISSEURS';
+
+    // Calcul des statistiques globales
+    const totalContacts = contactsList.length;
+    const totalSoldes = contactsList.reduce((sum, contact) => {
+      const base = Number(contact.solde) || 0;
+      const isClient = contact.type === 'Client';
+      const sales = isClient ? (salesByClient.get(contact.id) || 0) : 0;
+      const purchases = !isClient ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
+      const paid = paymentsByContact.get(contact.id) || 0;
+      const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
+      return sum + soldeActuel;
+    }, 0);
+
+    const printContent = `
+      <html>
+        <head>
+          <title>Rapport Global - ${typeLabel}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+            h1, h2, h3 { color: #333; margin-bottom: 10px; }
+            h1 { font-size: 20px; }
+            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+            .numeric { text-align: right; }
+            .total-row { font-weight: bold; background-color: #e8f4f8; }
+            .info-box { border: 1px solid #ddd; padding: 15px; background: #f9f9f9; margin: 15px 0; }
+            .positive { color: green; }
+            .negative { color: red; }
+            @media print {
+              body { margin: 10mm; }
+              .page-break { page-break-before: always; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>RAPPORT GLOBAL ${typeLabel}</h1>
+            <p><strong>Recherche appliquée:</strong> "${searchTerm || 'Aucune'}"</p>
+            <p><strong>Date d'impression:</strong> ${formatDateDMY(new Date().toISOString())}</p>
+          </div>
+
+          <div class="info-box">
+            <h3>📊 RÉSUMÉ EXÉCUTIF</h3>
+            <p><strong>Nombre total de ${typeLabel.toLowerCase()}:</strong> ${totalContacts}</p>
+            <p><strong>Solde total cumulé:</strong> <span class="${totalSoldes >= 0 ? 'positive' : 'negative'}">${totalSoldes.toFixed(2)} DH</span></p>
+            <p><strong>Solde moyen par contact:</strong> ${totalContacts > 0 ? (totalSoldes / totalContacts).toFixed(2) : '0.00'} DH</p>
+          </div>
+
+          <h3>📋 LISTE DES ${typeLabel} (${totalContacts})</h3>
+          <table>
+            <tr>
+              <th>Nom Complet</th>
+              <th>Téléphone</th>
+              <th>Email</th>
+              <th>ICE</th>
+              ${activeTab === 'clients' ? '<th class="numeric">Plafond</th>' : ''}
+              <th class="numeric">Solde Initial</th>
+              <th class="numeric">Solde Actuel</th>
+              <th class="numeric">Nb Transactions</th>
+            </tr>
+            ${contactsList.map(contact => {
+              const base = Number(contact.solde) || 0;
+              const isClient = contact.type === 'Client';
+              const id = contact.id;
+              const sales = isClient ? (salesByClient.get(id) || 0) : 0;
+              const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
+              const paid = paymentsByContact.get(id) || 0;
+              const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
+
+              // Compter les transactions
+              let transactionCount = 0;
+              if (isClient) {
+                transactionCount += sorties.filter((b: any) => b.client_id === id).length;
+                transactionCount += devis.filter((b: any) => b.client_id === id).length;
+                transactionCount += comptants.filter((b: any) => b.client_id === id).length;
+                transactionCount += avoirsClient.filter((b: any) => b.client_id === id).length;
+              } else {
+                transactionCount += commandes.filter((b: any) => b.fournisseur_id === id).length;
+                transactionCount += avoirsFournisseur.filter((b: any) => b.fournisseur_id === id).length;
+              }
+
+              return `<tr>
+                <td><strong>${contact.nom_complet || 'N/A'}</strong></td>
+                <td>${contact.telephone || 'N/A'}</td>
+                <td>${contact.email || 'N/A'}</td>
+                <td>${contact.ice || 'N/A'}</td>
+                ${activeTab === 'clients' ? `<td class="numeric">${Number(contact.plafond || 0).toFixed(2)} DH</td>` : ''}
+                <td class="numeric">${base.toFixed(2)} DH</td>
+                <td class="numeric ${soldeActuel >= 0 ? 'positive' : 'negative'}"><strong>${soldeActuel.toFixed(2)} DH</strong></td>
+                <td class="numeric">${transactionCount}</td>
+              </tr>`;
+            }).join('')}
+            <tr class="total-row">
+              <td colspan="${activeTab === 'clients' ? '5' : '4'}"><strong>TOTAUX</strong></td>
+              <td class="numeric"><strong>${contactsList.reduce((s, c) => s + Number(c.solde || 0), 0).toFixed(2)} DH</strong></td>
+              <td class="numeric"><strong>${totalSoldes.toFixed(2)} DH</strong></td>
+              <td class="numeric"><strong>${contactsList.reduce((sum, contact) => {
+                const isClient = contact.type === 'Client';
+                const id = contact.id;
+                let count = 0;
+                if (isClient) {
+                  count += sorties.filter((b: any) => b.client_id === id).length;
+                  count += devis.filter((b: any) => b.client_id === id).length;
+                  count += comptants.filter((b: any) => b.client_id === id).length;
+                  count += avoirsClient.filter((b: any) => b.client_id === id).length;
+                } else {
+                  count += commandes.filter((b: any) => b.fournisseur_id === id).length;
+                  count += avoirsFournisseur.filter((b: any) => b.fournisseur_id === id).length;
+                }
+                return sum + count;
+              }, 0)}</strong></td>
+            </tr>
+          </table>
+
+          <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
+            <p>Rapport généré le ${formatDateDMY(new Date().toISOString())} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+            <p>Application de Gestion Commerciale - Rapport Global ${typeLabel}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
+
+  // Impression spécifique des transactions
+  const handlePrintTransactions = () => {
+    if (!selectedContact) return;
+
+    const printContent = `
+      <html>
+        <head>
+          <title>Transactions - ${selectedContact.nom_complet}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+            h1, h2, h3 { color: #333; margin-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+            .numeric { text-align: right; }
+            .total-row { font-weight: bold; background-color: #e8f4f8; }
+            .info-box { border: 1px solid #ddd; padding: 15px; background: #f9f9f9; margin: 15px 0; }
+            .positive { color: green; }
+            .negative { color: red; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>HISTORIQUE DES TRANSACTIONS</h1>
+            <h2>${selectedContact.type}: ${selectedContact.nom_complet}</h2>
+            <p><strong>Période:</strong> ${dateFrom ? formatDateDMY(dateFrom) : 'Début'} → ${dateTo ? formatDateDMY(dateTo) : 'Fin'}</p>
+            <p><strong>Date d'impression:</strong> ${formatDateDMY(new Date().toISOString())}</p>
+          </div>
+
+          <div class="info-box">
+            <h3>Informations Contact</h3>
+            <p><strong>Téléphone:</strong> ${selectedContact.telephone || 'N/A'}</p>
+            <p><strong>Email:</strong> ${selectedContact.email || 'N/A'}</p>
+            <p><strong>ICE:</strong> ${selectedContact.ice || 'N/A'}</p>
+            <p><strong>Solde initial:</strong> ${Number(selectedContact.solde || 0).toFixed(2)} DH</p>
+          </div>
+
+          <h3>📋 TRANSACTIONS (${combinedTransactions.length})</h3>
+          <table>
+            <tr>
+              <th>Date</th>
+              <th>Numéro</th>
+              <th>Type</th>
+              <th class="numeric">Montant</th>
+              <th>Statut/Mode</th>
+              <th class="numeric">Solde Cumulé</th>
+            </tr>
+            ${combinedTransactions.map(t => `
+              <tr>
+                <td>${t.date}</td>
+                <td>${t.numero}</td>
+                <td>${t.type}</td>
+                <td class="numeric">${(t.isPayment ? '-' : '+') + t.montant.toFixed(2)} DH</td>
+                <td>${t.isPayment ? t.mode : t.statut}</td>
+                <td class="numeric ${t.soldeCumulatif >= 0 ? 'positive' : 'negative'}">${t.soldeCumulatif.toFixed(2)} DH</td>
+              </tr>
+            `).join('')}
+            <tr class="total-row">
+              <td colspan="3"><strong>TOTAUX</strong></td>
+              <td class="numeric"><strong>Bons: ${combinedTransactions.filter(t => !t.isPayment).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH</strong></td>
+              <td class="numeric"><strong>Paiements: ${combinedTransactions.filter(t => t.isPayment).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH</strong></td>
+              <td class="numeric"><strong>Solde Final: ${combinedTransactions.length > 0 ? combinedTransactions[combinedTransactions.length - 1].soldeCumulatif.toFixed(2) : '0.00'} DH</strong></td>
+            </tr>
+          </table>
+
+          <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
+            <p>Rapport généré le ${formatDateDMY(new Date().toISOString())} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+            <p>Application de Gestion Commerciale - Transactions ${selectedContact.nom_complet}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
+
+  // Impression spécifique des produits
+  const handlePrintProducts = () => {
+    if (!selectedContact) return;
+
+    const filteredProducts = productHistory.filter(item => 
+      isWithinDateRange(new Date(`${item.bon_date.split('-').reverse().join('-')}`).toISOString())
+    );
+
+    const printContent = `
+      <html>
+        <head>
+          <title>Détail Produits - ${selectedContact.nom_complet}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+            h1, h2, h3 { color: #333; margin-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
+            th { background-color: #f5f5f5; font-weight: bold; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+            .numeric { text-align: right; }
+            .total-row { font-weight: bold; background-color: #e8f4f8; }
+            .info-box { border: 1px solid #ddd; padding: 15px; background: #f9f9f9; margin: 15px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>DÉTAIL DES PRODUITS</h1>
+            <h2>${selectedContact.type}: ${selectedContact.nom_complet}</h2>
+            <p><strong>Période:</strong> ${dateFrom ? formatDateDMY(dateFrom) : 'Début'} → ${dateTo ? formatDateDMY(dateTo) : 'Fin'}</p>
+            <p><strong>Date d'impression:</strong> ${formatDateDMY(new Date().toISOString())}</p>
+          </div>
+
+          <div class="info-box">
+            <h3>Informations Contact</h3>
+            <p><strong>Téléphone:</strong> ${selectedContact.telephone || 'N/A'}</p>
+            <p><strong>Email:</strong> ${selectedContact.email || 'N/A'}</p>
+            <p><strong>ICE:</strong> ${selectedContact.ice || 'N/A'}</p>
+            <p><strong>Solde initial:</strong> ${Number(selectedContact.solde || 0).toFixed(2)} DH</p>
+          </div>
+
+          <h3>🛍️ DÉTAIL DES ACHATS (${filteredProducts.length} lignes)</h3>
+          <table>
+            <tr>
+              <th>Date</th>
+              <th>Bon N°</th>
+              <th>Type</th>
+              <th>Référence</th>
+              <th>Désignation</th>
+              <th class="numeric">Quantité</th>
+              <th class="numeric">Prix Unit.</th>
+              <th class="numeric">Total</th>
+              <th>Statut</th>
+            </tr>
+            ${filteredProducts.map(item => `
+              <tr>
+                <td>${item.bon_date}</td>
+                <td>${item.bon_numero}</td>
+                <td>${item.bon_type}</td>
+                <td>${item.product_reference}</td>
+                <td>${item.product_designation}</td>
+                <td class="numeric">${item.quantite}</td>
+                <td class="numeric">${item.prix_unitaire.toFixed(2)} DH</td>
+                <td class="numeric">${item.total.toFixed(2)} DH</td>
+                <td>${item.bon_statut}</td>
+              </tr>
+            `).join('')}
+            <tr class="total-row">
+              <td colspan="5"><strong>TOTAL</strong></td>
+              <td class="numeric"><strong>${filteredProducts.reduce((s, p) => s + p.quantite, 0)}</strong></td>
+              <td></td>
+              <td class="numeric"><strong>${filteredProducts.reduce((s, p) => s + p.total, 0).toFixed(2)} DH</strong></td>
+              <td></td>
+            </tr>
+          </table>
+
+          <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
+            <p>Rapport généré le ${formatDateDMY(new Date().toISOString())} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+            <p>Application de Gestion Commerciale - Produits ${selectedContact.nom_complet}</p>
           </div>
         </body>
       </html>
@@ -403,7 +965,15 @@ const ContactsPage: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleGlobalPrint}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+            title={`Imprimer rapport global de tous les ${activeTab === 'clients' ? 'clients' : 'fournisseurs'} (selon filtres appliqués)`}
+          >
+            <FileText size={16} />
+            Rapport Global ({filteredContacts.length})
+          </button>
           <button
             onClick={() => {
               setEditingContact(null);
@@ -595,6 +1165,13 @@ const ContactsPage: React.FC = () => {
                           <Eye size={16} />
                         </button>
                         <button
+                          onClick={() => handleQuickPrint(contact)}
+                          className="text-green-600 hover:text-green-900"
+                          title="Imprimer fiche"
+                        >
+                          <Printer size={16} />
+                        </button>
+                        <button
                           onClick={() => handleEdit(contact)}
                           className="text-blue-600 hover:text-blue-900"
                           title="Modifier"
@@ -693,10 +1270,11 @@ const ContactsPage: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <button
                     onClick={handlePrint}
-                    className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-1 rounded-md transition-colors"
+                    className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-md transition-colors font-medium border border-white border-opacity-30"
+                    title="Imprimer rapport détaillé avec produits et transactions (selon filtres appliqués)"
                   >
-                    <Printer size={16} />
-                    Imprimer
+                    <FileText size={16} />
+                    Rapport Détaillé
                   </button>
                   <button
                     onClick={() => {
@@ -840,9 +1418,19 @@ const ContactsPage: React.FC = () => {
                         </span>
                       )}
                     </h3>
-                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-                      {combinedTransactions.length} éléments
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
+                        {combinedTransactions.length} éléments
+                      </span>
+                      <button
+                        onClick={handlePrintTransactions}
+                        className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+                        title="Imprimer uniquement les transactions"
+                      >
+                        <Printer size={14} />
+                        Imprimer
+                      </button>
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -999,9 +1587,19 @@ const ContactsPage: React.FC = () => {
                         </span>
                       )}
                     </h3>
-                    <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm">
-                      {productHistory.length} éléments
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm">
+                        {productHistory.length} éléments
+                      </span>
+                      <button
+                        onClick={handlePrintProducts}
+                        className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm"
+                        title="Imprimer uniquement le détail des produits"
+                      >
+                        <Printer size={14} />
+                        Imprimer
+                      </button>
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
