@@ -150,6 +150,7 @@ const bonValidationSchema = Yup.object({
   date_bon: Yup.string().required('Date du bon requise'),
   vehicule_id: Yup.number().nullable(),
   lieu_charge: Yup.string(),
+  adresse_livraison: Yup.string(),
   client_id: Yup.number().when('type', ([type], schema) => {
     // Client requis pour Sortie et Avoir seulement (Comptant et Devis optionnel)
     if (type === 'Sortie' || type === 'Avoir') {
@@ -239,11 +240,12 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         // S'assurer que les montants sont copiés
         montant_ht: initialValues.montant_ht || 0,
         montant_total: initialValues.montant_total || 0,
-        // S'assurer que les noms et adresses sont copiés
+  // S'assurer que les noms et adresses sont copiés
         client_nom: initialValues.client_nom || '',
         client_adresse: initialValues.client_adresse || '',
         fournisseur_nom: initialValues.fournisseur_nom || '',
         fournisseur_adresse: initialValues.fournisseur_adresse || '',
+  adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
         // Statut
         statut: initialValues.statut || 'En attente'
       };
@@ -264,6 +266,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       fournisseur_id: '',
       fournisseur_nom: '',
       fournisseur_adresse: '',
+  adresse_livraison: '',
       montant_ht: 0,
       montant_total: 0,
       items: [],
@@ -298,6 +301,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         date_creation: values.date_bon, // Backend attend date_creation
         vehicule_id: vehiculeId, // Backend attend vehicule_id
         lieu_chargement: values.lieu_charge || '', // Backend attend lieu_chargement
+  adresse_livraison: values.adresse_livraison || '',
         statut: values.statut || 'Brouillon',
         client_id: values.client_id ? parseInt(values.client_id) : undefined,
         fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
@@ -306,6 +310,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         items: values.items.map((item: any) => ({
           product_id: parseInt(item.product_id),
           quantite: parseFloat(item.quantite),
+          prix_achat: parseFloat(item.prix_achat || 0),
           prix_unitaire: parseFloat(item.prix_unitaire),
           remise_pourcentage: parseFloat(item.remise_pourcentage || 0),
           remise_montant: parseFloat(item.remise_montant || 0),
@@ -401,7 +406,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
  
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-lg p-6 w-full max-w-10xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold">
             {initialValues ? 'Modifier' : 'Créer'} un {currentTab}
@@ -488,6 +493,19 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
                     name="lieu_charge"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     placeholder="Ex: Entrepôt Casablanca"
+                  />
+                </div>
+                {/* Adresse de livraison */}
+                <div>
+                  <label htmlFor="adresse_livraison" className="block text-sm font-medium text-gray-700 mb-1">
+                    Adresse de livraison
+                  </label>
+                  <Field
+                    type="text"
+                    id="adresse_livraison"
+                    name="adresse_livraison"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="Adresse complète de livraison"
                   />
                 </div>
               </div>
@@ -641,7 +659,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">Référence</th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[150px]">Désignation</th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">Qté</th>
-                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">P. Achat</th>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">SERIE</th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">P. Unit.</th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">Total</th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">Actions</th>
@@ -674,6 +692,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
                                           setFieldValue(`items.${index}.product_id`, product.id);
                                           setFieldValue(`items.${index}.designation`, product.designation);
                                           setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
+                                          setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
                                           const unit = (product.prix_vente || 0);
                                           setFieldValue(`items.${index}.prix_unitaire`, unit);
                                           const quantite = values.items[index].quantite || 1;
@@ -704,6 +723,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
                                           setFieldValue(`items.${index}.product_id`, product.id);
                                           setFieldValue(`items.${index}.product_reference`, String(product.reference ?? product.id));
                                           setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
+                                          setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
                                           const unit = (product.prix_vente || 0);
                                           setFieldValue(`items.${index}.prix_unitaire`, unit);
                                           const quantite = values.items[index].quantite || 1;
@@ -734,16 +754,12 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
                                   />
                                 </td>
                                 
-                                {/* Prix d'achat (disabled) */}
-                                <td className="px-1 py-2 w-[90px]">
-                                  <Field
-                                    type="number"
-                                    name={`items.${index}.prix_achat`}
-                                    step="0.01"
-                                    className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm bg-gray-100"
-                                    disabled
-                                  />
-                                </td>
+                           
+                               <td className="px-1 py-2 text-sm text-gray-700">
+  {`PA${values.items[index].prix_achat ?? 0}CR${values.items[index].cout_revient ?? 0}`}
+</td>
+
+
                                 
                                 {/* Prix unitaire (modifiable) */}
                                 <td className="px-1 py-2 w-[90px]">
@@ -807,6 +823,18 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
                     <span className="text-md font-semibold">Total:</span>
                     <span className="text-md font-semibold">
                       {values.items.reduce((sum: number, item: any) => sum + ((item.quantite || 0) * (item.prix_unitaire || 0)), 0).toFixed(2)} DH
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-md font-semibold text-green-700">Mouvement:</span>
+                    <span className="text-md font-semibold text-green-700">
+                      {values.items.reduce((sum: number, item: any) => {
+                        const quantite = Number(item.quantite || 0);
+                        const prixVente = Number(item.prix_unitaire || 0);
+                        const coutRevient = Number(item.cout_revient ?? item.prix_achat ?? 0);
+                        const benef = (prixVente - coutRevient) * quantite;
+                        return sum + benef;
+                      }, 0).toFixed(2)} DH
                     </span>
                   </div>
                 </div>

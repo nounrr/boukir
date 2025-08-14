@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -107,7 +108,9 @@ router.post('/', async (req, res) => {
       items = [],
       // tolère snake_case et camelCase
       lieu_chargement: lieuSnake,
-      lieuChargement: lieuCamel
+      lieuChargement: lieuCamel,
+      adresse_livraison: adresseLivSnake,
+      adresseLivraison: adresseLivCamel
     } = req.body || {};
 
     if (!date_creation || !montant_total || !created_by) {
@@ -124,11 +127,15 @@ router.post('/', async (req, res) => {
     // numero temporaire pour satisfaire NOT NULL + UNIQUE
     const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
 
+    const adresseLiv = (typeof adresseLivSnake === 'string' && adresseLivSnake.trim() !== '')
+      ? adresseLivSnake.trim()
+      : (typeof adresseLivCamel === 'string' && adresseLivCamel.trim() !== '' ? adresseLivCamel.trim() : null);
+
     const [ins] = await connection.execute(`
       INSERT INTO avoirs_fournisseur (
-        numero, date_creation, fournisseur_id, lieu_chargement, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [tmpNumero, date_creation, fId, lieu, montant_total, st, created_by]);
+        numero, date_creation, fournisseur_id, lieu_chargement, adresse_livraison, montant_total, statut, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [tmpNumero, date_creation, fId, lieu, adresseLiv, montant_total, st, created_by]);
 
     const avoirId = ins.insertId;
 
@@ -187,7 +194,9 @@ router.put('/:id', async (req, res) => {
       statut,
       items = [],
       lieu_chargement: lieuSnake,
-      lieuChargement: lieuCamel
+      lieuChargement: lieuCamel,
+      adresse_livraison: adresseLivSnake,
+      adresseLivraison: adresseLivCamel
     } = req.body || {};
 
     const [exists] = await connection.execute('SELECT id FROM avoirs_fournisseur WHERE id = ?', [id]);
@@ -202,11 +211,15 @@ router.put('/:id', async (req, res) => {
       ? lieuSnake.trim()
       : (typeof lieuCamel === 'string' && lieuCamel.trim() !== '' ? lieuCamel.trim() : null);
 
+    const adresseLiv = (typeof adresseLivSnake === 'string' && adresseLivSnake.trim() !== '')
+      ? adresseLivSnake.trim()
+      : (typeof adresseLivCamel === 'string' && adresseLivCamel.trim() !== '' ? adresseLivCamel.trim() : null);
+
     await connection.execute(`
       UPDATE avoirs_fournisseur SET
-        date_creation = ?, fournisseur_id = ?, lieu_chargement = ?, montant_total = ?, statut = ?
+        date_creation = ?, fournisseur_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
       WHERE id = ?
-    `, [date_creation, fId, lieu, montant_total, st, id]);
+    `, [date_creation, fId, lieu, adresseLiv, montant_total, st, id]);
 
     await connection.execute('DELETE FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?', [id]);
 
@@ -245,7 +258,7 @@ router.put('/:id', async (req, res) => {
 });
 
 /* == PATCH /:id/statut (changer) == */
-router.patch('/:id/statut', async (req, res) => {
+router.patch('/:id/statut', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { statut } = req.body;
@@ -255,6 +268,13 @@ router.patch('/:id/statut', async (req, res) => {
     const valides = ['En attente', 'Validé', 'Appliqué', 'Annulé'];
     if (!valides.includes(statut)) {
       return res.status(400).json({ message: 'Statut invalide' });
+    }
+
+    // PDG-only for validation
+    const userRole = req.user?.role;
+    const lower = String(statut).toLowerCase();
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
     }
 
     const [result] = await pool.execute(

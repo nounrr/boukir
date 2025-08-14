@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -101,6 +102,7 @@ router.post('/', async (req, res) => {
       date_creation,
       client_id,
       lieu_chargement,
+      adresse_livraison,
       montant_total,
       statut = 'En attente',            // ✅ aligné avec l'ENUM
       created_by,
@@ -122,9 +124,9 @@ router.post('/', async (req, res) => {
     const [resAvoir] = await connection.execute(`
       INSERT INTO avoirs_client (
         numero, date_creation, client_id,
-        lieu_chargement, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [tmpNumero, date_creation, cId, lieu, montant_total, st, created_by]);
+        lieu_chargement, adresse_livraison, montant_total, statut, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [tmpNumero, date_creation, cId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const avoirId = resAvoir.insertId;
 
@@ -180,6 +182,7 @@ router.put('/:id', async (req, res) => {
       date_creation,
       client_id,
       lieu_chargement,
+      adresse_livraison,
       montant_total,
       statut,
       items = []
@@ -198,9 +201,9 @@ router.put('/:id', async (req, res) => {
     await connection.execute(`
       UPDATE avoirs_client SET
         date_creation = ?, client_id = ?,
-        lieu_chargement = ?, montant_total = ?, statut = ?
+        lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
       WHERE id = ?
-    `, [date_creation, cId, lieu, montant_total, st, id]);
+    `, [date_creation, cId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     // ✅ bonne colonne FK pour purge des items
     await connection.execute('DELETE FROM avoir_client_items WHERE avoir_client_id = ?', [id]);
@@ -240,7 +243,7 @@ router.put('/:id', async (req, res) => {
 });
 
 /* ========== PATCH /:id/statut (changer) ========== */
-router.patch('/:id/statut', async (req, res) => {
+router.patch('/:id/statut', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { statut } = req.body;
@@ -251,6 +254,13 @@ router.patch('/:id/statut', async (req, res) => {
     const valides = ['En attente', 'Validé', 'Appliqué', 'Annulé'];
     if (!valides.includes(statut)) {
       return res.status(400).json({ message: 'Statut invalide' });
+    }
+
+    // Seul PDG peut valider
+    const userRole = req.user?.role;
+    const lower = String(statut).toLowerCase();
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
     }
 
     const [result] = await pool.execute(
