@@ -38,9 +38,7 @@ const LoginPage: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl shadow-lg flex items-center justify-center transform hover:scale-105 transition-transform duration-200">
-            <LogIn className="w-8 h-8 text-white" />
-          </div>
+          <img src="./logo.png" alt="" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
           Connexion à votre compte
@@ -136,38 +134,11 @@ const LoginPage: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="text-center">
-                  <p className="text-xs text-gray-600">
-                    Utilisez votre CIN et mot de passe pour accéder à l'application
-                  </p>
-                </div>
+               
               </Form>
             )}
           </Formik>
 
-          {/* Informations de test */}
-          <div className="mt-8 border-t border-gray-200 pt-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-              <User className="h-4 w-4 text-blue-600" />
-              Comptes de test :
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <div className="font-semibold text-blue-800 mb-1">PDG</div>
-                <div className="text-blue-700">
-                  <div><strong>CIN :</strong> BK123456</div>
-                  <div><strong>Mot de passe :</strong> pdg123</div>
-                </div>
-              </div>
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                <div className="font-semibold text-green-800 mb-1">Employé</div>
-                <div className="text-green-700">
-                  <div><strong>CIN :</strong> BK789012</div>
-                  <div><strong>Mot de passe :</strong> emp123</div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
