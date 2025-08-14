@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -117,6 +118,7 @@ router.post('/', async (req, res) => {
       client_id,
       vehicule_id,
       lieu_chargement,   // ⚠️ correspond exactement à ta colonne
+  adresse_livraison,
       montant_total,
       statut = 'Brouillon',
       items = [],
@@ -136,9 +138,9 @@ router.post('/', async (req, res) => {
     const [sortieResult] = await connection.execute(`
       INSERT INTO bons_sortie (
         numero, date_creation, client_id, vehicule_id,
-        lieu_chargement, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [numero, date_creation, cId, vId, lieu, montant_total, st, created_by]);
+        lieu_chargement, adresse_livraison, montant_total, statut, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [numero, date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const sortieId = sortieResult.insertId;
 
@@ -192,6 +194,7 @@ router.put('/:id', async (req, res) => {
       client_id,
       vehicule_id,
       lieu_chargement,   // ⚠️ même nom que la colonne
+  adresse_livraison,
       montant_total,
       statut,
       items = []
@@ -211,9 +214,9 @@ router.put('/:id', async (req, res) => {
     await connection.execute(`
       UPDATE bons_sortie SET
         numero = ?, date_creation = ?, client_id = ?,
-        vehicule_id = ?, lieu_chargement = ?, montant_total = ?, statut = ?
+        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
       WHERE id = ?
-    `, [numero, date_creation, cId, vId, lieu, montant_total, st, id]);
+    `, [numero, date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     await connection.execute('DELETE FROM sortie_items WHERE bon_sortie_id = ?', [id]);
 
@@ -255,12 +258,19 @@ router.put('/:id', async (req, res) => {
    PATCH /sorties/:id/statut
    ========================= */
 // PATCH /sorties/:id/statut
-router.patch('/:id/statut', async (req, res) => {
+router.patch('/:id/statut', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { statut } = req.body;
 
     if (!statut) return res.status(400).json({ message: 'Statut requis' });
+
+    // Seul le role PDG peut mettre un bon en 'Validé'
+    const userRole = req.user?.role;
+    const lower = String(statut).toLowerCase();
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
+    }
 
     const valides = ['Brouillon', 'En attente', 'Validé', 'Livré', 'Annulé'];
     if (!valides.includes(statut)) {
