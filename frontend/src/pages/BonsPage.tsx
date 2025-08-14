@@ -304,6 +304,9 @@ const BonsPage = () => {
                     {currentTab === 'AvoirFournisseur' || currentTab === 'Commande' ? 'Fournisseur' : 'Client'}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Adresse livraison
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Montant
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -317,7 +320,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTab}
                     </td>
                   </tr>
@@ -327,6 +330,7 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-sm">{bon.numero}</td>
                       <td className="px-4 py-2 text-sm">{formatDateDMY(bon.date_creation)}</td>
                       <td className="px-4 py-2 text-sm">{getContactName(bon)}</td>
+                      <td className="px-4 py-2 text-sm">{bon.adresse_livraison ?? bon.adresseLivraison ?? '-'}</td>
                       <td className="px-4 py-2">
                         <div className="text-sm font-semibold text-gray-900">{Number(bon.montant_total ?? 0).toFixed(2)} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
@@ -338,86 +342,86 @@ const BonsPage = () => {
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="inline-flex gap-2">
-                          {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant') && (
+                          {/* Status-change actions: only visible to PDG */}
+                          {currentUser?.role === 'PDG' && (
                             <>
-                              <button
-                                onClick={() => handleChangeStatus(bon, 'Validé')}
-                                className="text-green-600 hover:text-green-800"
-                                title="Marquer Validé"
-                              >
-                                <CheckCircle2 size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleMarkAsAvoir(bon)}
-                                className="text-purple-600 hover:text-purple-800"
-                                title="Marquer en Avoir"
-                              >
-                                A
-                              </button>
-                              <button
-                                onClick={() => handleChangeStatus(bon, 'En attente')}
-                                className="text-yellow-600 hover:text-yellow-800"
-                                title="Mettre En attente"
-                              >
-                                <Clock size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleChangeStatus(bon, 'Annulé')}
-                                className="text-red-600 hover:text-red-800"
-                                title="Annuler"
-                              >
-                                <XCircle size={16} />
-                              </button>
-                            </>
-                          )}
-                          {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur') && (
-                            <>
-                              <button
-                                onClick={() => handleChangeStatus(bon, 'Validé')}
-                                className="text-green-600 hover:text-green-800"
-                                title="Valider l'avoir"
-                              >
-                                <CheckCircle2 size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleChangeStatus(bon, 'En attente')}
-                                className="text-yellow-600 hover:text-yellow-800"
-                                title="Mettre en attente"
-                              >
-                                <Clock size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleChangeStatus(bon, 'Annulé')}
-                                className="text-red-600 hover:text-red-800"
-                                title="Annuler l'avoir"
-                              >
-                                <XCircle size={16} />
-                              </button>
-                            </>
-                          )}
-                          {currentTab === 'Devis' && (
-                            <>
-                              <button
-                                onClick={() => handleChangeStatus(bon, 'Accepté')}
-                                className="text-green-600 hover:text-green-800"
-                                title="Accepter le devis"
-                              >
-                                <CheckCircle2 size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleChangeStatus(bon, 'Envoyé')}
-                                className="text-blue-600 hover:text-blue-800"
-                                title="Marquer comme envoyé"
-                              >
-                                <Clock size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleChangeStatus(bon, 'Refusé')}
-                                className="text-red-600 hover:text-red-800"
-                                title="Refuser le devis"
-                              >
-                                <XCircle size={16} />
-                              </button>
+                              {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant') && (
+                                <>
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'Validé')}
+                                    className="text-green-600 hover:text-green-800"
+                                    title="Marquer Validé"
+                                  >
+                                    <CheckCircle2 size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'En attente')}
+                                    className="text-yellow-600 hover:text-yellow-800"
+                                    title="Mettre En attente"
+                                  >
+                                    <Clock size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'Annulé')}
+                                    className="text-red-600 hover:text-red-800"
+                                    title="Annuler"
+                                  >
+                                    <XCircle size={16} />
+                                  </button>
+                                </>
+                              )}
+
+                              {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur') && (
+                                <>
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'Validé')}
+                                    className="text-green-600 hover:text-green-800"
+                                    title="Valider l'avoir"
+                                  >
+                                    <CheckCircle2 size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'En attente')}
+                                    className="text-yellow-600 hover:text-yellow-800"
+                                    title="Mettre en attente"
+                                  >
+                                    <Clock size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'Annulé')}
+                                    className="text-red-600 hover:text-red-800"
+                                    title="Annuler l'avoir"
+                                  >
+                                    <XCircle size={16} />
+                                  </button>
+                                </>
+                              )}
+
+                              {currentTab === 'Devis' && (
+                                <>
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'Accepté')}
+                                    className="text-green-600 hover:text-green-800"
+                                    title="Accepter le devis"
+                                  >
+                                    <CheckCircle2 size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'Envoyé')}
+                                    className="text-blue-600 hover:text-blue-800"
+                                    title="Marquer comme envoyé"
+                                  >
+                                    <Clock size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'Refusé')}
+                                    className="text-red-600 hover:text-red-800"
+                                    title="Refuser le devis"
+                                  >
+                                    <XCircle size={16} />
+                                  </button>
+                                </>
+                              )}
                             </>
                           )}
                           <button

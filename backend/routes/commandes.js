@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -122,6 +123,7 @@ router.post('/', async (req, res) => {
       fournisseur_id,
       vehicule_id,
       lieu_chargement,
+  adresse_livraison,
       montant_total,
       statut = 'Brouillon',
       items = [],
@@ -143,9 +145,9 @@ router.post('/', async (req, res) => {
     const [commandeResult] = await connection.execute(`
       INSERT INTO bons_commande (
         numero, date_creation, fournisseur_id, vehicule_id,
-        lieu_chargement, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [numero, date_creation, fId, vId, lieu, montant_total, st, created_by]);
+        lieu_chargement, adresse_livraison, montant_total, statut, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [numero, date_creation, fId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const commandeId = commandeResult.insertId;
 
@@ -186,7 +188,7 @@ router.post('/', async (req, res) => {
 });
 
 // PATCH /commandes/:id/statut
-router.patch('/:id/statut', async (req, res) => {
+router.patch('/:id/statut', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { statut } = req.body;
@@ -199,8 +201,15 @@ router.patch('/:id/statut', async (req, res) => {
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
+    // Seul le role PDG peut mettre un bon en 'Validé'
+    const userRole = req.user?.role;
+    const lower = String(statut).toLowerCase();
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
+    }
+
     const [result] = await pool.execute(
-      'UPDATE bons_commande SET statut = ?, updated_at = NOW() WHERE id = ?',
+      `UPDATE bons_commande SET statut = ?, updated_at = NOW() WHERE id = ?`,
       [statut, id]
     );
     if (result.affectedRows === 0) return res.status(404).json({ message: 'Commande non trouvée' });
@@ -235,6 +244,7 @@ router.put('/:id', async (req, res) => {
       fournisseur_id,
       vehicule_id,
       lieu_chargement,
+  adresse_livraison,
       montant_total,
       statut,
       items = []
@@ -255,9 +265,9 @@ router.put('/:id', async (req, res) => {
     await connection.execute(`
       UPDATE bons_commande
          SET numero = ?, date_creation = ?, fournisseur_id = ?, vehicule_id = ?,
-             lieu_chargement = ?, montant_total = ?, statut = ?, updated_at = NOW()
+             lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, updated_at = NOW()
        WHERE id = ?
-    `, [numero, date_creation, fId, vId, lieu, montant_total, st, id]);
+    `, [numero, date_creation, fId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     // On remplace tous les items
     await connection.execute('DELETE FROM commande_items WHERE bon_commande_id = ?', [id]);
@@ -315,123 +325,4 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// PATCH /commandes/:id/statut - Mettre à jour le statut d'une commande
-router.patch('/:id/statut', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { statut } = req.body;
-
-    if (!statut) {
-      return res.status(400).json({ message: 'Statut requis' });
-    }
-
-    // Vérifier que le statut est valide
-    const statutsValides = ['Brouillon', 'En attente', 'Validé', 'Livré', 'Annulé'];
-    if (!statutsValides.includes(statut)) {
-      return res.status(400).json({ message: 'Statut invalide' });
-    }
-
-    const [result] = await pool.execute(`
-      UPDATE bons_commande 
-      SET statut = ?, updated_at = NOW() 
-      WHERE id = ?
-    `, [statut, id]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Commande non trouvée' });
-    }
-
-    // Récupérer le bon mis à jour
-    const [rows] = await pool.execute(`
-      SELECT bc.*, f.nom_complet AS fournisseur_nom
-      FROM bons_commande bc
-      LEFT JOIN contacts f ON f.id = bc.fournisseur_id
-      WHERE bc.id = ?
-    `, [id]);
-
-    res.json({
-      success: true,
-      message: `Statut mis à jour vers: ${statut}`,
-      data: rows[0]
-    });
-  } catch (error) {
-    console.error('Erreur PATCH /commandes/:id/statut:', error);
-    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
-  }
-});
-
 export default router;
-/* =========================
-   POST /commandes/:id/mark-avoir
-   Créer un avoir fournisseur depuis un bon de commande et marquer le bon en "Avoir"
-   ========================= */
-router.post('/:id/mark-avoir', async (req, res) => {
-  const connection = await pool.getConnection();
-  try {
-    await connection.beginTransaction();
-
-    const { id } = req.params;
-    const { created_by } = req.body || {};
-    if (!created_by) {
-      await connection.rollback();
-      return res.status(400).json({ message: 'created_by requis' });
-    }
-
-    const [rows] = await connection.execute('SELECT * FROM bons_commande WHERE id = ? LIMIT 1', [id]);
-    if (rows.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({ message: 'Commande non trouvée' });
-    }
-    const bc = rows[0];
-
-    const today = new Date().toISOString().split('T')[0];
-    const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
-    // Some databases may not have bon_commande_id column yet; detect and adapt
-    const [colCheck] = await connection.execute(
-      `SELECT COUNT(*) AS cnt
-         FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'avoirs_fournisseur'
-          AND COLUMN_NAME = 'bon_commande_id'`
-    );
-    const hasBonCommandeId = Number(colCheck?.[0]?.cnt || 0) > 0;
-
-    const insertSql = hasBonCommandeId
-      ? `INSERT INTO avoirs_fournisseur (
-            numero, date_creation, fournisseur_id, bon_commande_id, montant_total, statut, created_by
-         ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)`
-      : `INSERT INTO avoirs_fournisseur (
-            numero, date_creation, fournisseur_id, montant_total, statut, created_by
-         ) VALUES (?, ?, ?, ?, 'En attente', ?)`;
-
-    const insertParams = hasBonCommandeId
-      ? [tmpNumero, today, bc.fournisseur_id ?? null, bc.id, bc.montant_total, created_by]
-      : [tmpNumero, today, bc.fournisseur_id ?? null, bc.montant_total, created_by];
-
-    const [insAvoir] = await connection.execute(insertSql, insertParams);
-    const avoirId = insAvoir.insertId;
-    const finalNumero = `avf${avoirId}`;
-    await connection.execute('UPDATE avoirs_fournisseur SET numero = ? WHERE id = ?', [finalNumero, avoirId]);
-
-    const [items] = await connection.execute('SELECT * FROM commande_items WHERE bon_commande_id = ?', [id]);
-    for (const it of items) {
-      await connection.execute(
-        `INSERT INTO avoir_fournisseur_items (
-           avoir_fournisseur_id, product_id, quantite, prix_unitaire, total
-         ) VALUES (?, ?, ?, ?, ?)`,
-        [avoirId, it.product_id, it.quantite, it.prix_unitaire, it.total]
-      );
-    }
-
-    await connection.execute('UPDATE bons_commande SET statut = "Avoir", updated_at = NOW() WHERE id = ?', [id]);
-
-    await connection.commit();
-    return res.json({ success: true, avoir_id: avoirId, numero: finalNumero });
-  } catch (error) {
-    await connection.rollback();
-    console.error('Erreur POST /commandes/:id/mark-avoir:', error);
-    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
-  } finally {
-    connection.release();
-  }
-});

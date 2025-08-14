@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -104,7 +105,8 @@ router.post('/', async (req, res) => {
       client_id,
       montant_total,
       statut = 'Brouillon',
-      items = [],
+  items = [],
+  adresse_livraison,
       created_by
     } = req.body || {};
 
@@ -126,9 +128,9 @@ router.post('/', async (req, res) => {
 
     const [devisResult] = await connection.execute(`
       INSERT INTO devis (
-        numero, date_creation, client_id, montant_total, statut, created_by, lieu_chargement
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [tmpNumero, date_creation, cId, montant_total, st, created_by, lieu]);
+        numero, date_creation, client_id, montant_total, statut, created_by, lieu_chargement, adresse_livraison
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [tmpNumero, date_creation, cId, montant_total, st, created_by, lieu, adresse_livraison ?? null]);
 
     const devisId = devisResult.insertId;
 
@@ -194,9 +196,9 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute(`
       UPDATE devis SET
-        date_creation = ?, client_id = ?, montant_total = ?, statut = ?, lieu_chargement = ?
+        date_creation = ?, client_id = ?, montant_total = ?, statut = ?, lieu_chargement = ?, adresse_livraison = ?
       WHERE id = ?
-    `, [date_creation, cId, montant_total, st, lieu, id]);
+    `, [date_creation, cId, montant_total, st, lieu, adresse_livraison ?? null, id]);
 
     await connection.execute('DELETE FROM devis_items WHERE devis_id = ?', [id]);
 
@@ -226,7 +228,7 @@ router.put('/:id', async (req, res) => {
 
 
 /* ========== PATCH /devis/:id/statut ========== */
-router.patch('/:id/statut', async (req, res) => {
+router.patch('/:id/statut', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { statut } = req.body;
@@ -237,6 +239,13 @@ router.patch('/:id/statut', async (req, res) => {
     const valides = ['Brouillon', 'Envoyé', 'Accepté', 'Refusé', 'Expiré'];
     if (!valides.includes(statut)) {
       return res.status(400).json({ message: 'Statut invalide' });
+    }
+
+    // PDG-only for validation
+    const userRole = req.user?.role;
+    const lower = String(statut).toLowerCase();
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
     }
 
     const [result] = await pool.execute(

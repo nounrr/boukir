@@ -31,15 +31,20 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
     if (!printRef.current) return;
 
     setIsGenerating(true);
+    let hiddenEls: HTMLElement[] = [];
+    let previousDisplay: string[] = [];
     try {
-      // Configuration du canvas
+      // hide controls inside the print area that should not appear in PDF (elements with .print-hidden)
+      hiddenEls = Array.from(printRef.current.querySelectorAll('.print-hidden')) as HTMLElement[];
+      previousDisplay = hiddenEls.map(el => el.style.display);
+      hiddenEls.forEach(el => { el.style.display = 'none'; });
+
+      // Capture
       const canvas = await html2canvas(printRef.current, {
-        scale: 2, // Meilleure qualité
+        scale: 2,
         useCORS: true,
         allowTaint: true,
-        backgroundColor: '#ffffff',
-        width: size === 'A5' ? 595 : 842, // Points PDF (A5: 420x595, A4: 595x842)
-        height: size === 'A5' ? 842 : 1191
+        backgroundColor: '#ffffff'
       });
 
       // Créer le PDF
@@ -49,11 +54,9 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
         format: size.toLowerCase() as 'a4' | 'a5'
       });
 
-      // Dimensions du PDF
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
 
-      // Dimensions du canvas
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
 
@@ -77,6 +80,11 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       console.error('Erreur lors de la génération du PDF:', error);
       alert('Erreur lors de la génération du PDF');
     } finally {
+      // restore hidden elements
+      if (printRef.current) {
+        const els = Array.from(printRef.current.querySelectorAll('.print-hidden')) as HTMLElement[];
+        els.forEach((el, i) => { el.style.display = previousDisplay[i] || ''; });
+      }
       setIsGenerating(false);
     }
   };

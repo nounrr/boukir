@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -112,7 +113,8 @@ router.post('/', async (req, res) => {
       date_creation,
       client_id,
       vehicule_id,
-      lieu_chargement,      // => correspond à la colonne
+      lieu_chargement,
+      adresse_livraison,
       montant_total,
       statut = 'Brouillon',
       items = [],
@@ -124,7 +126,6 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'Champs requis manquants' });
     }
 
-    // undefined -> NULL
     const cId  = client_id ?? null;
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
@@ -133,13 +134,12 @@ router.post('/', async (req, res) => {
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
         numero, date_creation, client_id, vehicule_id,
-        lieu_chargement, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [numero, date_creation, cId, vId, lieu, montant_total, st, created_by]);
+        lieu_chargement, adresse_livraison, montant_total, statut, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [numero, date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const comptantId = comptantResult.insertId;
 
-    // Items
     for (const it of items) {
       const {
         product_id,
@@ -148,7 +148,7 @@ router.post('/', async (req, res) => {
         remise_pourcentage = 0,
         remise_montant = 0,
         total
-      } = it;
+      } = it || {};
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
@@ -188,7 +188,8 @@ router.put('/:id', async (req, res) => {
       date_creation,
       client_id,
       vehicule_id,
-      lieu_chargement,      // => même nom que la colonne
+      lieu_chargement,
+      adresse_livraison,
       montant_total,
       statut,
       items = []
@@ -208,9 +209,9 @@ router.put('/:id', async (req, res) => {
     await connection.execute(`
       UPDATE bons_comptant SET
         numero = ?, date_creation = ?, client_id = ?,
-        vehicule_id = ?, lieu_chargement = ?, montant_total = ?, statut = ?
+        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
       WHERE id = ?
-    `, [numero, date_creation, cId, vId, lieu, montant_total, st, id]);
+    `, [numero, date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     await connection.execute('DELETE FROM comptant_items WHERE bon_comptant_id = ?', [id]);
 
@@ -222,7 +223,7 @@ router.put('/:id', async (req, res) => {
         remise_pourcentage = 0,
         remise_montant = 0,
         total
-      } = it;
+      } = it || {};
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
@@ -282,7 +283,7 @@ router.delete('/:id', async (req, res) => {
    PATCH /comptant/:id/statut
    ========================= */
 // PATCH /comptant/:id/statut
-router.patch('/:id/statut', async (req, res) => {
+router.patch('/:id/statut', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { statut } = req.body;
@@ -292,6 +293,13 @@ router.patch('/:id/statut', async (req, res) => {
     const valides = ['Brouillon', 'En attente', 'Validé', 'Livré', 'Annulé'];
     if (!valides.includes(statut)) {
       return res.status(400).json({ message: 'Statut invalide' });
+    }
+
+    // PDG-only for validation
+    const userRole = req.user?.role;
+    const lower = String(statut).toLowerCase();
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
     }
 
     const [result] = await pool.execute(

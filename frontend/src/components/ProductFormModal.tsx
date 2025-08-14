@@ -272,7 +272,23 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   <span className="text-sm text-gray-600">%</span>
                 </div>
                 <div className="text-lg font-medium text-gray-900 bg-white px-2 py-1 rounded border">
-                  {dynamicPrices.cout_revient.toFixed(2)} DH
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={Number(dynamicPrices.cout_revient).toFixed(2)}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value || '0') || 0;
+                      // compute percentage relative to prix_achat
+                      const prixA = Number(formik.values.prix_achat) || 0;
+                      if (prixA > 0) {
+                        const pct = (val / prixA - 1) * 100;
+                        formik.setFieldValue('cout_revient_pourcentage', Number(pct.toFixed(4)));
+                      }
+                      setDynamicPrices(prev => ({ ...prev, cout_revient: val }));
+                    }}
+                    className="w-full text-right bg-transparent border-0 focus:outline-none"
+                  />
+                  <div className="text-xs text-gray-500">DH</div>
                 </div>
               </div>
 
@@ -294,7 +310,22 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   <span className="text-sm text-gray-600">%</span>
                 </div>
                 <div className="text-lg font-medium text-gray-900 bg-white px-2 py-1 rounded border">
-                  {dynamicPrices.prix_gros.toFixed(2)} DH
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={Number(dynamicPrices.prix_gros).toFixed(2)}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value || '0') || 0;
+                      const prixA = Number(formik.values.prix_achat) || 0;
+                      if (prixA > 0) {
+                        const pct = (val / prixA - 1) * 100;
+                        formik.setFieldValue('prix_gros_pourcentage', Number(pct.toFixed(4)));
+                      }
+                      setDynamicPrices(prev => ({ ...prev, prix_gros: val }));
+                    }}
+                    className="w-full text-right bg-transparent border-0 focus:outline-none"
+                  />
+                  <div className="text-xs text-gray-500">DH</div>
                 </div>
               </div>
 
@@ -316,7 +347,22 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   <span className="text-sm text-gray-600">%</span>
                 </div>
                 <div className="text-lg font-medium text-gray-900 bg-white px-2 py-1 rounded border">
-                  {dynamicPrices.prix_vente.toFixed(2)} DH
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={Number(dynamicPrices.prix_vente).toFixed(2)}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value || '0') || 0;
+                      const prixA = Number(formik.values.prix_achat) || 0;
+                      if (prixA > 0) {
+                        const pct = (val / prixA - 1) * 100;
+                        formik.setFieldValue('prix_vente_pourcentage', Number(pct.toFixed(4)));
+                      }
+                      setDynamicPrices(prev => ({ ...prev, prix_vente: val }));
+                    }}
+                    className="w-full text-right bg-transparent border-0 focus:outline-none"
+                  />
+                  <div className="text-xs text-gray-500">DH</div>
                 </div>
               </div>
             </div>
