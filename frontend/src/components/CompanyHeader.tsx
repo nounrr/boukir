@@ -35,11 +35,16 @@ const CompanyHeader: React.FC<CompanyHeaderProps> = ({
       name: 'BOUKIR DIAMOND',
       subtitle: 'CONSTRUCTION STORE',
       description: 'Vente de Matériaux de Construction céramique, et de Marbre',
+      adresse: 'IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER',
+      phones: "GSM: 0650812894 - Tél: 0666216657",
+      email: "EMAIL: boukir.diamond23@gmail.com",
     },
     MPC: {
       name: 'MPC BOUKIR',
-      subtitle: '', 
       description: 'Vente de Matériaux de Construction céramique, et de Marbre',
+      phones: "GSM: 0650812894 - Tél: 0666216657",
+      adresse: 'ALot Awatif N°179 - TANGER',
+      email: "EMAIL: boukir.diamond23@gmail.com",
     }
   };
 
@@ -62,6 +67,8 @@ const CompanyHeader: React.FC<CompanyHeaderProps> = ({
           <h1 className="text-xl font-bold text-gray-800 mb-1">{currentCompany.name}</h1>
           <h2 className="text-lg font-semibold text-gray-700 mb-1">{currentCompany.subtitle}</h2>
           <p className="text-sm text-gray-600 italic">{currentCompany.description}</p>
+          <p className="text-sm text-gray-600 italic">{currentCompany.phones}</p>
+          <p className="text-sm text-gray-600 italic">{currentCompany.adresse}</p>
         </div>
       </div>
     </div>
