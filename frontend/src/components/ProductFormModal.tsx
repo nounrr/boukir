@@ -12,6 +12,7 @@ const validationSchema = Yup.object({
   designation: Yup.string().optional(),
   categorie_id: Yup.number().optional(),
   quantite: Yup.number().min(0, 'La quantité ne peut pas être négative').optional(),
+  kg: Yup.number().min(0, 'Le poids ne peut pas être négatif').optional(),
   prix_achat: Yup.number().min(0, 'Le prix ne peut pas être négatif').optional(),
   cout_revient_pourcentage: Yup.number().min(0, 'Le pourcentage ne peut pas être négatif').optional(),
   prix_gros_pourcentage: Yup.number().min(0, 'Le pourcentage ne peut pas être négatif').optional(),
@@ -46,17 +47,28 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   });
 
   const calculatePrices = (prixAchat: number, coutPct: number, grosPct: number, ventePct: number) => {
+    const round2 = (v: number) => Number(parseFloat((v || 0).toFixed(2)));
     return {
-      cout_revient: prixAchat * (1 + coutPct / 100),
-      prix_gros: prixAchat * (1 + grosPct / 100),
-      prix_vente: prixAchat * (1 + ventePct / 100),
+      cout_revient: round2(prixAchat * (1 + coutPct / 100)),
+      prix_gros: round2(prixAchat * (1 + grosPct / 100)),
+      prix_vente: round2(prixAchat * (1 + ventePct / 100)),
     };
+  };
+
+  // Format number: round to 2 decimals but remove unnecessary trailing zeros (e.g. 12.00 -> "12")
+  const formatNumber = (n: number) => {
+    // Ensure finite number
+    if (!isFinite(n)) return '0';
+    // Round to 2 decimals then remove trailing zeros
+    // parseFloat('12.00') -> 12
+    return String(parseFloat(n.toFixed(2)));
   };
 
   const initialValues = {
     designation: '',
     categorie_id: 0,
     quantite: 0,
+    kg: undefined,
     prix_achat: 0,
     cout_revient_pourcentage: 2,
     prix_gros_pourcentage: 10,
@@ -68,8 +80,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const formik = useFormik({
     initialValues: editingProduct ? {
       ...editingProduct,
-      categorie_id: editingProduct.categorie_id || 0,
+      categorie_id: (editingProduct.categorie_id !== undefined && editingProduct.categorie_id !== null)
+        ? editingProduct.categorie_id
+        : (editingProduct.categorie ? editingProduct.categorie.id : 0),
       quantite: editingProduct.quantite || 0,
+      kg: (editingProduct as any).kg ?? undefined,
       prix_achat: editingProduct.prix_achat || 0,
       cout_revient_pourcentage: editingProduct.cout_revient_pourcentage || 2,
       prix_gros_pourcentage: editingProduct.prix_gros_pourcentage || 10,
@@ -78,10 +93,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     } : initialValues,
   enableReinitialize: true,
     validationSchema,
-    onSubmit: async (values) => {
-  const productData: Partial<Product> = {
+  onSubmit: async (values) => {
+    console.log('ProductFormModal submit handler called', { values });
+    console.debug('Current formik errors before submit:', formik.errors);
+    const productData: Partial<Product> = {
         ...values,
-        prix_achat: Number(values.prix_achat ?? 0),
+  prix_achat: Number(values.prix_achat ?? 0),
+  kg: values.kg !== undefined && values.kg !== null ? Number(values.kg) : null,
         cout_revient: dynamicPrices.cout_revient,
         prix_gros: dynamicPrices.prix_gros,
         prix_vente: dynamicPrices.prix_vente,
@@ -92,25 +110,36 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         categorie_id: Number(values.categorie_id || 0),
       };
 
-      if (editingProduct) {
-        const payload = { id: editingProduct.id, updated_by: 1, ...productData } as Partial<Product> & { id: number; updated_by: number };
-        const res = await updateProductMutation(payload).unwrap();
-        showSuccess('Produit mis à jour avec succès !');
-        if (onProductUpdated) onProductUpdated(res);
-  } else {
-        const res = await createProduct({
-          designation: productData.designation || undefined,
-          categorie_id: productData.categorie_id ?? undefined,
-          quantite: productData.quantite ?? undefined,
-          prix_achat: productData.prix_achat ?? undefined,
-          cout_revient_pourcentage: productData.cout_revient_pourcentage ?? undefined,
-          prix_gros_pourcentage: productData.prix_gros_pourcentage ?? undefined,
-          prix_vente_pourcentage: productData.prix_vente_pourcentage ?? undefined,
-          est_service: !!productData.est_service,
-          created_by: 1,
-        } as any).unwrap();
-        showSuccess('Produit ajouté avec succès !');
-        if (onProductAdded) onProductAdded(res);
+      try {
+        if (editingProduct) {
+          const payload = { id: editingProduct.id, updated_by: 1, ...productData } as Partial<Product> & { id: number; updated_by: number };
+          console.debug('Updating product payload:', payload);
+          const res = await updateProductMutation(payload).unwrap();
+          showSuccess('Produit mis à jour avec succès !');
+          if (onProductUpdated) onProductUpdated(res);
+        } else {
+          const payload = {
+            designation: productData.designation || undefined,
+            categorie_id: productData.categorie_id ?? undefined,
+            quantite: productData.quantite ?? undefined,
+            kg: productData.kg ?? undefined,
+            prix_achat: productData.prix_achat ?? undefined,
+            cout_revient_pourcentage: productData.cout_revient_pourcentage ?? undefined,
+            prix_gros_pourcentage: productData.prix_gros_pourcentage ?? undefined,
+            prix_vente_pourcentage: productData.prix_vente_pourcentage ?? undefined,
+            est_service: !!productData.est_service,
+            created_by: 1,
+          } as any;
+          console.debug('Creating product payload:', payload);
+          const res = await createProduct(payload).unwrap();
+          showSuccess('Produit ajouté avec succès !');
+          if (onProductAdded) onProductAdded(res);
+        }
+      } catch (err: any) {
+        console.error('Product save failed', err);
+        // Provide a visible feedback; keep simple alert so user sees the error
+        alert(err?.data?.message || err?.message || 'Erreur lors de l\u0027enregistrement du produit');
+        return; // don't close modal on error
       }
 
       onClose();
@@ -175,14 +204,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               <select
                 id="categorie_id"
                 name="categorie_id"
-                value={formik.values.categorie_id}
-                onChange={formik.handleChange}
+                value={String(formik.values.categorie_id ?? 0)}
+                onChange={(e) => formik.setFieldValue('categorie_id', Number(e.target.value))}
                 onBlur={formik.handleBlur}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">Sélectionner une catégorie</option>
+                <option value={String(0)}>Sélectionner une catégorie</option>
                 {categories.map((category: Category) => (
-                  <option key={category.id} value={category.id}>{category.nom}</option>
+                  <option key={category.id} value={String(category.id)}>{category.nom}</option>
                 ))}
               </select>
               {formik.touched.categorie_id && formik.errors.categorie_id && (
@@ -208,6 +237,27 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               />
               {formik.touched.quantite && formik.errors.quantite && (
                 <p className="text-red-500 text-sm mt-1">{formik.errors.quantite}</p>
+              )}
+            </div>
+
+      {/* Poids (kg) - optionnel */}
+            <div>
+              <label htmlFor="kg" className="block text-sm font-medium text-gray-700 mb-1">
+        Poids (kg) - optionnel
+              </label>
+              <input
+                id="kg"
+                type="number"
+                step="0.01"
+                name="kg"
+                value={formik.values.kg ?? ''}
+                onChange={formik.handleChange}
+                onBlur={formik.handleBlur}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Ex: 1.5"
+              />
+              {formik.touched.kg && formik.errors.kg && (
+                <p className="text-red-500 text-sm mt-1">{String(formik.errors.kg)}</p>
               )}
             </div>
 
@@ -275,7 +325,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   <input
                     type="number"
                     step="0.01"
-                    value={Number(dynamicPrices.cout_revient).toFixed(2)}
+                    value={formatNumber(Number(dynamicPrices.cout_revient))}
                     onChange={(e) => {
                       const val = parseFloat(e.target.value || '0') || 0;
                       // compute percentage relative to prix_achat
@@ -313,7 +363,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   <input
                     type="number"
                     step="0.01"
-                    value={Number(dynamicPrices.prix_gros).toFixed(2)}
+                    value={formatNumber(Number(dynamicPrices.prix_gros))}
                     onChange={(e) => {
                       const val = parseFloat(e.target.value || '0') || 0;
                       const prixA = Number(formik.values.prix_achat) || 0;
@@ -350,7 +400,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   <input
                     type="number"
                     step="0.01"
-                    value={Number(dynamicPrices.prix_vente).toFixed(2)}
+                    value={formatNumber(Number(dynamicPrices.prix_vente))}
                     onChange={(e) => {
                       const val = parseFloat(e.target.value || '0') || 0;
                       const prixA = Number(formik.values.prix_achat) || 0;

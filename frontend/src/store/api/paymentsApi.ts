@@ -24,11 +24,19 @@ const paymentsApi = api.injectEndpoints({
 
     updatePayment: builder.mutation<Payment, Partial<Payment> & { id: number; updated_by: number }>({
       query: ({ id, ...patch }) => ({ url: `/payments/${id}`, method: 'PUT', body: patch }),
+      // invalidate specific payment AND the global Payment list so queries refetch
       invalidatesTags: (_res, _err, { id, contact_id }) => [
+        'Payment',
         { type: 'Payment', id },
         'Contact',
         ...(contact_id ? [{ type: 'Contact' as const, id: contact_id }] : []),
       ],
+    }),
+
+    changePaymentStatus: builder.mutation<{ success: boolean; message?: string; data?: Payment }, { id: number; statut: string }>({
+      query: ({ id, statut }) => ({ url: `/payments/${id}/statut`, method: 'PATCH', body: { statut } }),
+  // invalidate both the specific payment and the global Payment list so queries refetch
+  invalidatesTags: (_res, _err, { id }) => [ 'Payment', { type: 'Payment' as const, id }, 'Contact' ],
     }),
 
     deletePayment: builder.mutation<{ success: boolean; id: number }, { id: number; contact_id?: number }>({
@@ -57,6 +65,7 @@ export const {
   useGetPaymentQuery,
   useCreatePaymentMutation,
   useUpdatePaymentMutation,
+  useChangePaymentStatusMutation,
   useDeletePaymentMutation,
   useGetPaymentsByBonQuery,
   useGetPersonnelNamesQuery,
