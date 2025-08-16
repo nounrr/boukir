@@ -35,6 +35,8 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
               size: 80mm auto;
               margin: 2mm;
             }
+    const [companyType, setCompanyType] = useState<'DIAMOND' | 'MPC'>('DIAMOND');
+    const [priceMode, setPriceMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES'>('WITH_PRICES');
             body {
               font-family: 'Courier New', monospace;
               font-size: 12px; /* larger base font for clarity */

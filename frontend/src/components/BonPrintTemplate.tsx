@@ -14,8 +14,14 @@ interface BonPrintTemplateProps {
 const CompanyFooter: React.FC<{
   data: { address: string; phones: string; email: string; extra?: string };
 }> = ({ data }) => (
-  <div style={{ position: 'absolute', left: 0, right: 0, bottom: '12mm', padding: '0 16px' }} className="mt-8 pt-4 border-t border-gray-300">
-    <div className="text-center text-xs text-gray-600 space-y-1">
+  <div style={{ position: 'absolute', left: 0, right: 0, bottom: '12mm', padding: '0 16px' }} className="mt-8 pt-4  space-y-1 ">
+    {/* Cachet client rectangle */}
+    <div className="w-full mb-4 " style={{ textAlign: 'webkit-center' }}>
+      <div className='text-center'  style={{border: '2px solid #000',  width: '40mm', height: '20mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span className="text-sm font-bold">CACHET CLIENT</span>
+      </div>
+    </div>
+    <div className="border-t border-gray-300 text-center text-xs text-gray-600 space-y-1">
       <p>{data.address}</p>
       <p>{data.phones} | {data.email}</p>
       
@@ -265,10 +271,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               </div>
             )}
           </div>
-           {/* Cachet client rectangle */}
-          <div style={{ border: '2px solid #000', width: '60mm', height: '28mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span className="text-sm font-bold">CACHET CLIENT</span>
-          </div>
+          
         </div>
       </div>
 
