@@ -21,7 +21,7 @@ import React, { useState } from 'react';
   } from '../store/api/contactsApi';
   import { useGetProductsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
-  import { formatDateDMY, formatDateSpecial } from '../utils/dateUtils';
+  import { formatDateDMY, formatDateSpecial, formatDateTimeWithHour } from '../utils/dateUtils';
   import { useSelector } from 'react-redux';
   import type { RootState } from '../store';
 
@@ -96,15 +96,29 @@ const BonsPage = () => {
       return 'Non défini';
     };
 
-    // Ensure Devis numbers are displayed with uppercase DEV prefix
+    // Ensure Devis numbers are displayed with uppercase DEV prefix and Avoirs with AVO prefix
     const getDisplayNumero = (bon: any) => {
       try {
-        const isDevis = (bon?.type === 'Devis') || (currentTab === 'Devis');
         const raw = String(bon?.numero ?? '').trim();
-        if (!isDevis || raw === '') return raw;
-        // remove any leading 'dev' (case-insensitive) and optional separators
-        const suffix = raw.replace(/^dev\s*[-:\s]*/i, '');
-        return `DEV${suffix}`;
+        if (raw === '') return raw;
+        
+        const isDevis = (bon?.type === 'Devis') || (currentTab === 'Devis');
+        const isAvoir = (bon?.type === 'Avoir') || (bon?.type === 'AvoirFournisseur') || 
+                       (currentTab === 'Avoir') || (currentTab === 'AvoirFournisseur');
+        
+        if (isDevis) {
+          // remove any leading 'dev' (case-insensitive) and optional separators
+          const suffix = raw.replace(/^dev\s*[-:\s]*/i, '');
+          return `DEV${suffix}`;
+        }
+        
+        if (isAvoir) {
+          // remove any leading 'avo', 'avc', 'avf', 'av' (case-insensitive) and optional separators
+          const suffix = raw.replace(/^(avo|avc|avf|av)\s*[-:\s]*/i, '');
+          return `AVO${suffix}`;
+        }
+        
+        return raw;
       } catch (e) {
         return String(bon?.numero ?? '');
       }
@@ -338,7 +352,7 @@ const BonsPage = () => {
                     Numéro
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
+                    Créé le
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {currentTab === 'AvoirFournisseur' || currentTab === 'Commande' ? 'Fournisseur' : 'Client'}
@@ -360,7 +374,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTab}
                     </td>
                   </tr>
@@ -368,7 +382,9 @@ const BonsPage = () => {
                   paginatedBons.map((bon) => (
                     <tr key={bon.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2 text-sm">{getDisplayNumero(bon)}</td>
-                      <td className="px-4 py-2 text-sm">{formatDateDMY(bon.date_creation)}</td>
+                      <td className="px-4 py-2 text-sm">
+                        <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at)}</div>
+                      </td>
                       <td className="px-4 py-2 text-sm">{getContactName(bon)}</td>
                       <td className="px-4 py-2 text-sm">{bon.adresse_livraison ?? bon.adresseLivraison ?? '-'}</td>
                       <td className="px-4 py-2">
@@ -882,14 +898,21 @@ const BonsPage = () => {
           bon={selectedBonForPrint}
           type={currentTab === 'Avoir' ? 'AvoirClient' : currentTab}
           contact={(() => {
-            if (!selectedBonForPrint) return null;
+            const b = selectedBonForPrint;
+            if (!b) return null;
+            // Devis: always a client; prefer client_id, fallback to contact_id
             if (currentTab === 'Devis') {
-              return clients.find(c => c.id === selectedBonForPrint.client_id);
+              const id = b.client_id ?? b.contact_id;
+              return clients.find((c) => String(c.id) === String(id)) || null;
             }
+            // Commande & AvoirFournisseur: suppliers; prefer fournisseur_id, fallback to contact_id
             if (currentTab === 'Commande' || currentTab === 'AvoirFournisseur') {
-              return suppliers.find(s => s.id === selectedBonForPrint.contact_id);
+              const id = b.fournisseur_id ?? b.contact_id;
+              return suppliers.find((s) => String(s.id) === String(id)) || null;
             }
-            return clients.find(c => c.id === selectedBonForPrint.contact_id);
+            // Sortie / Comptant / Avoir (client): prefer client_id, fallback to contact_id
+            const clientId = b.client_id ?? b.contact_id;
+            return clients.find((c) => String(c.id) === String(clientId)) || null;
           })()}
           items={selectedBonForPrint?.items || []}
         />

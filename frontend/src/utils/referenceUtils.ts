@@ -2,20 +2,20 @@
 
 // Compteurs pour chaque type d'entité
 const counters = {
-  BON_CMD: 1,
-  BON_SOR: 1,
-  BON_COM: 1,
-  BON_DEV: 1,
-  AVOIR_F: 1,
-  AVOIR_C: 1,
+  CMD: 1,
+  SOR: 1,
+  COM: 1,
+  DEV: 1,
+  AVO: 1,
   PROD: 1,
-  CLIENT: 1,
-  FOURNISSEUR: 1,
-  PAYMENT: 1,
+  CLI: 1,
+  FOU: 1,
+  PAY: 1,
+  BON: 1,
 };
 
 // Fonction pour obtenir le prochain ID
-export const getNextId = (entityType: string): number => {
+export const getNextId = (): number => {
   return Date.now() + Math.random();
 };
 
@@ -27,7 +27,7 @@ export const generateReference = (prefix: string): string => {
     const currentCount = counters[key];
     counters[key] += 1;
     
-    // Format: PREFIX + numéro sur 4 chiffres (ex: CMD0001, PROD0001)
+    // Format: PREFIX + numéro sur 4 chiffres (ex: CMD0001, PROD0001, AVO0001)
     return `${prefix}${currentCount.toString().padStart(4, '0')}`;
   }
   
@@ -47,9 +47,8 @@ export const generateBonReference = (type: string): string => {
     case 'Devis':
       return generateReference('DEV');
     case 'AvoirFournisseur':
-      return generateReference('AVF');
     case 'Avoir':
-      return generateReference('AVC');
+      return generateReference('AVO');
     default:
       return generateReference('BON');
   }

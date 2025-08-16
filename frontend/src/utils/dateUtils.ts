@@ -137,3 +137,22 @@ export const getDateDaysAgo = (days: number): string => {
   date.setDate(date.getDate() - days);
   return date.toISOString().split('T')[0];
 };
+
+/**
+ * Formate une date avec l'heure au format jj-mm-aaaa hh:mm
+ * @param date - Date à formater (string ISO, Date object, ou timestamp)
+ * @returns Date formatée au format jj-mm-aaaa hh:mm
+ */
+export const formatDateTimeWithHour = (date: string | Date | number): string => {
+  if (!date) return '';
+  const dateObj = new Date(date);
+  if (isNaN(dateObj.getTime())) return '';
+  
+  const day = dateObj.getDate().toString().padStart(2, '0');
+  const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+  const year = dateObj.getFullYear().toString();
+  const hours = dateObj.getHours().toString().padStart(2, '0');
+  const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+  
+  return `${day}-${month}-${year} ${hours}:${minutes}`;
+};

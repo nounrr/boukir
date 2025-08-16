@@ -19,7 +19,7 @@ import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
 import ContactPrintModal from '../components/ContactPrintModal';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-import { formatDateDMY } from '../utils/dateUtils';
+import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
 
 // Validation du formulaire de contact
 const contactValidationSchema = Yup.object({
@@ -77,10 +77,21 @@ const ContactsPage: React.FC = () => {
       const val = Number(amount || 0);
       map.set(clientId, (map.get(clientId) || 0) + val);
     };
+    const subtract = (clientId?: number, amount?: any) => {
+      if (!clientId) return;
+      const val = Number(amount || 0);
+      map.set(clientId, (map.get(clientId) || 0) - val);
+    };
+    
+    // Ajouter les ventes (sorties et comptants)
     sorties.forEach((b: any) => add(b.client_id, b.montant_total));
     comptants.forEach((b: any) => add(b.client_id, b.montant_total));
+    
+    // Soustraire les avoirs clients (crédits/remboursements)
+    avoirsClient.forEach((b: any) => subtract(b.client_id, b.montant_total));
+    
     return map;
-  }, [sorties, comptants]);
+  }, [sorties, comptants, avoirsClient]);
 
   const paymentsByContact = useMemo(() => {
     const map = new Map<number, number>();
@@ -101,9 +112,20 @@ const ContactsPage: React.FC = () => {
       const val = Number(amount || 0);
       map.set(fournisseurId, (map.get(fournisseurId) || 0) + val);
     };
+    const subtract = (fournisseurId?: number, amount?: any) => {
+      if (!fournisseurId) return;
+      const val = Number(amount || 0);
+      map.set(fournisseurId, (map.get(fournisseurId) || 0) - val);
+    };
+    
+    // Ajouter les achats (commandes)
     commandes.forEach((b: any) => add(b.fournisseur_id, b.montant_total));
+    
+    // Soustraire les avoirs fournisseurs (crédits/remboursements)
+    avoirsFournisseur.forEach((b: any) => subtract(b.fournisseur_id, b.montant_total));
+    
     return map;
-  }, [commandes]);
+  }, [commandes, avoirsFournisseur]);
 
   // Util
   const isWithinDateRange = (isoDate?: string | null) => {
@@ -115,6 +137,20 @@ const ContactsPage: React.FC = () => {
     if (from && d < from) return false;
     if (to && d > to) return false;
     return true;
+  };
+
+  // Function to display payment numbers with PAY prefix
+  const getDisplayNumeroPayment = (payment: any) => {
+    try {
+      const raw = String(payment?.numero ?? payment?.id ?? '').trim();
+      if (raw === '') return raw;
+      
+      // remove any leading 'pay', 'pa', 'p-' (case-insensitive) and optional separators
+      const suffix = raw.replace(/^(pay|pa|p-?)\s*[-:\s]*/i, '');
+      return `PAY${suffix}`;
+    } catch (e) {
+      return String(payment?.numero ?? payment?.id ?? '');
+    }
   };
 
   // Bons du contact sélectionné
@@ -155,6 +191,7 @@ const ContactsPage: React.FC = () => {
       statut: b.statut,
       isPayment: false,
       mode: null,
+      created_at: b.created_at,
     }));
 
     // Add payments related to this contact
@@ -162,8 +199,8 @@ const ContactsPage: React.FC = () => {
     for (const p of paymentsForContact) {
       combined.push({
         id: `payment-${p.id}`,
-        numero: p.numero || `P-${p.id}`,
-        type: 'Payment',
+        numero: getDisplayNumeroPayment(p),
+        type: 'Paiement',
     dateISO: p.date_paiement || p.created_at,
     date: formatDateDMY(p.date_paiement || p.created_at),
     montant: Number(p.montant ?? p.montant_total ?? 0) || 0,
@@ -171,23 +208,67 @@ const ContactsPage: React.FC = () => {
         statut: p.statut ? String(p.statut) : 'Paiement',
         isPayment: true,
   mode: (p.mode_paiement as any) || null,
+        created_at: p.created_at,
       });
     }
 
     combined.sort((a, b) => new Date(a.dateISO).getTime() - new Date(b.dateISO).getTime());
 
     // Helper to detect payments by statut value 'Paiement'
-    const isPaymentStatut = (entry: any) => String(entry?.statut || '').toLowerCase() === 'paiement';
+    const isPaymentStatut = (entry: any) => {
+      const statut = String(entry?.statut || '').toLowerCase();
+      const type = String(entry?.type || '').toLowerCase();
+      return statut === 'paiement' || type === 'paiement';
+    };
+    
+    // Helper to detect avoirs (which should reduce balance)
+    const isAvoirType = (entry: any) => {
+      const type = String(entry?.type || '').toLowerCase();
+      return type === 'avoir' || type === 'avoirfournisseur';
+    };
 
+    // Start with base solde from database, then apply ALL transactions chronologically
     let soldeCumulatif = Number(selectedContact?.solde ?? 0);
     return combined.map((t) => {
       const montant = Number(t.montant) || 0;
-      // If statut indicates 'Paiement' then it's a payment and reduces the balance
-      const delta = isPaymentStatut(t) ? -montant : montant;
+      let delta = 0;
+      
+      // Déterminer l'impact sur le solde :
+      if (isPaymentStatut(t)) {
+        console.log(t)
+        // Paiement : soustrait du solde
+        delta = -montant;
+      } else if (isAvoirType(t)) {
+        // Avoir : soustrait du solde (remboursement/crédit)
+        delta = -montant;
+      } else {
+        // Transaction normale (vente/achat) : ajoute au solde
+        delta = montant;
+      }
+      
       soldeCumulatif += delta;
       return { ...t, soldeCumulatif };
     });
   }, [selectedContact, bonsForContact]);
+
+  // Calcul du solde réel du contact sélectionné (incluant les avoirs)
+  const selectedContactRealBalance = useMemo(() => {
+    if (!selectedContact) return 0;
+    
+    const isClient = selectedContact.type === 'Client';
+    const id = selectedContact.id;
+    const base = Number(selectedContact.solde || 0);
+    
+    if (isClient) {
+      const sales = salesByClient.get(id) || 0; // Inclut déjà la soustraction des avoirs clients
+      const paid = paymentsByContact.get(id) || 0;
+      return base + sales - paid;
+    } else {
+      const purchases = purchasesByFournisseur.get(id) || 0; // Inclut déjà la soustraction des avoirs fournisseurs
+      const paid = paymentsByContact.get(id) || 0;
+      return base + purchases - paid;
+    }
+  }, [selectedContact, salesByClient, purchasesByFournisseur, paymentsByContact]);
 
   const displayStatut = (s?: string) => {
     if (!s) return '-';
@@ -205,12 +286,45 @@ const ContactsPage: React.FC = () => {
     if (!statusFilter) return combinedTransactions;
     if (statusFilter === 'ALL') return combinedTransactions;
     if (Array.isArray(statusFilter) && statusFilter.length === 0) return combinedTransactions;
-    return combinedTransactions.filter((t) => {
-      const sRaw = t.statut ? String(t.statut) : (String(t.type).toLowerCase() === 'payment' ? 'Paiement' : '');
+    
+    // First filter by status
+    const filtered = combinedTransactions.filter((t) => {
+      const sRaw = t.statut ? String(t.statut) : (String(t.type).toLowerCase() === 'paiement' ? 'Paiement' : '');
       // normalize both sides for comparison
       const sNorm = sRaw.toLowerCase();
       if (Array.isArray(statusFilter)) return statusFilter.some((f: string) => String(f).toLowerCase() === sNorm);
       return String(statusFilter).toLowerCase() === sNorm;
+    });
+    
+    // Then recalculate cumulative balance for filtered transactions only
+    const isPaymentStatut = (entry: any) => {
+      const statut = String(entry?.statut || '').toLowerCase();
+      const type = String(entry?.type || '').toLowerCase();
+      return statut === 'paiement' || type === 'paiement';
+    };
+    
+    const isAvoirType = (entry: any) => {
+      const type = String(entry?.type || '').toLowerCase();
+      return type === 'avoir' || type === 'avoirfournisseur';
+    };
+    
+    // Start from 0 when filtering to show only the impact of filtered transactions
+    let soldeCumulatif = 0;
+    return filtered.map((t) => {
+      const montant = Number(t.montant) || 0;
+      let delta = 0;
+      
+      // Déterminer l'impact sur le solde :
+      if (isPaymentStatut(t) || isAvoirType(t)) {
+        // Paiements et Avoirs : soustraient du solde (réduisent la dette)
+        delta = -montant;
+      } else {
+        // Transaction normale (vente/achat) : ajoute au solde (augmente la dette)
+        delta = montant;
+      }
+      
+      soldeCumulatif += delta;
+      return { ...t, soldeCumulatif };
     });
   }, [combinedTransactions, statusFilter]);
 
@@ -220,17 +334,54 @@ const ContactsPage: React.FC = () => {
   // Monthly summary (totals per month) - computed from filtered transactions
   const monthlySummary = React.useMemo(() => {
     const map = new Map() as Map<string, MonthlySummaryRow>;
+    
+    // Group transactions by month and find the last transaction of each month for endBalance
+    const monthlyTransactions = new Map<string, any[]>();
+    
     for (const t of filteredCombinedTransactions) {
       // parse month from ISO date YYYY-MM-DD or dd/mm/yyyy
       const iso = String((t.dateISO || t.date || '')).slice(0, 10);
       const month = iso && iso.match(/^\d{4}-\d{2}/) ? iso.slice(0, 7) : 'unknown';
-      const entry = map.get(month) || { month, totalBons: 0, totalPaiements: 0, endBalance: 0 };
-      const amt = Number(t.montant) || 0;
-      const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement';
-      if (isPayment) entry.totalPaiements += amt; else entry.totalBons += amt;
-      entry.endBalance = Number(t.soldeCumulatif ?? entry.endBalance);
+      
+      if (!monthlyTransactions.has(month)) {
+        monthlyTransactions.set(month, []);
+      }
+      monthlyTransactions.get(month)!.push(t);
+    }
+    
+    // Calculate summary for each month
+    for (const [month, transactions] of monthlyTransactions) {
+      const entry = { month, totalBons: 0, totalPaiements: 0, endBalance: 0 };
+      
+      // Helper to detect avoirs (which should reduce balance)
+      const isAvoirType = (entry: any) => {
+        const type = String(entry?.type || '').toLowerCase();
+        return type === 'avoir' || type === 'avoirfournisseur';
+      };
+      
+      // Sum amounts by type
+      for (const t of transactions) {
+        const amt = Number(t.montant) || 0;
+        const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement';
+        const isAvoir = isAvoirType(t);
+        
+        if (isPayment) {
+          entry.totalPaiements += amt;
+        } else if (!isAvoir) {
+          // Only count as "bon" if it's not a payment AND not an avoir
+          entry.totalBons += amt;
+        }
+        // Avoirs are not counted in totalBons or totalPaiements
+      }
+      
+      // Get the end balance from the last transaction of the month (chronologically)
+      const sortedTransactions = transactions.sort((a, b) => new Date(a.dateISO).getTime() - new Date(b.dateISO).getTime());
+      const lastTransaction = sortedTransactions[sortedTransactions.length - 1];
+      entry.endBalance = Number(lastTransaction?.soldeCumulatif ?? 0);
+      
       map.set(month, entry);
     }
+    
     // sort months ascending
     return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
   }, [filteredCombinedTransactions]);
@@ -252,6 +403,8 @@ const ContactsPage: React.FC = () => {
   const productHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const items: any[] = [];
+    
+    // Ajouter les produits des bons
     for (const b of bonsForContact) {
       const bDate = formatDateDMY(b.date_creation);
       const bonItems = Array.isArray(b.items) ? b.items : [];
@@ -261,6 +414,8 @@ const ContactsPage: React.FC = () => {
         const des = prod ? prod.designation : (it.designation || '');
         const prixUnit = Number(it.prix_unitaire) || 0;
         const total = Number((it as any).total ?? (it as any).montant_ligne ?? 0) || 0;
+        // Déterminer le type d'item basé sur le type de bon
+        const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
         items.push({
           id: `${b.id}-${it.product_id}-${it.id ?? Math.random()}`,
           bon_numero: b.numero,
@@ -272,9 +427,29 @@ const ContactsPage: React.FC = () => {
           quantite: Number(it.quantite) || 0,
           prix_unitaire: prixUnit,
           total,
-          type: 'produit',
+          type: itemType,
+          created_at: b.created_at,
         });
       }
+    }
+
+    // Ajouter les paiements comme des entrées séparées
+    const paymentsForContact = payments.filter((p: any) => String(p.contact_id) === String(selectedContact.id));
+    for (const p of paymentsForContact) {
+      items.push({
+        id: `payment-${p.id}`,
+        bon_numero: getDisplayNumeroPayment(p),
+        bon_type: 'Paiement',
+        bon_date: formatDateDMY(p.date_paiement || p.created_at),
+        bon_statut: p.statut ? String(p.statut) : 'Paiement',
+        product_reference: 'PAIEMENT',
+        product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,
+        quantite: 1,
+        prix_unitaire: Number(p.montant ?? p.montant_total ?? 0) || 0,
+        total: Number(p.montant ?? p.montant_total ?? 0) || 0,
+        type: 'paiement',
+        created_at: p.created_at,
+      });
     }
 
     // Tri par date
@@ -289,13 +464,22 @@ const ContactsPage: React.FC = () => {
     let soldeCumulatif = Number(selectedContact?.solde ?? 0);
     return items.map((item) => {
       const total = Number(item.total) || 0;
-      // Certains items représentent des paiements (type 'paiement' ou flag isPayment)
-  const isPaymentItem = String(item?.statut || '').toLowerCase() === 'paiement' || String(item?.type || '').toLowerCase() === 'payment';
-  const delta = isPaymentItem ? -total : total;
+      // Déterminer l'impact sur le solde selon le type
+      let delta = 0;
+      if (item.type === 'paiement') {
+        // Paiements : soustraient du solde (réduisent la dette)
+        delta = -total;
+      } else if (item.type === 'avoir') {
+        // Avoirs : soustraient du solde (crédit/remboursement)
+        delta = -total;
+      } else {
+        // Produits normaux : ajoutent au solde (augmentent la dette)
+        delta = total;
+      }
       soldeCumulatif += delta;
       return { ...item, soldeCumulatif };
     });
-  }, [selectedContact, bonsForContact, products]);
+  }, [selectedContact, bonsForContact, products, payments]);
 
   // Apply status filter to product history for display and printing
   const filteredProductHistory = useMemo(() => {
@@ -543,8 +727,17 @@ const ContactsPage: React.FC = () => {
               </div>
               <div class="info-box">
                 <h4>Montants</h4>
-                <p><strong>Chiffre d'affaires total:</strong> ${filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</p>
-                <p><strong>Panier moyen:</strong> ${filteredBons.length > 0 ? (filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0) / filteredBons.length).toFixed(2) : '0.00'} DH</p>
+                <p><strong>Chiffre d'affaires total:</strong> ${filteredBons.filter((b: any) => {
+                  const type = String(b.type || '').toLowerCase();
+                  return type !== 'avoir' && type !== 'avoirfournisseur';
+                }).reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</p>
+                <p><strong>Panier moyen:</strong> ${(() => {
+                  const realBons = filteredBons.filter((b: any) => {
+                    const type = String(b.type || '').toLowerCase();
+                    return type !== 'avoir' && type !== 'avoirfournisseur';
+                  });
+                  return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total||0), 0) / realBons.length).toFixed(2) : '0.00';
+                })()} DH</p>
                 <p><strong>Solde actuel:</strong> ${combinedTransactions.length > 0 ? combinedTransactions[combinedTransactions.length - 1].soldeCumulatif.toFixed(2) : Number(selectedContact.solde || 0).toFixed(2)} DH</p>
               </div>
             </div>
@@ -842,10 +1035,12 @@ const ContactsPage: React.FC = () => {
 
   // Open print modal for transactions
   const openPrintTransactions = () => {
+    setDetailsTab('transactions');
     setPrintModal({ open: true, mode: 'transactions' });
   };
   // Open print modal for products
   const openPrintProducts = () => {
+    setDetailsTab('produits');
     setPrintModal({ open: true, mode: 'products' });
   };
 
@@ -1022,11 +1217,18 @@ const ContactsPage: React.FC = () => {
           <div className="flex items-center">
             <DollarSign className="text-green-600" size={32} />
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                {activeTab === 'clients' ? 'Solde à recevoir' : 'Solde à payer'}
-              </p>
+              <p className="text-sm font-medium text-gray-600">Solde cumulé</p>
               <p className="text-3xl font-bold text-gray-900">
-                {filteredContacts.reduce((sum, c) => sum + (Number(c.solde) || 0), 0).toFixed(2)} DH
+                {(
+                  filteredContacts.reduce((sum: number, c: any) => {
+                    const base = Number(c.solde) || 0;
+                    const sales = activeTab === 'clients' ? (salesByClient.get(c.id) || 0) : 0;
+                    const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(c.id) || 0) : 0;
+                    const paid = paymentsByContact.get(c.id) || 0;
+                    const balance = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
+                    return sum + balance;
+                  }, 0)
+                ).toFixed(2)} DH
               </p>
             </div>
           </div>
@@ -1084,6 +1286,7 @@ const ContactsPage: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ICE</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RIB</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
                 {activeTab === 'clients' && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plafond</th>
                 )}
@@ -1134,6 +1337,9 @@ const ContactsPage: React.FC = () => {
                           {contact.rib ? `${contact.rib.substring(0, 4)}...` : '-'}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-700">{formatDateTimeWithHour(contact.created_at)}</div>
                     </td>
                     {activeTab === 'clients' && (
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -1267,39 +1473,38 @@ const ContactsPage: React.FC = () => {
 
       {/* Modal de détails */}
       {isDetailsModalOpen && selectedContact && (
-          <>
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg w-full max-w-[95vw] max-h-[95vh] overflow-y-auto">
-                <div className={`${selectedContact.type === 'Client' ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4 rounded-t-lg`}>
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-xl font-bold text-white">Détails - {selectedContact.nom_complet}</h2>
-                    <div className="flex items-center gap-4">
-                      <button
-                        onClick={handlePrint}
-                        className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-md transition-colors font-medium border border-white border-opacity-30"
-                        title="Imprimer rapport détaillé avec produits et transactions (selon filtres appliqués)"
-                      >
-                        <FileText size={16} />
-                        Rapport Détaillé
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsDetailsModalOpen(false);
-                          setSelectedContact(null);
-                        }}
-                        className="text-white hover:text-gray-200"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-[95vw] max-h-[95vh] overflow-y-auto">
+            <div className={`${selectedContact.type === 'Client' ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4 rounded-t-lg`}>
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-white">Détails - {selectedContact.nom_complet}</h2>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handlePrint}
+                    className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-md transition-colors font-medium border border-white border-opacity-30"
+                    title="Imprimer rapport détaillé avec produits et transactions (selon filtres appliqués)"
+                  >
+                    <FileText size={16} />
+                    Rapport Détaillé
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsDetailsModalOpen(false);
+                      setSelectedContact(null);
+                    }}
+                    className="text-white hover:text-gray-200"
+                  >
+                    ✕
+                  </button>
                 </div>
+              </div>
+            </div>
 
-                <div className="p-6">
-                  {/* Infos contact */}
-                  <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                    <h3 className="font-bold text-lg mb-3">Informations du {selectedContact.type}</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="p-6">
+              {/* Infos contact */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <h3 className="font-bold text-lg mb-3">Informations du {selectedContact.type}</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4">
                   <div>
                     <p className="font-semibold text-gray-600">Téléphone:</p>
                     <p>{selectedContact.telephone || '-'}</p>
@@ -1312,11 +1517,46 @@ const ContactsPage: React.FC = () => {
                     <p className="font-semibold text-gray-600">ICE:</p>
                     <p>{selectedContact.ice || '-'}</p>
                   </div>
-                  <div>
-                    <p className="font-semibold text-gray-600">Solde:</p>
-                    <p className={`font-bold ${(Number(selectedContact.solde) || 0) > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                      {(Number(selectedContact.solde) || 0).toFixed(2)} DH
-                    </p>
+                </div>
+                
+                {/* Section Soldes */}
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <DollarSign size={16} />
+                    Situation Financière
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg p-3 border">
+                      <p className="font-semibold text-gray-600 text-sm">Solde Initial:</p>
+                      <p className={`font-bold text-lg ${(Number(selectedContact.solde) || 0) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                        {(Number(selectedContact.solde) || 0).toFixed(2)} DH
+                      </p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border">
+                      <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
+                      {(() => {
+                        const soldeInitial = Number(selectedContact.solde) || 0;
+                        const isClient = selectedContact.type === 'Client';
+                        const id = selectedContact.id;
+                        
+                        // Calculer le total des ventes/achats (incluent déjà les avoirs soustraits)
+                        const sales = isClient ? (salesByClient.get(id) || 0) : 0;
+                        const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
+                        const paid = paymentsByContact.get(id) || 0;
+                        
+                        // Solde cumulé = solde initial + ventes/achats - paiements 
+                        // (les avoirs sont déjà inclus dans sales/purchases)
+                        const soldeCumule = isClient 
+                          ? (soldeInitial + sales - paid)
+                          : (soldeInitial + purchases - paid);
+                        
+                        return (
+                          <p className={`font-bold text-lg ${soldeCumule >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {soldeCumule.toFixed(2)} DH
+                          </p>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1335,21 +1575,21 @@ const ContactsPage: React.FC = () => {
                 <div className="flex gap-4 items-end">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Date de début</label>
-                    </div>
-                  </>
-                  {/* Contact Print Modal (unified for transactions/products) - always rendered in details modal */}
-                  {printModal.open && selectedContact && (
-                    <ContactPrintModal
-                      isOpen={printModal.open}
-                      onClose={() => setPrintModal({ open: false, mode: null })}
-                      contact={selectedContact}
-                      mode={printModal.mode as any}
-                      transactions={filteredCombinedTransactions}
-                      productHistory={filteredProductHistory}
-                      dateFrom={dateFrom}
-                      dateTo={dateTo}
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
-                  )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date de fin</label>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
                   </div>
                   <button
                     onClick={() => {
@@ -1465,7 +1705,7 @@ const ContactsPage: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Numéro</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montant</th>
@@ -1484,7 +1724,7 @@ const ContactsPage: React.FC = () => {
                           filteredCombinedTransactions.map((t) => (
                             <tr key={t.id} className="hover:bg-gray-50">
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">{t.date}</div>
+                                <div className="text-sm text-gray-700">{formatDateTimeWithHour(t.created_at)}</div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm font-medium text-gray-900">{t.numero}</div>
@@ -1494,27 +1734,41 @@ const ContactsPage: React.FC = () => {
                                   className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                                     t.type === 'Paiement'
                                       ? 'bg-green-200 text-green-700'
+                                      : t.type === 'Avoir' || t.type === 'AvoirFournisseur'
+                                      ? 'bg-orange-200 text-orange-700'
                                       : t.type === 'Commande'
                                       ? 'bg-blue-200 text-blue-700'
                                       : t.type === 'Sortie'
                                       ? 'bg-purple-200 text-purple-700'
                                       : t.type === 'Devis'
                                       ? 'bg-yellow-200 text-yellow-700'
-                                      : 'bg-red-200 text-red-700'
+                                      : t.type === 'Comptant'
+                                      ? 'bg-indigo-200 text-indigo-700'
+                                      : 'bg-gray-200 text-gray-700'
                                   }`}
                                 >
                                   {t.type}
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                {(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement') ? (
-                                  <div className="text-sm font-semibold text-green-600">-{t.montant.toFixed(2)} DH</div>
-                                ) : (
-                                  <div className="text-sm font-semibold text-blue-600">+{t.montant.toFixed(2)} DH</div>
-                                )}
+                                {(() => {
+                                  const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || 
+                                                  String(t.type || '').toLowerCase() === 'paiement' 
+                                                  String(t.type || '').toLowerCase() === 'paiement';
+                                  const isAvoir = String(t.type || '').toLowerCase() === 'avoir' || 
+                                                String(t.type || '').toLowerCase() === 'avoirfournisseur';
+                                  
+                                  if (isPayment) {
+                                    return <div className="text-sm font-semibold text-green-600">-{t.montant.toFixed(2)} DH</div>;
+                                  } else if (isAvoir) {
+                                    return <div className="text-sm font-semibold text-orange-600">-{t.montant.toFixed(2)} DH</div>;
+                                  } else {
+                                    return <div className="text-sm font-semibold text-blue-600">+{t.montant.toFixed(2)} DH</div>;
+                                  }
+                                })()}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                {(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement') ? (
+                                {(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement') ? (
                                   <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">{displayStatut(t.statut)}</span>
                                 ) : (
                                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${t.statut === 'Validé' ? 'bg-green-200 text-green-700' : t.statut === 'En cours' ? 'bg-yellow-200 text-yellow-700' : 'bg-gray-200 text-gray-700'}`}>{t.statut}</span>
@@ -1542,17 +1796,34 @@ const ContactsPage: React.FC = () => {
 
                   {filteredCombinedTransactions.length > 0 && (
                     <div className="mt-4 bg-gray-50 rounded-lg p-4">
-                      <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
-                          <p className="font-semibold text-gray-600">Total Bons:</p>
+                          <p className="font-semibold text-gray-600">Total Ventes/Achats:</p>
                           <p className="text-lg font-bold text-blue-600">
-                            {filteredCombinedTransactions.filter((t) => !(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
+                            {filteredCombinedTransactions.filter((t) => {
+                              const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || 
+                                              String(t.type || '').toLowerCase() === 'paiement' 
+                                              String(t.type || '').toLowerCase() === 'paiement';
+                              const isAvoir = String(t.type || '').toLowerCase() === 'avoir' || 
+                                            String(t.type || '').toLowerCase() === 'avoirfournisseur';
+                              return !isPayment && !isAvoir;
+                            }).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
                           </p>
                         </div>
                         <div>
                           <p className="font-semibold text-gray-600">Total Paiements:</p>
                           <p className="text-lg font-bold text-green-600">
-                            {filteredCombinedTransactions.filter((t) => (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
+                            {filteredCombinedTransactions.filter((t) => (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-600">Total Avoirs:</p>
+                          <p className="text-lg font-bold text-orange-600">
+                            {filteredCombinedTransactions.filter((t) => {
+                              const isAvoir = String(t.type || '').toLowerCase() === 'avoir' || 
+                                            String(t.type || '').toLowerCase() === 'avoirfournisseur';
+                              return isAvoir;
+                            }).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
                           </p>
                         </div>
                         <div>
@@ -1575,18 +1846,46 @@ const ContactsPage: React.FC = () => {
                   {/* Résumé badges */}
                   <div className="mt-8 bg-blue-50 rounded-lg p-4">
                     <h3 className="font-bold text-lg mb-3">Résumé de la période</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div className="text-center">
-                        <p className="text-2xl font-bold text-blue-600">{bonsForContact.length}</p>
+                        <p className="text-2xl font-bold text-blue-600">
+                          {bonsForContact.filter((b: any) => {
+                            const type = String(b.type || '').toLowerCase();
+                            // Exclure les avoirs du nombre de bons
+                            return type !== 'avoir' && type !== 'avoirfournisseur';
+                          }).length}
+                        </p>
                         <p className="text-sm text-gray-600">Bons</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-2xl font-bold text-green-600">0</p>
+                        <p className="text-2xl font-bold text-green-600">
+                          {filteredCombinedTransactions.filter((t) => {
+                            const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || 
+                                            String(t.type || '').toLowerCase() === 'paiement';
+                            return isPayment;
+                          }).length}
+                        </p>
                         <p className="text-sm text-gray-600">Paiements</p>
                       </div>
                       <div className="text-center">
+                        <p className="text-2xl font-bold text-orange-600">
+                          {bonsForContact.filter((b: any) => {
+                            const type = String(b.type || '').toLowerCase();
+                            // Inclure seulement les avoirs
+                            return type === 'avoir' || type === 'avoirfournisseur';
+                          }).length}
+                        </p>
+                        <p className="text-sm text-gray-600">Avoirs</p>
+                      </div>
+                      <div className="text-center">
                         <p className="text-2xl font-bold text-purple-600">
-                          {bonsForContact.reduce((s: number, b: any) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH
+                          {bonsForContact
+                            .filter((b: any) => {
+                              const type = String(b.type || '').toLowerCase();
+                              // Exclure les avoirs du total des bons
+                              return type !== 'avoir' && type !== 'avoirfournisseur';
+                            })
+                            .reduce((s: number, b: any) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH
                         </p>
                         <p className="text-sm text-gray-600">Total Bons</p>
                       </div>
@@ -1617,17 +1916,19 @@ const ContactsPage: React.FC = () => {
                         <Printer size={14} />
                         Imprimer
                       </button>
-                        <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm">
-                          {filteredProductHistory.length} éléments
-                        </span>
-                        <button
-                          onClick={openPrintProducts}
-                          className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm"
-                          title="Imprimer uniquement le détail des produits"
-                        >
-                          <Printer size={14} />
-                          Imprimer
-                        </button>
+      {/* Contact Print Modal (unified for transactions/products) */}
+      {printModal.open && selectedContact && (
+        <ContactPrintModal
+          isOpen={printModal.open}
+          onClose={() => setPrintModal({ open: false, mode: null })}
+          contact={selectedContact}
+          mode={printModal.mode as any}
+          transactions={filteredCombinedTransactions}
+          productHistory={filteredProductHistory}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+        />
+      )}
                     </div>
                   </div>
 
@@ -1635,7 +1936,7 @@ const ContactsPage: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bon N°</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Référence</th>
@@ -1658,7 +1959,7 @@ const ContactsPage: React.FC = () => {
                           filteredProductHistory.map((item) => (
                             <tr key={item.id} className={`hover:bg-gray-50 ${item.type === 'paiement' ? 'bg-green-50' : ''}`}>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">{item.bon_date}</div>
+                                <div className="text-sm text-gray-700">{formatDateTimeWithHour(item.created_at)}</div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm font-medium text-gray-900">{item.bon_numero}</div>
@@ -1780,7 +2081,7 @@ const ContactsPage: React.FC = () => {
                       </div>
 
                       <div className="mt-4 bg-gray-50 rounded-lg p-4">
-                        <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                           <div>
                             <p className="font-semibold text-gray-600">Total Produits:</p>
                             <p className="text-lg font-bold text-blue-600">
@@ -1788,6 +2089,9 @@ const ContactsPage: React.FC = () => {
                                 .filter((i: any) => i.type === 'produit')
                                 .reduce((s: number, i: any) => s + i.total, 0)
                                 .toFixed(2)} DH
+                            </p>
+                            <p className="text-xs text-blue-500">
+                              ({productHistory.filter((i: any) => i.type === 'produit').length} produit{productHistory.filter((i: any) => i.type === 'produit').length > 1 ? 's' : ''})
                             </p>
                           </div>
                           <div>
@@ -1798,20 +2102,37 @@ const ContactsPage: React.FC = () => {
                                 .reduce((s: number, i: any) => s + i.total, 0)
                                 .toFixed(2)} DH
                             </p>
+                            <p className="text-xs text-green-500">
+                              ({productHistory.filter((i: any) => i.type === 'paiement').length} paiement{productHistory.filter((i: any) => i.type === 'paiement').length > 1 ? 's' : ''})
+                            </p>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-600">Total Avoirs:</p>
+                            <p className="text-lg font-bold text-orange-600">
+                              {productHistory
+                                .filter((i: any) => i.type === 'avoir')
+                                .reduce((s: number, i: any) => s + i.total, 0)
+                                .toFixed(2)} DH
+                            </p>
+                            <p className="text-xs text-orange-500">
+                              ({productHistory.filter((i: any) => i.type === 'avoir').length} avoir{productHistory.filter((i: any) => i.type === 'avoir').length > 1 ? 's' : ''})
+                            </p>
                           </div>
                           <div>
                             <p className="font-semibold text-gray-600">Solde Net:</p>
                             <p
                               className={`text-lg font-bold ${
                                 (productHistory.filter((i: any) => i.type === 'produit').reduce((s: number, i: any) => s + i.total, 0) -
-                                  productHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0)) > 0
+                                  productHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0) -
+                                  productHistory.filter((i: any) => i.type === 'avoir').reduce((s: number, i: any) => s + i.total, 0)) > 0
                                   ? 'text-red-600'
                                   : 'text-green-600'
                               }`}
                             >
                               {(
                                 productHistory.filter((i: any) => i.type === 'produit').reduce((s: number, i: any) => s + i.total, 0) -
-                                productHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0)
+                                productHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0) -
+                                productHistory.filter((i: any) => i.type === 'avoir').reduce((s: number, i: any) => s + i.total, 0)
                               ).toFixed(2)} DH
                             </p>
                           </div>
