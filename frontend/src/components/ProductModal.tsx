@@ -7,7 +7,6 @@ import type { Product, Category } from '../types';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { addProduct, updateProduct } from '../store/slices/productsSlice';
 import { showError, showSuccess } from '../utils/notifications';
-import { generateProductReference } from '../utils/referenceUtils';
 
 const validationSchema = Yup.object({
   designation: Yup.string().optional(),
@@ -69,16 +68,24 @@ const ProductModal: React.FC<ProductModalProps> = ({
     validationSchema,
     onSubmit: async (values) => {
       try {
-        const prices = calculatePrices(
-          values.prix_achat,
-          values.cout_revient_pourcentage,
-          values.prix_gros_pourcentage,
-          values.prix_vente_pourcentage
-        );
+        // Sanitize possible string inputs with "," or "." before calculations
+        const toNum = (v: any) => typeof v === 'string' ? (parseFloat(String(v).replace(',', '.')) || 0) : (Number(v) || 0);
+        const prixAchatNum = toNum(values.prix_achat);
+        const crPctNum = toNum(values.cout_revient_pourcentage);
+        const grosPctNum = toNum(values.prix_gros_pourcentage);
+        const ventePctNum = toNum(values.prix_vente_pourcentage);
+        const quantiteNum = toNum(values.quantite);
+
+        const prices = calculatePrices(prixAchatNum, crPctNum, grosPctNum, ventePctNum);
 
         const productData = {
           ...values,
           categorie_id: Number(values.categorie_id), // Conversion en nombre
+          quantite: quantiteNum,
+          prix_achat: prixAchatNum,
+          cout_revient_pourcentage: crPctNum,
+          prix_gros_pourcentage: grosPctNum,
+          prix_vente_pourcentage: ventePctNum,
           cout_revient: prices.cout_revient,
           prix_gros: prices.prix_gros,
           prix_vente: prices.prix_vente,
@@ -105,6 +112,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
 
         onClose();
       } catch (error) {
+        console.error('Erreur lors de la sauvegarde du produit', error);
         showError('Erreur lors de la sauvegarde du produit');
       }
     },
@@ -112,13 +120,13 @@ const ProductModal: React.FC<ProductModalProps> = ({
 
   // Calcul automatique des prix quand les valeurs changent
   useEffect(() => {
-    if (formik.values.prix_achat > 0) {
-      const prices = calculatePrices(
-        formik.values.prix_achat,
-        formik.values.cout_revient_pourcentage,
-        formik.values.prix_gros_pourcentage,
-        formik.values.prix_vente_pourcentage
-      );
+    const toNum = (v: any) => typeof v === 'string' ? (parseFloat(String(v).replace(',', '.')) || 0) : (Number(v) || 0);
+    const pa = toNum(formik.values.prix_achat);
+    const cr = toNum(formik.values.cout_revient_pourcentage);
+    const pg = toNum(formik.values.prix_gros_pourcentage);
+    const pv = toNum(formik.values.prix_vente_pourcentage);
+    if (pa > 0) {
+      const prices = calculatePrices(pa, cr, pg, pv);
       setDynamicPrices(prices);
       
       // Mettre à jour les valeurs Formik
@@ -154,10 +162,11 @@ const ProductModal: React.FC<ProductModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* ID (affiché) */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="product_id_display" className="block text-sm font-medium text-gray-700 mb-1">
                 ID (auto)
               </label>
               <input
+                id="product_id_display"
                 type="text"
                 value={editingProduct ? String(editingProduct.id) : 'Auto'}
                 disabled
@@ -233,12 +242,22 @@ const ProductModal: React.FC<ProductModalProps> = ({
                 </label>
                 <input
                   id="quantite"
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="[0-9]*[.,]?[0-9]*"
                   name="quantite"
-                  value={formik.values.quantite}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  min="0"
+                  value={String(formik.values.quantite ?? '')}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    // autoriser "," ou "."; on stocke la chaîne mais on convertira avant submit
+                    formik.setFieldValue('quantite', v);
+                  }}
+                  onBlur={() => {
+                    const num = typeof formik.values.quantite === 'string'
+                      ? (parseFloat(String(formik.values.quantite).replace(',', '.')) || 0)
+                      : (Number(formik.values.quantite) || 0);
+                    formik.setFieldValue('quantite', num);
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
                 {formik.touched.quantite && formik.errors.quantite && (
@@ -254,13 +273,21 @@ const ProductModal: React.FC<ProductModalProps> = ({
               </label>
               <input
                 id="prix_achat"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
                 name="prix_achat"
-                value={formik.values.prix_achat}
-                onChange={formik.handleChange}
-                onBlur={formik.handleBlur}
-                min="0"
+                value={String(formik.values.prix_achat ?? '')}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  formik.setFieldValue('prix_achat', raw);
+                }}
+                onBlur={() => {
+                  const num = typeof formik.values.prix_achat === 'string'
+                    ? (parseFloat(String(formik.values.prix_achat).replace(',', '.')) || 0)
+                    : (Number(formik.values.prix_achat) || 0);
+                  formik.setFieldValue('prix_achat', num);
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
               {formik.touched.prix_achat && formik.errors.prix_achat && (
@@ -275,15 +302,24 @@ const ProductModal: React.FC<ProductModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Coût de revient */}
               <div className="bg-gray-50 p-4 rounded-lg">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="cout_revient_pourcentage" className="block text-sm font-medium text-gray-700 mb-2">
                   Coût de revient
                 </label>
                 <div className="flex items-center space-x-2">
                   <input
-                    type="number"
+                    id="cout_revient_pourcentage"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
                     name="cout_revient_pourcentage"
-                    value={formik.values.cout_revient_pourcentage}
-                    onChange={formik.handleChange}
+                    value={String(formik.values.cout_revient_pourcentage ?? '')}
+                    onChange={(e) => formik.setFieldValue('cout_revient_pourcentage', e.target.value)}
+                    onBlur={() => {
+                      const num = typeof formik.values.cout_revient_pourcentage === 'string'
+                        ? (parseFloat(String(formik.values.cout_revient_pourcentage).replace(',', '.')) || 0)
+                        : (Number(formik.values.cout_revient_pourcentage) || 0);
+                      formik.setFieldValue('cout_revient_pourcentage', num);
+                    }}
                     className="w-20 px-2 py-1 text-sm border border-gray-300 rounded"
                     placeholder="%"
                   />
@@ -296,15 +332,24 @@ const ProductModal: React.FC<ProductModalProps> = ({
 
               {/* Prix de gros */}
               <div className="bg-gray-50 p-4 rounded-lg">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="prix_gros_pourcentage" className="block text-sm font-medium text-gray-700 mb-2">
                   Prix de gros
                 </label>
                 <div className="flex items-center space-x-2">
                   <input
-                    type="number"
+                    id="prix_gros_pourcentage"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
                     name="prix_gros_pourcentage"
-                    value={formik.values.prix_gros_pourcentage}
-                    onChange={formik.handleChange}
+                    value={String(formik.values.prix_gros_pourcentage ?? '')}
+                    onChange={(e) => formik.setFieldValue('prix_gros_pourcentage', e.target.value)}
+                    onBlur={() => {
+                      const num = typeof formik.values.prix_gros_pourcentage === 'string'
+                        ? (parseFloat(String(formik.values.prix_gros_pourcentage).replace(',', '.')) || 0)
+                        : (Number(formik.values.prix_gros_pourcentage) || 0);
+                      formik.setFieldValue('prix_gros_pourcentage', num);
+                    }}
                     className="w-20 px-2 py-1 text-sm border border-gray-300 rounded"
                     placeholder="%"
                   />
@@ -317,15 +362,24 @@ const ProductModal: React.FC<ProductModalProps> = ({
 
               {/* Prix de vente */}
               <div className="bg-gray-50 p-4 rounded-lg">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="prix_vente_pourcentage" className="block text-sm font-medium text-gray-700 mb-2">
                   Prix de vente
                 </label>
                 <div className="flex items-center space-x-2">
                   <input
-                    type="number"
+                    id="prix_vente_pourcentage"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
                     name="prix_vente_pourcentage"
-                    value={formik.values.prix_vente_pourcentage}
-                    onChange={formik.handleChange}
+                    value={String(formik.values.prix_vente_pourcentage ?? '')}
+                    onChange={(e) => formik.setFieldValue('prix_vente_pourcentage', e.target.value)}
+                    onBlur={() => {
+                      const num = typeof formik.values.prix_vente_pourcentage === 'string'
+                        ? (parseFloat(String(formik.values.prix_vente_pourcentage).replace(',', '.')) || 0)
+                        : (Number(formik.values.prix_vente_pourcentage) || 0);
+                      formik.setFieldValue('prix_vente_pourcentage', num);
+                    }}
                     className="w-20 px-2 py-1 text-sm border border-gray-300 rounded"
                     placeholder="%"
                   />
@@ -352,7 +406,10 @@ const ProductModal: React.FC<ProductModalProps> = ({
               disabled={formik.isSubmitting}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              {formik.isSubmitting ? 'En cours...' : (editingProduct ? 'Modifier' : 'Créer')}
+              {(() => {
+                if (formik.isSubmitting) return 'En cours...';
+                return editingProduct ? 'Modifier' : 'Créer';
+              })()}
             </button>
           </div>
         </form>

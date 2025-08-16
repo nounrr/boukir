@@ -25,6 +25,7 @@ import type { Payment, Bon, Contact } from '../types';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
+import { formatDateTimeWithHour } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { useGetPaymentsQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
 import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
@@ -251,6 +252,19 @@ const paymentValidationSchema = Yup.object({
   bon_id: Yup.number().transform((v, orig) => (orig === '' ? null : v)).nullable(),
 });
 
+  // Function to display payment numbers with PAY prefix
+  const getDisplayNumeroPayment = (payment: Payment) => {
+    try {
+      const raw = String(payment?.numero ?? payment?.id ?? '').trim();
+      if (raw === '') return raw;
+      
+      // remove any leading 'pay', 'pa' (case-insensitive) and optional separators
+      const suffix = raw.replace(/^(pay|pa)\s*[-:\s]*/i, '');
+      return `PAY${suffix}`;
+    } catch (e) {
+      return String(payment?.numero ?? payment?.id ?? '');
+    }
+  };
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -778,7 +792,7 @@ const paymentValidationSchema = Yup.object({
                   Numéro
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
+                  Créé le
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Bon associé
@@ -812,10 +826,10 @@ const paymentValidationSchema = Yup.object({
                 filteredPayments.map((payment: Payment) => (
                   <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{payment.id}</div>
+                      <div className="text-sm font-medium text-gray-900">{getDisplayNumeroPayment(payment)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatYMD(payment.date_paiement)}</div>
+                      <div className="text-sm text-gray-700">{formatDateTimeWithHour(payment.created_at)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{getBonInfo(payment.bon_id)}</div>
@@ -1275,7 +1289,7 @@ const paymentValidationSchema = Yup.object({
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">Détails du Paiement {selectedPayment.id}</h2>
+              <h2 className="text-lg font-semibold">Détails du Paiement {getDisplayNumeroPayment(selectedPayment)}</h2>
               <button
                 onClick={() => setIsViewModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -1288,7 +1302,7 @@ const paymentValidationSchema = Yup.object({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Numéro:</p>
-                  <p className="text-lg">{selectedPayment.id}</p>
+                  <p className="text-lg">{getDisplayNumeroPayment(selectedPayment)}</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Date de paiement:</p>
