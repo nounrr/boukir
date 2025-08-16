@@ -79,6 +79,20 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
       default: return 'BON N';
     }
   };
+const formatHeure = (dateStr: string) => {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  return (
+    date.toLocaleDateString("fr-FR") +
+    " " +
+    date.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  );
+};
+
+// Utilisation
 
   // Items & totaux
   const parseItemsArray = (items: any): any[] => {
@@ -160,10 +174,10 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
         <div className="ml-6 text-right">
           <div className="p-4 rounded border border-orange-200">
             <h2 className="text-lg font-bold text-orange-700 mb-3">
-              BON DEVIS {getTitreBon(bon.type)}{bon.id}
+              BON DEVIS {bon.type === "Devis" ? bon.id : bon.numero}
             </h2>
             <div className="space-y-2 text-sm">
-              <div><span className="font-medium">Date:</span> {formatDate(bon.date_creation)}</div>
+              <div><span className="font-medium">Date:</span> {formatHeure(bon.created_at)}</div>
               {bon.adresse_livraison && (
                 <div><span className="font-medium">Livraison:</span> {bon.adresse_livraison}</div>
               )}

@@ -19,6 +19,7 @@ import { useGetSortiesQuery } from "../store/api/sortiesApi";
 import { useGetCommandesQuery } from "../store/api/commandesApi";
 import { useGetPaymentsQuery } from "../store/api/paymentsApi";
 import { useGetBonsByTypeQuery } from "../store/api/bonsApi";
+import { formatDateTimeWithHour } from "../utils/dateUtils";
 
 /** ---------- Helpers ---------- */
 const toNumber = (value: any): number => {
@@ -179,11 +180,25 @@ const ReportsPage: React.FC = () => {
     return list.map(mapAvoirF);
   }, [avoirsFournisseurRaw]);
 
+  // Function to display payment numbers with PAY prefix
+  const getDisplayNumeroPayment = (payment: any) => {
+    try {
+      const raw = String(payment?.numero ?? payment?.id ?? '').trim();
+      if (raw === '') return raw;
+      
+      // remove any leading 'pay', 'pa' (case-insensitive) and optional separators
+      const suffix = raw.replace(/^(pay|pa)\s*[-:\s]*/i, '');
+      return `PAY${suffix}`;
+    } catch (e) {
+      return String(payment?.numero ?? payment?.id ?? '');
+    }
+  };
+
   const normalizedPayments: PaymentLite[] = useMemo(
     () =>
       payments.map((p: any) => ({
         id: p.id,
-        numero: p.numero ?? `PAY-${p.id}`,
+        numero: getDisplayNumeroPayment(p),
         contact_id: p.contact_id ?? null,
         date: toDisplayDate(p.date_paiement || p.date),
         montant: toNumber(p.montant_total ?? p.montant ?? 0),
@@ -535,6 +550,7 @@ const ReportsPage: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Numéro</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                   </tr>
@@ -549,6 +565,7 @@ const ReportsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{bon.date}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at)}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right">
                         {toNumber(bon.montant).toFixed(2)} DH
                       </td>
@@ -597,16 +614,15 @@ const ReportsPage: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Numéro</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredPayments.map((payment) => (
                   <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{payment.numero}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{payment.date}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right text-green-600">
                       {toNumber(payment.montant).toFixed(2)} DH
                     </td>
@@ -614,6 +630,9 @@ const ReportsPage: React.FC = () => {
                       <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">
                         {payment.mode || "Autre"}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {payment.created_at ? formatDateTimeWithHour(payment.created_at) : '-'}
                     </td>
                   </tr>
                 ))}
@@ -669,6 +688,7 @@ const ReportsPage: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Solde</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Plafond</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -693,6 +713,9 @@ const ReportsPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
                         {client.plafond ? `${toNumber(client.plafond).toFixed(2)} DH` : "-"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {client.created_at ? formatDateTimeWithHour(client.created_at) : '-'}
                       </td>
                     </tr>
                   );
@@ -753,6 +776,7 @@ const ReportsPage: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Solde</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -774,6 +798,9 @@ const ReportsPage: React.FC = () => {
                         >
                           {soldeTotal.toFixed(2)} DH
                         </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {f.created_at ? formatDateTimeWithHour(f.created_at) : '-'}
                       </td>
                     </tr>
                   );
@@ -1325,6 +1352,9 @@ const ReportsPage: React.FC = () => {
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Stock Restant
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Créé le
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -1367,11 +1397,14 @@ const ReportsPage: React.FC = () => {
                       );
                     })()}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {product.created_at ? formatDateTimeWithHour(product.created_at) : '-'}
+                  </td>
                 </tr>
               ))}
               {topProducts.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
                     Aucun produit à afficher.
                   </td>
                 </tr>
