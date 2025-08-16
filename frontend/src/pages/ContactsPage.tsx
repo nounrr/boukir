@@ -17,6 +17,7 @@ import { showError, showSuccess, showConfirmation } from '../utils/notifications
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
+import ContactPrintModal from '../components/ContactPrintModal';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { formatDateDMY } from '../utils/dateUtils';
 
@@ -51,7 +52,9 @@ const ContactsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string | string[]>('ALL'); // 'ALL' or array of statuses
+  const [statusFilter, setStatusFilter] = useState<string[]>([]); // Toujours un tableau pour <select multiple>
+  // Print modal state
+  const [printModal, setPrintModal] = useState<{ open: boolean; mode: 'transactions' | 'products' | null }>({ open: false, mode: null });
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -836,219 +839,14 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  // Impression spécifique des transactions
-  const handlePrintTransactions = () => {
-    if (!selectedContact) return;
 
-    const printContent = `
-      <html>
-        <head>
-          <title>Transactions - ${selectedContact.nom_complet}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
-            h1, h2, h3 { color: #333; margin-bottom: 10px; }
-            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
-            th { background-color: #f5f5f5; font-weight: bold; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-            .numeric { text-align: right; }
-            .total-row { font-weight: bold; background-color: #e8f4f8; }
-            .info-box { border: 1px solid #ddd; padding: 15px; background: #f9f9f9; margin: 15px 0; }
-            .positive { color: green; }
-            .negative { color: red; }
-          </style>
-        </head>
-        <body>
-          ${getCompanyHeaderHTML('DIAMOND')}
-          <div style="text-align:center;margin-bottom:12px;">
-            <h1 style="margin:0;font-size:18px;font-weight:700;color:#111">HISTORIQUE DES TRANSACTIONS</h1>
-            <h2 style="margin:4px 0;font-size:14px;font-weight:600;color:#333">${selectedContact.type}: ${selectedContact.nom_complet}</h2>
-            <p style="margin:2px 0;font-size:12px"><strong>Période:</strong> ${dateFrom ? formatDateDMY(dateFrom) : 'Début'} → ${dateTo ? formatDateDMY(dateTo) : 'Fin'}</p>
-            <p style="margin:2px 0;font-size:12px"><strong>Date d'impression:</strong> ${formatDateDMY(new Date().toISOString())}</p>
-          </div>
-
-          <div class="info-box">
-            <h3>Informations Contact</h3>
-               <table border="0">
-            <tr>
-              <td><strong>Téléphone:</strong> ${selectedContact.telephone || 'N/A'}</td>
-              <td><strong>Email:</strong> ${selectedContact.email || 'N/A'}</td>
-
-            </tr>
-            <tr>
-              <td><strong>ICE:</strong> ${selectedContact.ice || 'N/A'}</td>
-             <td><strong>Solde initial:</strong> ${Number(selectedContact.solde || 0).toFixed(2)} DH</td>
-
-            </tr>
-          </table></div>
-
-          <h3>📋 TRANSACTIONS (${combinedTransactions.length})</h3>
-          <table>
-            <tr>
-              <th>Date</th>
-              <th>Numéro</th>
-              <th>Type</th>
-              <th class="numeric">Montant</th>
-              <th>Statut/Mode</th>
-              <th class="numeric">Solde Cumulé</th>
-            </tr>
-            ${combinedTransactions.map(t => `
-              <tr>
-                <td>${t.date}</td>
-                <td>${t.numero}</td>
-                <td>${t.type}</td>
-                <td class="numeric">${((String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment') ? '-' : '+') + t.montant.toFixed(2)} DH</td>
-                <td>${(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment') ? t.mode : t.statut}</td>
-                <td class="numeric ${t.soldeCumulatif >= 0 ? 'positive' : 'negative'}">${t.soldeCumulatif.toFixed(2)} DH</td>
-              </tr>
-            `).join('')}
-            <tr class="total-row">
-              <td colspan="3"><strong>TOTAUX</strong></td>
-              <td class="numeric"><strong>Bons: ${combinedTransactions.filter(t => !(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH</strong></td>
-              <td class="numeric"><strong>Paiements: ${combinedTransactions.filter(t => (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH</strong></td>
-              <td class="numeric"><strong>Solde Final: ${combinedTransactions.length > 0 ? combinedTransactions[combinedTransactions.length - 1].soldeCumulatif.toFixed(2) : '0.00'} DH</strong></td>
-            </tr>
-          </table>
-
-          <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
-            <p>Rapport généré le ${formatDateDMY(new Date().toISOString())} à ${new Date().toLocaleTimeString('fr-FR')}</p>
-            <p>Application de Gestion Commerciale - Transactions ${selectedContact.nom_complet}</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      const wrapped = printContent.replace('</body>', `
-        <script>
-          (function(){
-            const imgs = Array.from(document.images || []);
-            if (imgs.length === 0) return window.print();
-            Promise.all(imgs.map(i => new Promise(r => {
-              if (i.complete) return r();
-              i.addEventListener('load', r);
-              i.addEventListener('error', r);
-            }))).then(()=>{ try{ window.print(); }catch(e){} });
-          })();
-        </script>
-      </body>`);
-      printWindow.document.write(wrapped);
-      printWindow.document.close();
-    }
+  // Open print modal for transactions
+  const openPrintTransactions = () => {
+    setPrintModal({ open: true, mode: 'transactions' });
   };
-
-  // Impression spécifique des produits
-  const handlePrintProducts = () => {
-    if (!selectedContact) return;
-
-    const filteredProducts = filteredProductHistory.filter(item => 
-      isWithinDateRange(new Date(`${item.bon_date.split('-').reverse().join('-')}`).toISOString())
-    );
-
-    const printContent = `
-      <html>
-        <head>
-          <title>Détail Produits - ${selectedContact.nom_complet}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
-            h1, h2, h3 { color: #333; margin-bottom: 10px; }
-            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
-            th { background-color: #f5f5f5; font-weight: bold; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-            .numeric { text-align: right; }
-            .total-row { font-weight: bold; background-color: #e8f4f8; }
-            .info-box { }
-            table{padding:0}         
-           </style>
-        </head>
-        <body>
-          ${getCompanyHeaderHTML('DIAMOND')}
-          <div style="text-align:center;margin-bottom:12px;">
-            <h1 style="margin:0;font-size:18px;font-weight:700;color:#111">DÉTAIL DES PRODUITS</h1>
-            <h2 style="margin:4px 0;font-size:14px;font-weight:600;color:#333">${selectedContact.type}: ${selectedContact.nom_complet}</h2>
-            <p style="margin:2px 0;font-size:12px"><strong>Période:</strong> ${dateFrom ? formatDateDMY(dateFrom) : 'Début'} → ${dateTo ? formatDateDMY(dateTo) : 'Fin'}</p>
-            <p style="margin:2px 0;font-size:12px"><strong>Date d'impression:</strong> ${formatDateDMY(new Date().toISOString())}</p>
-          </div>
-
-          <div class="info-box">
-            <h3>Informations Contact</h3>
-          <table border="0">
-            <tr>
-              <td><strong>Téléphone:</strong> ${selectedContact.telephone || 'N/A'}</td>
-              <td><strong>Email:</strong> ${selectedContact.email || 'N/A'}</td>
-
-            </tr>
-            <tr>
-              <td><strong>ICE:</strong> ${selectedContact.ice || 'N/A'}</td>
-             <td><strong>Solde initial:</strong> ${Number(selectedContact.solde || 0).toFixed(2)} DH</td>
-
-            </tr>
-          </table>
-          </div>
-
-          <h3>🛍️ DÉTAIL DES ACHATS (${filteredProducts.length} lignes)</h3>
-          <table>
-            <tr>
-              <th>Date</th>
-              <th>Bon N°</th>
-              <th>Type</th>
-              <th>Référence</th>
-              <th>Désignation</th>
-              <th class="numeric">Quantité</th>
-              <th class="numeric">Prix Unit.</th>
-              <th class="numeric">Total</th>
-              <th>Statut</th>
-            </tr>
-            ${filteredProducts.map(item => `
-              <tr>
-                <td>${item.bon_date}</td>
-                <td>${item.bon_numero}</td>
-                <td>${item.bon_type}</td>
-                <td>${item.product_reference}</td>
-                <td>${item.product_designation}</td>
-                <td class="numeric">${item.quantite}</td>
-                <td class="numeric">${item.prix_unitaire.toFixed(2)} DH</td>
-                <td class="numeric">${item.total.toFixed(2)} DH</td>
-                <td>${item.bon_statut}</td>
-              </tr>
-            `).join('')}
-            <tr class="total-row">
-              <td colspan="5"><strong>TOTAL</strong></td>
-              <td class="numeric"><strong>${filteredProducts.reduce((s, p) => s + p.quantite, 0)}</strong></td>
-              <td></td>
-              <td class="numeric"><strong>${filteredProducts.reduce((s, p) => s + p.total, 0).toFixed(2)} DH</strong></td>
-              <td></td>
-            </tr>
-          </table>
-
-          <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
-            <p>Rapport généré le ${formatDateDMY(new Date().toISOString())} à ${new Date().toLocaleTimeString('fr-FR')}</p>
-            <p>Application de Gestion Commerciale - Produits ${selectedContact.nom_complet}</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      const wrapped = printContent.replace('</body>', `
-        <script>
-          (function(){
-            const imgs = Array.from(document.images || []);
-            if (imgs.length === 0) return window.print();
-            Promise.all(imgs.map(i => new Promise(r => {
-              if (i.complete) return r();
-              i.addEventListener('load', r);
-              i.addEventListener('error', r);
-            }))).then(()=>{ try{ window.print(); }catch(e){} });
-          })();
-        </script>
-      </body>`);
-      printWindow.document.write(wrapped);
-      printWindow.document.close();
-    }
+  // Open print modal for products
+  const openPrintProducts = () => {
+    setPrintModal({ open: true, mode: 'products' });
   };
 
   // Formik (utilisé par ContactFormModal via props.initialValues si besoin)
@@ -1469,37 +1267,38 @@ const ContactsPage: React.FC = () => {
 
       {/* Modal de détails */}
       {isDetailsModalOpen && selectedContact && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-[95vw] max-h-[95vh] overflow-y-auto">
-            <div className={`${selectedContact.type === 'Client' ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4 rounded-t-lg`}>
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold text-white">Détails - {selectedContact.nom_complet}</h2>
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={handlePrint}
-                    className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-md transition-colors font-medium border border-white border-opacity-30"
-                    title="Imprimer rapport détaillé avec produits et transactions (selon filtres appliqués)"
-                  >
-                    <FileText size={16} />
-                    Rapport Détaillé
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsDetailsModalOpen(false);
-                      setSelectedContact(null);
-                    }}
-                    className="text-white hover:text-gray-200"
-                  >
-                    ✕
-                  </button>
+          <>
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg w-full max-w-[95vw] max-h-[95vh] overflow-y-auto">
+                <div className={`${selectedContact.type === 'Client' ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4 rounded-t-lg`}>
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold text-white">Détails - {selectedContact.nom_complet}</h2>
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={handlePrint}
+                        className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-md transition-colors font-medium border border-white border-opacity-30"
+                        title="Imprimer rapport détaillé avec produits et transactions (selon filtres appliqués)"
+                      >
+                        <FileText size={16} />
+                        Rapport Détaillé
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsDetailsModalOpen(false);
+                          setSelectedContact(null);
+                        }}
+                        className="text-white hover:text-gray-200"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div className="p-6">
-              {/* Infos contact */}
-              <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                <h3 className="font-bold text-lg mb-3">Informations du {selectedContact.type}</h3>
+                <div className="p-6">
+                  {/* Infos contact */}
+                  <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                    <h3 className="font-bold text-lg mb-3">Informations du {selectedContact.type}</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div>
                     <p className="font-semibold text-gray-600">Téléphone:</p>
@@ -1536,21 +1335,21 @@ const ContactsPage: React.FC = () => {
                 <div className="flex gap-4 items-end">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Date de début</label>
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    </div>
+                  </>
+                  {/* Contact Print Modal (unified for transactions/products) - always rendered in details modal */}
+                  {printModal.open && selectedContact && (
+                    <ContactPrintModal
+                      isOpen={printModal.open}
+                      onClose={() => setPrintModal({ open: false, mode: null })}
+                      contact={selectedContact}
+                      mode={printModal.mode as any}
+                      transactions={filteredCombinedTransactions}
+                      productHistory={filteredProductHistory}
+                      dateFrom={dateFrom}
+                      dateTo={dateTo}
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date de fin</label>
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
+                  )}
                   </div>
                   <button
                     onClick={() => {
@@ -1652,7 +1451,7 @@ const ContactsPage: React.FC = () => {
                         {filteredCombinedTransactions.length} éléments
                       </span>
                       <button
-                        onClick={handlePrintTransactions}
+                        onClick={openPrintTransactions}
                         className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
                         title="Imprimer uniquement les transactions"
                       >
@@ -1811,13 +1610,24 @@ const ContactsPage: React.FC = () => {
                         {filteredProductHistory.length} éléments
                       </span>
                       <button
-                        onClick={handlePrintProducts}
+                        onClick={openPrintProducts}
                         className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm"
                         title="Imprimer uniquement le détail des produits"
                       >
                         <Printer size={14} />
                         Imprimer
                       </button>
+                        <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm">
+                          {filteredProductHistory.length} éléments
+                        </span>
+                        <button
+                          onClick={openPrintProducts}
+                          className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm"
+                          title="Imprimer uniquement le détail des produits"
+                        >
+                          <Printer size={14} />
+                          Imprimer
+                        </button>
                     </div>
                   </div>
 
