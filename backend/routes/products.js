@@ -19,6 +19,7 @@ router.get('/', async (_req, res, next) => {
       categorie_id: r.categorie_id,
       categorie: r.c_id ? { id: r.c_id, nom: r.c_nom, description: r.c_description } : undefined,
       quantite: Number(r.quantite),
+    kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
       prix_achat: Number(r.prix_achat),
       cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
       cout_revient: Number(r.cout_revient),
@@ -48,6 +49,7 @@ router.get('/:id', async (req, res, next) => {
       designation: r.designation,
       categorie_id: r.categorie_id,
       quantite: Number(r.quantite),
+    kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
       prix_achat: Number(r.prix_achat),
       cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
       cout_revient: Number(r.cout_revient),
@@ -70,6 +72,7 @@ router.post('/', async (req, res, next) => {
       designation,
       categorie_id,
       quantite,
+      kg,
       prix_achat,
       cout_revient_pourcentage,
       prix_gros_pourcentage,
@@ -107,12 +110,13 @@ router.post('/', async (req, res, next) => {
     const now = new Date();
     const [result] = await pool.query(
   `INSERT INTO products
-   (designation, categorie_id, quantite, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, est_service, created_by, created_at, updated_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+   (designation, categorie_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, est_service, created_by, created_at, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         (designation && String(designation).trim()) || 'Sans désignation',
         catId,
         Number(est_service ? 0 : (quantite ?? 0)),
+        kg !== undefined && kg !== null ? Number(kg) : null,
         pa,
         crp,
         cr,
@@ -147,6 +151,7 @@ router.put('/:id', async (req, res, next) => {
       designation,
       categorie_id,
       quantite,
+  kg,
       prix_achat,
       cout_revient_pourcentage,
       prix_gros_pourcentage,
@@ -158,6 +163,7 @@ router.put('/:id', async (req, res, next) => {
     if (designation !== undefined) { fields.push('designation = ?'); values.push(designation ? designation.trim() : null); }
     if (categorie_id !== undefined) { fields.push('categorie_id = ?'); values.push(categorie_id); }
     if (quantite !== undefined) { fields.push('quantite = ?'); values.push(Number(quantite)); }
+  if (kg !== undefined) { fields.push('kg = ?'); values.push(kg === null ? null : Number(kg)); }
     if (prix_achat !== undefined) { fields.push('prix_achat = ?'); values.push(Number(prix_achat)); }
     if (cout_revient_pourcentage !== undefined) { fields.push('cout_revient_pourcentage = ?'); values.push(Number(cout_revient_pourcentage)); }
     if (prix_gros_pourcentage !== undefined) { fields.push('prix_gros_pourcentage = ?'); values.push(Number(prix_gros_pourcentage)); }

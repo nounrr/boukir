@@ -10,6 +10,20 @@ interface BonPrintTemplateProps {
   companyType?: 'DIAMOND' | 'MPC';
 }
 
+// Petit composant réutilisable pour le pied de page
+const CompanyFooter: React.FC<{
+  data: { address: string; phones: string; email: string; extra?: string };
+}> = ({ data }) => (
+  <div style={{ position: 'absolute', left: 0, right: 0, bottom: '12mm', padding: '0 16px' }} className="mt-8 pt-4 border-t border-gray-300">
+    <div className="text-center text-xs text-gray-600 space-y-1">
+      <p>{data.address}</p>
+      <p>{data.phones} | {data.email}</p>
+      
+    
+    </div>
+  </div>
+);
+
 const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({ 
   bon, 
   client, 
@@ -19,28 +33,48 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
 }) => {
   const [selectedCompany, setSelectedCompany] = useState<'DIAMOND' | 'MPC'>(companyType);
   const [printMode, setPrintMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES' | 'PRODUCTS_ONLY'>('WITH_PRICES');
-  // Formater la date
+
+  // Date
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '';
     const date = new Date(dateStr);
     return date.toLocaleDateString('fr-FR');
   };
 
-  // Déterminer le titre selon le type
+  // Infos variables par société
+  const companyFooters: Record<'DIAMOND' | 'MPC', {
+    address: string;
+    phones: string;
+    email: string;
+    extra?: string;
+  }> = {
+    DIAMOND: {
+      address: "IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER",
+      phones: "GSM: 0650812894 - Tél: 0666216657",
+      email: "EMAIL: boukir.diamond23@gmail.com",
+    },
+    MPC: {
+      address: "ALot Awatif N°179 - TANGER",
+      phones: "GSM: 0650812894 - Tél: 0666216657",
+      email: "EMAIL: boukir.diamond23@gmail.com",
+    }
+  };
+  
+  // Titre
   const getTitreBon = (type: string) => {
     switch (type) {
-      case 'Commande': return 'BCM ';
+      case 'Commande': 
       case 'Bon Commande': return 'BCM ';
-      case 'Bon Comptant': return 'BCO ';
+      case 'Bon Comptant': 
       case 'Comptant': return 'BCO ';
-      case 'Bon Sortie': return 'BS ';
-      case 'Devis': return 'BD ';
+      case 'Bon Sortie':
       case 'Sortie': return 'BS ';
+      case 'Devis': return 'BD ';
       default: return 'BON N';
     }
   };
 
-  // Calculer les totaux
+  // Items & totaux
   const parseItemsArray = (items: any): any[] => {
     if (Array.isArray(items)) return items;
     if (typeof items === 'string') {
@@ -53,23 +87,21 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     }
     return [];
   };
-  
+
   const items = parseItemsArray(bon.items);
-  
   const sousTotal = items.reduce((sum: number, item: any) => 
     sum + (parseFloat(item.quantite || 0) * parseFloat(item.prix_unitaire || 0)), 0);
 
   const contact = client || fournisseur;
   const contactLabel = contact ? 'Contact' : '';
-    // status styling handled via getStatusClasses in parent page; template keeps simple styling
 
   return (
     <div 
       className={`bg-white ${size === 'A5' ? 'w-[148mm] h-[210mm]' : 'w-[210mm] h-[297mm]'} mx-auto p-4 font-sans text-sm print:shadow-none`}
-      style={{ fontFamily: ' sans-serif' }}
+      style={{ fontFamily: 'sans-serif', position: 'relative' }}
     >
-  {/* Options d'impression et choix de la société */}
-  <div className="flex justify-end items-center gap-4 mb-2 print-hidden">
+      {/* Options */}
+      <div className="flex justify-end items-center gap-4 mb-2 print-hidden">
         <div className="flex items-center">
           <label htmlFor="company-select" className="mr-2 text-sm font-medium">Société :</label>
           <select
@@ -98,12 +130,12 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
         </div>
       </div>
 
-      {/* En-tête avec logo et informations entreprise */}
+      {/* En-tête */}
       <CompanyHeader companyType={selectedCompany} />
 
-      {/* Informations du document */}
+      {/* Infos document */}
       <div className="flex justify-between items-start mb-6 mt-6">
-        {/* Informations du contact */}
+        {/* Contact */}
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-gray-800 mb-3">{contactLabel} :</h3>
           {contact && (
@@ -118,11 +150,11 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
           )}
         </div>
 
-        {/* Informations du document */}
-        <div className=" ml-6 text-right">
-          <div className=" p-4 rounded border border-orange-200">
+        {/* Cartouche */}
+        <div className="ml-6 text-right">
+          <div className="p-4 rounded border border-orange-200">
             <h2 className="text-lg font-bold text-orange-700 mb-3">
-               BON DEVIS {getTitreBon(bon.type)}{bon.id}
+              BON DEVIS {getTitreBon(bon.type)}{bon.id}
             </h2>
             <div className="space-y-2 text-sm">
               <div><span className="font-medium">Date:</span> {formatDate(bon.date_creation)}</div>
@@ -132,13 +164,12 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               {bon.date_echeance && (
                 <div><span className="font-medium">Échéance:</span> {formatDate(bon.date_echeance)}</div>
               )}
-              
             </div>
           </div>
         </div>
       </div>
 
-      {/* Table des articles */}
+      {/* Table articles */}
       <div className="mb-6">
         <table className="w-full border-collapse border border-gray-300">
           <thead>
@@ -190,8 +221,8 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
       {printMode === 'WITH_PRICES' && (
         <div className="flex justify-end mb-6">
           <div className="w-80">
-            <div className=" p-4 rounded">
-              <div className="flex justify-between items-center text-md font-bold ">
+            <div className="p-4 rounded">
+              <div className="flex justify-between items-center text-lg font-bold">
                 <span>TOTAL GÉNÉRAL:</span>
                 <span>{sousTotal.toFixed(2)} DH</span>
               </div>
@@ -210,12 +241,39 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
         </div>
       )}
 
-      {/* Pied de page */}
-      <div className="mt-8 pt-4 border-t border-gray-300">
-        <div className="text-center text-xs text-gray-600">
-          <p> Lot Riad Ahlan I N° 436 - TANGER - GSM: 0650812894 - Tél: 0539317269</p>
+      {/* Footer area: fixed cachet client and vehicle info (positioned at bottom) */}
+      <div >
+        <div className="flex justify-between items-end">
+         
+
+          {/* Vehicle info (if exists) */}
+          <div className="text-right text-sm">
+            {(
+              bon?.vehicule_nom || bon?.vehicule?.nom || bon?.vehicule_designation || bon?.vehicule_label
+            ) && (
+              <div className="mb-1">
+                <div className="font-medium">Véhicule: {bon?.vehicule_nom}</div>
+                
+              </div>
+            )}
+            {(
+              bon?.vehicule_immatriculation || bon?.vehicule?.immatriculation || bon?.immatriculation
+            ) && (
+              <div>
+                <div className="font-medium">Immatriculation:</div>
+                <div>{bon?.vehicule_immatriculation || bon?.vehicule?.immatriculation || bon?.immatriculation}</div>
+              </div>
+            )}
+          </div>
+           {/* Cachet client rectangle */}
+          <div style={{ border: '2px solid #000', width: '60mm', height: '28mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span className="text-sm font-bold">CACHET CLIENT</span>
+          </div>
         </div>
       </div>
+
+      {/* Pied de page (dépend de selectedCompany) */}
+      <CompanyFooter data={companyFooters[selectedCompany]}  />
     </div>
   );
 };

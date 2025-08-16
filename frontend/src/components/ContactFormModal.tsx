@@ -61,6 +61,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   if (!isOpen) return null;
 
   const defaultValues = {
+  societe: '',
     nom_complet: '',
     telephone: '',
     email: '',
@@ -98,6 +99,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               const contactData = {
                 // Pour Fournisseur, le nom peut être vide; on envoie une chaîne vide pour rester compatible DB
                 nom_complet: (values.nom_complet || '').toString(),
+                societe: (values as any).societe || '',
                 telephone: values.telephone || '',
                 email: values.email || '',
                 adresse: values.adresse || '',
@@ -153,6 +155,18 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 {errors.nom_complet && touched.nom_complet && (
                   <p className="text-red-500 text-xs mt-1">{errors.nom_complet}</p>
                 )}
+              </div>
+
+              {/* Société (nom de l'entreprise) */}
+              <div>
+                <label htmlFor="societe" className="block text-sm font-medium text-gray-700 mb-1">Société</label>
+                <Field
+                  id="societe"
+                  name="societe"
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Nom de la société"
+                />
               </div>
 
               {/* Téléphone et Email - 2 colonnes */}

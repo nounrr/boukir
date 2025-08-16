@@ -43,11 +43,38 @@ const toPayment = (r) => ({
   personnel: r.personnel || null,
   code_reglement: r.code_reglement || null,
   image_url: r.image_url || null,
+  statut: r.statut || null,
   created_by: r.created_by ?? null,
   updated_by: r.updated_by ?? null,
   created_at: r.created_at,
   updated_at: r.updated_at,
 });
+
+// normalize statut to canonical French labels
+function mapToCanonical(s) {
+  if (s == null || s === '') return 'En attente';
+  const low = String(s).toLowerCase();
+  switch (low) {
+    case 'attente':
+    case 'en attente':
+    case 'en_attente':
+      return 'En attente';
+    case 'valide':
+    case 'validé':
+    case 'valid':
+      return 'Validé';
+    case 'refuse':
+    case 'refusé':
+    case 'refusee':
+      return 'Refusé';
+    case 'annule':
+    case 'annulé':
+    case 'annulee':
+      return 'Annulé';
+    default:
+      return String(s);
+  }
+}
 
 // List payments
 router.get('/', verifyToken, async (req, res) => {
@@ -102,7 +129,7 @@ router.get('/:id', verifyToken, async (req, res) => {
 
 router.post('/', verifyToken, async (req, res) => {
 	try {
-		const {
+    const {
       type_paiement = 'Client',
 			contact_id,
       bon_id = null,
@@ -116,7 +143,35 @@ router.post('/', verifyToken, async (req, res) => {
       code_reglement = null,
       image_url = null,
       created_by = null,
-		} = req.body;
+  } = req.body;
+
+    // normalize statut to canonical French labels and default to 'En attente'
+    const rawStatut = req.body && Object.hasOwn(req.body, 'statut') ? req.body.statut : undefined;
+    const mapToCanonical = (s) => {
+      if (!s && s !== '') return 'En attente';
+      const low = String(s).toLowerCase();
+      switch (low) {
+        case 'attente':
+        case 'en attente':
+        case 'en_attente':
+          return 'En attente';
+        case 'valide':
+        case 'validé':
+        case 'valid':
+          return 'Validé';
+        case 'refuse':
+        case 'refusé':
+        case 'refusee':
+          return 'Refusé';
+        case 'annule':
+        case 'annulé':
+        case 'annulee':
+          return 'Annulé';
+        default:
+          return String(s);
+      }
+    };
+    const statut = mapToCanonical(rawStatut);
 
     // Nettoyer les valeurs pour éviter les erreurs "Out of range"
     const cleanContactId = contact_id ? Number(contact_id) : null;
@@ -128,14 +183,23 @@ router.post('/', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'Date de paiement invalide', detail: String(date_paiement) });
     }
 
-		const [result] = await pool.query(
-			`INSERT INTO payments
+    // Validate statut according to user role
+    const allowedAll = ['En attente','Validé','Refusé','Annulé'];
+    const allowedEmployee = ['En attente','Annulé'];
+    const userRole = (req.user && req.user.role) ? String(req.user.role).toLowerCase() : '';
+    const allowed = (userRole === 'employe' || userRole === 'user') ? allowedEmployee : allowedAll;
+    if (!allowed.includes(statut)) {
+      return res.status(403).json({ message: 'Statut non autorisé pour votre rôle' });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO payments
         (numero, type_paiement, contact_id, bon_id, montant_total, mode_paiement, date_paiement, designation,
-         date_echeance, banque, personnel, code_reglement, image_url, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         date_echeance, banque, personnel, code_reglement, image_url, statut, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ['', type_paiement, cleanContactId, cleanBonId, montant_total, mode_paiement, cleanDatePaiement, designation,
-        cleanDateEcheance, banque, personnel, code_reglement, image_url, created_by]
-		);
+        cleanDateEcheance, banque, personnel, code_reglement, image_url, statut, created_by]
+    );
     await pool.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
     const [rows] = await pool.query('SELECT * FROM payments WHERE id = ?', [result.insertId]);
   res.status(201).json(toPayment(rows[0]));
@@ -160,9 +224,22 @@ router.put('/:id', verifyToken, async (req, res) => {
       const de = toYMD(data.date_echeance);
       data.date_echeance = de; // null allowed
     }
+    // Validate statut if provided according to user role and normalize to canonical label
+    const allowedAllPut = ['En attente','Validé','Refusé','Annulé'];
+    const allowedEmployeePut = ['En attente','Annulé'];
+    const userRole = (req.user && req.user.role) ? String(req.user.role).toLowerCase() : '';
+    if (Object.hasOwn(data, 'statut')) {
+      const canonical = mapToCanonical(data.statut);
+      const allowedPut = (userRole === 'employe' || userRole === 'user') ? allowedEmployeePut : allowedAllPut;
+      if (!allowedPut.includes(canonical)) {
+        return res.status(403).json({ message: 'Statut non autorisé pour votre rôle' });
+      }
+      data.statut = canonical;
+    }
+
     const fields = [
-      'type_paiement','contact_id','bon_id','montant_total','mode_paiement','date_paiement','designation',
-      'date_echeance','banque','personnel','code_reglement','image_url','updated_by'
+  'type_paiement','contact_id','bon_id','montant_total','mode_paiement','date_paiement','designation',
+  'date_echeance','banque','personnel','code_reglement','image_url','statut','updated_by'
     ];
     const setParts = [];
 		const values = [];
@@ -180,6 +257,32 @@ router.put('/:id', verifyToken, async (req, res) => {
   res.json(toPayment(rows[0]));
   } catch (err) {
     console.error('PUT /payments/:id error:', err);
+    res.status(500).json({ message: 'Internal error', detail: String(err?.sqlMessage || err?.message || err) });
+  }
+});
+
+// PATCH /payments/:id/statut - change only the statut (role-validated)
+router.patch('/:id/statut', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { statut } = req.body;
+    if (!Object.hasOwn(req.body, 'statut')) return res.status(400).json({ message: 'Statut requis' });
+    const canonical = mapToCanonical(statut);
+
+    const allowedAll = ['En attente','Validé','Refusé','Annulé'];
+    const allowedEmployee = ['En attente','Annulé'];
+    const userRole = (req.user && req.user.role) ? String(req.user.role).toLowerCase() : '';
+    const allowed = (userRole === 'employe' || userRole === 'user') ? allowedEmployee : allowedAll;
+    if (!allowed.includes(canonical)) {
+      return res.status(403).json({ message: 'Statut non autorisé pour votre rôle' });
+    }
+
+    const [result] = await pool.query('UPDATE payments SET statut = ?, updated_at = NOW() WHERE id = ?', [canonical, id]);
+    if (result.affectedRows === 0) return res.status(404).json({ message: 'Paiement introuvable' });
+    const [rows] = await pool.query('SELECT * FROM payments WHERE id = ?', [id]);
+    res.json({ success: true, message: `Statut mis à jour: ${canonical}`, data: toPayment(rows[0]) });
+  } catch (err) {
+    console.error('PATCH /payments/:id/statut error:', err);
     res.status(500).json({ message: 'Internal error', detail: String(err?.sqlMessage || err?.message || err) });
   }
 });

@@ -51,7 +51,7 @@ const ContactsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string | string[]>('ALL'); // 'ALL' or array of statuses
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -121,10 +121,10 @@ const ContactsPage: React.FC = () => {
     const id = selectedContact.id;
     const list: any[] = [];
 
-    // Pour un client: sorties, devis, comptants, avoirs client
+    // Pour un client: sorties, comptants, avoirs client (EXCLUDING Devis per UI request)
     if (isClient) {
       for (const b of sorties) if (b.client_id === id) list.push({ ...b, type: 'Sortie' });
-      for (const b of devis) if (b.client_id === id) list.push({ ...b, type: 'Devis' });
+      // Devis intentionally excluded from detail/transactions per requirement
       for (const b of comptants) if (b.client_id === id) list.push({ ...b, type: 'Comptant' });
       for (const b of avoirsClient) if (b.client_id === id) list.push({ ...b, type: 'Avoir' });
     } else {
@@ -133,7 +133,7 @@ const ContactsPage: React.FC = () => {
       for (const b of avoirsFournisseur) if (b.fournisseur_id === id) list.push({ ...b, type: 'AvoirFournisseur' });
     }
 
-    // Filtre période + tri
+  // Filtre période + tri
     const filtered = list.filter((b) => isWithinDateRange(b.date_creation));
     filtered.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return filtered;
@@ -154,30 +154,97 @@ const ContactsPage: React.FC = () => {
       mode: null,
     }));
 
+    // Add payments related to this contact
+  const paymentsForContact = payments.filter((p: any) => String(p.contact_id) === String(selectedContact.id));
+    for (const p of paymentsForContact) {
+      combined.push({
+        id: `payment-${p.id}`,
+        numero: p.numero || `P-${p.id}`,
+        type: 'Payment',
+    dateISO: p.date_paiement || p.created_at,
+    date: formatDateDMY(p.date_paiement || p.created_at),
+    montant: Number(p.montant ?? p.montant_total ?? 0) || 0,
+        // Use payment.statut when present; otherwise fallback to 'Paiement'
+        statut: p.statut ? String(p.statut) : 'Paiement',
+        isPayment: true,
+  mode: (p.mode_paiement as any) || null,
+      });
+    }
+
     combined.sort((a, b) => new Date(a.dateISO).getTime() - new Date(b.dateISO).getTime());
+
+    // Helper to detect payments by statut value 'Paiement'
+    const isPaymentStatut = (entry: any) => String(entry?.statut || '').toLowerCase() === 'paiement';
 
     let soldeCumulatif = Number(selectedContact?.solde ?? 0);
     return combined.map((t) => {
       const montant = Number(t.montant) || 0;
-      soldeCumulatif += montant; // ajuster le signe si besoin par type
+      // If statut indicates 'Paiement' then it's a payment and reduces the balance
+      const delta = isPaymentStatut(t) ? -montant : montant;
+      soldeCumulatif += delta;
       return { ...t, soldeCumulatif };
     });
   }, [selectedContact, bonsForContact]);
 
+  const displayStatut = (s?: string) => {
+    if (!s) return '-';
+  const norm = String(s).toLowerCase();
+  if (norm === 'en attente' || norm === 'attente') return 'En attente';
+  if (norm === 'validé' || norm === 'valide') return 'Validé';
+  if (norm === 'refusé' || norm === 'refuse') return 'Refusé';
+  if (norm === 'annulé' || norm === 'annule') return 'Annulé';
+  if (norm === 'paiement') return 'Paiement';
+  return s;
+  };
+
   // Apply status filter to transactions for both display and printing
   const filteredCombinedTransactions = useMemo(() => {
+    if (!statusFilter) return combinedTransactions;
+    if (statusFilter === 'ALL') return combinedTransactions;
+    if (Array.isArray(statusFilter) && statusFilter.length === 0) return combinedTransactions;
     return combinedTransactions.filter((t) => {
-      if (statusFilter === 'ALL') return true;
-      return (t.statut && String(t.statut) === statusFilter);
+      const sRaw = t.statut ? String(t.statut) : (String(t.type).toLowerCase() === 'payment' ? 'Paiement' : '');
+      // normalize both sides for comparison
+      const sNorm = sRaw.toLowerCase();
+      if (Array.isArray(statusFilter)) return statusFilter.some((f: string) => String(f).toLowerCase() === sNorm);
+      return String(statusFilter).toLowerCase() === sNorm;
     });
   }, [combinedTransactions, statusFilter]);
 
+  // Monthly summary row type
+  type MonthlySummaryRow = { month: string; totalBons: number; totalPaiements: number; endBalance: number };
+
+  // Monthly summary (totals per month) - computed from filtered transactions
+  const monthlySummary = React.useMemo(() => {
+    const map = new Map() as Map<string, MonthlySummaryRow>;
+    for (const t of filteredCombinedTransactions) {
+      // parse month from ISO date YYYY-MM-DD or dd/mm/yyyy
+      const iso = String((t.dateISO || t.date || '')).slice(0, 10);
+      const month = iso && iso.match(/^\d{4}-\d{2}/) ? iso.slice(0, 7) : 'unknown';
+      const entry = map.get(month) || { month, totalBons: 0, totalPaiements: 0, endBalance: 0 };
+      const amt = Number(t.montant) || 0;
+      const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement';
+      if (isPayment) entry.totalPaiements += amt; else entry.totalBons += amt;
+      entry.endBalance = Number(t.soldeCumulatif ?? entry.endBalance);
+      map.set(month, entry);
+    }
+    // sort months ascending
+    return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
+  }, [filteredCombinedTransactions]);
+
   // Derived list of available statuses for the selected contact's bons
+  // Always include canonical statuses so the multi-select shows all options
   const availableStatuses = useMemo(() => {
-    if (!selectedContact) return ['ALL'];
-    const sts = Array.from(new Set(bonsForContact.map((b: any) => b.statut).filter(Boolean)));
-    return ['ALL', ...sts];
-  }, [selectedContact, bonsForContact]);
+    const CANONICAL = ['En attente', 'Validé', 'Refusé', 'Annulé', 'Paiement'];
+    if (!selectedContact) return CANONICAL;
+    const stsSet = new Set<string>(CANONICAL);
+    // add from bons
+    for (const b of bonsForContact) if (b.statut) stsSet.add(String(b.statut));
+    // from payments add 'Paiement' as an option if payments exist
+    if (payments.some((p: any) => String(p.contact_id) === String(selectedContact.id))) stsSet.add('Paiement');
+    return Array.from(stsSet);
+  }, [selectedContact, bonsForContact, payments]);
+
 
   const productHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
@@ -219,7 +286,10 @@ const ContactsPage: React.FC = () => {
     let soldeCumulatif = Number(selectedContact?.solde ?? 0);
     return items.map((item) => {
       const total = Number(item.total) || 0;
-      soldeCumulatif += total;
+      // Certains items représentent des paiements (type 'paiement' ou flag isPayment)
+  const isPaymentItem = String(item?.statut || '').toLowerCase() === 'paiement' || String(item?.type || '').toLowerCase() === 'payment';
+  const delta = isPaymentItem ? -total : total;
+      soldeCumulatif += delta;
       return { ...item, soldeCumulatif };
     });
   }, [selectedContact, bonsForContact, products]);
@@ -227,7 +297,9 @@ const ContactsPage: React.FC = () => {
   // Apply status filter to product history for display and printing
   const filteredProductHistory = useMemo(() => {
     return productHistory.filter((item) => {
+      if (!statusFilter || (Array.isArray(statusFilter) && statusFilter.length === 0)) return true;
       if (statusFilter === 'ALL') return true;
+      if (Array.isArray(statusFilter)) return statusFilter.some((s) => String(item.bon_statut) === s);
       return (item.bon_statut && String(item.bon_statut) === statusFilter);
     });
   }, [productHistory, statusFilter]);
@@ -294,7 +366,12 @@ const ContactsPage: React.FC = () => {
   const handlePrint = () => {
     if (!selectedContact) return;
 
-  const filteredBons = bonsForContact.filter((b: any) => statusFilter === 'ALL' ? true : (b.statut && String(b.statut) === statusFilter));
+  const filteredBons = bonsForContact.filter((b: any) => {
+    if (!statusFilter || (Array.isArray(statusFilter) && statusFilter.length === 0)) return true;
+    if (statusFilter === 'ALL') return true;
+    if (Array.isArray(statusFilter)) return statusFilter.some((s) => b.statut && String(b.statut) === s);
+    return (b.statut && String(b.statut) === statusFilter);
+  });
     const filteredPayments: any[] = [];
     const filteredProducts = filteredProductHistory.filter(item => 
       isWithinDateRange(new Date(`${item.bon_date.split('-').reverse().join('-')}`).toISOString())
@@ -525,7 +602,7 @@ const ContactsPage: React.FC = () => {
     const base = Number(contact.solde) || 0;
     const sales = isClient ? (salesByClient.get(id) || 0) : 0;
     const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
-    const paid = paymentsByContact.get(id) || 0;
+  const paid = paymentsByContact.get(id) || 0;
     const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
 
     const printContent = `
@@ -622,7 +699,7 @@ const ContactsPage: React.FC = () => {
       const isClient = contact.type === 'Client';
       const sales = isClient ? (salesByClient.get(contact.id) || 0) : 0;
       const purchases = !isClient ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
-      const paid = paymentsByContact.get(contact.id) || 0;
+  const paid = paymentsByContact.get(contact.id) || 0;
       const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
       return sum + soldeActuel;
     }, 0);
@@ -820,15 +897,15 @@ const ContactsPage: React.FC = () => {
                 <td>${t.date}</td>
                 <td>${t.numero}</td>
                 <td>${t.type}</td>
-                <td class="numeric">${(t.isPayment ? '-' : '+') + t.montant.toFixed(2)} DH</td>
-                <td>${t.isPayment ? t.mode : t.statut}</td>
+                <td class="numeric">${((String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment') ? '-' : '+') + t.montant.toFixed(2)} DH</td>
+                <td>${(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment') ? t.mode : t.statut}</td>
                 <td class="numeric ${t.soldeCumulatif >= 0 ? 'positive' : 'negative'}">${t.soldeCumulatif.toFixed(2)} DH</td>
               </tr>
             `).join('')}
             <tr class="total-row">
               <td colspan="3"><strong>TOTAUX</strong></td>
-              <td class="numeric"><strong>Bons: ${combinedTransactions.filter(t => !t.isPayment).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH</strong></td>
-              <td class="numeric"><strong>Paiements: ${combinedTransactions.filter(t => t.isPayment).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH</strong></td>
+              <td class="numeric"><strong>Bons: ${combinedTransactions.filter(t => !(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH</strong></td>
+              <td class="numeric"><strong>Paiements: ${combinedTransactions.filter(t => (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH</strong></td>
               <td class="numeric"><strong>Solde Final: ${combinedTransactions.length > 0 ? combinedTransactions[combinedTransactions.length - 1].soldeCumulatif.toFixed(2) : '0.00'} DH</strong></td>
             </tr>
           </table>
@@ -1515,16 +1592,26 @@ const ContactsPage: React.FC = () => {
                     Toutes les dates
                   </button>
                   <div className="ml-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Filtrer par statut</label>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value || 'ALL')}
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                    >
-                      {availableStatuses.map((s) => (
-                        <option key={s} value={s}>{s === 'ALL' ? 'Tous' : s}</option>
-                      ))}
-                    </select>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Filtrer par statut (multi)</label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        multiple
+                        value={statusFilter}
+                        onChange={(e) => {
+                          const vals = Array.from(e.target.selectedOptions).map(o => o.value);
+                          setStatusFilter(vals);
+                        }}
+                        className="px-3 py-2 border border-gray-300 rounded-md h-28"
+                      >
+                        {availableStatuses.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                      <div className="flex flex-col gap-2">
+                        <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([])}>Tous</button>
+                        <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([...(availableStatuses || [])])}>Tout sélectionner</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1621,28 +1708,17 @@ const ContactsPage: React.FC = () => {
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className={`text-sm font-semibold ${t.isPayment ? 'text-green-600' : 'text-blue-600'}`}>
-                                  {t.isPayment ? '-' : '+'}
-                                  {t.montant.toFixed(2)} DH
-                                </div>
+                                {(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement') ? (
+                                  <div className="text-sm font-semibold text-green-600">-{t.montant.toFixed(2)} DH</div>
+                                ) : (
+                                  <div className="text-sm font-semibold text-blue-600">+{t.montant.toFixed(2)} DH</div>
+                                )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                {t.isPayment ? (
-                                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">
-                                    {t.mode}
-                                  </span>
+                                {(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement') ? (
+                                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">{displayStatut(t.statut)}</span>
                                 ) : (
-                                  <span
-                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                      t.statut === 'Validé'
-                                        ? 'bg-green-200 text-green-700'
-                                        : t.statut === 'En cours'
-                                        ? 'bg-yellow-200 text-yellow-700'
-                                        : 'bg-gray-200 text-gray-700'
-                                    }`}
-                                  >
-                                    {t.statut}
-                                  </span>
+                                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${t.statut === 'Validé' ? 'bg-green-200 text-green-700' : t.statut === 'En cours' ? 'bg-yellow-200 text-yellow-700' : 'bg-gray-200 text-gray-700'}`}>{t.statut}</span>
                                 )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
@@ -1671,13 +1747,13 @@ const ContactsPage: React.FC = () => {
                         <div>
                           <p className="font-semibold text-gray-600">Total Bons:</p>
                           <p className="text-lg font-bold text-blue-600">
-                            {filteredCombinedTransactions.filter((t) => !t.isPayment).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
+                            {filteredCombinedTransactions.filter((t) => !(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
                           </p>
                         </div>
                         <div>
                           <p className="font-semibold text-gray-600">Total Paiements:</p>
                           <p className="text-lg font-bold text-green-600">
-                            {filteredCombinedTransactions.filter((t) => t.isPayment).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
+                            {filteredCombinedTransactions.filter((t) => (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment' || String(t.type || '').toLowerCase() === 'paiement')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
                           </p>
                         </div>
                         <div>
@@ -1696,6 +1772,7 @@ const ContactsPage: React.FC = () => {
                     </div>
                   )}
 
+      
                   {/* Résumé badges */}
                   <div className="mt-8 bg-blue-50 rounded-lg p-4">
                     <h3 className="font-bold text-lg mb-3">Résumé de la période</h3>

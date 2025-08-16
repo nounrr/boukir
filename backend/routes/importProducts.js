@@ -73,12 +73,17 @@ router.post("/", upload.single("file"), async (req, res) => {
         decOrNull(r.prix_vente) ??
         (prix_achat != null && pvp != null ? +(prix_achat * (1 + pvp / 100)).toFixed(2) : null);
 
+      // optional kg column (accept different header names)
+      const kg = decOrNull(r.kg ?? r["KG"] ?? r["Poids"] ?? r["poids"] ?? r["Poids (kg)"]);
+
+      // Order of columns must match the INSERT column list below
       return [
         designation,
         quantite,
         prix_achat,
         crp,
         cout_revient,
+        kg,
         pgp,
         prix_gros,
         pvp,
@@ -88,7 +93,7 @@ router.post("/", upload.single("file"), async (req, res) => {
 
     // Filtre les lignes vides (aucune désignation et aucun prix)
     const cleaned = values.filter(
-      (v) => v[0] !== null || v[2] !== null || v[8] !== null
+      (v) => v[0] !== null || v[2] !== null || v[9] !== null
     );
     if (cleaned.length === 0) {
       return res.status(400).json({ message: "No valid rows to import" });
@@ -105,6 +110,7 @@ router.post("/", upload.single("file"), async (req, res) => {
         INSERT INTO products
         (designation, quantite, prix_achat,
          cout_revient_pourcentage, cout_revient,
+             kg,
          prix_gros_pourcentage, prix_gros,
          prix_vente_pourcentage, prix_vente)
         VALUES ?

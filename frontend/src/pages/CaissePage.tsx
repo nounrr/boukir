@@ -9,6 +9,9 @@ import {
   Eye, 
   Edit, 
   Trash2, 
+  Check,
+  Clock,
+  XCircle,
   CreditCard, 
   DollarSign,
   Receipt,
@@ -23,8 +26,9 @@ import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { resetFilters } from '../store/slices/paymentsSlice';
-import { useGetPaymentsQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery } from '../store/api/paymentsApi';
+import { useGetPaymentsQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
 import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
+import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
 
 const CaissePage = () => {
@@ -36,6 +40,7 @@ const CaissePage = () => {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite'>('all');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
@@ -50,6 +55,7 @@ const CaissePage = () => {
   const [createPayment] = useCreatePaymentMutation();
   const [updatePaymentApi] = useUpdatePaymentMutation();
   const [deletePaymentApi] = useDeletePaymentMutation();
+  const [changePaymentStatusApi] = useChangePaymentStatusMutation();
   const [uploadPaymentImage] = useUploadPaymentImageMutation();
   const [deletePaymentImage] = useDeletePaymentImageMutation();
   const { data: personnelNames = [] } = useGetPersonnelNamesQuery();
@@ -64,17 +70,47 @@ const CaissePage = () => {
 
   // Backend now provides payments; no mock seeding
 
+  // Available statuses for payments
+  const availableStatuses = ['En attente', 'Validé', 'Refusé', 'Annulé'];
+
   // Filtrer les paiements
   const filteredPayments = payments.filter((payment: Payment) => {
-    const matchesSearch = String(payment.id).includes(searchTerm) ||
-                         payment.numero?.toLowerCase?.().includes(searchTerm.toLowerCase()) ||
-                         payment.notes?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+    const term = searchTerm.trim().toLowerCase();
+
+    // Search includes payment fields and linked contact name (client or fournisseur)
+    const contactName = (() => {
+      // try to use explicit fields if present
+      const byName = (payment as any).contact_nom || (payment as any).client_nom || (payment as any).fournisseur_nom || '';
+      if (byName) return String(byName).toLowerCase();
+      // fallback: try to lookup in clients/fournisseurs arrays
+      const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
+      if (cid) {
+        const c = clients.find((cl: any) => String(cl.id) === cid);
+        if (c) return String(c.nom_complet || '').toLowerCase();
+        const f = fournisseurs.find((fo: any) => String(fo.id) === cid);
+        if (f) return String(f.nom_complet || '').toLowerCase();
+      }
+      return '';
+    })();
+
+    const matchesSearch = !term || (
+      String(payment.id).includes(term) ||
+      (payment.numero?.toLowerCase?.() || '').includes(term) ||
+      (payment.notes?.toLowerCase?.() || '').includes(term) ||
+      contactName.includes(term)
+    );
+
     const matchesDate = !dateFilter || payment.date_paiement === dateFilter;
-    
+
     const matchesMode = modeFilter === 'all' || payment.mode_paiement === modeFilter;
-    
-    return matchesSearch && matchesDate && matchesMode;
+
+    const matchesStatus = (() => {
+      if (!statusFilter || (Array.isArray(statusFilter) && statusFilter.length === 0)) return true;
+      const pStat = String((payment as any).statut || '').toString();
+      return statusFilter.includes(pStat);
+    })();
+
+    return matchesSearch && matchesDate && matchesMode && matchesStatus;
   });
 
   // Calculs statistiques
@@ -125,6 +161,17 @@ const CaissePage = () => {
     setIsCreateModalOpen(true);
   };
 
+  // Change payment statut helper (only change statut via table actions)
+  const changePaymentStatus = async (paymentId: number, newStatut: 'En attente'|'Validé'|'Refusé'|'Annulé') => {
+    try {
+      await changePaymentStatusApi({ id: paymentId, statut: newStatut }).unwrap();
+      showSuccess(`Statut mis à jour: ${newStatut}`);
+    } catch (err: any) {
+      console.error('Erreur mise à jour statut:', err);
+      showError(err?.data?.message || err?.message || 'Erreur lors de la mise à jour du statut');
+    }
+  };
+
   const handleCloseModal = () => {
     setIsCreateModalOpen(false);
     setSelectedPayment(null);
@@ -165,6 +212,10 @@ const paymentValidationSchema = Yup.object({
   date_paiement: Yup.string()
     .required('Date de paiement est requise')
     .matches(ymdRegex, 'Date de paiement invalide (format attendu YYYY-MM-DD)'),
+
+  statut: Yup.string()
+    .oneOf(['En attente','Validé','Refusé','Annulé'], 'Statut invalide')
+    .required('Statut est requis'),
 
   contact_id: Yup.number()
     .transform((v, orig) => (orig === '' ? null : v))
@@ -319,6 +370,7 @@ const paymentValidationSchema = Yup.object({
         bon_id: selectedPayment.bon_id || '',
         montant: selectedPayment.montant || selectedPayment.montant_total,
         mode_paiement: selectedPayment.mode_paiement,
+  statut: selectedPayment.statut || 'En attente',
         date_paiement: normDate(selectedPayment.date_paiement),
   // champs référence supprimés
         notes: selectedPayment.notes || selectedPayment.designation || '',
@@ -336,6 +388,7 @@ const paymentValidationSchema = Yup.object({
       bon_id: '',
       montant: 0,
       mode_paiement: 'Espèces',
+  statut: 'En attente',
       date_paiement: new Date().toISOString().split('T')[0],
   // champs référence supprimés
       notes: '',
@@ -388,7 +441,7 @@ const paymentValidationSchema = Yup.object({
   const cleanedDateEcheance = toYMD(values.date_echeance);
       const cleanedCodeReglement = values.code_reglement?.trim() ? values.code_reglement : null;
 
-      const paymentData: any = {
+  const paymentData: any = {
         id: selectedPayment ? selectedPayment.id : Date.now(),
         type_paiement: values.type_paiement || 'Client',
         contact_id: values.contact_id ? Number(values.contact_id) : null,
@@ -396,6 +449,7 @@ const paymentValidationSchema = Yup.object({
         montant_total: Number(values.montant),
         montant: Number(values.montant), // Alias
         mode_paiement: values.mode_paiement,
+  statut: values.statut,
         date_paiement: cleanedDatePaiement,
         designation: values.notes || '',
         notes: values.notes || '', // Alias
@@ -421,6 +475,7 @@ const paymentValidationSchema = Yup.object({
           bon_id: paymentData.bon_id,
           montant_total: paymentData.montant_total,
           mode_paiement: paymentData.mode_paiement,
+          statut: paymentData.statut,
           date_paiement: paymentData.date_paiement,
           designation: paymentData.designation,
           date_echeance: paymentData.date_echeance,
@@ -464,6 +519,49 @@ const paymentValidationSchema = Yup.object({
       default:
         return <DollarSign size={16} className="text-gray-600" />;
     }
+  };
+
+  const displayStatut = (s?: string) => {
+    if (!s) return '-';
+  const norm = String(s).toLowerCase();
+  if (norm === 'en attente' || norm === 'attente') return 'En attente';
+  if (norm === 'validé' || norm === 'valide') return 'Validé';
+  if (norm === 'refusé' || norm === 'refuse') return 'Refusé';
+  if (norm === 'annulé' || norm === 'annule') return 'Annulé';
+  return s;
+  };
+
+  function getStatusClasses(statut?: string) {
+    switch (String(statut || '').trim()) {
+      case 'Brouillon':
+        return 'bg-gray-200 text-gray-700';
+      case 'Validé':
+      case 'Accepté':
+      case 'Livré':
+        return 'bg-green-200 text-green-700';
+      case 'En attente':
+      case 'Envoyé':
+        return 'bg-blue-200 text-blue-700';
+      case 'Avoir':
+        return 'bg-purple-200 text-purple-700';
+      case 'Annulé':
+      case 'Refusé':
+      case 'Expiré':
+        return 'bg-red-200 text-red-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  }
+
+  const getStatusIcon = (statut?: string) => {
+  const s = String(statut || '').toLowerCase();
+  // Icons should inherit the text color from the badge container
+  if (s.includes('en attente') || s === 'attente') return <Clock size={14} className="text-current" />;
+  if (s.includes('valid')) return <Check size={14} className="text-current" />;
+  // Use XCircle for refusé/annulé to keep a consistent filled cross icon
+  if (s.includes('refus')) return <XCircle size={14} className="text-current" />;
+  if (s.includes('annul')) return <XCircle size={14} className="text-current" />;
+  return null;
   };
 
   // Format date as YYYY-MM-DD for table display
@@ -635,6 +733,25 @@ const paymentValidationSchema = Yup.object({
               <option value="Traite">Traite</option>
             </select>
           </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Statut</label>
+            <select
+              multiple
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(Array.from(e.target.selectedOptions).map(o => o.value))}
+              className="px-2 py-2 border border-gray-300 rounded-md h-28"
+              title="Filtrer par statut (sélection multiple)"
+            >
+              {availableStatuses.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <div className="flex flex-col gap-2 ml-2">
+              <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([])}>Tous</button>
+              <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([...availableStatuses])}>Tout sélectionner</button>
+            </div>
+          </div>
         </div>
         
         <button
@@ -642,6 +759,7 @@ const paymentValidationSchema = Yup.object({
             setSearchTerm('');
             setDateFilter('');
             setModeFilter('all');
+            setStatusFilter([]);
             dispatch(resetFilters());
           }}
           className="px-4 py-2 text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-50"
@@ -674,6 +792,9 @@ const paymentValidationSchema = Yup.object({
                 
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Montant
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Statut
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -736,29 +857,100 @@ const paymentValidationSchema = Yup.object({
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-semibold text-gray-900">{Number(payment.montant ?? payment.montant_total ?? 0).toFixed(2)} DH</div>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div>
+                        <span className={`inline-flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(displayStatut(payment.statut))}`}>
+                          {getStatusIcon(displayStatut(payment.statut))}
+                          {displayStatut(payment.statut)}
+                        </span>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleViewPayment(payment)}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="Voir détails"
-                        >
-                          <Eye size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleEditPayment(payment)}
-                          className="text-green-600 hover:text-green-900"
-                          title="Modifier"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(payment.id)}
-                          className="text-red-600 hover:text-red-900"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                      <div className="flex items-center gap-3">
+                        {/* Status action buttons (table-only) */}
+                        <div className="flex items-center gap-1">
+                          {/* En attente */}
+                          <button
+                            onClick={() => changePaymentStatus(payment.id, 'En attente')}
+                            title="Mettre en attente"
+                            className={`${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-500 hover:text-yellow-700'} p-1 rounded`}
+                            disabled={payment.statut === 'En attente'}
+                          >
+                            <Clock size={16} />
+                          </button>
+
+                          {/* For employees allow only En attente and Annulé, others see all options */}
+                          { (user?.role === 'employe' || user?.role === 'user') ? (
+                            <>
+                              {/* Annulé */}
+                              <button
+                                onClick={() => changePaymentStatus(payment.id, 'Annulé')}
+                                title="Annuler"
+                                className={`${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-500 hover:text-red-700'} p-1 rounded`}
+                                disabled={payment.statut === 'Annulé'}
+                              >
+                                <XCircle size={16} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {/* Validé */}
+                              <button
+                                onClick={() => changePaymentStatus(payment.id, 'Validé')}
+                                title="Valider"
+                                className={`${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-500 hover:text-green-600'} p-1 rounded`}
+                                disabled={payment.statut === 'Validé'}
+                              >
+                                <Check size={16} />
+                              </button>
+
+                              {/* Refusé */}
+                              <button
+                                onClick={() => changePaymentStatus(payment.id, 'Refusé')}
+                                title="Refuser"
+                                className={`${payment.statut === 'Refusé' ? 'text-orange-600' : 'text-gray-500 hover:text-orange-600'} p-1 rounded`}
+                                disabled={payment.statut === 'Refusé'}
+                              >
+                                <X size={16} />
+                              </button>
+
+                              {/* Annulé */}
+                              <button
+                                onClick={() => changePaymentStatus(payment.id, 'Annulé')}
+                                title="Annuler"
+                                className={`${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-500 hover:text-red-700'} p-1 rounded`}
+                                disabled={payment.statut === 'Annulé'}
+                              >
+                                <XCircle size={16} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Existing actions: view / edit / delete */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleViewPayment(payment)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Voir détails"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleEditPayment(payment)}
+                            className="text-green-600 hover:text-green-900"
+                            title="Modifier"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(payment.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -822,25 +1014,17 @@ const paymentValidationSchema = Yup.object({
                       <label htmlFor="contact_id" className="block text-sm font-medium text-gray-700 mb-1">
                         {isFournisseurPayment ? 'Fournisseur payeur' : 'Client payeur'} {values.contact_optional ? '' : '*'}
                       </label>
-                      <Field
-                        as="select"
-                        id="contact_id"
-                        name="contact_id"
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">{isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}</option>
-                        {isFournisseurPayment
-                          ? fournisseurs.map((f: Contact) => (
-                              <option key={`f-${f.id}`} value={f.id}>
-                                {f.nom_complet || `Fournisseur #${f.id}`}
-                              </option>
-                            ))
-                          : clients.map((c: Contact) => (
-                              <option key={`c-${c.id}`} value={c.id}>
-                                {c.nom_complet || `Client #${c.id}`}
-                              </option>
-                            ))}
-                      </Field>
+                      <SearchableSelect
+                        options={(isFournisseurPayment ? fournisseurs : clients).map((c: Contact) => ({
+                          value: String(c.id),
+                          label: c.nom_complet || `${isFournisseurPayment ? 'Fournisseur' : 'Client'} #${c.id}`,
+                          data: c,
+                        }))}
+                        value={values.contact_id ? String(values.contact_id) : ''}
+                        onChange={(v) => { setFieldValue('contact_id', v); setFieldValue('bon_id', ''); }}
+                        placeholder={isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}
+                        className="w-full"
+                      />
                       <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
                     </div>
                     {/* Numéro supprimé: il sera égal à l'ID automatiquement */}
@@ -893,6 +1077,8 @@ const paymentValidationSchema = Yup.object({
                       </p>
                     </div>
 
+                          {/* statut removed from creation modal: default kept as 'En attente' server-side */}
+
                     <div>
                       <label htmlFor="bon_id" className="block text-sm font-medium text-gray-700 mb-1">
                         Bon associé (optionnel)
@@ -910,6 +1096,12 @@ const paymentValidationSchema = Yup.object({
             {bons
               .filter((bon: Bon) => {
                 if (bon.type === 'Avoir' || bon.type === 'AvoirFournisseur') return false;
+                // If a contact is selected, only show bons associated with that contact
+                if (values.contact_id) {
+                  return values.type_paiement === 'Fournisseur'
+                    ? String(bon.fournisseur_id) === String(values.contact_id)
+                    : String(bon.client_id) === String(values.contact_id);
+                }
                 return values.type_paiement === 'Fournisseur'
                   ? bon.type === 'Commande'
                   : bon.type === 'Sortie' || bon.type === 'Comptant';
