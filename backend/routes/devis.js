@@ -362,9 +362,10 @@ router.post('/:id/transform', async (req, res) => {
         ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)
       `, [tmp, today, clientId, vehicule_id, lieu, devis.montant_total, created_by]);
 
-      const sortieId = ins.insertId;
-      const numero = `bs${sortieId}`;
-      await connection.execute('UPDATE bons_sortie SET numero = ? WHERE id = ?', [numero, sortieId]);
+  const sortieId = ins.insertId;
+  // Use same numbering style as manual creation: prefix SOR + zero-padded 4 digits
+  const numero = `SOR${String(sortieId).padStart(4, '0')}`;
+  await connection.execute('UPDATE bons_sortie SET numero = ? WHERE id = ?', [numero, sortieId]);
 
       // Copier les items
       const [items] = await connection.execute('SELECT * FROM devis_items WHERE devis_id = ?', [id]);
@@ -408,9 +409,10 @@ router.post('/:id/transform', async (req, res) => {
         ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)
       `, [tmp, today, fournisseur_id, vehicule_id, lieu, devis.montant_total, created_by]);
 
-      const bcId = ins.insertId;
-      const numero = `bc${bcId}`;
-      await connection.execute('UPDATE bons_commande SET numero = ? WHERE id = ?', [numero, bcId]);
+  const bcId = ins.insertId;
+  // Use CMD prefix + zero-padded 4 digits to match frontend generateBonReference('Commande')
+  const numero = `CMD${String(bcId).padStart(4, '0')}`;
+  await connection.execute('UPDATE bons_commande SET numero = ? WHERE id = ?', [numero, bcId]);
 
       // Copier les items
       const [items] = await connection.execute('SELECT * FROM devis_items WHERE devis_id = ?', [id]);
@@ -448,9 +450,10 @@ router.post('/:id/transform', async (req, res) => {
         ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)
       `, [tmp, today, client_id, vehicule_id, lieu, devis.montant_total, created_by]);
 
-      const bctId = ins.insertId;
-      const numero = `bct${bctId}`;
-      await connection.execute('UPDATE bons_comptant SET numero = ? WHERE id = ?', [numero, bctId]);
+  const bctId = ins.insertId;
+  // Use COM prefix + zero-padded 4 digits to match frontend generateBonReference('Comptant')
+  const numero = `COM${String(bctId).padStart(4, '0')}`;
+  await connection.execute('UPDATE bons_comptant SET numero = ? WHERE id = ?', [numero, bctId]);
 
       // Copier les items
       const [items] = await connection.execute('SELECT * FROM devis_items WHERE devis_id = ?', [id]);

@@ -31,6 +31,7 @@ const BonsPage = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedBon, setSelectedBon] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
   const [isNewSupplierModalOpen, setIsNewSupplierModalOpen] = useState(false);
   const [isNewVehicleModalOpen, setIsNewVehicleModalOpen] = useState(false);
@@ -82,12 +83,49 @@ const BonsPage = () => {
 
   // ...
 
+    // Helper to get contact name (client or fournisseur) used by filtering/render
+    const getContactName = (bon: any) => {
+      if (bon.client_id && clients.length > 0) {
+        const client = clients.find((c: any) => String(c.id) === String(bon.client_id));
+        return client ? client.nom_complet : 'Client supprimé';
+      }
+      if (bon.fournisseur_id && suppliers.length > 0) {
+        const supplier = suppliers.find((s: any) => String(s.id) === String(bon.fournisseur_id));
+        return supplier ? supplier.nom_complet : 'Fournisseur supprimé';
+      }
+      return 'Non défini';
+    };
+
+    // Ensure Devis numbers are displayed with uppercase DEV prefix
+    const getDisplayNumero = (bon: any) => {
+      try {
+        const isDevis = (bon?.type === 'Devis') || (currentTab === 'Devis');
+        const raw = String(bon?.numero ?? '').trim();
+        if (!isDevis || raw === '') return raw;
+        // remove any leading 'dev' (case-insensitive) and optional separators
+        const suffix = raw.replace(/^dev\s*[-:\s]*/i, '');
+        return `DEV${suffix}`;
+      } catch (e) {
+        return String(bon?.numero ?? '');
+      }
+    };
+
     // On ne filtre plus par bon.type car la requête est déjà segmentée par onglet,
     // et certains endpoints ne renvoyaient pas `type`.
-    const filteredBons = bons.filter(bon => 
-      ((bon.numero?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (bon.statut?.toLowerCase() || '').includes(searchTerm.toLowerCase()))
-    );
+    const availableStatuses = ['En attente', 'Validé', 'Refusé', 'Annulé'];
+    const filteredBons = bons.filter(bon => {
+      const term = (searchTerm || '').trim().toLowerCase();
+      const contactName = getContactName(bon).toLowerCase();
+      const matchesSearch = !term || (
+        (bon.numero?.toLowerCase() || '').includes(term) ||
+        (bon.statut?.toLowerCase() || '').includes(term) ||
+        contactName.includes(term)
+      );
+
+      const matchesStatus = !statusFilter || statusFilter.length === 0 ? true : (bon.statut && statusFilter.includes(String(bon.statut)));
+
+      return matchesSearch && matchesStatus;
+    });
 
   // Pagination
   const totalItems = filteredBons.length;
@@ -134,7 +172,7 @@ const BonsPage = () => {
       }
       const confirm = await showConfirmation(
         'Créer un avoir et marquer ce bon comme Avoir',
-        `Confirmer la création d'un avoir pour le bon ${bon.numero} ?`,
+        `Confirmer la création d'un avoir pour le bon ${getDisplayNumero(bon)} ?`,
         'Oui, créer l\'avoir',
         'Annuler'
       );
@@ -181,21 +219,7 @@ const BonsPage = () => {
     
     
 
-    const getContactName = (bon: any) => {
-      if (bon.client_id && clients.length > 0) {
-        // Convertir les IDs en string pour assurer la comparaison
-        const client = clients.find((c: any) => String(c.id) === String(bon.client_id));
-        return client ? client.nom_complet : 'Client supprimé';
-      }
-      if (bon.fournisseur_id && suppliers.length > 0) {
-        // Convertir les IDs en string pour assurer la comparaison
-        const supplier = suppliers.find((s: any) => String(s.id) === String(bon.fournisseur_id));
-        return supplier ? supplier.nom_complet : 'Fournisseur supprimé';
-      }
-      return 'Non défini';
-    };
-
-    return (
+  return (
       <div className="p-6">
         {/* Loading indicator */}
         {(bonsLoading || clientsLoading || suppliersLoading || productsLoading) && (
@@ -204,7 +228,6 @@ const BonsPage = () => {
             <span className="ml-2 text-gray-600">Chargement des données...</span>
           </div>
         )}
-        
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Gestion des Bons</h1>
@@ -257,6 +280,23 @@ const BonsPage = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
+          </div>
+          <div className="ml-4 flex items-center gap-3">
+            <label className="text-sm text-gray-600">Statut</label>
+            <select
+              multiple
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(Array.from(e.target.selectedOptions).map(o => o.value))}
+              className="px-2 py-2 border border-gray-300 rounded-md h-28"
+            >
+              {['En attente','Validé','Refusé','Annulé'].map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <div className="flex flex-col gap-2 ml-2">
+              <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([])}>Tous</button>
+              <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter(['En attente','Validé','Refusé','Annulé'])}>Tout sélectionner</button>
+            </div>
           </div>
         </div>
 
@@ -327,7 +367,7 @@ const BonsPage = () => {
                 ) : (
                   paginatedBons.map((bon) => (
                     <tr key={bon.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-sm">{bon.numero}</td>
+                      <td className="px-4 py-2 text-sm">{getDisplayNumero(bon)}</td>
                       <td className="px-4 py-2 text-sm">{formatDateDMY(bon.date_creation)}</td>
                       <td className="px-4 py-2 text-sm">{getContactName(bon)}</td>
                       <td className="px-4 py-2 text-sm">{bon.adresse_livraison ?? bon.adresseLivraison ?? '-'}</td>
@@ -336,9 +376,10 @@ const BonsPage = () => {
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
                       </td>
                       <td className="px-4 py-2">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(bon.statut)}`}>
-                          {bon.statut || '-'}
-                        </span>
+                          <span className={`inline-flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(bon.statut)}`}>
+                            {getStatusIcon(bon.statut)}
+                            {bon.statut || '-'}
+                          </span>
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="inline-flex gap-2">
@@ -533,7 +574,7 @@ const BonsPage = () => {
           initialValues={selectedBon || undefined}
           onBonAdded={(newBon) => {
             // Le bon est automatiquement ajouté au store Redux
-            showSuccess(`${currentTab} ${newBon.numero} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
+            showSuccess(`${currentTab} ${getDisplayNumero(newBon)} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
             setIsCreateModalOpen(false);
             setSelectedBon(null);
           }}
@@ -544,7 +585,7 @@ const BonsPage = () => {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Détails du Bon {selectedBon.numero}</h2>
+                <h2 className="text-lg font-semibold">Détails du Bon {getDisplayNumero(selectedBon)}</h2>
                 <button
                   onClick={() => setIsViewModalOpen(false)}
                   className="text-gray-400 hover:text-gray-600"
@@ -570,7 +611,8 @@ const BonsPage = () => {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Statut:</p>
-                        <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusClasses(selectedBon.statut)}`}>
+                        <span className={`inline-flex items-center gap-2 px-3 py-1 text-sm font-semibold rounded-full ${getStatusClasses(selectedBon.statut)}`}>
+                        {getStatusIcon(selectedBon.statut)}
                         {selectedBon.statut}
                       </span>
                     </div>
@@ -919,4 +961,12 @@ const BonsPage = () => {
       default:
         return 'bg-gray-100 text-gray-700';
     }
+  }
+  function getStatusIcon(statut?: string) {
+    const s = String(statut || '').toLowerCase();
+    if (s.includes('en attente') || s === 'attente') return <Clock size={14} />;
+    if (s.includes('valid')) return <CheckCircle2 size={14} />;
+    if (s.includes('refus')) return <XCircle size={14} />;
+    if (s.includes('annul')) return <XCircle size={14} />;
+    return null;
   }

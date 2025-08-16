@@ -147,7 +147,10 @@ export const bonsApi = api.injectEndpoints({
         const actualTagType = type === 'Avoir' ? 'AvoirClient' : tagType;
         return [
           { type: actualTagType, id },
-          { type: actualTagType, id: 'LIST' }
+          { type: actualTagType, id: 'LIST' },
+          // Also invalidate generic Bon tags so all consumers refresh
+          { type: 'Bon', id },
+          { type: 'Bon', id: 'LIST' }
         ];
       },
     }),
@@ -229,7 +232,9 @@ export const bonsApi = api.injectEndpoints({
         const actualTagType = type === 'Avoir' ? 'AvoirClient' : tagType;
         return [
           { type: actualTagType, id },
-          { type: actualTagType, id: 'LIST' }
+          { type: actualTagType, id: 'LIST' },
+          { type: 'Bon', id },
+          { type: 'Bon', id: 'LIST' }
         ];
       },
     }),
@@ -244,6 +249,7 @@ export const bonsApi = api.injectEndpoints({
         fournisseur_id?: number | null;
         vehicule_id?: number | null;
         lieu_chargement?: string | null;
+        numero?: string;
         created_by: number;
       }
     >({

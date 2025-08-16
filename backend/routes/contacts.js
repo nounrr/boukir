@@ -49,6 +49,7 @@ router.post('/', async (req, res) => {
   try {
     const {
       nom_complet,
+      societe,
       type,
       telephone,
       email,
@@ -76,9 +77,9 @@ router.post('/', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO contacts 
-       (nom_complet, type, telephone, email, adresse, rib, ice, solde, plafond, created_by, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-  [(nom_complet ?? ''), type, telephone || null, email || null, adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, created_by || null]
+       (nom_complet, societe, type, telephone, email, adresse, rib, ice, solde, plafond, created_by, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+  [(nom_complet ?? ''), (societe ?? null), type, telephone || null, email || null, adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, created_by || null]
     );
 
     // Fetch the created contact
@@ -99,6 +100,7 @@ router.put('/:id', async (req, res) => {
   try {
     const {
       nom_complet,
+      societe,
       type,
       telephone,
       email,
@@ -124,7 +126,8 @@ router.put('/:id', async (req, res) => {
     const updates = [];
     const params = [];
 
-    if (nom_complet !== undefined) { updates.push('nom_complet = ?'); params.push(nom_complet); }
+  if (nom_complet !== undefined) { updates.push('nom_complet = ?'); params.push(nom_complet); }
+  if (societe !== undefined) { updates.push('societe = ?'); params.push(societe); }
     if (type !== undefined) { 
       if (!['Client', 'Fournisseur'].includes(type)) {
         return res.status(400).json({ error: 'type must be either Client or Fournisseur' });

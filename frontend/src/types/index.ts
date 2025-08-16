@@ -70,6 +70,7 @@ export interface Product {
   categorie_id: number;
   categorie?: Category;
   quantite: number;
+  kg?: number | null;
   prix_achat: number;
   cout_revient_pourcentage: number;
   cout_revient: number;
@@ -88,6 +89,7 @@ export interface CreateProductData {
   designation?: string;
   categorie_id?: number;
   quantite?: number;
+  kg?: number | null;
   prix_achat?: number;
   cout_revient_pourcentage?: number;
   prix_gros_pourcentage?: number;
@@ -99,6 +101,7 @@ export interface CreateProductData {
 export interface Contact {
   id: number;
   reference?: string; // Référence auto-générée
+  societe?: string | null;
   nom_complet: string;
   type: 'Client' | 'Fournisseur';
   telephone?: string;
@@ -116,6 +119,7 @@ export interface Contact {
 
 export interface CreateContactData {
   reference?: string;
+  societe?: string | null;
   nom_complet: string;
   type: 'Client' | 'Fournisseur';
   telephone?: string;
@@ -224,6 +228,7 @@ export interface Payment {
   montant?: number; // Alias pour montant_total
   reference?: string; // Alias pour reference_virement
   notes?: string; // Alias pour designation
+  statut?: 'En attente' | 'Validé' | 'Refusé' | 'Annulé';
   // Champ pour les images des chèques et traites
   image_url?: string;
   created_by?: number;
@@ -245,6 +250,7 @@ export interface CreatePaymentData {
   banque?: string;
   personnel?: string;
   reference_virement?: string;
+  statut?: 'En attente' | 'Validé' | 'Refusé' | 'Annulé';
 }
 
 // Types pour les réponses API
