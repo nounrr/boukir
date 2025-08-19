@@ -39,6 +39,8 @@ router.get('/', async (_req, res) => {
 
     const data = rows.map(r => ({
       ...r,
+      // numero no longer stored in DB; compute for display
+      numero: `COM${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
     }));
 
@@ -90,6 +92,7 @@ router.get('/:id', async (req, res) => {
     const r = rows[0];
     const data = {
       ...r,
+      numero: `COM${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
     };
 
@@ -108,8 +111,7 @@ router.post('/', async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    const {
-      numero,
+  const {
       date_creation,
       client_id,
       vehicule_id,
@@ -121,9 +123,14 @@ router.post('/', async (req, res) => {
       created_by
     } = req.body || {};
 
-    if (!numero || !date_creation || !montant_total || !created_by) {
+  // Validation champs requis (détaillée)
+  const missing = [];
+  if (!date_creation) missing.push('date_creation');
+  if (!(typeof montant_total === 'number' ? montant_total > 0 : !!montant_total)) missing.push('montant_total');
+  if (!created_by) missing.push('created_by');
+  if (missing.length) {
       await connection.rollback();
-      return res.status(400).json({ message: 'Champs requis manquants' });
+      return res.status(400).json({ message: 'Champs requis manquants', missing });
     }
 
     const cId  = client_id ?? null;
@@ -133,10 +140,10 @@ router.post('/', async (req, res) => {
 
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
-        numero, date_creation, client_id, vehicule_id,
+        date_creation, client_id, vehicule_id,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [numero, date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const comptantId = comptantResult.insertId;
 
@@ -163,8 +170,9 @@ router.post('/', async (req, res) => {
       `, [comptantId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
     }
 
-    await connection.commit();
-    res.status(201).json({ message: 'Bon comptant créé avec succès', id: comptantId, numero });
+  await connection.commit();
+  const numero = `COM${String(comptantId).padStart(2, '0')}`;
+  res.status(201).json({ message: 'Bon comptant créé avec succès', id: comptantId, numero });
   } catch (error) {
     await connection.rollback();
     console.error('Erreur POST /comptant:', error);
@@ -183,8 +191,7 @@ router.put('/:id', async (req, res) => {
     await connection.beginTransaction();
 
     const { id } = req.params;
-    const {
-      numero,
+  const {
       date_creation,
       client_id,
       vehicule_id,
@@ -206,12 +213,22 @@ router.put('/:id', async (req, res) => {
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? null;
 
+    // Validation minimale (détaillée)
+    const missingPut = [];
+    if (!date_creation) missingPut.push('date_creation');
+    if (!(typeof montant_total === 'number' ? true : montant_total != null)) missingPut.push('montant_total');
+    if (!statut) missingPut.push('statut');
+    if (missingPut.length) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Champs requis manquants', missing: missingPut });
+    }
+
     await connection.execute(`
       UPDATE bons_comptant SET
-        numero = ?, date_creation = ?, client_id = ?,
+        date_creation = ?, client_id = ?,
         vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
       WHERE id = ?
-    `, [numero, date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
+    `, [date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     await connection.execute('DELETE FROM comptant_items WHERE bon_comptant_id = ?', [id]);
 
@@ -349,8 +366,7 @@ router.post('/:id/mark-avoir', async (req, res) => {
     }
     const bc = rows[0];
 
-    const today = new Date().toISOString().split('T')[0];
-    const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
+  const today = new Date().toISOString().split('T')[0];
 
     // Vérifier si les colonnes bon_origine_id et bon_origine_type existent
     const [columnsCheck] = await connection.execute(
@@ -363,34 +379,33 @@ router.post('/:id/mark-avoir', async (req, res) => {
     let insertQuery, insertValues;
     if (hasBonOrigineId && hasBonOrigineType) {
       insertQuery = `INSERT INTO avoirs_client (
-         numero, date_creation, client_id, bon_origine_id, bon_origine_type,
-         lieu_chargement, montant_total, statut, created_by
-       ) VALUES (?, ?, ?, ?, 'comptant', ?, ?, 'En attente', ?)`;
-      insertValues = [tmpNumero, today, bc.client_id ?? null, bc.id, bc.lieu_chargement ?? null, bc.montant_total, created_by];
-    } else if (hasBonOrigineId) {
-      insertQuery = `INSERT INTO avoirs_client (
-         numero, date_creation, client_id, bon_origine_id,
-         lieu_chargement, montant_total, statut, created_by
-       ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)`;
-      insertValues = [tmpNumero, today, bc.client_id ?? null, bc.id, bc.lieu_chargement ?? null, bc.montant_total, created_by];
-    } else if (hasBonOrigineType) {
-      insertQuery = `INSERT INTO avoirs_client (
-         numero, date_creation, client_id, bon_origine_type,
+         date_creation, client_id, bon_origine_id, bon_origine_type,
          lieu_chargement, montant_total, statut, created_by
        ) VALUES (?, ?, ?, 'comptant', ?, ?, 'En attente', ?)`;
-      insertValues = [tmpNumero, today, bc.client_id ?? null, bc.lieu_chargement ?? null, bc.montant_total, created_by];
-    } else {
+      insertValues = [today, bc.client_id ?? null, bc.id, bc.lieu_chargement ?? null, bc.montant_total, created_by];
+    } else if (hasBonOrigineId) {
       insertQuery = `INSERT INTO avoirs_client (
-         numero, date_creation, client_id,
+         date_creation, client_id, bon_origine_id,
          lieu_chargement, montant_total, statut, created_by
        ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)`;
-      insertValues = [tmpNumero, today, bc.client_id ?? null, bc.lieu_chargement ?? null, bc.montant_total, created_by];
+      insertValues = [today, bc.client_id ?? null, bc.id, bc.lieu_chargement ?? null, bc.montant_total, created_by];
+    } else if (hasBonOrigineType) {
+      insertQuery = `INSERT INTO avoirs_client (
+         date_creation, client_id, bon_origine_type,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, 'comptant', ?, 'En attente', ?)`;
+      insertValues = [today, bc.client_id ?? null, bc.lieu_chargement ?? null, bc.montant_total, created_by];
+    } else {
+      insertQuery = `INSERT INTO avoirs_client (
+         date_creation, client_id,
+         lieu_chargement, montant_total, statut, created_by
+       ) VALUES (?, ?, ?, ?, 'En attente', ?)`;
+      insertValues = [today, bc.client_id ?? null, bc.lieu_chargement ?? null, bc.montant_total, created_by];
     }
 
     const [insAvoir] = await connection.execute(insertQuery, insertValues);
     const avoirId = insAvoir.insertId;
-    const finalNumero = `av${avoirId}`;
-    await connection.execute('UPDATE avoirs_client SET numero = ? WHERE id = ?', [finalNumero, avoirId]);
+    const finalNumero = `AVC${String(avoirId).padStart(2, '0')}`;
 
     const [items] = await connection.execute('SELECT * FROM comptant_items WHERE bon_comptant_id = ?', [id]);
     for (const it of items) {
@@ -405,7 +420,7 @@ router.post('/:id/mark-avoir', async (req, res) => {
     await connection.execute('UPDATE bons_comptant SET statut = "Avoir", updated_at = NOW() WHERE id = ?', [id]);
 
     await connection.commit();
-    return res.json({ success: true, avoir_id: avoirId, numero: finalNumero });
+  return res.json({ success: true, avoir_id: avoirId, numero: finalNumero });
   } catch (error) {
     await connection.rollback();
     console.error('Erreur POST /comptant/:id/mark-avoir:', error);

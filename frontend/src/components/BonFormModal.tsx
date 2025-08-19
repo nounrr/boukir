@@ -4,7 +4,6 @@ import type { FormikProps } from 'formik';
 import * as Yup from 'yup';
 import { Plus, Trash2, Search, Printer } from 'lucide-react';
 import { showSuccess, showError } from '../utils/notifications';
-import { generateBonReference } from '../utils/referenceUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
@@ -142,7 +141,6 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
 /* ---------------------------- Validation du bon ---------------------------- */
 const bonValidationSchema = Yup.object({
-  numero: Yup.string().required('Numéro requis'),
   date_bon: Yup.string().required('Date du bon requise'),
   vehicule_id: Yup.number().nullable(),
   lieu_charge: Yup.string(),
@@ -179,6 +177,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 }) => {
   const { user } = useAuth();
   const formikRef = useRef<FormikProps<any>>(null);
+  // Container ref to detect when Enter is pressed within the products area
+  const itemsContainerRef = useRef<HTMLDivElement>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState<null | 'Client' | 'Fournisseur'>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -203,7 +203,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
   // Saisie brute par ligne pour "prix_unitaire"
   const [unitPriceRaw, setUnitPriceRaw] = useState<Record<number, string>>({});
-
+// 🆕 Saisie brute par ligne pour "quantite"
+const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ----------------------- Initialisation des valeurs ----------------------- */
   const getInitialValues = () => {
     if (initialValues) {
@@ -347,8 +348,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     }
 
     return {
-      type: currentTab,
-      numero: generateBonReference(currentTab),
+  type: currentTab,
       date_bon: new Date().toISOString().split('T')[0],
       vehicule_id: '',
       lieu_charge: '',
@@ -394,100 +394,186 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   );
 
   // Seed la saisie brute quand initial values changent / modal ouvre
-  useEffect(() => {
-    const items = initialFormValues?.items || [];
-    setUnitPriceRaw(() => {
-      const next: Record<number, string> = {};
-      items.forEach((it: any, idx: number) => {
-        const v = it?.prix_unitaire;
-        next[idx] = v === undefined || v === null ? '' : String(v);
-      });
-      return next;
+ useEffect(() => {
+  const items = initialFormValues?.items || [];
+  setUnitPriceRaw(() => {
+    const next: Record<number, string> = {};
+    items.forEach((it: any, idx: number) => {
+      const v = it?.prix_unitaire;
+      next[idx] = v === undefined || v === null ? '' : String(v);
     });
-  }, [initialFormValues]);
+    return next;
+  });
+
+  // 🆕 Seed des quantités
+  setQtyRaw(() => {
+    const next: Record<number, string> = {};
+    items.forEach((it: any, idx: number) => {
+      const q = it?.quantite;
+      next[idx] = q === undefined || q === null ? '' : String(q);
+    });
+    return next;
+  });
+}, [initialFormValues]);
+
+  // Helper: add a new empty product line (same as clicking "Ajouter ligne")
+  const addEmptyItemRow = (values: any, setFieldValue: (field: string, value: any) => void) => {
+    const newItem = {
+      _rowId: makeRowId(),
+      product_id: '',
+      product_reference: '',
+      designation: '',
+      quantite: 0,
+      prix_achat: 0,
+      prix_unitaire: 0,
+      cout_revient: 0,
+      kg: 0,
+      total: 0,
+      unite: 'pièce',
+    };
+    setFieldValue('items', [...(values.items || []), newItem]);
+    setUnitPriceRaw((prev) => ({ ...prev, [values.items?.length || 0]: '0' }));
+    setQtyRaw((prev) => ({ ...prev, [values.items.length]: '0' })); // ou [idx]/[newIndex] selon le cas
+
+    // Try to focus the newly added reference select input on next tick
+    setTimeout(() => {
+      const idx = (values.items?.length ?? 0);
+      const input = document.querySelector(
+        `input[name="items.${idx}.product_reference"]`
+      ) as HTMLInputElement | null;
+      if (input) input.focus();
+    }, 50);
+  };
+
+  // Global key handler: prevent Enter from submitting; add a line when in products area
+  const handleFormKeyDown = (
+    e: React.KeyboardEvent<HTMLFormElement>,
+    values: any,
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLElement | null;
+    // Allow Shift+Enter (e.g., new line in textareas), and allow inside textarea
+    const isTextarea = target && target.tagName === 'TEXTAREA';
+    if (e.shiftKey || isTextarea) return;
+
+    // Always prevent default submit on Enter
+    e.preventDefault();
+    e.stopPropagation();
+
+    // If focused within the products section, add a new line
+    if (itemsContainerRef.current && target && itemsContainerRef.current.contains(target)) {
+      addEmptyItemRow(values, setFieldValue);
+    }
+  };
 
   /* ------------------------------ Soumission ------------------------------ */
-  const handleSubmit = async (values: any, { setSubmitting }: any) => {
-    try {
-      const montantTotal = values.items.reduce((sum: number, item: any) => {
+  /* ------------------------------ Soumission ------------------------------ */
+const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
+  try {
+    const montantTotal = values.items.reduce((sum: number, item: any, idx: number) => {
+      const q =
+        parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+      const u =
+        typeof item.prix_unitaire === 'string'
+          ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
+          : Number(item.prix_unitaire) || 0;
+      return sum + q * u;
+    }, 0);
+
+    const requestType = values.type;
+    let vehiculeId: number | undefined = undefined;
+    if (requestType !== 'Avoir' && requestType !== 'AvoirFournisseur' && values.vehicule_id) {
+      vehiculeId = parseInt(values.vehicule_id);
+    }
+
+  const cleanBonData = {
+      date_creation: values.date_bon,
+      vehicule_id: vehiculeId,
+      lieu_chargement: values.lieu_charge || '',
+      adresse_livraison: values.adresse_livraison || '',
+      statut: values.statut || 'Brouillon',
+      client_id: values.client_id ? parseInt(values.client_id) : undefined,
+      fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
+      montant_total: montantTotal,
+      created_by: user?.id || 1,
+      items: values.items.map((item: any, idx: number) => {
         const q =
-          typeof item.quantite === 'string'
-            ? parseFloat(String(item.quantite).replace(',', '.')) || 0
-            : Number(item.quantite) || 0;
-        const u =
+          parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+        const pa =
+          typeof item.prix_achat === 'string'
+            ? parseFloat(String(item.prix_achat).replace(',', '.')) || 0
+            : Number(item.prix_achat) || 0;
+        const pu =
           typeof item.prix_unitaire === 'string'
             ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
             : Number(item.prix_unitaire) || 0;
-        return sum + q * u;
-      }, 0);
+        const rp =
+          typeof item.remise_pourcentage === 'string'
+            ? parseFloat(String(item.remise_pourcentage).replace(',', '.')) || 0
+            : Number(item.remise_pourcentage) || 0;
+        const rm =
+          typeof item.remise_montant === 'string'
+            ? parseFloat(String(item.remise_montant).replace(',', '.')) || 0
+            : Number(item.remise_montant) || 0;
+        return {
+          product_id: parseInt(item.product_id),
+          quantite: q,
+          prix_achat: pa,
+          prix_unitaire: pu,
+          remise_pourcentage: rp,
+          remise_montant: rm,
+          total: q * pu,
+        };
+      }),
+    };
 
-      const requestType = values.type;
-      let vehiculeId: number | undefined = undefined;
-      if (requestType !== 'Avoir' && requestType !== 'AvoirFournisseur' && values.vehicule_id) {
-        vehiculeId = parseInt(values.vehicule_id);
-      }
-
-      const cleanBonData = {
-        numero: values.numero,
-        date_creation: values.date_bon,
-        vehicule_id: vehiculeId,
-        lieu_chargement: values.lieu_charge || '',
-        adresse_livraison: values.adresse_livraison || '',
-        statut: values.statut || 'Brouillon',
-        client_id: values.client_id ? parseInt(values.client_id) : undefined,
-        fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
-        montant_total: montantTotal,
-        created_by: user?.id || 1,
-        items: values.items.map((item: any) => {
-          const q =
-            typeof item.quantite === 'string'
-              ? parseFloat(String(item.quantite).replace(',', '.')) || 0
-              : Number(item.quantite) || 0;
-          const pa =
-            typeof item.prix_achat === 'string'
-              ? parseFloat(String(item.prix_achat).replace(',', '.')) || 0
-              : Number(item.prix_achat) || 0;
-          const pu =
-            typeof item.prix_unitaire === 'string'
-              ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
-              : Number(item.prix_unitaire) || 0;
-          const rp =
-            typeof item.remise_pourcentage === 'string'
-              ? parseFloat(String(item.remise_pourcentage).replace(',', '.')) || 0
-              : Number(item.remise_pourcentage) || 0;
-          const rm =
-            typeof item.remise_montant === 'string'
-              ? parseFloat(String(item.remise_montant).replace(',', '.')) || 0
-              : Number(item.remise_montant) || 0;
-          return {
-            product_id: parseInt(item.product_id),
-            quantite: q,
-            prix_achat: pa,
-            prix_unitaire: pu,
-            remise_pourcentage: rp,
-            remise_montant: rm,
-            total: q * pu,
-          };
-        }),
-      };
-
-      if (initialValues) {
-        await updateBonMutation({ id: initialValues.id, type: requestType, ...cleanBonData }).unwrap();
-        showSuccess('Bon mis à jour avec succès');
-      } else {
-        await createBon({ type: requestType, ...cleanBonData }).unwrap();
-        showSuccess(`${currentTab} créé avec succès`);
-      }
-
-      onBonAdded && onBonAdded(cleanBonData);
-      onClose();
-    } catch (error: any) {
-      console.error('Erreur lors de la soumission:', error);
-      showError(`Erreur: ${error.message || 'Une erreur est survenue'}`);
-    } finally {
-      setSubmitting(false);
+    if (initialValues) {
+      await updateBonMutation({ id: initialValues.id, type: requestType, ...cleanBonData }).unwrap();
+      showSuccess('Bon mis à jour avec succès');
+    } else {
+      await createBon({ type: requestType, ...cleanBonData }).unwrap();
+      showSuccess(`${currentTab} créé avec succès`);
     }
-  };
+
+    onBonAdded && onBonAdded(cleanBonData);
+    onClose();
+  } catch (error: any) {
+    console.error('Erreur lors de la soumission:', error);
+    // Extraire les champs manquants renvoyés par l'API
+    const missing: string[] = Array.isArray(error?.data?.missing) ? error.data.missing : [];
+    if (missing.length) {
+      // Mapper les noms backend -> labels/front
+      const label = (f: string) => {
+        switch (f) {
+          case 'type': return 'Type';
+          case 'date_creation': return 'Date du bon';
+          case 'montant_total': return 'Montant total';
+          case 'created_by': return 'Créé par';
+          case 'statut': return 'Statut';
+          default: return f;
+        }
+      };
+      // Définir des erreurs ciblées pour les champs Formik correspondants
+      if (missing.includes('date_creation')) {
+        setFieldError?.('date_bon', 'Date du bon requise');
+      }
+      if (missing.includes('montant_total')) {
+        setFieldError?.('items', 'Total manquant: ajoutez au moins un produit avec quantité et prix');
+      }
+      if (missing.includes('statut')) {
+        setFieldError?.('statut', 'Statut requis');
+      }
+      const msg = `Champs requis manquants: ${missing.map(label).join(', ')}`;
+      showError(msg);
+    } else {
+      showError(`Erreur: ${error?.data?.message || error.message || 'Une erreur est survenue'}`);
+    }
+  } finally {
+    setSubmitting(false);
+  }
+};
+
 
   /* ------------------------- Utilitaires d'historique ------------------------- */
   const parseItems = (items: any): any[] => {
@@ -546,39 +632,42 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   };
 
   /* ------------------------------ Appliquer produit ------------------------------ */
-  const applyProductToRow = (rowIndex: number, product: any) => {
-    if (!formikRef.current) return;
-    const setFieldValue = formikRef.current.setFieldValue;
-    const values = formikRef.current.values;
+  /* ------------------------------ Appliquer produit ------------------------------ */
+const applyProductToRow = (rowIndex: number, product: any) => {
+  if (!formikRef.current) return;
+  const setFieldValue = formikRef.current.setFieldValue;
+  const values = formikRef.current.values;
 
-    const unit = Number(product.prix_vente || 0);
-    const pa = Number(product.prix_achat || 0);
-    const cr = Number(product.cout_revient || 0);
-    const kg = Number(product.kg || 0);
-    const q = Number(values.items?.[rowIndex]?.quantite || 0);
+  const unit = Number(product.prix_vente || 0);
+  const pa = Number(product.prix_achat || 0);
+  const cr = Number(product.cout_revient || 0);
+  const kg = Number(product.kg || 0);
+  const q = Number(values.items?.[rowIndex]?.quantite || 0);
 
-    setFieldValue(`items.${rowIndex}.product_id`, product.id);
-    setFieldValue(`items.${rowIndex}.product_reference`, String(product.reference ?? product.id));
-    setFieldValue(`items.${rowIndex}.designation`, product.designation || '');
-    setFieldValue(`items.${rowIndex}.prix_achat`, pa);
-    setFieldValue(`items.${rowIndex}.cout_revient`, cr);
-    setFieldValue(`items.${rowIndex}.prix_unitaire`, unit);
-    setFieldValue(`items.${rowIndex}.kg`, kg);
-    setFieldValue(`items.${rowIndex}.total`, q * unit);
+  setFieldValue(`items.${rowIndex}.product_id`, product.id);
+  setFieldValue(`items.${rowIndex}.product_reference`, String(product.reference ?? product.id));
+  setFieldValue(`items.${rowIndex}.designation`, product.designation || '');
+  setFieldValue(`items.${rowIndex}.prix_achat`, pa);
+  setFieldValue(`items.${rowIndex}.cout_revient`, cr);
+  setFieldValue(`items.${rowIndex}.prix_unitaire`, unit);
+  setFieldValue(`items.${rowIndex}.kg`, kg);
+  setFieldValue(`items.${rowIndex}.total`, q * unit);
 
-    // garder la saisie brute synchronisée
-    setUnitPriceRaw((prev) => ({ ...prev, [rowIndex]: String(unit) }));
+  // garder la saisie brute synchronisée
+  setUnitPriceRaw((prev) => ({ ...prev, [rowIndex]: String(unit) }));
+  setQtyRaw((prev) => ({ ...prev, [rowIndex]: prev[rowIndex] ?? '0' }));
 
-    window.setTimeout(() => {
-      const input = document.querySelector(
-        `input[name="items.${rowIndex}.quantite"]`
-      ) as HTMLInputElement | null;
-      if (input) {
-        input.focus();
-        input.select();
-      }
-    }, 120);
-  };
+  window.setTimeout(() => {
+    const input = document.querySelector(
+      `input[name="items.${rowIndex}.quantite"]`
+    ) as HTMLInputElement | null;
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }, 120);
+};
+
 
   if (!isOpen) return null;
 
@@ -599,22 +688,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
           innerRef={formikRef}
         >
           {({ values, isSubmitting, setFieldValue }) => (
-            <Form className="space-y-4">
+            <Form className="space-y-4" onKeyDown={(e) => handleFormKeyDown(e, values, setFieldValue)}>
               <div className="grid grid-cols-2 gap-4">
-                {/* Numéro */}
-                <div>
-                  <label htmlFor="numero" className="block text-sm font-medium text-gray-700 mb-1">
-                    Numéro (Auto)
-                  </label>
-                  <Field
-                    type="text"
-                    id="numero"
-                    name="numero"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
-                    readOnly
-                  />
-                  <ErrorMessage name="numero" component="div" className="text-red-500 text-sm mt-1" />
-                </div>
 
                 {/* Date */}
                 <div>
@@ -773,7 +848,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
               )}
 
               {/* Produits */}
-              <div className="mt-6">
+              <div className="mt-6" ref={itemsContainerRef}>
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-md font-medium">Produits</h3>
                   <div className="flex gap-2">
@@ -795,6 +870,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
                         };
                         setFieldValue('items', [...values.items, newItem]);
                         setUnitPriceRaw((prev) => ({ ...prev, [values.items.length]: '0' }));
+                        setQtyRaw((prev) => ({ ...prev, [values.items.length]: '0' })); // ou [newIndex]
+
                       }}
                       className="flex items-center text-blue-600 hover:text-blue-800"
                     >
@@ -872,91 +949,121 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
                             values.items.map((row: any, index: number) => (
                               <tr key={row._rowId || `item-${index}`}>
                                 {/* Référence */}
-                                <td className="px-1 py-2 w-[100px]">
-                                  <SearchableSelect
-                                    options={products.map((p: any) => ({
-                                      value: String(p.reference ?? p.id),
-                                      label: String(p.reference ?? p.id),
-                                      data: p,
-                                    }))}
-                                    value={values.items[index].product_reference}
-                                    onChange={(reference) => {
-                                      setFieldValue(`items.${index}.product_reference`, reference);
-                                      if (reference) {
-                                        const product = products.find(
-                                          (p: any) => String(p.reference ?? p.id) === reference
-                                        );
-                                        if (product) {
-                                          setFieldValue(`items.${index}.product_id`, product.id);
-                                          setFieldValue(`items.${index}.designation`, product.designation);
-                                          setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
-                                          setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
-                                          const unit = product.prix_vente || 0;
-                                          setFieldValue(`items.${index}.prix_unitaire`, unit);
-                                          setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit) })); // sync raw
-                                          setFieldValue(`items.${index}.kg`, product.kg ?? 0);
-                                          const quantite = values.items[index].quantite || 0;
-                                          setFieldValue(`items.${index}.total`, quantite * unit);
-                                        }
-                                      }
-                                    }}
-                                    placeholder="Réf."
-                                    className="w-full"
-                                    maxDisplayItems={100}
-                                  />
-                                </td>
+<td className="px-1 py-2 w-[100px]">
+  <SearchableSelect
+    options={products.map((p: any) => ({
+      value: String(p.reference ?? p.id),
+      label: String(p.reference ?? p.id),
+      data: p,
+    }))}
+    value={values.items[index].product_reference}
+    onChange={(reference) => {
+      setFieldValue(`items.${index}.product_reference`, reference);
+      if (reference) {
+        const product = products.find(
+          (p: any) => String(p.reference ?? p.id) === reference
+        );
+        if (product) {
+          setFieldValue(`items.${index}.product_id`, product.id);
+          setFieldValue(`items.${index}.designation`, product.designation);
+          setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
+          setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
+          const unit = product.prix_vente || 0;
+          setFieldValue(`items.${index}.prix_unitaire`, unit);
+          setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit) })); // sync raw
+          setFieldValue(`items.${index}.kg`, product.kg ?? 0);
+
+          // recalcul total avec qtyRaw prioritaire
+          const q =
+            parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+          setFieldValue(`items.${index}.total`, q * unit);
+        }
+      }
+    }}
+    placeholder="Réf."
+    className="w-full"
+    maxDisplayItems={100}
+  />
+</td>
+
 
                                 {/* Désignation */}
-                                <td className="px-1 py-2 w-[150px]">
-                                  <SearchableSelect
-                                    options={products.map((p: any) => ({
-                                      value: p.designation,
-                                      label: p.designation,
-                                      data: p,
-                                    }))}
-                                    value={values.items[index].designation}
-                                    onChange={(designation) => {
-                                      setFieldValue(`items.${index}.designation`, designation);
-                                      if (designation) {
-                                        const product = products.find((p: any) => p.designation === designation);
-                                        if (product) {
-                                          setFieldValue(`items.${index}.product_id`, product.id);
-                                          setFieldValue(
-                                            `items.${index}.product_reference`,
-                                            String(product.reference ?? product.id)
-                                          );
-                                          setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
-                                          setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
-                                          const unit = product.prix_vente || 0;
-                                          setFieldValue(`items.${index}.prix_unitaire`, unit);
-                                          setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit) })); // sync raw
-                                          setFieldValue(`items.${index}.kg`, product.kg ?? 0);
-                                          const quantite = values.items[index].quantite || 0;
-                                          setFieldValue(`items.${index}.total`, quantite * unit);
-                                        }
-                                      }
-                                    }}
-                                    placeholder="Désignation"
-                                    className="w-full"
-                                    maxDisplayItems={150}
-                                  />
-                                </td>
+<td className="px-1 py-2 w-[150px]">
+  <SearchableSelect
+    options={products.map((p: any) => ({
+      value: p.designation,
+      label: p.designation,
+      data: p,
+    }))}
+    value={values.items[index].designation}
+    onChange={(designation) => {
+      setFieldValue(`items.${index}.designation`, designation);
+      if (designation) {
+        const product = products.find((p: any) => p.designation === designation);
+        if (product) {
+          setFieldValue(`items.${index}.product_id`, product.id);
+          setFieldValue(
+            `items.${index}.product_reference`,
+            String(product.reference ?? product.id)
+          );
+          setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
+          setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
+          const unit = product.prix_vente || 0;
+          setFieldValue(`items.${index}.prix_unitaire`, unit);
+          setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit) })); // sync raw
+          setFieldValue(`items.${index}.kg`, product.kg ?? 0);
+
+          // recalcul total avec qtyRaw prioritaire
+          const q =
+            parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+          setFieldValue(`items.${index}.total`, q * unit);
+        }
+      }
+    }}
+    placeholder="Désignation"
+    className="w-full"
+    maxDisplayItems={150}
+  />
+</td>
+
 
                                 {/* Quantité */}
-                                <td className="px-1 py-2 w-[80px]">
-                                  <Field
-                                    type="number"
-                                    name={`items.${index}.quantite`}
-                                    min="0"
-                                    className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
-                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                      const quantite = parseInt(e.target.value) || 0;
-                                      setFieldValue(`items.${index}.quantite`, quantite);
-                                      const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-                                      setFieldValue(`items.${index}.total`, quantite * u);
-                                    }}
-                                  />
-                                </td>
+<td className="px-1 py-2 w-[80px]">
+  <input
+    type="text"
+    inputMode="decimal"
+    pattern="[0-9]*[.,]?[0-9]*"
+    name={`items.${index}.quantite`}
+    className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+    value={qtyRaw[index] ?? ''}
+    onChange={(e) => {
+      const raw = e.target.value;
+      if (!isDecimalLike(raw)) return;                 // réutilise ta fn existante
+      setQtyRaw((prev) => ({ ...prev, [index]: raw }));
+
+      const q = parseFloat(normalizeDecimal(raw)) || 0; // réutilise normalizeDecimal
+      const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+      setFieldValue(`items.${index}.total`, q * u);
+    }}
+    onFocus={(e) => {
+      // Sélection rapide
+      setTimeout(() => e.currentTarget.select(), 0);
+      // Effacer si 0
+      const current = qtyRaw[index];
+      if (current === '0' || current === '0.00' || current === '0,00') {
+        setQtyRaw((prev) => ({ ...prev, [index]: '' }));
+      }
+    }}
+    onBlur={() => {
+      const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? '')) || 0;
+      setFieldValue(`items.${index}.quantite`, q);
+      setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) })); // même formateur que prix
+      const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+      setFieldValue(`items.${index}.total`, q * u);
+    }}
+  />
+</td>
+
 
                                 {/* SERIE / Info rapide */}
                                 <td className="px-1 py-2 text-sm text-gray-700">
@@ -966,91 +1073,101 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
                                 </td>
 
                                 {/* Prix unitaire (corrigé) */}
-                                <td className="px-1 py-2 w-[90px]">
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    pattern="[0-9]*[.,]?[0-9]*"
-                                    name={`items.${index}.prix_unitaire`}
-                                    className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
-                                    value={unitPriceRaw[index] ?? ''}
-                                    onChange={(e) => {
-                                      const raw = e.target.value;
-                                      if (!isDecimalLike(raw)) return;
-                                      setUnitPriceRaw((prev) => ({ ...prev, [index]: raw }));
+<td className="px-1 py-2 w-[90px]">
+  <input
+    type="text"
+    inputMode="decimal"
+    pattern="[0-9]*[.,]?[0-9]*"
+    name={`items.${index}.prix_unitaire`}
+    className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+    value={unitPriceRaw[index] ?? ''}
+    onChange={(e) => {
+      const raw = e.target.value;
+      if (!isDecimalLike(raw)) return;
+      setUnitPriceRaw((prev) => ({ ...prev, [index]: raw }));
 
-                                      const unit = parseFloat(normalizeDecimal(raw)) || 0;
-                                      const qRaw = values.items[index].quantite;
-                                      const q =
-                                        typeof qRaw === 'string'
-                                          ? parseFloat(String(qRaw).replace(',', '.')) || 0
-                                          : Number(qRaw) || 0;
-                                      setFieldValue(`items.${index}.total`, q * unit);
-                                    }}
-                                    onBlur={() => {
-                                      const val = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-                                      setFieldValue(`items.${index}.prix_unitaire`, val);
-                                      setUnitPriceRaw((prev) => ({ ...prev, [index]: formatNumber(val) }));
+      const unit = parseFloat(normalizeDecimal(raw)) || 0;
+      const q =
+        parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+      setFieldValue(`items.${index}.total`, q * unit);
+    }}
+    onBlur={() => {
+      const val = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+      setFieldValue(`items.${index}.prix_unitaire`, val);
+      setUnitPriceRaw((prev) => ({ ...prev, [index]: formatNumber(val) }));
 
-                                      const qRaw = values.items[index].quantite;
-                                      const q =
-                                        typeof qRaw === 'string'
-                                          ? parseFloat(String(qRaw).replace(',', '.')) || 0
-                                          : Number(qRaw) || 0;
-                                      setFieldValue(`items.${index}.total`, q * val);
-                                    }}
-                                  />
-                                  {values.client_id && values.items[index].product_id && (() => {
-                                    const last = getLastUnitPriceForClientProduct(
-                                      values.client_id,
-                                      values.items[index].product_id
-                                    );
-                                    return last && Number.isFinite(last) ? (
-                                      <div className="text-xs text-gray-500 mt-1">Dernier: {Number(last).toFixed(2)} DH</div>
-                                    ) : null;
-                                  })()}
-                                </td>
+      const q =
+        parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+      setFieldValue(`items.${index}.total`, q * val);
+    }}
+  />
+  {values.client_id && values.items[index].product_id && (() => {
+    const last = getLastUnitPriceForClientProduct(
+      values.client_id,
+      values.items[index].product_id
+    );
+    return last && Number.isFinite(last) ? (
+      <div className="text-xs text-gray-500 mt-1">Dernier: {Number(last).toFixed(2)} DH</div>
+    ) : null;
+  })()}
+</td>
+
 
                                 {/* Total */}
-                                <td className="px-1 py-2 w-[90px]">
-                                  <div className="text-sm font-medium">
-                                    {(() => {
-                                      const qRaw = values.items[index].quantite;
-                                      const q =
-                                        typeof qRaw === 'string'
-                                          ? parseFloat(String(qRaw).replace(',', '.')) || 0
-                                          : Number(qRaw) || 0;
-                                      const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-                                      return (q * u).toFixed(2);
-                                    })()}{' '}
-                                    DH
-                                  </div>
-                                </td>
+<td className="px-1 py-2 w-[90px]">
+  <div className="text-sm font-medium">
+    {(() => {
+      const q =
+        parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+      const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+      return (q * u).toFixed(2);
+    })()}{' '}
+    DH
+  </div>
+</td>
+
 
                                 {/* Actions */}
-                                <td className="px-1 py-2 w-[50px]">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      remove(index);
-                                      setUnitPriceRaw((prev) => {
-                                        const copy = { ...prev };
-                                        delete copy[index];
-                                        const compacted: Record<number, string> = {};
-                                        const newLen = values.items.length - 1; // après remove
-                                        for (let i = 0, j = 0; i <= newLen; i++) {
-                                          if (i === index) continue;
-                                          compacted[j] = copy[i] ?? '';
-                                          j++;
-                                        }
-                                        return compacted;
-                                      });
-                                    }}
-                                    className="text-red-600 hover:text-red-800"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </td>
+<td className="px-1 py-2 w-[50px]">
+  <button
+    type="button"
+    onClick={() => {
+      remove(index);
+
+      // compacter unitPriceRaw
+      setUnitPriceRaw((prev) => {
+        const copy = { ...prev };
+        delete copy[index];
+        const compacted: Record<number, string> = {};
+        const newLen = values.items.length - 1; // après remove
+        for (let i = 0, j = 0; i <= newLen; i++) {
+          if (i === index) continue;
+          compacted[j] = copy[i] ?? '';
+          j++;
+        }
+        return compacted;
+      });
+
+      // compacter qtyRaw
+      setQtyRaw((prev) => {
+        const copy = { ...prev };
+        delete copy[index];
+        const compacted: Record<number, string> = {};
+        const newLen = values.items.length - 1; // après remove
+        for (let i = 0, j = 0; i <= newLen; i++) {
+          if (i === index) continue;
+          compacted[j] = copy[i] ?? '';
+          j++;
+        }
+        return compacted;
+      });
+    }}
+    className="text-red-600 hover:text-red-800"
+  >
+    <Trash2 size={16} />
+  </button>
+</td>
+
                               </tr>
                             ))
                           )}
@@ -1062,60 +1179,59 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
                 {/* Récapitulatif */}
                 <div className="mt-4 bg-gray-50 p-4 rounded-md">
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-md font-semibold">Total poids (kg):</span>
-                    <span className="text-md font-semibold text-gray-700">
-                      {values.items
-                        .reduce((sum: number, item: any) => {
-                          const itemKg = Number(item.kg ?? item.product?.kg ?? 0) || 0;
-                          const q = Number(item.quantite || 0) || 0;
-                          return sum + itemKg * q;
-                        }, 0)
-                        .toFixed(2)}{' '}
-                      kg
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center border-t pt-2">
-                    <span className="text-md font-semibold">Total:</span>
-                    <span className="text-md font-semibold">
-                      {values.items
-                        .reduce((sum: number, item: any, idx: number) => {
-                          const qRaw = item.quantite;
-                          const q =
-                            typeof qRaw === 'string'
-                              ? parseFloat(String(qRaw).replace(',', '.')) || 0
-                              : Number(qRaw) || 0;
-                          const u = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
-                          return sum + q * u;
-                        }, 0)
-                        .toFixed(2)}{' '}
-                      DH
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-md font-semibold text-green-700">Mouvement:</span>
-                    <span className="text-md font-semibold text-green-700">
-                      {values.items
-                        .reduce((sum: number, item: any, idx: number) => {
-                          const qRaw = item.quantite;
-                          const q =
-                            typeof qRaw === 'string'
-                              ? parseFloat(String(qRaw).replace(',', '.')) || 0
-                              : Number(qRaw) || 0;
-                          const prixVente =
-                            parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
-                          const crRaw = item.cout_revient ?? item.prix_achat ?? 0;
-                          const coutRevient =
-                            typeof crRaw === 'string'
-                              ? parseFloat(String(crRaw).replace(',', '.')) || 0
-                              : Number(crRaw) || 0;
-                          const benef = (prixVente - coutRevient) * q;
-                          return sum + benef;
-                        }, 0)
-                        .toFixed(2)}{' '}
-                      DH
-                    </span>
-                  </div>
+                 {/* Total poids (kg) */}
+<div className="flex justify-between items-center mt-2">
+  <span className="text-md font-semibold">Total poids (kg):</span>
+  <span className="text-md font-semibold text-gray-700">
+    {values.items
+      .reduce((sum: number, item: any, idx: number) => {
+        const itemKg = Number(item.kg ?? item.product?.kg ?? 0) || 0;
+        const q =
+          parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+        return sum + itemKg * q;
+      }, 0)
+      .toFixed(2)}{' '}
+    kg
+  </span>
+</div>
+                  {/* Total DH */}
+<div className="flex justify-between items-center border-t pt-2">
+  <span className="text-md font-semibold">Total:</span>
+  <span className="text-md font-semibold">
+    {values.items
+      .reduce((sum: number, item: any, idx: number) => {
+        const q =
+          parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+        const u =
+          parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+        return sum + q * u;
+      }, 0)
+      .toFixed(2)}{' '}
+    DH
+  </span>
+</div>
+
+{/* Mouvement */}
+<div className="flex justify-between items-center mt-2">
+  <span className="text-md font-semibold text-green-700">Mouvement:</span>
+  <span className="text-md font-semibold text-green-700">
+    {values.items
+      .reduce((sum: number, item: any, idx: number) => {
+        const q =
+          parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+        const prixVente =
+          parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+        const crRaw = item.cout_revient ?? item.prix_achat ?? 0;
+        const coutRevient =
+          typeof crRaw === 'string'
+            ? parseFloat(String(crRaw).replace(',', '.')) || 0
+            : Number(crRaw) || 0;
+        return sum + (prixVente - coutRevient) * q;
+      }, 0)
+      .toFixed(2)}{' '}
+    DH
+  </span>
+</div>
                 </div>
               </div>
 

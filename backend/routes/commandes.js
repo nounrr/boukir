@@ -48,6 +48,7 @@ router.get('/', async (_req, res) => {
     const data = rows.map((r) => ({
       ...r,
       type: 'Commande',
+      numero: `CMD${String(r.id).padStart(2, '0')}`,
       items: byCommande.get(r.id) || [],
     }));
 
@@ -88,6 +89,7 @@ router.get('/:id', async (req, res) => {
     const data = {
       ...rows[0],
       type: 'Commande',
+      numero: `CMD${String(rows[0].id).padStart(2, '0')}`,
       items: items.map((it) => ({
         id: it.id,
         product_id: it.product_id,
@@ -117,8 +119,7 @@ router.post('/', async (req, res) => {
 
     console.log('Données reçues:', req.body);
 
-    const {
-      numero,
+  const {
       date_creation,
       fournisseur_id,
       vehicule_id,
@@ -130,10 +131,14 @@ router.post('/', async (req, res) => {
       created_by
     } = req.body || {}; // 👈 évite le crash si req.body est undefined
 
-    // Validation des champs requis
-    if (!numero || !date_creation || !montant_total || !created_by) {
+    // Validation des champs requis (détaillée)
+    const missing = [];
+    if (!date_creation) missing.push('date_creation');
+    if (!(typeof montant_total === 'number' ? montant_total > 0 : !!montant_total)) missing.push('montant_total');
+    if (!created_by) missing.push('created_by');
+    if (missing.length) {
       await connection.rollback();
-      return res.status(400).json({ message: 'Champs requis manquants' });
+      return res.status(400).json({ message: 'Champs requis manquants', missing });
     }
 
     // 👇 convertir undefined -> NULL
@@ -144,10 +149,10 @@ router.post('/', async (req, res) => {
 
     const [commandeResult] = await connection.execute(`
       INSERT INTO bons_commande (
-        numero, date_creation, fournisseur_id, vehicule_id,
+        date_creation, fournisseur_id, vehicule_id,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [numero, date_creation, fId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, fId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const commandeId = commandeResult.insertId;
 
@@ -176,8 +181,9 @@ router.post('/', async (req, res) => {
       `, [commandeId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
     }
 
-    await connection.commit();
-    res.status(201).json({ message: 'Bon de commande créé avec succès', id: commandeId, numero });
+  await connection.commit();
+  const numero = `CMD${String(commandeId).padStart(2, '0')}`;
+  res.status(201).json({ message: 'Bon de commande créé avec succès', id: commandeId, numero });
   } catch (error) {
     await connection.rollback();
     console.error('Erreur lors de la création du bon de commande:', error);
@@ -238,8 +244,7 @@ router.put('/:id', async (req, res) => {
     await connection.beginTransaction();
 
     const { id } = req.params;
-    const {
-      numero,
+  const {
       date_creation,
       fournisseur_id,
       vehicule_id,
@@ -250,10 +255,14 @@ router.put('/:id', async (req, res) => {
       items = []
     } = req.body || {};
 
-    // validations minimales
-    if (!numero || !date_creation || montant_total == null || !statut) {
+    // validations minimales (détaillées)
+    const missingPut = [];
+    if (!date_creation) missingPut.push('date_creation');
+    if (!(typeof montant_total === 'number' ? true : montant_total != null)) missingPut.push('montant_total');
+    if (!statut) missingPut.push('statut');
+    if (missingPut.length) {
       await connection.rollback();
-      return res.status(400).json({ message: 'Champs requis manquants (numero, date_creation, montant_total, statut)' });
+      return res.status(400).json({ message: 'Champs requis manquants', missing: missingPut });
     }
 
     // Normalisation: undefined -> null
@@ -264,10 +273,10 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute(`
       UPDATE bons_commande
-         SET numero = ?, date_creation = ?, fournisseur_id = ?, vehicule_id = ?,
+         SET date_creation = ?, fournisseur_id = ?, vehicule_id = ?,
              lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, updated_at = NOW()
        WHERE id = ?
-    `, [numero, date_creation, fId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
+    `, [date_creation, fId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     // On remplace tous les items
     await connection.execute('DELETE FROM commande_items WHERE bon_commande_id = ?', [id]);

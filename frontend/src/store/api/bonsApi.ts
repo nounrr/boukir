@@ -1,5 +1,5 @@
 import { api } from './apiSlice';
-import type { Bon, CreateBonData } from '../../types';
+import type { Bon } from '../../types';
 
 export const bonsApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -56,7 +56,7 @@ export const bonsApi = api.injectEndpoints({
     }),
     
     // Créer un bon
-    createBon: builder.mutation<any, CreateBonData>({
+  createBon: builder.mutation<any, any>({
       query: (bonData: any) => {
         const { type, ...data } = bonData;
         let endpoint = '';

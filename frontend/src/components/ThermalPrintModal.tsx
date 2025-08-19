@@ -55,31 +55,32 @@ const formatNumber = (n: number) => new Intl.NumberFormat('fr-FR', {
 const getPrintCss = () => `
   /* Base styles for the print window (screen + print) */
   html, body { height: 100%; }
-  body { font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.35; margin: 0; padding: 0; color: black; background: white; text-align: center; }
+  body { font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.35; margin: 0; padding: 0; color: black; background: white; text-align: center; font-weight: bold; }
   .thermal-container { width: 80mm; max-width: 100%; padding: 0; margin: 0 auto; text-align: center; }
-  img { display: block; margin: 0 auto 4px; max-width: 60%; height: auto; }
-  .thermal-header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 2mm; margin-bottom: 2mm; }
-  .thermal-title { font-weight: bold; font-size: 12px; margin-bottom: 1mm; }
-  .thermal-info { font-size: 12px; margin-bottom: 1mm; }
-  .thermal-section { margin-top: 2mm; padding-top: 1mm; border-top: 1px dashed #000; }
-  .thermal-row { display: flex; justify-content: center; gap: 8px; margin-bottom: 0.5mm; font-size: 12px; }
-  .thermal-footer { text-align: center; font-size: 8px; margin-top: 3mm; border-top: 1px dashed #000; padding-top: 2mm; }
-  .thermal-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; table-layout: fixed; }
-  .thermal-table th, .thermal-table td { padding: 1mm 0; text-align: center; }
-  .thermal-table thead tr { border-top: 1px solid #000; border-bottom: 1px solid #000; }
-  .thermal-table tbody tr { border-bottom: 1px dotted #000; }
-  .col-code { width: 10%; white-space: nowrap; }
-  .col-designation { width: 45%; white-space: normal; word-break: break-word; text-align: left; }
-  .col-qte { width: 10%; white-space: nowrap; text-align: right; overflow: visible; font-size: 11px; }
-  .col-unit { width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 11px; }
-  .col-total { width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 11px; }
+  img { display: block; margin: 0 auto 4px; width: 40%; height: auto; }
+  .thermal-header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 2mm; margin-bottom: 4mm; }
+  .thermal-title { font-weight: bold; font-size: 13px; margin-bottom: 4mm; }
+  .thermal-info {font-weight: bold; font-size: 13px; margin-bottom: 4mm; }
+  .thermal-section { font-weight: bold; margin-top: 2mm; padding-top: 1mm; border-top: 1px dashed #000; }
+  .thermal-row { font-weight: bold; display: flex; justify-content: center; gap: 8px; margin-bottom: 4mm; font-size: 12px; }
+  .thermal-footer { font-weight: bold; text-align: center; font-size: 8px; margin-top: 3mm; border-top: 1px dashed #000; padding-top: 2mm; }
+  .thermal-table { font-weight: bold; width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; table-layout: fixed; }
+  .thermal-table th, .thermal-table td { font-weight: bold; padding: 1mm 0; text-align: center; }
+  .thermal-table thead tr { font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; }
+  .thermal-table tbody tr { font-weight: bold; border-bottom: 1px dotted #000; }
+  .col-code { font-weight: bold; width: 10%; white-space: nowrap; }
+  .col-designation { font-weight: bold; width: 45%; white-space: normal; word-break: break-word; text-align: left; }
+  .col-qte { font-weight: bold; width: 10%; white-space: nowrap; text-align: right; overflow: visible; font-size: 11px; }
+  .col-unit { font-weight: bold; width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 11px; }
+  .col-total { font-weight: bold;width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 11px; }
   /* When prices are hidden, rebalance widths */
-  .thermal-table.no-prices .col-code { width: 15%; }
-  .thermal-table.no-prices .col-designation { width: 70%; white-space: normal; word-break: break-word; text-align: left; }
-  .thermal-table.no-prices .col-qte { width: 15%; }
+  .thermal-table.no-prices .col-code { font-weight: bold; width: 15%; }
+  .thermal-table.no-prices .col-designation { font-weight: bold; width: 70%; white-space: normal; word-break: break-word; text-align: left; }
+  .thermal-table.no-prices .col-qte { font-weight: bold; width: 15%; }
+  .span-total{font-weight: bold; font-size: 15px; margin-top:4mm }
 
   @media print {
-    @page { size: 80mm auto; margin: 2mm; }
+    @page { size: 80mm auto; margin: 4mm; }
     body { width: 80mm; }
   }
 `;
@@ -220,7 +221,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
           </div>
 
           {/* Aperçu thermique */}
-          <div ref={printRef} className="mt-6 mb-6 p-3 border border-gray-300 mx-auto bg-white" style={{ width: '80mm', fontSize: '10px', fontFamily: 'Courier New, monospace' }}>
+          <div ref={printRef} className="mt-6 mb-6 p-3 border border-gray-300 mx-auto bg-white" style={{ width: '80mm', fontSize: '10px', fontFamily: 'Courier New, monospace', fontWeight: 'bold' }}>
             <div className="thermal-header flex items-center justify-center gap-10">
               <img 
             src={logoCurrent}
@@ -301,7 +302,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
 
             {priceMode === 'WITH_PRICES' ? (
               <div className="thermal-section">
-                <div className="thermal-row text-center"><span>Total </span><span>{formatNumber(totals.total)} DH</span></div>
+                <div className="thermal-row text-center"><span className='span-total'>Total {formatNumber(totals.total)} DH</span></div>
               </div>
             ) : null}
 

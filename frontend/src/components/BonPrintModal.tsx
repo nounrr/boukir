@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Printer, Download } from 'lucide-react';
 import BonPrintTemplate from './BonPrintTemplate';
+import { getBonNumeroDisplay } from '../utils/numero';
 import type { Contact } from '../types';
 
 interface BonPrintModalProps {
@@ -74,7 +75,8 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
 
       // Télécharger le PDF
-      const fileName = `${bon.type}_${bon.numero}_${new Date().toISOString().split('T')[0]}.pdf`;
+  const displayNumero = getBonNumeroDisplay(bon);
+  const fileName = `${bon.type}_${displayNumero}_${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);
     } catch (error) {
       console.error('Erreur lors de la génération du PDF:', error);
@@ -101,7 +103,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Impression ${bon.type} ${bon.numero}</title>
+          <title>Impression ${bon.type} ${getBonNumeroDisplay(bon)}</title>
           <style>
             body { 
               margin: 0; 
@@ -150,7 +152,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
         <div className="flex justify-between items-center p-4 border-b bg-gray-50">
           <div className="flex items-center space-x-4">
             <h2 className="text-lg font-semibold">
-              Aperçu d'impression - {bon.type} {bon.numero}
+              Aperçu d'impression - {bon.type} {getBonNumeroDisplay(bon)}
             </h2>
             
             {/* Sélecteur de taille */}

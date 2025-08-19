@@ -20,6 +20,7 @@ import { useGetCommandesQuery } from "../store/api/commandesApi";
 import { useGetPaymentsQuery } from "../store/api/paymentsApi";
 import { useGetBonsByTypeQuery } from "../store/api/bonsApi";
 import { formatDateTimeWithHour } from "../utils/dateUtils";
+import { getBonNumeroDisplay } from "../utils/numero";
 
 /** ---------- Helpers ---------- */
 const toNumber = (value: any): number => {
@@ -120,7 +121,7 @@ const ReportsPage: React.FC = () => {
   const normalizedBons: BonLite[] = useMemo(() => {
     const mapComptant = (b: any): BonLite => ({
       id: b.id,
-      numero: b.numero || `CPT-${b.id}`,
+      numero: getBonNumeroDisplay({ id: b.id, type: 'Comptant', numero: b.numero }),
       type: "Comptant",
       contact_id: b.client_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.created_at),
@@ -130,7 +131,7 @@ const ReportsPage: React.FC = () => {
 
     const mapSortie = (b: any): BonLite => ({
       id: b.id,
-      numero: b.numero || `SRT-${b.id}`,
+      numero: getBonNumeroDisplay({ id: b.id, type: 'Sortie', numero: b.numero }),
       type: "Sortie",
       contact_id: b.client_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.created_at),
@@ -140,7 +141,7 @@ const ReportsPage: React.FC = () => {
 
     const mapCommande = (b: any): BonLite => ({
       id: b.id,
-      numero: b.numero || `CMD-${b.id}`,
+      numero: getBonNumeroDisplay({ id: b.id, type: 'Commande', numero: b.numero }),
       type: "Commande",
       contact_id: b.fournisseur_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.created_at),
@@ -155,7 +156,7 @@ const ReportsPage: React.FC = () => {
   const normalizedAvoirsClient: BonLite[] = useMemo(() => {
     const mapAvoirC = (b: any): BonLite => ({
       id: b.id,
-      numero: b.numero || `AVC-${b.id}`,
+      numero: getBonNumeroDisplay({ id: b.id, type: 'Avoir', numero: b.numero }),
       type: "Avoir",
       contact_id: b.client_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.created_at),
@@ -169,7 +170,7 @@ const ReportsPage: React.FC = () => {
   const normalizedAvoirsFournisseur: BonLite[] = useMemo(() => {
     const mapAvoirF = (b: any): BonLite => ({
       id: b.id,
-      numero: b.numero || `AVF-${b.id}`,
+      numero: getBonNumeroDisplay({ id: b.id, type: 'AvoirFournisseur', numero: b.numero }),
       type: "AvoirFournisseur",
       contact_id: b.fournisseur_id ?? b.contact_id ?? null,
       date: toDisplayDate(b.date || b.created_at),
@@ -558,7 +559,7 @@ const ReportsPage: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {bonsForModal.map((bon) => (
                     <tr key={`${bon.type}-${bon.id}`} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{bon.numero}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{getBonNumeroDisplay({ id: bon.id, type: bon.type, numero: (bon as any).numero })}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getTypeBadgeClass(bon.type)}`}>
                           {bon.type}
