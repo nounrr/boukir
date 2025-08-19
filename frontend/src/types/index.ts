@@ -162,7 +162,7 @@ export interface CreateVehiculeData {
 // Types pour les bons
 export interface Bon {
   id: number;
-  numero: string;
+  numero?: string;
   type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis';
   date_creation: string;
   date_echeance?: string;
@@ -193,7 +193,6 @@ export interface BonItem {
 }
 
 export interface CreateBonData {
-  numero: string;
   type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis';
   date_creation: string;
   date_echeance?: string;

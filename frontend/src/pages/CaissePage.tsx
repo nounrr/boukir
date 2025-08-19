@@ -22,6 +22,7 @@ import {
   X
 } from 'lucide-react';
 import type { Payment, Bon, Contact } from '../types';
+import { getBonNumeroDisplay } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
@@ -517,7 +518,7 @@ const paymentValidationSchema = Yup.object({
   const getBonInfo = (bonId?: number) => {
     if (!bonId) return 'Paiement libre';
     const bon = bons.find((b: Bon) => b.id === bonId);
-    return bon ? `${bon.type} ${bon.numero}` : 'Bon supprimé';
+    return bon ? `${bon.type} ${getBonNumeroDisplay(bon)}` : 'Bon supprimé';
   };
 
   const getModeIcon = (mode: string) => {
@@ -1122,7 +1123,7 @@ const paymentValidationSchema = Yup.object({
               })
               .map((bon: Bon) => (
                           <option key={bon.id} value={bon.id}>
-              {bon.type} {bon.numero} - {Number(bon.montant_total ?? 0).toFixed(2)} DH
+              {bon.type} {getBonNumeroDisplay(bon)} - {Number(bon.montant_total ?? 0).toFixed(2)} DH
                           </option>
                         ))}
                       </Field>

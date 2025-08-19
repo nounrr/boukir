@@ -35,6 +35,8 @@ router.get('/', async (_req, res) => {
 
     const data = rows.map(r => ({
       ...r,
+      // numero is no longer stored; compute display value AVC + zero-padded id
+      numero: `AVC${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
     }));
 
@@ -82,6 +84,7 @@ router.get('/:id', async (req, res) => {
     const r = rows[0];
     const data = {
       ...r,
+  numero: `AVC${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
     };
 
@@ -118,24 +121,15 @@ router.post('/', async (req, res) => {
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? 'En attente';
 
-    // ✅ numéro temporaire unique (évite NOT NULL/UNIQUE), remplacé ensuite par av{ID}
-    const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
-
     const [resAvoir] = await connection.execute(`
       INSERT INTO avoirs_client (
-        numero, date_creation, client_id,
+        date_creation, client_id,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [tmpNumero, date_creation, cId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, cId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const avoirId = resAvoir.insertId;
-
-    // remplace par av{id}
-    const finalNumero = `av${avoirId}`;
-    await connection.execute(
-      'UPDATE avoirs_client SET numero = ? WHERE id = ?',
-      [finalNumero, avoirId]
-    );
+    const finalNumero = `AVC${String(avoirId).padStart(2, '0')}`;
 
     for (const it of items) {
       const {
@@ -160,8 +154,8 @@ router.post('/', async (req, res) => {
       `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
     }
 
-    await connection.commit();
-    res.status(201).json({ message: 'Avoir client créé avec succès', id: avoirId, numero: finalNumero });
+  await connection.commit();
+  res.status(201).json({ message: 'Avoir client créé avec succès', id: avoirId, numero: finalNumero });
   } catch (error) {
     await connection.rollback();
     console.error('POST /avoirs_client error:', error);

@@ -43,6 +43,11 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   size = 'A4',
 }) => {
   const showPrices = priceMode === 'WITH_PRICES';
+  const contactDisplayName = (
+    (typeof contact?.societe === 'string' && contact.societe.trim())
+      ? contact.societe
+      : (contact?.nom_complet || '-')
+  );
 
   return (
     <div
@@ -55,7 +60,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
       {/* Contact block */}
       <div className="mt-4 mb-6 grid grid-cols-2 gap-4">
         <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
-          <div className="text-sm"><span className="font-semibold">Nom:</span> {contact?.nom_complet || '-'}</div>
+          <div className="text-sm"><span className="font-semibold">Nom:</span> {contactDisplayName}</div>
           <div className="text-sm"><span className="font-semibold">Téléphone:</span> {contact?.telephone || '-'}</div>
           <div className="text-sm"><span className="font-semibold">Email:</span> {contact?.email || '-'}</div>
           <div className="text-sm"><span className="font-semibold">Adresse:</span> {contact?.adresse || '-'}</div>

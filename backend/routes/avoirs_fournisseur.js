@@ -35,6 +35,7 @@ router.get('/', async (_req, res) => {
 
     const data = rows.map(r => ({
       ...r,
+      numero: `AVF${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
     }));
 
@@ -82,6 +83,7 @@ router.get('/:id', async (req, res) => {
     const r = rows[0];
     const data = {
       ...r,
+  numero: `AVF${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
     };
 
@@ -120,31 +122,28 @@ router.post('/', async (req, res) => {
 
     const fId  = fournisseur_id ?? null;
     const st   = statut ?? 'En attente';
-    const lieu = (typeof lieuSnake === 'string' && lieuSnake.trim() !== '')
-      ? lieuSnake.trim()
-      : (typeof lieuCamel === 'string' && lieuCamel.trim() !== '' ? lieuCamel.trim() : null);
+    let lieu = null;
+    if (typeof lieuSnake === 'string' && lieuSnake.trim() !== '') {
+      lieu = lieuSnake.trim();
+    } else if (typeof lieuCamel === 'string' && lieuCamel.trim() !== '') {
+      lieu = lieuCamel.trim();
+    }
 
-    // numero temporaire pour satisfaire NOT NULL + UNIQUE
-    const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
-
-    const adresseLiv = (typeof adresseLivSnake === 'string' && adresseLivSnake.trim() !== '')
-      ? adresseLivSnake.trim()
-      : (typeof adresseLivCamel === 'string' && adresseLivCamel.trim() !== '' ? adresseLivCamel.trim() : null);
+    let adresseLiv = null;
+    if (typeof adresseLivSnake === 'string' && adresseLivSnake.trim() !== '') {
+      adresseLiv = adresseLivSnake.trim();
+    } else if (typeof adresseLivCamel === 'string' && adresseLivCamel.trim() !== '') {
+      adresseLiv = adresseLivCamel.trim();
+    }
 
     const [ins] = await connection.execute(`
       INSERT INTO avoirs_fournisseur (
-        numero, date_creation, fournisseur_id, lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [tmpNumero, date_creation, fId, lieu, adresseLiv, montant_total, st, created_by]);
+        date_creation, fournisseur_id, lieu_chargement, adresse_livraison, montant_total, statut, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, fId, lieu, adresseLiv, montant_total, st, created_by]);
 
     const avoirId = ins.insertId;
-
-    // numero final = avf{ID}
-    const finalNumero = `avf${avoirId}`;
-    await connection.execute(
-      'UPDATE avoirs_fournisseur SET numero = ? WHERE id = ?',
-      [finalNumero, avoirId]
-    );
+    const finalNumero = `AVF${String(avoirId).padStart(2, '0')}`;
 
     for (const it of items) {
       const {
@@ -169,8 +168,8 @@ router.post('/', async (req, res) => {
       `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
     }
 
-    await connection.commit();
-    res.status(201).json({ message: 'Avoir fournisseur créé avec succès', id: avoirId, numero: finalNumero });
+  await connection.commit();
+  res.status(201).json({ message: 'Avoir fournisseur créé avec succès', id: avoirId, numero: finalNumero });
   } catch (error) {
     await connection.rollback();
     console.error('POST /avoirs_fournisseur:', error);
@@ -207,13 +206,19 @@ router.put('/:id', async (req, res) => {
 
     const fId  = fournisseur_id ?? null;
     const st   = statut ?? null;
-    const lieu = (typeof lieuSnake === 'string' && lieuSnake.trim() !== '')
-      ? lieuSnake.trim()
-      : (typeof lieuCamel === 'string' && lieuCamel.trim() !== '' ? lieuCamel.trim() : null);
+    let lieu = null;
+    if (typeof lieuSnake === 'string' && lieuSnake.trim() !== '') {
+      lieu = lieuSnake.trim();
+    } else if (typeof lieuCamel === 'string' && lieuCamel.trim() !== '') {
+      lieu = lieuCamel.trim();
+    }
 
-    const adresseLiv = (typeof adresseLivSnake === 'string' && adresseLivSnake.trim() !== '')
-      ? adresseLivSnake.trim()
-      : (typeof adresseLivCamel === 'string' && adresseLivCamel.trim() !== '' ? adresseLivCamel.trim() : null);
+    let adresseLiv = null;
+    if (typeof adresseLivSnake === 'string' && adresseLivSnake.trim() !== '') {
+      adresseLiv = adresseLivSnake.trim();
+    } else if (typeof adresseLivCamel === 'string' && adresseLivCamel.trim() !== '') {
+      adresseLiv = adresseLivCamel.trim();
+    }
 
     await connection.execute(`
       UPDATE avoirs_fournisseur SET

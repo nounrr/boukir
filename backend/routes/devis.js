@@ -115,8 +115,12 @@ router.post('/', async (req, res) => {
     const lieu = (typeof lieuBody === 'string' && lieuBody.trim() !== '') ? lieuBody.trim() : null;
 
     if (!date_creation || !montant_total || !created_by) {
+      const missing = [];
+      if (!date_creation) missing.push('date_creation');
+      if (!(typeof montant_total === 'number' ? montant_total > 0 : !!montant_total)) missing.push('montant_total');
+      if (!created_by) missing.push('created_by');
       await connection.rollback();
-      return res.status(400).json({ message: 'Champs requis manquants' });
+      return res.status(400).json({ message: 'Champs requis manquants', missing });
     }
 
     const cId = client_id ?? null;
@@ -354,18 +358,16 @@ router.post('/:id/transform', async (req, res) => {
       }
 
       // Insert en "En attente"
-      const tmp = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
       const [ins] = await connection.execute(`
         INSERT INTO bons_sortie (
-          numero, date_creation, client_id, vehicule_id, lieu_chargement,
+          date_creation, client_id, vehicule_id, lieu_chargement,
           montant_total, statut, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)
-      `, [tmp, today, clientId, vehicule_id, lieu, devis.montant_total, created_by]);
+        ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)
+      `, [today, clientId, vehicule_id, lieu, devis.montant_total, created_by]);
 
   const sortieId = ins.insertId;
-  // Use same numbering style as manual creation: prefix SOR + zero-padded 4 digits
-  const numero = `SOR${String(sortieId).padStart(4, '0')}`;
-  await connection.execute('UPDATE bons_sortie SET numero = ? WHERE id = ?', [numero, sortieId]);
+  // Numero non stocké, calculé pour l'affichage uniquement (2 chiffres)
+  const numero = `SOR${String(sortieId).padStart(2, '0')}`;
 
       // Copier les items
       const [items] = await connection.execute('SELECT * FROM devis_items WHERE devis_id = ?', [id]);
@@ -401,18 +403,16 @@ router.post('/:id/transform', async (req, res) => {
       }
 
       // Insert en "En attente"
-      const tmp = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
       const [ins] = await connection.execute(`
         INSERT INTO bons_commande (
-          numero, date_creation, fournisseur_id, vehicule_id, lieu_chargement,
+          date_creation, fournisseur_id, vehicule_id, lieu_chargement,
           montant_total, statut, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)
-      `, [tmp, today, fournisseur_id, vehicule_id, lieu, devis.montant_total, created_by]);
+        ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)
+      `, [today, fournisseur_id, vehicule_id, lieu, devis.montant_total, created_by]);
 
   const bcId = ins.insertId;
-  // Use CMD prefix + zero-padded 4 digits to match frontend generateBonReference('Commande')
-  const numero = `CMD${String(bcId).padStart(4, '0')}`;
-  await connection.execute('UPDATE bons_commande SET numero = ? WHERE id = ?', [numero, bcId]);
+  // Numero non stocké, calculé pour l'affichage uniquement (2 chiffres)
+  const numero = `CMD${String(bcId).padStart(2, '0')}`;
 
       // Copier les items
       const [items] = await connection.execute('SELECT * FROM devis_items WHERE devis_id = ?', [id]);
@@ -442,18 +442,16 @@ router.post('/:id/transform', async (req, res) => {
 
     // Nouveau: transformation en bon comptant (client optionnel)
     if (target === 'comptant') {
-      const tmp = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
       const [ins] = await connection.execute(`
         INSERT INTO bons_comptant (
-          numero, date_creation, client_id, vehicule_id, lieu_chargement,
+          date_creation, client_id, vehicule_id, lieu_chargement,
           montant_total, statut, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)
-      `, [tmp, today, client_id, vehicule_id, lieu, devis.montant_total, created_by]);
+        ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)
+      `, [today, client_id, vehicule_id, lieu, devis.montant_total, created_by]);
 
   const bctId = ins.insertId;
-  // Use COM prefix + zero-padded 4 digits to match frontend generateBonReference('Comptant')
-  const numero = `COM${String(bctId).padStart(4, '0')}`;
-  await connection.execute('UPDATE bons_comptant SET numero = ? WHERE id = ?', [numero, bctId]);
+  // Numero non stocké, calculé pour l'affichage uniquement (2 chiffres)
+  const numero = `COM${String(bctId).padStart(2, '0')}`;
 
       // Copier les items
       const [items] = await connection.execute('SELECT * FROM devis_items WHERE devis_id = ?', [id]);
