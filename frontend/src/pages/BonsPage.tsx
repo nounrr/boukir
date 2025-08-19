@@ -24,6 +24,7 @@ import React, { useState } from 'react';
   import { formatDateDMY, formatDateSpecial, formatDateTimeWithHour } from '../utils/dateUtils';
   import { useSelector } from 'react-redux';
   import type { RootState } from '../store';
+  import { getBonNumeroDisplay } from '../utils/numero';
 
 const BonsPage = () => {
   const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis'>('Commande');
@@ -97,32 +98,7 @@ const BonsPage = () => {
     };
 
     // Ensure Devis numbers are displayed with uppercase DEV prefix and Avoirs with AVO prefix
-    const getDisplayNumero = (bon: any) => {
-      try {
-        const raw = String(bon?.numero ?? '').trim();
-        if (raw === '') return raw;
-        
-        const isDevis = (bon?.type === 'Devis') || (currentTab === 'Devis');
-        const isAvoir = (bon?.type === 'Avoir') || (bon?.type === 'AvoirFournisseur') || 
-                       (currentTab === 'Avoir') || (currentTab === 'AvoirFournisseur');
-        
-        if (isDevis) {
-          // remove any leading 'dev' (case-insensitive) and optional separators
-          const suffix = raw.replace(/^dev\s*[-:\s]*/i, '');
-          return `DEV${suffix}`;
-        }
-        
-        if (isAvoir) {
-          // remove any leading 'avo', 'avc', 'avf', 'av' (case-insensitive) and optional separators
-          const suffix = raw.replace(/^(avo|avc|avf|av)\s*[-:\s]*/i, '');
-          return `AVO${suffix}`;
-        }
-        
-        return raw;
-      } catch (e) {
-        return String(bon?.numero ?? '');
-      }
-    };
+  const getDisplayNumero = (bon: any) => getBonNumeroDisplay({ id: bon?.id, type: bon?.type, numero: bon?.numero });
 
     // On ne filtre plus par bon.type car la requête est déjà segmentée par onglet,
     // et certains endpoints ne renvoyaient pas `type`.
@@ -131,7 +107,7 @@ const BonsPage = () => {
       const term = (searchTerm || '').trim().toLowerCase();
       const contactName = getContactName(bon).toLowerCase();
       const matchesSearch = !term || (
-        (bon.numero?.toLowerCase() || '').includes(term) ||
+        (getDisplayNumero(bon).toLowerCase() || '').includes(term) ||
         (bon.statut?.toLowerCase() || '').includes(term) ||
         contactName.includes(term)
       );
@@ -615,7 +591,7 @@ const BonsPage = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Numéro:</p>
-                      <p className="text-lg">{selectedBon.numero}</p>
+                      <p className="text-lg">{getDisplayNumero(selectedBon)}</p>
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Type:</p>

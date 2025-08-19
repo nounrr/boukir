@@ -142,7 +142,6 @@ router.post('/', async (req, res) => {
     await connection.beginTransaction();
     
     const {
-      numero,
       type,
       date_creation,
       date_echeance,
@@ -157,20 +156,26 @@ router.post('/', async (req, res) => {
       created_by
     } = req.body;
 
-    // Validation des champs requis
-    if (!numero || !type || !date_creation || !montant_total || !created_by) {
+    // Validation des champs requis avec détail
+    const missing = [];
+    if (!type) missing.push('type');
+    if (!date_creation) missing.push('date_creation');
+    // montant_total: considérer 0 comme invalide (au moins un item attendu)
+    if (!(typeof montant_total === 'number' ? montant_total > 0 : !!montant_total)) missing.push('montant_total');
+    if (!created_by) missing.push('created_by');
+    if (missing.length) {
       await connection.rollback();
-      return res.status(400).json({ message: 'Champs requis manquants' });
+      return res.status(400).json({ message: 'Champs requis manquants', missing });
     }
 
-    // Créer le bon
+    // Créer le bon (numero supprimé du schéma/insert)
     const [bonResult] = await connection.execute(`
       INSERT INTO bons (
-        numero, type, date_creation, date_echeance, client_id, fournisseur_id, 
+        type, date_creation, date_echeance, client_id, fournisseur_id,
         montant_total, statut, vehicule, lieu_chargement, bon_origine_id, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      numero, type, date_creation, date_echeance, client_id, fournisseur_id,
+      type, date_creation, date_echeance, client_id, fournisseur_id,
       montant_total, statut, vehicule, lieu_chargement, bon_origine_id, created_by
     ]);
 
@@ -250,7 +255,6 @@ router.patch('/:id', async (req, res) => {
     
     const { id } = req.params;
     const {
-      numero,
       type,
       date_creation,
       date_echeance,
@@ -276,7 +280,7 @@ router.patch('/:id', async (req, res) => {
     const updateValues = [];
     
     const fieldsToUpdate = {
-      numero, type, date_creation, date_echeance, client_id, fournisseur_id,
+  type, date_creation, date_echeance, client_id, fournisseur_id,
       montant_total, statut, vehicule, lieu_chargement, updated_by
     };
 

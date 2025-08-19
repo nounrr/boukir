@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
+import { getBonNumeroDisplay } from '../utils/numero';
 
 interface BonPrintTemplateProps {
   bon: any;
@@ -16,7 +17,7 @@ const CompanyFooter: React.FC<{
 }> = ({ data }) => (
   <div style={{ position: 'absolute', left: 0, right: 0, bottom: '12mm', padding: '0 16px' }} className="mt-8 pt-4  space-y-1 ">
     {/* Cachet client rectangle */}
-    <div className="w-full mb-4 " style={{ textAlign: 'webkit-center' }}>
+  <div className="w-full mb-4 " style={{ textAlign: 'center' }}>
       <div className='text-center'  style={{border: '2px solid #000',  width: '40mm', height: '20mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span className="text-sm font-bold">CACHET CLIENT</span>
       </div>
@@ -66,19 +67,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     }
   };
   
-  // Titre
-  const getTitreBon = (type: string) => {
-    switch (type) {
-      case 'Commande': 
-      case 'Bon Commande': return 'BCM ';
-      case 'Bon Comptant': 
-      case 'Comptant': return 'BCO ';
-      case 'Bon Sortie':
-      case 'Sortie': return 'BS ';
-      case 'Devis': return 'BD ';
-      default: return 'BON N';
-    }
-  };
+  // (Titre helper supprimé, non utilisé)
 const formatHeure = (dateStr: string) => {
   if (!dateStr) return "";
   const date = new Date(dateStr);
@@ -114,6 +103,11 @@ const formatHeure = (dateStr: string) => {
 
   const contact = client || fournisseur;
   const contactLabel = contact ? 'Contact' : '';
+  const contactDisplayName = (
+    (typeof contact?.societe === 'string' && contact.societe.trim())
+      ? contact.societe
+      : (contact?.nom_complet || '-')
+  );
 
   return (
     <div 
@@ -161,7 +155,7 @@ const formatHeure = (dateStr: string) => {
           {contact && (
             <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div><span className="font-medium">Nom:</span> {contact.nom_complet}</div>
+                <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
                 <div><span className="font-medium">Téléphone:</span> {contact.telephone}</div>
                 <div><span className="font-medium">Email:</span> {contact.email}</div>
                 <div><span className="font-medium">Adresse:</span> {contact.adresse}</div>
@@ -174,7 +168,7 @@ const formatHeure = (dateStr: string) => {
         <div className="ml-6 text-right">
           <div className="p-4 rounded border border-orange-200">
             <h2 className="text-lg font-bold text-orange-700 mb-3">
-              BON DEVIS {bon.type === "Devis" ? bon.id : bon.numero}
+              BON DEVIS {getBonNumeroDisplay(bon)}
             </h2>
             <div className="space-y-2 text-sm">
               <div><span className="font-medium">Date:</span> {formatHeure(bon.created_at)}</div>
