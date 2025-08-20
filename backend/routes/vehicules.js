@@ -65,19 +65,40 @@ router.post('/', async (req, res) => {
     } = req.body;
 
     // Validation des champs requis
-    if (!nom || !immatriculation || !created_by) {
-      return res.status(400).json({ message: 'Nom, immatriculation et created_by sont requis' });
+    if (!nom || !immatriculation) {
+      return res.status(400).json({ message: 'Nom et immatriculation sont requis' });
     }
 
-    const [result] = await pool.execute(`
-      INSERT INTO vehicules (
-        nom, marque, modele, immatriculation, annee, type_vehicule, 
-        capacite_charge, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      nom, marque, modele, immatriculation, annee, type_vehicule,
-      capacite_charge, statut, created_by
-    ]);
+    // Déterminer dynamiquement les colonnes disponibles pour éviter les erreurs sur anciens schémas
+    const [cols] = await pool.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vehicules'`
+    );
+    const colSet = new Set(cols.map((r) => r.COLUMN_NAME));
+
+    const desired = [
+      ['nom', nom],
+      ['marque', marque],
+      ['modele', modele],
+      ['immatriculation', immatriculation],
+      ['annee', annee],
+      ['type_vehicule', type_vehicule],
+      ['capacite_charge', capacite_charge],
+      ['statut', statut],
+      ['created_by', created_by],
+    ];
+    const insertPairs = desired.filter(([k, v]) => colSet.has(k) && v !== undefined);
+    const columns = insertPairs.map(([k]) => k).join(', ');
+    const placeholders = insertPairs.map(() => '?').join(', ');
+    const values = insertPairs.map(([, v]) => v);
+
+    if (!columns.includes('nom') || !columns.includes('immatriculation')) {
+      return res.status(500).json({ message: "Schéma 'vehicules' invalide: colonnes 'nom' et 'immatriculation' manquantes" });
+    }
+
+    const [result] = await pool.execute(
+      `INSERT INTO vehicules (${columns}) VALUES (${placeholders})`,
+      values
+    );
 
     // Récupérer le véhicule créé
     const [newVehicule] = await pool.execute('SELECT * FROM vehicules WHERE id = ?', [result.insertId]);
@@ -115,19 +136,21 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Véhicule non trouvé' });
     }
 
-    // Construire la requête de mise à jour dynamiquement
+    // Construire la requête de mise à jour dynamiquement selon les colonnes existantes
+    const [cols] = await pool.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vehicules'`
+    );
+    const colSet = new Set(cols.map((r) => r.COLUMN_NAME));
+    const candidate = {
+      nom, marque, modele, immatriculation, annee, type_vehicule,
+      capacite_charge, statut, updated_by,
+    };
     const updateFields = [];
     const updateValues = [];
-    
-    const fieldsToUpdate = {
-      nom, marque, modele, immatriculation, annee, type_vehicule,
-      capacite_charge, statut, updated_by
-    };
-
-    Object.entries(fieldsToUpdate).forEach(([key, value]) => {
-      if (value !== undefined) {
-        updateFields.push(`${key} = ?`);
-        updateValues.push(value);
+    Object.entries(candidate).forEach(([k, v]) => {
+      if (v !== undefined && colSet.has(k)) {
+        updateFields.push(`${k} = ?`);
+        updateValues.push(v);
       }
     });
 

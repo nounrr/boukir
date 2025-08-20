@@ -28,6 +28,7 @@ import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contac
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { formatDateTimeWithHour } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
+import { toBackendUrl } from '../utils/url';
 import { useGetPaymentsQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
 import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
 import SearchableSelect from '../components/SearchableSelect';
@@ -64,10 +65,12 @@ const CaissePage = () => {
   // Bons from database: only Sorties and Comptant (client-linked only)
   const { data: sorties = [], isLoading: sortiesLoading } = useGetBonsByTypeQuery('Sortie');
   const { data: comptantsRaw = [], isLoading: comptantsLoading } = useGetBonsByTypeQuery('Comptant');
-  const bonsLoading = sortiesLoading || comptantsLoading;
+  const { data: commandes = [], isLoading: commandesLoading } = useGetBonsByTypeQuery('Commande');
+  const bonsLoading = sortiesLoading || comptantsLoading || commandesLoading;
   const bons: Bon[] = [
     ...(Array.isArray(sorties) ? sorties : []),
     ...(Array.isArray(comptantsRaw) ? comptantsRaw.filter((b: any) => !!b.client_id) : []),
+    ...(Array.isArray(commandes) ? commandes : []),
   ];
 
   // Backend now provides payments; no mock seeding
@@ -95,11 +98,22 @@ const CaissePage = () => {
       return '';
     })();
 
+    // Include contact company name (société) in search
+    const contactSociete = (() => {
+      const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
+      if (!cid) return '';
+      const c = clients.find((cl: any) => String(cl.id) === cid);
+      const f = c ? undefined : fournisseurs.find((fo: any) => String(fo.id) === cid);
+      const s = c?.societe ?? f?.societe;
+      return s ? String(s).toLowerCase() : '';
+    })();
+
     const matchesSearch = !term || (
       String(payment.id).includes(term) ||
       (payment.numero?.toLowerCase?.() || '').includes(term) ||
       (payment.notes?.toLowerCase?.() || '').includes(term) ||
-      contactName.includes(term)
+      contactName.includes(term) ||
+      contactSociete.includes(term)
     );
 
     const matchesDate = !dateFilter || payment.date_paiement === dateFilter;
@@ -255,16 +269,9 @@ const paymentValidationSchema = Yup.object({
 
   // Function to display payment numbers with PAY prefix
   const getDisplayNumeroPayment = (payment: Payment) => {
-    try {
-      const raw = String(payment?.numero ?? payment?.id ?? '').trim();
-      if (raw === '') return raw;
-      
-      // remove any leading 'pay', 'pa' (case-insensitive) and optional separators
-      const suffix = raw.replace(/^(pay|pa)\s*[-:\s]*/i, '');
-      return `PAY${suffix}`;
-    } catch (e) {
-      return String(payment?.numero ?? payment?.id ?? '');
-    }
+    const id = String(payment?.id ?? '').trim();
+    if (!id) return '';
+    return `PAY${id.padStart(2, '0')}`;
   };
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -717,7 +724,7 @@ const paymentValidationSchema = Yup.object({
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Rechercher un paiement..."
+              placeholder="Rechercher (Nom, Société, N°, Notes)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-80 pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -802,6 +809,9 @@ const paymentValidationSchema = Yup.object({
                   Client / Fournisseur
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Société
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Mode de paiement
                 </th>
                 
@@ -819,7 +829,7 @@ const paymentValidationSchema = Yup.object({
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={9} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun paiement trouvé
                   </td>
                 </tr>
@@ -855,6 +865,17 @@ const paymentValidationSchema = Yup.object({
                             ? (fournisseurs.find(f => f.id === payment.contact_id)?.nom_complet || '-')
                             : (clients.find(c => c.id === payment.contact_id)?.nom_complet || '-')}
                         </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900 truncate max-w-[220px]" title={
+                        payment.type_paiement === 'Fournisseur'
+                          ? (fournisseurs.find(f => f.id === payment.contact_id)?.societe || '-')
+                          : (clients.find(c => c.id === payment.contact_id)?.societe || '-')
+                      }>
+                        {payment.type_paiement === 'Fournisseur'
+                          ? (fournisseurs.find(f => f.id === payment.contact_id)?.societe || '-')
+                          : (clients.find(c => c.id === payment.contact_id)?.societe || '-')}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -895,7 +916,7 @@ const paymentValidationSchema = Yup.object({
                           </button>
 
                           {/* For employees allow only En attente and Annulé, others see all options */}
-                          { (user?.role === 'employe' || user?.role === 'user') ? (
+                          { (user?.role === 'Employé') ? (
                             <>
                               {/* Annulé */}
                               <button
@@ -1207,7 +1228,7 @@ const paymentValidationSchema = Yup.object({
                               <img
                                 src={imagePreview.startsWith('http') || imagePreview.startsWith('blob:') 
                                   ? imagePreview 
-                                  : `http://localhost:3001${imagePreview}`}
+                                  : toBackendUrl(imagePreview)}
                                 alt="Preview"
                                 className="w-full max-w-xs h-32 object-cover rounded-lg border shadow-sm"
                                 onError={(e) => {
@@ -1371,7 +1392,7 @@ const paymentValidationSchema = Yup.object({
                         const imageUrl = selectedPayment.image_url || '';
                         const fullImageUrl = imageUrl.startsWith('http') 
                           ? imageUrl 
-                          : `http://localhost:3001${imageUrl}`;
+                          : toBackendUrl(imageUrl);
                         window.open(fullImageUrl, '_blank');
                       }}
                       className="w-full focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
@@ -1382,7 +1403,7 @@ const paymentValidationSchema = Yup.object({
                           const imageUrl = selectedPayment.image_url || '';
                           return imageUrl.startsWith('http') 
                             ? imageUrl 
-                            : `http://localhost:3001${imageUrl}`;
+                            : toBackendUrl(imageUrl);
                         })()}
                         alt={`${selectedPayment.mode_paiement} ${selectedPayment.id}`}
                         className="w-full max-w-lg h-auto max-h-64 object-contain mx-auto rounded hover:opacity-90 transition-opacity"

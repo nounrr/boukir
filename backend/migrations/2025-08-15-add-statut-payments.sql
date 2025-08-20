@@ -10,14 +10,14 @@ ALTER TABLE contacts
   ADD COLUMN IF NOT EXISTS societe VARCHAR(255) DEFAULT NULL;
 -- deja fait --
 ALTER TABLE bons_comptant
-  DROP COLUMN IF EXISTS numero;
+  DROP COLUMN  numero;
 ALTER TABLE bons_commande
-  DROP COLUMN IF EXISTS numero;
+  DROP COLUMN  numero;
 ALTER TABLE bons_sortie
-  DROP COLUMN IF EXISTS numero;
+  DROP COLUMN  numero;
 
 -- Correct table names
 ALTER TABLE avoirs_client
-  DROP COLUMN IF EXISTS numero;
+  DROP COLUMN  numero;
 ALTER TABLE avoirs_fournisseur
-  DROP COLUMN IF EXISTS numero;
+  DROP COLUMN  numero;

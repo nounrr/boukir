@@ -43,11 +43,64 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   size = 'A4',
 }) => {
   const showPrices = priceMode === 'WITH_PRICES';
+  const initialSolde = Number((contact as any)?.solde ?? 0);
   const contactDisplayName = (
     (typeof contact?.societe === 'string' && contact.societe.trim())
       ? contact.societe
       : (contact?.nom_complet || '-')
   );
+
+  // Synthetic first rows with initial balance
+  const txInitialRow: any = {
+    id: 'initial-solde-transaction',
+    date: '',
+    dateISO: '',
+    numero: '—',
+    type: 'Solde initial',
+    montant: 0,
+    statut: '-',
+    soldeCumulatif: initialSolde,
+    syntheticInitial: true,
+  };
+  const prInitialRow: any = {
+    id: 'initial-solde-produit',
+    bon_date: '',
+    bon_numero: '—',
+    product_reference: '—',
+    product_designation: 'Solde initial',
+    quantite: 0,
+    prix_unitaire: 0,
+    total: 0,
+    bon_statut: '-',
+    soldeCumulatif: initialSolde,
+    type: 'solde',
+    syntheticInitial: true,
+  };
+
+  // Use incoming lists if they already include the synthetic initial row
+  const txList: any[] = (Array.isArray(transactions) && transactions[0]?.syntheticInitial)
+    ? transactions
+    : [txInitialRow, ...(transactions || [])];
+  const prList: any[] = (Array.isArray(productHistory) && productHistory[0]?.syntheticInitial)
+    ? productHistory
+    : [prInitialRow, ...(productHistory || [])];
+
+  // Totals for products print (respect current filtered list)
+  const prDataRows: any[] = Array.isArray(prList) ? prList.filter((r: any) => !r?.syntheticInitial) : [];
+  // Total quantity: products add, avoir subtract
+  const totalQtyProducts: number = prDataRows.reduce((sum: number, r: any) => {
+    const t = String(r.type || '').toLowerCase();
+    const q = Number(r.quantite) || 0;
+    if (t === 'produit') return sum + q;
+    if (t === 'avoir') return sum - q;
+    return sum;
+  }, 0);
+  const totalAmountProducts: number = prDataRows
+    .filter((r: any) => String(r.type || '').toLowerCase() === 'produit')
+    .reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0);
+  const finalSoldeProducts: number = (prList && prList.length > 0)
+    ? Number(prList[prList.length - 1]?.soldeCumulatif || initialSolde)
+    : initialSolde;
 
   return (
     <div
@@ -97,27 +150,30 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {transactions.length === 0 ? (
+                {txList.length === 0 ? (
                   <tr>
                     <td className="px-3 py-4 text-center text-gray-500" colSpan={showPrices ? 5 : 4}>Aucune donnée</td>
                   </tr>
                 ) : (
-                  transactions.map((t) => {
-                    const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'payment';
+                  txList.map((t) => {
+                    const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement';
+                    const isAvoir = String(t.type || '').toLowerCase().includes('avoir');
+                    // Unified: paiements/avoirs reduce balance, others increase
+                    const reduceBalance = (isPayment || isAvoir);
                     return (
                       <tr key={t.id} className="odd:bg-gray-50">
-                        <td className="border border-gray-300 px-3 py-2">{t.date || fmtDate(t.dateISO)}</td>
+                        <td className="border border-gray-300 px-3 py-2">{t.syntheticInitial ? '-' : (t.date || fmtDate(t.dateISO))}</td>
                         <td className="border border-gray-300 px-3 py-2">{t.numero}</td>
                         <td className="border border-gray-300 px-3 py-2">{t.type}</td>
                         {showPrices ? (
                           <>
-                            <td className={`border border-gray-300 px-3 py-2 text-right ${isPayment ? 'text-green-700' : 'text-blue-700'} font-medium`}>
-                              {isPayment ? '-' : '+'}{fmt(t.montant)}
+                            <td className={`border border-gray-300 px-3 py-2 text-right ${t.syntheticInitial ? 'text-gray-600' : reduceBalance ? 'text-green-700' : 'text-blue-700'} font-medium`}>
+                              {t.syntheticInitial ? '—' : (reduceBalance ? '-' : '+')}{t.syntheticInitial ? '' : fmt(t.montant)}
                             </td>
                             <td className="border border-gray-300 px-3 py-2 text-right text-gray-800 font-semibold">{fmt(t.soldeCumulatif)}</td>
                           </>
                         ) : (
-                          <td className="border border-gray-300 px-3 py-2">{t.statut || (isPayment ? 'Paiement' : '-')}</td>
+                          <td className="border border-gray-300 px-3 py-2">{t.syntheticInitial ? '-' : (t.statut || (isPayment ? 'Paiement' : '-'))}</td>
                         )}
                       </tr>
                     );
@@ -143,6 +199,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                     <>
                       <th className="border border-gray-300 px-3 py-2 text-right">Prix Unit.</th>
                       <th className="border border-gray-300 px-3 py-2 text-right">Total</th>
+                      <th className="border border-gray-300 px-3 py-2 text-right">Solde Cumulé</th>
                     </>
                   )}
                   {!showPrices && (
@@ -151,30 +208,53 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {productHistory.length === 0 ? (
+                {prList.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-4 text-center text-gray-500" colSpan={showPrices ? 7 : 6}>Aucune donnée</td>
+                    <td className="px-3 py-4 text-center text-gray-500" colSpan={showPrices ? 8 : 6}>Aucune donnée</td>
                   </tr>
                 ) : (
-                  productHistory.map((it: any) => (
-                    <tr key={it.id} className="odd:bg-gray-50">
-                      <td className="border border-gray-300 px-3 py-2">{it.bon_date || fmtDate(it.date)}</td>
-                      <td className="border border-gray-300 px-3 py-2">{it.bon_numero}</td>
-                      <td className="border border-gray-300 px-3 py-2">{it.product_reference}</td>
-                      <td className="border border-gray-300 px-3 py-2">{it.product_designation}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-right">{it.quantite}</td>
-                      {showPrices ? (
-                        <>
-                          <td className="border border-gray-300 px-3 py-2 text-right">{fmt(it.prix_unitaire)}</td>
-                          <td className="border border-gray-300 px-3 py-2 text-right font-medium">{fmt(it.total)}</td>
-                        </>
-                      ) : (
-                        <td className="border border-gray-300 px-3 py-2">{it.bon_statut || '-'}</td>
-                      )}
-                    </tr>
-                  ))
+                  prList.map((it: any) => {
+                    const type = String(it.type || '').toLowerCase();
+                    const isPaymentOrAvoir = type === 'paiement' || type === 'avoir';
+                    const totalVal = Number(it.total) || 0;
+                    // Unified: paiements/avoirs -, produits +
+                    const reduceBalance = isPaymentOrAvoir;
+                    const displayTotal = it.syntheticInitial ? '' : (reduceBalance ? -totalVal : totalVal);
+                    return (
+                      <tr key={it.id} className="odd:bg-gray-50">
+                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : (it.bon_date || fmtDate(it.date))}</td>
+                        <td className="border border-gray-300 px-3 py-2">{it.bon_numero}</td>
+                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '—' : it.product_reference}</td>
+                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? 'Solde initial' : it.product_designation}</td>
+                        <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : it.quantite}</td>
+                        {showPrices ? (
+                          <>
+                            <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : fmt(it.prix_unitaire)}</td>
+                            <td className={`border border-gray-300 px-3 py-2 text-right font-medium ${it.syntheticInitial ? 'text-gray-600' : reduceBalance ? 'text-green-700' : ''}`}>{it.syntheticInitial ? '—' : fmt(displayTotal)}</td>
+                            <td className="border border-gray-300 px-3 py-2 text-right text-gray-800 font-semibold">{fmt(it.soldeCumulatif)}</td>
+                          </>
+                        ) : (
+                          <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : (it.bon_statut || '-')}</td>
+                        )}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
+              {showPrices && (
+                <tfoot>
+                  <tr className="bg-gray-100 font-semibold">
+                    <td className="border border-gray-300 px-3 py-2">—</td>
+                    <td className="border border-gray-300 px-3 py-2">—</td>
+                    <td className="border border-gray-300 px-3 py-2">—</td>
+                    <td className="border border-gray-300 px-3 py-2 text-left">TOTAL</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right">{totalQtyProducts}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right">—</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right">{fmt(totalAmountProducts)}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right">{fmt(finalSoldeProducts)}</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
