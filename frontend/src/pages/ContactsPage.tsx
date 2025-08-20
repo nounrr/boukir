@@ -232,43 +232,21 @@ const ContactsPage: React.FC = () => {
     return combined.map((t) => {
       const montant = Number(t.montant) || 0;
       let delta = 0;
-      
-      // Déterminer l'impact sur le solde :
-      if (isPaymentStatut(t)) {
-        console.log(t)
-        // Paiement : soustrait du solde
-        delta = -montant;
-      } else if (isAvoirType(t)) {
-        // Avoir : soustrait du solde (remboursement/crédit)
+
+      // Unified rule: Bons/Commandes/Produits increase balance; Paiements/Avoirs decrease balance
+      if (isPaymentStatut(t) || isAvoirType(t)) {
         delta = -montant;
       } else {
-        // Transaction normale (vente/achat) : ajoute au solde
-        delta = montant;
+        delta = +montant;
       }
-      
+
       soldeCumulatif += delta;
       return { ...t, soldeCumulatif };
     });
   }, [selectedContact, bonsForContact]);
 
   // Calcul du solde réel du contact sélectionné (incluant les avoirs)
-  const selectedContactRealBalance = useMemo(() => {
-    if (!selectedContact) return 0;
-    
-    const isClient = selectedContact.type === 'Client';
-    const id = selectedContact.id;
-    const base = Number(selectedContact.solde || 0);
-    
-    if (isClient) {
-      const sales = salesByClient.get(id) || 0; // Inclut déjà la soustraction des avoirs clients
-      const paid = paymentsByContact.get(id) || 0;
-      return base + sales - paid;
-    } else {
-      const purchases = purchasesByFournisseur.get(id) || 0; // Inclut déjà la soustraction des avoirs fournisseurs
-      const paid = paymentsByContact.get(id) || 0;
-      return base + purchases - paid;
-    }
-  }, [selectedContact, salesByClient, purchasesByFournisseur, paymentsByContact]);
+  // Deprecated: kept logic inline in UI where needed
 
   const displayStatut = (s?: string) => {
     if (!s) return '-';
@@ -283,8 +261,7 @@ const ContactsPage: React.FC = () => {
 
   // Apply status filter to transactions for both display and printing
   const filteredCombinedTransactions = useMemo(() => {
-    if (!statusFilter) return combinedTransactions;
-    if (statusFilter === 'ALL') return combinedTransactions;
+  if (!statusFilter) return combinedTransactions;
     if (Array.isArray(statusFilter) && statusFilter.length === 0) return combinedTransactions;
     
     // First filter by status
@@ -308,83 +285,26 @@ const ContactsPage: React.FC = () => {
       return type === 'avoir' || type === 'avoirfournisseur';
     };
     
-    // Start from 0 when filtering to show only the impact of filtered transactions
-    let soldeCumulatif = 0;
+  // Start from the initial balance so filtered view includes solde initial
+  // Positive = montant dû (client nous doit / nous devons au fournisseur)
+  let soldeCumulatif = Number(selectedContact?.solde ?? 0);
     return filtered.map((t) => {
       const montant = Number(t.montant) || 0;
       let delta = 0;
-      
-      // Déterminer l'impact sur le solde :
+
+      // Unified rule for filtered view as well
       if (isPaymentStatut(t) || isAvoirType(t)) {
-        // Paiements et Avoirs : soustraient du solde (réduisent la dette)
         delta = -montant;
       } else {
-        // Transaction normale (vente/achat) : ajoute au solde (augmente la dette)
-        delta = montant;
+        delta = +montant;
       }
-      
+
       soldeCumulatif += delta;
       return { ...t, soldeCumulatif };
     });
   }, [combinedTransactions, statusFilter]);
 
-  // Monthly summary row type
-  type MonthlySummaryRow = { month: string; totalBons: number; totalPaiements: number; endBalance: number };
-
-  // Monthly summary (totals per month) - computed from filtered transactions
-  const monthlySummary = React.useMemo(() => {
-    const map = new Map() as Map<string, MonthlySummaryRow>;
-    
-    // Group transactions by month and find the last transaction of each month for endBalance
-    const monthlyTransactions = new Map<string, any[]>();
-    
-    for (const t of filteredCombinedTransactions) {
-      // parse month from ISO date YYYY-MM-DD or dd/mm/yyyy
-      const iso = String((t.dateISO || t.date || '')).slice(0, 10);
-      const month = iso && iso.match(/^\d{4}-\d{2}/) ? iso.slice(0, 7) : 'unknown';
-      
-      if (!monthlyTransactions.has(month)) {
-        monthlyTransactions.set(month, []);
-      }
-      monthlyTransactions.get(month)!.push(t);
-    }
-    
-    // Calculate summary for each month
-    for (const [month, transactions] of monthlyTransactions) {
-      const entry = { month, totalBons: 0, totalPaiements: 0, endBalance: 0 };
-      
-      // Helper to detect avoirs (which should reduce balance)
-      const isAvoirType = (entry: any) => {
-        const type = String(entry?.type || '').toLowerCase();
-        return type === 'avoir' || type === 'avoirfournisseur';
-      };
-      
-      // Sum amounts by type
-      for (const t of transactions) {
-        const amt = Number(t.montant) || 0;
-        const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement';
-        const isAvoir = isAvoirType(t);
-        
-        if (isPayment) {
-          entry.totalPaiements += amt;
-        } else if (!isAvoir) {
-          // Only count as "bon" if it's not a payment AND not an avoir
-          entry.totalBons += amt;
-        }
-        // Avoirs are not counted in totalBons or totalPaiements
-      }
-      
-      // Get the end balance from the last transaction of the month (chronologically)
-      const sortedTransactions = transactions.sort((a, b) => new Date(a.dateISO).getTime() - new Date(b.dateISO).getTime());
-      const lastTransaction = sortedTransactions[sortedTransactions.length - 1];
-      entry.endBalance = Number(lastTransaction?.soldeCumulatif ?? 0);
-      
-      map.set(month, entry);
-    }
-    
-    // sort months ascending
-    return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month));
-  }, [filteredCombinedTransactions]);
+  // Monthly summary removed (not displayed)
 
   // Derived list of available statuses for the selected contact's bons
   // Always include canonical statuses so the multi-select shows all options
@@ -464,17 +384,12 @@ const ContactsPage: React.FC = () => {
     let soldeCumulatif = Number(selectedContact?.solde ?? 0);
     return items.map((item) => {
       const total = Number(item.total) || 0;
-      // Déterminer l'impact sur le solde selon le type
+      // Unified rule: produits/commandes augmentent le solde, paiements/avoirs le diminuent
       let delta = 0;
-      if (item.type === 'paiement') {
-        // Paiements : soustraient du solde (réduisent la dette)
-        delta = -total;
-      } else if (item.type === 'avoir') {
-        // Avoirs : soustraient du solde (crédit/remboursement)
+      if (item.type === 'paiement' || item.type === 'avoir') {
         delta = -total;
       } else {
-        // Produits normaux : ajoutent au solde (augmentent la dette)
-        delta = total;
+        delta = +total;
       }
       soldeCumulatif += delta;
       return { ...item, soldeCumulatif };
@@ -485,11 +400,67 @@ const ContactsPage: React.FC = () => {
   const filteredProductHistory = useMemo(() => {
     return productHistory.filter((item) => {
       if (!statusFilter || (Array.isArray(statusFilter) && statusFilter.length === 0)) return true;
-      if (statusFilter === 'ALL') return true;
+  // 'ALL' not used; statusFilter is a list
       if (Array.isArray(statusFilter)) return statusFilter.some((s) => String(item.bon_statut) === s);
       return (item.bon_statut && String(item.bon_statut) === statusFilter);
     });
   }, [productHistory, statusFilter]);
+
+  // Search term and filtering for the Products detail tab
+  const [productSearch, setProductSearch] = useState('');
+  const searchedProductHistory = useMemo(() => {
+    const term = productSearch.trim().toLowerCase();
+    if (!term) return filteredProductHistory;
+    return filteredProductHistory.filter((i: any) => {
+      const ref = String(i.product_reference || '').toLowerCase();
+      const des = String(i.product_designation || '').toLowerCase();
+      const num = String(i.bon_numero || '').toLowerCase();
+      return ref.includes(term) || des.includes(term) || num.includes(term);
+    });
+  }, [filteredProductHistory, productSearch]);
+
+  // Inject a synthetic first row for initial balance in both views
+  const displayedTransactions = useMemo(() => {
+    if (!selectedContact) return [] as any[];
+    const initialSolde = Number(selectedContact?.solde ?? 0);
+    const initRow = {
+      id: 'initial-solde-transaction',
+      numero: '—',
+      type: 'Solde initial',
+      dateISO: '',
+      date: '',
+      montant: 0,
+      statut: '-',
+      isPayment: false,
+      mode: null,
+      created_at: '',
+      soldeCumulatif: initialSolde,
+      syntheticInitial: true,
+    } as any;
+    return [initRow, ...filteredCombinedTransactions];
+  }, [filteredCombinedTransactions, selectedContact]);
+
+  const displayedProductHistory = useMemo(() => {
+    if (!selectedContact) return [] as any[];
+    const initialSolde = Number(selectedContact?.solde ?? 0);
+    const initRow = {
+      id: 'initial-solde-produit',
+      bon_numero: '—',
+      bon_type: 'Solde initial',
+      bon_date: '',
+      bon_statut: '-',
+      product_reference: '—',
+      product_designation: 'Solde initial',
+      quantite: 0,
+      prix_unitaire: 0,
+      total: 0,
+      type: 'solde',
+      created_at: '',
+      soldeCumulatif: initialSolde,
+      syntheticInitial: true,
+    } as any;
+    return [initRow, ...searchedProductHistory];
+  }, [searchedProductHistory, selectedContact]);
 
   // Small helper to produce the CompanyHeader HTML used in bons prints
   const getCompanyHeaderHTML = (companyType: 'DIAMOND' | 'MPC' = 'DIAMOND') => {
@@ -555,11 +526,9 @@ const ContactsPage: React.FC = () => {
 
   const filteredBons = bonsForContact.filter((b: any) => {
     if (!statusFilter || (Array.isArray(statusFilter) && statusFilter.length === 0)) return true;
-    if (statusFilter === 'ALL') return true;
     if (Array.isArray(statusFilter)) return statusFilter.some((s) => b.statut && String(b.statut) === s);
     return (b.statut && String(b.statut) === statusFilter);
   });
-    const filteredPayments: any[] = [];
     const filteredProducts = filteredProductHistory.filter(item => 
       isWithinDateRange(new Date(`${item.bon_date.split('-').reverse().join('-')}`).toISOString())
     );
@@ -794,12 +763,7 @@ const ContactsPage: React.FC = () => {
       for (const b of avoirsFournisseur) if (b.fournisseur_id === id) list.push({ ...b, type: 'AvoirFournisseur' });
     }
 
-    // Calculer solde
-    const base = Number(contact.solde) || 0;
-    const sales = isClient ? (salesByClient.get(id) || 0) : 0;
-    const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
-  const paid = paymentsByContact.get(id) || 0;
-    const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
+  // Solde actuel calculé ailleurs dans les sections imprimées si nécessaire
 
     const printContent = `
       <html>
@@ -938,10 +902,11 @@ const ContactsPage: React.FC = () => {
             <p><strong>Solde moyen par contact:</strong> ${totalContacts > 0 ? (totalSoldes / totalContacts).toFixed(2) : '0.00'} DH</p>
           </div>
 
-          <h3>📋 LISTE DES ${typeLabel} (${totalContacts})</h3>
+      <h3>📋 LISTE DES ${typeLabel} (${totalContacts})</h3>
           <table>
             <tr>
-              <th>Nom Complet</th>
+        <th>Nom Complet</th>
+        <th>Société</th>
               <th>Téléphone</th>
               <th>Email</th>
               <th>ICE</th>
@@ -971,8 +936,10 @@ const ContactsPage: React.FC = () => {
                 transactionCount += avoirsFournisseur.filter((b: any) => b.fournisseur_id === id).length;
               }
 
+              const displayName = (contact.societe && contact.societe.trim()) ? contact.societe : (contact.nom_complet || 'N/A');
               return `<tr>
-                <td><strong>${contact.nom_complet || 'N/A'}</strong></td>
+                <td><strong>${displayName}</strong></td>
+                <td>${contact.societe ? contact.societe : '-'}</td>
                 <td>${contact.telephone || 'N/A'}</td>
                 <td>${contact.email || 'N/A'}</td>
                 <td>${contact.ice || 'N/A'}</td>
@@ -983,7 +950,7 @@ const ContactsPage: React.FC = () => {
               </tr>`;
             }).join('')}
             <tr class="total-row">
-              <td colspan="${activeTab === 'clients' ? '5' : '4'}"><strong>TOTAUX</strong></td>
+              <td colspan="${activeTab === 'clients' ? '6' : '5'}"><strong>TOTAUX</strong></td>
               <td class="numeric"><strong>${contactsList.reduce((s, c) => s + Number(c.solde || 0), 0).toFixed(2)} DH</strong></td>
               <td class="numeric"><strong>${totalSoldes.toFixed(2)} DH</strong></td>
               <td class="numeric"><strong>${contactsList.reduce((sum, contact) => {
@@ -1122,8 +1089,8 @@ const ContactsPage: React.FC = () => {
   // Filtrage par recherche
   const filteredContacts = (activeTab === 'clients' ? clients : fournisseurs).filter((contact) =>
     (contact.nom_complet?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (contact.telephone?.includes(searchTerm)) ||
-    (contact.email?.toLowerCase().includes(searchTerm.toLowerCase()))
+    (contact.societe?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+    (contact.telephone?.includes(searchTerm))
   );
 
   // Pagination
@@ -1194,7 +1161,7 @@ const ContactsPage: React.FC = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
-            placeholder={`Rechercher un ${activeTab === 'clients' ? 'client' : 'fournisseur'}...`}
+            placeholder={`Rechercher (Nom, Société ou Téléphone) ${activeTab === 'clients' ? 'client' : 'fournisseur'}...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -1281,6 +1248,7 @@ const ContactsPage: React.FC = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom complet</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Société</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Téléphone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse</th>
@@ -1299,7 +1267,7 @@ const ContactsPage: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedContacts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={activeTab === 'clients' ? 11 : 10} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun {activeTab === 'clients' ? 'client' : 'fournisseur'} trouvé
                   </td>
                 </tr>
@@ -1308,6 +1276,9 @@ const ContactsPage: React.FC = () => {
                   <tr key={contact.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{contact.nom_complet}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-900">{(contact.societe && contact.societe.trim()) ? contact.societe : '-'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -1504,7 +1475,11 @@ const ContactsPage: React.FC = () => {
               {/* Infos contact */}
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <h3 className="font-bold text-lg mb-3">Informations du {selectedContact.type}</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                  <div>
+                    <p className="font-semibold text-gray-600">Société:</p>
+                    <p>{(selectedContact.societe && selectedContact.societe.trim()) ? selectedContact.societe : '-'}</p>
+                  </div>
                   <div>
                     <p className="font-semibold text-gray-600">Téléphone:</p>
                     <p>{selectedContact.telephone || '-'}</p>
@@ -1688,7 +1663,7 @@ const ContactsPage: React.FC = () => {
                     </h3>
                     <div className="flex items-center gap-3">
                       <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-                        {filteredCombinedTransactions.length} éléments
+                        {displayedTransactions.length} éléments
                       </span>
                       <button
                         onClick={openPrintTransactions}
@@ -1714,17 +1689,17 @@ const ContactsPage: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredCombinedTransactions.length === 0 ? (
+                        {displayedTransactions.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
                               Aucune transaction trouvée pour cette période
                             </td>
                           </tr>
                         ) : (
-                          filteredCombinedTransactions.map((t) => (
+                          displayedTransactions.map((t) => (
                             <tr key={t.id} className="hover:bg-gray-50">
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-700">{formatDateTimeWithHour(t.created_at)}</div>
+                                <div className="text-sm text-gray-700">{t.syntheticInitial ? '-' : formatDateTimeWithHour(t.created_at)}</div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm font-medium text-gray-900">{t.numero}</div>
@@ -1732,7 +1707,7 @@ const ContactsPage: React.FC = () => {
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span
                                   className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                    t.type === 'Paiement'
+                                    t.type === 'Solde initial' ? 'bg-gray-200 text-gray-700' : t.type === 'Paiement'
                                       ? 'bg-green-200 text-green-700'
                                       : t.type === 'Avoir' || t.type === 'AvoirFournisseur'
                                       ? 'bg-orange-200 text-orange-700'
@@ -1752,8 +1727,10 @@ const ContactsPage: React.FC = () => {
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 {(() => {
+                                  if (t.syntheticInitial) {
+                                    return <div className="text-sm text-gray-500">—</div>;
+                                  }
                                   const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || 
-                                                  String(t.type || '').toLowerCase() === 'paiement' 
                                                   String(t.type || '').toLowerCase() === 'paiement';
                                   const isAvoir = String(t.type || '').toLowerCase() === 'avoir' || 
                                                 String(t.type || '').toLowerCase() === 'avoirfournisseur';
@@ -1768,7 +1745,9 @@ const ContactsPage: React.FC = () => {
                                 })()}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                {(String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement') ? (
+                                {t.syntheticInitial ? (
+                                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">-</span>
+                                ) : (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement') ? (
                                   <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">{displayStatut(t.statut)}</span>
                                 ) : (
                                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${t.statut === 'Validé' ? 'bg-green-200 text-green-700' : t.statut === 'En cours' ? 'bg-yellow-200 text-yellow-700' : 'bg-gray-200 text-gray-700'}`}>{t.statut}</span>
@@ -1794,48 +1773,47 @@ const ContactsPage: React.FC = () => {
                     </table>
                   </div>
 
-                  {filteredCombinedTransactions.length > 0 && (
+                  {displayedTransactions.length > 0 && (
                     <div className="mt-4 bg-gray-50 rounded-lg p-4">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                           <p className="font-semibold text-gray-600">Total Ventes/Achats:</p>
                           <p className="text-lg font-bold text-blue-600">
-                            {filteredCombinedTransactions.filter((t) => {
+                            {displayedTransactions.filter((t) => {
                               const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || 
-                                              String(t.type || '').toLowerCase() === 'paiement' 
                                               String(t.type || '').toLowerCase() === 'paiement';
                               const isAvoir = String(t.type || '').toLowerCase() === 'avoir' || 
                                             String(t.type || '').toLowerCase() === 'avoirfournisseur';
-                              return !isPayment && !isAvoir;
-                            }).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
+                              return !t.syntheticInitial && !isPayment && !isAvoir;
+                            }).reduce((s, t) => s + (t.montant || 0), 0).toFixed(2)} DH
                           </p>
                         </div>
                         <div>
                           <p className="font-semibold text-gray-600">Total Paiements:</p>
                           <p className="text-lg font-bold text-green-600">
-                            {filteredCombinedTransactions.filter((t) => (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement')).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
+                            {displayedTransactions.filter((t) => !t.syntheticInitial && (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement')).reduce((s, t) => s + (t.montant || 0), 0).toFixed(2)} DH
                           </p>
                         </div>
                         <div>
                           <p className="font-semibold text-gray-600">Total Avoirs:</p>
                           <p className="text-lg font-bold text-orange-600">
-                            {filteredCombinedTransactions.filter((t) => {
+                            {displayedTransactions.filter((t) => {
                               const isAvoir = String(t.type || '').toLowerCase() === 'avoir' || 
                                             String(t.type || '').toLowerCase() === 'avoirfournisseur';
-                              return isAvoir;
-                            }).reduce((s, t) => s + t.montant, 0).toFixed(2)} DH
+                              return !t.syntheticInitial && isAvoir;
+                            }).reduce((s, t) => s + (t.montant || 0), 0).toFixed(2)} DH
                           </p>
                         </div>
                         <div>
                           <p className="font-semibold text-gray-600">Solde Final:</p>
                           <p
                             className={`text-lg font-bold ${
-                              filteredCombinedTransactions[filteredCombinedTransactions.length - 1].soldeCumulatif > 0
+                              displayedTransactions[displayedTransactions.length - 1].soldeCumulatif > 0
                                 ? 'text-green-600'
                                 : 'text-red-600'
                             }`}
                           >
-                            {Number(filteredCombinedTransactions[filteredCombinedTransactions.length - 1].soldeCumulatif ?? 0).toFixed(2)} DH
+                            {Number(displayedTransactions[displayedTransactions.length - 1].soldeCumulatif ?? 0).toFixed(2)} DH
                           </p>
                         </div>
                       </div>
@@ -1905,8 +1883,18 @@ const ContactsPage: React.FC = () => {
                       )}
                     </h3>
                     <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        <input
+                          type="text"
+                          placeholder="Rechercher produit (Référence, Désignation, Numéro bon)"
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                          className="w-72 pl-8 pr-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                        />
+                      </div>
                       <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm">
-                        {filteredProductHistory.length} éléments
+                        {displayedProductHistory.length} éléments
                       </span>
                       <button
                         onClick={openPrintProducts}
@@ -1923,8 +1911,8 @@ const ContactsPage: React.FC = () => {
           onClose={() => setPrintModal({ open: false, mode: null })}
           contact={selectedContact}
           mode={printModal.mode as any}
-          transactions={filteredCombinedTransactions}
-          productHistory={filteredProductHistory}
+          transactions={displayedTransactions}
+          productHistory={displayedProductHistory}
           dateFrom={dateFrom}
           dateTo={dateTo}
         />
@@ -1949,17 +1937,17 @@ const ContactsPage: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredProductHistory.length === 0 ? (
+                        {displayedProductHistory.length === 0 ? (
                           <tr>
                             <td colSpan={10} className="px-6 py-4 text-center text-sm text-gray-500">
                               Aucun produit trouvé pour cette période
                             </td>
                           </tr>
                         ) : (
-                          filteredProductHistory.map((item) => (
+                          displayedProductHistory.map((item) => (
                             <tr key={item.id} className={`hover:bg-gray-50 ${item.type === 'paiement' ? 'bg-green-50' : ''}`}>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-700">{formatDateTimeWithHour(item.created_at)}</div>
+                                <div className="text-sm text-gray-700">{item.syntheticInitial ? '-' : formatDateTimeWithHour(item.created_at)}</div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm font-medium text-gray-900">{item.bon_numero}</div>
@@ -1967,7 +1955,7 @@ const ContactsPage: React.FC = () => {
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span
                                   className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                    item.bon_type === 'Paiement'
+                                    item.bon_type === 'Solde initial' ? 'bg-gray-200 text-gray-700' : item.bon_type === 'Paiement'
                                       ? 'bg-green-200 text-green-700'
                                       : item.bon_type === 'Commande'
                                       ? 'bg-blue-200 text-blue-700'
@@ -1982,32 +1970,32 @@ const ContactsPage: React.FC = () => {
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">{item.product_reference}</div>
+                                <div className="text-sm text-gray-900">{item.syntheticInitial ? '—' : item.product_reference}</div>
                               </td>
                               <td className="px-6 py-4">
                                 <div className="text-sm text-gray-900">
-                                  {item.product_designation}
+                                  {item.syntheticInitial ? 'Solde initial' : item.product_designation}
                                   {item.type === 'paiement' && item.mode && (
                                     <span className="ml-2 text-xs text-gray-500">({item.mode})</span>
                                   )}
                                 </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                                {item.type === 'paiement' ? '-' : item.quantite}
+                                {item.syntheticInitial ? '-' : item.type === 'paiement' ? '-' : item.quantite}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                                {item.prix_unitaire.toFixed(2)} DH
+                                {item.syntheticInitial ? '-' : `${item.prix_unitaire.toFixed(2)} DH`}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                                <div className={`font-semibold ${item.type === 'paiement' ? 'text-green-600' : 'text-blue-600'}`}>
-                                  {item.type === 'paiement' ? '-' : '+'}
-                                  {item.total.toFixed(2)} DH
+                                <div className={`font-semibold ${item.syntheticInitial ? 'text-gray-500' : item.type === 'paiement' ? 'text-green-600' : 'text-blue-600'}`}>
+                                  {item.syntheticInitial ? '—' : item.type === 'paiement' ? '-' : '+'}
+                                  {item.syntheticInitial ? '' : `${item.total.toFixed(2)} DH`}
                                 </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span
                                   className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                    item.bon_statut === 'Validé' || item.bon_statut === 'Payé'
+                                    item.syntheticInitial ? 'bg-gray-200 text-gray-700' : item.bon_statut === 'Validé' || item.bon_statut === 'Payé'
                                       ? 'bg-green-200 text-green-700'
                                       : item.bon_statut === 'En cours'
                                       ? 'bg-yellow-200 text-yellow-700'
@@ -2016,7 +2004,7 @@ const ContactsPage: React.FC = () => {
                                       : 'bg-gray-200 text-gray-700'
                                   }`}
                                 >
-                                  {item.bon_statut}
+                                  {item.syntheticInitial ? '-' : item.bon_statut}
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -2040,13 +2028,13 @@ const ContactsPage: React.FC = () => {
                   </div>
 
                   {/* Résumés */}
-                  {filteredProductHistory.length > 0 && (
+                  {searchedProductHistory.length > 0 && (
                     <>
                       <div className="mt-6 bg-purple-50 rounded-lg p-4">
                         <h4 className="font-bold text-lg mb-3">Résumé par Produit</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {Object.entries(
-                filteredProductHistory
+                searchedProductHistory
                   .filter((i: any) => i.type === 'produit')
                               .reduce((acc: any, i: any) => {
                                 if (!acc[i.product_reference]) {
@@ -2085,54 +2073,54 @@ const ContactsPage: React.FC = () => {
                           <div>
                             <p className="font-semibold text-gray-600">Total Produits:</p>
                             <p className="text-lg font-bold text-blue-600">
-                              {productHistory
+                              {searchedProductHistory
                                 .filter((i: any) => i.type === 'produit')
                                 .reduce((s: number, i: any) => s + i.total, 0)
                                 .toFixed(2)} DH
                             </p>
                             <p className="text-xs text-blue-500">
-                              ({productHistory.filter((i: any) => i.type === 'produit').length} produit{productHistory.filter((i: any) => i.type === 'produit').length > 1 ? 's' : ''})
+                              ({searchedProductHistory.filter((i: any) => i.type === 'produit').length} produit{searchedProductHistory.filter((i: any) => i.type === 'produit').length > 1 ? 's' : ''})
                             </p>
                           </div>
                           <div>
                             <p className="font-semibold text-gray-600">Total Paiements:</p>
                             <p className="text-lg font-bold text-green-600">
-                              {productHistory
+                              {searchedProductHistory
                                 .filter((i: any) => i.type === 'paiement')
                                 .reduce((s: number, i: any) => s + i.total, 0)
                                 .toFixed(2)} DH
                             </p>
                             <p className="text-xs text-green-500">
-                              ({productHistory.filter((i: any) => i.type === 'paiement').length} paiement{productHistory.filter((i: any) => i.type === 'paiement').length > 1 ? 's' : ''})
+                              ({searchedProductHistory.filter((i: any) => i.type === 'paiement').length} paiement{searchedProductHistory.filter((i: any) => i.type === 'paiement').length > 1 ? 's' : ''})
                             </p>
                           </div>
                           <div>
                             <p className="font-semibold text-gray-600">Total Avoirs:</p>
                             <p className="text-lg font-bold text-orange-600">
-                              {productHistory
+                              {searchedProductHistory
                                 .filter((i: any) => i.type === 'avoir')
                                 .reduce((s: number, i: any) => s + i.total, 0)
                                 .toFixed(2)} DH
                             </p>
                             <p className="text-xs text-orange-500">
-                              ({productHistory.filter((i: any) => i.type === 'avoir').length} avoir{productHistory.filter((i: any) => i.type === 'avoir').length > 1 ? 's' : ''})
+                              ({searchedProductHistory.filter((i: any) => i.type === 'avoir').length} avoir{searchedProductHistory.filter((i: any) => i.type === 'avoir').length > 1 ? 's' : ''})
                             </p>
                           </div>
                           <div>
                             <p className="font-semibold text-gray-600">Solde Net:</p>
                             <p
                               className={`text-lg font-bold ${
-                                (productHistory.filter((i: any) => i.type === 'produit').reduce((s: number, i: any) => s + i.total, 0) -
-                                  productHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0) -
-                                  productHistory.filter((i: any) => i.type === 'avoir').reduce((s: number, i: any) => s + i.total, 0)) > 0
+                                (searchedProductHistory.filter((i: any) => i.type === 'produit').reduce((s: number, i: any) => s + i.total, 0) -
+                                  searchedProductHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0) -
+                                  searchedProductHistory.filter((i: any) => i.type === 'avoir').reduce((s: number, i: any) => s + i.total, 0)) > 0
                                   ? 'text-red-600'
                                   : 'text-green-600'
                               }`}
                             >
                               {(
-                                productHistory.filter((i: any) => i.type === 'produit').reduce((s: number, i: any) => s + i.total, 0) -
-                                productHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0) -
-                                productHistory.filter((i: any) => i.type === 'avoir').reduce((s: number, i: any) => s + i.total, 0)
+                                searchedProductHistory.filter((i: any) => i.type === 'produit').reduce((s: number, i: any) => s + i.total, 0) -
+                                searchedProductHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0) -
+                                searchedProductHistory.filter((i: any) => i.type === 'avoir').reduce((s: number, i: any) => s + i.total, 0)
                               ).toFixed(2)} DH
                             </p>
                           </div>
