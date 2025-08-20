@@ -65,10 +65,11 @@ const VehiculeFormModal: React.FC<VehiculeFormModalProps> = ({
           initialValues={defaultValues}
           validationSchema={vehiculeValidationSchema}
           enableReinitialize={true}
-          onSubmit={async (values) => {
+          onSubmit={async (values, { setFieldError, setSubmitting }) => {
             try {
               if (!currentUser?.id) {
                 showError('Utilisateur non authentifié');
+                setSubmitting(false);
                 return;
               }
 
@@ -109,11 +110,24 @@ const VehiculeFormModal: React.FC<VehiculeFormModalProps> = ({
               onClose();
             } catch (error: any) {
               console.error('Erreur lors de l\'opération sur le véhicule:', error);
-              showError(`Erreur lors de l'${initialValues?.id ? 'modification' : 'ajout'} du véhicule: ${error.message || 'Erreur inconnue'}`);
+              const status = error?.status || error?.originalStatus;
+              const serverMsg = error?.data?.message || error?.error || error?.message;
+              if (status === 409) {
+                // Conflit (ex: immatriculation déjà existante)
+                setFieldError('immatriculation', serverMsg || 'Cette immatriculation existe déjà');
+                showError(serverMsg || 'Cette immatriculation existe déjà');
+              } else if (status === 400) {
+                showError(serverMsg || 'Champs requis manquants');
+              } else {
+                showError(serverMsg || `Erreur lors de l'${initialValues?.id ? 'modification' : 'ajout'} du véhicule`);
+              }
+            }
+            finally {
+              setSubmitting(false);
             }
           }}
         >
-          {({ errors, touched }) => (
+          {({ errors, touched, isSubmitting }) => (
             <Form className="space-y-4">
               {/* Nom - pleine largeur */}
               <div>
@@ -276,7 +290,8 @@ const VehiculeFormModal: React.FC<VehiculeFormModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                  disabled={isSubmitting}
+                  className={`px-4 py-2 text-white rounded-md ${isSubmitting ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
                 >
                   {buttonText}
                 </button>
