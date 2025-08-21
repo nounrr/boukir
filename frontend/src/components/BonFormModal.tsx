@@ -150,6 +150,11 @@ const bonValidationSchema = Yup.object({
     if (type === 'Sortie' || type === 'Avoir') return schema.required('Client requis');
     return schema.nullable();
   }),
+  // Pour Comptant, on saisit un nom libre
+  client_nom: Yup.string().when('type', ([type], schema) => {
+    if (type === 'Comptant') return schema.trim();
+    return schema.optional();
+  }),
   fournisseur_id: Yup.number().when('type', ([type], schema) => {
     if (type === 'Commande' || type === 'AvoirFournisseur') return schema.required('Fournisseur requis');
     return schema.nullable();
@@ -516,7 +521,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       lieu_chargement: values.lieu_charge || '',
       adresse_livraison: values.adresse_livraison || '',
       statut: values.statut || 'Brouillon',
-      client_id: values.client_id ? parseInt(values.client_id) : undefined,
+      client_id: requestType === 'Comptant' ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
+      client_nom: requestType === 'Comptant' ? (values.client_nom || null) : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
       montant_total: montantTotal,
       created_by: user?.id || 1,
@@ -805,7 +811,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
               </div>
 
               {/* Client */}
-              {(values.type === 'Sortie' || values.type === 'Devis' || values.type === 'Comptant' || values.type === 'Avoir') && (
+              {(values.type === 'Sortie' || values.type === 'Devis' || values.type === 'Avoir') && (
                 <div>
                   <div className="flex items-center gap-2">
                     <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
@@ -857,6 +863,25 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                       <span className="text-sm">{values.client_societe}</span>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Client libre pour Comptant */}
+              {values.type === 'Comptant' && (
+                <div>
+                  <label htmlFor="client_nom" className="block text-sm font-medium text-gray-700 mb-1">
+                    Client (texte libre)
+                  </label>
+                  <Field
+                    type="text"
+                    id="client_nom"
+                    name="client_nom"
+                    placeholder="Saisir le nom du client"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                  <div className="text-xs text-gray-500 mt-1">
+                    Ce client ne sera pas ajouté à la page Contacts.
+                  </div>
                 </div>
               )}
 
