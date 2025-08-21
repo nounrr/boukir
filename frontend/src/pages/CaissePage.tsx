@@ -81,6 +81,12 @@ const CaissePage = () => {
   // Filtrer les paiements
   const filteredPayments = payments.filter((payment: Payment) => {
     const term = searchTerm.trim().toLowerCase();
+    // Compute display payment number (e.g., PAY01) to allow searching by it
+    const displayPayNum = (() => {
+      const idStr = String(payment?.id ?? '').trim();
+      if (!idStr) return '';
+      return `pay${idStr.padStart(2, '0')}`.toLowerCase();
+    })();
 
     // Search includes payment fields and linked contact name (client or fournisseur)
     const contactName = (() => {
@@ -111,6 +117,7 @@ const CaissePage = () => {
     const matchesSearch = !term || (
       String(payment.id).includes(term) ||
       (payment.numero?.toLowerCase?.() || '').includes(term) ||
+      displayPayNum.includes(term) ||
       (payment.notes?.toLowerCase?.() || '').includes(term) ||
       contactName.includes(term) ||
       contactSociete.includes(term)
@@ -724,7 +731,7 @@ const paymentValidationSchema = Yup.object({
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Rechercher (Nom, Société, N°, Notes)..."
+              placeholder="Rechercher (N° paiement, Nom, Société, Notes)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-80 pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"

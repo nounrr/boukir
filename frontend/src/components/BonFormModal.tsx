@@ -8,7 +8,7 @@ import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantQuery } from '../store/api/comptantApi';
-import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
+import { useGetClientsQuery, useGetFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
 import { useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetRemiseItemsQuery, useCreateRemiseItemMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
@@ -169,7 +169,7 @@ const makeRowId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}
 interface BonFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis';
+  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis' | 'Vehicule';
   initialValues?: any;
   onBonAdded?: (bon: any) => void;
 }
@@ -213,6 +213,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [createBon] = useCreateBonMutation();
   const [updateBonMutation] = useUpdateBonMutation();
   const [createRemiseItem] = useCreateRemiseItemMutation();
+  const [createContact] = useCreateContactMutation();
+  const [isDuplicating, setIsDuplicating] = useState(false);
 
   /* -------------------- Helpers décimaux pour prix_unitaire -------------------- */
   const normalizeDecimal = (s: string) => s.replace(/\s+/g, '').replace(',', '.');
@@ -366,7 +368,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     }
 
     return {
-  type: currentTab,
+      type: currentTab,
       date_bon: new Date().toISOString().split('T')[0],
       vehicule_id: '',
       lieu_charge: '',
@@ -1472,6 +1474,69 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                       Imprimer
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={isDuplicating || (values.items?.length || 0) === 0}
+                    onClick={async () => {
+                      try {
+                        setIsDuplicating(true);
+                        // 1) Préparer les items/total à partir du formulaire courant
+                        const items = (values.items || []).map((row: any, idx: number) => {
+                          const q =
+                            parseFloat(String((qtyRaw as any)[idx] ?? row.quantite ?? '0').replace(',', '.')) || 0;
+                          const pu =
+                            parseFloat(String((unitPriceRaw as any)[idx] ?? row.prix_unitaire ?? '0').replace(',', '.')) || 0;
+                          const remiseP = Number(row.remise_pourcentage ?? 0) || 0;
+                          const remiseM = Number(row.remise_montant ?? 0) || 0;
+                          return {
+                            product_id: Number(row.product_id),
+                            quantite: q,
+                            prix_unitaire: pu,
+                            remise_pourcentage: remiseP,
+                            remise_montant: remiseM,
+                            total: q * pu,
+                          };
+                        });
+                        const montantTotal = items.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+
+                        // 2) Chercher/Créer le client fixe "khezin awatif"
+                        const targetName = 'khezin awatif';
+                        let awatef = (clients || []).find(
+                          (c: any) => String(c.nom_complet || '').toLowerCase().trim() === targetName
+                        );
+                        if (!awatef) {
+                          awatef = await createContact({
+                            nom_complet: 'khezin awatif',
+                            type: 'Client',
+                            created_by: user?.id || 1,
+                          }).unwrap();
+                        }
+
+                        // 3) Créer l'Avoir Client pour AWATEF, en ignorant le client du bon courant
+                        await createBon({
+                          type: 'Avoir',
+                          date_creation: values.date_bon || new Date().toISOString().split('T')[0],
+                          client_id: Number(awatef.id),
+                          adresse_livraison: values.adresse_livraison || '',
+                          montant_total: montantTotal,
+                          statut: 'En attente',
+                          created_by: user?.id || 1,
+                          items,
+                        }).unwrap();
+
+                        showSuccess("Avoir client dupliqué pour 'khezin awatif'.");
+                      } catch (err: any) {
+                        console.error('Duplication AWATEF échouée:', err);
+                        showError(err?.data?.message || err?.message || 'Erreur lors de la duplication');
+                      } finally {
+                        setIsDuplicating(false);
+                      }
+                    }}
+                    className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-md disabled:opacity-60"
+                    title="Dupliquer ce bon en Avoir Client pour le client fixe AWATEF"
+                  >
+                    {isDuplicating ? 'Duplication…' : 'Dupliquer AWATEF'}
+                  </button>
                   <button
                     type="submit"
                     disabled={isSubmitting}

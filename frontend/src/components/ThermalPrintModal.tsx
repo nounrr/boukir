@@ -1,3 +1,4 @@
+/* eslint-disable sonarjs/cognitive-complexity */
 import React, { useMemo, useRef, useState } from 'react';
 import { X, Printer } from 'lucide-react';
 import logo from"./logo.png"
@@ -6,7 +7,7 @@ interface ThermalPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
   bon: any;
-  type: 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'AvoirClient' | 'AvoirFournisseur' | 'Avoir';
+  type: 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'AvoirClient' | 'AvoirFournisseur' | 'Avoir' | 'Vehicule';
   contact?: any;
   items?: any[];
 }
@@ -20,12 +21,13 @@ const formatDate = (date: string) => {
 const getTypeLabel = (t: string) => {
   const map: Record<string, string> = {
     Commande: 'COMMANDE',
-    Sortie: 'SORTIE',
-    Comptant: 'COMPTANT',
+    Sortie: 'DEVIS',
+    Comptant: 'DEVIS',
     Devis: 'DEVIS',
     AvoirClient: 'AVOIR CLIENT',
     Avoir: 'AVOIR CLIENT',
     AvoirFournisseur: 'AVOIR FOURNISSEUR',
+  Vehicule: 'BON VÉHICULE',
   };
   return map[t] ?? 'BON';
 };
@@ -62,17 +64,17 @@ const getPrintCss = () => `
   .thermal-title { font-weight: bold; font-size: 13px; margin-bottom: 4mm; }
   .thermal-info {font-weight: bold; font-size: 13px; margin-bottom: 4mm; }
   .thermal-section { font-weight: bold; margin-top: 2mm; padding-top: 1mm; border-top: 1px dashed #000; }
-  .thermal-row { font-weight: bold; display: flex; justify-content: center; gap: 8px; margin-bottom: 4mm; font-size: 12px; }
+  .thermal-row { font-weight: bold; display: flex; justify-content: center; gap: 8px; margin-bottom: 4mm; }
   .thermal-footer { font-weight: bold; text-align: center; font-size: 8px; margin-top: 3mm; border-top: 1px dashed #000; padding-top: 2mm; }
-  .thermal-table { font-weight: bold; width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; table-layout: fixed; }
+  .thermal-table { font-weight: bold; width: 100%; border-collapse: collapse;  text-align: center; table-layout: fixed; }
   .thermal-table th, .thermal-table td { font-weight: bold; padding: 1mm 0; text-align: center; }
   .thermal-table thead tr { font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; }
-  .thermal-table tbody tr { font-weight: bold; border-bottom: 1px dotted #000; }
+  .thermal-table tbody tr {font-size:14px; font-weight: bold; border-bottom: 1px dotted #000;left;height:8mm }
   .col-code { font-weight: bold; width: 10%; white-space: nowrap; }
   .col-designation { font-weight: bold; width: 45%; white-space: normal; word-break: break-word; text-align: left; }
   .col-qte { font-weight: bold; width: 10%; white-space: nowrap; text-align: right; overflow: visible; font-size: 11px; }
-  .col-unit { font-weight: bold; width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 11px; }
-  .col-total { font-weight: bold;width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 11px; }
+  .col-unit { font-weight: bold; width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 13px; }
+  .col-total { font-weight: bold;width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 13px; }
   /* When prices are hidden, rebalance widths */
   .thermal-table.no-prices .col-code { font-weight: bold; width: 15%; }
   .thermal-table.no-prices .col-designation { font-weight: bold; width: 70%; white-space: normal; word-break: break-word; text-align: left; }
@@ -85,6 +87,7 @@ const getPrintCss = () => `
   }
 `;
 
+// eslint-disable-next-line sonarjs/cognitive-complexity
 const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
   isOpen,
   onClose,
@@ -247,7 +250,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
         BOUKIR DIAMOND <br /> CONSTRUCTION STORE
       </>
     ) : (
-      'BOUKIR MPC'
+      'MPC BOUKIR'
     )}
   </span><br />
               

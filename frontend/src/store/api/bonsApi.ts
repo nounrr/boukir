@@ -27,6 +27,8 @@ export const bonsApi = api.injectEndpoints({
             return '/avoirs_client';
           case 'AvoirFournisseur':
             return '/avoirs_fournisseur';
+          case 'Vehicule':
+            return '/bons_vehicule';
           default:
             throw new Error('Type de bon invalide');
         }
@@ -38,7 +40,7 @@ export const bonsApi = api.injectEndpoints({
         return list.map((bon) => ({ ...bon, type }));
       },
       providesTags: (result, _error, type) => {
-        const tagType = type as 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'AvoirClient' | 'AvoirFournisseur';
+        const tagType = type as 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'AvoirClient' | 'AvoirFournisseur' | 'Vehicule';
         let actualTagType = tagType;
         
         // Mapping des types frontend vers les types de tags
@@ -80,6 +82,9 @@ export const bonsApi = api.injectEndpoints({
           case 'AvoirFournisseur':
             endpoint = '/avoirs_fournisseur';
             break;
+          case 'Vehicule':
+            endpoint = '/bons_vehicule';
+            break;
           default:
             throw new Error('Type de bon invalide');
         }
@@ -105,6 +110,8 @@ export const bonsApi = api.injectEndpoints({
             return [{ type: 'AvoirClient', id: 'LIST' }];
           case 'AvoirFournisseur':
             return [{ type: 'AvoirFournisseur', id: 'LIST' }];
+          case 'Vehicule':
+            return [{ type: 'Vehicule', id: 'LIST' }];
           default:
             return [];
         }
@@ -132,6 +139,9 @@ export const bonsApi = api.injectEndpoints({
             break;
           case 'AvoirFournisseur':
             endpoint = `/avoirs_fournisseur/${id}`;
+            break;
+          case 'Vehicule':
+            endpoint = `/bons_vehicule/${id}`;
             break;
           default:
             endpoint = `/bons/${id}`;
@@ -177,6 +187,9 @@ export const bonsApi = api.injectEndpoints({
           case 'AvoirFournisseur':
             endpoint = `/avoirs_fournisseur/${id}`;
             break;
+          case 'Vehicule':
+            endpoint = `/bons_vehicule/${id}`;
+            break;
           default:
             endpoint = `/bons/${id}`;
         }
@@ -196,7 +209,7 @@ export const bonsApi = api.injectEndpoints({
     }),
 
     // Pour changer le statut d'un bon (Valider, Annuler, etc.)
-    updateBonStatus: builder.mutation<Bon, { id: number; statut: string; type?: string }>({
+  updateBonStatus: builder.mutation<Bon, { id: number; statut: string; type?: 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'Vehicule' }>({
       query: ({ id, statut, type }) => {
         let endpoint = '';
         switch (type) {
@@ -217,6 +230,9 @@ export const bonsApi = api.injectEndpoints({
             break;
           case 'AvoirFournisseur':
             endpoint = `/avoirs_fournisseur/${id}/statut`;
+            break;
+          case 'Vehicule':
+            endpoint = `/bons_vehicule/${id}/statut`;
             break;
           default:
             endpoint = `/bons/${id}/statut`;
