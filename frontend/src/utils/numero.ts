@@ -1,5 +1,5 @@
 // Small helper to compute display-friendly bon numbers from type + id
-export type BonType = 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur';
+export type BonType = 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'Vehicule';
 
 export function padId(id: number | string, width = 2) {
   const s = String(id ?? '').replace(/\D/g, '');
@@ -21,6 +21,8 @@ export function bonPrefix(type?: string) {
       return 'AVC';
     case 'AvoirFournisseur':
       return 'AVF';
+    case 'Vehicule':
+      return 'VEH';
     default:
       return 'BON';
   }
