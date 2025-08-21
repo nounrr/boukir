@@ -163,7 +163,7 @@ export interface CreateVehiculeData {
 export interface Bon {
   id: number;
   numero?: string;
-  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis';
+  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis' | 'Vehicule';
   date_creation: string;
   date_echeance?: string;
   client_id?: number;
@@ -171,7 +171,10 @@ export interface Bon {
   adresse_livraison?: string;
   montant_total: number;
   statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente' | 'Envoyé' | 'Accepté' | 'Refusé' | 'Expiré' | 'Facturé';
-  vehicule?: string;
+  // Champs spécifiques véhicule (bons_vehicule)
+  vehicule_id?: number;
+  vehicule_nom?: string;
+  vehicule?: string; // compatibilité ancienne si utilisée ailleurs
   lieu_chargement?: string;
   bon_origine_id?: number; // Pour les avoirs, lien vers le bon d'origine
   items: BonItem[];
@@ -193,12 +196,12 @@ export interface BonItem {
 }
 
 export interface CreateBonData {
-  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis';
+  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis' | 'Vehicule';
   date_creation: string;
   date_echeance?: string;
   client_id?: number;
   fournisseur_id?: number;
-  vehicule?: string;
+  vehicule_id?: number;
   lieu_chargement?: string;
   adresse_livraison?: string;
   bon_origine_id?: number; // Pour les avoirs, lien vers le bon d'origine

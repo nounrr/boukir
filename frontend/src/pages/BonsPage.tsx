@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer } from 'lucide-react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy } from 'lucide-react';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
   import ContactFormModal from '../components/ContactFormModal';
@@ -27,9 +27,10 @@ import React, { useState } from 'react';
   import { logout } from '../store/slices/authSlice';
   import { useAppDispatch } from '../hooks/redux';
   
+  
 
 const BonsPage = () => {
-  const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis'>('Commande');
+  const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis' | 'Vehicule'>('Commande');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedBon, setSelectedBon] = useState<any>(null);
@@ -126,7 +127,7 @@ const BonsPage = () => {
     // et certains endpoints ne renvoyaient pas `type`.
   const filteredBons = bons.filter(bon => {
       const term = (searchTerm || '').trim().toLowerCase();
-      const contactName = getContactName(bon).toLowerCase();
+      const contactName = (currentTab === 'Vehicule' ? (bon.vehicule_nom || '') : getContactName(bon)).toLowerCase();
       const matchesSearch = !term || (
         (getDisplayNumero(bon).toLowerCase() || '').includes(term) ||
         (bon.statut?.toLowerCase() || '').includes(term) ||
@@ -242,6 +243,7 @@ const BonsPage = () => {
               { key: 'Commande', label: 'Bon de Commande' },
               { key: 'Sortie', label: 'Bon de Sortie' },
               { key: 'Comptant', label: 'Bon Comptant' },
+              { key: 'Vehicule', label: 'Bon Véhicule' },
               { key: 'Avoir', label: 'Avoir Client' },
               { key: 'AvoirFournisseur', label: 'Avoir Fournisseur' },
               { key: 'Devis', label: 'Devis' }
@@ -335,7 +337,11 @@ const BonsPage = () => {
                     Créé le
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {currentTab === 'AvoirFournisseur' || currentTab === 'Commande' ? 'Fournisseur' : 'Client'}
+                    {(() => {
+                      if (currentTab === 'Vehicule') return 'Véhicule';
+                      if (currentTab === 'AvoirFournisseur' || currentTab === 'Commande') return 'Fournisseur';
+                      return 'Client';
+                    })()}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Adresse livraison
@@ -365,7 +371,7 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-sm">
                         <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at)}</div>
                       </td>
-                      <td className="px-4 py-2 text-sm">{getContactName(bon)}</td>
+                      <td className="px-4 py-2 text-sm">{currentTab === 'Vehicule' ? (bon.vehicule_nom || '-') : getContactName(bon)}</td>
                       <td className="px-4 py-2 text-sm">{(bon as any).adresse_livraison ?? (bon as any).adresseLivraison ?? '-'}</td>
                       <td className="px-4 py-2">
                         <div className="text-sm font-semibold text-gray-900">{Number(bon.montant_total ?? 0).toFixed(2)} DH</div>
@@ -482,6 +488,17 @@ const BonsPage = () => {
                                 title="Modifier"
                               >
                                 <Edit size={16} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  // Ouvrir le modal avec ce bon: l'action "Dupliquer AWATEF" est dans le footer du modal
+                                  setSelectedBon(bon);
+                                  setIsCreateModalOpen(true);
+                                }}
+                                className="text-pink-600 hover:text-pink-800"
+                                title="Dupliquer AWATEF (Avoir Client)"
+                              >
+                                <Copy size={16} />
                               </button>
                               <button
                                 onClick={() => handleDelete(bon)}
