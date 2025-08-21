@@ -16,6 +16,8 @@ interface ContactPrintTemplateProps {
   companyType: CompanyType;
   priceMode: PriceMode;
   size?: 'A4' | 'A5';
+  // When true, do not prepend a synthetic initial balance row
+  skipInitialRow?: boolean;
 }
 
 const fmt = (n: any) => Number(n || 0).toFixed(2);
@@ -41,6 +43,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   companyType,
   priceMode,
   size = 'A4',
+  skipInitialRow = false,
 }) => {
   const showPrices = priceMode === 'WITH_PRICES';
   const initialSolde = Number((contact as any)?.solde ?? 0);
@@ -77,13 +80,15 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     syntheticInitial: true,
   };
 
-  // Use incoming lists if they already include the synthetic initial row
-  const txList: any[] = (Array.isArray(transactions) && transactions[0]?.syntheticInitial)
-    ? transactions
-    : [txInitialRow, ...(transactions || [])];
-  const prList: any[] = (Array.isArray(productHistory) && productHistory[0]?.syntheticInitial)
-    ? productHistory
-    : [prInitialRow, ...(productHistory || [])];
+  // Use incoming lists; optionally prepend synthetic initial row unless skipping
+  let txList: any[] = Array.isArray(transactions) ? transactions : [];
+  if (!(txList[0]?.syntheticInitial) && !skipInitialRow) {
+    txList = [txInitialRow, ...txList];
+  }
+  let prList: any[] = Array.isArray(productHistory) ? productHistory : [];
+  if (!(prList[0]?.syntheticInitial) && !skipInitialRow) {
+    prList = [prInitialRow, ...prList];
+  }
 
   // Totals for products print (respect current filtered list)
   const prDataRows: any[] = Array.isArray(prList) ? prList.filter((r: any) => !r?.syntheticInitial) : [];

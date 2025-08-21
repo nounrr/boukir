@@ -101,7 +101,7 @@ const formatHeure = (dateStr: string) => {
   const sousTotal = items.reduce((sum: number, item: any) => 
     sum + (parseFloat(item.quantite || 0) * parseFloat(item.prix_unitaire || 0)), 0);
 
-  const contact = client || fournisseur;
+  const contact = client || fournisseur || ((bon?.type === 'Comptant' && bon?.client_nom) ? { nom_complet: bon.client_nom } as any : undefined);
   const contactLabel = contact ? 'Contact' : '';
   const contactDisplayName = (
     (typeof contact?.societe === 'string' && contact.societe.trim())

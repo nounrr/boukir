@@ -24,6 +24,8 @@ import React, { useState } from 'react';
   import { useSelector } from 'react-redux';
   import type { RootState } from '../store';
   import { getBonNumeroDisplay } from '../utils/numero';
+  import { logout } from '../store/slices/authSlice';
+  import { useAppDispatch } from '../hooks/redux';
   
 
 const BonsPage = () => {
@@ -54,6 +56,7 @@ const BonsPage = () => {
 
   // Auth context
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const isEmployee = currentUser?.role === 'Employé';
 
   // RTK Query hooks
   // Load bons by type
@@ -63,10 +66,16 @@ const BonsPage = () => {
   const { data: products = [], isLoading: productsLoading } = useGetProductsQuery();
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
+  const dispatch = useAppDispatch();
   // const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
   const handleChangeStatus = async (bon: any, statut: 'Validé' | 'En attente' | 'Annulé' | 'Accepté' | 'Envoyé' | 'Refusé') => {
     try {
+      // Employé: uniquement Annuler
+      if (isEmployee && statut !== 'Annulé') {
+        showError("Permission refusée: l'employé ne peut que annuler.");
+        return;
+      }
       // Si c'est un devis et qu'on l'accepte, ouvrir le modal de transformation
       if (bon.type === 'Devis' && statut === 'Accepté') {
         setSelectedDevisToTransform(bon);
@@ -78,7 +87,14 @@ const BonsPage = () => {
       showSuccess(`Statut mis à jour: ${statut}`);
     } catch (error: any) {
       console.error('Erreur mise à jour statut:', error);
-      showError(`Erreur lors du changement de statut: ${error?.data?.message || error?.message || 'Erreur inconnue'}`);
+      const status = error?.status;
+      const msg = error?.data?.message || error?.message || 'Erreur inconnue';
+      if (status === 401) {
+        showError('Session expirée. Veuillez vous reconnecter.');
+        dispatch(logout());
+      } else {
+        showError(`Erreur lors du changement de statut: ${msg}`);
+      }
     }
   };
   // Hooks retirés pour éviter les warnings tant que la migration RTK n'est pas terminée
@@ -87,8 +103,13 @@ const BonsPage = () => {
 
   // Helper to get contact name (client or fournisseur) used by filtering/render
   const getContactName = (bon: any) => {
-    if (bon?.client_id && clients.length > 0) {
-      const client = clients.find((c: any) => String(c.id) === String(bon.client_id));
+    // Comptant: if client_nom is present (free text), prefer it
+    if ((bon?.type === 'Comptant' || currentTab === 'Comptant') && bon?.client_nom) {
+      return bon.client_nom;
+    }
+    const clientId = bon?.client_id ?? bon?.contact_id;
+    if (clientId && clients.length > 0) {
+      const client = clients.find((c: any) => String(c.id) === String(clientId));
       return client ? client.nom_complet : 'Client supprimé';
     }
     if (bon?.fournisseur_id && suppliers.length > 0) {
@@ -130,6 +151,10 @@ const BonsPage = () => {
   }, [currentTab, searchTerm]);
 
   const handleDelete = async (bonToDelete: any) => {
+      if (isEmployee) {
+        showError("Permission refusée: l'employé ne peut pas supprimer un bon.");
+        return;
+      }
       const result = await showConfirmation(
         'Cette action est irréversible.',
         'Êtes-vous sûr de vouloir supprimer ce bon ?',
@@ -196,16 +221,18 @@ const BonsPage = () => {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Gestion des Bons</h1>
-          <button
-            onClick={() => {
-              setSelectedBon(null);
-              setIsCreateModalOpen(true);
-            }}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-          >
-            <Plus size={20} />
-            Nouveau {currentTab}
-          </button>
+          {currentUser?.role === 'PDG' && (
+            <button
+              onClick={() => {
+                setSelectedBon(null);
+                setIsCreateModalOpen(true);
+              }}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+            >
+              <Plus size={20} />
+              Nouveau {currentTab}
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
@@ -234,8 +261,7 @@ const BonsPage = () => {
           </nav>
         </div>
         
-        {/* Contenu standard */}
-        <>
+  {/* Contenu standard */}
         {/* Search and Filters */}
         <div className="flex justify-between items-center mb-6">
           <div className="relative max-w-md">
@@ -249,12 +275,13 @@ const BonsPage = () => {
             />
           </div>
           <div className="ml-4 flex items-center gap-3">
-            <label className="text-sm text-gray-600">Statut</label>
+            <label className="text-sm text-gray-600" htmlFor="statusFilter">Statut</label>
             <select
               multiple
               value={statusFilter}
               onChange={(e) => setStatusFilter(Array.from(e.target.selectedOptions).map(o => o.value))}
               className="px-2 py-2 border border-gray-300 rounded-md h-28"
+              id="statusFilter"
             >
               {['En attente','Validé','Refusé','Annulé'].map(s => (
                 <option key={s} value={s}>{s}</option>
@@ -295,7 +322,7 @@ const BonsPage = () => {
           </div>
         </div>
 
-        {/* Table */}
+  {/* Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -352,88 +379,72 @@ const BonsPage = () => {
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="inline-flex gap-2">
-                          {/* Status-change actions: only visible to PDG */}
-                          {currentUser?.role === 'PDG' && (
-                            <>
-                              {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant') && (
+                          {/* Status-change actions */}
+                          {(() => {
+                            if (currentUser?.role === 'PDG') {
+                              return (
                                 <>
-                                  <button
-                                    onClick={() => handleChangeStatus(bon, 'Validé')}
-                                    className="text-green-600 hover:text-green-800"
-                                    title="Marquer Validé"
-                                  >
-                                    <CheckCircle2 size={16} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleChangeStatus(bon, 'En attente')}
-                                    className="text-yellow-600 hover:text-yellow-800"
-                                    title="Mettre En attente"
-                                  >
-                                    <Clock size={16} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleChangeStatus(bon, 'Annulé')}
-                                    className="text-red-600 hover:text-red-800"
-                                    title="Annuler"
-                                  >
-                                    <XCircle size={16} />
-                                  </button>
+                                  {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant') && (
+                                    <>
+                                      <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Marquer Validé">
+                                        <CheckCircle2 size={16} />
+                                      </button>
+                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre En attente">
+                                        <Clock size={16} />
+                                      </button>
+                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
+                                        <XCircle size={16} />
+                                      </button>
+                                    </>
+                                  )}
+                                  {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur') && (
+                                    <>
+                                      <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Valider l'avoir">
+                                        <CheckCircle2 size={16} />
+                                      </button>
+                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre en attente">
+                                        <Clock size={16} />
+                                      </button>
+                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler l'avoir">
+                                        <XCircle size={16} />
+                                      </button>
+                                    </>
+                                  )}
+                                  {currentTab === 'Devis' && (
+                                    <>
+                                      <button onClick={() => handleChangeStatus(bon, 'Accepté')} className="text-green-600 hover:text-green-800" title="Accepter le devis">
+                                        <CheckCircle2 size={16} />
+                                      </button>
+                                      <button onClick={() => handleChangeStatus(bon, 'Envoyé')} className="text-blue-600 hover:text-blue-800" title="Marquer comme envoyé">
+                                        <Clock size={16} />
+                                      </button>
+                                      <button onClick={() => handleChangeStatus(bon, 'Refusé')} className="text-red-600 hover:text-red-800" title="Refuser le devis">
+                                        <XCircle size={16} />
+                                      </button>
+                                    </>
+                                  )}
                                 </>
-                              )}
-
-                              {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur') && (
+                              );
+                            }
+                            if (isEmployee) {
+                              return (
                                 <>
-                                  <button
-                                    onClick={() => handleChangeStatus(bon, 'Validé')}
-                                    className="text-green-600 hover:text-green-800"
-                                    title="Valider l'avoir"
-                                  >
-                                    <CheckCircle2 size={16} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleChangeStatus(bon, 'En attente')}
-                                    className="text-yellow-600 hover:text-yellow-800"
-                                    title="Mettre en attente"
-                                  >
-                                    <Clock size={16} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleChangeStatus(bon, 'Annulé')}
-                                    className="text-red-600 hover:text-red-800"
-                                    title="Annuler l'avoir"
-                                  >
-                                    <XCircle size={16} />
-                                  </button>
+                                  {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant') && (
+                                    <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
+                                      <XCircle size={16} />
+                                    </button>
+                                  )}
+                                  {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur') && (
+                                    <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler l'avoir">
+                                      <XCircle size={16} />
+                                    </button>
+                                  )}
+                                  {/* Devis: pas d'action d'annulation explicite pour Employé */}
                                 </>
-                              )}
-
-                              {currentTab === 'Devis' && (
-                                <>
-                                  <button
-                                    onClick={() => handleChangeStatus(bon, 'Accepté')}
-                                    className="text-green-600 hover:text-green-800"
-                                    title="Accepter le devis"
-                                  >
-                                    <CheckCircle2 size={16} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleChangeStatus(bon, 'Envoyé')}
-                                    className="text-blue-600 hover:text-blue-800"
-                                    title="Marquer comme envoyé"
-                                  >
-                                    <Clock size={16} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleChangeStatus(bon, 'Refusé')}
-                                    className="text-red-600 hover:text-red-800"
-                                    title="Refuser le devis"
-                                  >
-                                    <XCircle size={16} />
-                                  </button>
-                                </>
-                              )}
-                            </>
-                          )}
+                              );
+                            }
+                            return null;
+                          })()}
                           <button
                             onClick={() => { 
                               setSelectedBonForPrint(bon); 
@@ -454,27 +465,33 @@ const BonsPage = () => {
                           >
                             <Printer size={16} />
                           </button>
-                          <button
-                            onClick={() => { setSelectedBon(bon); setIsViewModalOpen(true); }}
-                            className="text-gray-600 hover:text-gray-900"
-                            title="Voir"
-                          >
-                            <Eye size={16} />
-                          </button>
-                          <button
-                            onClick={() => { setSelectedBon(bon); setIsCreateModalOpen(true); }}
-                            className="text-blue-600 hover:text-blue-800"
-                            title="Modifier"
-                          >
-                            <Edit size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(bon)}
-                            className="text-red-600 hover:text-red-800"
-                            title="Supprimer"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {currentUser?.role !== 'Employé' && (
+                            <button
+                              onClick={() => { setSelectedBon(bon); setIsViewModalOpen(true); }}
+                              className="text-gray-600 hover:text-gray-900"
+                              title="Voir"
+                            >
+                              <Eye size={16} />
+                            </button>
+                          )}
+                          {currentUser?.role === 'PDG' && (
+                            <>
+                              <button
+                                onClick={() => { setSelectedBon(bon); setIsCreateModalOpen(true); }}
+                                className="text-blue-600 hover:text-blue-800"
+                                title="Modifier"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(bon)}
+                                className="text-red-600 hover:text-red-800"
+                                title="Supprimer"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -484,7 +501,7 @@ const BonsPage = () => {
             </table>
           </div>
         </div>
-  </>
+  
 
         {/* Navigation de pagination */}
         {totalPages > 1 && (
@@ -544,7 +561,7 @@ const BonsPage = () => {
           initialValues={selectedBon || undefined}
           onBonAdded={(newBon) => {
             // Le bon est automatiquement ajouté au store Redux
-            const labelTab = currentTab === 'BonRemise' ? 'Bon' : currentTab;
+            const labelTab = String(currentTab);
             showSuccess(`${labelTab} ${getDisplayNumero(newBon)} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
             setIsCreateModalOpen(false);
             setSelectedBon(null);
@@ -867,7 +884,12 @@ const BonsPage = () => {
             }
             // Sortie / Comptant / Avoir (client): prefer client_id, fallback to contact_id
             const clientId = b.client_id ?? b.contact_id;
-            return clients.find((c) => String(c.id) === String(clientId)) || null;
+            const found = clients.find((c) => String(c.id) === String(clientId)) || null;
+            if (!found && (currentTab === 'Comptant' || b.type === 'Comptant') && b.client_nom) {
+              // Build a minimal contact-like object for display
+              return { nom_complet: b.client_nom } as any;
+            }
+            return found;
           })()}
           items={selectedBonForPrint?.items || []}
         />
@@ -907,7 +929,12 @@ const BonsPage = () => {
           bon={selectedBonForPDFPrint}
           client={(() => {
             if (!selectedBonForPDFPrint) return undefined;
-            return clients.find(c => c.id === selectedBonForPDFPrint.client_id);
+            const bon = selectedBonForPDFPrint;
+            const found = clients.find(c => c.id === bon.client_id);
+            if (!found && (bon.type === 'Comptant' || currentTab === 'Comptant') && bon.client_nom) {
+              return { id: 0, nom_complet: bon.client_nom, type: 'Client', solde: 0, created_at: '', updated_at: '' } as any;
+            }
+            return found;
           })()}
           fournisseur={(() => {
             if (!selectedBonForPDFPrint) return undefined;

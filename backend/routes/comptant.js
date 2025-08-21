@@ -11,8 +11,8 @@ router.get('/', async (_req, res) => {
   try {
     const [rows] = await pool.execute(`
       SELECT
-        bc.*,
-        c.nom_complet AS client_nom,
+  bc.*,
+  COALESCE(bc.client_nom, c.nom_complet) AS client_nom,
         v.nom         AS vehicule_nom,
         COALESCE((
           SELECT JSON_ARRAYAGG(
@@ -32,7 +32,7 @@ router.get('/', async (_req, res) => {
           WHERE ci.bon_comptant_id = bc.id
         ), JSON_ARRAY()) AS items
       FROM bons_comptant bc
-      LEFT JOIN contacts  c ON c.id = bc.client_id
+  LEFT JOIN contacts  c ON c.id = bc.client_id
       LEFT JOIN vehicules v ON v.id = bc.vehicule_id
       ORDER BY bc.created_at DESC
     `);
@@ -60,8 +60,8 @@ router.get('/:id', async (req, res) => {
 
     const [rows] = await pool.execute(`
       SELECT
-        bc.*,
-        c.nom_complet AS client_nom,
+  bc.*,
+  COALESCE(bc.client_nom, c.nom_complet) AS client_nom,
         v.nom         AS vehicule_nom,
         COALESCE((
           SELECT JSON_ARRAYAGG(
@@ -81,7 +81,7 @@ router.get('/:id', async (req, res) => {
           WHERE ci.bon_comptant_id = bc.id
         ), JSON_ARRAY()) AS items
       FROM bons_comptant bc
-      LEFT JOIN contacts  c ON c.id = bc.client_id
+  LEFT JOIN contacts  c ON c.id = bc.client_id
       LEFT JOIN vehicules v ON v.id = bc.vehicule_id
       WHERE bc.id = ?
       LIMIT 1
@@ -113,7 +113,8 @@ router.post('/', async (req, res) => {
 
   const {
       date_creation,
-      client_id,
+  client_id,
+  client_nom,
       vehicule_id,
       lieu_chargement,
       adresse_livraison,
@@ -140,10 +141,10 @@ router.post('/', async (req, res) => {
 
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
-        date_creation, client_id, vehicule_id,
+        date_creation, client_id, client_nom, vehicule_id,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, cId, client_nom ?? null, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const comptantId = comptantResult.insertId;
 
@@ -193,7 +194,8 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
   const {
       date_creation,
-      client_id,
+  client_id,
+  client_nom,
       vehicule_id,
       lieu_chargement,
       adresse_livraison,
@@ -225,10 +227,10 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute(`
       UPDATE bons_comptant SET
-        date_creation = ?, client_id = ?,
+        date_creation = ?, client_id = ?, client_nom = ?,
         vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
       WHERE id = ?
-    `, [date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
+    `, [date_creation, cId, client_nom ?? null, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     await connection.execute('DELETE FROM comptant_items WHERE bon_comptant_id = ?', [id]);
 
@@ -326,7 +328,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     if (result.affectedRows === 0) return res.status(404).json({ message: 'Bon comptant non trouvé' });
 
     const [rows] = await pool.execute(`
-      SELECT bc.*, c.nom_complet AS client_nom, v.nom AS vehicule_nom
+      SELECT bc.*, COALESCE(bc.client_nom, c.nom_complet) AS client_nom, v.nom AS vehicule_nom
       FROM bons_comptant bc
       LEFT JOIN contacts c ON c.id = bc.client_id
       LEFT JOIN vehicules v ON v.id = bc.vehicule_id
