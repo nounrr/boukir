@@ -57,6 +57,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   const [createContact] = useCreateContactMutation();
   const [updateContact] = useUpdateContactMutation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const isEmployee = currentUser?.role === 'Employé';
 
   if (!isOpen) return null;
 
@@ -288,7 +289,8 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                     name="solde"
                     type="number"
                     step="0.01"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none ${isEmployee ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500'}`}
+                    disabled={isEmployee}
                     placeholder="0.00"
                   />
                   {errors.solde && touched.solde && (

@@ -232,16 +232,25 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
             <div className='text-center'><div className="thermal-info">{getTypeLabel(type)}</div>
               <div className="thermal-info"></div></div>
               
-              {contact ? (
+      {contact ? (
                 <div className="thermal-info" style={{ marginTop: '2mm' }}>
                   Client: {(
                     (typeof contact.societe === 'string' && contact.societe.trim()) ? contact.societe :
-                    contact.nom_complet || contact.nom || contact.name || '-'
+        contact.nom_complet || contact.nom || contact.name || '-'
                   )}
                 </div>
               ) : null}
             </div>
-              <div className="thermal-title text-center"><span>{companyType === 'DIAMOND' ? 'BOUKIR DIAMOND' : 'BOUKIR MPC'}</span><br />
+              <div className="thermal-title text-center"><span>
+    {companyType === 'DIAMOND' ? (
+      <>
+        BOUKIR DIAMOND <br /> CONSTRUCTION STORE
+      </>
+    ) : (
+      'BOUKIR MPC'
+    )}
+  </span><br />
+              
               <span>Vente de Matériaux de Construction céramique, et de Marbre</span>
               <br />
               <span>GSM: 0650812894 - Tél: 0666216657</span>

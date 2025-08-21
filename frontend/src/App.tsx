@@ -2,8 +2,9 @@ import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { store } from './store';
-import { initializeAuth } from './store/slices/authSlice';
+import { initializeAuth, logout } from './store/slices/authSlice';
 import { useAppDispatch, useAuth } from './hooks/redux';
+import { useValidateTokenQuery } from './store/api/authApi';
 
 // Composants
 import LoginPage from './components/auth/LoginPage';
@@ -32,6 +33,14 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     dispatch(initializeAuth());
   }, [dispatch]);
+
+  // Validate token with backend when authenticated; if invalid, logout
+  const { isError: tokenInvalid } = useValidateTokenQuery(undefined, { skip: !isAuthenticated });
+  useEffect(() => {
+    if (tokenInvalid) {
+      dispatch(logout());
+    }
+  }, [tokenInvalid, dispatch]);
 
   return (
     <Router>

@@ -21,6 +21,8 @@ import ContactPrintModal from '../components/ContactPrintModal';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetRemiseBonsQuery } from '../store/api/remisesApi';
 import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../store';
 
 // Validation du formulaire de contact
 const contactValidationSchema = Yup.object({
@@ -35,6 +37,8 @@ const contactValidationSchema = Yup.object({
 });
 
 const ContactsPage: React.FC = () => {
+  const currentUser = useSelector((state: RootState) => state.auth.user);
+  const isEmployee = (currentUser?.role === 'Employé');
   const { data: clients = [] } = useGetClientsQuery();
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
   const [createContact] = useCreateContactMutation();
@@ -56,6 +60,11 @@ const ContactsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string[]>([]); // Toujours un tableau pour <select multiple>
   // Print modal state
   const [printModal, setPrintModal] = useState<{ open: boolean; mode: 'transactions' | 'products' | null }>({ open: false, mode: null });
+  // Multi-select states and print data
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [printTransactions, setPrintTransactions] = useState<any[]>([]);
+  const [printProducts, setPrintProducts] = useState<any[]>([]);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -166,6 +175,46 @@ const ContactsPage: React.FC = () => {
     }
   };
 
+  // Helper: parse items array from a bon (array or JSON string)
+  const parseBonItems = (bon: any): any[] => {
+    const raw = bon?.items ?? bon?.lignes;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  // Helper: robustly compute a bon's total from items when needed
+  const computeBonTotal = (bon: any): number => {
+    const mt = Number(bon?.montant_total);
+    if (Number.isFinite(mt) && mt > 0) return mt;
+    const items = parseBonItems(bon);
+    if (!items || items.length === 0) return mt || 0;
+    let sum = 0;
+    for (const it of items) {
+      const q = parseFloat(String(it?.quantite ?? it?.qty ?? 0)) || 0;
+      const pu = parseFloat(String(it?.prix_unitaire ?? it?.prix ?? it?.price ?? 0)) || 0;
+      const rp = parseFloat(String(it?.remise_pourcentage ?? 0)) || 0;
+      const rm = parseFloat(String(it?.remise_montant ?? 0)) || 0;
+      const fromTotal = it?.total;
+      let line = Number(fromTotal);
+      if (!Number.isFinite(line) || line === 0) {
+        line = q * pu;
+        if (rp > 0) line = line * (1 - rp / 100);
+        if (rm > 0) line = line - rm;
+      }
+      sum += line;
+    }
+    return sum;
+  };
+
   // Bons du contact sélectionné
   const bonsForContact = useMemo(() => {
     if (!selectedContact) return [] as any[];
@@ -200,7 +249,7 @@ const ContactsPage: React.FC = () => {
       type: b.type,
       dateISO: b.date_creation,
       date: formatDateDMY(b.date_creation),
-      montant: Number(b.montant_total) || 0,
+        montant: computeBonTotal(b),
       statut: b.statut,
       isPayment: false,
       mode: null,
@@ -1016,11 +1065,67 @@ const ContactsPage: React.FC = () => {
   // Open print modal for transactions
   const openPrintTransactions = () => {
     setDetailsTab('transactions');
+    // Build subset based on selection; if none selected, use all displayed (excluding synthetic initial)
+    const baseRows = displayedTransactions.filter((t: any) => !t.syntheticInitial);
+    const rows = (selectedTransactionIds && selectedTransactionIds.size > 0)
+      ? baseRows.filter((t: any) => selectedTransactionIds.has(String(t.id)))
+      : baseRows;
+
+    // Recompute cumulative balance over selected rows
+    // If user selected specific rows, ignore initial balance and start from 0
+    const hasSelection = selectedTransactionIds && selectedTransactionIds.size > 0;
+    const startingSolde = hasSelection ? 0 : Number(selectedContact?.solde ?? 0);
+    let soldeCumulatif = startingSolde;
+    const recomputed = rows.map((t: any) => {
+      const montant = Number(t.montant) || 0;
+      const statut = String(t?.statut || '').toLowerCase();
+      const type = String(t?.type || '').toLowerCase();
+      const isPayment = statut === 'paiement' || type === 'paiement';
+      const isAvoir = type === 'avoir' || type === 'avoirfournisseur';
+      const delta = (isPayment || isAvoir) ? -montant : +montant;
+      soldeCumulatif += delta;
+      return { ...t, soldeCumulatif };
+    });
+    // Only include synthetic initial row when no selection (so we keep initial balance)
+    if (hasSelection) {
+      setPrintTransactions(recomputed);
+    } else {
+      const initialSolde = Number(selectedContact?.solde ?? 0);
+      const initRow: any = {
+        id: 'initial-solde-transaction', numero: '—', type: 'Solde initial', dateISO: '', date: '', montant: 0, statut: '-', isPayment: false, mode: null, created_at: '', syntheticInitial: true, soldeCumulatif: initialSolde,
+      };
+      setPrintTransactions([initRow, ...recomputed]);
+    }
     setPrintModal({ open: true, mode: 'transactions' });
   };
   // Open print modal for products
   const openPrintProducts = () => {
     setDetailsTab('produits');
+    const baseRows = displayedProductHistory.filter((it: any) => !it.syntheticInitial);
+    const rows = (selectedProductIds && selectedProductIds.size > 0)
+      ? baseRows.filter((it: any) => selectedProductIds.has(String(it.id)))
+      : baseRows;
+
+    const hasSelection = selectedProductIds && selectedProductIds.size > 0;
+    const startingSolde = hasSelection ? 0 : Number(selectedContact?.solde ?? 0);
+    let soldeCumulatif = startingSolde;
+    const recomputed = rows.map((it: any) => {
+      const total = Number(it.total) || 0;
+      const type = String(it.type || '').toLowerCase();
+      const reduce = (type === 'paiement' || type === 'avoir');
+      const delta = reduce ? -total : +total;
+      soldeCumulatif += delta;
+      return { ...it, soldeCumulatif };
+    });
+    if (hasSelection) {
+      setPrintProducts(recomputed);
+    } else {
+      const initialSolde = Number(selectedContact?.solde ?? 0);
+      const initRow: any = {
+        id: 'initial-solde-produit', bon_numero: '—', bon_type: 'Solde initial', bon_date: '', bon_statut: '-', product_reference: '—', product_designation: 'Solde initial', quantite: 0, prix_unitaire: 0, total: 0, type: 'solde', created_at: '', syntheticInitial: true, soldeCumulatif: initialSolde,
+      };
+      setPrintProducts([initRow, ...recomputed]);
+    }
     setPrintModal({ open: true, mode: 'products' });
   };
 
@@ -1082,6 +1187,11 @@ const ContactsPage: React.FC = () => {
 
   // Suppression
   const handleDelete = async (id: number) => {
+    // Employees are not allowed to delete contacts
+    if (isEmployee) {
+      showError("Vous n'avez pas la permission de supprimer ce contact.");
+      return;
+    }
     const result = await showConfirmation(
       'Cette action est irréversible.',
       `Êtes-vous sûr de vouloir supprimer ce ${activeTab === 'clients' ? 'client' : 'fournisseur'} ?`,
@@ -1090,7 +1200,7 @@ const ContactsPage: React.FC = () => {
     );
     if (result.isConfirmed) {
       try {
-        await deleteContactMutation({ id, updated_by: 1 }).unwrap();
+        await deleteContactMutation({ id, updated_by: currentUser?.id || 1 }).unwrap();
         showSuccess(`${activeTab === 'clients' ? 'Client' : 'Fournisseur'} supprimé avec succès`);
       } catch (error) {
         console.error('Erreur lors de la suppression:', error);
@@ -1373,13 +1483,15 @@ const ContactsPage: React.FC = () => {
                         >
                           <Edit size={16} />
                         </button>
-                        <button
-                          onClick={() => handleDelete(contact.id)}
-                          className="text-red-600 hover:text-red-900"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {currentUser?.role === 'PDG' && (
+                          <button
+                            onClick={() => handleDelete(contact.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1475,6 +1587,10 @@ const ContactsPage: React.FC = () => {
                     onClick={() => {
                       setIsDetailsModalOpen(false);
                       setSelectedContact(null);
+                      setSelectedTransactionIds(new Set());
+                      setSelectedProductIds(new Set());
+                      setPrintTransactions([]);
+                      setPrintProducts([]);
                     }}
                     className="text-white hover:text-gray-200"
                   >
@@ -1648,19 +1764,19 @@ const ContactsPage: React.FC = () => {
                 <nav className="flex space-x-8">
                   <button
                     className={`py-2 px-1 font-medium ${detailsTab === 'transactions' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                    onClick={() => setDetailsTab('transactions')}
+                    onClick={() => { setDetailsTab('transactions'); }}
                   >
                     Transactions
                   </button>
                   <button
                     className={`py-2 px-1 font-medium ${detailsTab === 'produits' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                    onClick={() => setDetailsTab('produits')}
+                    onClick={() => { setDetailsTab('produits'); }}
                   >
                     Détail Produits
                   </button>
                   <button
                     className={`py-2 px-1 font-medium ${detailsTab === 'clientRemise' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                    onClick={() => setDetailsTab('clientRemise')}
+                    onClick={() => { setDetailsTab('clientRemise'); setSelectedTransactionIds(new Set()); setSelectedProductIds(new Set()); }}
                   >
                     Client Remise
                   </button>
@@ -1684,6 +1800,12 @@ const ContactsPage: React.FC = () => {
                       <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
                         {displayedTransactions.length} éléments
                       </span>
+                      <span className="text-xs text-gray-500">
+                        {Array.from(selectedTransactionIds).length > 0 ? `${Array.from(selectedTransactionIds).length} sélectionné(s)` : 'Aucune sélection'}
+                      </span>
+                      {Array.from(selectedTransactionIds).length > 0 && (
+                        <button onClick={() => setSelectedTransactionIds(new Set())} className="text-xs px-2 py-1 bg-gray-100 rounded">Effacer sélection</button>
+                      )}
                       <button
                         onClick={openPrintTransactions}
                         className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
@@ -1699,6 +1821,23 @@ const ContactsPage: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
+                          <th className="px-2 py-3">
+                            <input
+                              type="checkbox"
+                              aria-label="Sélectionner tout"
+                              checked={displayedTransactions.filter((t:any)=>!t.syntheticInitial).every((t:any)=>selectedTransactionIds.has(String(t.id))) && displayedTransactions.filter((t:any)=>!t.syntheticInitial).length>0}
+                              onChange={(e)=>{
+                                const all = new Set<string>(selectedTransactionIds);
+                                const nonInitial = displayedTransactions.filter((t:any)=>!t.syntheticInitial);
+                                if(e.target.checked){
+                                  nonInitial.forEach((t:any)=>all.add(String(t.id)));
+                                }else{
+                                  nonInitial.forEach((t:any)=>all.delete(String(t.id)));
+                                }
+                                setSelectedTransactionIds(all);
+                              }}
+                            />
+                          </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Numéro</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
@@ -1710,13 +1849,29 @@ const ContactsPage: React.FC = () => {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {displayedTransactions.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
+                            <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
                               Aucune transaction trouvée pour cette période
                             </td>
                           </tr>
                         ) : (
                           displayedTransactions.map((t) => (
                             <tr key={t.id} className="hover:bg-gray-50">
+                              <td className="px-2 py-4 whitespace-nowrap">
+                                {t.syntheticInitial ? (
+                                  <span className="text-xs text-gray-400">—</span>
+                                ) : (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedTransactionIds.has(String(t.id))}
+                                    onChange={(e)=>{
+                                      const next = new Set<string>(selectedTransactionIds);
+                                      const id = String(t.id);
+                                      if(e.target.checked) next.add(id); else next.delete(id);
+                                      setSelectedTransactionIds(next);
+                                    }}
+                                  />
+                                )}
+                              </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-700">{t.syntheticInitial ? '-' : formatDateTimeWithHour(t.created_at)}</div>
                               </td>
@@ -1915,6 +2070,12 @@ const ContactsPage: React.FC = () => {
                       <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm">
                         {displayedProductHistory.length} éléments
                       </span>
+                      <span className="text-xs text-gray-500">
+                        {Array.from(selectedProductIds).length > 0 ? `${Array.from(selectedProductIds).length} sélectionné(s)` : 'Aucune sélection'}
+                      </span>
+                      {Array.from(selectedProductIds).length > 0 && (
+                        <button onClick={() => setSelectedProductIds(new Set())} className="text-xs px-2 py-1 bg-gray-100 rounded">Effacer sélection</button>
+                      )}
                       <button
                         onClick={openPrintProducts}
                         className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm"
@@ -1924,16 +2085,21 @@ const ContactsPage: React.FC = () => {
                         Imprimer
                       </button>
       {/* Contact Print Modal (unified for transactions/products) */}
-      {printModal.open && selectedContact && (
+    {printModal.open && selectedContact && (
         <ContactPrintModal
           isOpen={printModal.open}
           onClose={() => setPrintModal({ open: false, mode: null })}
           contact={selectedContact}
           mode={printModal.mode as any}
-          transactions={displayedTransactions}
-          productHistory={displayedProductHistory}
+      transactions={printModal.mode === 'transactions' && printTransactions.length > 0 ? printTransactions : displayedTransactions}
+      productHistory={printModal.mode === 'products' && printProducts.length > 0 ? printProducts : displayedProductHistory}
           dateFrom={dateFrom}
           dateTo={dateTo}
+          skipInitialRow={
+            printModal.mode === 'transactions'
+              ? (printTransactions.length > 0 && selectedTransactionIds.size > 0)
+              : (printModal.mode === 'products' ? (printProducts.length > 0 && selectedProductIds.size > 0) : false)
+          }
         />
       )}
                     </div>
@@ -1943,6 +2109,23 @@ const ContactsPage: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
+                          <th className="px-2 py-3">
+                            <input
+                              type="checkbox"
+                              aria-label="Sélectionner tout"
+                              checked={displayedProductHistory.filter((i:any)=>!i.syntheticInitial).every((i:any)=>selectedProductIds.has(String(i.id))) && displayedProductHistory.filter((i:any)=>!i.syntheticInitial).length>0}
+                              onChange={(e)=>{
+                                const all = new Set<string>(selectedProductIds);
+                                const nonInitial = displayedProductHistory.filter((i:any)=>!i.syntheticInitial);
+                                if(e.target.checked){
+                                  nonInitial.forEach((i:any)=>all.add(String(i.id)));
+                                }else{
+                                  nonInitial.forEach((i:any)=>all.delete(String(i.id)));
+                                }
+                                setSelectedProductIds(all);
+                              }}
+                            />
+                          </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bon N°</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
@@ -1958,13 +2141,29 @@ const ContactsPage: React.FC = () => {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {displayedProductHistory.length === 0 ? (
                           <tr>
-                            <td colSpan={10} className="px-6 py-4 text-center text-sm text-gray-500">
+                            <td colSpan={11} className="px-6 py-4 text-center text-sm text-gray-500">
                               Aucun produit trouvé pour cette période
                             </td>
                           </tr>
                         ) : (
                           displayedProductHistory.map((item) => (
                             <tr key={item.id} className={`hover:bg-gray-50 ${item.type === 'paiement' ? 'bg-green-50' : ''}`}>
+                              <td className="px-2 py-4 whitespace-nowrap">
+                                {item.syntheticInitial ? (
+                                  <span className="text-xs text-gray-400">—</span>
+                                ) : (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedProductIds.has(String(item.id))}
+                                    onChange={(e)=>{
+                                      const next = new Set<string>(selectedProductIds);
+                                      const id = String(item.id);
+                                      if(e.target.checked) next.add(id); else next.delete(id);
+                                      setSelectedProductIds(next);
+                                    }}
+                                  />
+                                )}
+                              </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-700">{item.syntheticInitial ? '-' : formatDateTimeWithHour(item.created_at)}</div>
                               </td>

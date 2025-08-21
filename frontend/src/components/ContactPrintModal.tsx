@@ -14,9 +14,11 @@ interface ContactPrintModalProps {
   productHistory: any[];
   dateFrom?: string;
   dateTo?: string;
+  // When true, do not inject the synthetic initial balance row in the template
+  skipInitialRow?: boolean;
 }
 
-const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions, productHistory, dateFrom, dateTo }) => {
+const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions, productHistory, dateFrom, dateTo, skipInitialRow = false }) => {
   const [size, setSize] = useState<'A4' | 'A5'>('A4');
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
@@ -123,6 +125,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
                 companyType={company}
                 priceMode={priceMode}
                 size={size}
+                skipInitialRow={skipInitialRow}
               />
             </div>
           </div>
