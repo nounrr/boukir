@@ -22,9 +22,9 @@ import pool from './db/pool.js';
 import bcrypt from 'bcryptjs';
 import paymentsRouter from './routes/payments.js';
 import uploadRouter from './routes/upload.js';
-import importRouter from './routes/import.js';
 import importProuctsRouter from './routes/importProducts.js';
 import importContactsRouter from'./routes/importContacts.js';
+import remisesRouter from './routes/remises.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -91,9 +91,9 @@ app.use('/api/avoirs_client', avoirsClientRouter);
 app.use('/api/avoirs_fournisseur', avoirsFournisseurRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/upload', uploadRouter);
-// app.use('/api/import', importRouter);
 app.use('/api/import/products-excel', importProuctsRouter);
 app.use('/api/import/contacts-excel', importContactsRouter);
+app.use('/api/remises', remisesRouter);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not Found', path: req.path });

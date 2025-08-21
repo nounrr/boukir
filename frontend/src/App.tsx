@@ -22,6 +22,7 @@ import ReportsPage from './pages/ReportsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import StatsDetailPage from './pages/StatsDetailPage';
 import ExcelUploadPage from './pages/ExcelUploadPage';
+import RemisesPage from './pages/RemisesPage';
 
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
@@ -139,6 +140,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <ReportsPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/remises"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <RemisesPage />
               </Layout>
             </ProtectedRoute>
           }

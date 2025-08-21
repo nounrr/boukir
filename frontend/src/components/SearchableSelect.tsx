@@ -10,6 +10,7 @@ interface SearchableSelectProps {
   className?: string;
   disabled?: boolean;
   maxDisplayItems?: number;
+  id?: string;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -20,6 +21,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   className = "",
   disabled = false,
   maxDisplayItems = 100,
+  id,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,6 +37,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   return (
     <div className={`relative ${className}`}>
       <button
+        id={id}
         type="button"
         className="w-full px-3 py-2 border border-gray-300 rounded-md text-left bg-white disabled:bg-gray-100 min-h-[38px] flex items-center justify-between"
         onClick={() => !disabled && setIsOpen(!isOpen)}
@@ -58,45 +61,45 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
-            {searchTerm.length >= 2 ? (
-              filteredOptions.length === 0 ? (
-                <div className="p-2 text-sm text-gray-500">Aucun résultat trouvé</div>
-              ) : (
-                <>
-                  {filteredOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0 overflow-hidden"
-                      onClick={() => { onChange(option.value); setIsOpen(false); setSearchTerm(''); }}
-                      title={option.label}
-                    >
-                      <span className="block truncate">{option.label}</span>
-                    </button>
-                  ))}
-                  {hasMoreItems && (
-                    <button
-                      type="button"
-                      className="w-full px-3 py-2 text-center text-blue-600 hover:bg-blue-50 text-sm border-t"
-                      onClick={() => setDisplayCount(prev => Math.min(prev + 50, maxDisplayItems))}
-                    >
-                      Charger plus... ({filteredOptions.length} sur {options.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase())).length})
-                    </button>
-                  )}
-                </>
-              )
-            ) : (
+            {searchTerm.length < 2 && (
               <div className="p-3 text-sm text-gray-500 text-center">
                 <div className="mb-2">Tapez au moins 2 caractères pour rechercher</div>
                 <div className="text-xs text-gray-400">{options.length} éléments disponibles</div>
               </div>
+            )}
+            {searchTerm.length >= 2 && filteredOptions.length === 0 && (
+              <div className="p-2 text-sm text-gray-500">Aucun résultat trouvé</div>
+            )}
+            {searchTerm.length >= 2 && filteredOptions.length > 0 && (
+              <>
+                {filteredOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0 overflow-hidden"
+                    onClick={() => { onChange(option.value); setIsOpen(false); setSearchTerm(''); }}
+                    title={option.label}
+                  >
+                    <span className="block truncate">{option.label}</span>
+                  </button>
+                ))}
+                {hasMoreItems && (
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-center text-blue-600 hover:bg-blue-50 text-sm border-t"
+                    onClick={() => setDisplayCount(prev => Math.min(prev + 50, maxDisplayItems))}
+                  >
+                    Charger plus... ({filteredOptions.length} sur {options.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase())).length})
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
       )}
 
       {isOpen && (
-        <div className="fixed inset-0 z-0" onClick={() => setIsOpen(false)} aria-label="Fermer la liste" />
+        <button type="button" className="fixed inset-0 z-0" aria-label="Fermer la liste" onClick={() => setIsOpen(false)} />
       )}
     </div>
   );

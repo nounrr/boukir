@@ -14,6 +14,7 @@ import {
   Tags,
   Activity,
   Upload,
+  Percent,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,6 +29,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       name: 'Tableau de bord',
       href: '/dashboard',
       icon: Home,
+      show: true,
+    },
+    {
+      name: 'Remises',
+      href: '/remises',
+      icon: Percent,
       show: true,
     },
     {
