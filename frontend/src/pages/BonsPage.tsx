@@ -12,8 +12,7 @@ import React, { useState } from 'react';
   import { 
     useGetBonsByTypeQuery, 
     useDeleteBonMutation, 
-  useUpdateBonStatusMutation,
-  useMarkBonAsAvoirMutation
+  useUpdateBonStatusMutation
   } from '../store/api/bonsApi';
   import { 
     useGetClientsQuery, 
@@ -21,10 +20,11 @@ import React, { useState } from 'react';
   } from '../store/api/contactsApi';
   import { useGetProductsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
-  import { formatDateDMY, formatDateSpecial, formatDateTimeWithHour } from '../utils/dateUtils';
+  import { formatDateSpecial, formatDateTimeWithHour } from '../utils/dateUtils';
   import { useSelector } from 'react-redux';
   import type { RootState } from '../store';
   import { getBonNumeroDisplay } from '../utils/numero';
+  
 
 const BonsPage = () => {
   const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis'>('Commande');
@@ -56,13 +56,14 @@ const BonsPage = () => {
   const currentUser = useSelector((state: RootState) => state.auth.user);
 
   // RTK Query hooks
+  // Load bons by type
   const { data: bons = [], isLoading: bonsLoading } = useGetBonsByTypeQuery(currentTab);
   const { data: clients = [], isLoading: clientsLoading } = useGetClientsQuery();
   const { data: suppliers = [], isLoading: suppliersLoading } = useGetFournisseursQuery();
   const { data: products = [], isLoading: productsLoading } = useGetProductsQuery();
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
-  const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
+  // const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
   const handleChangeStatus = async (bon: any, statut: 'Validé' | 'En attente' | 'Annulé' | 'Accepté' | 'Envoyé' | 'Refusé') => {
     try {
@@ -84,26 +85,25 @@ const BonsPage = () => {
 
   // ...
 
-    // Helper to get contact name (client or fournisseur) used by filtering/render
-    const getContactName = (bon: any) => {
-      if (bon.client_id && clients.length > 0) {
-        const client = clients.find((c: any) => String(c.id) === String(bon.client_id));
-        return client ? client.nom_complet : 'Client supprimé';
-      }
-      if (bon.fournisseur_id && suppliers.length > 0) {
-        const supplier = suppliers.find((s: any) => String(s.id) === String(bon.fournisseur_id));
-        return supplier ? supplier.nom_complet : 'Fournisseur supprimé';
-      }
-      return 'Non défini';
-    };
+  // Helper to get contact name (client or fournisseur) used by filtering/render
+  const getContactName = (bon: any) => {
+    if (bon?.client_id && clients.length > 0) {
+      const client = clients.find((c: any) => String(c.id) === String(bon.client_id));
+      return client ? client.nom_complet : 'Client supprimé';
+    }
+    if (bon?.fournisseur_id && suppliers.length > 0) {
+      const supplier = suppliers.find((s: any) => String(s.id) === String(bon.fournisseur_id));
+      return supplier ? supplier.nom_complet : 'Fournisseur supprimé';
+    }
+    return 'Non défini';
+  };
 
     // Ensure Devis numbers are displayed with uppercase DEV prefix and Avoirs with AVO prefix
   const getDisplayNumero = (bon: any) => getBonNumeroDisplay({ id: bon?.id, type: bon?.type, numero: bon?.numero });
 
-    // On ne filtre plus par bon.type car la requête est déjà segmentée par onglet,
+  // On ne filtre plus par bon.type car la requête est déjà segmentée par onglet,
     // et certains endpoints ne renvoyaient pas `type`.
-    const availableStatuses = ['En attente', 'Validé', 'Refusé', 'Annulé'];
-    const filteredBons = bons.filter(bon => {
+  const filteredBons = bons.filter(bon => {
       const term = (searchTerm || '').trim().toLowerCase();
       const contactName = getContactName(bon).toLowerCase();
       const matchesSearch = !term || (
@@ -149,32 +149,7 @@ const BonsPage = () => {
     };
   
   // Marquer un bon comme Avoir: Sortie/Comptant -> Avoir Client, Commande -> Avoir Fournisseur
-  const handleMarkAsAvoir = async (bon: any) => {
-    try {
-      if (!currentUser?.id) {
-        showError('Utilisateur non authentifié');
-        return;
-      }
-      const type = (bon.type || currentTab) as 'Sortie' | 'Comptant' | 'Commande';
-      if (!['Sortie', 'Comptant', 'Commande'].includes(type)) {
-        showError('Action non disponible pour ce type');
-        return;
-      }
-      const confirm = await showConfirmation(
-        'Créer un avoir et marquer ce bon comme Avoir',
-        `Confirmer la création d'un avoir pour le bon ${getDisplayNumero(bon)} ?`,
-        'Oui, créer l\'avoir',
-        'Annuler'
-      );
-      if (!confirm.isConfirmed) return;
-
-      await markBonAsAvoir({ id: bon.id, type, created_by: currentUser.id }).unwrap();
-      showSuccess('Avoir créé et bon marqué comme Avoir');
-    } catch (error: any) {
-      console.error('mark as avoir error', error);
-      showError(error?.data?.message || error?.message || 'Erreur lors de la création de l\'avoir');
-    }
-  };
+  // (Fonction mark-as-avoir retirée si non utilisée)
     
 
   // Annuler un avoir (changer son statut en "Annulé")
@@ -258,7 +233,9 @@ const BonsPage = () => {
             ))}
           </nav>
         </div>
-
+        
+        {/* Contenu standard */}
+        <>
         {/* Search and Filters */}
         <div className="flex justify-between items-center mb-6">
           <div className="relative max-w-md">
@@ -362,7 +339,7 @@ const BonsPage = () => {
                         <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at)}</div>
                       </td>
                       <td className="px-4 py-2 text-sm">{getContactName(bon)}</td>
-                      <td className="px-4 py-2 text-sm">{bon.adresse_livraison ?? bon.adresseLivraison ?? '-'}</td>
+                      <td className="px-4 py-2 text-sm">{(bon as any).adresse_livraison ?? (bon as any).adresseLivraison ?? '-'}</td>
                       <td className="px-4 py-2">
                         <div className="text-sm font-semibold text-gray-900">{Number(bon.montant_total ?? 0).toFixed(2)} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
@@ -507,6 +484,7 @@ const BonsPage = () => {
             </table>
           </div>
         </div>
+  </>
 
         {/* Navigation de pagination */}
         {totalPages > 1 && (
@@ -566,7 +544,8 @@ const BonsPage = () => {
           initialValues={selectedBon || undefined}
           onBonAdded={(newBon) => {
             // Le bon est automatiquement ajouté au store Redux
-            showSuccess(`${currentTab} ${getDisplayNumero(newBon)} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
+            const labelTab = currentTab === 'BonRemise' ? 'Bon' : currentTab;
+            showSuccess(`${labelTab} ${getDisplayNumero(newBon)} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
             setIsCreateModalOpen(false);
             setSelectedBon(null);
           }}

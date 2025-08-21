@@ -19,6 +19,7 @@ import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
 import ContactPrintModal from '../components/ContactPrintModal';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
+import { useGetClientRemisesQuery, useGetRemiseBonsQuery } from '../store/api/remisesApi';
 import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
 
 // Validation du formulaire de contact
@@ -43,7 +44,7 @@ const ContactsPage: React.FC = () => {
   const { data: products = [] } = useGetProductsQuery();
 
   // Onglets & états
-  const [detailsTab, setDetailsTab] = useState<'transactions' | 'produits'>('transactions');
+  const [detailsTab, setDetailsTab] = useState<'transactions' | 'produits' | 'clientRemise'>('transactions');
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs'>('clients');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -68,6 +69,18 @@ const ContactsPage: React.FC = () => {
   const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
   const { data: avoirsFournisseur = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
   const { data: payments = [] } = useGetPaymentsQuery();
+  // Remises
+  const { data: remiseClients = [] } = useGetClientRemisesQuery();
+  const selectedRemiseClient = useMemo(() => {
+    if (!selectedContact) return null;
+    // naive match by name or phone
+    const name = (selectedContact.nom_complet || '').trim().toLowerCase();
+    const phone = (selectedContact.telephone || '').trim();
+    return remiseClients.find((c: any) => (
+      (c.nom || '').trim().toLowerCase() === name || (!!phone && c.phone === phone)
+    )) || null;
+  }, [selectedContact, remiseClients]);
+  const { data: bonsRemiseContact = [] } = useGetRemiseBonsQuery(selectedRemiseClient?.id || 0);
 
   // Agrégats pour calculer les soldes des clients
   const salesByClient = useMemo(() => {
@@ -1645,6 +1658,12 @@ const ContactsPage: React.FC = () => {
                   >
                     Détail Produits
                   </button>
+                  <button
+                    className={`py-2 px-1 font-medium ${detailsTab === 'clientRemise' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    onClick={() => setDetailsTab('clientRemise')}
+                  >
+                    Client Remise
+                  </button>
                 </nav>
               </div>
 
@@ -1870,7 +1889,7 @@ const ContactsPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : detailsTab === 'produits' ? (
                 <div className="mb-8">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-lg flex items-center gap-2">
@@ -2128,6 +2147,46 @@ const ContactsPage: React.FC = () => {
                       </div>
                     </>
                   )}
+                </div>
+              ) : (
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                      <FileText size={20} />
+                      Bons liés au Client Remise
+                    </h3>
+                    {selectedRemiseClient ? (
+                      <span className="text-sm text-gray-600">Client Remise: {selectedRemiseClient.nom} {selectedRemiseClient.phone ? `(${selectedRemiseClient.phone})` : ''}</span>
+                    ) : (
+                      <a className="text-blue-600 underline" href="/remises" target="_self">Associer un Client Remise</a>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Numéro</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montant</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {selectedRemiseClient ? (
+                          (bonsRemiseContact || []).map((b: any) => (
+                            <tr key={b.id}>
+                              <td className="px-6 py-4 text-sm">{formatDateTimeWithHour(b.date_creation)}</td>
+                              <td className="px-6 py-4 text-sm">{`$${''}` /* numero already handled by bons display utils on other pages */}</td>
+                              <td className="px-6 py-4 text-sm">{Number(b.montant_total || 0).toFixed(2)} DH</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td className="px-6 py-4 text-center text-sm text-gray-500" colSpan={3}>Aucun client remise associé</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
