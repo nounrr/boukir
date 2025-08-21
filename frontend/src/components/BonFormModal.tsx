@@ -10,6 +10,7 @@ import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantQuery } from '../store/api/comptantApi';
 import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
 import { useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
+import { useGetClientRemisesQuery, useGetRemiseItemsQuery, useCreateRemiseItemMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
 import type { Contact } from '../types';
 import ProductFormModal from './ProductFormModal';
@@ -179,6 +180,17 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const formikRef = useRef<FormikProps<any>>(null);
   // Container ref to detect when Enter is pressed within the products area
   const itemsContainerRef = useRef<HTMLDivElement>(null);
+  // Remises UI state
+  const [showRemisePanel, setShowRemisePanel] = useState(false);
+  const [selectedRemiseId, setSelectedRemiseId] = useState<number | ''>('');
+  const { data: remiseClients = [] } = useGetClientRemisesQuery();
+  const { data: remiseItems = [] } = useGetRemiseItemsQuery(
+    (typeof selectedRemiseId === 'number' ? selectedRemiseId : (undefined as unknown as number)),
+    { skip: !(typeof selectedRemiseId === 'number') }
+  );
+
+  // Raw input for per-line remise (unit discount), similar to qtyRaw/unitPriceRaw
+  const [remiseRaw, setRemiseRaw] = useState<Record<number, string>>({});
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState<null | 'Client' | 'Fournisseur'>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -195,6 +207,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Mutations
   const [createBon] = useCreateBonMutation();
   const [updateBonMutation] = useUpdateBonMutation();
+  const [createRemiseItem] = useCreateRemiseItemMutation();
 
   /* -------------------- Helpers décimaux pour prix_unitaire -------------------- */
   const normalizeDecimal = (s: string) => s.replace(/\s+/g, '').replace(',', '.');
@@ -414,6 +427,16 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     });
     return next;
   });
+
+  // Seed des remises unitaires (si existantes)
+  setRemiseRaw(() => {
+    const next: Record<number, string> = {};
+    items.forEach((it: any, idx: number) => {
+      const v = it?.remise_montant;
+      next[idx] = v === undefined || v === null ? '' : String(v);
+    });
+    return next;
+  });
 }, [initialFormValues]);
 
   // Helper: add a new empty product line (same as clicking "Ajouter ligne")
@@ -531,9 +554,55 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     if (initialValues) {
       await updateBonMutation({ id: initialValues.id, type: requestType, ...cleanBonData }).unwrap();
       showSuccess('Bon mis à jour avec succès');
+
+      // Enregistrer/ajouter les remises pour un bon existant si un client remise est choisi
+      if ((values.type === 'Sortie' || values.type === 'Comptant') && typeof selectedRemiseId === 'number') {
+        const bonId = Number(initialValues.id || 0);
+        if (bonId) {
+          const promises = cleanBonData.items
+            .filter((it: any) => Number(it.remise_montant || 0) > 0)
+            .map((it: any) =>
+              createRemiseItem({
+                clientRemiseId: selectedRemiseId,
+                data: {
+                  product_id: it.product_id,
+                  qte: it.quantite,
+                  prix_remise: it.remise_montant,
+                  bon_id: bonId,
+                  bon_type: values.type,
+                  statut: 'Validé',
+                },
+              }).unwrap().catch(() => null)
+            );
+          try { await Promise.all(promises); } catch {}
+        }
+      }
     } else {
-      await createBon({ type: requestType, ...cleanBonData }).unwrap();
+      const created = await createBon({ type: requestType, ...cleanBonData }).unwrap();
       showSuccess(`${currentTab} créé avec succès`);
+
+      // Enregistrer les remises appliquées dans item_remises si un client remise est sélectionné
+      if ((values.type === 'Sortie' || values.type === 'Comptant') && typeof selectedRemiseId === 'number') {
+        const bonId = Number(created?.id || 0);
+        if (bonId) {
+          const promises = cleanBonData.items
+            .filter((it: any) => Number(it.remise_montant || 0) > 0)
+            .map((it: any) =>
+              createRemiseItem({
+                clientRemiseId: selectedRemiseId,
+                data: {
+                  product_id: it.product_id,
+                  qte: it.quantite,
+                  prix_remise: it.remise_montant, // DH par unité
+                  bon_id: bonId,
+                  bon_type: values.type,
+                  statut: 'Validé',
+                },
+              }).unwrap().catch(() => null)
+            );
+          try { await Promise.all(promises); } catch {}
+        }
+      }
     }
 
     onBonAdded && onBonAdded(cleanBonData);
@@ -852,6 +921,15 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-md font-medium">Produits</h3>
                   <div className="flex gap-2">
+                    {(values.type === 'Sortie' || values.type === 'Comptant') && (
+                      <button
+                        type="button"
+                        onClick={() => setShowRemisePanel((s) => !s)}
+                        className="flex items-center text-purple-600 hover:text-purple-800"
+                      >
+                        <Plus size={16} className="mr-1" /> Appliquer remise
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -909,6 +987,56 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                   </div>
                 </div>
 
+                {/* Remise panel */}
+                {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
+                  <div className="mb-4 p-3 border rounded bg-purple-50">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <label className="text-sm text-gray-700">Client Remise</label>
+                      <select
+                        className="border rounded px-3 py-2"
+                        value={selectedRemiseId}
+                        onChange={(e) => setSelectedRemiseId(e.target.value ? Number(e.target.value) : '')}
+                      >
+                        <option value="">-- Sélectionner --</option>
+                        {remiseClients.map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.nom}{c.phone ? ` (${c.phone})` : ''}</option>
+                        ))}
+                      </select>
+                      {(() => {
+                        const c = typeof selectedRemiseId === 'number' ? remiseClients.find((x: any) => x.id === selectedRemiseId) : null;
+                        return c ? (
+                          <span className="text-sm text-gray-600">Total Remise (profil): {Number(c.total_remise || 0).toFixed(2)} DH</span>
+                        ) : null;
+                      })()}
+                      <button
+                        type="button"
+                        disabled={!(typeof selectedRemiseId === 'number')}
+                        onClick={() => {
+                          if (!(typeof selectedRemiseId === 'number')) return;
+                          // Build map product_id -> prix_remise
+                          const map = new Map<number, number>();
+                          (remiseItems || []).forEach((ri: any) => {
+                            if (ri.product_id) map.set(Number(ri.product_id), Number(ri.prix_remise || 0));
+                          });
+                          // Apply to current items
+                          values.items.forEach((row: any, idx: number) => {
+                            const pid = Number(row.product_id || 0);
+                            if (!pid) return;
+                            if (map.has(pid)) {
+                              const r = map.get(pid)!;
+                              setFieldValue(`items.${idx}.remise_montant`, r);
+                              setRemiseRaw((prev) => ({ ...prev, [idx]: String(r) }));
+                            }
+                          });
+                        }}
+                        className="px-3 py-1 bg-purple-600 text-white rounded disabled:opacity-50"
+                      >
+                        Appliquer
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="overflow-x-auto">
                   <FieldArray name="items">
                     {({ remove }) => (
@@ -930,6 +1058,11 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               P. Unit.
                             </th>
+                            {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
+                              <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
+                                Remise (DH/u)
+                              </th>
+                            )}
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               Total
                             </th>
@@ -1046,8 +1179,11 @@ const applyProductToRow = (rowIndex: number, product: any) => {
       setFieldValue(`items.${index}.total`, q * u);
     }}
     onFocus={(e) => {
-      // Sélection rapide
-      setTimeout(() => e.currentTarget.select(), 0);
+      // Sélection rapide (sécurisé)
+      const target = e.currentTarget;
+      setTimeout(() => {
+        try { target && typeof (target as any).select === 'function' && (target as any).select(); } catch {}
+      }, 0);
       // Effacer si 0
       const current = qtyRaw[index];
       if (current === '0' || current === '0.00' || current === '0,00') {
@@ -1113,6 +1249,30 @@ const applyProductToRow = (rowIndex: number, product: any) => {
 </td>
 
 
+                                {/* Remise unitaire (DH) - Sortie/Comptant */}
+                                {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
+                                  <td className="px-1 py-2 w-[90px]">
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      pattern="[0-9]*[.,]?[0-9]*"
+                                      name={`items.${index}.remise_montant`}
+                                      className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                      value={remiseRaw[index] ?? ''}
+                                      onChange={(e) => {
+                                        const raw = e.target.value;
+                                        if (!isDecimalLike(raw)) return;
+                                        setRemiseRaw((prev) => ({ ...prev, [index]: raw }));
+                                      }}
+                                      onBlur={() => {
+                                        const val = parseFloat(normalizeDecimal(remiseRaw[index] ?? '')) || 0;
+                                        setFieldValue(`items.${index}.remise_montant`, val);
+                                        setRemiseRaw((prev) => ({ ...prev, [index]: formatNumber(val) }));
+                                      }}
+                                    />
+                                  </td>
+                                )}
+
                                 {/* Total */}
 <td className="px-1 py-2 w-[90px]">
   <div className="text-sm font-medium">
@@ -1151,6 +1311,20 @@ const applyProductToRow = (rowIndex: number, product: any) => {
       // compacter qtyRaw
       setQtyRaw((prev) => {
         const copy = { ...prev };
+        delete copy[index];
+        const compacted: Record<number, string> = {};
+        const newLen = values.items.length - 1; // après remove
+        for (let i = 0, j = 0; i <= newLen; i++) {
+          if (i === index) continue;
+          compacted[j] = copy[i] ?? '';
+          j++;
+        }
+        return compacted;
+      });
+
+      // compacter remiseRaw
+      setRemiseRaw((prev) => {
+        const copy = { ...prev } as Record<number, string>;
         delete copy[index];
         const compacted: Record<number, string> = {};
         const newLen = values.items.length - 1; // après remove
@@ -1210,6 +1384,24 @@ const applyProductToRow = (rowIndex: number, product: any) => {
     DH
   </span>
 </div>
+
+{/* Total Remises (DH) */}
+{(values.type === 'Sortie' || values.type === 'Comptant') && (
+  <div className="flex justify-between items-center mt-2">
+    <span className="text-md font-semibold text-purple-700">Total Remises:</span>
+    <span className="text-md font-semibold text-purple-700">
+      {values.items
+        .reduce((sum: number, item: any, idx: number) => {
+          const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+          const rRaw = item.remise_montant ?? 0;
+          const r = typeof rRaw === 'string' ? parseFloat(String(rRaw).replace(',', '.')) || 0 : Number(rRaw) || 0;
+          return sum + r * q;
+        }, 0)
+        .toFixed(2)}{' '}
+      DH
+    </span>
+  </div>
+)}
 
 {/* Mouvement */}
 <div className="flex justify-between items-center mt-2">
