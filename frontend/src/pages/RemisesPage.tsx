@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Plus, X } from 'lucide-react';
+import { Search, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Plus, X, User, TrendingUp } from 'lucide-react';
 import SearchableSelect from '../components/SearchableSelect';
 import { getBonNumeroDisplay } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
@@ -33,130 +33,242 @@ const RemisesPage: React.FC = () => {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
 
+  // Calculer les statistiques
+  const totalClients = clients.length;
+  const clientsActifs = clients.filter((c: any) => 
+    Array.isArray(c.items) ? c.items.some((it: any) => it.statut === 'Validé') : false
+  ).length;
+  const totalRemises = clients.reduce((sum: number, c: any) => {
+    if (Array.isArray(c.items)) {
+      return sum + c.items.filter((it: any) => it.statut !== 'Annulé').reduce((itemSum: number, it: any) => 
+        itemSum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0
+      );
+    }
+    return sum + Number(c.total_remise ?? 0);
+  }, 0);
+
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Gestion des Remises</h1>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input className="pl-10 pr-3 py-2 border rounded-md" placeholder="Recherche (Nom, Téléphone, CIN)" value={search} onChange={(e) => setSearch(e.target.value)} />
+    <div className="p-6 bg-gray-50 min-h-screen">
+      {/* En-tête */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Gestion des Remises</h1>
+        <button
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 inline-flex items-center gap-2"
+          onClick={() => {
+            setEditingId(0);
+            setForm({ nom: '', phone: '', cin: '' });
+            setIsFormModalOpen(true);
+          }}
+        >
+          <Plus size={18} />
+          Nouveau client remise
+        </button>
+      </div>
+
+      {/* Cartes statistiques */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-blue-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Clients</p>
+              <p className="text-3xl font-bold text-gray-900">{totalClients}</p>
+            </div>
+            <div className="bg-blue-100 p-3 rounded-full">
+              <User className="h-8 w-8 text-blue-600" />
+            </div>
           </div>
-          <button
-            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2"
-            onClick={() => {
-              setEditingId(0);
-              setForm({ nom: '', phone: '', cin: '' });
-              setIsFormModalOpen(true);
-            }}
-          >
-            <Plus size={16} /> Nouveau
-          </button>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-green-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Clients Actifs</p>
+              <p className="text-3xl font-bold text-gray-900">{clientsActifs}</p>
+            </div>
+            <div className="bg-green-100 p-3 rounded-full">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-purple-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Remises</p>
+              <p className="text-3xl font-bold text-gray-900">{totalRemises.toFixed(2)} DH</p>
+            </div>
+            <div className="bg-purple-100 p-3 rounded-full">
+              <TrendingUp className="h-8 w-8 text-purple-600" />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Inline form removed; handled by modal below */}
+      {/* Barre de recherche */}
+      <div className="bg-white rounded-xl p-6 mb-6 shadow-lg">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <input 
+            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+            placeholder="Rechercher par nom, téléphone ou CIN..." 
+            value={search} 
+            onChange={(e) => setSearch(e.target.value)} 
+          />
+        </div>
+      </div>
 
-      <div className="bg-white rounded shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Téléphone</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CIN</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Remises</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filtered.map((c: any) => (
-              <tr key={c.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4">{c.nom}</td>
-                <td className="px-6 py-4">{c.phone || '-'}</td>
-                <td className="px-6 py-4">{c.cin || '-'}</td>
-                <td className="px-6 py-4 text-right">
-                  {Array.isArray(c.items)
-                    ? c.items.filter((it: any) => it.statut !== 'Annulé').reduce((sum: number, it: any) => sum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0).toFixed(2)
-                    : Number(c.total_remise ?? 0).toFixed(2)
-                  } DH
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <button
-                      className="text-gray-600 hover:text-blue-600"
-                      title="Détails"
-                      onClick={() => { setSelected(c); setIsDetailsModalOpen(true); }}
-                    >
-                      <Eye size={18} />
-                    </button>
-                    <button
-                      className="text-gray-600 hover:text-amber-600"
-                      title="Modifier"
-                      onClick={() => {
-                        setEditingId(c.id);
-                        setForm({ nom: c.nom || '', phone: c.phone || '', cin: c.cin || '' });
-                        setIsFormModalOpen(true);
-                      }}
-                    >
-                      <Edit size={18} />
-                    </button>
-                    <button
-                      className="text-gray-600 hover:text-red-600"
-                      title="Supprimer"
-                      onClick={async () => {
-                        if (confirm('Supprimer ce client de remise ?')) {
-                          await deleteClient(c.id).unwrap();
-                          refetch();
-                        }
-                      }}
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                </td>
+      {/* Tableau des clients avec style amélioré */}
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900">Liste des Clients Remises</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gradient-to-r from-purple-50 to-blue-50">
+              <tr>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Nom</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Téléphone</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">CIN</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Créer le</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">Total Remises</th>
+                <th className="px-6 py-4 text-center text-xs font-semibold text-purple-700 uppercase tracking-wider">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {filtered.map((c: any) => (
+                <tr key={c.id} className="hover:bg-gradient-to-r hover:from-purple-25 hover:to-blue-25 transition-all duration-200">
+                  <td className="px-6 py-4 font-medium text-gray-900">{c.nom}</td>
+                  <td className="px-6 py-4 text-gray-600">{c.phone || '-'}</td>
+                  <td className="px-6 py-4 text-gray-600">{c.cin || '-'}</td>
+                  <td className="px-6 py-4 text-gray-600">{c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '-'}</td>
+                  <td className="px-6 py-4 text-right">
+                    <span className="text-lg font-bold text-purple-600">
+                      {Array.isArray(c.items)
+                        ? c.items.filter((it: any) => it.statut !== 'Annulé').reduce((sum: number, it: any) => sum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0).toFixed(2)
+                        : Number(c.total_remise ?? 0).toFixed(2)
+                      } DH
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
+                        title="Détails"
+                        onClick={() => { setSelected(c); setIsDetailsModalOpen(true); }}
+                      >
+                        <Eye size={18} />
+                      </button>
+                      <button
+                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors duration-200"
+                        title="Modifier"
+                        onClick={() => {
+                          setEditingId(c.id);
+                          setForm({ nom: c.nom || '', phone: c.phone || '', cin: c.cin || '' });
+                          setIsFormModalOpen(true);
+                        }}
+                      >
+                        <Edit size={18} />
+                      </button>
+                      <button
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                        title="Supprimer"
+                        onClick={async () => {
+                          if (confirm('Supprimer ce client de remise ?')) {
+                            await deleteClient(c.id).unwrap();
+                            refetch();
+                          }
+                        }}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Modal Création/Édition Client Remise */}
       {isFormModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <button
             type="button"
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0"
             aria-label="Fermer le modal"
             onClick={() => { setIsFormModalOpen(false); setEditingId(null); }}
           />
-          <div className="relative bg-white rounded-lg shadow-xl w-[95vw] max-w-lg p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">{editingId === 0 ? 'Nouveau client remise' : 'Modifier client remise'}</h2>
-              <button className="text-gray-500 hover:text-gray-700" aria-label="Fermer" onClick={() => { setIsFormModalOpen(false); setEditingId(null); }}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-              <div className="flex flex-col">
-                <label htmlFor="client-remise-nom" className="text-sm font-medium text-gray-700 mb-1">Nom</label>
-                <input id="client-remise-nom" className="border rounded px-3 py-2 w-full" placeholder="Nom" value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} />
-              </div>
-              <div className="flex flex-col">
-                <label htmlFor="client-remise-phone" className="text-sm font-medium text-gray-700 mb-1">Téléphone</label>
-                <input id="client-remise-phone" className="border rounded px-3 py-2 w-full" placeholder="Téléphone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-              </div>
-              <div className="flex flex-col">
-                <label htmlFor="client-remise-cin" className="text-sm font-medium text-gray-700 mb-1">CIN</label>
-                <input id="client-remise-cin" className="border rounded px-3 py-2 w-full" placeholder="CIN" value={form.cin} onChange={(e) => setForm({ ...form, cin: e.target.value })} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 transform transition-all duration-300 scale-100">
+            {/* En-tête du modal avec gradient */}
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 rounded-t-xl">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-white">
+                  {editingId === 0 ? 'Nouveau client remise' : 'Modifier client remise'}
+                </h2>
+                <button 
+                  className="text-white hover:text-gray-200 transition-colors duration-200" 
+                  aria-label="Fermer" 
+                  onClick={() => { setIsFormModalOpen(false); setEditingId(null); }}
+                >
+                  <X size={20} />
+                </button>
               </div>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 rounded inline-flex items-center gap-2" onClick={() => { setIsFormModalOpen(false); setEditingId(null); }}>
-                <XCircle size={18} />
-                <span className="hidden sm:inline">Annuler</span>
+
+            {/* Contenu du modal */}
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="client-remise-nom" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Nom du client
+                  </label>
+                  <input 
+                    id="client-remise-nom" 
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
+                    placeholder="Entrez le nom du client" 
+                    value={form.nom} 
+                    onChange={(e) => setForm({ ...form, nom: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label htmlFor="client-remise-phone" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Téléphone
+                  </label>
+                  <input 
+                    id="client-remise-phone" 
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
+                    placeholder="Entrez le numéro de téléphone" 
+                    value={form.phone} 
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label htmlFor="client-remise-cin" className="block text-sm font-semibold text-gray-700 mb-2">
+                    CIN
+                  </label>
+                  <input 
+                    id="client-remise-cin" 
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
+                    placeholder="Entrez le numéro CIN" 
+                    value={form.cin} 
+                    onChange={(e) => setForm({ ...form, cin: e.target.value })} 
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Pied du modal */}
+            <div className="px-6 py-4 bg-gray-50 rounded-b-xl flex justify-end gap-3">
+              <button 
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors duration-200 inline-flex items-center gap-2" 
+                onClick={() => { setIsFormModalOpen(false); setEditingId(null); }}
+              >
+                <XCircle size={16} />
+                Annuler
               </button>
               <button
-                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded inline-flex items-center gap-2"
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-200 inline-flex items-center gap-2 shadow-md"
                 onClick={async () => {
                   if (editingId === 0) {
                     await createClient({ nom: form.nom, phone: form.phone, cin: form.cin }).unwrap();
@@ -169,8 +281,8 @@ const RemisesPage: React.FC = () => {
                   refetch();
                 }}
               >
-                <CheckCircle size={18} />
-                <span className="hidden sm:inline">Enregistrer</span>
+                <CheckCircle size={16} />
+                {editingId === 0 ? 'Créer' : 'Modifier'}
               </button>
             </div>
           </div>
@@ -186,7 +298,7 @@ const RemisesPage: React.FC = () => {
             aria-label="Fermer le modal"
             onClick={() => { setIsDetailsModalOpen(false); setSelected(null); }}
           />
-          <div className="relative bg-white rounded-lg w-full max-w-6xl max-h-[95vh] overflow-y-auto">
+          <div className="relative bg-white rounded-lg w-full max-w-8xl max-h-[95vh] overflow-y-auto">
             <div className="bg-blue-600 px-6 py-4 rounded-t-lg">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold text-white">Détails Remises - {selected?.nom || '-'}</h2>
@@ -260,7 +372,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
       {/* Infos client */}
       <div className="bg-gray-50 rounded-lg p-4 mb-4">
         <h3 className="font-bold text-lg mb-2">Informations Client Remise</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
           <div>
             <p className="font-semibold text-gray-600">Nom:</p>
             <p>{clientRemise.nom || '-'}</p>
@@ -272,6 +384,10 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
           <div>
             <p className="font-semibold text-gray-600">CIN:</p>
             <p>{clientRemise.cin || '-'}</p>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-600">Créer le:</p>
+            <p>{clientRemise.created_at ? new Date(clientRemise.created_at).toLocaleDateString('fr-FR') : '-'}</p>
           </div>
           <div>
             <p className="font-semibold text-gray-600">Total Remises:</p>
@@ -352,9 +468,10 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
 
           <table className="min-w-full divide-y divide-gray-200 table-fixed">
             <colgroup>
-              <col className="w-[36%]" />
-              <col className="w-[24%]" />
+              <col className="w-[30%]" />
+              <col className="w-[18%]" />
               <col className="w-[8%]" />
+              <col className="w-[12%]" />
               <col className="w-[12%]" />
               <col className="w-[12%]" />
               <col className="w-[8%]" />
@@ -365,6 +482,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bon</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qté</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Prix Remise</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créer le</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -376,6 +494,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                   <td className="px-4 py-2 max-w-0 truncate">{it.bon_id ? `${it.bon_type || ''} #${it.bon_id}` : '-'}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">{it.qte}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">{Number(it.prix_remise || 0).toFixed(2)} DH</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{it.created_at ? new Date(it.created_at).toLocaleDateString('fr-FR') : '-'}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <button
