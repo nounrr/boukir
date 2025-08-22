@@ -1,8 +1,9 @@
-/* eslint-disable sonarjs/cognitive-complexity */
-import React, { useMemo, useRef, useState } from 'react';
+/* ThermalPrintModal.tsx — conserve ton design, logo net en base64 */
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { X, Printer } from 'lucide-react';
-import logo from"./logo.png"
-import logo1 from"./logo1.png"
+import logo from './logoWB.png';
+import logo1 from './logo1WB.png';
+
 interface ThermalPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -27,7 +28,7 @@ const getTypeLabel = (t: string) => {
     AvoirClient: 'AVOIR CLIENT',
     Avoir: 'AVOIR CLIENT',
     AvoirFournisseur: 'AVOIR FOURNISSEUR',
-  Vehicule: 'BON VÉHICULE',
+    Vehicule: 'BON VÉHICULE',
   };
   return map[t] ?? 'BON';
 };
@@ -48,18 +49,50 @@ const parseBonItems = (bon: any, items: any[]): any[] => {
   return [];
 };
 
-// Format number with up to 2 decimals, no trailing zeros, FR locale (comma decimal)
-const formatNumber = (n: number) => new Intl.NumberFormat('fr-FR', {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-}).format(Number.isFinite(n) ? n : 0);
+// Format FR
+const formatNumber = (n: number) =>
+  new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number.isFinite(n) ? n : 0);
+
+// --- AJOUT: helpers pour convertir images en base64 et injecter dans la fenêtre d'impression ---
+async function toDataUrl(src: string): Promise<string> {
+  // Fonction robuste pour bundles (vite/webpack)
+  const res = await fetch(src);
+  const blob = await res.blob();
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function injectBase64IntoHtml(containerHtml: string, originalUrl: string, base64Url: string): string {
+  // Remplace src="${originalUrl}" par src="${base64Url}" dans le HTML imprimé
+  // Couvre src="..." et src='...'
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re1 = new RegExp(`src=["']${escape(originalUrl)}["']`, 'g');
+  return containerHtml.replace(re1, `src="${base64Url}"`);
+}
 
 const getPrintCss = () => `
-  /* Base styles for the print window (screen + print) */
+  /* --- Ton CSS initial, conservé --- */
   html, body { height: 100%; }
-  body { font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.35; margin: 0; padding: 0; color: black; background: white; text-align: center; font-weight: bold; }
+  body { 
+    font-family: 'Courier New', monospace; 
+    font-size: 10px; 
+    line-height: 1.35; 
+    margin: 0; padding: 0; 
+    color: black; background: white; 
+    text-align: center; 
+    font-weight: bold;
+
+    /* AJOUT pour netteté */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+  }
   .thermal-container { width: 80mm; max-width: 100%; padding: 0; margin: 0 auto; text-align: center; }
-  img { display: block; margin: 0 auto 4px; width: 40%; height: auto; }
+  img { display: block; margin: 0 auto 4px; width: 40%; height: auto; image-rendering: pixelated; }
   .thermal-header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 2mm; margin-bottom: 4mm; }
   .thermal-title { font-weight: bold; font-size: 13px; margin-bottom: 4mm; }
   .thermal-info {font-weight: bold; font-size: 13px; margin-bottom: 4mm; }
@@ -75,19 +108,17 @@ const getPrintCss = () => `
   .col-qte { font-weight: bold; width: 10%; white-space: nowrap; text-align: right; overflow: visible; font-size: 11px; }
   .col-unit { font-weight: bold; width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 13px; }
   .col-total { font-weight: bold;width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 13px; }
-  /* When prices are hidden, rebalance widths */
   .thermal-table.no-prices .col-code { font-weight: bold; width: 15%; }
   .thermal-table.no-prices .col-designation { font-weight: bold; width: 70%; white-space: normal; word-break: break-word; text-align: left; }
   .thermal-table.no-prices .col-qte { font-weight: bold; width: 15%; }
   .span-total{font-weight: bold; font-size: 15px; margin-top:4mm }
 
   @media print {
-    @page { size: 80mm auto; margin: 4mm; }
-    body { width: 80mm; }
+    @page { size: 80mm auto; margin: 0; } /* AJOUT: marge 0 pour éviter le rescaling */
+    body { width: 80mm; margin: 0 !important; }
   }
 `;
 
-// eslint-disable-next-line sonarjs/cognitive-complexity
 const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
   isOpen,
   onClose,
@@ -100,10 +131,18 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
   const [companyType, setCompanyType] = useState<'DIAMOND' | 'MPC'>('DIAMOND');
   const [priceMode, setPriceMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES'>('WITH_PRICES');
 
-  // Note: Don't early-return before hooks; gate rendering below to keep hooks order stable
   const logoCurrent = companyType === 'MPC' ? logo1 : logo;
 
-  // Use provided items or parse from bon.items/bon.lignes (array or JSON string)
+  // --- AJOUT: pré-conversion du logo courant en base64 pour fiabiliser l'impression ---
+  const [logoBase64, setLogoBase64] = useState<string>('');
+  useEffect(() => {
+    let alive = true;
+    toDataUrl(logoCurrent)
+      .then((b64) => alive && setLogoBase64(b64))
+      .catch(() => alive && setLogoBase64(''));
+    return () => { alive = false; };
+  }, [logoCurrent]);
+
   const parsedItems: any[] = useMemo(() => parseBonItems(bon, items), [bon, items]);
 
   const totals = useMemo(() => {
@@ -116,69 +155,77 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return { total };
   }, [parsedItems]);
 
-  // Ensure at least 5 rows are displayed (pad with empty rows if needed)
   const MIN_ROWS = 5;
   const padCount = Math.max(0, MIN_ROWS - parsedItems.length);
-  const padKeys = useMemo(() => Array.from({ length: padCount }, () => `pad-${Math.random().toString(36).slice(2)}`), [padCount]);
-  const getItemKey = (it: any) => {
-    return String(
-      it.id ?? it.code ?? it.sku ?? it.ref ?? it.designation ?? it.libelle ?? it.name ?? `${it.prix_unitaire ?? it.prix ?? it.price ?? ''}-${it.quantite ?? it.qty ?? ''}`
+  const padKeys = useMemo(
+    () => Array.from({ length: padCount }, () => `pad-${Math.random().toString(36).slice(2)}`),
+    [padCount]
+  );
+  const getItemKey = (it: any) =>
+    String(
+      it.id ??
+      it.code ??
+      it.sku ??
+      it.ref ??
+      it.designation ??
+      it.libelle ??
+      it.name ??
+      `${it.prix_unitaire ?? it.prix ?? it.price ?? ''}-${it.quantite ?? it.qty ?? ''}`
     );
-  };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!printRef.current) return;
-    const printContent = printRef.current.innerHTML;
+
     const printCss = getPrintCss();
+    const printContent = printRef.current.innerHTML;
+
+    // --- AJOUT: injecter la version base64 du logo dans le HTML imprimé ---
+    const contentWithLogo =
+      logoBase64 ? injectBase64IntoHtml(printContent, logoCurrent, logoBase64) : printContent;
+
     const w = window.open('', '_blank');
     if (!w) return;
-    w.document.title = 'Print';
 
-  const attachAndPrint = () => {
-      try {
-    // Embed CSS directly in the HTML via a <style> tag
-    const wrapper = w.document.createElement('div');
-    wrapper.innerHTML = `<style type="text/css">${printCss}</style><div class="thermal-container">${printContent}</div>`;
-    // Clear any default body content, then append our wrapper
-    w.document.body.innerHTML = '';
-    w.document.body.appendChild(wrapper);
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8"/>
+          <meta name="viewport" content="width=device-width, initial-scale=1"/>
+          <title>Print</title>
+          <style>${printCss}</style>
+        </head>
+        <body>
+          <div class="thermal-container">${contentWithLogo}</div>
+        </body>
+      </html>
+    `;
 
-  const imgs = Array.from(wrapper.querySelectorAll('img'));
-        if (imgs.length === 0) {
-          w.focus();
-          w.print();
-          return;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+
+    const onReady = () => {
+      const imgs = Array.from(w.document.images);
+      if (imgs.length === 0) { w.focus(); w.print(); return; }
+      let loaded = 0;
+      const done = () => { loaded += 1; if (loaded >= imgs.length) { w.focus(); w.print(); } };
+      imgs.forEach((im: HTMLImageElement) => {
+        if (im.complete) done();
+        else {
+          im.addEventListener('load', done, { once: true });
+          im.addEventListener('error', done, { once: true });
         }
-
-        let loaded = 0;
-        const tryPrint = () => {
-          loaded += 1;
-          if (loaded >= imgs.length) {
-            w.focus();
-            w.print();
-          }
-        };
-        imgs.forEach(img => {
-          if (img.complete) {
-            tryPrint();
-          } else {
-            img.addEventListener('load', tryPrint, { once: true });
-            img.addEventListener('error', tryPrint, { once: true });
-          }
-        });
-      } catch {
-        // no-op
-      }
+      });
     };
 
-    if (w.document.readyState === 'complete') {
-      attachAndPrint();
-    } else {
-      w.addEventListener('load', attachAndPrint);
-    }
+    if (w.document.readyState === 'complete') onReady();
+    else w.addEventListener('load', onReady);
   };
 
-  return (!isOpen ? null : (
+  if (!isOpen) return null;
+
+  return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
         <div className="flex items-center justify-between p-4 border-b">
@@ -195,7 +242,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
         </div>
 
         <div className="p-4">
-            <div className="bg-gray-50 p-3 rounded mb-4 flex flex-wrap items-center gap-3">
+          <div className="bg-gray-50 p-3 rounded mb-4 flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <label htmlFor="companyTypeSelect" className="text-sm text-gray-700">Société</label>
               <select
@@ -223,47 +270,52 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
             <p className="text-xs text-gray-500 ml-auto">Aperçu (largeur 80mm)</p>
           </div>
 
-          {/* Aperçu thermique */}
-          <div ref={printRef} className="mt-6 mb-6 p-3 border border-gray-300 mx-auto bg-white" style={{ width: '80mm', fontSize: '10px', fontFamily: 'Courier New, monospace', fontWeight: 'bold' }}>
+          {/* Aperçu thermique — Ton design conservé */}
+          <div
+            ref={printRef}
+            className="mt-6 mb-6 p-3 border border-gray-300 mx-auto bg-white"
+            style={{ width: '80mm', fontSize: '10px', fontFamily: 'Courier New, monospace', fontWeight: 'bold' }}
+          >
             <div className="thermal-header flex items-center justify-center gap-10">
               <img 
-            src={logoCurrent}
-              alt={`Logo ${companyType}`} 
-              className="object-contain mb-4"
-              width="25%"
-            />
-            <div className='text-center'><div className="thermal-info">{getTypeLabel(type)}</div>
-              <div className="thermal-info"></div></div>
-              
-      {contact ? (
+                src={logoBase64 || logoCurrent}
+                alt={`Logo ${companyType}`} 
+                className="object-contain mb-4"
+                width="25%"
+              />
+              <div className='text-center'>
+                <div className="thermal-info">{getTypeLabel(type)}</div>
+                <div className="thermal-info"></div>
+              </div>
+              {contact ? (
                 <div className="thermal-info" style={{ marginTop: '2mm' }}>
                   Client: {(
                     (typeof contact.societe === 'string' && contact.societe.trim()) ? contact.societe :
-        contact.nom_complet || contact.nom || contact.name || '-'
+                    contact.nom_complet || contact.nom || contact.name || '-'
                   )}
                 </div>
               ) : null}
             </div>
-              <div className="thermal-title text-center"><span>
-    {companyType === 'DIAMOND' ? (
-      <>
-        BOUKIR DIAMOND <br /> CONSTRUCTION STORE
-      </>
-    ) : (
-      'MPC BOUKIR'
-    )}
-  </span><br />
-              
+
+            <div className="thermal-title text-center">
+              <span>
+                {companyType === 'DIAMOND' ? (
+                  <>
+                    BOUKIR DIAMOND <br /> CONSTRUCTION STORE
+                  </>
+                ) : (
+                  'MPC BOUKIR'
+                )}
+              </span>
+              <br />
               <span>Vente de Matériaux de Construction céramique, et de Marbre</span>
               <br />
               <span>GSM: 0650812894 - Tél: 0666216657</span>
-            <br />
-              <span> {bon?.numero ? `#${bon.numero}` : ''}  {formatDate(bon?.date_creation || bon?.created_at || new Date().toISOString())}</span>
-              </div>
-
+              <br />
+              <span>{bon?.numero ? `#${bon.numero}` : ''} {formatDate(bon?.date_creation || bon?.created_at || new Date().toISOString())}</span>
+            </div>
 
             <table className={`thermal-table w-full ${priceMode === 'WITHOUT_PRICES' ? 'no-prices' : ''}`}>
-
               <thead>
                 <tr className="border-t border-b">
                   <th className="col-code">Code</th>
@@ -277,7 +329,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   ) : null}
                 </tr>
               </thead>
-              <tbody className=''>
+              <tbody>
                 {parsedItems.map((it: any) => {
                   const q = parseFloat(it.quantite ?? it.qty ?? 0) || 0;
                   const pu = parseFloat(it.prix_unitaire ?? it.prix ?? it.price ?? 0) || 0;
@@ -323,7 +375,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
         </div>
       </div>
     </div>
-  ));
+  );
 };
 
 export default ThermalPrintModal;
