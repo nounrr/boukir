@@ -1,7 +1,7 @@
 /* ThermalPrintModal.tsx — conserve ton design, logo net en base64 */
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { X, Printer } from 'lucide-react';
-import logo from './logo2.png';
+import logo from './logo3.png';
 import logo1 from './logo1WB.png';
 
 interface ThermalPrintModalProps {
