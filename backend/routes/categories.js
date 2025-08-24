@@ -59,6 +59,21 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    if (id === 1) {
+      return res.status(400).json({ message: "Impossible de supprimer la catégorie par défaut (UNCATEGORIZED)" });
+    }
+    // Ensure fallback category exists
+    const [fallback] = await pool.query('SELECT id FROM categories WHERE id = 1');
+    if (!fallback.length) {
+      const now = new Date();
+      await pool.query(
+        'INSERT INTO categories (id, nom, description, created_at, updated_at) VALUES (1, \'UNCATEGORIZED\', \'Catégorie par défaut\', ?, ?)'
+        , [now, now]
+      );
+    }
+    // Reassign products from this category to 1
+    await pool.query('UPDATE products SET categorie_id = 1 WHERE categorie_id = ?', [id]);
+    // Delete the category
     await pool.query('DELETE FROM categories WHERE id = ?', [id]);
     res.status(204).send();
   } catch (err) { next(err); }

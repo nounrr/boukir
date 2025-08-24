@@ -48,6 +48,19 @@ const productsApi = api.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { id }) => [{ type: 'Product', id }, 'Product'],
     }),
+
+    // archived (soft-deleted) products
+    getArchivedProducts: builder.query<Partial<Product>[], void>({
+      query: () => ({ url: '/products/archived/list' }),
+      providesTags: ['Product'],
+    }),
+    restoreProduct: builder.mutation<Product, { id: number }>({
+      query: ({ id }) => ({
+        url: `/products/${id}/restore`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'Product', id }, 'Product'],
+    }),
   }),
 });
 
@@ -58,4 +71,6 @@ export const {
   useUpdateProductMutation,
   useDeleteProductMutation,
   useUpdateStockMutation,
+  useGetArchivedProductsQuery,
+  useRestoreProductMutation,
 } = productsApi;

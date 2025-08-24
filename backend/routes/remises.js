@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -128,7 +129,7 @@ router.get('/clients', async (_req, res) => {
 });
 
 // Créer un client remise
-router.post('/clients', async (req, res) => {
+router.post('/clients', verifyToken, async (req, res) => {
   try {
     const { nom, phone, cin, note } = req.body;
     if (!nom || !String(nom).trim()) {
@@ -218,7 +219,7 @@ router.get('/clients/:id/bons', async (req, res) => {
   }
 });
 
-router.patch('/clients/:id', async (req, res) => {
+router.patch('/clients/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { nom, phone, cin, note } = req.body;
@@ -238,9 +239,13 @@ router.patch('/clients/:id', async (req, res) => {
   }
 });
 
-router.delete('/clients/:id', async (req, res) => {
+router.delete('/clients/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
+    // Only PDG can delete a remise client
+    if ((req.user?.role || '') !== 'PDG') {
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
     await pool.execute('DELETE FROM client_remises WHERE id = ?', [id]);
     res.json({ success: true, id: Number(id) });
   } catch (e) {
@@ -283,18 +288,25 @@ router.get('/clients/:id/items', async (req, res) => {
   }
 });
 
-router.post('/clients/:id/items', async (req, res) => {
+router.post('/clients/:id/items', verifyToken, async (req, res) => {
   try {
     const { id } = req.params; // client_remise_id
-  let { product_id, qte, prix_remise, statut, bon_id, bon_type, is_achat } = req.body;
+    let { product_id, qte, prix_remise, statut, bon_id, bon_type, is_achat } = req.body;
     if (!product_id) return res.status(400).json({ message: 'product_id requis' });
 
     const { finalBonId, finalBonType } = await resolveBonLink(bon_id, bon_type);
 
+    // Employé cannot create validated items; force 'En attente'
+    if ((req.user?.role || '') !== 'PDG') {
+      statut = 'En attente';
+    } else {
+      statut = statut || 'En attente';
+    }
+
     const [r] = await pool.execute(
       `INSERT INTO item_remises (client_remise_id, product_id, bon_id, bon_type, is_achat, qte, prix_remise, statut)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, product_id, finalBonId, finalBonType, is_achat ? 1 : 0, qte ?? 0, prix_remise ?? 0, statut || 'En attente']
+  [id, product_id, finalBonId, finalBonType, is_achat ? 1 : 0, qte ?? 0, prix_remise ?? 0, statut]
     );
     const [row] = await pool.execute('SELECT * FROM item_remises WHERE id = ?', [r.insertId]);
     res.status(201).json(row[0]);
@@ -304,7 +316,7 @@ router.post('/clients/:id/items', async (req, res) => {
   }
 });
 
-router.patch('/items/:itemId', async (req, res) => {
+router.patch('/items/:itemId', verifyToken, async (req, res) => {
   try {
     const { itemId } = req.params;
   let { product_id, qte, prix_remise, statut, bon_id, bon_type, is_achat } = req.body;
@@ -316,7 +328,12 @@ router.patch('/items/:itemId', async (req, res) => {
     }
 
     const fields = [], vals = [];
-  for (const [k, v] of Object.entries({ product_id, qte, prix_remise, statut, bon_id, bon_type, is_achat })) {
+    // Employé cannot validate; ignore statut=Validé from Employé
+    if ((req.user?.role || '') !== 'PDG' && statut === 'Validé') {
+      statut = undefined;
+    }
+
+    for (const [k, v] of Object.entries({ product_id, qte, prix_remise, statut, bon_id, bon_type, is_achat })) {
       if (v !== undefined) { fields.push(`${k} = ?`); vals.push(v); }
     }
     if (!fields.length) return res.status(400).json({ message: 'Aucune modification' });
@@ -332,9 +349,13 @@ router.patch('/items/:itemId', async (req, res) => {
   }
 });
 
-router.delete('/items/:itemId', async (req, res) => {
+router.delete('/items/:itemId', verifyToken, async (req, res) => {
   try {
     const { itemId } = req.params;
+    // Only PDG can delete items
+    if ((req.user?.role || '') !== 'PDG') {
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
     await pool.execute('DELETE FROM item_remises WHERE id = ?', [itemId]);
     res.json({ success: true, id: Number(itemId) });
   } catch (e) {
