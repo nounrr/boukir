@@ -2,7 +2,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { X, Printer } from 'lucide-react';
 import logo from './logo3.png';
-import logo1 from './logo1.png';
+import logo1 from './logo1WB.png';
 
 interface ThermalPrintModalProps {
   isOpen: boolean;
