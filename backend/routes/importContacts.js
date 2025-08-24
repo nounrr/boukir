@@ -14,13 +14,10 @@ const upload = multer({
 });
 
 /**
- * POST /api/import/products-excel
+ * POST /api/import/contacts-excel
  * Form-Data: file=<.xlsx|.xls|.csv>
  * Colonnes attendues (entêtes, casse exacte) :
- *  designation, quantite, prix_achat,
- *  cout_revient_pourcentage, cout_revient,
- *  prix_gros_pourcentage, prix_gros,
- *  prix_vente_pourcentage, prix_vente
+ *  nom_complet, type, solde (optionnel)
  */
 // ====== CONTACTS: upload Excel/CSV -> contacts (nom_complet, type) ======
 router.post("/", upload.single("file"), async (req, res) => {
@@ -34,6 +31,10 @@ router.post("/", upload.single("file"), async (req, res) => {
     // helpers
     const s = (v) =>
       v === undefined || v === null ? null : String(v).trim() || null;
+    const num = (v) =>
+      v === undefined || v === null || v === "" || Number.isNaN(Number(v))
+        ? null
+        : Number(v);
 
     // Mappe les en-têtes possibles vers nos 2 colonnes
     // (fr/eng/ar tolérés)
@@ -57,7 +58,18 @@ router.post("/", upload.single("file"), async (req, res) => {
         r["catégorie"]
       );
 
-    const values = raw.map((r) => [getNomComplet(r), getType(r)]);
+    const getSolde = (r) =>
+      num(
+        r.solde ??
+          r["Solde"] ??
+          r.balance ??
+          r["Balance"] ??
+          r["solde initial"] ??
+          r["Solde initial"] ??
+          r["رصيد"]
+      );
+
+    const values = raw.map((r) => [getNomComplet(r), getType(r), getSolde(r)]);
 
     // retire les lignes sans nom
     const cleaned = values.filter((v) => v[0]);
@@ -72,17 +84,18 @@ router.post("/", upload.single("file"), async (req, res) => {
 
       // INSERT simple
       const sql = `
-        INSERT INTO contacts (nom_complet, type)
+        INSERT INTO contacts (nom_complet, type, solde)
         VALUES ?
       `;
       await conn.query(sql, [cleaned]);
 
       /*  👉 Si tu as un index UNIQUE(nom_complet) et tu préfères faire un UPSERT, remplace le bloc précédent par :
       const sql = `
-        INSERT INTO contacts (nom_complet, type)
+        INSERT INTO contacts (nom_complet, type, solde)
         VALUES ?
         ON DUPLICATE KEY UPDATE
-          type = VALUES(type)
+          type = VALUES(type),
+          solde = COALESCE(VALUES(solde), solde)
       `;
       await conn.query(sql, [cleaned]);
       */

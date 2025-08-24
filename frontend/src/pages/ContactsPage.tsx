@@ -1253,6 +1253,7 @@ const ContactsPage: React.FC = () => {
             <FileText size={16} />
             Rapport Global ({filteredContacts.length})
           </button>
+          {(currentUser?.role === 'PDG' || currentUser?.role === 'Employé') && (
           <button
             onClick={() => {
               setEditingContact(null);
@@ -1264,6 +1265,7 @@ const ContactsPage: React.FC = () => {
             <Plus size={20} />
             Nouveau {activeTab === 'clients' ? 'Client' : 'Fournisseur'}
           </button>
+          )}
         </div>
       </div>
 

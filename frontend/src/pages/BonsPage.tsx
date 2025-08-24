@@ -222,7 +222,7 @@ const BonsPage = () => {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Gestion des Bons</h1>
-          {currentUser?.role === 'PDG' && (
+          {(currentUser?.role === 'PDG' || currentUser?.role === 'Employé') && (
             <button
               onClick={() => {
                 setSelectedBon(null);

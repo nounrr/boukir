@@ -25,6 +25,7 @@ import type { Payment, Bon, Contact } from '../types';
 import { getBonNumeroDisplay } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
+import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { formatDateTimeWithHour } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
@@ -53,6 +54,7 @@ const CaissePage = () => {
   const user = useAppSelector(state => state.auth.user);
   const { data: clients = [] } = useGetClientsQuery();
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
+  const { data: talons = [] } = useGetTalonsQuery(undefined);
   const { data: paymentsApi = [] } = useGetPaymentsQuery();
   const payments = paymentsApi;
   const [createPayment] = useCreatePaymentMutation();
@@ -272,6 +274,7 @@ const paymentValidationSchema = Yup.object({
 
   notes: Yup.string().transform(toNull).nullable(),
   bon_id: Yup.number().transform((v, orig) => (orig === '' ? null : v)).nullable(),
+  talon_id: Yup.number().transform((v, orig) => (orig === '' ? null : v)).nullable(),
 });
 
   // Function to display payment numbers with PAY prefix
@@ -407,6 +410,7 @@ const paymentValidationSchema = Yup.object({
         personnel: selectedPayment.personnel || '',
         date_echeance: normDate(selectedPayment.date_echeance) || '',
   code_reglement: selectedPayment.code_reglement || '',
+        talon_id: selectedPayment.talon_id || '',
       };
     }
     
@@ -425,6 +429,7 @@ const paymentValidationSchema = Yup.object({
       personnel: '',
       date_echeance: '',
   code_reglement: '',
+      talon_id: '',
     };
   };
 
@@ -469,6 +474,7 @@ const paymentValidationSchema = Yup.object({
       const cleanedPersonnel = values.personnel?.trim() ? values.personnel : null;
   const cleanedDateEcheance = toYMD(values.date_echeance);
       const cleanedCodeReglement = values.code_reglement?.trim() ? values.code_reglement : null;
+      const cleanedTalonId = values.talon_id ? Number(values.talon_id) : null;
 
   const paymentData: any = {
         id: selectedPayment ? selectedPayment.id : Date.now(),
@@ -487,6 +493,7 @@ const paymentValidationSchema = Yup.object({
         personnel: cleanedPersonnel,
         date_echeance: cleanedDateEcheance,
         code_reglement: cleanedCodeReglement,
+        talon_id: cleanedTalonId,
   image_url: imageUrl,
         created_by: user?.id || 1,
         updated_by: selectedPayment ? user?.id || 1 : undefined,
@@ -511,6 +518,7 @@ const paymentValidationSchema = Yup.object({
           banque: paymentData.banque,
           personnel: paymentData.personnel,
           code_reglement: paymentData.code_reglement,
+          talon_id: paymentData.talon_id,
           image_url: paymentData.image_url,
           created_by: user?.id || 1,
         };
@@ -1029,7 +1037,89 @@ const paymentValidationSchema = Yup.object({
               {({ values, setFieldValue }) => {
                 const isFournisseurPayment = values.type_paiement === 'Fournisseur';
                 return (
-                <Form className="space-y-6">
+                <Form
+                  className="space-y-6"
+                  onKeyDown={(e: React.KeyboardEvent<HTMLFormElement>) => {
+                    const target = e.target as HTMLElement | null;
+
+                    // Navigation avec flèches gauche/droite: navigation globale précédent/suivant si curseur aux bords
+                    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                      const formEl = e.currentTarget as HTMLFormElement;
+                      // Calculer si on doit déplacer le focus
+                      let shouldMove = true;
+                      const t = target as any;
+                      const isInputOrTextarea = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+                      if (isInputOrTextarea && typeof t.selectionStart === 'number' && typeof t.selectionEnd === 'number') {
+                        const valueLength = (t.value ?? '').length as number;
+                        if (e.key === 'ArrowLeft') {
+                          shouldMove = t.selectionStart === 0 && t.selectionEnd === 0;
+                        } else {
+                          shouldMove = t.selectionStart === valueLength && t.selectionEnd === valueLength;
+                        }
+                      }
+                      if (!shouldMove) return; // laisser bouger le curseur dans le champ
+
+                      // Collecter les éléments focusables
+                      const focusableSelector = [
+                        'button:not([disabled])',
+                        'input:not([disabled]):not([type="hidden"])',
+                        'select:not([disabled])',
+                        'textarea:not([disabled])',
+                        '[tabindex]:not([tabindex="-1"])',
+                      ].join(',');
+                      const focusables = Array.from(formEl.querySelectorAll<HTMLElement>(focusableSelector))
+                        .filter((el) => el.offsetParent !== null || el.getAttribute('aria-hidden') !== 'true');
+                      const currentIndex = focusables.indexOf(target as HTMLElement);
+                      if (currentIndex === -1) return;
+                      const delta = e.key === 'ArrowLeft' ? -1 : 1;
+                      let nextIndex = currentIndex + delta;
+                      nextIndex = Math.max(0, Math.min(focusables.length - 1, nextIndex));
+                      const nextEl = focusables[nextIndex];
+                      if (nextEl) {
+                        e.preventDefault();
+                        nextEl.focus();
+                        // Si l'élément suivant est notre SearchableSelect, laisser onFocus l'ouvrir automatiquement
+                        // (autoOpenOnFocus gère l'ouverture et le focus de la recherche)
+                        // Essayer de sélectionner tout le texte pour les inputs
+                        try {
+                          if ((nextEl as any).select) (nextEl as any).select();
+                        } catch {}
+                      }
+                    }
+
+                    // Navigation haut/bas pour se déplacer verticalement entre les champs
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                      const formEl = e.currentTarget as HTMLFormElement;
+                      const focusableSelector = [
+                        'button:not([disabled])',
+                        'input:not([disabled]):not([type="hidden"])',
+                        'select:not([disabled])',
+                        'textarea:not([disabled])',
+                        '[tabindex]:not([tabindex="-1"])',
+                      ].join(',');
+                      const focusables = Array.from(formEl.querySelectorAll<HTMLElement>(focusableSelector))
+                        .filter((el) => el.offsetParent !== null || el.getAttribute('aria-hidden') !== 'true');
+                      const currentIndex = focusables.indexOf(target as HTMLElement);
+                      if (currentIndex === -1) return;
+                      
+                      // Pour la navigation verticale, on cherche l'élément dans la ligne suivante/précédente
+                      const delta = e.key === 'ArrowDown' ? 3 : -3; // grid-cols-3, donc on saute de 3 éléments
+                      let nextIndex = currentIndex + delta;
+                      nextIndex = Math.max(0, Math.min(focusables.length - 1, nextIndex));
+                      const nextEl = focusables[nextIndex];
+                      if (nextEl) {
+                        e.preventDefault();
+                        nextEl.focus();
+                        // Si l'élément suivant est notre SearchableSelect, laisser onFocus l'ouvrir automatiquement
+                        // (autoOpenOnFocus gère l'ouverture et le focus de la recherche)
+                        // Essayer de sélectionner tout le texte pour les inputs
+                        try {
+                          if ((nextEl as any).select) (nextEl as any).select();
+                        } catch {}
+                      }
+                    }
+                  }}
+                >
                   {/* Adjust grid for three inputs per row */}
                   <div className="grid grid-cols-3 gap-4">
                     <div>
@@ -1058,6 +1148,7 @@ const paymentValidationSchema = Yup.object({
                         {isFournisseurPayment ? 'Fournisseur payeur' : 'Client payeur'} {values.contact_optional ? '' : '*'}
                       </label>
                       <SearchableSelect
+                        id="contact_id_select"
                         options={(isFournisseurPayment ? fournisseurs : clients).map((c: Contact) => ({
                           value: String(c.id),
                           label: c.nom_complet || `${isFournisseurPayment ? 'Fournisseur' : 'Client'} #${c.id}`,
@@ -1067,6 +1158,7 @@ const paymentValidationSchema = Yup.object({
                         onChange={(v) => { setFieldValue('contact_id', v); setFieldValue('bon_id', ''); }}
                         placeholder={isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}
                         className="w-full"
+                        autoOpenOnFocus={true}
                       />
                       <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
                     </div>
@@ -1155,6 +1247,26 @@ const paymentValidationSchema = Yup.object({
                           </option>
                         ))}
                       </Field>
+                    </div>
+
+                    <div>
+                      <label htmlFor="talon_id" className="block text-sm font-medium text-gray-700 mb-1">
+                        Talon associé (optionnel)
+                      </label>
+                      <Field
+                        as="select"
+                        id="talon_id"
+                        name="talon_id"
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Aucun talon</option>
+                        {talons.map((talon: any) => (
+                          <option key={talon.id} value={talon.id}>
+                            {talon.nom} {talon.phone ? `- ${talon.phone}` : ''}
+                          </option>
+                        ))}
+                      </Field>
+                      <ErrorMessage name="talon_id" component="div" className="text-red-500 text-sm mt-1" />
                     </div>
 
                     <div>

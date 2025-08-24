@@ -1,17 +1,15 @@
 import React, { useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
 import type { Product, Category } from '../types';
 import { Plus, Edit, Trash2, Search, Package, Settings } from 'lucide-react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
-import { useCreateCategoryMutation } from '../store/api/categoriesApi';
-import { useGetProductsQuery } from '../store/api/productsApi';
-import { useGetCategoriesQuery } from '../store/api/categoriesApi';
+import { useCreateCategoryMutation, useGetCategoriesQuery } from '../store/api/categoriesApi';
+import { useGetProductsQuery, useDeleteProductMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
-import { useDeleteProductMutation } from '../store/api/productsApi';
 
 const categoryValidationSchema = Yup.object({
   nom: Yup.string().required('Nom de la catégorie requis'),
@@ -19,7 +17,7 @@ const categoryValidationSchema = Yup.object({
 });
 
 const StockPage: React.FC = () => {
-  const dispatch = useDispatch();
+  // const dispatch = useDispatch();
   // Load from backend
   const { data: productsApiData } = useGetProductsQuery();
   const { data: categoriesApiData } = useGetCategoriesQuery();
@@ -85,10 +83,11 @@ const StockPage: React.FC = () => {
   };
 
   const filteredProducts = products.filter((product: Product) => {
-    const refStr = (product.reference ?? String(product.id) ?? '').toLowerCase();
-    const matchesSearch = product.designation.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         refStr.includes(searchTerm.toLowerCase());
-    const matchesCategory = !filterCategory || product.categorie_id.toString() === filterCategory;
+    const term = (searchTerm ?? '').toLowerCase();
+    const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
+    const designation = String(product.designation ?? '').toLowerCase();
+    const matchesSearch = designation.includes(term) || refStr.includes(term);
+    const matchesCategory = !filterCategory || String(product.categorie_id ?? '') === filterCategory;
     return matchesSearch && matchesCategory;
   });
 

@@ -9,21 +9,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const uploadsRoot = path.join(__dirname, '..', 'uploads');
 const paymentsDir = path.join(uploadsRoot, 'payments');
+const employeeDocsDir = path.join(uploadsRoot, 'employee_docs');
 
 // Ensure directories exist
-for (const dir of [uploadsRoot, paymentsDir]) {
+for (const dir of [uploadsRoot, paymentsDir, employeeDocsDir]) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
 
 const storage = multer.diskStorage({
-  destination: function (_req, _file, cb) {
-    cb(null, paymentsDir);
+  destination: function (req, _file, cb) {
+    // If uploading employee doc, use employee_docs folder; else default to payments
+    if (req.path.includes('/employee-doc')) {
+      cb(null, employeeDocsDir);
+    } else {
+      cb(null, paymentsDir);
+    }
   },
-  filename: function (_req, file, cb) {
-    const unique = `payment-${Date.now()}-${Math.floor(Math.random() * 1_000_000_000)}`;
+  filename: function (req, file, cb) {
     const ext = path.extname(file.originalname) || '.jpg';
+    const prefix = req.path.includes('/employee-doc') ? 'empdoc' : 'payment';
+    const unique = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1_000_000_000)}`;
     cb(null, `${unique}${ext}`);
   },
 });
@@ -43,6 +50,13 @@ router.post('/payment-image', upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier reçu' });
   const rel = `/uploads/payments/${req.file.filename}`;
   res.status(201).json({ success: true, imageUrl: rel, filename: req.file.filename, message: 'Image uploadée' });
+});
+
+// POST /api/upload/employee-doc - field name: file
+router.post('/employee-doc', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier reçu' });
+  const rel = `/uploads/employee_docs/${req.file.filename}`;
+  res.status(201).json({ success: true, fileUrl: rel, filename: req.file.filename, message: 'Document uploadé' });
 });
 
 // DELETE /api/upload/payment-image/:filename
