@@ -82,14 +82,17 @@ const StockPage: React.FC = () => {
     }
   };
 
-  const filteredProducts = products.filter((product: Product) => {
+  const filteredProducts = products
+    // hide soft-deleted products if backend ever returns them
+    .filter((product: any) => product.is_deleted !== 1)
+    .filter((product: Product) => {
     const term = (searchTerm ?? '').toLowerCase();
     const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
     const designation = String(product.designation ?? '').toLowerCase();
     const matchesSearch = designation.includes(term) || refStr.includes(term);
     const matchesCategory = !filterCategory || String(product.categorie_id ?? '') === filterCategory;
     return matchesSearch && matchesCategory;
-  });
+    });
 
   // Pagination
   const totalItems = filteredProducts.length;

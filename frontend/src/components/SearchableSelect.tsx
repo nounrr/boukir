@@ -32,11 +32,17 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const lastOpenAtRef = useRef<number>(0);
 
-  const filteredOptions = options
-    .filter(o => o.label.toLowerCase().includes(searchTerm.toLowerCase()))
-    .slice(0, displayCount);
-
-  const hasMoreItems = options.filter(o => o.label.toLowerCase().includes(searchTerm.toLowerCase())).length > displayCount;
+  // Multi-word search: every token must be contained in the label (order-independent)
+  const norm = (s: string) => s.toLowerCase();
+  const tokens = norm(searchTerm).split(/\s+/).filter(Boolean);
+  const matchLabel = (label: string) => {
+    const L = norm(label);
+    if (tokens.length === 0) return true;
+    return tokens.every((t) => L.includes(t));
+  };
+  const allMatches = options.filter((o) => matchLabel(o.label));
+  const filteredOptions = allMatches.slice(0, displayCount);
+  const hasMoreItems = allMatches.length > displayCount;
   const selectedOption = options.find(o => o.value === value);
 
   // Focus search input when opening
@@ -147,16 +153,16 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
-            {searchTerm.length < 2 && (
+            {searchTerm.trim().length < 2 && (
               <div className="p-3 text-sm text-gray-500 text-center">
                 <div className="mb-2">Tapez au moins 2 caractères pour rechercher</div>
                 <div className="text-xs text-gray-400">{options.length} éléments disponibles</div>
               </div>
             )}
-            {searchTerm.length >= 2 && filteredOptions.length === 0 && (
+            {searchTerm.trim().length >= 2 && filteredOptions.length === 0 && (
               <div className="p-2 text-sm text-gray-500">Aucun résultat trouvé</div>
             )}
-            {searchTerm.length >= 2 && filteredOptions.length > 0 && (
+            {searchTerm.trim().length >= 2 && filteredOptions.length > 0 && (
               <>
                 {filteredOptions.map((option, idx) => (
                   <button
@@ -191,7 +197,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                     className="w-full px-3 py-2 text-center text-blue-600 hover:bg-blue-50 text-sm border-t"
                     onClick={() => setDisplayCount(prev => Math.min(prev + 50, maxDisplayItems))}
                   >
-                    Charger plus... ({filteredOptions.length} sur {options.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase())).length})
+                    Charger plus... ({filteredOptions.length} sur {allMatches.length})
                   </button>
                 )}
               </>

@@ -17,6 +17,7 @@ import {
   Percent,
   ClipboardList,
   Wallet,
+  User as UserIcon,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -58,6 +59,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       show: true,
     },
     {
+      name: 'Produits archivés',
+      href: '/products/archived',
+      icon: Package,
+      show: user?.role === 'PDG',
+    },
+    {
       name: 'Contacts',
       href: '/contacts',
       icon: UserCheck,
@@ -79,13 +86,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       name: 'Talons',
       href: '/talons',
       icon: ClipboardList,
-      show: true,
+  show: user?.role === 'PDG',
     },
     {
       name: 'Talon Caisse',
       href: '/talon-caisse',
       icon: Wallet,
-      show: true,
+  show: user?.role === 'PDG',
     },
     {
       name: 'Caisse',
@@ -109,6 +116,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       name: 'Import Excel',
       href: '/import',
       icon: Upload,
+      show: user?.role !== undefined,
+    },
+    {
+      name: 'Mon profil',
+      href: '/profile',
+      icon: UserIcon,
       show: user?.role !== undefined,
     },
   ];

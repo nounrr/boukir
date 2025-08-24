@@ -5,8 +5,10 @@ import { getBonNumeroDisplay } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useCreateClientRemiseMutation, useUpdateClientRemiseMutation, useDeleteClientRemiseMutation, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useUpdateRemiseItemMutation, useDeleteRemiseItemMutation } from '../store/api/remisesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
+import { useAuth } from '../hooks/redux';
 
 const RemisesPage: React.FC = () => {
+  const { user } = useAuth();
   const { data: clients = [], refetch } = useGetClientRemisesQuery();
   const [createClient] = useCreateClientRemiseMutation();
   const [updateClient] = useUpdateClientRemiseMutation();
@@ -169,18 +171,20 @@ const RemisesPage: React.FC = () => {
                       >
                         <Edit size={18} />
                       </button>
-                      <button
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
-                        title="Supprimer"
-                        onClick={async () => {
-                          if (confirm('Supprimer ce client de remise ?')) {
-                            await deleteClient(c.id).unwrap();
-                            refetch();
-                          }
-                        }}
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      {user?.role === 'PDG' && (
+                        <button
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                          title="Supprimer"
+                          onClick={async () => {
+                            if (confirm('Supprimer ce client de remise ?')) {
+                              await deleteClient(c.id).unwrap();
+                              refetch();
+                            }
+                          }}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -321,6 +325,7 @@ const RemisesPage: React.FC = () => {
 };
 
 const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }> = ({ clientRemise, onItemsChanged }) => {
+  const { user } = useAuth();
   const { data: items = [], refetch: refetchItems } = useGetRemiseItemsQuery(clientRemise.id);
   const [createItem] = useCreateRemiseItemMutation();
   const [updateItem] = useUpdateRemiseItemMutation();
@@ -504,13 +509,15 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                       >
                         <Clock size={18} />
                       </button>
-                      <button
-                        className={`p-1 rounded ${it.statut === 'Validé' ? 'bg-green-50 text-green-600' : 'text-gray-500 hover:text-green-600'}`}
-                        title="Valider"
-                        onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Validé' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
-                      >
-                        <CheckCircle size={18} />
-                      </button>
+                      {user?.role === 'PDG' && (
+                        <button
+                          className={`p-1 rounded ${it.statut === 'Validé' ? 'bg-green-50 text-green-600' : 'text-gray-500 hover:text-green-600'}`}
+                          title="Valider"
+                          onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Validé' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
+                        >
+                          <CheckCircle size={18} />
+                        </button>
+                      )}
                       <button
                         className={`p-1 rounded ${it.statut === 'Annulé' ? 'bg-red-50 text-red-600' : 'text-gray-500 hover:text-red-600'}`}
                         title="Annuler"
@@ -521,9 +528,11 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                     </div>
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
-                    <button className="text-gray-500 hover:text-red-600" title="Supprimer" onClick={async () => { await deleteItem(it.id).unwrap(); await refetchItems(); onItemsChanged?.(); }}>
-                      <Trash2 size={18} />
-                    </button>
+                    {user?.role === 'PDG' && (
+                      <button className="text-gray-500 hover:text-red-600" title="Supprimer" onClick={async () => { await deleteItem(it.id).unwrap(); await refetchItems(); onItemsChanged?.(); }}>
+                        <Trash2 size={18} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
