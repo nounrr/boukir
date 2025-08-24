@@ -12,6 +12,7 @@ import {
 import { useGetEmployeesQuery } from '../store/api/employeesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
+import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ const DashboardPage: React.FC = () => {
   const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
   const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
   const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
+  const { data: allPayments = [] } = useGetPaymentsQuery();
 
   // Helpers
   const isSameMonth = (iso?: string) => {
@@ -50,6 +52,15 @@ const DashboardPage: React.FC = () => {
 
     const pendingStatuses = new Set(['Brouillon', 'En attente', 'En cours']);
     const pendingOrders = [...sorties, ...commandes].filter((b: any) => pendingStatuses.has(b.statut)).length;
+    // Talon due soon (<=5 days) among payments with talon_id
+    const today = new Date(); today.setHours(0,0,0,0);
+    const talonDueSoon = allPayments.filter((p: any) => p.talon_id && p.date_echeance).filter((p: any) => {
+      const due = new Date(p.date_echeance);
+      if (isNaN(due.getTime())) return false;
+      due.setHours(0,0,0,0);
+      const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000*60*60*24));
+      return diffDays <= 5;
+    }).length;
 
     return {
       employees: employees.length,
@@ -58,6 +69,7 @@ const DashboardPage: React.FC = () => {
       revenue,
       lowStock,
       pendingOrders,
+      talonDueSoon,
     };
   }, [employees, products, sorties, comptants, commandes]);
 
@@ -87,6 +99,20 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
         </button>
+
+          <button 
+            type="button"
+            onClick={() => navigate('/talon-caisse')}
+            className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+          >
+            <div className="flex items-center">
+              <AlertTriangle className="text-red-500" size={24} />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">Talons à échéance (≤ 5j)</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.talonDueSoon}</p>
+              </div>
+            </div>
+          </button>
 
         <button 
           type="button"
@@ -153,6 +179,13 @@ const DashboardPage: React.FC = () => {
                 <div>
                   <p className="text-sm font-medium text-gray-900">Commandes en attente</p>
                   <p className="text-sm text-gray-500">{stats.pendingOrders} commandes nécessitent votre attention</p>
+                </div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <AlertTriangle className="text-red-500 mt-0.5" size={20} />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Talons à échéance (≤ 5j)</p>
+                  <p className="text-sm text-gray-500">{stats.talonDueSoon} paiements à échéance</p>
                 </div>
               </div>
             </div>

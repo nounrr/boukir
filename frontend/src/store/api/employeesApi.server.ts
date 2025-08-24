@@ -1,5 +1,6 @@
 import { api } from './apiSlice';
 import type { Employee, CreateEmployeeData } from '../../types';
+import type { EmployeeSalaireEntry, EmployeeSalaireSummaryRow } from '../../types';
 
 export const employeesServerApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -23,6 +24,21 @@ export const employeesServerApi = api.injectEndpoints({
       query: ({ id }) => ({ url: `/employees/${id}`, method: 'DELETE' }),
       invalidatesTags: ['Employee'],
     }),
+    // Salary: list entries for an employee (optional month param YYYY-MM)
+    getEmployeeSalaireEntries: builder.query<EmployeeSalaireEntry[], { id: number; month?: string }>({
+      query: ({ id, month }) => ({ url: `/employees/${id}/salaires${month ? `?month=${month}` : ''}`, method: 'GET' }),
+      providesTags: (_r, _e, { id }) => [{ type: 'Employee', id }],
+    }),
+    // Salary: add entry for an employee
+    addEmployeeSalaireEntry: builder.mutation<EmployeeSalaireEntry, { id: number; montant: number; note?: string; created_by: number }>({
+      query: ({ id, ...body }) => ({ url: `/employees/${id}/salaires`, method: 'POST', body }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Employee', id }],
+    }),
+    // Salary: monthly summary for all employees
+    getSalaireMonthlySummary: builder.query<EmployeeSalaireSummaryRow[], { month: string }>({
+      query: ({ month }) => ({ url: `/salaires/summary?month=${month}`, method: 'GET' }),
+      providesTags: ['Employee'],
+    }),
   }),
 });
 
@@ -32,4 +48,7 @@ export const {
   useCreateEmployeeMutation: useCreateEmployeeMutationServer,
   useUpdateEmployeeMutation: useUpdateEmployeeMutationServer,
   useDeleteEmployeeMutation: useDeleteEmployeeMutationServer,
+  useGetEmployeeSalaireEntriesQuery: useGetEmployeeSalaireEntriesQueryServer,
+  useAddEmployeeSalaireEntryMutation: useAddEmployeeSalaireEntryMutationServer,
+  useGetSalaireMonthlySummaryQuery: useGetSalaireMonthlySummaryQueryServer,
 } = employeesServerApi;

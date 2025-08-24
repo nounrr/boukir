@@ -15,6 +15,8 @@ import {
   Activity,
   Upload,
   Percent,
+  ClipboardList,
+  Wallet,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -71,6 +73,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       name: 'Véhicules',
       href: '/vehicules',
       icon: Truck,
+      show: true,
+    },
+    {
+      name: 'Talons',
+      href: '/talons',
+      icon: ClipboardList,
+      show: true,
+    },
+    {
+      name: 'Talon Caisse',
+      href: '/talon-caisse',
+      icon: Wallet,
       show: true,
     },
     {
