@@ -43,6 +43,7 @@ const toPayment = (r) => ({
   personnel: r.personnel || null,
   code_reglement: r.code_reglement || null,
   image_url: r.image_url || null,
+  talon_id: r.talon_id || null,
   statut: r.statut || null,
   created_by: r.created_by ?? null,
   updated_by: r.updated_by ?? null,
@@ -142,6 +143,7 @@ router.post('/', verifyToken, async (req, res) => {
       personnel = null,
       code_reglement = null,
       image_url = null,
+      talon_id = null,
       created_by = null,
   } = req.body;
 
@@ -176,6 +178,7 @@ router.post('/', verifyToken, async (req, res) => {
     // Nettoyer les valeurs pour éviter les erreurs "Out of range"
     const cleanContactId = contact_id ? Number(contact_id) : null;
     const cleanBonId = bon_id ? Number(bon_id) : null;
+    const cleanTalonId = talon_id ? Number(talon_id) : null;
     const cleanDatePaiement = toYMD(date_paiement);
     const cleanDateEcheance = toYMD(date_echeance);
 
@@ -195,10 +198,10 @@ router.post('/', verifyToken, async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO payments
         (numero, type_paiement, contact_id, bon_id, montant_total, mode_paiement, date_paiement, designation,
-         date_echeance, banque, personnel, code_reglement, image_url, statut, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         date_echeance, banque, personnel, code_reglement, image_url, talon_id, statut, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ['', type_paiement, cleanContactId, cleanBonId, montant_total, mode_paiement, cleanDatePaiement, designation,
-        cleanDateEcheance, banque, personnel, code_reglement, image_url, statut, created_by]
+        cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanTalonId, statut, created_by]
     );
     await pool.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
     const [rows] = await pool.query('SELECT * FROM payments WHERE id = ?', [result.insertId]);
@@ -239,7 +242,7 @@ router.put('/:id', verifyToken, async (req, res) => {
 
     const fields = [
   'type_paiement','contact_id','bon_id','montant_total','mode_paiement','date_paiement','designation',
-  'date_echeance','banque','personnel','code_reglement','image_url','statut','updated_by'
+  'date_echeance','banque','personnel','code_reglement','image_url','talon_id','statut','updated_by'
     ];
     const setParts = [];
 		const values = [];

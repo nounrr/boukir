@@ -16,7 +16,7 @@ function clean(value) {
 
 router.get('/', async (_req, res, next) => {
   try {
-    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, created_by, updated_by, created_at, updated_at FROM employees ORDER BY id DESC');
+  const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees ORDER BY id DESC');
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -24,7 +24,7 @@ router.get('/', async (_req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
+  const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
     const emp = rows[0];
     if (!emp) return res.status(404).json({ message: 'Employé introuvable' });
     res.json(emp);
@@ -33,7 +33,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { nom_complet, cin, date_embauche, role, password, created_by } = req.body;
+  const { nom_complet, cin, date_embauche, role, salaire, password, created_by } = req.body;
 
     // Required: CIN and password
     const cinTrim = typeof cin === 'string' ? cin.trim() : cin;
@@ -51,19 +51,20 @@ router.post('/', async (req, res, next) => {
     const now = new Date();
     const hashed = await bcrypt.hash(password.trim(), 10);
     const [result] = await pool.query(
-      'INSERT INTO employees (nom_complet, cin, date_embauche, role, password, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [clean(nom_complet), cinTrim, clean(date_embauche), clean(role), hashed, clean(created_by), now, now]
+      'INSERT INTO employees (nom_complet, cin, date_embauche, role, salaire, password, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [clean(nom_complet), cinTrim, clean(date_embauche), clean(role), clean(salaire), hashed, clean(created_by), now, now]
     );
     const id = result.insertId;
-    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
+    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
 
+// eslint-disable-next-line sonarjs/cognitive-complexity
 router.put('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { nom_complet, cin, date_embauche, role, password, updated_by } = req.body;
+    const { nom_complet, cin, date_embauche, role, salaire, password, updated_by } = req.body;
     const [rows0] = await pool.query('SELECT * FROM employees WHERE id = ?', [id]);
     if (rows0.length === 0) return res.status(404).json({ message: 'Employé introuvable' });
     if (cin !== undefined) {
@@ -79,16 +80,21 @@ router.put('/:id', async (req, res, next) => {
     if (cin !== undefined) { fields.push('cin = ?'); values.push(typeof cin === 'string' ? cin.trim() : cin); }
     if (date_embauche !== undefined) { fields.push('date_embauche = ?'); values.push(clean(date_embauche)); }
     if (role !== undefined) { fields.push('role = ?'); values.push(clean(role)); }
+  if (salaire !== undefined) { fields.push('salaire = ?'); values.push(clean(salaire)); }
     if (password && typeof password === 'string' && password.trim()) {
       const hashed = await bcrypt.hash(password.trim(), 10);
       fields.push('password = ?'); values.push(hashed);
     }
     if (updated_by !== undefined) { fields.push('updated_by = ?'); values.push(clean(updated_by)); }
     fields.push('updated_at = ?'); values.push(now);
+    if (fields.length === 0) {
+      const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
+      return res.json(rows[0]);
+    }
     const sql = `UPDATE employees SET ${fields.join(', ')} WHERE id = ?`;
     values.push(id);
     await pool.query(sql, values);
-    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
+  const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
     res.json(rows[0]);
   } catch (err) { next(err); }
 });

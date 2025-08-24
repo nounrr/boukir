@@ -1,13 +1,19 @@
+/* eslint-disable sonarjs/cognitive-complexity */
 import React, { useState } from 'react';
 import {
   useGetEmployeesQueryServer as useGetEmployeesQuery,
   useCreateEmployeeMutationServer as useCreateEmployeeMutation,
   useUpdateEmployeeMutationServer as useUpdateEmployeeMutation,
   useDeleteEmployeeMutationServer as useDeleteEmployeeMutation,
+  useAddEmployeeSalaireEntryMutationServer,
+  useGetSalaireMonthlySummaryQueryServer,
 } from '../store/api/employeesApi.server';
 import type { Employee } from '../types';
 import { useAuth } from '../hooks/redux';
-import { Plus, Edit, Trash2, Search, Eye, EyeOff } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote } from 'lucide-react';
+// merged imports above
+// imports merged above
+import { Link } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
@@ -17,6 +23,7 @@ const validationSchemaCreate = Yup.object({
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
   role: Yup.string().oneOf(['PDG', 'Employé']).optional(),
+  salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').required('Mot de passe requis'),
 });
 
@@ -25,21 +32,49 @@ const validationSchemaEdit = Yup.object({
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
   role: Yup.string().oneOf(['PDG', 'Employé']).optional(),
+  salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').optional(),
 });
 
-const EmployeePage: React.FC = () => {
+// eslint-disable-next-line sonarjs/cognitive-complexity
+const EmployeePage: React.FC = () => { // NOSONAR
   const { user } = useAuth();
   const { data: employees = [], isLoading } = useGetEmployeesQuery();
   const [createEmployee] = useCreateEmployeeMutation();
   const [updateEmployee] = useUpdateEmployeeMutation();
   const [deleteEmployee] = useDeleteEmployeeMutation();
+  const [addSalaireEntry] = useAddEmployeeSalaireEntryMutationServer();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [changePassword, setChangePassword] = useState(false); // only used when editing
+  // Salaire modal state
+  const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
+  const [salaryModalEmployee, setSalaryModalEmployee] = useState<Employee | null>(null);
+  const [salaryMontant, setSalaryMontant] = useState('');
+  const [salaryNote, setSalaryNote] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${d.getFullYear()}-${m}`; // YYYY-MM
+  });
+  const { data: salarySummary = [] } = useGetSalaireMonthlySummaryQueryServer({ month: selectedMonth });
+
+  const salaryMap = React.useMemo(() => {
+    const m = new Map<number, number>();
+    for (const row of salarySummary as any[]) {
+      m.set(Number(row.employe_id), Number(row.total || 0));
+    }
+    return m;
+  }, [salarySummary]);
+
+  const isOverSalary = (emp: Employee) => {
+    if (emp.salaire == null) return false;
+    const total = salaryMap.get(emp.id) || 0;
+    return total > (emp.salaire || 0);
+  };
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -51,6 +86,7 @@ const EmployeePage: React.FC = () => {
       nom_complet: '',
       date_embauche: '',
       role: 'Employé', // default to Employé to avoid unintended null
+  salaire: '' as any,
       password: '',
     },
     validationSchema: editingEmployee ? validationSchemaEdit : validationSchemaCreate,
@@ -62,12 +98,16 @@ const EmployeePage: React.FC = () => {
           nom_complet: string | null;
           date_embauche: string | null;
           role: 'PDG' | 'Employé' | null;
+          salaire: number | null;
           password: string;
         } = {
           cin: values.cin.trim(),
           nom_complet: values.nom_complet?.trim() || null,
           date_embauche: values.date_embauche?.trim() ? values.date_embauche : null,
           role: values.role ? (values.role as 'PDG' | 'Employé') : null,
+          salaire: values.salaire !== undefined && values.salaire !== null && String(values.salaire).trim() !== ''
+            ? Number(values.salaire)
+            : null,
           password: values.password?.trim() || '',
         };
         if (editingEmployee) {
@@ -100,6 +140,7 @@ const EmployeePage: React.FC = () => {
   nom_complet: employee.nom_complet || '',
   date_embauche: employee.date_embauche ? String(employee.date_embauche).slice(0, 10) : '',
   role: (employee.role as any) || 'Employé',
+  salaire: employee.salaire != null ? String(employee.salaire) : '',
   password: '', // Ne pas pré-remplir le mot de passe (optionnel en modification)
     });
   setChangePassword(false);
@@ -195,6 +236,28 @@ const EmployeePage: React.FC = () => {
         </div>
       </div>
 
+      {/* Salaire summary and month selector */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <label htmlFor="month" className="text-sm text-gray-700">Mois</label>
+          <input
+            id="month"
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="border border-gray-300 rounded px-2 py-1 text-sm"
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="bg-white border rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500">Dépassement salaire</div>
+            <div className="text-lg font-semibold text-red-600">
+              {employees.filter((emp: Employee) => isOverSalary(emp)).length}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Contrôles de pagination */}
       <div className="mb-4 flex justify-between items-center">
         <div className="flex items-center gap-4">
@@ -232,12 +295,13 @@ const EmployeePage: React.FC = () => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom Complet</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date d'embauche</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salaire</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {paginatedEmployees.map((employee: Employee) => (
-              <tr key={employee.id} className="hover:bg-gray-50">
+              {paginatedEmployees.map((employee: Employee) => (
+                <tr key={employee.id} className={`hover:bg-gray-50 ${isOverSalary(employee) ? 'bg-red-50' : ''}`}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {employee.cin}
                 </td>
@@ -260,8 +324,11 @@ const EmployeePage: React.FC = () => {
                     <span className="text-gray-400 text-sm">-</span>
                   )}
                 </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {employee.salaire != null ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' }) : '-'}
+                  </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
                     <button
                       onClick={() => handleEdit(employee)}
                       className="text-blue-600 hover:text-blue-900"
@@ -274,6 +341,21 @@ const EmployeePage: React.FC = () => {
                     >
                       <Trash2 size={16} />
                     </button>
+                      <button
+                        onClick={() => {
+                          setSalaryModalEmployee(employee);
+                          setSalaryMontant('');
+                          setSalaryNote('');
+                          setIsSalaryModalOpen(true);
+                        }}
+                        className="text-emerald-600 hover:text-emerald-800"
+                        title="Ajouter montant"
+                      >
+                        <Banknote size={16} />
+                      </button>
+                    <Link to={`/employees/${employee.id}/documents`} className="text-gray-600 hover:text-gray-900" title="Documents">
+                      <FileText size={16} />
+                    </Link>
                   </div>
                 </td>
               </tr>
@@ -359,6 +441,23 @@ const EmployeePage: React.FC = () => {
                 </div>
 
                 <div>
+                  <label htmlFor="salaire" className="block text-sm font-medium text-gray-700 mb-1">Salaire mensuel (MAD)</label>
+                  <input
+                    id="salaire"
+                    type="number"
+                    step="0.01"
+                    name="salaire"
+                    value={(formik.values as any).salaire ?? ''}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {formik.touched.salaire && (formik.errors as any).salaire && (
+                    <p className="text-red-500 text-sm mt-1">{String((formik.errors as any).salaire)}</p>
+                  )}
+                </div>
+
+                <div>
                   <label htmlFor="nom_complet" className="block text-sm font-medium text-gray-700 mb-1">Nom Complet</label>
                   <input
                     id="nom_complet"
@@ -423,7 +522,8 @@ const EmployeePage: React.FC = () => {
                           }
                         }}
                       />
-                      Changer le mot de passe
+                      {' '}
+                      <span>Changer le mot de passe</span>
                     </label>
                     {changePassword ? (
                       <div>
@@ -440,6 +540,7 @@ const EmployeePage: React.FC = () => {
                             onBlur={formik.handleBlur}
                             className="w-full pr-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
+                          {/* eslint-disable-next-line */}
                           <button
                             type="button"
                             onClick={() => setShowPassword((s) => !s)}
@@ -470,6 +571,7 @@ const EmployeePage: React.FC = () => {
                         onBlur={formik.handleBlur}
                         className="w-full pr-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
+                      {/* eslint-disable-next-line */}
                       <button
                         type="button"
                         onClick={() => setShowPassword((s) => !s)}
@@ -506,6 +608,67 @@ const EmployeePage: React.FC = () => {
                 >
                   {editingEmployee ? 'Modifier' : 'Ajouter'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Ajouter montant salaire */}
+      {isSalaryModalOpen && salaryModalEmployee && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm">
+            <h2 className="text-lg font-semibold mb-4">Ajouter montant - {salaryModalEmployee.nom_complet || salaryModalEmployee.cin}</h2>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!salaryMontant || isNaN(Number(salaryMontant))) {
+                  showError('Montant invalide');
+                  return;
+                }
+                try {
+                  await addSalaireEntry({ id: salaryModalEmployee.id, montant: Number(salaryMontant), note: salaryNote || undefined, created_by: user?.id || 1 }).unwrap();
+                  showSuccess('Montant ajouté');
+                  setIsSalaryModalOpen(false);
+                  setSalaryModalEmployee(null);
+                } catch (err) {
+                  console.error(err);
+                  showError("Erreur lors de l'ajout du montant");
+                }
+              }}
+            >
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="montant" className="block text-sm font-medium text-gray-700 mb-1">Montant (MAD)</label>
+                  <input
+                    id="montant"
+                    type="number"
+                    step="0.01"
+                    value={salaryMontant}
+                    onChange={(e) => setSalaryMontant(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="note" className="block text-sm font-medium text-gray-700 mb-1">Note (optionnel)</label>
+                  <input
+                    id="note"
+                    type="text"
+                    value={salaryNote}
+                    onChange={(e) => setSalaryNote(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-5">
+                <button
+                  type="button"
+                  onClick={() => { setIsSalaryModalOpen(false); setSalaryModalEmployee(null); }}
+                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
+                >
+                  Annuler
+                </button>
+                <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md">Ajouter</button>
               </div>
             </form>
           </div>

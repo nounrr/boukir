@@ -14,6 +14,7 @@ import Layout from './components/layout/Layout';
 // Pages
 import DashboardPage from './pages/DashboardPage';
 import EmployeePage from './pages/EmployeePage';
+import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
 import StockPage from './pages/StockPage';
 import ContactsPage from './pages/ContactsPage';
 import BonsPage from './pages/BonsPage';
@@ -22,8 +23,12 @@ import CaissePage from './pages/CaissePage';
 import ReportsPage from './pages/ReportsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import StatsDetailPage from './pages/StatsDetailPage';
-import ExcelUploadPage from './pages/ExcelUploadPage';
+import ExcelUploadPage from './pages/ImportExcelTabs';
+import ExportProducts from './pages/ExportProducts';
+import ExportContacts from './pages/ExportContacts';
 import RemisesPage from './pages/RemisesPage';
+import TalonsPage from './pages/TalonsPage';
+import TalonCaissePage from './pages/TalonCaissePage';
 
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
@@ -71,6 +76,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <EmployeePage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/employees/:id/documents"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <EmployeeDocumentsPage />
               </Layout>
             </ProtectedRoute>
           }
@@ -131,6 +147,27 @@ const AppContent: React.FC = () => {
           }
         />
 
+        <Route
+          path="/talons"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <TalonsPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/talon-caisse"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <TalonCaissePage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/caisse"
@@ -182,6 +219,28 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <ExcelUploadPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/export/products"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ExportProducts />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/export/contacts"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ExportContacts />
               </Layout>
             </ProtectedRoute>
           }

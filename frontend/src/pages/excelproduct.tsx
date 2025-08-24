@@ -1,8 +1,9 @@
 // ImportExcel.tsx
-import React, { useState } from "react";
+import { useState } from "react";
 import * as XLSX from "xlsx";
 
 type Row = {
+  id?: number;
   designation?: string;
   quantite?: number;
   prix_achat?: number;
@@ -12,6 +13,7 @@ type Row = {
   prix_gros?: number;
   prix_vente_pourcentage?: number;
   prix_vente?: number;
+  kg?: number;
 };
 
 export default function ImportExcel() {
@@ -37,6 +39,7 @@ export default function ImportExcel() {
 
   // Remap des headers vers le schéma attendu
   const headerMap: Record<string, keyof Row> = {
+    "id": "id",
     "designation": "designation",
     "désignation": "designation",
     "designation_ar": "designation",
@@ -57,6 +60,11 @@ export default function ImportExcel() {
     "pv%": "prix_vente_pourcentage",
     "prix_vente": "prix_vente",
     "pv": "prix_vente",
+    // poids / kg
+    "kg": "kg",
+    "poids": "kg",
+    "poids (kg)": "kg",
+    "poids(kg)": "kg",
   };
 
   const coerceNumber = (v: any): number | undefined => {
@@ -91,6 +99,7 @@ export default function ImportExcel() {
 
         // Numérise les champs numériques
         if (
+          target === "id" ||
           target === "quantite" ||
           target === "prix_achat" ||
           target === "cout_revient_pourcentage" ||
@@ -98,7 +107,8 @@ export default function ImportExcel() {
           target === "prix_gros_pourcentage" ||
           target === "prix_gros" ||
           target === "prix_vente_pourcentage" ||
-          target === "prix_vente"
+          target === "prix_vente" ||
+          target === "kg"
         ) {
           value = coerceNumber(value);
         } else if (target === "designation") {

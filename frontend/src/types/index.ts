@@ -30,6 +30,7 @@ export interface Employee {
   cin: string;
   date_embauche?: string | null;
   role?: Role | null;
+  salaire?: number | null;
   password?: string;
   created_by?: number;
   updated_by?: number;
@@ -42,7 +43,23 @@ export interface CreateEmployeeData {
   nom_complet?: string | null;
   date_embauche?: string | null;
   role?: Role | null;
+  salaire?: number | null;
   password: string;
+}
+
+// Types for employee salary entries
+export interface EmployeeSalaireEntry {
+  id: number;
+  employe_id: number;
+  montant: number;
+  note?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmployeeSalaireSummaryRow {
+  employe_id: number;
+  total: number;
 }
 
 // Types pour les catégories
@@ -148,6 +165,25 @@ export interface Vehicule {
   updated_at: string;
 }
 
+// Types pour les talons
+export interface Talon {
+  id: number;
+  nom: string;
+  phone?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTalonData {
+  nom: string;
+  phone?: string;
+}
+
+export interface UpdateTalonData {
+  nom?: string;
+  phone?: string;
+}
+
 export interface CreateVehiculeData {
   nom: string;
   marque?: string;
@@ -215,6 +251,7 @@ export interface Payment {
   type_paiement: 'Client' | 'Fournisseur';
   contact_id: number; // ID du client ou fournisseur
   bon_id?: number;
+  talon_id?: number; // ID du talon associé
   montant_total: number;
   mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement';
   date_paiement: string;

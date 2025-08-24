@@ -9,6 +9,8 @@ import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantQuery } from '../store/api/comptantApi';
 import { useGetClientsQuery, useGetFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
+import { useGetPaymentsQuery } from '../store/api/paymentsApi';
+import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetRemiseItemsQuery, useCreateRemiseItemMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
@@ -26,6 +28,8 @@ interface SearchableSelectProps {
   className?: string;
   disabled?: boolean;
   maxDisplayItems?: number;
+  autoOpenOnFocus?: boolean; // open dropdown when the control gains focus (for fast keyboard entry)
+  buttonProps?: React.ButtonHTMLAttributes<HTMLButtonElement> & Record<string, any>; // pass-through for focus/aria/data-attrs
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -36,10 +40,14 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   className = '',
   disabled = false,
   maxDisplayItems = 100,
+  autoOpenOnFocus = false,
+  buttonProps,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [displayCount, setDisplayCount] = useState(50);
+  const [highlightIndex, setHighlightIndex] = useState<number>(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const filteredOptions = options
     .filter((option) => option.label.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -51,6 +59,17 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
   const selectedOption = options.find((opt) => opt.value === value);
 
+  // Focus search input when opening
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+        // reset highlight on open
+        setHighlightIndex(filteredOptions.length > 0 ? 0 : -1);
+      }, 0);
+    }
+  }, [isOpen, filteredOptions.length]);
+
   return (
     <div className={`relative ${className}`}>
       <button
@@ -59,6 +78,25 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
         title={selectedOption ? selectedOption.label : placeholder}
+        onFocus={(e) => {
+          buttonProps?.onFocus?.(e);
+          if (!disabled && autoOpenOnFocus) setIsOpen(true);
+        }}
+        onKeyDown={(e) => {
+          buttonProps?.onKeyDown?.(e);
+          if (disabled) return;
+          // Open on typing, Enter, Space or ArrowDown
+          const openKeys = ['Enter', ' ', 'ArrowDown'];
+          const isChar = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+          if (!isOpen && (openKeys.includes(e.key) || isChar)) {
+            setIsOpen(true);
+            if (isChar) setSearchTerm((prev) => prev + e.key);
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+        }}
+        {...buttonProps}
       >
         <span className="truncate pr-2">{selectedOption ? selectedOption.label : placeholder}</span>
         <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
@@ -75,8 +113,33 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
               onChange={(e) => {
                 setSearchTerm(e.target.value);
                 setDisplayCount(50);
+                setHighlightIndex(0);
               }}
+              ref={searchInputRef}
               autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setIsOpen(false);
+                  e.stopPropagation();
+                } else if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setHighlightIndex((i) => Math.min((i < 0 ? 0 : i) + 1, filteredOptions.length - 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setHighlightIndex((i) => Math.max((i < 0 ? 0 : i) - 1, 0));
+                } else if (e.key === 'Enter') {
+                  if (highlightIndex >= 0 && filteredOptions[highlightIndex]) {
+                    const opt = filteredOptions[highlightIndex];
+                    onChange(opt.value);
+                    setIsOpen(false);
+                    setSearchTerm('');
+                    // Prevent the form-level Enter handler (which adds a row)
+                    // from firing when selecting an option from the dropdown
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }
+                }
+              }}
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
@@ -85,15 +148,29 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 <div className="p-2 text-sm text-gray-500">Aucun résultat trouvé</div>
               ) : (
                 <>
-                  {filteredOptions.map((option) => (
+                  {filteredOptions.map((option, idx) => (
                     <button
                       key={option.value}
                       type="button"
-                      className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0 overflow-hidden"
-                      onClick={() => {
+                      className={`w-full px-3 py-2 text-left hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0 overflow-hidden ${idx === highlightIndex ? 'bg-blue-50' : ''}`}
+                      onClick={(ev) => {
+                        // Avoid bubbling to form handlers
+                        ev.stopPropagation();
                         onChange(option.value);
                         setIsOpen(false);
                         setSearchTerm('');
+                        setHighlightIndex(-1);
+                      }}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter' || ev.key === ' ') {
+                          // Prevent global Enter from adding a new line when choosing here
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          onChange(option.value);
+                          setIsOpen(false);
+                          setSearchTerm('');
+                          setHighlightIndex(-1);
+                        }
                       }}
                       title={option.label}
                     >
@@ -208,6 +285,11 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined);
+  // For cumulative balances
+  const { data: commandesAll = [] } = useGetBonsByTypeQuery('Commande');
+  const { data: avoirsClientAll = [] } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsFournisseurAll = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
+  const { data: payments = [] } = useGetPaymentsQuery();
 
   // Mutations
   const [createBon] = useCreateBonMutation();
@@ -215,6 +297,10 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [createRemiseItem] = useCreateRemiseItemMutation();
   const [createContact] = useCreateContactMutation();
   const [isDuplicating, setIsDuplicating] = useState(false);
+
+  // Track Shift key to distinguish solo press vs combos (Shift+Tab, Shift+Arrow, Shift+Enter)
+  const shiftDownRef = useRef(false);
+  const shiftComboRef = useRef(false);
 
   /* -------------------- Helpers décimaux pour prix_unitaire -------------------- */
   const normalizeDecimal = (s: string) => s.replace(/\s+/g, '').replace(',', '.');
@@ -446,6 +532,50 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   });
 }, [initialFormValues]);
 
+  // Focus manager for arrow navigation between cells
+  const focusCell = (rowIndex: number, colKey: string) => {
+    const el = document.querySelector(
+      `[data-row="${rowIndex}"][data-col="${colKey}"]`
+    ) as HTMLElement | null;
+    if (el) {
+      (el as any).focus?.();
+    }
+  };
+
+  const getColOrder = () => {
+    const currentType = formikRef.current?.values?.type as string | undefined;
+    const base = ['product', 'qty', 'unit'] as const;
+    return showRemisePanel && (currentType === 'Sortie' || currentType === 'Comptant')
+      ? [...base, 'remise']
+      : [...base];
+  };
+
+  const onCellKeyDown = (rowIndex: number, colKey: string) => (e: React.KeyboardEvent<any>) => {
+    const cols = getColOrder();
+    const idx = cols.indexOf(colKey as any);
+    if (e.key === 'ArrowRight') {
+      const nextCol = cols[Math.min(idx + 1, cols.length - 1)];
+      focusCell(rowIndex, nextCol);
+  e.preventDefault();
+  e.stopPropagation();
+    } else if (e.key === 'ArrowLeft') {
+      const prevCol = cols[Math.max(idx - 1, 0)];
+      focusCell(rowIndex, prevCol);
+  e.preventDefault();
+  e.stopPropagation();
+    } else if (e.key === 'ArrowDown') {
+      const nextRow = Math.min(rowIndex + 1, (formikRef.current?.values?.items?.length || 1) - 1);
+      focusCell(nextRow, colKey);
+  e.preventDefault();
+  e.stopPropagation();
+    } else if (e.key === 'ArrowUp') {
+      const prevRow = Math.max(rowIndex - 1, 0);
+      focusCell(prevRow, colKey);
+  e.preventDefault();
+  e.stopPropagation();
+    }
+  };
+
   // Helper: add a new empty product line (same as clicking "Ajouter ligne")
   const addEmptyItemRow = (values: any, setFieldValue: (field: string, value: any) => void) => {
     const newItem = {
@@ -468,32 +598,103 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     // Try to focus the newly added reference select input on next tick
     setTimeout(() => {
       const idx = (values.items?.length ?? 0);
-      const input = document.querySelector(
-        `input[name="items.${idx}.product_reference"]`
-      ) as HTMLInputElement | null;
-      if (input) input.focus();
+      const btn = document.querySelector(
+        `[data-row="${idx}"][data-col="product"]`
+      ) as HTMLElement | null;
+      if (btn) (btn as any).focus?.();
     }, 50);
   };
 
   // Global key handler: prevent Enter from submitting; add a line when in products area
   const handleFormKeyDown = (
-    e: React.KeyboardEvent<HTMLFormElement>,
-    values: any,
-    setFieldValue: (field: string, value: any) => void
+    e: React.KeyboardEvent<HTMLFormElement>
   ) => {
-    if (e.key !== 'Enter') return;
     const target = e.target as HTMLElement | null;
-    // Allow Shift+Enter (e.g., new line in textareas), and allow inside textarea
-    const isTextarea = target && target.tagName === 'TEXTAREA';
-    if (e.shiftKey || isTextarea) return;
 
-    // Always prevent default submit on Enter
-    e.preventDefault();
-    e.stopPropagation();
+    // Track Shift press and combos
+    if (e.key === 'Shift') {
+      if (!e.repeat) {
+        shiftDownRef.current = true;
+        shiftComboRef.current = false;
+      }
+      // don't prevent default here to allow normal selection if needed
+      return;
+    } else if (shiftDownRef.current) {
+      // Any other key while Shift is down marks this as a combo, so no new line on keyup
+      shiftComboRef.current = true;
+    }
 
-    // If focused within the products section, add a new line
-    if (itemsContainerRef.current && target && itemsContainerRef.current.contains(target)) {
-      addEmptyItemRow(values, setFieldValue);
+    // Enter: submit the form (unless intercepted by inner controls like SearchableSelect)
+    if (e.key === 'Enter') {
+      const isTextarea = target && target.tagName === 'TEXTAREA';
+      if (isTextarea) return; // let textarea handle Enter normally
+      e.preventDefault();
+      e.stopPropagation();
+      formikRef.current?.submitForm();
+      return;
+    }
+
+    // 3) Flèches gauche/droite: navigation globale précédent/suivant si curseur aux bords
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const formEl = e.currentTarget as HTMLFormElement;
+      // Compute whether we should move focus
+      let shouldMove = true;
+      const t = target as any;
+      const isInputOrTextarea = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+      if (isInputOrTextarea && typeof t.selectionStart === 'number' && typeof t.selectionEnd === 'number') {
+        const valueLength = (t.value ?? '').length as number;
+        if (e.key === 'ArrowLeft') {
+          shouldMove = t.selectionStart === 0 && t.selectionEnd === 0;
+        } else {
+          shouldMove = t.selectionStart === valueLength && t.selectionEnd === valueLength;
+        }
+      }
+      if (!shouldMove) return; // laisser bouger le curseur dans le champ
+
+      // collect focusables
+      const focusableSelector = [
+        'button:not([disabled])',
+        'input:not([disabled]):not([type="hidden"])',
+        'select:not([disabled])',
+        'textarea:not([disabled])',
+        '[tabindex]:not([tabindex="-1"])',
+      ].join(',');
+      const focusables = Array.from(formEl.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter((el) => el.offsetParent !== null || el.getAttribute('aria-hidden') !== 'true');
+      const currentIndex = focusables.indexOf(target as HTMLElement);
+      if (currentIndex === -1) return;
+      const delta = e.key === 'ArrowLeft' ? -1 : 1;
+      let nextIndex = currentIndex + delta;
+      nextIndex = Math.max(0, Math.min(focusables.length - 1, nextIndex));
+      const nextEl = focusables[nextIndex];
+      if (nextEl) {
+        e.preventDefault();
+        nextEl.focus();
+        // Try select all for inputs
+        try {
+          if ((nextEl as any).select) (nextEl as any).select();
+        } catch {}
+      }
+    }
+  };
+
+  // Handle keyup for Shift solo: create a new line when Shift was pressed and released without combos
+  const handleFormKeyUp = (
+    e: React.KeyboardEvent<HTMLFormElement>
+  ) => {
+    if (e.key === 'Shift') {
+      const wasCombo = shiftComboRef.current;
+      shiftDownRef.current = false;
+      shiftComboRef.current = false;
+      if (!wasCombo) {
+        // Add a new line and focus the product selector
+        e.preventDefault();
+        e.stopPropagation();
+        const formik = formikRef.current;
+        if (formik) {
+          addEmptyItemRow(formik.values, formik.setFieldValue);
+        }
+      }
     }
   };
 
@@ -708,6 +909,71 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     return bestPrice;
   };
 
+  // ---------------- Solde cumulé (comme sur ContactsPage) -----------------
+  const computeClientBalance = (clientId: string | null | undefined) => {
+    if (!clientId) return null;
+    const cidNum = Number(clientId);
+    const contact = clients.find((c: any) => Number(c.id) === cidNum);
+    // Align with Contacts page: start from DB solde (initial) for this contact
+    const base = Number((contact as any)?.solde ?? 0) || 0;
+
+    const sum = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'client_id') =>
+      (arr || []).reduce((s, b: any) => s + (Number(b?.montant_total ?? 0) || 0) * (Number(b?.[pickId]) === cidNum ? 1 : 0), 0);
+
+    const ventes = sum(sortiesHistory as any[], 'client_id') + sum(comptantHistory as any[], 'client_id');
+    const avoirs = sum(avoirsClientAll as any[], 'client_id');
+    // Contacts page sums all payments by contact_id (no statut/type filtering)
+    const pays = (payments as any[]).reduce((s, p: any) => {
+      return s + (Number(p?.contact_id) === cidNum ? Number(p?.montant ?? p?.montant_total ?? 0) || 0 : 0);
+    }, 0);
+
+    // Formula consistent with Contacts: solde (DB) + ventes - avoirs - paiements
+    return base + ventes - avoirs - pays;
+  };
+
+  // Helper: detailed breakdown for client balance (for debugging/logging)
+  const getClientBalanceBreakdown = (clientId: string | null | undefined) => {
+    if (!clientId) return null;
+    const cidNum = Number(clientId);
+    const contact = clients.find((c: any) => Number(c.id) === cidNum);
+    const base = Number((contact as any)?.solde ?? 0) || 0;
+
+    const sum = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'client_id') =>
+      (arr || []).reduce((s, b: any) => s + (Number(b?.montant_total ?? 0) || 0) * (Number(b?.[pickId]) === cidNum ? 1 : 0), 0);
+
+    const sortiesSum = sum(sortiesHistory as any[], 'client_id');
+    const comptantSum = sum(comptantHistory as any[], 'client_id');
+    const ventes = sortiesSum + comptantSum;
+    const avoirs = sum(avoirsClientAll as any[], 'client_id');
+    const paymentsSum = (payments as any[]).reduce((s, p: any) => {
+      return s + (Number(p?.contact_id) === cidNum ? Number(p?.montant ?? p?.montant_total ?? 0) || 0 : 0);
+    }, 0);
+
+    const total = base + ventes - avoirs - paymentsSum;
+    return { base, sorties: sortiesSum, comptant: comptantSum, ventes, avoirs, payments: paymentsSum, total };
+  };
+
+  const computeFournisseurBalance = (fournisseurId: string | null | undefined) => {
+    if (!fournisseurId) return null;
+    const fidNum = Number(fournisseurId);
+    const contact = fournisseurs.find((f: any) => Number(f.id) === fidNum);
+    // Align with Contacts: start from DB solde
+    const base = Number((contact as any)?.solde ?? 0) || 0;
+
+    const sum = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'fournisseur_id') =>
+      (arr || []).reduce((s, b: any) => s + (Number(b?.montant_total ?? 0) || 0) * (Number(b?.[pickId]) === fidNum ? 1 : 0), 0);
+
+    const achats = sum(commandesAll as any[], 'fournisseur_id');
+    const avoirs = sum(avoirsFournisseurAll as any[], 'fournisseur_id');
+    // Sum all payments by contact_id (no statut/type filtering)
+    const pays = (payments as any[]).reduce((s, p: any) => {
+      return s + (Number(p?.contact_id) === fidNum ? Number(p?.montant ?? p?.montant_total ?? 0) || 0 : 0);
+    }, 0);
+
+    // Fournisseur balance: initial + achats - avoirs - paiements
+    return base + achats - avoirs - pays;
+  };
+
   /* ------------------------------ Appliquer produit ------------------------------ */
   /* ------------------------------ Appliquer produit ------------------------------ */
 const applyProductToRow = (rowIndex: number, product: any) => {
@@ -765,7 +1031,11 @@ const applyProductToRow = (rowIndex: number, product: any) => {
           innerRef={formikRef}
         >
           {({ values, isSubmitting, setFieldValue }) => (
-            <Form className="space-y-4" onKeyDown={(e) => handleFormKeyDown(e, values, setFieldValue)}>
+            <Form
+              className="space-y-4"
+              onKeyDown={(e) => handleFormKeyDown(e)}
+              onKeyUp={(e) => handleFormKeyUp(e)}
+            >
               <div className="grid grid-cols-2 gap-4">
 
                 {/* Date */}
@@ -842,6 +1112,23 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                           setFieldValue('client_nom', c.nom_complet);
                           setFieldValue('client_adresse', c.adresse || '');
                           setFieldValue('client_societe', (c as any).societe || '');
+                          // Debug: log detailed breakdown of client balance calculation
+                          const breakdown = getClientBalanceBreakdown(clientId);
+                          if (breakdown) {
+                            // Keep it compact and readable in console
+                            console.groupCollapsed(`Solde cumulé (Client ${c.id} - ${c.nom_complet})`);
+                            console.log('Formule: solde(DB) + ventes - avoirs - paiements');
+                            console.table({
+                              base_db: breakdown.base,
+                              ventes_sorties: breakdown.sorties,
+                              ventes_comptant: breakdown.comptant,
+                              ventes_total: breakdown.ventes,
+                              avoirs: breakdown.avoirs,
+                              paiements: breakdown.payments,
+                              total: breakdown.total,
+                            });
+                            console.groupEnd();
+                          }
                         }
                       } else {
                         setFieldValue('client_nom', '');
@@ -851,8 +1138,20 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                     placeholder="Sélectionnez un client"
                     className="w-full"
                     maxDisplayItems={200}
+                    autoOpenOnFocus
                   />
                   <ErrorMessage name="client_id" component="div" className="text-red-500 text-sm mt-1" />
+                  {values.client_id && (
+                    <div className="mt-2 p-2 bg-blue-50 rounded">
+                      <span className="text-sm text-blue-700 font-medium">Solde cumulé: </span>
+                      <span className="text-sm text-blue-800 font-semibold">
+                        {(() => {
+                          const solde = computeClientBalance(values.client_id);
+                          return solde != null ? `${solde.toFixed(2)} DH` : '—';
+                        })()}
+                      </span>
+                    </div>
+                  )}
                   {values.client_adresse && (
                     <div className="mt-2 p-2 bg-gray-50 rounded">
                       <span className="text-sm text-gray-600">Adresse: </span>
@@ -926,8 +1225,20 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                     placeholder="Sélectionnez un fournisseur"
                     className="w-full"
                     maxDisplayItems={200}
+                    autoOpenOnFocus
                   />
                   <ErrorMessage name="fournisseur_id" component="div" className="text-red-500 text-sm mt-1" />
+                  {values.fournisseur_id && (
+                    <div className="mt-2 p-2 bg-blue-50 rounded">
+                      <span className="text-sm text-blue-700 font-medium">Solde cumulé: </span>
+                      <span className="text-sm text-blue-800 font-semibold">
+                        {(() => {
+                          const solde = computeFournisseurBalance(values.fournisseur_id);
+                          return solde != null ? `${solde.toFixed(2)} DH` : '—';
+                        })()}
+                      </span>
+                    </div>
+                  )}
                   {values.fournisseur_adresse && (
                     <div className="mt-2 p-2 bg-gray-50 rounded">
                       <span className="text-sm text-gray-600">Adresse: </span>
@@ -976,6 +1287,15 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                         setFieldValue('items', [...values.items, newItem]);
                         setUnitPriceRaw((prev) => ({ ...prev, [values.items.length]: '0' }));
                         setQtyRaw((prev) => ({ ...prev, [values.items.length]: '0' })); // ou [newIndex]
+
+                        // Focus the new row's product selector and auto-open search
+                        setTimeout(() => {
+                          const idx = values.items.length; // new index after push
+                          const btn = document.querySelector(
+                            `[data-row="${idx}"][data-col="product"]`
+                          ) as HTMLElement | null;
+                          if (btn) (btn as any).focus?.();
+                        }, 50);
 
                       }}
                       className="flex items-center text-blue-600 hover:text-blue-800"
@@ -1070,11 +1390,8 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
-                              Référence
-                            </th>
-                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[150px]">
-                              Désignation
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[260px]">
+                              Produit (Réf - Désignation)
                             </th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
                               Qté
@@ -1108,83 +1425,52 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                           ) : (
                             values.items.map((row: any, index: number) => (
                               <tr key={row._rowId || `item-${index}`}>
-                                {/* Référence */}
-<td className="px-1 py-2 w-[100px]">
-  <SearchableSelect
-    options={products.map((p: any) => ({
-      value: String(p.reference ?? p.id),
-      label: String(p.reference ?? p.id),
-      data: p,
-    }))}
-    value={values.items[index].product_reference}
-    onChange={(reference) => {
-      setFieldValue(`items.${index}.product_reference`, reference);
-      if (reference) {
-        const product = products.find(
-          (p: any) => String(p.reference ?? p.id) === reference
-        );
-        if (product) {
-          setFieldValue(`items.${index}.product_id`, product.id);
-          setFieldValue(`items.${index}.designation`, product.designation);
-          setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
-          setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
-          const unit = product.prix_vente || 0;
-          setFieldValue(`items.${index}.prix_unitaire`, unit);
-          setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit) })); // sync raw
-          setFieldValue(`items.${index}.kg`, product.kg ?? 0);
-
-          // recalcul total avec qtyRaw prioritaire
-          const q =
-            parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
-          setFieldValue(`items.${index}.total`, q * unit);
-        }
-      }
-    }}
-    placeholder="Réf."
-    className="w-full"
-    maxDisplayItems={100}
-  />
-</td>
-
-
-                                {/* Désignation */}
-<td className="px-1 py-2 w-[150px]">
-  <SearchableSelect
-    options={products.map((p: any) => ({
-      value: p.designation,
-      label: p.designation,
-      data: p,
-    }))}
-    value={values.items[index].designation}
-    onChange={(designation) => {
-      setFieldValue(`items.${index}.designation`, designation);
-      if (designation) {
-        const product = products.find((p: any) => p.designation === designation);
-        if (product) {
-          setFieldValue(`items.${index}.product_id`, product.id);
-          setFieldValue(
-            `items.${index}.product_reference`,
-            String(product.reference ?? product.id)
-          );
-          setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
-          setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
-          const unit = product.prix_vente || 0;
-          setFieldValue(`items.${index}.prix_unitaire`, unit);
-          setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit) })); // sync raw
-          setFieldValue(`items.${index}.kg`, product.kg ?? 0);
-
-          // recalcul total avec qtyRaw prioritaire
-          const q =
-            parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
-          setFieldValue(`items.${index}.total`, q * unit);
-        }
-      }
-    }}
-    placeholder="Désignation"
-    className="w-full"
-    maxDisplayItems={150}
-  />
-</td>
+                                {/* Produit combiné (Réf - Désignation) */}
+                                <td className="px-1 py-2 w-[260px]">
+                                  <SearchableSelect
+                                    options={products.map((p: any) => ({
+                                      value: String(p.id),
+                                      label: `${String(p.reference ?? p.id)} - ${p.designation ?? ''}`.trim(),
+                                      data: p,
+                                    }))}
+                                    value={String(values.items[index].product_id || '')}
+                                    onChange={(productId) => {
+                                      const product = products.find((p: any) => String(p.id) === productId);
+                                      if (product) {
+                                        setFieldValue(`items.${index}.product_id`, product.id);
+                                        setFieldValue(
+                                          `items.${index}.product_reference`,
+                                          String(product.reference ?? product.id)
+                                        );
+                                        setFieldValue(`items.${index}.designation`, product.designation || '');
+                                        setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
+                                        setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
+                                        const unit = product.prix_vente || 0;
+                                        setFieldValue(`items.${index}.prix_unitaire`, unit);
+                                        setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit) }));
+                                        setFieldValue(`items.${index}.kg`, product.kg ?? 0);
+                                        const q =
+                                          parseFloat(
+                                            normalizeDecimal(
+                                              qtyRaw[index] ?? String(values.items[index].quantite ?? '')
+                                            )
+                                          ) || 0;
+                                        setFieldValue(`items.${index}.total`, q * unit);
+                                        // After choosing product, focus qty
+                                        setTimeout(() => focusCell(index, 'qty'), 0);
+                                      }
+                                    }}
+                                    placeholder="Sélectionner produit"
+                                    className="w-full"
+                                    maxDisplayItems={300}
+                                    autoOpenOnFocus
+                                    buttonProps={{
+                                      'data-row': index as any,
+                                      'data-col': 'product' as any,
+                                      onKeyDown: onCellKeyDown(index, 'product'),
+                                    }}
+                                  />
+                                </td>
 
 
                                 {/* Quantité */}
@@ -1224,6 +1510,9 @@ const applyProductToRow = (rowIndex: number, product: any) => {
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       setFieldValue(`items.${index}.total`, q * u);
     }}
+  data-row={index}
+  data-col="qty"
+  onKeyDown={onCellKeyDown(index, 'qty')}
   />
 </td>
 
@@ -1263,6 +1552,9 @@ const applyProductToRow = (rowIndex: number, product: any) => {
         parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
       setFieldValue(`items.${index}.total`, q * val);
     }}
+  data-row={index}
+  data-col="unit"
+  onKeyDown={onCellKeyDown(index, 'unit')}
   />
   {values.client_id && values.items[index].product_id && (() => {
     const last = getLastUnitPriceForClientProduct(
@@ -1278,7 +1570,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
 
                                 {/* Remise unitaire (DH) - Sortie/Comptant */}
                                 {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
-                                  <td className="px-1 py-2 w-[90px]">
+                  <td className="px-1 py-2 w-[90px]">
                                     <input
                                       type="text"
                                       inputMode="decimal"
@@ -1296,6 +1588,9 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                                         setFieldValue(`items.${index}.remise_montant`, val);
                                         setRemiseRaw((prev) => ({ ...prev, [index]: formatNumber(val) }));
                                       }}
+                    data-row={index}
+                    data-col="remise"
+                    onKeyDown={onCellKeyDown(index, 'remise')}
                                     />
                                   </td>
                                 )}
@@ -1364,6 +1659,8 @@ const applyProductToRow = (rowIndex: number, product: any) => {
       });
     }}
     className="text-red-600 hover:text-red-800"
+  data-row={index}
+  data-col="delete"
   >
     <Trash2 size={16} />
   </button>

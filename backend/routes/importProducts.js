@@ -17,10 +17,14 @@ const upload = multer({
  * POST /api/import/products-excel
  * Form-Data: file=<.xlsx|.xls|.csv>
  * Colonnes attendues (entêtes, casse exacte) :
- *  designation, quantite, prix_achat,
+ *  id (optionnel), designation, quantite, prix_achat,
  *  cout_revient_pourcentage, cout_revient,
  *  prix_gros_pourcentage, prix_gros,
  *  prix_vente_pourcentage, prix_vente
+ *
+ * Règles:
+ *  - Si "id" est fourni et correspond à un produit existant, on met à jour ce produit.
+ *  - Si "id" est vide/absent, on insère un nouveau produit (id auto-incrémenté).
  */
 router.post("/", upload.single("file"), async (req, res) => {
   try {
@@ -51,8 +55,9 @@ router.post("/", upload.single("file"), async (req, res) => {
     const s = (v) =>
       v === undefined || v === null ? null : String(v).trim() || null;
 
-    // Map + calculs si manquants (basés sur prix_achat + pourcentage)
+  // Map + calculs si manquants (basés sur prix_achat + pourcentage)
     const values = rows.map((r) => {
+      const id = intOrNull(r.id ?? r["ID"]);
       const designation = s(r.designation ?? r["Designation"] ?? r["désignation"]);
       const quantite = intOrNull(r.quantite);
       const prix_achat = decOrNull(r.prix_achat);
@@ -78,6 +83,7 @@ router.post("/", upload.single("file"), async (req, res) => {
 
       // Order of columns must match the INSERT column list below
       return [
+        id, // may be null => insert new id (AUTO_INCREMENT)
         designation,
         quantite,
         prix_achat,
@@ -87,14 +93,18 @@ router.post("/", upload.single("file"), async (req, res) => {
         pgp,
         prix_gros,
         pvp,
-        prix_vente,
+  prix_vente,
+  1, // categorie_id par défaut
       ];
     });
 
     // Filtre les lignes vides (aucune désignation et aucun prix)
-    const cleaned = values.filter(
-      (v) => v[0] !== null || v[2] !== null || v[9] !== null
-    );
+    const cleaned = values.filter((v) => {
+      const hasId = v[0] !== null; // id
+      const hasAnyField = v.slice(1).some((x) => x !== null);
+      const hasInsertKey = v[1] !== null || v[3] !== null || v[10] !== null; // designation or prix_achat or prix_vente
+      return (hasId && hasAnyField) || (!hasId && hasInsertKey);
+    });
     if (cleaned.length === 0) {
       return res.status(400).json({ message: "No valid rows to import" });
     }
@@ -104,16 +114,27 @@ router.post("/", upload.single("file"), async (req, res) => {
       await conn.query("SET NAMES utf8mb4;");
       await conn.beginTransaction();
 
-      // 💡: si tu veux UPSERT sur une clé unique (ex: designation unique),
-      // remplace par INSERT ... ON DUPLICATE KEY UPDATE ...
-      const sql = `
+      // Upsert par clé primaire id: si id fourni => update, sinon => insert
+  const sql = `
         INSERT INTO products
-        (designation, quantite, prix_achat,
+        (id, designation, quantite, prix_achat,
          cout_revient_pourcentage, cout_revient,
              kg,
          prix_gros_pourcentage, prix_gros,
-         prix_vente_pourcentage, prix_vente)
+     prix_vente_pourcentage, prix_vente,
+     categorie_id)
         VALUES ?
+        ON DUPLICATE KEY UPDATE
+          designation = COALESCE(VALUES(designation), designation),
+          quantite = COALESCE(VALUES(quantite), quantite),
+          prix_achat = COALESCE(VALUES(prix_achat), prix_achat),
+          cout_revient_pourcentage = COALESCE(VALUES(cout_revient_pourcentage), cout_revient_pourcentage),
+          cout_revient = COALESCE(VALUES(cout_revient), cout_revient),
+          kg = COALESCE(VALUES(kg), kg),
+          prix_gros_pourcentage = COALESCE(VALUES(prix_gros_pourcentage), prix_gros_pourcentage),
+          prix_gros = COALESCE(VALUES(prix_gros), prix_gros),
+          prix_vente_pourcentage = COALESCE(VALUES(prix_vente_pourcentage), prix_vente_pourcentage),
+      prix_vente = COALESCE(VALUES(prix_vente), prix_vente)
       `;
       await conn.query(sql, [cleaned]);
 

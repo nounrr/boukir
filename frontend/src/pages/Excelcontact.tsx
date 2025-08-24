@@ -1,10 +1,11 @@
 // ImportContacts.tsx
-import React, { useState } from "react";
+import { useState } from "react";
 import * as XLSX from "xlsx";
 
 type ContactRow = {
   nom_complet?: string;
   type?: string;
+  solde?: number;
 };
 
 const normalizeHeader = (h: string) =>
@@ -30,7 +31,18 @@ const headerMap: Record<string, keyof ContactRow> = {
   "categorie": "type",
   "catégorie": "type",
   "نوع": "type",
+  // solde / balance
+  "solde": "solde",
+  "balance": "solde",
+  "solde initial": "solde",
+  "رصيد": "solde",
 };
+const coerceNumber = (v: any): number | undefined => {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+
 
 const normalizeType = (t: string | undefined): string | undefined => {
   if (!t) return undefined;
@@ -79,6 +91,8 @@ export default function ImportContacts() {
           val = val == null ? undefined : String(val).trim();
         } else if (key === "type") {
           val = normalizeType(val == null ? undefined : String(val));
+        } else if (key === "solde") {
+          val = coerceNumber(val);
         }
         (out as any)[key] = val;
       });
@@ -162,16 +176,22 @@ export default function ImportContacts() {
                 <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 6 }}>
                   type
                 </th>
+                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 6 }}>
+                  solde
+                </th>
               </tr>
             </thead>
             <tbody>
-              {preview.map((r, idx) => (
-                <tr key={idx}>
+              {preview.map((r) => (
+                <tr key={`${r.nom_complet || ''}-${r.type || ''}-${r.solde ?? ''}`}>
                   <td style={{ borderBottom: "1px solid #f1f5f9", padding: 6 }}>
                     {r.nom_complet || ""}
                   </td>
                   <td style={{ borderBottom: "1px solid #f1f5f9", padding: 6 }}>
                     {r.type || ""}
+                  </td>
+                  <td style={{ borderBottom: "1px solid #f1f5f9", padding: 6 }}>
+                    {r.solde ?? ""}
                   </td>
                 </tr>
               ))}
