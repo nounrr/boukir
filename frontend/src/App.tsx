@@ -15,6 +15,7 @@ import Layout from './components/layout/Layout';
 import DashboardPage from './pages/DashboardPage';
 import EmployeePage from './pages/EmployeePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
+import DocumentTypesPage from './pages/DocumentTypesPage';
 import StockPage from './pages/StockPage';
 import ContactsPage from './pages/ContactsPage';
 import BonsPage from './pages/BonsPage';
@@ -29,6 +30,9 @@ import ExportContacts from './pages/ExportContacts';
 import RemisesPage from './pages/RemisesPage';
 import TalonsPage from './pages/TalonsPage';
 import TalonCaissePage from './pages/TalonCaissePage';
+import ArchivedProductsPage from './pages/ArchivedProductsPage';
+import ProfilePage from './pages/ProfilePage';
+import EmployeeSalariesPage from './pages/EmployeeSalariesPage';
 
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
@@ -93,6 +97,28 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/employees/:id/salaries"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <EmployeeSalariesPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/document-types"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <DocumentTypesPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/stock"
           element={
             <ProtectedRoute>
@@ -150,7 +176,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/talons"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRole="PDG">
               <Layout>
                 <TalonsPage />
               </Layout>
@@ -161,7 +187,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/talon-caisse"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRole="PDG">
               <Layout>
                 <TalonCaissePage />
               </Layout>
@@ -241,6 +267,28 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <ExportContacts />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/products/archived"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ArchivedProductsPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ProfilePage />
               </Layout>
             </ProtectedRoute>
           }

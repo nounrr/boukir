@@ -117,13 +117,15 @@ const CategoriesPage: React.FC = () => {
 												>
 													<Edit size={16} />
 												</button>
-												<button
-													onClick={() => handleDelete(c.id)}
-													className="text-red-600 hover:text-red-900"
-													title="Supprimer"
-												>
-													<Trash2 size={16} />
-												</button>
+												{!(String(c.nom).toUpperCase() === 'UNCATEGORIZED' || c.id === 1) && (
+													<button
+														onClick={() => handleDelete(c.id)}
+														className="text-red-600 hover:text-red-900"
+														title="Supprimer"
+													>
+														<Trash2 size={16} />
+													</button>
+												)}
 											</div>
 										</td>
 									</tr>

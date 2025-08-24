@@ -38,11 +38,11 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/jpg', 'image/png'];
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
     if (!allowed.includes(file.mimetype)) return cb(new Error('Type de fichier non supporté'));
     cb(null, true);
   },
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB pour supporter les PDF
 });
 
 // POST /api/upload/payment-image - field name: image

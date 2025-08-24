@@ -51,7 +51,7 @@ router.post('/', async (req, res, next) => {
     const now = new Date();
     const hashed = await bcrypt.hash(password.trim(), 10);
     const [result] = await pool.query(
-      'INSERT INTO employees (nom_complet, cin, date_embauche, role, salaire, password, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO employees (nom_complet, cin, date_embauche, role, salaire, password, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [clean(nom_complet), cinTrim, clean(date_embauche), clean(role), clean(salaire), hashed, clean(created_by), now, now]
     );
     const id = result.insertId;

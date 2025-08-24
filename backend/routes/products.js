@@ -3,12 +3,29 @@ import pool from '../db/pool.js';
 
 const router = Router();
 
+// Ensure soft-delete column exists
+let ensuredProductsSoftDelete = false;
+async function ensureProductsSoftDeleteColumn() {
+  if (ensuredProductsSoftDelete) return;
+  const [cols] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'is_deleted'`
+  );
+  if (!cols.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN is_deleted TINYINT(1) NOT NULL DEFAULT 0 AFTER est_service`);
+  }
+  ensuredProductsSoftDelete = true;
+}
+ensureProductsSoftDeleteColumn().catch((e) => console.error('ensureProductsSoftDeleteColumn:', e));
+
 router.get('/', async (_req, res, next) => {
   try {
+    await ensureProductsSoftDeleteColumn();
     const [rows] = await pool.query(`
       SELECT p.*, c.id as c_id, c.nom as c_nom, c.description as c_description
       FROM products p
       LEFT JOIN categories c ON p.categorie_id = c.id
+      WHERE COALESCE(p.is_deleted, 0) = 0
       ORDER BY p.id DESC
     `);
     const data = rows.map((r) => ({
@@ -37,19 +54,57 @@ router.get('/', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// List soft-deleted products
+router.get('/archived/list', async (_req, res, next) => {
+  try {
+    await ensureProductsSoftDeleteColumn();
+    const [rows] = await pool.query(
+      `SELECT p.*, c.id as c_id, c.nom as c_nom
+       FROM products p
+       LEFT JOIN categories c ON p.categorie_id = c.id
+       WHERE COALESCE(p.is_deleted, 0) = 1
+       ORDER BY p.updated_at DESC`
+    );
+    res.json(rows.map((r) => ({
+      id: r.id,
+      reference: String(r.id),
+      designation: r.designation,
+      categorie_id: r.categorie_id,
+      categorie: r.c_id ? { id: r.c_id, nom: r.c_nom } : undefined,
+      updated_at: r.updated_at,
+    })));
+  } catch (err) { next(err); }
+});
+
+// Restore a soft-deleted product
+router.post('/:id/restore', async (req, res, next) => {
+  try {
+    await ensureProductsSoftDeleteColumn();
+    const id = Number(req.params.id);
+    const now = new Date();
+    const [exists] = await pool.query('SELECT id FROM products WHERE id = ? AND COALESCE(is_deleted,0) = 1', [id]);
+    if (!exists.length) return res.status(404).json({ message: 'Produit archivé introuvable' });
+    await pool.query('UPDATE products SET is_deleted = 0, updated_at = ? WHERE id = ?', [now, id]);
+    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
+    const r = rows[0];
+    res.json({ ...r, reference: String(r.id) });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
+    await ensureProductsSoftDeleteColumn();
     const id = Number(req.params.id);
     const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
     const r = rows[0];
     if (!r) return res.status(404).json({ message: 'Produit introuvable' });
     res.json({
       id: r.id,
-  reference: String(r.id),
+      reference: String(r.id),
       designation: r.designation,
       categorie_id: r.categorie_id,
       quantite: Number(r.quantite),
-    kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
+      kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
       prix_achat: Number(r.prix_achat),
       cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
       cout_revient: Number(r.cout_revient),
@@ -68,6 +123,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
+  await ensureProductsSoftDeleteColumn();
     const {
       designation,
       categorie_id,
@@ -139,6 +195,7 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
+  await ensureProductsSoftDeleteColumn();
     const id = Number(req.params.id);
     const [exists] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
     if (exists.length === 0) return res.status(404).json({ message: 'Produit introuvable' });
@@ -202,9 +259,11 @@ router.put('/:id', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const id = Number(req.params.id);
-    await pool.query('DELETE FROM products WHERE id = ?', [id]);
-    res.status(204).send();
+  await ensureProductsSoftDeleteColumn();
+  const id = Number(req.params.id);
+  const now = new Date();
+  await pool.query('UPDATE products SET is_deleted = 1, updated_at = ? WHERE id = ?', [now, id]);
+  res.status(204).send();
   } catch (err) { next(err); }
 });
 

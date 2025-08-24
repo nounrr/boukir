@@ -1,4 +1,3 @@
-/* eslint-disable sonarjs/cognitive-complexity */
 import React, { useState } from 'react';
 import {
   useGetEmployeesQueryServer as useGetEmployeesQuery,
@@ -8,15 +7,202 @@ import {
   useAddEmployeeSalaireEntryMutationServer,
   useGetSalaireMonthlySummaryQueryServer,
 } from '../store/api/employeesApi.server';
+import { useGetEmployeeDocsQuery, useGetDocumentTypesQuery } from '../store/api/employeeDocsApi';
 import type { Employee } from '../types';
 import { useAuth } from '../hooks/redux';
-import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote, Wallet, ChevronDown, ChevronRight } from 'lucide-react';
 // merged imports above
 // imports merged above
 import { Link } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
+
+// Composant pour afficher les statistiques de documents d'un employé
+const EmployeeDocsStats: React.FC<{ employeeId: number }> = ({ employeeId }) => {
+  const { data: docs = [] } = useGetEmployeeDocsQuery(employeeId);
+  const { data: types = [] } = useGetDocumentTypesQuery();
+  
+  const docsCount = docs.length;
+  const typesCount = types.length;
+  
+  return (
+    <div className="text-center">
+      <div className="text-sm font-medium text-gray-900">
+        {docsCount} / {typesCount}
+      </div>
+      <div className="text-xs text-gray-500">
+        docs / types
+      </div>
+    </div>
+  );
+};
+
+// Composant pour le contenu de l'accordéon - version simplifiée
+const EmployeeAccordionContent: React.FC<{ employee: Employee; selectedMonth: string; salaryMap: Map<number, number> }> = ({ 
+  employee, 
+  selectedMonth,
+  salaryMap
+}) => {
+  const { data: docs = [] } = useGetEmployeeDocsQuery(employee.id);
+  const { data: types = [] } = useGetDocumentTypesQuery();
+  
+  const currentMonthTotal = React.useMemo(() => {
+    // Utiliser les vraies données du salaryMap
+    return salaryMap.get(employee.id) || 0;
+  }, [salaryMap, employee.id]);
+
+  // Calculer les statistiques des documents
+  const docsStats = React.useMemo(() => {
+    const totalDocs = docs.length;
+    const totalTypes = types.length;
+    const typesWithDocs = new Set(docs.map(doc => doc.type_doc_id).filter(Boolean)).size;
+    
+    return { totalDocs, totalTypes, typesWithDocs };
+  }, [docs, types]);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Statistiques de salaire */}
+      <div className="bg-white rounded-lg border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Wallet size={18} className="text-emerald-600" />
+            Salaires - {selectedMonth}
+          </h3>
+          <Link 
+            to={`/employees/${employee.id}/salaries`}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Voir tout →
+          </Link>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-emerald-50 rounded-lg p-3">
+            <div className="text-xs text-emerald-600 font-medium">Total ce mois</div>
+            <div className="text-lg font-bold text-emerald-800">
+              {currentMonthTotal.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
+            </div>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-3">
+            <div className="text-xs text-blue-600 font-medium">Salaire prévu</div>
+            <div className="text-lg font-bold text-blue-800">
+              {employee.salaire != null 
+                ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })
+                : 'Non défini'
+              }
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <Link 
+            to={`/employees/${employee.id}/salaries`}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors"
+          >
+            <Wallet size={16} />
+            Gérer les salaires
+          </Link>
+        </div>
+      </div>
+
+      {/* Documents */}
+      <div className="bg-white rounded-lg border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <FileText size={18} className="text-blue-600" />
+            Documents
+          </h3>
+          <Link 
+            to={`/employees/${employee.id}/documents`}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Gérer →
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-blue-50 rounded-lg p-3">
+            <div className="text-xs text-blue-600 font-medium">Documents uploadés</div>
+            <div className="text-lg font-bold text-blue-800">
+              {docsStats.totalDocs}
+            </div>
+          </div>
+          <div className="bg-purple-50 rounded-lg p-3">
+            <div className="text-xs text-purple-600 font-medium">Types complétés</div>
+            <div className="text-lg font-bold text-purple-800">
+              {docsStats.typesWithDocs} / {docsStats.totalTypes}
+            </div>
+          </div>
+        </div>
+
+        {docs.length > 0 ? (
+          <div className="space-y-2 mb-4">
+            <div className="text-sm font-medium text-gray-700">Derniers documents :</div>
+            {docs.slice(0, 3).map((doc) => (
+              <div key={doc.id} className="flex items-center gap-2 text-sm text-gray-600">
+                <FileText size={14} className="text-blue-500" />
+                <span className="truncate">{doc.path.split('/').pop()}</span>
+                <span className="text-xs text-gray-400">({doc.type_nom || 'Sans type'})</span>
+              </div>
+            ))}
+            {docs.length > 3 && (
+              <div className="text-xs text-gray-500">
+                ... et {docs.length - 3} autres documents
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <FileText size={32} className="mx-auto text-gray-300 mb-2" />
+            <p className="text-gray-500 text-sm">
+              Aucun document uploadé
+            </p>
+          </div>
+        )}
+
+        <div className="text-center">
+          <Link 
+            to={`/employees/${employee.id}/documents`}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+          >
+            <FileText size={16} />
+            Voir les documents
+          </Link>
+        </div>
+      </div>
+
+      {/* Informations supplémentaires */}
+      <div className="lg:col-span-2 bg-gray-50 rounded-lg p-4">
+        <h4 className="font-medium text-gray-900 mb-3">Informations de l'employé</h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div>
+            <span className="text-gray-500">CIN:</span>
+            <span className="ml-2 font-medium">{employee.cin}</span>
+          </div>
+          <div>
+            <span className="text-gray-500">Nom:</span>
+            <span className="ml-2 font-medium">{employee.nom_complet || '-'}</span>
+          </div>
+          <div>
+            <span className="text-gray-500">Date embauche:</span>
+            <span className="ml-2 font-medium">
+              {employee.date_embauche 
+                ? new Date(employee.date_embauche).toLocaleDateString('fr-FR')
+                : '-'
+              }
+            </span>
+          </div>
+          <div>
+            <span className="text-gray-500">Rôle:</span>
+            <span className="ml-2 font-medium">{employee.role || '-'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const validationSchemaCreate = Yup.object({
   cin: Yup.string().required('CIN requis'),
@@ -50,6 +236,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
   const [searchTerm, setSearchTerm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [changePassword, setChangePassword] = useState(false); // only used when editing
+  const [expandedEmployee, setExpandedEmployee] = useState<number | null>(null);
   // Salaire modal state
   const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
   const [salaryModalEmployee, setSalaryModalEmployee] = useState<Employee | null>(null);
@@ -295,52 +482,72 @@ const EmployeePage: React.FC = () => { // NOSONAR
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom Complet</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date d'embauche</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salaire</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salaire</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Documents</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedEmployees.map((employee: Employee) => (
-                <tr key={employee.id} className={`hover:bg-gray-50 ${isOverSalary(employee) ? 'bg-red-50' : ''}`}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {employee.cin}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {employee.nom_complet}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {employee.date_embauche ? new Date(employee.date_embauche).toLocaleDateString('fr-FR') : '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {employee.role ? (
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      employee.role === 'PDG' 
-                        ? 'bg-purple-100 text-purple-800' 
-                        : 'bg-green-100 text-green-800'
-                    }`}>
-                      {employee.role}
-                    </span>
-                  ) : (
-                    <span className="text-gray-400 text-sm">-</span>
-                  )}
-                </td>
+            {paginatedEmployees.map((employee: Employee) => (
+              <React.Fragment key={employee.id}>
+                <tr className={`hover:bg-gray-50 ${isOverSalary(employee) ? 'bg-red-50' : ''}`}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setExpandedEmployee(
+                          expandedEmployee === employee.id ? null : employee.id
+                        )}
+                        className="text-gray-600 hover:text-gray-900"
+                      >
+                        {expandedEmployee === employee.id ? 
+                          <ChevronDown size={16} /> : 
+                          <ChevronRight size={16} />
+                        }
+                      </button>
+                      {employee.cin}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {employee.nom_complet}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {employee.date_embauche ? new Date(employee.date_embauche).toLocaleDateString('fr-FR') : '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {employee.role ? (
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        employee.role === 'PDG' 
+                          ? 'bg-purple-100 text-purple-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {employee.role}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 text-sm">-</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {employee.salaire != null ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' }) : '-'}
                   </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex gap-2 items-center">
-                    <button
-                      onClick={() => handleEdit(employee)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      <Edit size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(employee.id)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <EmployeeDocsStats employeeId={employee.id} />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex gap-2 items-center">
+                      <button
+                        onClick={() => handleEdit(employee)}
+                        className="text-blue-600 hover:text-blue-900"
+                        title="Modifier"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(employee.id)}
+                        className="text-red-600 hover:text-red-900"
+                        title="Supprimer"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                       <button
                         onClick={() => {
                           setSalaryModalEmployee(employee);
@@ -353,12 +560,25 @@ const EmployeePage: React.FC = () => { // NOSONAR
                       >
                         <Banknote size={16} />
                       </button>
-                    <Link to={`/employees/${employee.id}/documents`} className="text-gray-600 hover:text-gray-900" title="Documents">
-                      <FileText size={16} />
-                    </Link>
-                  </div>
-                </td>
-              </tr>
+                      <Link to={`/employees/${employee.id}/documents`} className="text-gray-600 hover:text-gray-900" title="Documents">
+                        <FileText size={16} />
+                      </Link>
+                      <Link to={`/employees/${employee.id}/salaries`} className="text-gray-600 hover:text-gray-900" title="Salaires">
+                        <Wallet size={16} />
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+
+                {/* Accordéon avec statistiques et aperçu des documents */}
+                {expandedEmployee === employee.id && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-4 bg-gray-50 border-t">
+                      <EmployeeAccordionContent employee={employee} selectedMonth={selectedMonth} salaryMap={salaryMap} />
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -619,6 +839,32 @@ const EmployeePage: React.FC = () => { // NOSONAR
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-sm">
             <h2 className="text-lg font-semibold mb-4">Ajouter montant - {salaryModalEmployee.nom_complet || salaryModalEmployee.cin}</h2>
+            
+            {/* Informations sur le salaire actuel */}
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-gray-600">Total actuel</div>
+                  <div className="font-semibold text-gray-900">
+                    {(salaryMap.get(salaryModalEmployee.id) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-gray-600">Salaire prévu</div>
+                  <div className="font-semibold text-gray-900">
+                    {salaryModalEmployee.salaire 
+                      ? salaryModalEmployee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })
+                      : 'Non défini'
+                    }
+                  </div>
+                </div>
+              </div>
+              {salaryModalEmployee.salaire && (salaryMap.get(salaryModalEmployee.id) || 0) >= salaryModalEmployee.salaire && (
+                <div className="mt-2 text-xs text-red-600 bg-red-50 rounded px-2 py-1">
+                  ⚠️ Le salaire prévu est déjà atteint ou dépassé
+                </div>
+              )}
+            </div>
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
@@ -626,11 +872,29 @@ const EmployeePage: React.FC = () => { // NOSONAR
                   showError('Montant invalide');
                   return;
                 }
+                
+                // Vérification de dépassement de salaire
+                const currentTotal = salaryMap.get(salaryModalEmployee.id) || 0;
+                const newTotal = currentTotal + Number(salaryMontant);
+                
+                if (salaryModalEmployee.salaire && newTotal > salaryModalEmployee.salaire) {
+                  const confirmed = await showConfirmation(
+                    'Dépassement de salaire détecté',
+                    `Le total après ajout (${newTotal.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}) dépassera le salaire prévu (${salaryModalEmployee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}). Voulez-vous continuer ?`
+                  );
+                  
+                  if (!confirmed) {
+                    return;
+                  }
+                }
+                
                 try {
                   await addSalaireEntry({ id: salaryModalEmployee.id, montant: Number(salaryMontant), note: salaryNote || undefined, created_by: user?.id || 1 }).unwrap();
                   showSuccess('Montant ajouté');
                   setIsSalaryModalOpen(false);
                   setSalaryModalEmployee(null);
+                  setSalaryMontant('');
+                  setSalaryNote('');
                 } catch (err) {
                   console.error(err);
                   showError("Erreur lors de l'ajout du montant");

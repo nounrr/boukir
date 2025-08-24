@@ -57,4 +57,79 @@ router.get('/salaires/summary', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Update salary entry
+router.put('/employees/:id/salaires/:salaireId', async (req, res, next) => {
+  try {
+    const employe_id = Number(req.params.id);
+    const salaireId = Number(req.params.salaireId);
+    const { montant, note, updated_by } = req.body;
+
+    // Verify the salary entry exists and belongs to the employee
+    const [existing] = await pool.query(
+      'SELECT id FROM employe_salaire WHERE id = ? AND employe_id = ?',
+      [salaireId, employe_id]
+    );
+    
+    if (existing.length === 0) {
+      return res.status(404).json({ message: 'Entrée de salaire introuvable' });
+    }
+
+    if (montant !== undefined && isNaN(Number(montant))) {
+      return res.status(400).json({ message: 'Montant invalide' });
+    }
+
+    const now = new Date();
+    const updates = [];
+    const params = [];
+
+    if (montant !== undefined) {
+      updates.push('montant = ?');
+      params.push(Number(montant));
+    }
+    if (note !== undefined) {
+      updates.push('note = ?');
+      params.push(note);
+    }
+    if (updated_by !== undefined) {
+      updates.push('updated_by = ?');
+      params.push(updated_by);
+    }
+    
+    updates.push('updated_at = ?');
+    params.push(now);
+    params.push(salaireId);
+
+    if (updates.length > 1) { // more than just updated_at
+      await pool.query(
+        `UPDATE employe_salaire SET ${updates.join(', ')} WHERE id = ?`,
+        params
+      );
+    }
+
+    const [rows] = await pool.query('SELECT id, employe_id, montant, note, created_at, updated_at FROM employe_salaire WHERE id = ?', [salaireId]);
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// Delete salary entry
+router.delete('/employees/:id/salaires/:salaireId', async (req, res, next) => {
+  try {
+    const employe_id = Number(req.params.id);
+    const salaireId = Number(req.params.salaireId);
+
+    // Verify the salary entry exists and belongs to the employee
+    const [existing] = await pool.query(
+      'SELECT id FROM employe_salaire WHERE id = ? AND employe_id = ?',
+      [salaireId, employe_id]
+    );
+    
+    if (existing.length === 0) {
+      return res.status(404).json({ message: 'Entrée de salaire introuvable' });
+    }
+
+    await pool.query('DELETE FROM employe_salaire WHERE id = ?', [salaireId]);
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
+
 export default router;

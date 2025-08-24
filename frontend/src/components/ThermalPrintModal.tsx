@@ -49,9 +49,25 @@ const parseBonItems = (bon: any, items: any[]): any[] => {
   return [];
 };
 
-// Format FR
-const formatNumber = (n: number) =>
-  new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number.isFinite(n) ? n : 0);
+// Format compact sans espace entre milliers et centaines
+const formatNumber = (n: number) => {
+  if (!Number.isFinite(n)) return '0';
+  
+  // Formatage sans espaces pour les milliers
+  let formatted = '';
+  if (n % 1 === 0) {
+    // Nombre entier
+    formatted = Math.floor(n).toString();
+  } else {
+    // Nombre avec décimales
+    const parts = n.toFixed(2).replace('.', ',').split(',');
+    // Supprime les zéros inutiles après la virgule
+    const decimals = parts[1].replace(/0+$/, '');
+    formatted = parts[0] + (decimals ? ',' + decimals : '');
+  }
+  
+  return formatted;
+};
 
 // --- AJOUT: helpers pour convertir images en base64 et injecter dans la fenêtre d'impression ---
 async function toDataUrl(src: string): Promise<string> {
@@ -99,19 +115,20 @@ const getPrintCss = () => `
   .thermal-section { font-weight: bold; margin-top: 2mm; padding-top: 1mm; border-top: 1px dashed #000; }
   .thermal-row { font-weight: bold; display: flex; justify-content: center; gap: 8px; margin-bottom: 4mm; }
   .thermal-footer { font-weight: bold; text-align: center; font-size: 8px; margin-top: 3mm; border-top: 1px dashed #000; padding-top: 2mm; }
-  .thermal-table { font-weight: bold; width: 100%; border-collapse: collapse;  text-align: center; table-layout: fixed; }
-  .thermal-table th, .thermal-table td { font-weight: bold; padding: 1mm 0; text-align: center; }
+  .thermal-table { font-weight: bold; width: 100%; border-collapse: collapse; text-align: center; table-layout: fixed; border: 1px solid #000; }
+  .thermal-table th, .thermal-table td { font-weight: bold; padding: 1mm 0; text-align: center; border: 1px solid #000; }
   .thermal-table thead tr { font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; }
-  .thermal-table tbody tr {font-size:14px; font-weight: bold; border-bottom: 1px dotted #000;left;height:8mm }
-  .col-code { font-weight: bold; width: 10%; white-space: nowrap; }
-  .col-designation { font-weight: bold; width: 45%; white-space: normal; word-break: break-word; text-align: left; }
-  .col-qte { font-weight: bold; width: 10%; white-space: nowrap; text-align: right; overflow: visible; font-size: 11px; }
-  .col-unit { font-weight: bold; width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 13px; }
-  .col-total { font-weight: bold;width: 17.5%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px dotted #000; font-size: 13px; }
-  .thermal-table.no-prices .col-code { font-weight: bold; width: 15%; }
-  .thermal-table.no-prices .col-designation { font-weight: bold; width: 70%; white-space: normal; word-break: break-word; text-align: left; }
-  .thermal-table.no-prices .col-qte { font-weight: bold; width: 15%; }
-  .span-total{font-weight: bold; font-size: 15px; margin-top:4mm }
+  .thermal-table tbody tr {font-size:14px; font-weight: bold; border-bottom: 1px solid #000; left; height:8mm }
+  /* Ajustement des largeurs pour s'assurer que les nombres sont toujours visibles */
+  .col-code { font-weight: bold; width: 14%; min-width: 14%; white-space: nowrap; font-size: 12px; }
+  .col-designation { font-weight: bold; width: auto; max-width: 36%; white-space: normal; word-break: break-word; text-align: left; overflow: hidden; }
+  .col-qte { font-weight: bold; width: 10%; min-width: 10%; white-space: nowrap; text-align: right; overflow: visible; font-size: 11px; padding-right: 2px; }
+  .col-unit { font-weight: bold; width: 20%; min-width: 20%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px solid #000; font-size: 14px; padding-right: 2px; }
+  .col-total { font-weight: bold; width: 20%; min-width: 20%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px solid #000; font-size: 14px; padding-right: 2px; }
+  .thermal-table.no-prices .col-code { font-weight: bold; width: 20%; min-width: 20%; }
+  .thermal-table.no-prices .col-designation { font-weight: bold; width: auto; max-width: 60%; white-space: normal; word-break: break-word; text-align: left; }
+  .thermal-table.no-prices .col-qte { font-weight: bold; width: 20%; min-width: 20%; }
+  .span-total{font-weight: bold; font-size: 16px; margin-top:4mm }
 
   @media print {
     @page { size: 80mm auto; margin: 0; } /* AJOUT: marge 0 pour éviter le rescaling */
@@ -274,7 +291,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
           <div
             ref={printRef}
             className="mt-6 mb-6 p-3 border border-gray-300 mx-auto bg-white"
-            style={{ width: '80mm', fontSize: '10px', fontFamily: 'Courier New, monospace', fontWeight: 'bold' }}
+            style={{ width: '80mm', fontSize: '10px', fontFamily: 'Courier New, monospace', fontWeight: 'bold', tableLayout: 'fixed' }}
           >
             <div className="thermal-header flex items-center justify-center gap-10">
               <img 
@@ -317,7 +334,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
 
             <table className={`thermal-table w-full ${priceMode === 'WITHOUT_PRICES' ? 'no-prices' : ''}`}>
               <thead>
-                <tr className="border-t border-b">
+                <tr>
                   <th className="col-code">Code</th>
                   <th className="col-designation">Désignation</th>
                   <th className="col-qte">Qté</th>
@@ -335,7 +352,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   const pu = parseFloat(it.prix_unitaire ?? it.prix ?? it.price ?? 0) || 0;
                   const lineTotal = q * pu;
                   return (
-                    <tr className="border-t border-b" key={getItemKey(it)}>
+                    <tr key={getItemKey(it)}>
                       <td className="col-code">{it.code || it.id}</td>
                       <td className="col-designation">{it.designation || it.libelle || it.name || '-'}</td>
                       <td className="col-qte">{q}</td>
@@ -349,7 +366,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   );
                 })}
                 {padCount > 0 && padKeys.map((key) => (
-                  <tr className="border-t border-b" key={key}>
+                  <tr key={key}>
                     <td className="col-code">&nbsp;</td>
                     <td className="col-designation">&nbsp;</td>
                     <td className="col-qte">&nbsp;</td>
@@ -366,7 +383,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
 
             {priceMode === 'WITH_PRICES' ? (
               <div className="thermal-section">
-                <div className="thermal-row text-center"><span className='span-total'>Total {formatNumber(totals.total)} DH</span></div>
+                <div className="thermal-row text-center"><span className='span-total'>Total: {formatNumber(totals.total)}DH</span></div>
               </div>
             ) : null}
 

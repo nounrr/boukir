@@ -34,6 +34,16 @@ export const employeesServerApi = api.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/employees/${id}/salaires`, method: 'POST', body }),
       invalidatesTags: (_r, _e, { id }) => [{ type: 'Employee', id }],
     }),
+    // Salary: update entry for an employee
+    updateEmployeeSalaireEntry: builder.mutation<EmployeeSalaireEntry, { id: number; salaireId: number; montant?: number; note?: string; updated_by: number }>({
+      query: ({ id, salaireId, ...body }) => ({ url: `/employees/${id}/salaires/${salaireId}`, method: 'PUT', body }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Employee', id }],
+    }),
+    // Salary: delete entry for an employee
+    deleteEmployeeSalaireEntry: builder.mutation<void, { id: number; salaireId: number }>({
+      query: ({ id, salaireId }) => ({ url: `/employees/${id}/salaires/${salaireId}`, method: 'DELETE' }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'Employee', id }],
+    }),
     // Salary: monthly summary for all employees
     getSalaireMonthlySummary: builder.query<EmployeeSalaireSummaryRow[], { month: string }>({
       query: ({ month }) => ({ url: `/salaires/summary?month=${month}`, method: 'GET' }),
@@ -50,5 +60,7 @@ export const {
   useDeleteEmployeeMutation: useDeleteEmployeeMutationServer,
   useGetEmployeeSalaireEntriesQuery: useGetEmployeeSalaireEntriesQueryServer,
   useAddEmployeeSalaireEntryMutation: useAddEmployeeSalaireEntryMutationServer,
+  useUpdateEmployeeSalaireEntryMutation: useUpdateEmployeeSalaireEntryMutationServer,
+  useDeleteEmployeeSalaireEntryMutation: useDeleteEmployeeSalaireEntryMutationServer,
   useGetSalaireMonthlySummaryQuery: useGetSalaireMonthlySummaryQueryServer,
 } = employeesServerApi;
