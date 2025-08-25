@@ -171,7 +171,7 @@ const formatHeure = (dateStr: string) => {
               BON DEVIS {getBonNumeroDisplay(bon)}
             </h2>
             <div className="space-y-2 text-sm">
-              <div><span className="font-medium">Date:</span> {formatHeure(bon.created_at)}</div>
+              <div><span className="font-medium">Date:</span> {formatHeure(bon.date_creation)}</div>
               {bon.adresse_livraison && (
                 <div><span className="font-medium">Livraison:</span> {bon.adresse_livraison}</div>
               )}

@@ -6,6 +6,8 @@ const router = express.Router();
 
 // date helpers
 const isYMD = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const isYMDTime = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s);
+
 const toYMD = (val) => {
   if (val == null || val === '') return null;
   if (isYMD(val)) return val;
@@ -16,6 +18,45 @@ const toYMD = (val) => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
+
+const toYMDTime = (val, withCurrentTime = true) => {
+  if (val == null || val === '') return null;
+  
+  // Si c'est déjà au format DATETIME
+  if (isYMDTime(val)) return val;
+  
+  // Si c'est au format datetime-local (YYYY-MM-DDTHH:MM)
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(val)) {
+    const [datePart, timePart] = val.split('T');
+    return `${datePart} ${timePart}:00`; // Ajouter les secondes
+  }
+  
+  // Si c'est au format DATE (YYYY-MM-DD), ajouter l'heure
+  if (isYMD(val)) {
+    if (withCurrentTime) {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const min = String(now.getMinutes()).padStart(2, '0');
+      const sec = String(now.getSeconds()).padStart(2, '0');
+      return `${val} ${h}:${min}:${sec}`;
+    } else {
+      return `${val} 00:00:00`;
+    }
+  }
+  
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return null;
+  
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const sec = String(d.getSeconds()).padStart(2, '0');
+  
+  return `${y}-${m}-${day} ${h}:${min}:${sec}`;
+};
+
 const dbDateToYMDOrNull = (d) => {
   if (!d) return null;
   const s = String(d).slice(0, 10);
@@ -23,6 +64,29 @@ const dbDateToYMDOrNull = (d) => {
   if (isYMD(s)) return s;
   const parsed = toYMD(d);
   return parsed;
+};
+
+const dbDateTimeToYMDOrNull = (d) => {
+  if (!d) return null;
+  // Pour les DATETIME, on retourne juste la partie date pour le frontend
+  const s = String(d).slice(0, 10);
+  if (s === '0000-00-00') return null;
+  if (isYMD(s)) return s;
+  const parsed = toYMD(d);
+  return parsed;
+};
+
+// Nouvelle fonction pour retourner le DATETIME complet
+const dbDateTimeToFullOrNull = (d) => {
+  if (!d) return null;
+  const s = String(d);
+  // Vérifier si c'est un DATETIME valide (YYYY-MM-DD HH:MM:SS)
+  if (s.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+    return s;
+  }
+  // Si c'est '0000-00-00 00:00:00' ou format invalide
+  if (s.startsWith('0000-00-00')) return null;
+  return s;
 };
 
 // helper mapping
@@ -35,10 +99,10 @@ const toPayment = (r) => ({
   montant_total: Number(r.montant_total ?? 0),
   montant: Number(r.montant_total ?? 0),
   mode_paiement: r.mode_paiement,
-  date_paiement: dbDateToYMDOrNull(r.date_paiement),
+  date_paiement: dbDateTimeToFullOrNull(r.date_paiement), // DATETIME complet pour affichage
   designation: r.designation || '',
   notes: r.designation || '',
-  date_echeance: dbDateToYMDOrNull(r.date_echeance),
+  date_echeance: dbDateToYMDOrNull(r.date_echeance), // DATE -> DATE
   banque: r.banque || null,
   personnel: r.personnel || null,
   code_reglement: r.code_reglement || null,
@@ -179,8 +243,8 @@ router.post('/', verifyToken, async (req, res) => {
     const cleanContactId = contact_id ? Number(contact_id) : null;
     const cleanBonId = bon_id ? Number(bon_id) : null;
     const cleanTalonId = talon_id ? Number(talon_id) : null;
-    const cleanDatePaiement = toYMD(date_paiement);
-    const cleanDateEcheance = toYMD(date_echeance);
+    const cleanDatePaiement = toYMDTime(date_paiement, true); // DATETIME avec heure actuelle
+    const cleanDateEcheance = toYMD(date_echeance); // DATE simple
 
     if (!cleanDatePaiement) {
       return res.status(400).json({ message: 'Date de paiement invalide', detail: String(date_paiement) });
@@ -218,13 +282,13 @@ router.put('/:id', verifyToken, async (req, res) => {
     const data = req.body || {};
     // Normalize possible date fields upfront
     if (Object.hasOwn(data, 'date_paiement')) {
-      data.date_paiement = toYMD(data.date_paiement);
+      data.date_paiement = toYMDTime(data.date_paiement, true); // DATETIME avec heure actuelle
       if (!data.date_paiement) {
         return res.status(400).json({ message: 'Date de paiement invalide', detail: String(req.body?.date_paiement) });
       }
     }
     if (Object.hasOwn(data, 'date_echeance')) {
-      const de = toYMD(data.date_echeance);
+      const de = toYMD(data.date_echeance); // DATE simple
       data.date_echeance = de; // null allowed
     }
     // Validate statut if provided according to user role and normalize to canonical label

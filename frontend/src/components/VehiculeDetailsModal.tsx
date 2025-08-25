@@ -190,8 +190,8 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
                 <p>{vehicule.annee || 'Non spécifiée'}</p>
               </div>
               <div>
-                <p className="font-semibold text-gray-600">Créé le:</p>
-                <p>{formatDateTime(vehicule.created_at)}</p>
+                <p className="font-semibold text-gray-600">Date de création:</p>
+                <p>{formatDateTime(vehicule.date_creation)}</p>
               </div>
             </div>
             

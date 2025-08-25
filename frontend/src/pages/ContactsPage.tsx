@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
   Plus, Edit, Trash2, Search, Users, Truck, Phone, Mail, MapPin,
-  CreditCard, Building2, DollarSign, Eye, Printer, Calendar, FileText
+  CreditCard, Building2, DollarSign, Eye, Printer, Calendar, FileText,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -252,8 +253,8 @@ const ContactsPage: React.FC = () => {
         id: `payment-${p.id}`,
         numero: getDisplayNumeroPayment(p),
         type: 'Paiement',
-    dateISO: p.date_paiement || p.created_at,
-    date: formatDateDMY(p.date_paiement || p.created_at),
+    dateISO: p.date_paiement,
+    date: formatDateDMY(p.date_paiement),
     montant: Number(p.montant ?? p.montant_total ?? 0) || 0,
         // Use payment.statut when present; otherwise fallback to 'Paiement'
         statut: p.statut ? String(p.statut) : 'Paiement',
@@ -392,6 +393,7 @@ const ContactsPage: React.FC = () => {
           bon_numero: b.numero,
           bon_type: b.type,
           bon_date: bDate,
+          bon_date_iso: b.date_creation, // Date ISO pour l'affichage avec heure
           bon_statut: b.statut,
           product_reference: ref,
           product_designation: des,
@@ -411,7 +413,8 @@ const ContactsPage: React.FC = () => {
         id: `payment-${p.id}`,
         bon_numero: getDisplayNumeroPayment(p),
         bon_type: 'Paiement',
-        bon_date: formatDateDMY(p.date_paiement || p.created_at),
+        bon_date: formatDateDMY(p.date_paiement),
+        bon_date_iso: p.date_paiement, // conserver la date/heure réelle du paiement
         bon_statut: p.statut ? String(p.statut) : 'Paiement',
         product_reference: 'PAIEMENT',
         product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,
@@ -423,13 +426,23 @@ const ContactsPage: React.FC = () => {
       });
     }
 
-    // Tri par date
+    // Tri par date/heure réelle si bon_date_iso dispo, sinon fallback sur bon_date (JJ-MM-YYYY)
     items.sort((a, b) => {
-      const [da, ma, ya] = a.bon_date.split('-');
-      const [db, mb, yb] = b.bon_date.split('-');
-      const YA = ya.length === 2 ? `20${ya}` : ya;
-      const YB = yb.length === 2 ? `20${yb}` : yb;
-      return new Date(`${YA}-${ma}-${da}`).getTime() - new Date(`${YB}-${mb}-${db}`).getTime();
+      const dateA = a.bon_date_iso
+        ? new Date(a.bon_date_iso).getTime()
+        : (() => {
+            const [da, ma, ya] = a.bon_date.split('-');
+            const YA = ya.length === 2 ? `20${ya}` : ya;
+            return new Date(`${YA}-${ma}-${da}`).getTime();
+          })();
+      const dateB = b.bon_date_iso
+        ? new Date(b.bon_date_iso).getTime()
+        : (() => {
+            const [db, mb, yb] = b.bon_date.split('-');
+            const YB = yb.length === 2 ? `20${yb}` : yb;
+            return new Date(`${YB}-${mb}-${db}`).getTime();
+          })();
+      return dateA - dateB;
     });
 
     let soldeCumulatif = Number(selectedContact?.solde ?? 0);
@@ -459,6 +472,9 @@ const ContactsPage: React.FC = () => {
 
   // Search term and filtering for the Products detail tab
   const [productSearch, setProductSearch] = useState('');
+  const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
   const searchedProductHistory = useMemo(() => {
     const term = productSearch.trim().toLowerCase();
     if (!term) return filteredProductHistory;
@@ -637,7 +653,7 @@ const ContactsPage: React.FC = () => {
             <h1 style="margin:0;font-size:18px;font-weight:700;color:#111">RAPPORT DÉTAILLÉ</h1>
             <h2 style="margin:4px 0;font-size:14px;font-weight:600;color:#333">${selectedContact.type.toUpperCase()}: ${selectedContact.nom_complet}</h2>
             <p style="margin:2px 0;font-size:12px"><strong>Période:</strong> ${dateFrom ? formatDateDMY(dateFrom) : 'Début'} → ${dateTo ? formatDateDMY(dateTo) : 'Fin'}</p>
-            <p style="margin:2px 0;font-size:12px"><strong>Date d'impression:</strong> ${formatDateDMY(new Date().toISOString())}</p>
+            <p style="margin:2px 0;font-size:12px"><strong>Date d'impression:</strong> ${formatDateTimeWithHour(new Date().toISOString())}</p>
           </div>
 
           ${getTwoRowContactTable(selectedContact)}
@@ -688,7 +704,7 @@ const ContactsPage: React.FC = () => {
                 return `<tr>
                   <td>${bon.numero}</td>
                   <td>${bon.type}</td>
-                  <td>${formatDateDMY(bon.date_creation)}</td>
+                  <td>${formatDateTimeWithHour(bon.date_creation)}</td>
                   <td class="numeric">${Number(bon.montant_total||0).toFixed(2)} DH</td>
                   <td>${bon.statut}</td>
                   <td class="numeric">${bonItems.length}</td>
@@ -857,7 +873,7 @@ const ContactsPage: React.FC = () => {
                 `<tr>
                   <td>${bon.numero}</td>
                   <td>${bon.type}</td>
-                  <td>${formatDateDMY(bon.date_creation)}</td>
+                  <td>${formatDateTimeWithHour(bon.date_creation)}</td>
                   <td class="numeric">${Number(bon.montant_total||0).toFixed(2)} DH</td>
                   <td>${bon.statut}</td>
                 </tr>`
@@ -871,7 +887,7 @@ const ContactsPage: React.FC = () => {
           </div>
 
           <div style="margin-top: 30px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
-            <p>Fiche générée le ${formatDateDMY(new Date().toISOString())} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+            <p>Fiche générée le ${formatDateTimeWithHour(new Date().toISOString())}</p>
             <p>Application de Gestion Commerciale - ${contact.type} ${contact.nom_complet}</p>
           </div>
         </body>
@@ -900,7 +916,7 @@ const ContactsPage: React.FC = () => {
 
   // Impression globale de tous les contacts
   const handleGlobalPrint = () => {
-    const contactsList = filteredContacts; // Utilise les filtres appliqués
+    const contactsList = sortedContacts; // Utilise les filtres appliqués
     const typeLabel = activeTab === 'clients' ? 'CLIENTS' : 'FOURNISSEURS';
 
     // Calcul des statistiques globales
@@ -1198,24 +1214,71 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  // Filtrage par recherche
+  // Filtrage par recherche et tri
   const filteredContacts = (activeTab === 'clients' ? clients : fournisseurs).filter((contact) =>
     (contact.nom_complet?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (contact.societe?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (contact.telephone?.includes(searchTerm))
   );
 
+  // Fonction de tri
+  const sortedContacts = useMemo(() => {
+    if (!sortField) return filteredContacts;
+    
+    const sorted = [...filteredContacts].sort((a, b) => {
+      let aValue: any = '';
+      let bValue: any = '';
+      
+      if (sortField === 'nom') {
+        aValue = a.nom_complet?.toLowerCase() || '';
+        bValue = b.nom_complet?.toLowerCase() || '';
+      } else if (sortField === 'societe') {
+        aValue = a.societe?.toLowerCase() || '';
+        bValue = b.societe?.toLowerCase() || '';
+      } else if (sortField === 'solde') {
+        // Calculer le solde cumulé pour chaque contact
+        const baseA = Number(a.solde) || 0;
+        const salesA = activeTab === 'clients' ? (salesByClient.get(a.id) || 0) : 0;
+        const purchasesA = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(a.id) || 0) : 0;
+        const paidA = paymentsByContact.get(a.id) || 0;
+        aValue = activeTab === 'clients' ? (baseA + salesA - paidA) : (baseA + purchasesA - paidA);
+        
+        const baseB = Number(b.solde) || 0;
+        const salesB = activeTab === 'clients' ? (salesByClient.get(b.id) || 0) : 0;
+        const purchasesB = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(b.id) || 0) : 0;
+        const paidB = paymentsByContact.get(b.id) || 0;
+        bValue = activeTab === 'clients' ? (baseB + salesB - paidB) : (baseB + purchasesB - paidB);
+      }
+      
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    return sorted;
+  }, [filteredContacts, sortField, sortDirection, activeTab, salesByClient, purchasesByFournisseur, paymentsByContact]);
+
+  // Fonction pour gérer le tri
+  const handleSort = (field: 'nom' | 'societe' | 'solde') => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
   // Pagination
-  const totalItems = filteredContacts.length;
+  const totalItems = sortedContacts.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedContacts = filteredContacts.slice(startIndex, endIndex);
+  const paginatedContacts = sortedContacts.slice(startIndex, endIndex);
 
   // Réinitialiser la page quand on change d'onglet ou de recherche
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchTerm]);
+  }, [activeTab, searchTerm, sortField, sortDirection]);
 
   return (
     <div className="p-6">
@@ -1251,7 +1314,7 @@ const ContactsPage: React.FC = () => {
             title={`Imprimer rapport global de tous les ${activeTab === 'clients' ? 'clients' : 'fournisseurs'} (selon filtres appliqués)`}
           >
             <FileText size={16} />
-            Rapport Global ({filteredContacts.length})
+            Rapport Global ({sortedContacts.length})
           </button>
           {(currentUser?.role === 'PDG' || currentUser?.role === 'Employé') && (
           <button
@@ -1290,7 +1353,7 @@ const ContactsPage: React.FC = () => {
             <Users className={`${activeTab === 'clients' ? 'text-blue-600' : 'text-gray-600'}`} size={32} />
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total {activeTab === 'clients' ? 'Clients' : 'Fournisseurs'}</p>
-              <p className="text-3xl font-bold text-gray-900">{filteredContacts.length}</p>
+              <p className="text-3xl font-bold text-gray-900">{sortedContacts.length}</p>
             </div>
           </div>
         </div>
@@ -1301,7 +1364,7 @@ const ContactsPage: React.FC = () => {
               <p className="text-sm font-medium text-gray-600">Solde cumulé</p>
               <p className="text-3xl font-bold text-gray-900">
                 {(
-                  filteredContacts.reduce((sum: number, c: any) => {
+                  sortedContacts.reduce((sum: number, c: any) => {
                     const base = Number(c.solde) || 0;
                     const sales = activeTab === 'clients' ? (salesByClient.get(c.id) || 0) : 0;
                     const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(c.id) || 0) : 0;
@@ -1320,7 +1383,7 @@ const ContactsPage: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Avec ICE</p>
               <p className="text-3xl font-bold text-gray-900">
-                {filteredContacts.filter((c) => c.ice && c.ice.trim() !== '').length}
+                {sortedContacts.filter((c) => c.ice && c.ice.trim() !== '').length}
               </p>
             </div>
           </div>
@@ -1361,19 +1424,47 @@ const ContactsPage: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom complet</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Société</th>
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('nom')}
+                >
+                  <div className="flex items-center gap-2">
+                    Nom complet
+                    {sortField === 'nom' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('societe')}
+                >
+                  <div className="flex items-center gap-2">
+                    Société
+                    {sortField === 'societe' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Téléphone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ICE</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RIB</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date création</th>
                 {activeTab === 'clients' && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plafond</th>
                 )}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {activeTab === 'clients' ? 'Solde à recevoir' : 'Solde à payer'}
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('solde')}
+                >
+                  <div className="flex items-center gap-2">
+                    {activeTab === 'clients' ? 'Solde à recevoir' : 'Solde à payer'}
+                    {sortField === 'solde' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -1424,7 +1515,7 @@ const ContactsPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">{formatDateTimeWithHour(contact.created_at)}</div>
+                      <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
                     </td>
                     {activeTab === 'clients' && (
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -1824,7 +1915,7 @@ const ContactsPage: React.FC = () => {
                               }}
                             />
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Numéro</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montant</th>
@@ -1859,7 +1950,7 @@ const ContactsPage: React.FC = () => {
                                 )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-700">{t.syntheticInitial ? '-' : formatDateTimeWithHour(t.created_at)}</div>
+                                <div className="text-sm text-gray-700">{t.syntheticInitial ? '-' : formatDateTimeWithHour(t.dateISO)}</div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm font-medium text-gray-900">{t.numero}</div>
@@ -2112,7 +2203,7 @@ const ContactsPage: React.FC = () => {
                               }}
                             />
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bon N°</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Référence</th>
@@ -2151,7 +2242,13 @@ const ContactsPage: React.FC = () => {
                                 )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-700">{item.syntheticInitial ? '-' : formatDateTimeWithHour(item.created_at)}</div>
+                                <div className="text-sm text-gray-700">
+                                  {item.syntheticInitial ? '-' : (
+                                    item.bon_date_iso
+                                      ? formatDateTimeWithHour(item.bon_date_iso)
+                                      : item.bon_date
+                                  )}
+                                </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm font-medium text-gray-900">{item.bon_numero}</div>

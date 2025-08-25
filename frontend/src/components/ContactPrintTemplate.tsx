@@ -33,6 +33,19 @@ const fmtDate = (d?: string) => {
   return d;
 };
 
+// Date + heure (HH:MM) si possible
+const fmtDateTime = (d?: string) => {
+  if (!d) return '';
+  try {
+    const dt = new Date(d);
+    if (!isNaN(dt.getTime())) {
+      return dt.toLocaleDateString('fr-FR') + ' ' + dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    }
+  } catch {}
+  // fallback utilise fmtDate (sans heure)
+  return fmtDate(d);
+};
+
 const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   contact,
   mode,
@@ -167,7 +180,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                     const reduceBalance = (isPayment || isAvoir);
                     return (
                       <tr key={t.id} className="odd:bg-gray-50">
-                        <td className="border border-gray-300 px-3 py-2">{t.syntheticInitial ? '-' : (t.date || fmtDate(t.dateISO))}</td>
+                        <td className="border border-gray-300 px-3 py-2">{t.syntheticInitial ? '-' : fmtDateTime(t.dateISO || t.date)}</td>
                         <td className="border border-gray-300 px-3 py-2">{t.numero}</td>
                         <td className="border border-gray-300 px-3 py-2">{t.type}</td>
                         {showPrices ? (
@@ -227,7 +240,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                     const displayTotal = it.syntheticInitial ? '' : (reduceBalance ? -totalVal : totalVal);
                     return (
                       <tr key={it.id} className="odd:bg-gray-50">
-                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : (it.bon_date || fmtDate(it.date))}</td>
+                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : fmtDateTime(it.bon_date_iso || it.date || it.bon_date)}</td>
                         <td className="border border-gray-300 px-3 py-2">{it.bon_numero}</td>
                         <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '—' : it.product_reference}</td>
                         <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? 'Solde initial' : it.product_designation}</td>

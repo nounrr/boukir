@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useDispatch } from 'react-redux';
 import { useAppSelector } from '../hooks/redux';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
@@ -19,7 +19,10 @@ import {
   Calendar,
   User,
   LogOut,
-  X
+  X,
+  Printer,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import type { Payment, Bon, Contact } from '../types';
 import { getBonNumeroDisplay } from '../utils/numero';
@@ -27,13 +30,14 @@ import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
-import { formatDateTimeWithHour } from '../utils/dateUtils';
+import { formatDateTimeWithHour, formatDateInputToMySQL, formatMySQLToDateInput, formatMySQLToDateTimeInput, getCurrentDateTimeInput, getCurrentDateISO } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { toBackendUrl } from '../utils/url';
 import { useGetPaymentsQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
 import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
 import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
+import PaymentPrintModal from '../components/PaymentPrintModal';
 
 const CaissePage = () => {
   const dispatch = useDispatch();
@@ -49,6 +53,11 @@ const CaissePage = () => {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState<boolean>(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Sorting
+  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | 'echeance' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   // Redux data
   const user = useAppSelector(state => state.auth.user);
@@ -80,77 +89,146 @@ const CaissePage = () => {
   // Available statuses for payments
   const availableStatuses = ['En attente', 'Validé', 'Refusé', 'Annulé'];
 
-  // Filtrer les paiements
-  const filteredPayments = payments.filter((payment: Payment) => {
-    const term = searchTerm.trim().toLowerCase();
-    // Compute display payment number (e.g., PAY01) to allow searching by it
-    const displayPayNum = (() => {
-      const idStr = String(payment?.id ?? '').trim();
-      if (!idStr) return '';
-      return `pay${idStr.padStart(2, '0')}`.toLowerCase();
-    })();
+  // Handle sorting
+  const handleSort = (field: 'numero' | 'date' | 'contact' | 'montant' | 'echeance') => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
 
-    // Search includes payment fields and linked contact name (client or fournisseur)
-    const contactName = (() => {
-      // try to use explicit fields if present
-      const byName = (payment as any).contact_nom || (payment as any).client_nom || (payment as any).fournisseur_nom || '';
-      if (byName) return String(byName).toLowerCase();
-      // fallback: try to lookup in clients/fournisseurs arrays
-      const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
-      if (cid) {
+  // Filtrer et trier les paiements
+  const sortedPayments = useMemo(() => {
+    // First filter
+    const filtered = payments.filter((payment: Payment) => {
+      const term = searchTerm.trim().toLowerCase();
+      // Compute display payment number (e.g., PAY01) to allow searching by it
+      const displayPayNum = (() => {
+        const idStr = String(payment?.id ?? '').trim();
+        if (!idStr) return '';
+        return `pay${idStr.padStart(2, '0')}`.toLowerCase();
+      })();
+
+      // Search includes payment fields and linked contact name (client or fournisseur)
+      const contactName = (() => {
+        // try to use explicit fields if present
+        const byName = (payment as any).contact_nom || (payment as any).client_nom || (payment as any).fournisseur_nom || '';
+        if (byName) return String(byName).toLowerCase();
+        // fallback: try to lookup in clients/fournisseurs arrays
+        const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
+        if (cid) {
+          const c = clients.find((cl: any) => String(cl.id) === cid);
+          if (c) return String(c.nom_complet || '').toLowerCase();
+          const f = fournisseurs.find((fo: any) => String(fo.id) === cid);
+          if (f) return String(f.nom_complet || '').toLowerCase();
+        }
+        return '';
+      })();
+
+      // Include contact company name (société) in search
+      const contactSociete = (() => {
+        const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
+        if (!cid) return '';
         const c = clients.find((cl: any) => String(cl.id) === cid);
-        if (c) return String(c.nom_complet || '').toLowerCase();
-        const f = fournisseurs.find((fo: any) => String(fo.id) === cid);
-        if (f) return String(f.nom_complet || '').toLowerCase();
+        const f = c ? undefined : fournisseurs.find((fo: any) => String(fo.id) === cid);
+        const s = c?.societe ?? f?.societe;
+        return s ? String(s).toLowerCase() : '';
+      })();
+
+      const matchesSearch = !term || (
+        String(payment.id).includes(term) ||
+        (payment.numero?.toLowerCase?.() || '').includes(term) ||
+        displayPayNum.includes(term) ||
+        (payment.notes?.toLowerCase?.() || '').includes(term) ||
+        contactName.includes(term) ||
+        contactSociete.includes(term)
+      );
+
+      const matchesDate = !dateFilter || payment.date_paiement === dateFilter;
+
+      const matchesMode = modeFilter === 'all' || payment.mode_paiement === modeFilter;
+
+      const matchesStatus = (() => {
+        if (!statusFilter || (Array.isArray(statusFilter) && statusFilter.length === 0)) return true;
+        const pStat = String((payment as any).statut || '').toString();
+        return statusFilter.includes(pStat);
+      })();
+
+      return matchesSearch && matchesDate && matchesMode && matchesStatus;
+    });
+
+    // Then sort
+    if (!sortField) return filtered;
+
+    return [...filtered].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      const getContactName = (payment: Payment) => {
+        const byName = (payment as any).contact_nom || (payment as any).client_nom || (payment as any).fournisseur_nom || '';
+        if (byName) return String(byName).toLowerCase();
+        const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
+        if (cid) {
+          const c = clients.find((cl: any) => String(cl.id) === cid);
+          if (c) return String(c.nom_complet || '').toLowerCase();
+          const f = fournisseurs.find((fo: any) => String(fo.id) === cid);
+          if (f) return String(f.nom_complet || '').toLowerCase();
+        }
+        return '';
+      };
+
+      const getDisplayNumeroPayment = (payment: Payment) => {
+        const id = String(payment?.id ?? '').trim();
+        if (!id) return '';
+        return `PAY${id.padStart(2, '0')}`;
+      };
+
+      switch (sortField) {
+        case 'numero':
+          aValue = getDisplayNumeroPayment(a).toLowerCase();
+          bValue = getDisplayNumeroPayment(b).toLowerCase();
+          break;
+        case 'date':
+          aValue = new Date(a.date_paiement || 0).getTime();
+          bValue = new Date(b.date_paiement || 0).getTime();
+          break;
+        case 'contact':
+          aValue = getContactName(a);
+          bValue = getContactName(b);
+          break;
+        case 'montant':
+          aValue = Number(a.montant || a.montant_total || 0);
+          bValue = Number(b.montant || b.montant_total || 0);
+          break;
+        case 'echeance':
+          aValue = a.date_echeance ? new Date(a.date_echeance).getTime() : Number.POSITIVE_INFINITY;
+          bValue = b.date_echeance ? new Date(b.date_echeance).getTime() : Number.POSITIVE_INFINITY;
+          break;
+        default:
+          return 0;
       }
-      return '';
-    })();
 
-    // Include contact company name (société) in search
-    const contactSociete = (() => {
-      const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
-      if (!cid) return '';
-      const c = clients.find((cl: any) => String(cl.id) === cid);
-      const f = c ? undefined : fournisseurs.find((fo: any) => String(fo.id) === cid);
-      const s = c?.societe ?? f?.societe;
-      return s ? String(s).toLowerCase() : '';
-    })();
-
-    const matchesSearch = !term || (
-      String(payment.id).includes(term) ||
-      (payment.numero?.toLowerCase?.() || '').includes(term) ||
-      displayPayNum.includes(term) ||
-      (payment.notes?.toLowerCase?.() || '').includes(term) ||
-      contactName.includes(term) ||
-      contactSociete.includes(term)
-    );
-
-    const matchesDate = !dateFilter || payment.date_paiement === dateFilter;
-
-    const matchesMode = modeFilter === 'all' || payment.mode_paiement === modeFilter;
-
-    const matchesStatus = (() => {
-      if (!statusFilter || (Array.isArray(statusFilter) && statusFilter.length === 0)) return true;
-      const pStat = String((payment as any).statut || '').toString();
-      return statusFilter.includes(pStat);
-    })();
-
-    return matchesSearch && matchesDate && matchesMode && matchesStatus;
-  });
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [payments, searchTerm, dateFilter, statusFilter, modeFilter, sortField, sortDirection, clients, fournisseurs]);
 
   // Calculs statistiques
   const amountOf = (p: Payment) => Number(p.montant ?? p.montant_total ?? 0);
-  const totalEncaissements = filteredPayments.reduce((total: number, p: Payment) => total + amountOf(p), 0);
-  const totalEspeces = filteredPayments
+  const totalEncaissements = sortedPayments.reduce((total: number, p: Payment) => total + amountOf(p), 0);
+  const totalEspeces = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Espèces')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
-  const totalCheques = filteredPayments
+  const totalCheques = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Chèque')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
-  const totalVirements = filteredPayments
+  const totalVirements = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Virement')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
-  const totalTraites = filteredPayments
+  const totalTraites = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Traite')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
 
@@ -184,6 +262,11 @@ const CaissePage = () => {
     setSelectedImage(null);
     setImagePreview(payment.image_url || '');
     setIsCreateModalOpen(true);
+  };
+
+  const handlePrintPayment = (payment: Payment) => {
+    setSelectedPayment(payment);
+    setIsPrintModalOpen(true);
   };
 
   // Change payment statut helper (only change statut via table actions)
@@ -223,6 +306,8 @@ const CaissePage = () => {
 
  // On traite les dates comme des chaînes 'YYYY-MM-DD' pour éviter les conversions en Date par Yup
  const ymdRegex = /^\d{4}-\d{2}-\d{2}$/;
+ // Regex pour datetime-local: YYYY-MM-DDTHH:MM
+ const datetimeLocalRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 const paymentValidationSchema = Yup.object({
   montant: Yup.number()
@@ -236,7 +321,7 @@ const paymentValidationSchema = Yup.object({
 
   date_paiement: Yup.string()
     .required('Date de paiement est requise')
-    .matches(ymdRegex, 'Date de paiement invalide (format attendu YYYY-MM-DD)'),
+    .matches(datetimeLocalRegex, 'Date de paiement invalide (format attendu YYYY-MM-DDTHH:MM)'),
 
   statut: Yup.string()
     .oneOf(['En attente','Validé','Refusé','Annulé'], 'Statut invalide')
@@ -403,12 +488,12 @@ const paymentValidationSchema = Yup.object({
         montant: selectedPayment.montant || selectedPayment.montant_total,
         mode_paiement: selectedPayment.mode_paiement,
   statut: selectedPayment.statut || 'En attente',
-        date_paiement: normDate(selectedPayment.date_paiement),
+        date_paiement: formatMySQLToDateTimeInput(selectedPayment.date_paiement),
   // champs référence supprimés
         notes: selectedPayment.notes || selectedPayment.designation || '',
         banque: selectedPayment.banque || '',
         personnel: selectedPayment.personnel || '',
-        date_echeance: normDate(selectedPayment.date_echeance) || '',
+        date_echeance: selectedPayment.date_echeance || '',
   code_reglement: selectedPayment.code_reglement || '',
         talon_id: selectedPayment.talon_id || '',
       };
@@ -422,7 +507,7 @@ const paymentValidationSchema = Yup.object({
       montant: 0,
       mode_paiement: 'Espèces',
   statut: 'En attente',
-      date_paiement: new Date().toISOString().split('T')[0],
+      date_paiement: getCurrentDateTimeInput(),
   // champs référence supprimés
       notes: '',
       banque: '',
@@ -431,30 +516,6 @@ const paymentValidationSchema = Yup.object({
   code_reglement: '',
       talon_id: '',
     };
-  };
-
-  const toYMD = (val: any): string | null => {
-    if (!val && val !== 0) return null;
-    // Already in YYYY-MM-DD format
-    if (typeof val === 'string') {
-      if (val.match(/^\d{4}-\d{2}-\d{2}$/)) return val;
-      const d = new Date(val);
-      if (!isNaN(d.getTime())) {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
-      }
-      return null;
-    }
-    if (val instanceof Date) {
-      if (isNaN(val.getTime())) return null;
-      const y = val.getFullYear();
-      const m = String(val.getMonth() + 1).padStart(2, '0');
-      const day = String(val.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
-    }
-    return null;
   };
 
   const handleSubmit = async (values: any) => {
@@ -469,10 +530,12 @@ const paymentValidationSchema = Yup.object({
       }
 
       // Normaliser les champs optionnels (éviter '' pour les colonnes DATE/NULLABLE)
-  const cleanedDatePaiement = toYMD(values.date_paiement);
+      // Utiliser les nouvelles fonctions pour gérer les DATETIME
+      const cleanedDatePaiement = formatDateInputToMySQL(values.date_paiement); // Datetime-local inclut déjà l'heure
       const cleanedBanque = values.banque?.trim() ? values.banque : null;
       const cleanedPersonnel = values.personnel?.trim() ? values.personnel : null;
-  const cleanedDateEcheance = toYMD(values.date_echeance);
+      // date_echeance reste en format DATE (YYYY-MM-DD)
+      const cleanedDateEcheance = values.date_echeance?.trim() ? values.date_echeance : null;
       const cleanedCodeReglement = values.code_reglement?.trim() ? values.code_reglement : null;
       const cleanedTalonId = values.talon_id ? Number(values.talon_id) : null;
 
@@ -497,7 +560,6 @@ const paymentValidationSchema = Yup.object({
   image_url: imageUrl,
         created_by: user?.id || 1,
         updated_by: selectedPayment ? user?.id || 1 : undefined,
-        created_at: selectedPayment ? selectedPayment.created_at : new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
@@ -811,17 +873,41 @@ const paymentValidationSchema = Yup.object({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Numéro
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('numero')}
+                >
+                  <div className="flex items-center gap-1">
+                    Numéro
+                    {sortField === 'numero' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Créé le
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('date')}
+                >
+                  <div className="flex items-center gap-1">
+                    Date paiement
+                    {sortField === 'date' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Bon associé
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Client / Fournisseur
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('contact')}
+                >
+                  <div className="flex items-center gap-1">
+                    Client / Fournisseur
+                    {sortField === 'contact' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Société
@@ -829,9 +915,27 @@ const paymentValidationSchema = Yup.object({
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Mode de paiement
                 </th>
-                
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Montant
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('montant')}
+                >
+                  <div className="flex items-center gap-1">
+                    Montant
+                    {sortField === 'montant' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('echeance')}
+                >
+                  <div className="flex items-center gap-1">
+                    Échéance
+                    {sortField === 'echeance' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Statut
@@ -842,20 +946,20 @@ const paymentValidationSchema = Yup.object({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredPayments.length === 0 ? (
+              {sortedPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={10} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun paiement trouvé
                   </td>
                 </tr>
               ) : (
-                filteredPayments.map((payment: Payment) => (
+                sortedPayments.map((payment: Payment) => (
                   <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{getDisplayNumeroPayment(payment)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">{formatDateTimeWithHour(payment.created_at)}</div>
+                      <div className="text-sm text-gray-700">{formatDateTimeWithHour(payment.date_paiement)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{getBonInfo(payment.bon_id)}</div>
@@ -907,6 +1011,11 @@ const paymentValidationSchema = Yup.object({
                     
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-semibold text-gray-900">{Number(payment.montant ?? payment.montant_total ?? 0).toFixed(2)} DH</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {payment.date_echeance ? formatYMD(payment.date_echeance) : '-'}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
@@ -993,6 +1102,13 @@ const paymentValidationSchema = Yup.object({
                             title="Modifier"
                           >
                             <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={() => handlePrintPayment(payment)}
+                            className="text-purple-600 hover:text-purple-900"
+                            title="Imprimer"
+                          >
+                            <Printer size={16} />
                           </button>
                           <button
                             onClick={() => handleDelete(payment.id)}
@@ -1166,12 +1282,12 @@ const paymentValidationSchema = Yup.object({
 
                     <div>
                       <label htmlFor="date_paiement" className="block text-sm font-medium text-gray-700 mb-1">
-                        Date de paiement *
+                        Date et heure de paiement *
                       </label>
                       <Field
                         id="date_paiement"
                         name="date_paiement"
-                        type="date"
+                        type="datetime-local"
                         className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <ErrorMessage name="date_paiement" component="div" className="text-red-500 text-sm mt-1" />
@@ -1549,8 +1665,8 @@ const paymentValidationSchema = Yup.object({
 
               <div className="border-t pt-4">
                 <p className="text-xs text-gray-500">
-                  Créé le {new Date(selectedPayment.created_at).toLocaleString('fr-FR')}
-                  {selectedPayment.updated_at !== selectedPayment.created_at && (
+                  Date de paiement: {new Date(selectedPayment.date_paiement).toLocaleString('fr-FR')}
+                  {selectedPayment.updated_at && (
                     <>
                       <br />
                       Modifié le {new Date(selectedPayment.updated_at).toLocaleString('fr-FR')}
@@ -1575,10 +1691,28 @@ const paymentValidationSchema = Yup.object({
                 >
                   Modifier
                 </button>
+                <button
+                  onClick={() => setIsPrintModalOpen(true)}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md"
+                >
+                  Imprimer
+                </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal d'impression paiement */}
+      {isPrintModalOpen && selectedPayment && (
+        <PaymentPrintModal
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          payment={selectedPayment}
+          client={clients.find(c => c.id === selectedPayment.contact_id)}
+          fournisseur={fournisseurs.find(f => f.id === selectedPayment.contact_id)}
+          allPayments={payments}
+        />
       )}
     </div>
   );
