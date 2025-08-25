@@ -310,6 +310,12 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                     (typeof contact.societe === 'string' && contact.societe.trim()) ? contact.societe :
                     contact.nom_complet || contact.nom || contact.name || '-'
                   )}
+                  {contact.adresse && contact.adresse.trim() ? (
+                    <>
+                      <br />
+                      Adresse: {contact.adresse}
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -353,7 +359,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   const lineTotal = q * pu;
                   return (
                     <tr key={getItemKey(it)}>
-                      <td className="col-code">{it.code || it.id}</td>
+                      <td className="col-code">{it.product_id}</td>
                       <td className="col-designation">{it.designation || it.libelle || it.name || '-'}</td>
                       <td className="col-qte">{q}</td>
                       {priceMode === 'WITH_PRICES' ? (
