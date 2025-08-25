@@ -499,7 +499,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   setUnitPriceRaw(() => {
     const next: Record<number, string> = {};
     items.forEach((it: any, idx: number) => {
-      const v = it?.prix_unitaire;
+      // Pour les commandes, utiliser prix_achat, sinon prix_unitaire
+      const v = currentTab === 'Commande' ? it?.prix_achat : it?.prix_unitaire;
       next[idx] = v === undefined || v === null ? '' : String(v);
     });
     return next;
@@ -637,10 +638,13 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     const montantTotal = values.items.reduce((sum: number, item: any, idx: number) => {
       const q =
         parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+      
+      // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
+      const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
       const u =
-        typeof item.prix_unitaire === 'string'
-          ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
-          : Number(item.prix_unitaire) || 0;
+        typeof item[priceField] === 'string'
+          ? parseFloat(String(item[priceField]).replace(',', '.')) || 0
+          : Number(item[priceField]) || 0;
       return sum + q * u;
     }, 0);
 
@@ -687,7 +691,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           prix_unitaire: pu,
           remise_pourcentage: rp,
           remise_montant: rm,
-          total: q * pu,
+          // Pour bon Commande, utiliser prix_achat pour le total; pour autres types, prix_unitaire
+          total: q * (values.type === 'Commande' ? pa : pu),
         };
       }),
     };
@@ -919,6 +924,10 @@ const applyProductToRow = (rowIndex: number, product: any) => {
   const kg = Number(product.kg || 0);
   const q = Number(values.items?.[rowIndex]?.quantite || 0);
 
+  // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
+  const priceForDisplay = values.type === 'Commande' ? pa : unit;
+  const totalPrice = q * priceForDisplay;
+
   setFieldValue(`items.${rowIndex}.product_id`, product.id);
   setFieldValue(`items.${rowIndex}.product_reference`, String(product.reference ?? product.id));
   setFieldValue(`items.${rowIndex}.designation`, product.designation || '');
@@ -926,10 +935,10 @@ const applyProductToRow = (rowIndex: number, product: any) => {
   setFieldValue(`items.${rowIndex}.cout_revient`, cr);
   setFieldValue(`items.${rowIndex}.prix_unitaire`, unit);
   setFieldValue(`items.${rowIndex}.kg`, kg);
-  setFieldValue(`items.${rowIndex}.total`, q * unit);
+  setFieldValue(`items.${rowIndex}.total`, totalPrice);
 
-  // garder la saisie brute synchronisée
-  setUnitPriceRaw((prev) => ({ ...prev, [rowIndex]: String(unit) }));
+  // garder la saisie brute synchronisée avec le bon champ selon le type
+  setUnitPriceRaw((prev) => ({ ...prev, [rowIndex]: String(priceForDisplay) }));
   setQtyRaw((prev) => ({ ...prev, [rowIndex]: prev[rowIndex] ?? '0' }));
 
   window.setTimeout(() => {
@@ -1336,7 +1345,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                               SERIE
                             </th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
-                              P. Unit.
+                              {values.type === 'Commande' ? 'Prix d\'achat' : 'P. Unit.'}
                             </th>
                             {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
                               <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
@@ -1382,8 +1391,11 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                                         setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
                                         setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
                                         const unit = product.prix_vente || 0;
+                                        const pa = product.prix_achat || 0;
                                         setFieldValue(`items.${index}.prix_unitaire`, unit);
-                                        setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit) }));
+                                        // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
+                                        const priceForDisplay = values.type === 'Commande' ? pa : unit;
+                                        setUnitPriceRaw((prev) => ({ ...prev, [index]: String(priceForDisplay) }));
                                         setFieldValue(`items.${index}.kg`, product.kg ?? 0);
                                         const q =
                                           parseFloat(
@@ -1391,7 +1403,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                                               qtyRaw[index] ?? String(values.items[index].quantite ?? '')
                                             )
                                           ) || 0;
-                                        setFieldValue(`items.${index}.total`, q * unit);
+                                        setFieldValue(`items.${index}.total`, q * priceForDisplay);
                                         // After choosing product, focus qty
                                         setTimeout(() => focusCell(index, 'qty'), 0);
                                       }
@@ -1460,13 +1472,13 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                                   }`}
                                 </td>
 
-                                {/* Prix unitaire (corrigé) */}
+                                {/* Prix unitaire / Prix d'achat selon le type */}
 <td className="px-1 py-2 w-[90px]">
   <input
     type="text"
     inputMode="decimal"
     pattern="[0-9]*[.,]?[0-9]*"
-    name={`items.${index}.prix_unitaire`}
+    name={values.type === 'Commande' ? `items.${index}.prix_achat` : `items.${index}.prix_unitaire`}
     className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
     value={unitPriceRaw[index] ?? ''}
     onChange={(e) => {
@@ -1481,7 +1493,11 @@ const applyProductToRow = (rowIndex: number, product: any) => {
     }}
     onBlur={() => {
       const val = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-      setFieldValue(`items.${index}.prix_unitaire`, val);
+      if (values.type === 'Commande') {
+        setFieldValue(`items.${index}.prix_achat`, val);
+      } else {
+        setFieldValue(`items.${index}.prix_unitaire`, val);
+      }
       setUnitPriceRaw((prev) => ({ ...prev, [index]: formatNumber(val) }));
 
       const q =
