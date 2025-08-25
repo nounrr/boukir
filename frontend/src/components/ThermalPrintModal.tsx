@@ -13,10 +13,18 @@ interface ThermalPrintModalProps {
   items?: any[];
 }
 
-const formatDate = (date: string) => {
+const normalizeDateInput = (raw: string) => {
+  if (!raw) return '';
+  // Si format MySQL 'YYYY-MM-DD HH:MM:SS', remplacer espace par 'T'
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(raw)) return raw.replace(' ', 'T');
+  return raw;
+};
+
+const formatDateTime = (date: string) => {
   if (!date) return '';
-  const d = new Date(date);
-  return d.toLocaleDateString('fr-FR');
+  const d = new Date(normalizeDateInput(date));
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 };
 
 const getTypeLabel = (t: string) => {
@@ -335,7 +343,11 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
               <br />
               <span>GSM: 0650812894 - Tél: 0666216657</span>
               <br />
-              <span>{bon?.numero ? `#${bon.numero}` : ''} {formatDate(bon?.date_creation || bon?.created_at || new Date().toISOString())}</span>
+              <span>
+                {bon?.numero ? `#${bon.numero}` : ''}
+                {' '}
+                {formatDateTime(bon?.date_creation || new Date().toISOString())}
+              </span>
             </div>
 
             <table className={`thermal-table w-full ${priceMode === 'WITHOUT_PRICES' ? 'no-prices' : ''}`}>
@@ -393,7 +405,12 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
               </div>
             ) : null}
 
-            <div className="thermal-footer text-center">Merci pour votre confiance.</div>
+            <div className="thermal-footer text-center">
+              <div>Merci pour votre confiance.</div>
+              <div style={{ marginTop: '2px' }}>
+                Imprimé le {formatDateTime(new Date().toISOString())}
+              </div>
+            </div>
           </div>
         </div>
       </div>

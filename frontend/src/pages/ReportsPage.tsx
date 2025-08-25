@@ -124,7 +124,7 @@ const ReportsPage: React.FC = () => {
       numero: getBonNumeroDisplay({ id: b.id, type: 'Comptant', numero: b.numero }),
       type: "Comptant",
       contact_id: b.client_id ?? b.contact_id ?? null,
-      date: toDisplayDate(b.date || b.created_at),
+      date: toDisplayDate(b.date || b.date_creation),
       montant: toNumber(b.montant_total ?? b.total ?? 0),
       statut: b.statut || b.status || "Validé",
     });
@@ -134,7 +134,7 @@ const ReportsPage: React.FC = () => {
       numero: getBonNumeroDisplay({ id: b.id, type: 'Sortie', numero: b.numero }),
       type: "Sortie",
       contact_id: b.client_id ?? b.contact_id ?? null,
-      date: toDisplayDate(b.date || b.created_at),
+      date: toDisplayDate(b.date || b.date_creation),
       montant: toNumber(b.montant_total ?? b.total ?? 0),
       statut: b.statut || b.status || "Livré",
     });
@@ -144,7 +144,7 @@ const ReportsPage: React.FC = () => {
       numero: getBonNumeroDisplay({ id: b.id, type: 'Commande', numero: b.numero }),
       type: "Commande",
       contact_id: b.fournisseur_id ?? b.contact_id ?? null,
-      date: toDisplayDate(b.date || b.created_at),
+      date: toDisplayDate(b.date || b.date_creation),
       montant: toNumber(b.montant_total ?? b.total ?? 0),
       statut: b.statut || b.status || "Validé",
     });
@@ -159,7 +159,7 @@ const ReportsPage: React.FC = () => {
       numero: getBonNumeroDisplay({ id: b.id, type: 'Avoir', numero: b.numero }),
       type: "Avoir",
       contact_id: b.client_id ?? b.contact_id ?? null,
-      date: toDisplayDate(b.date || b.created_at),
+      date: toDisplayDate(b.date || b.date_creation),
       montant: toNumber(b.montant_total ?? b.total ?? 0),
       statut: b.statut || b.status || "Avoir",
     });
@@ -173,7 +173,7 @@ const ReportsPage: React.FC = () => {
       numero: getBonNumeroDisplay({ id: b.id, type: 'AvoirFournisseur', numero: b.numero }),
       type: "AvoirFournisseur",
       contact_id: b.fournisseur_id ?? b.contact_id ?? null,
-      date: toDisplayDate(b.date || b.created_at),
+      date: toDisplayDate(b.date || b.date_creation),
       montant: toNumber(b.montant_total ?? b.total ?? 0),
       statut: b.statut || b.status || "Avoir",
     });
@@ -551,7 +551,7 @@ const ReportsPage: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Numéro</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                   </tr>
@@ -566,7 +566,7 @@ const ReportsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{bon.date}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{formatDateTimeWithHour(bon.date_creation)}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right">
                         {toNumber(bon.montant).toFixed(2)} DH
                       </td>
@@ -617,7 +617,7 @@ const ReportsPage: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Numéro</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -633,7 +633,7 @@ const ReportsPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {payment.created_at ? formatDateTimeWithHour(payment.created_at) : '-'}
+                      {payment.date_paiement ? formatDateTimeWithHour(payment.date_paiement) : '-'}
                     </td>
                   </tr>
                 ))}
@@ -689,7 +689,7 @@ const ReportsPage: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Solde</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Plafond</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -716,7 +716,7 @@ const ReportsPage: React.FC = () => {
                         {client.plafond ? `${toNumber(client.plafond).toFixed(2)} DH` : "-"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {client.created_at ? formatDateTimeWithHour(client.created_at) : '-'}
+                        {client.date_creation ? formatDateTimeWithHour(client.date_creation) : '-'}
                       </td>
                     </tr>
                   );
@@ -777,7 +777,7 @@ const ReportsPage: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Solde</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -801,7 +801,7 @@ const ReportsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {f.created_at ? formatDateTimeWithHour(f.created_at) : '-'}
+                        {f.date_creation ? formatDateTimeWithHour(f.date_creation) : '-'}
                       </td>
                     </tr>
                   );
@@ -1354,7 +1354,7 @@ const ReportsPage: React.FC = () => {
                   Stock Restant
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Créé le
+                  Date création
                 </th>
               </tr>
             </thead>
@@ -1399,7 +1399,7 @@ const ReportsPage: React.FC = () => {
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {product.created_at ? formatDateTimeWithHour(product.created_at) : '-'}
+                    {product.date_creation ? formatDateTimeWithHour(product.date_creation) : '-'}
                   </td>
                 </tr>
               ))}

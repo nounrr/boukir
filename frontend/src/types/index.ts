@@ -132,6 +132,7 @@ export interface Contact {
   updated_by?: number;
   created_at: string;
   updated_at: string;
+  date_creation?: string; // alias pour created_at côté affichage
 }
 
 export interface CreateContactData {

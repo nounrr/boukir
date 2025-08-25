@@ -497,7 +497,7 @@ const VehiculesPage = () => {
                   Année
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Créé le
+                  Date création
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Activité
@@ -586,7 +586,7 @@ const VehiculesPage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-700">
-                        {formatDateTimeWithHour(vehicule.created_at)}
+                        {formatDateTimeWithHour(vehicule.date_creation)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
