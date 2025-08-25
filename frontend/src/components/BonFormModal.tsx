@@ -4,6 +4,7 @@ import type { FormikProps } from 'formik';
 import * as Yup from 'yup';
 import { Plus, Trash2, Search, Printer } from 'lucide-react';
 import { showSuccess, showError } from '../utils/notifications';
+import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
@@ -432,7 +433,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         fournisseur_id: (initialValues.fournisseur_id || '').toString(),
         vehicule_id: (initialValues.vehicule_id || '').toString(),
         lieu_charge: initialValues.lieu_chargement || initialValues.lieu_charge || '',
-        date_bon: formatDateForInput(initialValues.date_creation || initialValues.date_bon || ''),
+        date_bon: formatMySQLToDateTimeInput(initialValues.date_creation || initialValues.date_bon || '') || getCurrentDateTimeInput(),
         items: normalizedItems,
         montant_ht: initialValues.montant_ht || 0,
         montant_total: initialValues.montant_total || 0,
@@ -449,7 +450,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
     return {
       type: currentTab,
-      date_bon: new Date().toISOString().split('T')[0],
+      date_bon: getCurrentDateTimeInput(),
       vehicule_id: '',
       lieu_charge: '',
       date_validation: '',
@@ -655,7 +656,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     }
 
   const cleanBonData = {
-      date_creation: values.date_bon,
+      date_creation: formatDateInputToMySQL(values.date_bon), // Datetime-local inclut déjà l'heure
       vehicule_id: vehiculeId,
       lieu_chargement: values.lieu_charge || '',
       adresse_livraison: values.adresse_livraison || '',
@@ -828,7 +829,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       const items = parseItems(itemsField);
       const bonClientId = String(bon.client_id ?? bon.contact_id ?? '');
       if (bonClientId !== cid) return;
-      const bonTime = toTime(bon.date_creation || bon.date || bon.created_at);
+      const bonTime = toTime(bon.date_creation || bon.date);
       for (const it of items as HistItem[]) {
         const itPid = String((it as any).product_id ?? (it as any).id ?? '');
         if (itPid !== pid) continue;
@@ -981,9 +982,9 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                 {/* Date */}
                 <div>
                   <label htmlFor="date_bon" className="block text-sm font-medium text-gray-700 mb-1">
-                    Date du bon
+                    Date et heure du bon
                   </label>
-                  <Field type="date" id="date_bon" name="date_bon" className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                  <Field type="datetime-local" id="date_bon" name="date_bon" className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                   <ErrorMessage name="date_bon" component="div" className="text-red-500 text-sm mt-1" />
                 </div>
 
@@ -1764,7 +1765,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                         // 3) Créer l'Avoir Client pour AWATEF, en ignorant le client du bon courant
                         await createBon({
                           type: 'Avoir',
-                          date_creation: values.date_bon || new Date().toISOString().split('T')[0],
+                          date_creation: formatDateInputToMySQL(values.date_bon || getCurrentDateTimeInput()), // Datetime-local inclut déjà l'heure
                           client_id: Number(awatef.id),
                           adresse_livraison: values.adresse_livraison || '',
                           montant_total: montantTotal,

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown } from 'lucide-react';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
   import ContactFormModal from '../components/ContactFormModal';
@@ -54,6 +54,10 @@ const BonsPage = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
+
+  // Sorting
+  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   // Auth context
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -123,9 +127,21 @@ const BonsPage = () => {
     // Ensure Devis numbers are displayed with uppercase DEV prefix and Avoirs with AVO prefix
   const getDisplayNumero = (bon: any) => getBonNumeroDisplay({ id: bon?.id, type: bon?.type, numero: bon?.numero });
 
+  // Handle sorting
+  const handleSort = (field: 'numero' | 'date' | 'contact' | 'montant') => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
   // On ne filtre plus par bon.type car la requête est déjà segmentée par onglet,
     // et certains endpoints ne renvoyaient pas `type`.
-  const filteredBons = bons.filter(bon => {
+  const sortedBons = useMemo(() => {
+    // First filter
+    const filtered = bons.filter(bon => {
       const term = (searchTerm || '').trim().toLowerCase();
       const contactName = (currentTab === 'Vehicule' ? (bon.vehicule_nom || '') : getContactName(bon)).toLowerCase();
       const matchesSearch = !term || (
@@ -139,12 +155,46 @@ const BonsPage = () => {
       return matchesSearch && matchesStatus;
     });
 
+    // Then sort
+    if (!sortField) return filtered;
+
+    return [...filtered].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortField) {
+        case 'numero':
+          aValue = getDisplayNumero(a).toLowerCase();
+          bValue = getDisplayNumero(b).toLowerCase();
+          break;
+        case 'date':
+          aValue = new Date(a.date_creation || 0).getTime();
+          bValue = new Date(b.date_creation || 0).getTime();
+          break;
+        case 'contact':
+          aValue = (currentTab === 'Vehicule' ? (a.vehicule_nom || '') : getContactName(a)).toLowerCase();
+          bValue = (currentTab === 'Vehicule' ? (b.vehicule_nom || '') : getContactName(b)).toLowerCase();
+          break;
+        case 'montant':
+          aValue = Number(a.montant_total || 0);
+          bValue = Number(b.montant_total || 0);
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [bons, searchTerm, statusFilter, sortField, sortDirection, currentTab, clients, suppliers]);
+
   // Pagination
-  const totalItems = filteredBons.length;
+  const totalItems = sortedBons.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedBons = filteredBons.slice(startIndex, endIndex);
+  const paginatedBons = sortedBons.slice(startIndex, endIndex);
 
   // Réinitialiser la page quand on change d'onglet ou de recherche
   React.useEffect(() => {
@@ -330,24 +380,56 @@ const BonsPage = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Numéro
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('numero')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Numéro
+                      {sortField === 'numero' && (
+                        sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Créé le
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('date')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Date création
+                      {sortField === 'date' && (
+                        sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                      )}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {(() => {
-                      if (currentTab === 'Vehicule') return 'Véhicule';
-                      if (currentTab === 'AvoirFournisseur' || currentTab === 'Commande') return 'Fournisseur';
-                      return 'Client';
-                    })()}
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('contact')}
+                  >
+                    <div className="flex items-center gap-1">
+                      {(() => {
+                        if (currentTab === 'Vehicule') return 'Véhicule';
+                        if (currentTab === 'AvoirFournisseur' || currentTab === 'Commande') return 'Fournisseur';
+                        return 'Client';
+                      })()}
+                      {sortField === 'contact' && (
+                        sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                      )}
+                    </div>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Adresse livraison
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Montant
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('montant')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Montant
+                      {sortField === 'montant' && (
+                        sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                      )}
+                    </div>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Statut
@@ -369,7 +451,7 @@ const BonsPage = () => {
                     <tr key={bon.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2 text-sm">{getDisplayNumero(bon)}</td>
                       <td className="px-4 py-2 text-sm">
-                        <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.created_at)}</div>
+                        <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.date_creation)}</div>
                       </td>
                       <td className="px-4 py-2 text-sm">{currentTab === 'Vehicule' ? (bon.vehicule_nom || '-') : getContactName(bon)}</td>
                       <td className="px-4 py-2 text-sm">{(bon as any).adresse_livraison ?? (bon as any).adresseLivraison ?? '-'}</td>

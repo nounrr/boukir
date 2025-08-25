@@ -12,7 +12,9 @@ import {
   Calendar,
   User,
   FileText,
-  CheckCircle
+  CheckCircle,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import type { Payment, Talon } from '../types';
 import { useGetPaymentsQuery, useDeletePaymentMutation, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
@@ -75,6 +77,10 @@ const TalonCaissePage = () => {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   
+  // Sorting
+  const [sortField, setSortField] = useState<'numero' | 'talon' | 'montant' | 'date' | 'echeance' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -90,7 +96,15 @@ const TalonCaissePage = () => {
     return allPayments.filter((payment: any) => payment.talon_id);
   }, [allPayments]);
 
-  // Helper: est en échéance proche (<= 5 jours) par rapport à aujourd'hui
+  // Handle sorting
+  const handleSort = (field: 'numero' | 'talon' | 'montant' | 'date' | 'echeance') => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };  // Helper: est en échéance proche (<= 5 jours) par rapport à aujourd'hui
   const isDueSoon = (payment: any) => {
     if (!payment?.date_echeance) return false;
     const today = new Date();
@@ -161,18 +175,60 @@ const TalonCaissePage = () => {
       filtered = filtered.filter((p: any) => isDueSoon(p));
     }
 
-    // Prioriser les paiements avec échéance proche, puis trier par date d'échéance croissante
-    const sorted = [...filtered].sort((a: any, b: any) => {
-      const aDue = isDueSoon(a);
-      const bDue = isDueSoon(b);
-      if (aDue !== bDue) return aDue ? -1 : 1;
-      const aTs = a.date_echeance ? new Date(a.date_echeance).getTime() : Number.POSITIVE_INFINITY;
-      const bTs = b.date_echeance ? new Date(b.date_echeance).getTime() : Number.POSITIVE_INFINITY;
-      return aTs - bTs;
-    });
+    // Apply sorting if specified
+    if (sortField) {
+      filtered = [...filtered].sort((a: any, b: any) => {
+        let aValue: any;
+        let bValue: any;
 
-    return sorted;
-  }, [talonPayments, searchTerm, dateFilter, statusFilter, modeFilter, selectedTalonFilter, onlyDueSoon, talons]);
+        const getTalonName = (talonId: number) => {
+          const talon = talons.find((t: Talon) => t.id === talonId);
+          return talon ? talon.nom : `Talon #${talonId}`;
+        };
+
+        switch (sortField) {
+          case 'numero':
+            aValue = `pay${String(a.id).padStart(2, '0')}`.toLowerCase();
+            bValue = `pay${String(b.id).padStart(2, '0')}`.toLowerCase();
+            break;
+          case 'talon':
+            aValue = getTalonName(a.talon_id).toLowerCase();
+            bValue = getTalonName(b.talon_id).toLowerCase();
+            break;
+          case 'montant':
+            aValue = Number(a.montant_total || 0);
+            bValue = Number(b.montant_total || 0);
+            break;
+          case 'date':
+            aValue = new Date(a.date_paiement || 0).getTime();
+            bValue = new Date(b.date_paiement || 0).getTime();
+            break;
+          case 'echeance':
+            aValue = a.date_echeance ? new Date(a.date_echeance).getTime() : Number.POSITIVE_INFINITY;
+            bValue = b.date_echeance ? new Date(b.date_echeance).getTime() : Number.POSITIVE_INFINITY;
+            break;
+          default:
+            return 0;
+        }
+
+        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    } else {
+      // Default sorting: Prioriser les paiements avec échéance proche, puis trier par date d'échéance croissante
+      filtered = [...filtered].sort((a: any, b: any) => {
+        const aDue = isDueSoon(a);
+        const bDue = isDueSoon(b);
+        if (aDue !== bDue) return aDue ? -1 : 1;
+        const aTs = a.date_echeance ? new Date(a.date_echeance).getTime() : Number.POSITIVE_INFINITY;
+        const bTs = b.date_echeance ? new Date(b.date_echeance).getTime() : Number.POSITIVE_INFINITY;
+        return aTs - bTs;
+      });
+    }
+
+    return filtered;
+  }, [talonPayments, searchTerm, dateFilter, statusFilter, modeFilter, selectedTalonFilter, onlyDueSoon, sortField, sortDirection, talons]);
 
   // Pagination
   const totalItems = filteredPayments.length;
@@ -559,14 +615,38 @@ const TalonCaissePage = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  N° Paiement
+                <th 
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('numero')}
+                >
+                  <div className="flex items-center gap-1">
+                    N° Paiement
+                    {sortField === 'numero' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Talon
+                <th 
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('talon')}
+                >
+                  <div className="flex items-center gap-1">
+                    Talon
+                    {sortField === 'talon' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Montant
+                <th 
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('montant')}
+                >
+                  <div className="flex items-center gap-1">
+                    Montant
+                    {sortField === 'montant' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Mode
@@ -574,11 +654,27 @@ const TalonCaissePage = () => {
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Statut
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Date
+                <th 
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('date')}
+                >
+                  <div className="flex items-center gap-1">
+                    Date
+                    {sortField === 'date' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Échéance
+                <th 
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('echeance')}
+                >
+                  <div className="flex items-center gap-1">
+                    Échéance
+                    {sortField === 'echeance' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
                 </th>
                 <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Actions

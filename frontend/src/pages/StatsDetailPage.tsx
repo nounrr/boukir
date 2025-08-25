@@ -63,7 +63,7 @@ const StatsDetailPage: React.FC = () => {
 
   const clientBonsForItems = useMemo(() => {
     const all = [...bonsComptant, ...bonsSortie];
-    return all.filter((b: any) => inDateRange(toDisplayDate(b.date || b.created_at)));
+    return all.filter((b: any) => inDateRange(toDisplayDate(b.date || b.date_creation)));
   }, [bonsComptant, bonsSortie, dateFrom, dateTo]);
 
   const { productClientStats, clientProductStats } = useMemo(() => {

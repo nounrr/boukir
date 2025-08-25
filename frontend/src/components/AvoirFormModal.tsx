@@ -4,6 +4,7 @@ import { Check, Plus } from 'lucide-react';
 import { addBon } from '../store/slices/bonsSlice';
 import { generateBonReference } from '../utils/referenceUtils';
 import { showSuccess } from '../utils/notifications';
+import { formatDateInputToMySQL, getCurrentDateTimeInput } from '../utils/dateUtils';
 import type { RootState } from '../store';
 import type { Bon, Contact } from '../types';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
@@ -100,7 +101,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
         id: Date.now(),
         type: 'Avoir' as const,
         numero: generateBonReference('Avoir'),
-        date_creation: new Date().toISOString().split('T')[0],
+        date_creation: formatDateInputToMySQL(getCurrentDateTimeInput()), // Utilise datetime-local format
         date_validation: new Date().toISOString().split('T')[0],
         statut: 'Validé' as const,
         fournisseur_id: selectedBon.fournisseur_id,
@@ -157,7 +158,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
         id: Date.now(),
         type: 'Avoir' as const,
         numero: generateBonReference('Avoir'),
-        date_creation: new Date().toISOString().split('T')[0],
+        date_creation: formatDateInputToMySQL(getCurrentDateTimeInput()), // Utilise datetime-local format
         date_validation: new Date().toISOString().split('T')[0],
         statut: 'Validé' as const,
         fournisseur_id: selectedBon.fournisseur_id,
@@ -251,7 +252,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                   id: Date.now(),
                   type: avoirType as 'Avoir' | 'AvoirFournisseur',
                   numero: generateBonReference(avoirType),
-                  date_creation: new Date().toISOString().split('T')[0],
+                  date_creation: formatDateInputToMySQL(getCurrentDateTimeInput()), // Utilise datetime-local format
                   date_validation: new Date().toISOString().split('T')[0],
                   statut: 'Validé' as const,
                   fournisseur_id: values.type_contact === 'Fournisseur' ? contactId : undefined,
@@ -291,7 +292,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                   id: Date.now(),
                   type: 'Avoir' as const,
                   numero: generateBonReference('Avoir'),
-                  date_creation: new Date().toISOString().split('T')[0],
+                  date_creation: formatDateInputToMySQL(getCurrentDateTimeInput()), // Utilise datetime-local format
                   date_validation: new Date().toISOString().split('T')[0],
                   statut: 'Validé' as const,
                   client_id: Number(values.client_id),
@@ -329,7 +330,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                   id: Date.now(),
                   type: 'AvoirFournisseur' as const,
                   numero: generateBonReference('AvoirFournisseur'),
-                  date_creation: new Date().toISOString().split('T')[0],
+                  date_creation: formatDateInputToMySQL(getCurrentDateTimeInput()), // Utilise datetime-local format
                   date_validation: new Date().toISOString().split('T')[0],
                   statut: 'Validé' as const,
                   fournisseur_id: Number(values.fournisseur_id),

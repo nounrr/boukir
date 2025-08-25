@@ -156,3 +156,116 @@ export const formatDateTimeWithHour = (date: string | Date | number): string => 
   
   return `${day}-${month}-${year} ${hours}:${minutes}`;
 };
+
+/**
+ * Convertit une date d'input HTML (YYYY-MM-DD) vers le format DATETIME MySQL
+ * @param dateInput - Date au format YYYY-MM-DD (ou vide)
+ * @param withCurrentTime - Si true, utilise l'heure actuelle, sinon 00:00:00
+ * @returns Date au format YYYY-MM-DD HH:MM:SS pour MySQL ou null si vide
+ */
+export const formatDateInputToMySQL = (dateInput: string, withCurrentTime: boolean = false): string | null => {
+  if (!dateInput || dateInput.trim() === '') return null;
+  
+  // Si c'est un datetime-local (YYYY-MM-DDTHH:MM)
+  if (dateInput.includes('T')) {
+    const [datePart, timePart] = dateInput.split('T');
+    const [hours, minutes] = timePart.split(':');
+    return `${datePart} ${hours}:${minutes}:00`;
+  }
+  
+  // Si c'est déjà au format YYYY-MM-DD
+  if (dateInput.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    if (withCurrentTime) {
+      const now = new Date();
+      const hours = now.getHours().toString().padStart(2, '0');
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      const seconds = now.getSeconds().toString().padStart(2, '0');
+      return `${dateInput} ${hours}:${minutes}:${seconds}`;
+    } else {
+      return `${dateInput} 00:00:00`;
+    }
+  }
+  
+  return null;
+};
+
+/**
+ * Convertit une valeur de date/datetime vers le format d'input HTML (YYYY-MM-DD)
+ * @param dateValue - Date MySQL (DATETIME/DATE) ou ISO string
+ * @returns Date au format YYYY-MM-DD pour les inputs HTML
+ */
+export const formatMySQLToDateInput = (dateValue: string | null): string => {
+  if (!dateValue) return '';
+  
+  // Si c'est un DATETIME (YYYY-MM-DD HH:MM:SS), prendre seulement la partie date
+  if (dateValue.includes(' ')) {
+    return dateValue.split(' ')[0];
+  }
+  
+  // Si c'est déjà au format YYYY-MM-DD
+  if (dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    return dateValue;
+  }
+  
+  // Essayer de parser comme Date
+  const dateObj = new Date(dateValue);
+  if (!isNaN(dateObj.getTime())) {
+    return dateObj.toISOString().split('T')[0];
+  }
+  
+  return '';
+};
+
+/**
+ * Obtient la date et heure actuelles au format DATETIME MySQL
+ * @returns Date actuelle au format YYYY-MM-DD HH:MM:SS
+ */
+export const getCurrentDateTimeMySQL = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const day = now.getDate().toString().padStart(2, '0');
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  const seconds = now.getSeconds().toString().padStart(2, '0');
+  
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+/**
+ * Convertit une datetime MySQL vers le format datetime-local (YYYY-MM-DDTHH:MM)
+ * @param dateTimeValue - DateTime MySQL (YYYY-MM-DD HH:MM:SS) 
+ * @returns DateTime au format YYYY-MM-DDTHH:MM pour les inputs datetime-local
+ */
+export const formatMySQLToDateTimeInput = (dateTimeValue: string | null): string => {
+  if (!dateTimeValue) return '';
+  
+  // Si c'est un DATETIME (YYYY-MM-DD HH:MM:SS)
+  if (dateTimeValue.includes(' ')) {
+    const [datePart, timePart] = dateTimeValue.split(' ');
+    const [hours, minutes] = timePart.split(':');
+    return `${datePart}T${hours}:${minutes}`;
+  }
+  
+  // Si c'est seulement une DATE (YYYY-MM-DD), ajouter l'heure par défaut
+  if (dateTimeValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    return `${dateTimeValue}T08:00`;
+  }
+  
+  return '';
+};
+
+/**
+ * Obtient la date et heure actuelles au format datetime-local (YYYY-MM-DDTHH:MM)
+ * @returns DateTime actuelle au format YYYY-MM-DDTHH:MM
+ */
+export const getCurrentDateTimeInput = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const day = now.getDate().toString().padStart(2, '0');
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
