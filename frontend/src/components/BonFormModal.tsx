@@ -296,10 +296,6 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [createContact] = useCreateContactMutation();
   const [isDuplicating, setIsDuplicating] = useState(false);
 
-  // Track Shift key to distinguish solo press vs combos (Shift+Tab, Shift+Arrow, Shift+Enter)
-  const shiftDownRef = useRef(false);
-  const shiftComboRef = useRef(false);
-
   /* -------------------- Helpers décimaux pour prix_unitaire -------------------- */
   const normalizeDecimal = (s: string) => s.replace(/\s+/g, '').replace(',', '.');
   const isDecimalLike = (s: string) => /^[0-9]*[.,]?[0-9]*$/.test(s);
@@ -574,53 +570,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     }
   };
 
-  // Helper: add a new empty product line (same as clicking "Ajouter ligne")
-  const addEmptyItemRow = (values: any, setFieldValue: (field: string, value: any) => void) => {
-    const newItem = {
-      _rowId: makeRowId(),
-      product_id: '',
-      product_reference: '',
-      designation: '',
-      quantite: 0,
-      prix_achat: 0,
-      prix_unitaire: 0,
-      cout_revient: 0,
-      kg: 0,
-      total: 0,
-      unite: 'pièce',
-    };
-    setFieldValue('items', [...(values.items || []), newItem]);
-    setUnitPriceRaw((prev) => ({ ...prev, [values.items?.length || 0]: '0' }));
-    setQtyRaw((prev) => ({ ...prev, [values.items.length]: '0' })); // ou [idx]/[newIndex] selon le cas
-
-    // Try to focus the newly added reference select input on next tick
-    setTimeout(() => {
-      const idx = (values.items?.length ?? 0);
-      const btn = document.querySelector(
-        `[data-row="${idx}"][data-col="product"]`
-      ) as HTMLElement | null;
-      if (btn) (btn as any).focus?.();
-    }, 50);
-  };
-
-  // Global key handler: prevent Enter from submitting; add a line when in products area
+  // Global key handler: prevent Enter from submitting
   const handleFormKeyDown = (
     e: React.KeyboardEvent<HTMLFormElement>
   ) => {
     const target = e.target as HTMLElement | null;
-
-    // Track Shift press and combos
-    if (e.key === 'Shift') {
-      if (!e.repeat) {
-        shiftDownRef.current = true;
-        shiftComboRef.current = false;
-      }
-      // don't prevent default here to allow normal selection if needed
-      return;
-    } else if (shiftDownRef.current) {
-      // Any other key while Shift is down marks this as a combo, so no new line on keyup
-      shiftComboRef.current = true;
-    }
 
     // Enter: submit the form (unless intercepted by inner controls like SearchableSelect)
     if (e.key === 'Enter') {
@@ -672,26 +626,6 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         try {
           if ((nextEl as any).select) (nextEl as any).select();
         } catch {}
-      }
-    }
-  };
-
-  // Handle keyup for Shift solo: create a new line when Shift was pressed and released without combos
-  const handleFormKeyUp = (
-    e: React.KeyboardEvent<HTMLFormElement>
-  ) => {
-    if (e.key === 'Shift') {
-      const wasCombo = shiftComboRef.current;
-      shiftDownRef.current = false;
-      shiftComboRef.current = false;
-      if (!wasCombo) {
-        // Add a new line and focus the product selector
-        e.preventDefault();
-        e.stopPropagation();
-        const formik = formikRef.current;
-        if (formik) {
-          addEmptyItemRow(formik.values, formik.setFieldValue);
-        }
       }
     }
   };
@@ -1032,7 +966,6 @@ const applyProductToRow = (rowIndex: number, product: any) => {
             <Form
               className="space-y-4"
               onKeyDown={(e) => handleFormKeyDown(e)}
-              onKeyUp={(e) => handleFormKeyUp(e)}
             >
               <div className="grid grid-cols-2 gap-4">
 

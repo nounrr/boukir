@@ -15,7 +15,6 @@ import Layout from './components/layout/Layout';
 import DashboardPage from './pages/DashboardPage';
 import EmployeePage from './pages/EmployeePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
-import DocumentTypesPage from './pages/DocumentTypesPage';
 import StockPage from './pages/StockPage';
 import ContactsPage from './pages/ContactsPage';
 import BonsPage from './pages/BonsPage';
@@ -102,17 +101,6 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <EmployeeSalariesPage />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/document-types"
-          element={
-            <ProtectedRoute>
-              <Layout>
-                <DocumentTypesPage />
               </Layout>
             </ProtectedRoute>
           }
