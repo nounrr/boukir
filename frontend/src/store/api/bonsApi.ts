@@ -1,6 +1,9 @@
 import { api } from './apiSlice';
 import type { Bon } from '../../types';
 
+// Shared union for bon-like types including new AvoirComptant
+type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Vehicule';
+
 export const bonsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getBons: builder.query<Bon[], void>({
@@ -27,6 +30,8 @@ export const bonsApi = api.injectEndpoints({
             return '/avoirs_client';
           case 'AvoirFournisseur':
             return '/avoirs_fournisseur';
+          case 'AvoirComptant':
+            return '/avoirs_comptant';
           case 'Vehicule':
             return '/bons_vehicule';
           default:
@@ -40,15 +45,12 @@ export const bonsApi = api.injectEndpoints({
         return list.map((bon) => ({ ...bon, type }));
       },
       providesTags: (result, _error, type) => {
-        const tagType = type as 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'AvoirClient' | 'AvoirFournisseur' | 'Vehicule';
-        let actualTagType = tagType;
-        
-        // Mapping des types frontend vers les types de tags
-        if (type === 'Avoir') actualTagType = 'AvoirClient' as any;
-        
+        let actual: any = type;
+        if (type === 'Avoir') actual = 'AvoirClient';
+        else if (type === 'AvoirComptant') actual = 'AvoirComptant';
         return result
-          ? [...result.map(({ id }) => ({ type: actualTagType, id })), { type: actualTagType, id: 'LIST' }]
-          : [{ type: actualTagType, id: 'LIST' }];
+          ? [...result.map(({ id }) => ({ type: actual, id })), { type: actual, id: 'LIST' }]
+          : [{ type: actual, id: 'LIST' }];
       }
     }),
     
@@ -82,6 +84,9 @@ export const bonsApi = api.injectEndpoints({
           case 'AvoirFournisseur':
             endpoint = '/avoirs_fournisseur';
             break;
+          case 'AvoirComptant':
+            endpoint = '/avoirs_comptant';
+            break;
           case 'Vehicule':
             endpoint = '/bons_vehicule';
             break;
@@ -96,7 +101,7 @@ export const bonsApi = api.injectEndpoints({
         };
       },
       invalidatesTags: (_result, _error, bonData: any) => {
-        const type = bonData.type;
+        const type = bonData.type as AnyBonType;
         switch (type) {
           case 'Commande':
             return [{ type: 'Commande', id: 'LIST' }];
@@ -110,6 +115,8 @@ export const bonsApi = api.injectEndpoints({
             return [{ type: 'AvoirClient', id: 'LIST' }];
           case 'AvoirFournisseur':
             return [{ type: 'AvoirFournisseur', id: 'LIST' }];
+          case 'AvoirComptant':
+            return [{ type: 'AvoirComptant', id: 'LIST' }];
           case 'Vehicule':
             return [{ type: 'Vehicule', id: 'LIST' }];
           default:
@@ -118,7 +125,7 @@ export const bonsApi = api.injectEndpoints({
       }
     }),
     
-    updateBon: builder.mutation<Bon, Partial<Bon> & { id: number; type?: string }>({
+  updateBon: builder.mutation<Bon, Partial<Bon> & { id: number; type?: AnyBonType }>({
       query: ({ id, type, ...bonData }) => {
         let endpoint = '';
         switch (type) {
@@ -140,6 +147,9 @@ export const bonsApi = api.injectEndpoints({
           case 'AvoirFournisseur':
             endpoint = `/avoirs_fournisseur/${id}`;
             break;
+          case 'AvoirComptant':
+            endpoint = `/avoirs_comptant/${id}`;
+            break;
           case 'Vehicule':
             endpoint = `/bons_vehicule/${id}`;
             break;
@@ -153,19 +163,19 @@ export const bonsApi = api.injectEndpoints({
         };
       },
       invalidatesTags: (_result, _error, { id, type }) => {
-        const tagType = type as any || 'Bon';
-        const actualTagType = type === 'Avoir' ? 'AvoirClient' : tagType;
+        let actualTagType: any = (type as AnyBonType) || 'Bon';
+        if (type === 'Avoir') actualTagType = 'AvoirClient';
+        else if ((type as any) === 'AvoirComptant') actualTagType = 'AvoirComptant';
         return [
           { type: actualTagType, id },
           { type: actualTagType, id: 'LIST' },
-          // Also invalidate generic Bon tags so all consumers refresh
           { type: 'Bon', id },
           { type: 'Bon', id: 'LIST' }
         ];
       },
     }),
     
-    deleteBon: builder.mutation<{ success: boolean; id: number }, { id: number; type: string }>({
+  deleteBon: builder.mutation<{ success: boolean; id: number }, { id: number; type: AnyBonType }>({
       query: ({ id, type }) => {
         let endpoint = '';
         switch (type) {
@@ -199,8 +209,9 @@ export const bonsApi = api.injectEndpoints({
         };
       },
       invalidatesTags: (_result, _error, { id, type }) => {
-        let tagType: any = type || 'Bon';
+  let tagType: any = type || 'Bon';
         if (type === 'Avoir') tagType = 'AvoirClient';
+        else if ((type as any) === 'AvoirComptant') tagType = 'AvoirComptant';
         return [
           { type: tagType, id },
           { type: tagType, id: 'LIST' }
@@ -209,7 +220,7 @@ export const bonsApi = api.injectEndpoints({
     }),
 
     // Pour changer le statut d'un bon (Valider, Annuler, etc.)
-  updateBonStatus: builder.mutation<Bon, { id: number; statut: string; type?: 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'Vehicule' }>({
+  updateBonStatus: builder.mutation<Bon, { id: number; statut: string; type?: AnyBonType }>({
       query: ({ id, statut, type }) => {
         let endpoint = '';
         switch (type) {
@@ -231,6 +242,9 @@ export const bonsApi = api.injectEndpoints({
           case 'AvoirFournisseur':
             endpoint = `/avoirs_fournisseur/${id}/statut`;
             break;
+          case 'AvoirComptant':
+            endpoint = `/avoirs_comptant/${id}/statut`;
+            break;
           case 'Vehicule':
             endpoint = `/bons_vehicule/${id}/statut`;
             break;
@@ -244,8 +258,9 @@ export const bonsApi = api.injectEndpoints({
         };
       },
       invalidatesTags: (_result, _error, { id, type }) => {
-        const tagType = type as any || 'Bon';
-        const actualTagType = type === 'Avoir' ? 'AvoirClient' : tagType;
+        let actualTagType: any = (type as AnyBonType) || 'Bon';
+        if (type === 'Avoir') actualTagType = 'AvoirClient';
+        else if ((type as any) === 'AvoirComptant') actualTagType = 'AvoirComptant';
         return [
           { type: actualTagType, id },
           { type: actualTagType, id: 'LIST' },

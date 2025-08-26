@@ -194,7 +194,7 @@ const formatHeure = (dateStr: string) => {
               )}
               {printMode === 'WITH_PRICES' && (
                 <>
-                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-24">P.U. (DH)</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-24">{bon?.type === 'Commande' ? 'P.A (DH)' : 'P.U. (DH)'}</th>
                   <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-28">Total (DH)</th>
                 </>
               )}

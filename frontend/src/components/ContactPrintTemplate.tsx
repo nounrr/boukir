@@ -65,6 +65,13 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
       ? contact.societe
       : (contact?.nom_complet || '-')
   );
+  // Détection fournisseur
+  const isFournisseur = (() => {
+    const t = String((contact as any)?.type || (contact as any)?.categorie || '').toLowerCase();
+    if (t.includes('fournisseur')) return true;
+    if ((contact as any)?.is_fournisseur === true) return true;
+    return false;
+  })();
 
   // Synthetic first rows with initial balance
   const txInitialRow: any = {
@@ -215,7 +222,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                   <th className="border border-gray-300 px-3 py-2 text-right">Qté</th>
                   {showPrices && (
                     <>
-                      <th className="border border-gray-300 px-3 py-2 text-right">Prix Unit.</th>
+                      <th className="border border-gray-300 px-3 py-2 text-right">{isFournisseur ? 'Prix Achat' : 'Prix Unit.'}</th>
                       <th className="border border-gray-300 px-3 py-2 text-right">Total</th>
                       <th className="border border-gray-300 px-3 py-2 text-right">Solde Cumulé</th>
                     </>
@@ -247,7 +254,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                         <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : it.quantite}</td>
                         {showPrices ? (
                           <>
-                            <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : fmt(it.prix_unitaire)}</td>
+                            <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : fmt(isFournisseur ? (it.prix_achat ?? it.prix_unitaire) : it.prix_unitaire)}</td>
                             <td className={`border border-gray-300 px-3 py-2 text-right font-medium ${it.syntheticInitial ? 'text-gray-600' : reduceBalance ? 'text-green-700' : ''}`}>{it.syntheticInitial ? '—' : fmt(displayTotal)}</td>
                             <td className="border border-gray-300 px-3 py-2 text-right text-gray-800 font-semibold">{fmt(it.soldeCumulatif)}</td>
                           </>
