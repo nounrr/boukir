@@ -30,7 +30,7 @@ import React, { useState, useMemo } from 'react';
   
 
 const BonsPage = () => {
-  const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis' | 'Vehicule'>('Commande');
+  const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule'>('Commande');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedBon, setSelectedBon] = useState<any>(null);
@@ -109,7 +109,7 @@ const BonsPage = () => {
   // Helper to get contact name (client or fournisseur) used by filtering/render
   const getContactName = (bon: any) => {
     // Comptant: if client_nom is present (free text), prefer it
-    if ((bon?.type === 'Comptant' || currentTab === 'Comptant') && bon?.client_nom) {
+  if ((bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || currentTab === 'Comptant' || currentTab === 'AvoirComptant') && bon?.client_nom) {
       return bon.client_nom;
     }
     const clientId = bon?.client_id ?? bon?.contact_id;
@@ -295,6 +295,7 @@ const BonsPage = () => {
               { key: 'Comptant', label: 'Bon Comptant' },
               { key: 'Vehicule', label: 'Bon Véhicule' },
               { key: 'Avoir', label: 'Avoir Client' },
+              { key: 'AvoirComptant', label: 'Avoir Comptant' },
               { key: 'AvoirFournisseur', label: 'Avoir Fournisseur' },
               { key: 'Devis', label: 'Devis' }
             ].map((tab) => (
@@ -485,7 +486,7 @@ const BonsPage = () => {
                                       </button>
                                     </>
                                   )}
-                                  {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur') && (
+                                  {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant') && (
                                     <>
                                       <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Valider l'avoir">
                                         <CheckCircle2 size={16} />
@@ -522,7 +523,7 @@ const BonsPage = () => {
                                       <XCircle size={16} />
                                     </button>
                                   )}
-                                  {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur') && (
+                                  {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant') && (
                                     <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler l'avoir">
                                       <XCircle size={16} />
                                     </button>
@@ -967,7 +968,7 @@ const BonsPage = () => {
             setSelectedBonForPrint(null);
           }}
           bon={selectedBonForPrint}
-          type={currentTab === 'Avoir' ? 'AvoirClient' : currentTab}
+          type={(currentTab === 'Avoir' || currentTab === 'AvoirComptant') ? 'AvoirClient' : currentTab}
           contact={(() => {
             const b = selectedBonForPrint;
             if (!b) return null;
@@ -984,7 +985,7 @@ const BonsPage = () => {
             // Sortie / Comptant / Avoir (client): prefer client_id, fallback to contact_id
             const clientId = b.client_id ?? b.contact_id;
             const found = clients.find((c) => String(c.id) === String(clientId)) || null;
-            if (!found && (currentTab === 'Comptant' || b.type === 'Comptant') && b.client_nom) {
+            if (!found && ((currentTab === 'Comptant' || b.type === 'Comptant' || currentTab === 'AvoirComptant' || b.type === 'AvoirComptant') && b.client_nom)) {
               // Build a minimal contact-like object for display
               return { nom_complet: b.client_nom } as any;
             }
@@ -1030,7 +1031,7 @@ const BonsPage = () => {
             if (!selectedBonForPDFPrint) return undefined;
             const bon = selectedBonForPDFPrint;
             const found = clients.find(c => c.id === bon.client_id);
-            if (!found && (bon.type === 'Comptant' || currentTab === 'Comptant') && bon.client_nom) {
+            if (!found && ((bon.type === 'Comptant' || currentTab === 'Comptant' || bon.type === 'AvoirComptant' || currentTab === 'AvoirComptant') && bon.client_nom)) {
               return { id: 0, nom_complet: bon.client_nom, type: 'Client', solde: 0, created_at: '', updated_at: '' } as any;
             }
             return found;

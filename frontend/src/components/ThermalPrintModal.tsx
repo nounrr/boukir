@@ -358,7 +358,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   <th className="col-qte">Qté</th>
                   {priceMode === 'WITH_PRICES' ? (
                     <>
-                      <th className="col-unit">P.U</th>
+                      <th className="col-unit">{type === 'Commande' ? 'P.A' : 'P.U'}</th>
                       <th className="col-total">Total</th>
                     </>
                   ) : null}

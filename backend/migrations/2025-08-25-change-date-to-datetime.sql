@@ -26,20 +26,11 @@ ALTER TABLE bons_sortie
 ALTER TABLE bons_vehicule
   MODIFY COLUMN date_creation DATETIME;
 
--- Table devis
+
 ALTER TABLE devis
   MODIFY COLUMN date_creation DATETIME;
+MN date_embauche DATETIME NULL;
 
--- Table employees - GARDER date_embauche en DATE
--- ALTER TABLE employees
---   MODIFY COLUMN date_embauche DATETIME NULL;
-
--- Table payments - changer SEULEMENT date_paiement en DATETIME, garder date_echeance en DATE
 ALTER TABLE payments
   MODIFY COLUMN date_paiement DATETIME NULL;
 
--- Mettre à jour les index sur les colonnes de date si nécessaire
--- Les index existants sur les colonnes DATE seront automatiquement mis à jour
-
--- Note: Les valeurs existantes seront automatiquement converties
--- Les dates comme '2025-01-15' deviendront '2025-01-15 00:00:00'
