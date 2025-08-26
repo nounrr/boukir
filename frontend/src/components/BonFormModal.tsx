@@ -228,7 +228,7 @@ const bonValidationSchema = Yup.object({
   }),
   // Pour Comptant, on saisit un nom libre
   client_nom: Yup.string().when('type', ([type], schema) => {
-    if (type === 'Comptant') return schema.trim();
+    if (type === 'Comptant' || type === 'AvoirComptant') return schema.trim();
     return schema.optional();
   }),
   fournisseur_id: Yup.number().when('type', ([type], schema) => {
@@ -245,7 +245,7 @@ const makeRowId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}
 interface BonFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis' | 'Vehicule';
+  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule';
   initialValues?: any;
   onBonAdded?: (bon: any) => void;
 }
@@ -309,14 +309,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ----------------------- Initialisation des valeurs ----------------------- */
   const getInitialValues = () => {
     if (initialValues) {
-      const formatDateForInput = (dateStr: string) => {
-        if (!dateStr) return new Date().toISOString().split('T')[0];
-        if (dateStr.includes('-') && dateStr.split('-').length === 3 && dateStr.split('-')[0].length === 4) {
-          return dateStr.split('T')[0];
-        }
-        const date = new Date(dateStr);
-        return !isNaN(date.getTime()) ? date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-      };
+  // (formatDateForInput removed - unused after refactor)
 
       const rawItems = Array.isArray(initialValues.items)
         ? initialValues.items
@@ -348,7 +341,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           }
         };
 
-        const productFound = findProductInCatalog();
+  const productFound = findProductInCatalog();
 
         let prix_achat =
           Number(it.prix_achat ?? it.pa ?? it.prixA ?? it.product?.prix_achat ?? it.produit?.prix_achat ?? 0) || 0;
@@ -376,7 +369,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
         if (productFound) {
           try {
-            if (!prix_achat || prix_achat === 0) {
+            // Pour Commande en édition : si pas de prix_achat mais prix_unitaire (stocké) existe, l'utiliser.
+            if ((!prix_achat || prix_achat === 0) && initialValues?.type === 'Commande' && prix_unitaire > 0) {
+              prix_achat = prix_unitaire;
+            } else if (!prix_achat || prix_achat === 0) {
+              // Sinon fallback sur le prix_achat du produit.
               prix_achat = Number((productFound as any).prix_achat ?? (productFound as any).pa ?? 0) || prix_achat;
             }
             if (!cout_revient || cout_revient === 0) {
@@ -449,7 +446,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     }
 
     return {
-      type: currentTab,
+  type: currentTab,
       date_bon: getCurrentDateTimeInput(),
       vehicule_id: '',
       lieu_charge: '',
@@ -641,7 +638,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
       
       // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
-      const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
+  const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
       const u =
         typeof item[priceField] === 'string'
           ? parseFloat(String(item[priceField]).replace(',', '.')) || 0
@@ -656,13 +653,13 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     }
 
   const cleanBonData = {
-      date_creation: formatDateInputToMySQL(values.date_bon), // Datetime-local inclut déjà l'heure
+  date_creation: formatDateInputToMySQL(values.date_bon) || new Date().toISOString().slice(0,19).replace('T',' '), // assure string
       vehicule_id: vehiculeId,
       lieu_chargement: values.lieu_charge || '',
       adresse_livraison: values.adresse_livraison || '',
       statut: values.statut || 'Brouillon',
-      client_id: requestType === 'Comptant' ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
-      client_nom: requestType === 'Comptant' ? (values.client_nom || null) : undefined,
+  client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
+  client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant') ? (values.client_nom || null) : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
       montant_total: montantTotal,
       created_by: user?.id || 1,
@@ -685,11 +682,15 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           typeof item.remise_montant === 'string'
             ? parseFloat(String(item.remise_montant).replace(',', '.')) || 0
             : Number(item.remise_montant) || 0;
+        // Pour les commandes, on ne souhaite PAS enregistrer un prix de vente ici.
+        // On utilise la valeur de prix_achat comme prix_unitaire envoyé au backend
+        // (la table conserve uniquement la colonne prix_unitaire pour Commande items).
+        const prixUnitairePourDB = values.type === 'Commande' ? pa : pu;
         return {
           product_id: parseInt(item.product_id),
           quantite: q,
           prix_achat: pa,
-          prix_unitaire: pu,
+          prix_unitaire: prixUnitairePourDB,
           remise_pourcentage: rp,
           remise_montant: rm,
           // Pour bon Commande, utiliser prix_achat pour le total; pour autres types, prix_unitaire
@@ -1108,11 +1109,11 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                 </div>
               )}
 
-              {/* Client libre pour Comptant */}
-              {values.type === 'Comptant' && (
+      {/* Client libre pour Comptant & AvoirComptant */}
+      {(values.type === 'Comptant' || values.type === 'AvoirComptant') && (
                 <div>
                   <label htmlFor="client_nom" className="block text-sm font-medium text-gray-700 mb-1">
-                    Client (texte libre)
+        Client (texte libre){values.type === 'AvoirComptant' ? ' - Avoir Comptant' : ''}
                   </label>
                   <Field
                     type="text"
@@ -1122,7 +1123,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
                   <div className="text-xs text-gray-500 mt-1">
-                    Ce client ne sera pas ajouté à la page Contacts.
+        Ce client ne sera pas ajouté à la page Contacts.
                   </div>
                 </div>
               )}

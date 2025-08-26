@@ -2209,7 +2209,7 @@ const ContactsPage: React.FC = () => {
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Référence</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Prix Unit.</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Prix Unit.'}</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Solde Cumulé</th>
@@ -2285,7 +2285,12 @@ const ContactsPage: React.FC = () => {
                                 {item.syntheticInitial ? '-' : item.type === 'paiement' ? '-' : item.quantite}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                                {item.syntheticInitial ? '-' : `${item.prix_unitaire.toFixed(2)} DH`}
+                                {item.syntheticInitial ? '-' : (() => {
+                                  const v = selectedContact?.type === 'Fournisseur'
+                                    ? (item as any).prix_achat ?? item.prix_unitaire
+                                    : item.prix_unitaire;
+                                  return `${(typeof v === 'number' ? v : parseFloat(v) || 0).toFixed(2)} DH`;
+                                })()}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                                 <div className={`font-semibold ${item.syntheticInitial ? 'text-gray-500' : item.type === 'paiement' ? 'text-green-600' : 'text-blue-600'}`}>
