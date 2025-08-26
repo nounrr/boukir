@@ -8,6 +8,7 @@ import {
   Menu,
   X,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { showConfirmation, showSuccess } from '../../utils/notifications';
 
 interface HeaderProps {
@@ -18,6 +19,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen }) => {
   const dispatch = useAppDispatch();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogout = async () => {
     const result = await showConfirmation(
@@ -52,16 +54,20 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen }) => {
         {/* Informations utilisateur */}
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
-            <div className="flex items-center space-x-1">
+            <button
+              type="button"
+              onClick={() => navigate('/profile')}
+              className="flex items-center space-x-1 group"
+            >
               {user?.role === 'PDG' ? (
                 <Crown className="w-4 h-4 text-yellow-600" />
               ) : (
-                <User className="w-4 h-4 text-gray-600" />
+                <User className="w-4 h-4 text-gray-600 group-hover:text-primary-600" />
               )}
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-gray-700 group-hover:text-primary-600">
                 {user?.nom_complet}
               </span>
-            </div>
+            </button>
             <span className="text-xs px-2 py-1 bg-primary-100 text-primary-800 rounded-full">
               {user?.role}
             </span>
