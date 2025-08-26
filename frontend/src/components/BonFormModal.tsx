@@ -958,14 +958,26 @@ const applyProductToRow = (rowIndex: number, product: any) => {
   if (!isOpen) return null;
 
   /* ---------------------------------- Render --------------------------------- */
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 w-full max-w-10xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">{initialValues ? 'Modifier' : 'Créer'} un {currentTab}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
-        </div>
+  if (!isOpen) return null;
 
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-lg w-full max-w-5xl max-h-[92vh] flex flex-col shadow-lg">
+        {/* Header */}
+        <div className="bg-blue-600 px-4 sm:px-6 py-3 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
+          <h2 className="text-base sm:text-lg font-semibold text-white truncate">
+            {initialValues ? 'Modifier' : 'Créer'} un {currentTab}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-white/80 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/50 rounded"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
+        </div>
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-32 pt-4">
         <Formik
           initialValues={initialFormValues}
           enableReinitialize={true}
@@ -978,7 +990,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
               className="space-y-4"
               onKeyDown={(e) => handleFormKeyDown(e)}
             >
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
 
                 {/* Date */}
                 <div>
@@ -1331,10 +1343,10 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                   </div>
                 )}
 
-                <div className="overflow-x-auto">
+                <div className="responsive-table-container">
                   <FieldArray name="items">
                     {({ remove }) => (
-                      <table className="min-w-full divide-y divide-gray-200">
+                      <table className="min-w-full divide-y divide-gray-200 table-mobile-compact">
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[260px]">
@@ -1705,9 +1717,11 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                 </div>
               </div>
 
-              {/* Footer actions */}
-              <div className="border-t pt-4 mt-6 flex justify-between">
-                <div className="flex gap-3">
+              {/* Footer spacer (for sticky bar) */}
+              <div className="h-4" />
+              {/* Sticky footer actions */}
+              <div className="border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 px-4 sm:px-6 py-3 rounded-b-lg flex flex-wrap gap-3 justify-between items-center sticky bottom-0 -mx-4 sm:-mx-6 mt-4">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={onClose}
@@ -1804,8 +1818,8 @@ const applyProductToRow = (rowIndex: number, product: any) => {
             </Form>
           )}
         </Formik>
+        </div>
       </div>
-
       {/* Modal Produit */}
       <ProductFormModal
         isOpen={isProductModalOpen}
@@ -1861,7 +1875,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
         }}
       />
 
-      {/* Modal Contact */}
+  {/* Modal Contact */}
       <ContactFormModal
         isOpen={!!isContactModalOpen}
         onClose={() => setIsContactModalOpen(null)}
@@ -1896,7 +1910,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
         }}
       />
 
-      {/* Modal Impression */}
+  {/* Modal Impression */}
       {initialValues && (
         <BonPrintModal
           isOpen={isPrintModalOpen}

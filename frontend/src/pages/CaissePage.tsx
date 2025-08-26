@@ -30,7 +30,7 @@ import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
-import { formatDateTimeWithHour, formatDateInputToMySQL, formatMySQLToDateInput, formatMySQLToDateTimeInput, getCurrentDateTimeInput, getCurrentDateISO } from '../utils/dateUtils';
+import { formatDateTimeWithHour, formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { toBackendUrl } from '../utils/url';
 import { useGetPaymentsQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
@@ -54,6 +54,7 @@ const CaissePage = () => {
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState<boolean>(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [createOpenedAt, setCreateOpenedAt] = useState<string | null>(null); // capture datetime à l'ouverture du modal création
 
   // Sorting
   const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | 'echeance' | null>(null);
@@ -466,19 +467,10 @@ const paymentValidationSchema = Yup.object({
 
   const getInitialValues = () => {
     if (selectedPayment) {
-      const normDate = (d?: string) => {
-        if (!d) return '';
-        const s = String(d).slice(0, 10);
-        if (s === '0000-00-00') return '';
-        return s;
-      };
-      // Déterminer si le contact est optionnel (bon comptant sans client)
       let contactOptional = false;
       if (selectedPayment.bon_id) {
         const related = bons.find((b: Bon) => b.id === selectedPayment.bon_id);
-        if (related && related.type === 'Comptant' && !related.client_id) {
-          contactOptional = true;
-        }
+        if (related && related.type === 'Comptant' && !related.client_id) contactOptional = true;
       }
       return {
         type_paiement: selectedPayment.type_paiement || 'Client',
@@ -487,33 +479,30 @@ const paymentValidationSchema = Yup.object({
         bon_id: selectedPayment.bon_id || '',
         montant: selectedPayment.montant || selectedPayment.montant_total,
         mode_paiement: selectedPayment.mode_paiement,
-  statut: selectedPayment.statut || 'En attente',
+        statut: selectedPayment.statut || 'En attente',
         date_paiement: formatMySQLToDateTimeInput(selectedPayment.date_paiement),
-  // champs référence supprimés
         notes: selectedPayment.notes || selectedPayment.designation || '',
         banque: selectedPayment.banque || '',
         personnel: selectedPayment.personnel || '',
         date_echeance: selectedPayment.date_echeance || '',
-  code_reglement: selectedPayment.code_reglement || '',
+        code_reglement: selectedPayment.code_reglement || '',
         talon_id: selectedPayment.talon_id || '',
       };
     }
-    
-  return {
+    return {
       type_paiement: 'Client',
       contact_optional: false,
       contact_id: '',
       bon_id: '',
       montant: 0,
       mode_paiement: 'Espèces',
-  statut: 'En attente',
-      date_paiement: getCurrentDateTimeInput(),
-  // champs référence supprimés
+      statut: 'En attente',
+      date_paiement: createOpenedAt || getCurrentDateTimeInput(),
       notes: '',
       banque: '',
       personnel: '',
       date_echeance: '',
-  code_reglement: '',
+      code_reglement: '',
       talon_id: '',
     };
   };
@@ -693,46 +682,47 @@ const paymentValidationSchema = Yup.object({
   };
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Header avec informations utilisateur */}
-      <div className="flex justify-between items-center mb-6 bg-white rounded-lg shadow p-4">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6 bg-white rounded-lg shadow p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
           <h1 className="text-2xl font-bold text-gray-900">Gestion de la Caisse</h1>
           {user && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center flex-wrap gap-2 text-sm text-gray-600">
               <User size={16} />
-              <span className="font-medium">{user.nom_complet}</span>
+              <span className="font-medium truncate max-w-[160px] sm:max-w-none">{user.nom_complet}</span>
               <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
                 {user.role}
               </span>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap gap-3">
           <button
             onClick={() => {
               setSelectedPayment(null);
               setSelectedImage(null);
               setImagePreview('');
+              setCreateOpenedAt(getCurrentDateTimeInput());
               setIsCreateModalOpen(true);
             }}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
           >
-            <Plus size={20} />
-            Nouveau Paiement
+            <Plus size={18} className="shrink-0" />
+            <span className="whitespace-nowrap">Nouveau Paiement</span>
           </button>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors"
+            className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
           >
-            <LogOut size={20} />
-            Déconnexion
+            <LogOut size={18} className="shrink-0" />
+            <span className="whitespace-nowrap">Déconnexion</span>
           </button>
         </div>
       </div>
 
-      {/* Statistiques de caisse */}
-      <div className="grid grid-cols-5 gap-4 mb-6">
+  {/* Statistiques de caisse */}
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
@@ -795,8 +785,8 @@ const paymentValidationSchema = Yup.object({
       </div>
 
       {/* Filtres et recherche */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex gap-4 items-center">
+      <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-start sm:items-center">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
@@ -804,26 +794,26 @@ const paymentValidationSchema = Yup.object({
               placeholder="Rechercher (N° paiement, Nom, Société, Notes)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-80 pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full sm:w-80 pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <Calendar size={16} className="text-gray-500" />
             <input
               type="date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="flex-1 sm:flex-none px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <Filter size={16} className="text-gray-500" />
             <select
               value={modeFilter}
               onChange={(e) => setModeFilter(e.target.value as any)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="flex-1 sm:flex-none px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="all">Tous les modes</option>
               <option value="Espèces">Espèces</option>
@@ -833,22 +823,22 @@ const paymentValidationSchema = Yup.object({
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2 w-full sm:w-auto">
             <label className="text-sm text-gray-600">Statut</label>
             <select
               multiple
               value={statusFilter}
               onChange={(e) => setStatusFilter(Array.from(e.target.selectedOptions).map(o => o.value))}
-              className="px-2 py-2 border border-gray-300 rounded-md h-28"
+              className="px-2 py-2 border border-gray-300 rounded-md h-28 text-sm"
               title="Filtrer par statut (sélection multiple)"
             >
               {availableStatuses.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
-            <div className="flex flex-col gap-2 ml-2">
-              <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([])}>Tous</button>
-              <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([...availableStatuses])}>Tout sélectionner</button>
+            <div className="flex flex-col gap-2 ml-2 shrink-0">
+              <button type="button" className="px-2 py-1 bg-gray-100 rounded text-xs" onClick={() => setStatusFilter([])}>Tous</button>
+              <button type="button" className="px-2 py-1 bg-gray-100 rounded text-xs" onClick={() => setStatusFilter([...availableStatuses])}>Tout</button>
             </div>
           </div>
         </div>
@@ -861,16 +851,16 @@ const paymentValidationSchema = Yup.object({
             setStatusFilter([]);
             dispatch(resetFilters());
           }}
-          className="px-4 py-2 text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-50"
+          className="self-start md:self-auto px-4 py-2 text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-50 text-sm"
         >
           Réinitialiser les filtres
         </button>
       </div>
 
-      {/* Table des paiements */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+      {/* Table des paiements (desktop) */}
+      <div className="hidden md:block bg-white rounded-lg shadow overflow-hidden">
+        <div className="responsive-table-container gradient-mask">
+          <table className="responsive-table responsive-table-min divide-y divide-gray-200 text-sm table-sticky-header">
             <thead className="bg-gray-50">
               <tr>
                 <th 
@@ -1128,6 +1118,92 @@ const paymentValidationSchema = Yup.object({
         </div>
       </div>
 
+      {/* Liste mobile des paiements */}
+      <div className="md:hidden space-y-4 mb-10">
+        {sortedPayments.length === 0 ? (
+          <div className="text-center text-sm text-gray-500 bg-white rounded-lg p-6 shadow">Aucun paiement trouvé</div>
+        ) : (
+          sortedPayments.map((payment: Payment) => {
+            const contactName = payment.type_paiement === 'Fournisseur'
+              ? (fournisseurs.find(f => f.id === payment.contact_id)?.nom_complet || '-')
+              : (clients.find(c => c.id === payment.contact_id)?.nom_complet || '-');
+            const societe = payment.type_paiement === 'Fournisseur'
+              ? (fournisseurs.find(f => f.id === payment.contact_id)?.societe || '-')
+              : (clients.find(c => c.id === payment.contact_id)?.societe || '-');
+            return (
+              <div key={payment.id} className="bg-white rounded-lg shadow p-4 flex flex-col gap-3">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-semibold text-gray-900">{getDisplayNumeroPayment(payment)}</h3>
+                    <p className="text-xs text-gray-500">{formatDateTimeWithHour(payment.date_paiement)}</p>
+                  </div>
+                  <div>
+                    <span className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-full ${getStatusClasses(displayStatut(payment.statut))}`}>
+                      {getStatusIcon(displayStatut(payment.statut))}
+                      {displayStatut(payment.statut)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className={`px-2 py-0.5 rounded-full ${payment.type_paiement === 'Fournisseur' ? 'bg-orange-100 text-orange-800' : 'bg-emerald-100 text-emerald-800'}`}>{payment.type_paiement}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{payment.mode_paiement}</span>
+                  {payment.image_url && (payment.mode_paiement === 'Chèque' || payment.mode_paiement === 'Traite') && (
+                    <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700">Image</span>
+                  )}
+                </div>
+                <div className="text-sm">
+                  <p className="font-medium text-gray-800 truncate">{contactName}</p>
+                  <p className="text-gray-500 text-xs truncate">{societe}</p>
+                  <p className="mt-1 text-gray-700 font-semibold">{Number(payment.montant ?? payment.montant_total ?? 0).toFixed(2)} DH</p>
+                  {payment.date_echeance && (
+                    <p className="text-xs text-gray-500">Échéance: {formatYMD(payment.date_echeance)}</p>
+                  )}
+                  <p className="text-xs text-gray-500">{getBonInfo(payment.bon_id)}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2 border-t">
+                  {/* Actions principales */}
+                  <button onClick={() => handleViewPayment(payment)} className="flex items-center gap-1 text-blue-600 text-xs font-medium px-2 py-1 bg-blue-50 rounded">
+                    <Eye size={14} /> Voir
+                  </button>
+                  <button onClick={() => handleEditPayment(payment)} className="flex items-center gap-1 text-green-600 text-xs font-medium px-2 py-1 bg-green-50 rounded">
+                    <Edit size={14} /> Edit
+                  </button>
+                  <button onClick={() => handlePrintPayment(payment)} className="flex items-center gap-1 text-purple-600 text-xs font-medium px-2 py-1 bg-purple-50 rounded">
+                    <Printer size={14} /> Imp
+                  </button>
+                  <button onClick={() => handleDelete(payment.id)} className="flex items-center gap-1 text-red-600 text-xs font-medium px-2 py-1 bg-red-50 rounded">
+                    <Trash2 size={14} /> Suppr
+                  </button>
+                  {/* Changement de statut condensé */}
+                  <div className="flex items-center gap-1 ml-auto">
+                    <button onClick={() => changePaymentStatus(payment.id, 'En attente')} className={`p-1 rounded ${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-400'}`} title="En attente">
+                      <Clock size={14} />
+                    </button>
+                    {user?.role === 'Employé' ? (
+                      <button onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
+                        <XCircle size={14} />
+                      </button>
+                    ) : (
+                      <>
+                        <button onClick={() => changePaymentStatus(payment.id, 'Validé')} className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-400'}`} title="Valider">
+                          <Check size={14} />
+                        </button>
+                        <button onClick={() => changePaymentStatus(payment.id, 'Refusé')} className={`p-1 rounded ${payment.statut === 'Refusé' ? 'text-orange-600' : 'text-gray-400'}`} title="Refuser">
+                          <X size={14} />
+                        </button>
+                        <button onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
+                          <XCircle size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
       {/* Modal de création/édition */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1236,8 +1312,8 @@ const paymentValidationSchema = Yup.object({
                     }
                   }}
                 >
-                  {/* Adjust grid for three inputs per row */}
-                  <div className="grid grid-cols-3 gap-4">
+                  {/* Responsive grid: 2 cols on small screens, 3 on md+ */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div>
                       <label htmlFor="type_paiement" className="block text-sm font-medium text-gray-700 mb-1">
                         Type de paiement
