@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
+import MobileBottomNav from './MobileBottomNav';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -14,16 +15,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <Header onToggleSidebar={toggleSidebar} sidebarOpen={sidebarOpen} />
       
-      <div className="flex">
+      <div className="flex flex-1 w-full">
         <Sidebar isOpen={sidebarOpen} />
-        
-        <main className="flex-1 p-6">
-          {children}
-        </main>
+  <main className="flex-1 p-4 pb-28 md:pb-6 md:p-6">{children}</main>
       </div>
+      <MobileBottomNav />
     </div>
   );
 };

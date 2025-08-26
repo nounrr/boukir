@@ -8,7 +8,8 @@ import React, { useState, useMemo } from 'react';
   import AvoirFormModal from '../components/AvoirFormModal';
   import ThermalPrintModal from '../components/ThermalPrintModal';
   import BonPrintModal from '../components/BonPrintModal';
-
+  // Centralize action/status icon size for easier adjustment
+  const ACTION_ICON_SIZE = 24; // increased from 20 per user request
   import { 
     useGetBonsByTypeQuery, 
     useDeleteBonMutation, 
@@ -126,6 +127,45 @@ const BonsPage = () => {
 
     // Ensure Devis numbers are displayed with uppercase DEV prefix and Avoirs with AVO prefix
   const getDisplayNumero = (bon: any) => getBonNumeroDisplay({ id: bon?.id, type: bon?.type, numero: bon?.numero });
+
+  // Compute mouvement (profit) and margin% for a bon EXACTLY comme dans BonFormModal :
+  // FORMULE: profit = Σ ( (prix_unitaire - (cout_revient || prix_achat)) * quantite )
+  // (Ne pas soustraire la remise unitaire ici – le modal n'intègre pas la remise dans Mouvement.)
+  // margin% = profit / Σ( (cout_revient || prix_achat) * quantite ) * 100
+  const parseItemsSafe = (raw: any): any[] => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return []; } }
+    return [];
+  };
+  const resolveCost = (it: any): number => {
+    if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
+    if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
+    const pid = it.product_id || it.produit_id;
+    if (pid) {
+      const prod = (products as any[]).find(p => String(p.id) === String(pid));
+      if (prod) return Number(prod.cout_revient ?? prod.prix_achat ?? 0) || 0;
+    }
+    return 0;
+  };
+  const computeMouvementDetail = (bon: any): { profit: number; costBase: number; marginPct: number | null } => {
+    const items = parseItemsSafe(bon?.items);
+    let profit = 0; let costBase = 0;
+    for (const it of items) {
+      const q = Number(it.quantite ?? it.qty ?? 0) || 0;
+      if (!q) continue;
+      // Utiliser le prix_unitaire enregistré sur la ligne (NE PAS rafraîchir via produit pour éviter les changements ultérieurs)
+      const prixVente = Number(it.prix_unitaire ?? 0) || 0;
+      // Coût: cout_revient sinon prix_achat; fallback produit uniquement si les deux sont absents
+      let cost = 0;
+      if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
+      else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
+      else cost = resolveCost(it); // dernier recours
+      profit += (prixVente - cost) * q;
+      costBase += cost * q;
+    }
+    const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
+    return { profit, costBase, marginPct };
+  };
 
   // Handle sorting
   const handleSort = (field: 'numero' | 'date' | 'contact' | 'montant') => {
@@ -376,9 +416,12 @@ const BonsPage = () => {
         </div>
 
   {/* Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+        <div className="bg-white rounded-lg shadow">
+          <div className="responsive-table-container">
+            <table
+              className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact"
+              style={{ minWidth: 960 }}
+            >
               <thead className="bg-gray-50">
                 <tr>
                   <th 
@@ -433,6 +476,9 @@ const BonsPage = () => {
                     </div>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Mouvement
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Statut
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -443,7 +489,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={9} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTab}
                     </td>
                   </tr>
@@ -460,11 +506,29 @@ const BonsPage = () => {
                         <div className="text-sm font-semibold text-gray-900">{Number(bon.montant_total ?? 0).toFixed(2)} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
                       </td>
+                      <td className="px-4 py-2 text-sm">
+                        {(() => {
+                          // Show mouvement only for sales/stock out types (Sortie, Comptant, Avoir, AvoirComptant)
+                          const type = bon.type || currentTab;
+                          if (!['Sortie','Comptant','Avoir','AvoirComptant'].includes(type)) return <span className="text-gray-400">-</span>;
+                          const { profit, marginPct } = computeMouvementDetail(bon);
+                          let cls = 'text-gray-600';
+                          if (profit > 0) cls = 'text-green-600';
+                          else if (profit < 0) cls = 'text-red-600';
+                          return (
+                            <span className={`font-semibold ${cls}`}> 
+                              {profit.toFixed(2)} DH{marginPct !== null && (
+                                <span className="text-xs font-normal ml-1">({marginPct.toFixed(1)}%)</span>
+                              )}
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="px-4 py-2">
-                          <span className={`inline-flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(bon.statut)}`}>
-                            {getStatusIcon(bon.statut)}
-                            {bon.statut || '-'}
-                          </span>
+                        <span className={`inline-flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(bon.statut)}`}>
+                          {getStatusIcon(bon.statut)}
+                          {bon.statut || '-'}
+                        </span>
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="inline-flex gap-2">
@@ -476,39 +540,39 @@ const BonsPage = () => {
                                   {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant') && (
                                     <>
                                       <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Marquer Validé">
-                                        <CheckCircle2 size={16} />
+                                        <CheckCircle2 size={ACTION_ICON_SIZE} />
                                       </button>
                                       <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre En attente">
-                                        <Clock size={16} />
+                                        <Clock size={ACTION_ICON_SIZE} />
                                       </button>
                                       <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
-                                        <XCircle size={16} />
+                                        <XCircle size={ACTION_ICON_SIZE} />
                                       </button>
                                     </>
                                   )}
                                   {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant') && (
                                     <>
                                       <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Valider l'avoir">
-                                        <CheckCircle2 size={16} />
+                                        <CheckCircle2 size={ACTION_ICON_SIZE} />
                                       </button>
                                       <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre en attente">
-                                        <Clock size={16} />
+                                        <Clock size={ACTION_ICON_SIZE} />
                                       </button>
                                       <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler l'avoir">
-                                        <XCircle size={16} />
+                                        <XCircle size={ACTION_ICON_SIZE} />
                                       </button>
                                     </>
                                   )}
                                   {currentTab === 'Devis' && (
                                     <>
                                       <button onClick={() => handleChangeStatus(bon, 'Accepté')} className="text-green-600 hover:text-green-800" title="Accepter le devis">
-                                        <CheckCircle2 size={16} />
+                                        <CheckCircle2 size={ACTION_ICON_SIZE} />
                                       </button>
                                       <button onClick={() => handleChangeStatus(bon, 'Envoyé')} className="text-blue-600 hover:text-blue-800" title="Marquer comme envoyé">
-                                        <Clock size={16} />
+                                        <Clock size={ACTION_ICON_SIZE} />
                                       </button>
                                       <button onClick={() => handleChangeStatus(bon, 'Refusé')} className="text-red-600 hover:text-red-800" title="Refuser le devis">
-                                        <XCircle size={16} />
+                                        <XCircle size={ACTION_ICON_SIZE} />
                                       </button>
                                     </>
                                   )}
@@ -520,12 +584,12 @@ const BonsPage = () => {
                                 <>
                                   {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant') && (
                                     <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
-                                      <XCircle size={16} />
+                                      <XCircle size={ACTION_ICON_SIZE} />
                                     </button>
                                   )}
                                   {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant') && (
                                     <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler l'avoir">
-                                      <XCircle size={16} />
+                                      <XCircle size={ACTION_ICON_SIZE} />
                                     </button>
                                   )}
                                   {/* Devis: pas d'action d'annulation explicite pour Employé */}
@@ -542,7 +606,7 @@ const BonsPage = () => {
                             className="text-purple-600 hover:text-purple-800"
                             title="Imprimer (Thermique 5cm)"
                           >
-                            <Printer size={16} />
+                            <Printer size={ACTION_ICON_SIZE} />
                           </button>
                           <button
                             onClick={() => { 
@@ -552,7 +616,7 @@ const BonsPage = () => {
                             className="text-green-600 hover:text-green-800"
                             title="Imprimer PDF (A4/A5)"
                           >
-                            <Printer size={16} />
+                            <Printer size={ACTION_ICON_SIZE} />
                           </button>
                           {currentUser?.role !== 'Employé' && (
                             <button
@@ -560,7 +624,7 @@ const BonsPage = () => {
                               className="text-gray-600 hover:text-gray-900"
                               title="Voir"
                             >
-                              <Eye size={16} />
+                              <Eye size={ACTION_ICON_SIZE} />
                             </button>
                           )}
                           {currentUser?.role === 'PDG' && (
@@ -570,7 +634,7 @@ const BonsPage = () => {
                                 className="text-blue-600 hover:text-blue-800"
                                 title="Modifier"
                               >
-                                <Edit size={16} />
+                                <Edit size={ACTION_ICON_SIZE} />
                               </button>
                               <button
                                 onClick={() => {
@@ -581,14 +645,14 @@ const BonsPage = () => {
                                 className="text-pink-600 hover:text-pink-800"
                                 title="Dupliquer AWATEF (Avoir Client)"
                               >
-                                <Copy size={16} />
+                                <Copy size={ACTION_ICON_SIZE} />
                               </button>
                               <button
                                 onClick={() => handleDelete(bon)}
                                 className="text-red-600 hover:text-red-800"
                                 title="Supprimer"
                               >
-                                <Trash2 size={16} />
+                                <Trash2 size={ACTION_ICON_SIZE} />
                               </button>
                             </>
                           )}
@@ -716,8 +780,11 @@ const BonsPage = () => {
 
                   <div className="border rounded-md p-4">
                     <h3 className="font-bold mb-3">Produits</h3>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
+                    <div className="responsive-table-container">
+                      <table
+                        className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact"
+                        style={{ minWidth: 600 }}
+                      >
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Produit</th>
