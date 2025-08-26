@@ -318,12 +318,15 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                     (typeof contact.societe === 'string' && contact.societe.trim()) ? contact.societe :
                     contact.nom_complet || contact.nom || contact.name || '-'
                   )}
-                  {contact.adresse && contact.adresse.trim() ? (
-                    <>
-                      <br />
-                      Adresse: {contact.adresse}
-                    </>
-                  ) : null}
+                  {(() => {
+                    const adrLiv = bon?.adresse_livraison || bon?.adresseLivraison || '';
+                    return adrLiv && String(adrLiv).trim() ? (
+                      <>
+                        <br />
+                        Adresse livraison: {adrLiv}
+                      </>
+                    ) : null;
+                  })()}
                 </div>
               ) : null}
             </div>

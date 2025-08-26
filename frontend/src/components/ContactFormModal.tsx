@@ -17,8 +17,7 @@ const clientSchema = Yup.object({
   rib: Yup.string().nullable(),
   solde: Yup.number()
     .typeError('Solde invalide')
-    .required('Solde requis')
-    .min(0, 'Le solde ne peut pas être négatif'),
+    .required('Solde requis'), // négatif autorisé désormais
   plafond: Yup.number()
     .nullable()
     .transform((value, originalValue) => (originalValue === '' ? null : value))
@@ -34,8 +33,7 @@ const fournisseurSchema = Yup.object({
   rib: Yup.string().nullable(),
   solde: Yup.number()
     .nullable()
-    .transform((value, originalValue) => (originalValue === '' ? null : value))
-    .min(0, 'Le solde ne peut pas être négatif'),
+    .transform((value, originalValue) => (originalValue === '' ? null : value)), // négatif autorisé
   plafond: Yup.mixed().notRequired().nullable(),
 });
 
