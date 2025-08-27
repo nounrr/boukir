@@ -42,7 +42,7 @@ const upload = multer({
     if (!allowed.includes(file.mimetype)) return cb(new Error('Type de fichier non supporté'));
     cb(null, true);
   },
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB pour supporter les PDF
+  // Taille illimitée pour tous les fichiers
 });
 
 // POST /api/upload/payment-image - field name: image

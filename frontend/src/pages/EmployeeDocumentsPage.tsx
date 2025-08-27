@@ -176,7 +176,7 @@ const EmployeeDocumentsPage: React.FC = () => {
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 file:mr-4 file:py-1 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Formats acceptés : PDF, JPG, PNG (max 10MB)
+                  Formats acceptés : PDF, JPG, PNG (taille illimitée)
                 </p>
                 {isUploading && (
                   <p className="text-sm text-blue-600 mt-2 flex items-center gap-2">

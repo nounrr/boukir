@@ -262,6 +262,8 @@ const CaissePage = () => {
     // Réinitialiser l'état de l'image
     setSelectedImage(null);
     setImagePreview(payment.image_url || '');
+    // Set the original payment datetime for proper pre-filling
+    setCreateOpenedAt(formatMySQLToDateTimeInput(payment.date_paiement));
     setIsCreateModalOpen(true);
   };
 
@@ -466,6 +468,16 @@ const paymentValidationSchema = Yup.object({
         const related = bons.find((b: Bon) => b.id === selectedPayment.bon_id);
         if (related && related.type === 'Comptant' && !related.client_id) contactOptional = true;
       }
+      
+      // Debug: afficher les valeurs pour comprendre le problème
+      console.log('=== DEBUG getInitialValues ===');
+      console.log('selectedPayment:', selectedPayment);
+      console.log('selectedPayment.date_paiement:', selectedPayment.date_paiement);
+      console.log('typeof date_paiement:', typeof selectedPayment.date_paiement);
+      console.log('formatMySQLToDateTimeInput result:', formatMySQLToDateTimeInput(selectedPayment.date_paiement));
+      console.log('getCurrentDateTimeInput result:', getCurrentDateTimeInput());
+      console.log('=== FIN DEBUG ===');
+      
       return {
         type_paiement: selectedPayment.type_paiement || 'Client',
         contact_optional: contactOptional,
@@ -474,7 +486,7 @@ const paymentValidationSchema = Yup.object({
         montant: selectedPayment.montant || selectedPayment.montant_total,
         mode_paiement: selectedPayment.mode_paiement,
         statut: selectedPayment.statut || 'En attente',
-        date_paiement: formatMySQLToDateTimeInput(selectedPayment.date_paiement),
+        date_paiement: formatMySQLToDateTimeInput(selectedPayment.date_paiement) || getCurrentDateTimeInput(),
         notes: selectedPayment.notes || selectedPayment.designation || '',
         banque: selectedPayment.banque || '',
         personnel: selectedPayment.personnel || '',
@@ -1571,7 +1583,7 @@ const paymentValidationSchema = Yup.object({
                             className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                           <p className="text-xs text-gray-500">
-                            📁 Formats acceptés: JPEG, JPG, PNG, GIF (max 5MB)
+                            📁 Formats acceptés: JPEG, JPG, PNG, GIF (taille illimitée)
                           </p>
                         </div>
                       </div>
