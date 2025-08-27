@@ -80,12 +80,20 @@ const dbDateTimeToYMDOrNull = (d) => {
 const dbDateTimeToFullOrNull = (d) => {
   if (!d) return null;
   const s = String(d);
+  
   // Vérifier si c'est un DATETIME valide (YYYY-MM-DD HH:MM:SS)
   if (s.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
     return s;
   }
+  
+  // Si c'est une DATE simple (YYYY-MM-DD), ajouter l'heure par défaut (08:00:00)
+  if (s.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    return `${s} 08:00:00`;
+  }
+  
   // Si c'est '0000-00-00 00:00:00' ou format invalide
   if (s.startsWith('0000-00-00')) return null;
+  
   return s;
 };
 

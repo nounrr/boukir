@@ -384,8 +384,16 @@ const ContactsPage: React.FC = () => {
         const prod = products.find((p) => p.id === it.product_id);
         const ref = prod ? String(prod.reference ?? prod.id) : String(it.product_id);
         const des = prod ? prod.designation : (it.designation || '');
-        const prixUnit = Number(it.prix_unitaire) || 0;
-        const total = Number((it as any).total ?? (it as any).montant_ligne ?? 0) || 0;
+        const prixUnit = Number(it.prix_unitaire ?? it.prix ?? 0) || 0;
+        // Remises éventuelles
+        const remise_pourcentage = parseFloat(String(it.remise_pourcentage ?? it.remise_pct ?? 0)) || 0;
+        const remise_montant = parseFloat(String(it.remise_montant ?? it.remise_valeur ?? 0)) || 0;
+        let total = Number((it as any).total ?? (it as any).montant_ligne);
+        if (!Number.isFinite(total) || total === 0) {
+          total = (Number(it.quantite) || 0) * prixUnit;
+          if (remise_pourcentage > 0) total = total * (1 - remise_pourcentage / 100);
+          if (remise_montant > 0) total = total - remise_montant;
+        }
         // Déterminer le type d'item basé sur le type de bon
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
         items.push({
@@ -402,6 +410,8 @@ const ContactsPage: React.FC = () => {
           total,
           type: itemType,
           created_at: b.created_at,
+          remise_pourcentage,
+          remise_montant,
         });
       }
     }
@@ -2206,6 +2216,8 @@ const ContactsPage: React.FC = () => {
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Référence</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
+                          {/* Remise montant seulement (pourcentage retiré) */}
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Remise DH</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Prix Unit.'}</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
@@ -2278,6 +2290,10 @@ const ContactsPage: React.FC = () => {
                                     <span className="ml-2 text-xs text-gray-500">({item.mode})</span>
                                   )}
                                 </div>
+                              </td>
+                              {/* Remise montant */}
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                                {item.syntheticInitial || item.type === 'paiement' ? '-' : (typeof item.remise_montant === 'number' && item.remise_montant > 0 ? `${item.remise_montant.toFixed(2)} DH` : '-')}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                                 {item.syntheticInitial ? '-' : item.type === 'paiement' ? '-' : item.quantite}
