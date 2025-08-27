@@ -378,13 +378,7 @@ const paymentValidationSchema = Yup.object({
         showError('Veuillez sélectionner un fichier image valide');
         return;
       }
-      
-      // Vérifier la taille (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        showError('La taille de l\'image ne doit pas dépasser 5MB');
-        return;
-      }
-      
+  // Taille illimitée acceptée (suppression de la limite 5MB)
       setSelectedImage(file);
       
       // Créer une preview
@@ -1026,7 +1020,7 @@ const paymentValidationSchema = Yup.object({
                             className={`${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-500 hover:text-yellow-700'} p-1 rounded`}
                             disabled={payment.statut === 'En attente'}
                           >
-                            <Clock size={16} />
+                            <Clock size={20} />
                           </button>
 
                           {/* For employees allow only En attente and Annulé, others see all options */}
@@ -1039,7 +1033,7 @@ const paymentValidationSchema = Yup.object({
                                 className={`${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-500 hover:text-red-700'} p-1 rounded`}
                                 disabled={payment.statut === 'Annulé'}
                               >
-                                <XCircle size={16} />
+                                <XCircle size={20} />
                               </button>
                             </>
                           ) : (
@@ -1051,7 +1045,7 @@ const paymentValidationSchema = Yup.object({
                                 className={`${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-500 hover:text-green-600'} p-1 rounded`}
                                 disabled={payment.statut === 'Validé'}
                               >
-                                <Check size={16} />
+                                <Check size={20} />
                               </button>
 
                               {/* Refusé */}
@@ -1061,7 +1055,7 @@ const paymentValidationSchema = Yup.object({
                                 className={`${payment.statut === 'Refusé' ? 'text-orange-600' : 'text-gray-500 hover:text-orange-600'} p-1 rounded`}
                                 disabled={payment.statut === 'Refusé'}
                               >
-                                <X size={16} />
+                                <X size={20} />
                               </button>
 
                               {/* Annulé */}
@@ -1071,7 +1065,7 @@ const paymentValidationSchema = Yup.object({
                                 className={`${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-500 hover:text-red-700'} p-1 rounded`}
                                 disabled={payment.statut === 'Annulé'}
                               >
-                                <XCircle size={16} />
+                                <XCircle size={20} />
                               </button>
                             </>
                           )}
@@ -1084,29 +1078,31 @@ const paymentValidationSchema = Yup.object({
                             className="text-blue-600 hover:text-blue-900"
                             title="Voir détails"
                           >
-                            <Eye size={16} />
+                            <Eye size={20} />
                           </button>
                           <button
                             onClick={() => handleEditPayment(payment)}
                             className="text-green-600 hover:text-green-900"
                             title="Modifier"
                           >
-                            <Edit size={16} />
+                            <Edit size={20} />
                           </button>
                           <button
                             onClick={() => handlePrintPayment(payment)}
                             className="text-purple-600 hover:text-purple-900"
                             title="Imprimer"
                           >
-                            <Printer size={16} />
+                            <Printer size={20} />
                           </button>
-                          <button
-                            onClick={() => handleDelete(payment.id)}
-                            className="text-red-600 hover:text-red-900"
-                            title="Supprimer"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {user?.role !== 'Employé' && (
+                            <button
+                              onClick={() => handleDelete(payment.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Supprimer"
+                            >
+                              <Trash2 size={20} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -1163,36 +1159,38 @@ const paymentValidationSchema = Yup.object({
                 <div className="flex flex-wrap gap-2 pt-2 border-t">
                   {/* Actions principales */}
                   <button onClick={() => handleViewPayment(payment)} className="flex items-center gap-1 text-blue-600 text-xs font-medium px-2 py-1 bg-blue-50 rounded">
-                    <Eye size={14} /> Voir
+                    <Eye size={18} /> Voir
                   </button>
                   <button onClick={() => handleEditPayment(payment)} className="flex items-center gap-1 text-green-600 text-xs font-medium px-2 py-1 bg-green-50 rounded">
-                    <Edit size={14} /> Edit
+                    <Edit size={18} /> Edit
                   </button>
                   <button onClick={() => handlePrintPayment(payment)} className="flex items-center gap-1 text-purple-600 text-xs font-medium px-2 py-1 bg-purple-50 rounded">
-                    <Printer size={14} /> Imp
+                    <Printer size={18} /> Imp
                   </button>
-                  <button onClick={() => handleDelete(payment.id)} className="flex items-center gap-1 text-red-600 text-xs font-medium px-2 py-1 bg-red-50 rounded">
-                    <Trash2 size={14} /> Suppr
-                  </button>
+                  {user?.role !== 'Employé' && (
+                    <button onClick={() => handleDelete(payment.id)} className="flex items-center gap-1 text-red-600 text-xs font-medium px-2 py-1 bg-red-50 rounded">
+                      <Trash2 size={18} /> Suppr
+                    </button>
+                  )}
                   {/* Changement de statut condensé */}
                   <div className="flex items-center gap-1 ml-auto">
                     <button onClick={() => changePaymentStatus(payment.id, 'En attente')} className={`p-1 rounded ${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-400'}`} title="En attente">
-                      <Clock size={14} />
+                      <Clock size={18} />
                     </button>
                     {user?.role === 'Employé' ? (
                       <button onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
-                        <XCircle size={14} />
+                        <XCircle size={18} />
                       </button>
                     ) : (
                       <>
                         <button onClick={() => changePaymentStatus(payment.id, 'Validé')} className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-400'}`} title="Valider">
-                          <Check size={14} />
+                          <Check size={18} />
                         </button>
                         <button onClick={() => changePaymentStatus(payment.id, 'Refusé')} className={`p-1 rounded ${payment.statut === 'Refusé' ? 'text-orange-600' : 'text-gray-400'}`} title="Refuser">
-                          <X size={14} />
+                          <X size={18} />
                         </button>
                         <button onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
-                          <XCircle size={14} />
+                          <XCircle size={18} />
                         </button>
                       </>
                     )}
