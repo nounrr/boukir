@@ -51,6 +51,8 @@ const BonsPage = () => {
   const [selectedBonForPrint, setSelectedBonForPrint] = useState<any>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [selectedBonForPDFPrint, setSelectedBonForPDFPrint] = useState<any>(null);
+  // Clé pour forcer le remontage du formulaire (assure un état 100% vierge entre créations)
+  const [bonFormKey, setBonFormKey] = useState(0);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -77,9 +79,9 @@ const BonsPage = () => {
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
   const handleChangeStatus = async (bon: any, statut: 'Validé' | 'En attente' | 'Annulé' | 'Accepté' | 'Envoyé' | 'Refusé') => {
     try {
-      // Employé: uniquement Annuler
-      if (isEmployee && statut !== 'Annulé') {
-        showError("Permission refusée: l'employé ne peut que annuler.");
+      // Employé: uniquement Annuler ou En attente (y compris pour Devis)
+      if (isEmployee && !['Annulé','En attente'].includes(statut)) {
+        showError("Permission refusée: l'employé ne peut que mettre En attente ou Annuler.");
         return;
       }
       // Si c'est un devis et qu'on l'accepte, ouvrir le modal de transformation
@@ -312,18 +314,18 @@ const BonsPage = () => {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Gestion des Bons</h1>
-          {(currentUser?.role === 'PDG' || currentUser?.role === 'Employé') && (
-            <button
-              onClick={() => {
-                setSelectedBon(null);
-                setIsCreateModalOpen(true);
-              }}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-            >
-              <Plus size={20} />
-              Nouveau {currentTab}
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setSelectedBon(null);
+              // Incrémenter la clé pour forcer un remontage du composant modal (nettoyage complet de l'état interne)
+              setBonFormKey(k => k + 1);
+              setIsCreateModalOpen(true);
+            }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+          >
+            <Plus size={20} />
+            Nouveau {currentTab}
+          </button>
         </div>
 
         {/* Tabs */}
@@ -565,13 +567,13 @@ const BonsPage = () => {
                                   )}
                                   {currentTab === 'Devis' && (
                                     <>
-                                      <button onClick={() => handleChangeStatus(bon, 'Accepté')} className="text-green-600 hover:text-green-800" title="Accepter le devis">
+                                      <button onClick={() => handleChangeStatus(bon, 'Accepté')} className="text-green-600 hover:text-green-800" title="Accepter et transformer">
                                         <CheckCircle2 size={ACTION_ICON_SIZE} />
                                       </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'Envoyé')} className="text-blue-600 hover:text-blue-800" title="Marquer comme envoyé">
+                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre En attente">
                                         <Clock size={ACTION_ICON_SIZE} />
                                       </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'Refusé')} className="text-red-600 hover:text-red-800" title="Refuser le devis">
+                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler le devis">
                                         <XCircle size={ACTION_ICON_SIZE} />
                                       </button>
                                     </>
@@ -582,17 +584,27 @@ const BonsPage = () => {
                             if (isEmployee) {
                               return (
                                 <>
-                                  {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant') && (
-                                    <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
-                                      <XCircle size={ACTION_ICON_SIZE} />
-                                    </button>
+                                  {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant' || currentTab === 'Devis') && (
+                                    <>
+                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre En attente">
+                                        <Clock size={ACTION_ICON_SIZE} />
+                                      </button>
+                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
+                                        <XCircle size={ACTION_ICON_SIZE} />
+                                      </button>
+                                    </>
                                   )}
                                   {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant') && (
-                                    <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler l'avoir">
-                                      <XCircle size={ACTION_ICON_SIZE} />
-                                    </button>
+                                    <>
+                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Remettre En attente">
+                                        <Clock size={ACTION_ICON_SIZE} />
+                                      </button>
+                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler l'avoir">
+                                        <XCircle size={ACTION_ICON_SIZE} />
+                                      </button>
+                                    </>
                                   )}
-                                  {/* Devis: pas d'action d'annulation explicite pour Employé */}
+                                  {/* Devis: pas d'action d'annulation / attente explicite pour Employé */}
                                 </>
                               );
                             }
@@ -719,6 +731,7 @@ const BonsPage = () => {
 
         {/* Modal de création/édition */}
         <BonFormModal
+          key={bonFormKey}
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
           currentTab={currentTab}

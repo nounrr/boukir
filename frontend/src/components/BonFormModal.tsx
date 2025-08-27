@@ -11,9 +11,8 @@ import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantQuery } from '../store/api/comptantApi';
 import { useGetClientsQuery, useGetFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
 import { useGetPaymentsQuery } from '../store/api/paymentsApi';
-import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-import { useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
-import { useGetClientRemisesQuery, useGetRemiseItemsQuery, useCreateRemiseItemMutation } from '../store/api/remisesApi';
+import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
+import { useGetClientRemisesQuery, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useCreateClientRemiseMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
 import type { Contact } from '../types';
 import ProductFormModal from './ProductFormModal';
@@ -262,7 +261,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Container ref to detect when Enter is pressed within the products area
   const itemsContainerRef = useRef<HTMLDivElement>(null);
   // Remises UI state
-  const [showRemisePanel, setShowRemisePanel] = useState(false);
+  const [showRemisePanel, setShowRemisePanel] = useState(false); // panel application des remises (affiche colonnes)
+  const [showAddRemiseClient, setShowAddRemiseClient] = useState(false); // formulaire inline ajout client remise
+  const [newRemiseClient, setNewRemiseClient] = useState({ nom: '', phone: '', cin: '' });
   const [selectedRemiseId, setSelectedRemiseId] = useState<number | ''>('');
   const { data: remiseClients = [] } = useGetClientRemisesQuery();
   const { data: remiseItems = [] } = useGetRemiseItemsQuery(
@@ -294,6 +295,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [createBon] = useCreateBonMutation();
   const [updateBonMutation] = useUpdateBonMutation();
   const [createRemiseItem] = useCreateRemiseItemMutation();
+  const [createClientRemise] = useCreateClientRemiseMutation();
   const [createContact] = useCreateContactMutation();
   const [isDuplicating, setIsDuplicating] = useState(false);
 
@@ -525,6 +527,20 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   });
 }, [initialFormValues]);
 
+  // Quand on ouvre pour créer un NOUVEAU (pas d'initialValues), forcer un reset complet pour vider tout résidu
+  useEffect(() => {
+    if (isOpen && !initialValues) {
+      const fresh = getInitialValues();
+      if (formikRef.current) {
+        formikRef.current.resetForm({ values: fresh });
+      }
+      setUnitPriceRaw({});
+      setQtyRaw({});
+      setRemiseRaw({});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialValues]);
+
   // Focus manager for arrow navigation between cells
   const focusCell = (rowIndex: number, colKey: string) => {
     const el = document.querySelector(
@@ -538,9 +554,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   const getColOrder = () => {
     const currentType = formikRef.current?.values?.type as string | undefined;
     const base = ['product', 'qty', 'unit'] as const;
-    return showRemisePanel && (currentType === 'Sortie' || currentType === 'Comptant')
-      ? [...base, 'remise']
-      : [...base];
+    return (currentType === 'Sortie' || currentType === 'Comptant') ? [...base, 'remise'] : [...base];
   };
 
   const onCellKeyDown = (rowIndex: number, colKey: string) => (e: React.KeyboardEvent<any>) => {
@@ -1213,15 +1227,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-md font-medium">Produits</h3>
                   <div className="flex gap-2">
-                    {(values.type === 'Sortie' || values.type === 'Comptant') && (
-                      <button
-                        type="button"
-                        onClick={() => setShowRemisePanel((s) => !s)}
-                        className="flex items-center text-purple-600 hover:text-purple-800"
-                      >
-                        <Plus size={16} className="mr-1" /> Appliquer remise
-                      </button>
-                    )}
+                    {/* Bouton supprimé: le panneau remise est toujours affiché pour Sortie/Comptant */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1289,25 +1295,35 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                 </div>
 
                 {/* Remise panel */}
-                {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
+                {(values.type === 'Sortie' || values.type === 'Comptant') && (
                   <div className="mb-4 p-3 border rounded bg-purple-50">
                     <div className="flex items-center gap-3 flex-wrap">
                       <label className="text-sm text-gray-700">Client Remise</label>
-                      <div className="min-w-[280px]">
-                        <SearchableSelect
-                          options={(remiseClients || []).map((c: any) => ({
-                            value: String(c.id),
-                            // include name, CIN, phone in label for multi-word search
-                            label: `${c.nom || ''}${c.cin ? ' ' + c.cin : ''}${c.phone ? ' ' + c.phone : ''}`.trim(),
-                            data: c,
-                          }))}
-                          value={typeof selectedRemiseId === 'number' ? String(selectedRemiseId) : ''}
-                          onChange={(v) => setSelectedRemiseId(v ? Number(v) : '')}
-                          placeholder="Rechercher par nom, CIN ou téléphone"
-                          className="w-[280px]"
-                          autoOpenOnFocus
-                        />
-                      </div>
+                      {!showAddRemiseClient && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setShowAddRemiseClient(true)}
+                            className="text-xs px-2 py-1 rounded bg-purple-600 text-white hover:bg-purple-700"
+                          >
+                            Ajouter
+                          </button>
+                          <div className="min-w-[280px]">
+                            <SearchableSelect
+                              options={(remiseClients || []).map((c: any) => ({
+                                value: String(c.id),
+                                label: `${c.nom || ''}${c.cin ? ' ' + c.cin : ''}${c.phone ? ' ' + c.phone : ''}`.trim(),
+                                data: c,
+                              }))}
+                              value={typeof selectedRemiseId === 'number' ? String(selectedRemiseId) : ''}
+                              onChange={(v) => setSelectedRemiseId(v ? Number(v) : '')}
+                              placeholder="Rechercher par nom, CIN ou téléphone"
+                              className="w-[280px]"
+                              autoOpenOnFocus
+                            />
+                          </div>
+                        </>
+                      )}
                       {(() => {
                         const c = typeof selectedRemiseId === 'number' ? remiseClients.find((x: any) => x.id === selectedRemiseId) : null;
                         return c ? (
@@ -1338,6 +1354,69 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                         className="px-3 py-1 bg-purple-600 text-white rounded disabled:opacity-50"
                       >
                         Appliquer
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {showAddRemiseClient && (values.type === 'Sortie' || values.type === 'Comptant') && (
+                  <div className="mb-4 p-3 border rounded bg-purple-50">
+                    <h4 className="text-sm font-medium text-purple-700 mb-2">Nouveau client remise</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                      <input
+                        type="text"
+                        placeholder="Nom *"
+                        className="px-3 py-2 border rounded text-sm"
+                        value={newRemiseClient.nom}
+                        onChange={(e) => setNewRemiseClient((c) => ({ ...c, nom: e.target.value }))}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Téléphone"
+                        className="px-3 py-2 border rounded text-sm"
+                        value={newRemiseClient.phone}
+                        onChange={(e) => setNewRemiseClient((c) => ({ ...c, phone: e.target.value }))}
+                      />
+                      <input
+                        type="text"
+                        placeholder="CIN"
+                        className="px-3 py-2 border rounded text-sm"
+                        value={newRemiseClient.cin}
+                        onChange={(e) => setNewRemiseClient((c) => ({ ...c, cin: e.target.value }))}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={!newRemiseClient.nom}
+                        onClick={async () => {
+                          try {
+                            const created: any = await createClientRemise({
+                              nom: newRemiseClient.nom,
+                              phone: newRemiseClient.phone || undefined,
+                              cin: newRemiseClient.cin || undefined,
+                            }).unwrap();
+                            if (created?.id) {
+                              setSelectedRemiseId(Number(created.id));
+                              setShowRemisePanel(true); // afficher directement panel remises
+                              showSuccess('Client remise ajouté');
+                            }
+                            setShowAddRemiseClient(false);
+                            setNewRemiseClient({ nom: '', phone: '', cin: '' });
+                          } catch (e: any) {
+                            showError(e?.data?.message || 'Erreur création client remise');
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50"
+                      >
+                        Créer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowAddRemiseClient(false); setNewRemiseClient({ nom: '', phone: '', cin: '' }); }}
+                        className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300"
+                      >
+                        Annuler
                       </button>
                     </div>
                   </div>

@@ -114,6 +114,18 @@ const formatHeure = (dateStr: string) => {
       className={`bg-white ${size === 'A5' ? 'w-[148mm] h-[210mm]' : 'w-[210mm] h-[297mm]'} mx-auto p-4 font-sans text-sm print:shadow-none`}
       style={{ fontFamily: 'sans-serif', position: 'relative' }}
     >
+      {/* Styles spécifiques impression pour assurer largeur totale du tableau */}
+      <style>
+        {`@media print {
+          /* Supprimer marges latérales du conteneur pour exploiter toute la zone interne */
+          .print-no-horizontal-padding { padding-left:0 !important; padding-right:0 !important; }
+          /* Forcer le tableau à prendre toute la largeur disponible */
+          .print-table-full { width:100% !important; table-layout: fixed !important; border-collapse: collapse !important; }
+          .print-table-full th, .print-table-full td { word-break: break-word; }
+          /* Neutraliser les largeurs forcées Tailwind sur colonnes pour impression */
+          .print-table-full th[class*='w-'], .print-table-full td[class*='w-'] { width:auto !important; }
+        }`}
+      </style>
       {/* Options */}
       <div className="flex justify-end items-center gap-4 mb-2 print-hidden">
         <div className="flex items-center">
@@ -185,17 +197,18 @@ const formatHeure = (dateStr: string) => {
 
       {/* Table articles */}
       <div className="mb-6">
-        <table className="w-full border-collapse border border-gray-300">
+        <table style={{width:'100%'}} className="no-mobile-scroll print-table-full w-full border-collapse border border-gray-300">
           <thead>
             <tr className="bg-orange-500 text-white">
+              <th className="border border-gray-300 px-2 py-2 text-left font-semibold w-16">CODE</th>
               <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Article</th>
               {printMode !== 'PRODUCTS_ONLY' && (
-                <th className="border border-gray-300 px-3 py-2 text-center font-semibold w-20">Qté</th>
+                <th className="border border-gray-300 px-3 py-2 text-center font-semibold">Qté</th>
               )}
               {printMode === 'WITH_PRICES' && (
                 <>
-                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-24">{bon?.type === 'Commande' ? 'P.A (DH)' : 'P.U. (DH)'}</th>
-                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-28">Total (DH)</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold">{bon?.type === 'Commande' ? 'P.A (DH)' : 'P.U. (DH)'}</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold">Total (DH)</th>
                 </>
               )}
             </tr>
@@ -205,10 +218,11 @@ const formatHeure = (dateStr: string) => {
               const quantite = parseFloat(item.quantite || 0);
               const prixUnitaire = parseFloat(item.prix_unitaire || 0);
               const total = quantite * prixUnitaire;
-              const rowKey = item.id ?? item.product_id ?? `${item.designation}-${index}`;
-
+              const productId = item.product_id ?? item.produit_id ?? item.id ?? '';
+              const rowKey = productId || `${item.designation}-${index}`;
               return (
                 <tr key={rowKey} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                  <td className="border border-gray-300 px-2 py-2 text-xs text-gray-700">{productId}</td>
                   <td className="border border-gray-300 px-3 py-2">
                     <div className="font-medium">{item.designation}</div>
                     {item.description && (
