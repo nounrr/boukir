@@ -234,24 +234,83 @@ export const getCurrentDateTimeMySQL = (): string => {
 
 /**
  * Convertit une datetime MySQL vers le format datetime-local (YYYY-MM-DDTHH:MM)
- * @param dateTimeValue - DateTime MySQL (YYYY-MM-DD HH:MM:SS) 
+ * @param dateTimeValue - DateTime MySQL (YYYY-MM-DD HH:MM:SS) ou Date JavaScript
  * @returns DateTime au format YYYY-MM-DDTHH:MM pour les inputs datetime-local
  */
 export const formatMySQLToDateTimeInput = (dateTimeValue: string | null): string => {
   if (!dateTimeValue) return '';
   
+  console.log('formatMySQLToDateTimeInput input:', dateTimeValue);
+  console.log('typeof input:', typeof dateTimeValue);
+  
+  // Si c'est déjà un objet Date JavaScript
+  if (dateTimeValue instanceof Date) {
+    const year = dateTimeValue.getFullYear();
+    const month = String(dateTimeValue.getMonth() + 1).padStart(2, '0');
+    const day = String(dateTimeValue.getDate()).padStart(2, '0');
+    const hours = String(dateTimeValue.getHours()).padStart(2, '0');
+    const minutes = String(dateTimeValue.getMinutes()).padStart(2, '0');
+    const result = `${year}-${month}-${day}T${hours}:${minutes}`;
+    console.log('Date object detected, result:', result);
+    return result;
+  }
+  
   // Si c'est un DATETIME (YYYY-MM-DD HH:MM:SS)
-  if (dateTimeValue.includes(' ')) {
-    const [datePart, timePart] = dateTimeValue.split(' ');
-    const [hours, minutes] = timePart.split(':');
-    return `${datePart}T${hours}:${minutes}`;
+  if (typeof dateTimeValue === 'string' && dateTimeValue.includes(' ')) {
+    // Vérifier si c'est le format standard MySQL DATETIME
+    if (dateTimeValue.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+      const [datePart, timePart] = dateTimeValue.split(' ');
+      const [hours, minutes] = timePart.split(':');
+      const result = `${datePart}T${hours}:${minutes}`;
+      console.log('MySQL DATETIME format detected, result:', result);
+      return result;
+    }
+    
+    // Vérifier si c'est le format JavaScript Date string (Wed Aug 27 2025 22:01:00 GMT+0100)
+    if (dateTimeValue.match(/^[A-Za-z]{3} [A-Za-z]{3} \d{1,2} \d{4} \d{2}:\d{2}:\d{2}/)) {
+      try {
+        const dateObj = new Date(dateTimeValue);
+        if (!isNaN(dateObj.getTime())) {
+          const year = dateObj.getFullYear();
+          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const day = String(dateObj.getDate()).padStart(2, '0');
+          const hours = String(dateObj.getHours()).padStart(2, '0');
+          const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+          const result = `${year}-${month}-${day}T${hours}:${minutes}`;
+          console.log('JavaScript Date string format detected, result:', result);
+          return result;
+        }
+      } catch (e) {
+        console.log('Failed to parse JavaScript Date string:', e);
+      }
+    }
   }
   
   // Si c'est seulement une DATE (YYYY-MM-DD), ajouter l'heure par défaut
-  if (dateTimeValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    return `${dateTimeValue}T08:00`;
+  if (typeof dateTimeValue === 'string' && dateTimeValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const result = `${dateTimeValue}T08:00`;
+    console.log('DATE format detected, result:', result);
+    return result;
   }
   
+  // Essayer de parser comme Date JavaScript (fallback)
+  try {
+    const dateObj = new Date(dateTimeValue);
+    if (!isNaN(dateObj.getTime())) {
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const hours = String(dateObj.getHours()).padStart(2, '0');
+      const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+      const result = `${year}-${month}-${day}T${hours}:${minutes}`;
+      console.log('Date object parsed from string, result:', result);
+      return result;
+    }
+  } catch (e) {
+    console.log('Failed to parse as Date object:', e);
+  }
+  
+  console.log('No format matched, returning empty string');
   return '';
 };
 

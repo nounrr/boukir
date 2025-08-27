@@ -10,7 +10,7 @@ const router = express.Router();
 // on garde le fichier en mémoire pour préserver l'encodage (arabe)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  // Taille illimitée pour tous les fichiers
 });
 
 /**
