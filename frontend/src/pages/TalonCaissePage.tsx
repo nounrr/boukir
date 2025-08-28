@@ -377,7 +377,7 @@ const TalonCaissePage = () => {
                     <table>
                       <tr><th>N° Paiement</th><th>Talon</th><th>Montant</th><th>Mode</th><th>Statut</th><th>Date</th><th>Échéance</th></tr>
                       ${filteredPayments.map((p: any) => 
-                        `<tr><td>PAY${String(p.id).padStart(2, '0')}</td><td>${getTalonName(p.talon_id)}</td><td>${Number(p.montant_total || 0).toFixed(2)} DH</td><td>${p.mode_paiement}</td><td>${p.statut || 'En attente'}</td><td>${new Date(p.date_paiement).toLocaleDateString('fr-FR')}</td><td>${p.date_echeance ? new Date(p.date_echeance).toLocaleDateString('fr-FR') : ''}</td></tr>`
+                        `<tr><td>PAY${String(p.id).padStart(2, '0')}</td><td>${getTalonName(p.talon_id)}</td><td>${Number(p.montant_total || 0)} DH</td><td>${p.mode_paiement}</td><td>${p.statut || 'En attente'}</td><td>${new Date(p.date_paiement).toLocaleDateString('fr-FR')}</td><td>${p.date_echeance ? new Date(p.date_echeance).toLocaleDateString('fr-FR') : ''}</td></tr>`
                       ).join('')}
                     </table>
                   </body>
@@ -453,7 +453,7 @@ const TalonCaissePage = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Montant Total</p>
-              <p className="text-3xl font-bold text-gray-900">{statistiques.montantTotal.toFixed(2)} DH</p>
+              <p className="text-3xl font-bold text-gray-900">{statistiques.montantTotal} DH</p>
             </div>
           </div>
         </div>
@@ -720,7 +720,7 @@ const TalonCaissePage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-semibold text-gray-900">
-                        {Number(payment.montant_total || 0).toFixed(2)} DH
+                        {Number(payment.montant_total || 0)} DH
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -899,7 +899,7 @@ const TalonCaissePage = () => {
                 </div>
                 <div>
                   <div className="block text-sm font-medium text-gray-600">Montant</div>
-                  <p className="text-gray-900">{Number(selectedPayment.montant_total || 0).toFixed(2)} DH</p>
+                  <p className="text-gray-900">{Number(selectedPayment.montant_total || 0)} DH</p>
                 </div>
                 <div>
                   <div className="block text-sm font-medium text-gray-600">Mode de paiement</div>

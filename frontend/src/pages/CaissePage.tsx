@@ -733,7 +733,7 @@ const paymentValidationSchema = Yup.object({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Encaissements</p>
-              <p className="text-2xl font-bold text-gray-900">{totalEncaissements.toFixed(2)} DH</p>
+              <p className="text-2xl font-bold text-gray-900">{totalEncaissements} DH</p>
             </div>
             <div className="p-3 bg-blue-100 rounded-full">
               <DollarSign className="h-6 w-6 text-blue-600" />
@@ -745,7 +745,7 @@ const paymentValidationSchema = Yup.object({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Espèces</p>
-              <p className="text-xl font-bold text-green-600">{totalEspeces.toFixed(2)} DH</p>
+              <p className="text-xl font-bold text-green-600">{totalEspeces} DH</p>
             </div>
             <div className="p-3 bg-green-100 rounded-full">
               <DollarSign className="h-6 w-6 text-green-600" />
@@ -757,7 +757,7 @@ const paymentValidationSchema = Yup.object({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Chèques</p>
-              <p className="text-xl font-bold text-blue-600">{totalCheques.toFixed(2)} DH</p>
+              <p className="text-xl font-bold text-blue-600">{totalCheques} DH</p>
             </div>
             <div className="p-3 bg-blue-100 rounded-full">
               <Receipt className="h-6 w-6 text-blue-600" />
@@ -769,7 +769,7 @@ const paymentValidationSchema = Yup.object({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Virements</p>
-              <p className="text-xl font-bold text-purple-600">{totalVirements.toFixed(2)} DH</p>
+              <p className="text-xl font-bold text-purple-600">{totalVirements} DH</p>
             </div>
             <div className="p-3 bg-purple-100 rounded-full">
               <CreditCard className="h-6 w-6 text-purple-600" />
@@ -781,7 +781,7 @@ const paymentValidationSchema = Yup.object({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Traites</p>
-              <p className="text-xl font-bold text-orange-600">{totalTraites.toFixed(2)} DH</p>
+              <p className="text-xl font-bold text-orange-600">{totalTraites} DH</p>
             </div>
             <div className="p-3 bg-orange-100 rounded-full">
               <Receipt className="h-6 w-6 text-orange-600" />
@@ -1006,7 +1006,7 @@ const paymentValidationSchema = Yup.object({
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-gray-900">{Number(payment.montant ?? payment.montant_total ?? 0).toFixed(2)} DH</div>
+                      <div className="text-sm font-semibold text-gray-900">{Number(payment.montant ?? payment.montant_total ?? 0)} DH</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
@@ -1162,7 +1162,7 @@ const paymentValidationSchema = Yup.object({
                 <div className="text-sm">
                   <p className="font-medium text-gray-800 truncate">{contactName}</p>
                   <p className="text-gray-500 text-xs truncate">{societe}</p>
-                  <p className="mt-1 text-gray-700 font-semibold">{Number(payment.montant ?? payment.montant_total ?? 0).toFixed(2)} DH</p>
+                  <p className="mt-1 text-gray-700 font-semibold">{Number(payment.montant ?? payment.montant_total ?? 0)} DH</p>
                   {payment.date_echeance && (
                     <p className="text-xs text-gray-500">Échéance: {formatYMD(payment.date_echeance)}</p>
                   )}
@@ -1445,7 +1445,7 @@ const paymentValidationSchema = Yup.object({
               })
               .map((bon: Bon) => (
                           <option key={bon.id} value={bon.id}>
-              {bon.type} {getBonNumeroDisplay(bon)} - {Number(bon.montant_total ?? 0).toFixed(2)} DH
+              {bon.type} {getBonNumeroDisplay(bon)} - {Number(bon.montant_total ?? 0)} DH
                           </option>
                         ))}
                       </Field>
@@ -1653,7 +1653,7 @@ const paymentValidationSchema = Yup.object({
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Montant:</p>
-                  <p className="text-xl font-bold text-blue-600">{Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0).toFixed(2)} DH</p>
+                  <p className="text-xl font-bold text-blue-600">{Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0)} DH</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Mode de paiement:</p>

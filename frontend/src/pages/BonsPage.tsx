@@ -8,12 +8,14 @@ import React, { useState, useMemo } from 'react';
   import AvoirFormModal from '../components/AvoirFormModal';
   import ThermalPrintModal from '../components/ThermalPrintModal';
   import BonPrintModal from '../components/BonPrintModal';
+  import SearchableSelect from '../components/SearchableSelect';
   // Centralize action/status icon size for easier adjustment
   const ACTION_ICON_SIZE = 24; // increased from 20 per user request
   import { 
     useGetBonsByTypeQuery, 
     useDeleteBonMutation, 
-  useUpdateBonStatusMutation
+    useUpdateBonStatusMutation,
+    useCreateBonMutation
   } from '../store/api/bonsApi';
   import { 
     useGetClientsQuery, 
@@ -51,6 +53,12 @@ const BonsPage = () => {
   const [selectedBonForPrint, setSelectedBonForPrint] = useState<any>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [selectedBonForPDFPrint, setSelectedBonForPDFPrint] = useState<any>(null);
+  // État pour la modal de duplication AWATEF
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+  const [selectedBonForDuplicate, setSelectedBonForDuplicate] = useState<any>(null);
+  const [duplicateType, setDuplicateType] = useState<'fournisseur' | 'client' | 'comptant'>('client');
+  const [selectedContactForDuplicate, setSelectedContactForDuplicate] = useState<string>('');
+  const [comptantClientName, setComptantClientName] = useState<string>('');
   // Clé pour forcer le remontage du formulaire (assure un état 100% vierge entre créations)
   const [bonFormKey, setBonFormKey] = useState(0);
 
@@ -74,6 +82,7 @@ const BonsPage = () => {
   const { data: products = [], isLoading: productsLoading } = useGetProductsQuery();
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
+  const [createBon] = useCreateBonMutation();
   const dispatch = useAppDispatch();
   // const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
@@ -300,6 +309,56 @@ const BonsPage = () => {
       }
     };
     
+    // Fonction pour gérer la duplication AWATEF
+    const handleDuplicateAwatef = async () => {
+      if (!selectedBonForDuplicate) return;
+      
+      try {
+        // Créer le nouveau bon selon le type sélectionné
+        let newBonData: any = {
+          date_creation: new Date().toISOString().slice(0, 19).replace('T', ' '),
+          vehicule_id: selectedBonForDuplicate.vehicule_id || undefined,
+          lieu_chargement: selectedBonForDuplicate.lieu_chargement || selectedBonForDuplicate.lieu_charge || '',
+          adresse_livraison: selectedBonForDuplicate.adresse_livraison || '',
+          statut: 'En attente',
+          montant_total: selectedBonForDuplicate.montant_total || 0,
+          created_by: currentUser?.id || 1,
+          items: selectedBonForDuplicate.items || []
+        };
+        
+        if (duplicateType === 'fournisseur') {
+          newBonData.type = 'Commande';
+          newBonData.fournisseur_id = parseInt(selectedContactForDuplicate);
+        } else if (duplicateType === 'client') {
+          newBonData.type = 'Sortie';
+          newBonData.client_id = parseInt(selectedContactForDuplicate);
+        } else if (duplicateType === 'comptant') {
+          newBonData.type = 'Comptant';
+          newBonData.client_nom = comptantClientName;
+        }
+        
+        // Créer le bon directement via l'API
+        await createBon({ type: newBonData.type, ...newBonData }).unwrap();
+        
+        showSuccess(`${newBonData.type} dupliqué avec succès !`);
+        
+        // Fermer la modal de duplication
+        setIsDuplicateModalOpen(false);
+        setSelectedBonForDuplicate(null);
+        setSelectedContactForDuplicate('');
+        setComptantClientName('');
+        
+        // Changer l'onglet vers le bon type créé si nécessaire
+        if (newBonData.type !== currentTab) {
+          setCurrentTab(newBonData.type);
+        }
+        
+      } catch (error: any) {
+        console.error('Erreur lors de la duplication:', error);
+        showError(`Erreur lors de la duplication: ${error?.data?.message || error.message || 'Erreur inconnue'}`);
+      }
+    };
+    
     
 
   return (
@@ -505,7 +564,7 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-sm">{currentTab === 'Vehicule' ? (bon.vehicule_nom || '-') : getContactName(bon)}</td>
                       <td className="px-4 py-2 text-sm">{(bon as any).adresse_livraison ?? (bon as any).adresseLivraison ?? '-'}</td>
                       <td className="px-4 py-2">
-                        <div className="text-sm font-semibold text-gray-900">{Number(bon.montant_total ?? 0).toFixed(2)} DH</div>
+                        <div className="text-sm font-semibold text-gray-900">{bon.montant_total ?? 0} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
                       </td>
                       <td className="px-4 py-2 text-sm">
@@ -519,8 +578,8 @@ const BonsPage = () => {
                           else if (profit < 0) cls = 'text-red-600';
                           return (
                             <span className={`font-semibold ${cls}`}> 
-                              {profit.toFixed(2)} DH{marginPct !== null && (
-                                <span className="text-xs font-normal ml-1">({marginPct.toFixed(1)}%)</span>
+                              {profit} DH{marginPct !== null && (
+                                <span className="text-xs font-normal ml-1">({marginPct}%)</span>
                               )}
                             </span>
                           );
@@ -650,9 +709,9 @@ const BonsPage = () => {
                               </button>
                               <button
                                 onClick={() => {
-                                  // Ouvrir le modal avec ce bon: l'action "Dupliquer AWATEF" est dans le footer du modal
-                                  setSelectedBon(bon);
-                                  setIsCreateModalOpen(true);
+                                  // Ouvrir la modal de duplication AWATEF
+                                  setSelectedBonForDuplicate(bon);
+                                  setIsDuplicateModalOpen(true);
                                 }}
                                 className="text-pink-600 hover:text-pink-800"
                                 title="Dupliquer AWATEF (Avoir Client)"
@@ -787,7 +846,7 @@ const BonsPage = () => {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Montant total:</p>
-                      <p className="text-lg font-bold text-blue-600">{Number(selectedBon.montant_total ?? 0).toFixed(2)} DH</p>
+                      <p className="text-lg font-bold text-blue-600">{selectedBon.montant_total ?? 0} DH</p>
                     </div>
                   </div>
 
@@ -815,8 +874,8 @@ const BonsPage = () => {
                               <tr key={item.id}>
                                 <td className="px-4 py-2 text-sm">{displayDesignation}</td>
                                 <td className="px-4 py-2 text-sm">{item.quantite}</td>
-                                <td className="px-4 py-2 text-sm">{Number(item.prix_unitaire ?? 0).toFixed(2)} DH</td>
-                                <td className="px-4 py-2 text-sm font-semibold">{Number(item.montant_ligne ?? 0).toFixed(2)} DH</td>
+                                <td className="px-4 py-2 text-sm">{item.prix_unitaire ?? 0} DH</td>
+                                <td className="px-4 py-2 text-sm font-semibold">{item.montant_ligne ?? 0} DH</td>
                               </tr>
                             );
                           })}
@@ -824,7 +883,7 @@ const BonsPage = () => {
                       </table>
                     </div>
                     <div className="flex justify-end text-base font-semibold mt-2">
-                      Total: {Number(selectedBon.montant_total ?? 0).toFixed(2)} DH
+                      Total: {selectedBon.montant_total ?? 0} DH
                     </div>
                   </div>
 
@@ -1121,6 +1180,160 @@ const BonsPage = () => {
             return suppliers.find(s => s.id === selectedBonForPDFPrint.fournisseur_id || s.id === selectedBonForPDFPrint.contact_id);
           })()}
         />
+
+        {/* Modal de duplication AWATEF */}
+        {isDuplicateModalOpen && selectedBonForDuplicate && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Dupliquer le bon {getDisplayNumero(selectedBonForDuplicate)}</h2>
+                <button
+                  onClick={() => {
+                    setIsDuplicateModalOpen(false);
+                    setSelectedBonForDuplicate(null);
+                    setSelectedContactForDuplicate('');
+                    setComptantClientName('');
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <fieldset>
+                    <legend className="block text-sm font-medium text-gray-700 mb-2">
+                      Dupliquer vers quel type de bon ?
+                    </legend>
+                    <div className="space-y-2">
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="duplicateType"
+                          value="client"
+                          checked={duplicateType === 'client'}
+                          onChange={(e) => setDuplicateType(e.target.value as 'client')}
+                          className="mr-2"
+                        />
+                        <span>Bon de Sortie (Client)</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="duplicateType"
+                          value="fournisseur"
+                          checked={duplicateType === 'fournisseur'}
+                          onChange={(e) => setDuplicateType(e.target.value as 'fournisseur')}
+                          className="mr-2"
+                        />
+                        <span>Bon de Commande (Fournisseur)</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="duplicateType"
+                          value="comptant"
+                          checked={duplicateType === 'comptant'}
+                          onChange={(e) => setDuplicateType(e.target.value as 'comptant')}
+                          className="mr-2"
+                        />
+                        <span>Bon Comptant</span>
+                      </label>
+                    </div>
+                  </fieldset>
+                </div>
+
+                {duplicateType === 'client' && (
+                  <div>
+                    <label htmlFor="client-select" className="block text-sm font-medium text-gray-700 mb-2">
+                      Sélectionner un client
+                    </label>
+                    <SearchableSelect
+                      id="client-select"
+                      options={clients.map((client: any) => {
+                        const reference = client.reference ? `(${client.reference})` : '';
+                        return {
+                          value: client.id.toString(),
+                          label: `${client.nom_complet} ${reference}`,
+                          data: client,
+                        };
+                      })}
+                      value={selectedContactForDuplicate}
+                      onChange={(value) => setSelectedContactForDuplicate(value)}
+                      placeholder="Rechercher un client..."
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                {duplicateType === 'fournisseur' && (
+                  <div>
+                    <label htmlFor="fournisseur-select" className="block text-sm font-medium text-gray-700 mb-2">
+                      Sélectionner un fournisseur
+                    </label>
+                    <SearchableSelect
+                      id="fournisseur-select"
+                      options={suppliers.map((supplier: any) => {
+                        const reference = supplier.reference ? `(${supplier.reference})` : '';
+                        return {
+                          value: supplier.id.toString(),
+                          label: `${supplier.nom_complet} ${reference}`,
+                          data: supplier,
+                        };
+                      })}
+                      value={selectedContactForDuplicate}
+                      onChange={(value) => setSelectedContactForDuplicate(value)}
+                      placeholder="Rechercher un fournisseur..."
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                {duplicateType === 'comptant' && (
+                  <div>
+                    <label htmlFor="client-name-input" className="block text-sm font-medium text-gray-700 mb-2">
+                      Nom du client
+                    </label>
+                    <input
+                      id="client-name-input"
+                      type="text"
+                      value={comptantClientName}
+                      onChange={(e) => setComptantClientName(e.target.value)}
+                      placeholder="Entrer le nom du client..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    onClick={() => {
+                      setIsDuplicateModalOpen(false);
+                      setSelectedBonForDuplicate(null);
+                      setSelectedContactForDuplicate('');
+                      setComptantClientName('');
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-50"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={handleDuplicateAwatef}
+                    disabled={
+                      (duplicateType === 'client' && !selectedContactForDuplicate) ||
+                      (duplicateType === 'fournisseur' && !selectedContactForDuplicate) ||
+                      (duplicateType === 'comptant' && !comptantClientName.trim())
+                    }
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Dupliquer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };

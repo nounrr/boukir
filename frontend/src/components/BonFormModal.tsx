@@ -302,7 +302,20 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   /* -------------------- Helpers décimaux pour prix_unitaire -------------------- */
   const normalizeDecimal = (s: string) => s.replace(/\s+/g, '').replace(',', '.');
   const isDecimalLike = (s: string) => /^[0-9]*[.,]?[0-9]*$/.test(s);
-  const formatNumber = (n: number) => (isFinite(n) ? String(parseFloat((n || 0).toFixed(2))) : '0');
+  // Ne pas arrondir automatiquement; retourner la valeur telle quelle (normalisée) sans réduire la précision
+  const formatNumber = (n: number) => (isFinite(n) ? String(n) : '0');
+  // Format d'affichage sans perte de précision utilisateur (supprime juste les zéros finaux inutilement longs)
+  const formatFull = (n: number) => {
+    if (!Number.isFinite(n)) return '0';
+    let s = String(n);
+    // Si représentation flottante longue type 3.3000000000000003, tenter un arrondi léger à 12 décimales
+    if (/\.\d{10,}/.test(s)) {
+      const rounded = Math.round(n * 1e12) / 1e12;
+      s = String(rounded);
+    }
+    if (s.includes('.')) s = s.replace(/(\.\d*?[1-9])0+$/,'$1').replace(/\.0+$/,'');
+    return s;
+  };
 
   // Saisie brute par ligne pour "prix_unitaire"
   const [unitPriceRaw, setUnitPriceRaw] = useState<Record<number, string>>({});
@@ -1547,7 +1560,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
     onBlur={() => {
       const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? '')) || 0;
       setFieldValue(`items.${index}.quantite`, q);
-      setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) })); // même formateur que prix
+  setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) }));
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       setFieldValue(`items.${index}.total`, q * u);
     }}
@@ -1591,7 +1604,8 @@ const applyProductToRow = (rowIndex: number, product: any) => {
       } else {
         setFieldValue(`items.${index}.prix_unitaire`, val);
       }
-      setUnitPriceRaw((prev) => ({ ...prev, [index]: formatNumber(val) }));
+  // Conserver la saisie brute (normalisée . pour décimale) sans arrondi
+  setUnitPriceRaw((prev) => ({ ...prev, [index]: (unitPriceRaw[index] ?? '').replace(',', '.') }));
 
       const q =
         parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
@@ -1607,7 +1621,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
       values.items[index].product_id
     );
     return last && Number.isFinite(last) ? (
-      <div className="text-xs text-gray-500 mt-1">Dernier: {Number(last).toFixed(2)} DH</div>
+  <div className="text-xs text-gray-500 mt-1">Dernier: {formatFull(Number(last))} DH</div>
     ) : null;
   })()}
 </td>
@@ -1647,7 +1661,7 @@ const applyProductToRow = (rowIndex: number, product: any) => {
       const q =
         parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-      return (q * u).toFixed(2);
+  return formatFull(q * u);
     })()}{' '}
     DH
   </div>
@@ -1726,14 +1740,15 @@ const applyProductToRow = (rowIndex: number, product: any) => {
 <div className="flex justify-between items-center mt-2">
   <span className="text-md font-semibold">Total poids (kg):</span>
   <span className="text-md font-semibold text-gray-700">
-    {values.items
-      .reduce((sum: number, item: any, idx: number) => {
-        const itemKg = Number(item.kg ?? item.product?.kg ?? 0) || 0;
-        const q =
-          parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-        return sum + itemKg * q;
-      }, 0)
-      .toFixed(2)}{' '}
+    {formatFull(
+      values.items
+        .reduce((sum: number, item: any, idx: number) => {
+          const itemKg = Number(item.kg ?? item.product?.kg ?? 0) || 0;
+          const q =
+            parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+          return sum + itemKg * q;
+        }, 0)
+    )}{' '}
     kg
   </span>
 </div>
@@ -1741,15 +1756,16 @@ const applyProductToRow = (rowIndex: number, product: any) => {
 <div className="flex justify-between items-center border-t pt-2">
   <span className="text-md font-semibold">Total:</span>
   <span className="text-md font-semibold">
-    {values.items
-      .reduce((sum: number, item: any, idx: number) => {
-        const q =
-          parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-        const u =
-          parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
-        return sum + q * u;
-      }, 0)
-      .toFixed(2)}{' '}
+    {formatFull(
+      values.items
+        .reduce((sum: number, item: any, idx: number) => {
+          const q =
+            parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+          const u =
+            parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+          return sum + q * u;
+        }, 0)
+    )}{' '}
     DH
   </span>
 </div>
@@ -1759,14 +1775,15 @@ const applyProductToRow = (rowIndex: number, product: any) => {
   <div className="flex justify-between items-center mt-2">
     <span className="text-md font-semibold text-purple-700">Total Remises:</span>
     <span className="text-md font-semibold text-purple-700">
-      {values.items
-        .reduce((sum: number, item: any, idx: number) => {
-          const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-          const rRaw = item.remise_montant ?? 0;
-          const r = typeof rRaw === 'string' ? parseFloat(String(rRaw).replace(',', '.')) || 0 : Number(rRaw) || 0;
-          return sum + r * q;
-        }, 0)
-        .toFixed(2)}{' '}
+      {formatFull(
+        values.items
+          .reduce((sum: number, item: any, idx: number) => {
+            const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+            const rRaw = item.remise_montant ?? 0;
+            const r = typeof rRaw === 'string' ? parseFloat(String(rRaw).replace(',', '.')) || 0 : Number(rRaw) || 0;
+            return sum + r * q;
+          }, 0)
+      )}{' '}
       DH
     </span>
   </div>
@@ -1776,20 +1793,21 @@ const applyProductToRow = (rowIndex: number, product: any) => {
 <div className="flex justify-between items-center mt-2">
   <span className="text-md font-semibold text-green-700">Mouvement:</span>
   <span className="text-md font-semibold text-green-700">
-    {values.items
-      .reduce((sum: number, item: any, idx: number) => {
-        const q =
-          parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-        const prixVente =
-          parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
-        const crRaw = item.cout_revient ?? item.prix_achat ?? 0;
-        const coutRevient =
-          typeof crRaw === 'string'
-            ? parseFloat(String(crRaw).replace(',', '.')) || 0
-            : Number(crRaw) || 0;
-        return sum + (prixVente - coutRevient) * q;
-      }, 0)
-      .toFixed(2)}{' '}
+    {formatFull(
+      values.items
+        .reduce((sum: number, item: any, idx: number) => {
+          const q =
+            parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+          const prixVente =
+            parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+          const crRaw = item.cout_revient ?? item.prix_achat ?? 0;
+          const coutRevient =
+            typeof crRaw === 'string'
+              ? parseFloat(String(crRaw).replace(',', '.')) || 0
+              : Number(crRaw) || 0;
+          return sum + (prixVente - coutRevient) * q;
+        }, 0)
+    )}{' '}
     DH
   </span>
 </div>

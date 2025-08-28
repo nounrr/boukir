@@ -253,18 +253,18 @@ const StockPage: React.FC = () => {
                     {product.est_service ? '-' : product.quantite}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.prix_achat.toFixed(2)} DH
+                    {product.prix_achat} DH
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.cout_revient.toFixed(2)} DH
+                    {product.cout_revient} DH
                     <span className="text-xs text-gray-500 ml-1">({product.cout_revient_pourcentage}%)</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.prix_gros.toFixed(2)} DH
+                    {product.prix_gros} DH
                     <span className="text-xs text-gray-500 ml-1">({product.prix_gros_pourcentage}%)</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.prix_vente.toFixed(2)} DH
+                    {product.prix_vente} DH
                     <span className="text-xs text-gray-500 ml-1">({product.prix_vente_pourcentage}%)</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
