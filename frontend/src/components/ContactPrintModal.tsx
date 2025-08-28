@@ -10,7 +10,7 @@ interface ContactPrintModalProps {
   onClose: () => void;
   contact: Contact;
   mode: ContactPrintMode; // 'transactions' | 'products'
-  transactions: any[];
+  transactions?: any[]; // Rendu optionnel car onglet transactions supprimé
   productHistory: any[];
   dateFrom?: string;
   dateTo?: string;
@@ -18,7 +18,7 @@ interface ContactPrintModalProps {
   skipInitialRow?: boolean;
 }
 
-const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions, productHistory, dateFrom, dateTo, skipInitialRow = false }) => {
+const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false }) => {
   const [size, setSize] = useState<'A4' | 'A5'>('A4');
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');

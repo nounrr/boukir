@@ -63,13 +63,26 @@ const StatsDetailPage: React.FC = () => {
 
   const clientBonsForItems = useMemo(() => {
     const all = [...bonsComptant, ...bonsSortie];
-    return all.filter((b: any) => inDateRange(toDisplayDate(b.date || b.date_creation)));
+    // Filtrer par date ET par statut (exclure "Refusé" et "Annulé" pour tous)
+    return all.filter((b: any) => {
+      const inRange = inDateRange(toDisplayDate(b.date || b.date_creation));
+      const validStatus = b.statut === 'En attente' || b.statut === 'Validé';
+      return inRange && validStatus;
+    });
   }, [bonsComptant, bonsSortie, dateFrom, dateTo]);
+
+  // clientBonsForItems contient déjà les bons filtrés par statut et date
+  // On peut l'utiliser pour les deux vues (produits et contacts)
 
   const { productClientStats, clientProductStats } = useMemo(() => {
     const pcs: Record<string, any> = {};
     const cps: Record<string, any> = {};
 
+    // LOGIQUE DE FILTRAGE :
+    // - Produits ET Contacts : Seulement les bons avec statut "En attente" et "Validé"
+    // - Exclure "Refusé" et "Annulé" pour tous
+
+    // Pour les produits : utiliser seulement les bons "En attente" et "Validé"
     for (const bon of clientBonsForItems) {
       const clientId = String(bon.client_id ?? bon.contact_id ?? "");
       if (!clientId) continue;
@@ -100,6 +113,7 @@ const StatsDetailPage: React.FC = () => {
         pcEntry.totalQuantite += qty;
         pcEntry.totalMontant += total;
 
+        // Pour les produits : calculer les statistiques des clients
         if (!cps[clientId]) cps[clientId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, products: {} };
         const cpEntry = cps[clientId];
         if (!cpEntry.products[productId]) cpEntry.products[productId] = { ventes: 0, quantite: 0, montant: 0 };
@@ -112,6 +126,8 @@ const StatsDetailPage: React.FC = () => {
       }
     }
 
+    // Les statistiques des contacts sont déjà calculées dans la boucle ci-dessus
+    // puisque clientBonsForItems contient les bons filtrés par statut
     return { productClientStats: pcs, clientProductStats: cps };
   }, [clientBonsForItems]);
 
@@ -129,6 +145,14 @@ const StatsDetailPage: React.FC = () => {
         <div className="flex items-center gap-2 mb-4">
           <Filter size={20} className="text-gray-500" />
           <h2 className="text-lg font-semibold text-gray-900">Filtres</h2>
+        </div>
+        
+        {/* Indicateur de filtrage par statut */}
+        <div className="mb-4">
+          <div className="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200">
+            <Filter className="w-3 h-3 mr-2" />
+            Affichage : Bons "En attente" et "Validé" uniquement (exclut "Refusé" et "Annulé")
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
