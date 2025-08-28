@@ -97,7 +97,7 @@ const RemisesPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Remises</p>
-              <p className="text-3xl font-bold text-gray-900">{totalRemises.toFixed(2)} DH</p>
+              <p className="text-3xl font-bold text-gray-900">{totalRemises} DH</p>
             </div>
             <div className="bg-purple-100 p-3 rounded-full">
               <TrendingUp className="h-8 w-8 text-purple-600" />
@@ -146,8 +146,8 @@ const RemisesPage: React.FC = () => {
                   <td className="px-6 py-4 text-right">
                     <span className="text-lg font-bold text-purple-600">
                       {Array.isArray(c.items)
-                        ? c.items.filter((it: any) => it.statut !== 'Annulé').reduce((sum: number, it: any) => sum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0).toFixed(2)
-                        : Number(c.total_remise ?? 0).toFixed(2)
+                        ? c.items.filter((it: any) => it.statut !== 'Annulé').reduce((sum: number, it: any) => sum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0)
+                        : Number(c.total_remise ?? 0)
                       } DH
                     </span>
                   </td>
@@ -344,7 +344,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
     const fmt = (type: string, b: any) => {
   const numero = getBonNumeroDisplay({ id: b?.id, type, numero: b?.numero });
       const name = b?.nom_client || b?.nom_fournisseur || '-';
-      const total = Number(b?.montant_total ?? 0).toFixed(2);
+      const total = Number(b?.montant_total ?? 0);
       return {
         value: `${type}:${b.id}`,
         label: `${numero} _ ${name} - ${total} DH`,
@@ -396,7 +396,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
           </div>
           <div>
             <p className="font-semibold text-gray-600">Total Remises:</p>
-            <p className="font-medium">{total.toFixed(2)} DH</p>
+            <p className="font-medium">{total} DH</p>
           </div>
         </div>
       </div>
@@ -439,7 +439,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
               {newItem.isNegative ? (
                 <div className="w-32">
                   <span className="text-sm font-medium text-gray-700 mb-1 block">Prix unitaire</span>
-                  <div className="h-[38px] flex items-center">{unitPrice.toFixed(2)} DH</div>
+                  <div className="h-[38px] flex items-center">{unitPrice} DH</div>
                 </div>
               ) : (
                 <div className="w-56">
@@ -498,7 +498,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                   <td className="px-4 py-2 max-w-0 truncate">{it.reference ? `${it.reference} - ${it.designation}` : it.product_id}</td>
                   <td className="px-4 py-2 max-w-0 truncate">{it.bon_id ? `${it.bon_type || ''} #${it.bon_id}` : '-'}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">{it.qte}</td>
-                  <td className="px-4 py-2 text-right whitespace-nowrap">{Number(it.prix_remise || 0).toFixed(2)} DH</td>
+                  <td className="px-4 py-2 text-right whitespace-nowrap">{Number(it.prix_remise || 0)} DH</td>
                   <td className="px-4 py-2 whitespace-nowrap">{it.created_at ? new Date(it.created_at).toLocaleDateString('fr-FR') : '-'}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">

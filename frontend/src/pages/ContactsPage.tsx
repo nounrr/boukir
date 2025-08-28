@@ -48,8 +48,8 @@ const ContactsPage: React.FC = () => {
   // Backend products for enriching product details (remove fake data)
   const { data: products = [] } = useGetProductsQuery();
 
-  // Onglets & états
-  const [detailsTab, setDetailsTab] = useState<'transactions' | 'produits'>('transactions');
+  // Onglet détail produits uniquement (transactions supprimées)
+  // detailsTab unique supprimé (un seul onglet produits)
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs'>('clients');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -58,13 +58,17 @@ const ContactsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string[]>([]); // Toujours un tableau pour <select multiple>
+  // Filtre de statut supprimé: on restreint en interne aux statuts Validé / En attente
+  const isAllowedStatut = (s: any) => {
+    if (!s) return false;
+    const norm = String(s).toLowerCase();
+    return norm === 'validé' || norm === 'valide' || norm === 'en attente' || norm === 'attente';
+  };
   // Print modal state
-  const [printModal, setPrintModal] = useState<{ open: boolean; mode: 'transactions' | 'products' | null }>({ open: false, mode: null });
-  // Multi-select states and print data
-  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
+  const [printModal, setPrintModal] = useState<{ open: boolean; mode: 'products' | null }>({ open: false, mode: null });
+  // Multi-select states and print data (transactions features removed)
+  // Anciennes states transactions supprimées (transactions tab retiré)
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
-  const [printTransactions, setPrintTransactions] = useState<any[]>([]);
   const [printProducts, setPrintProducts] = useState<any[]>([]);
   
   // Pagination
@@ -96,11 +100,11 @@ const ContactsPage: React.FC = () => {
     };
     
     // Ajouter les ventes (sorties et comptants)
-    sorties.forEach((b: any) => add(b.client_id, b.montant_total));
-    comptants.forEach((b: any) => add(b.client_id, b.montant_total));
+  sorties.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
+  comptants.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
     
     // Soustraire les avoirs clients (crédits/remboursements)
-    avoirsClient.forEach((b: any) => subtract(b.client_id, b.montant_total));
+  avoirsClient.forEach((b: any) => { if (isAllowedStatut(b.statut)) subtract(b.client_id, b.montant_total); });
     
     return map;
   }, [sorties, comptants, avoirsClient]);
@@ -110,6 +114,8 @@ const ContactsPage: React.FC = () => {
     payments.forEach((p: any) => {
       const cid = p.contact_id; // peut être undefined dans les mocks => 0 par défaut
       if (!cid) return;
+      // N'inclure que les paiements avec statut autorisé (En attente / Validé)
+      if (!isAllowedStatut(p.statut)) return;
       const amt = Number(p.montant ?? p.montant_total ?? 0);
       map.set(cid, (map.get(cid) || 0) + amt);
     });
@@ -131,23 +137,45 @@ const ContactsPage: React.FC = () => {
     };
     
     // Ajouter les achats (commandes)
-    commandes.forEach((b: any) => add(b.fournisseur_id, b.montant_total));
+  commandes.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.fournisseur_id, b.montant_total); });
     
     // Soustraire les avoirs fournisseurs (crédits/remboursements)
-    avoirsFournisseur.forEach((b: any) => subtract(b.fournisseur_id, b.montant_total));
+  avoirsFournisseur.forEach((b: any) => { if (isAllowedStatut(b.statut)) subtract(b.fournisseur_id, b.montant_total); });
     
     return map;
   }, [commandes, avoirsFournisseur]);
 
-  // Util
-  const isWithinDateRange = (isoDate?: string | null) => {
-    if (!isoDate) return !(dateFrom || dateTo);
-    const d = new Date(isoDate);
-    if (isNaN(d.getTime())) return true; // si date invalide, ne filtre pas
-    const from = dateFrom ? new Date(dateFrom) : null;
-    const to = dateTo ? new Date(dateTo) : null;
-    if (from && d < from) return false;
-    if (to && d > to) return false;
+  // Util: filtre de période (accepte ISO ou format JJ-MM-YYYY). Inclusif.
+  const isWithinDateRange = (dateValue?: string | null) => {
+    // Pas de filtre actif => toujours vrai
+    if (!(dateFrom || dateTo)) return true;
+    if (!dateValue) return false; // filtre actif mais pas de date -> exclu
+
+    let d: Date | null = null;
+    // Si format JJ-MM-YYYY
+    if (/^\d{2}-\d{2}-\d{4}$/.test(dateValue)) {
+      const [jj, mm, yyyy] = dateValue.split('-');
+      d = new Date(`${yyyy}-${mm}-${jj}T00:00:00`);
+    } else {
+      // Tenter de tronquer à 10 chars (YYYY-MM-DD) pour neutraliser fuseaux
+      const base = dateValue.length >= 10 ? dateValue.slice(0, 10) : dateValue;
+      // Si déjà au format YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(base)) {
+        d = new Date(`${base}T00:00:00`);
+      } else {
+        // Dernier recours: Date native
+        const tmp = new Date(dateValue);
+        if (!isNaN(tmp.getTime())) d = tmp; else return false;
+      }
+    }
+    if (!d || isNaN(d.getTime())) return false;
+
+    // Normaliser comparaison par jour (ignorer l'heure)
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const from = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+    const to = dateTo ? new Date(dateTo + 'T23:59:59') : null; // inclusif fin de journée
+    if (from && day < from) return false;
+    if (to && day > to) return false;
     return true;
   };
 
@@ -165,45 +193,9 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  // Helper: parse items array from a bon (array or JSON string)
-  const parseBonItems = (bon: any): any[] => {
-    const raw = bon?.items ?? bon?.lignes;
-    if (!raw) return [];
-    if (Array.isArray(raw)) return raw;
-    if (typeof raw === 'string') {
-      try {
-        const arr = JSON.parse(raw);
-        return Array.isArray(arr) ? arr : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  };
+  // parseBonItems helper supprimé (plus utilisé)
 
-  // Helper: robustly compute a bon's total from items when needed
-  const computeBonTotal = (bon: any): number => {
-    const mt = Number(bon?.montant_total);
-    if (Number.isFinite(mt) && mt > 0) return mt;
-    const items = parseBonItems(bon);
-    if (!items || items.length === 0) return mt || 0;
-    let sum = 0;
-    for (const it of items) {
-      const q = parseFloat(String(it?.quantite ?? it?.qty ?? 0)) || 0;
-      const pu = parseFloat(String(it?.prix_unitaire ?? it?.prix ?? it?.price ?? 0)) || 0;
-      const rp = parseFloat(String(it?.remise_pourcentage ?? 0)) || 0;
-      const rm = parseFloat(String(it?.remise_montant ?? 0)) || 0;
-      const fromTotal = it?.total;
-      let line = Number(fromTotal);
-      if (!Number.isFinite(line) || line === 0) {
-        line = q * pu;
-        if (rp > 0) line = line * (1 - rp / 100);
-        if (rm > 0) line = line - rm;
-      }
-      sum += line;
-    }
-    return sum;
-  };
+  // computeBonTotal helper supprimé (plus utilisé)
 
   // Bons du contact sélectionné
   const bonsForContact = useMemo(() => {
@@ -214,14 +206,14 @@ const ContactsPage: React.FC = () => {
 
     // Pour un client: sorties, comptants, avoirs client (EXCLUDING Devis per UI request)
     if (isClient) {
-      for (const b of sorties) if (b.client_id === id) list.push({ ...b, type: 'Sortie' });
+  for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
       // Devis intentionally excluded from detail/transactions per requirement
-      for (const b of comptants) if (b.client_id === id) list.push({ ...b, type: 'Comptant' });
-      for (const b of avoirsClient) if (b.client_id === id) list.push({ ...b, type: 'Avoir' });
+  for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
+  for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
     } else {
       // Fournisseur: commandes, avoirs fournisseur
-      for (const b of commandes) if (b.fournisseur_id === id) list.push({ ...b, type: 'Commande' });
-      for (const b of avoirsFournisseur) if (b.fournisseur_id === id) list.push({ ...b, type: 'AvoirFournisseur' });
+  for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
+  for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
     }
 
   // Filtre période + tri
@@ -230,36 +222,27 @@ const ContactsPage: React.FC = () => {
     return filtered;
   }, [selectedContact, sorties, devis, comptants, avoirsClient, commandes, avoirsFournisseur, dateFrom, dateTo]);
 
-  // Historique combiné (à partir des bons réels). Les paiements ne sont pas utilisés ici tant que l'API n'est pas prête.
+  // Onglet transactions supprimé - CODE SUPPRIMÉ
+  /*
   const combinedTransactions = useMemo(() => {
     if (!selectedContact) return [] as any[];
-    const combined = bonsForContact.map((b) => ({
-      id: `bon-${b.id}`,
-      numero: b.numero,
-      type: b.type,
-      dateISO: b.date_creation,
-      date: formatDateDMY(b.date_creation),
-        montant: computeBonTotal(b),
-      statut: b.statut,
-      isPayment: false,
-      mode: null,
-      created_at: b.created_at,
-    }));
+    const combined = [];
 
     // Add payments related to this contact
-  const paymentsForContact = payments.filter((p: any) => String(p.contact_id) === String(selectedContact.id));
+    const paymentsForContact = payments.filter((p: any) => 
+      String(p.contact_id) === String(selectedContact.id) && isAllowedStatut(p.statut)
+    );
     for (const p of paymentsForContact) {
       combined.push({
         id: `payment-${p.id}`,
         numero: getDisplayNumeroPayment(p),
         type: 'Paiement',
-    dateISO: p.date_paiement,
-    date: formatDateDMY(p.date_paiement),
-    montant: Number(p.montant ?? p.montant_total ?? 0) || 0,
-        // Use payment.statut when present; otherwise fallback to 'Paiement'
+        dateISO: p.date_paiement,
+        date: formatDateDMY(p.date_paiement),
+        montant: Number(p.montant ?? p.montant_total ?? 0) || 0,
         statut: p.statut ? String(p.statut) : 'Paiement',
         isPayment: true,
-  mode: (p.mode_paiement as any) || null,
+        mode: (p.mode_paiement as any) || null,
         created_at: p.created_at,
       });
     }
@@ -296,80 +279,24 @@ const ContactsPage: React.FC = () => {
       return { ...t, soldeCumulatif };
     });
   }, [selectedContact, bonsForContact]);
+  */
 
   // Calcul du solde réel du contact sélectionné (incluant les avoirs)
   // Deprecated: kept logic inline in UI where needed
 
-  const displayStatut = (s?: string) => {
-    if (!s) return '-';
-  const norm = String(s).toLowerCase();
-  if (norm === 'en attente' || norm === 'attente') return 'En attente';
-  if (norm === 'validé' || norm === 'valide') return 'Validé';
-  if (norm === 'refusé' || norm === 'refuse') return 'Refusé';
-  if (norm === 'annulé' || norm === 'annule') return 'Annulé';
-  if (norm === 'paiement') return 'Paiement';
-  return s;
-  };
+  // displayStatut helper removed (statuts limités et affichage direct)
 
-  // Apply status filter to transactions for both display and printing
-  const filteredCombinedTransactions = useMemo(() => {
-  if (!statusFilter) return combinedTransactions;
-    if (Array.isArray(statusFilter) && statusFilter.length === 0) return combinedTransactions;
-    
-    // First filter by status
-    const filtered = combinedTransactions.filter((t) => {
-      const sRaw = t.statut ? String(t.statut) : (String(t.type).toLowerCase() === 'paiement' ? 'Paiement' : '');
-      // normalize both sides for comparison
-      const sNorm = sRaw.toLowerCase();
-      if (Array.isArray(statusFilter)) return statusFilter.some((f: string) => String(f).toLowerCase() === sNorm);
-      return String(statusFilter).toLowerCase() === sNorm;
-    });
-    
-    // Then recalculate cumulative balance for filtered transactions only
-    const isPaymentStatut = (entry: any) => {
-      const statut = String(entry?.statut || '').toLowerCase();
-      const type = String(entry?.type || '').toLowerCase();
-      return statut === 'paiement' || type === 'paiement';
-    };
-    
-    const isAvoirType = (entry: any) => {
-      const type = String(entry?.type || '').toLowerCase();
-      return type === 'avoir' || type === 'avoirfournisseur';
-    };
-    
-  // Start from the initial balance so filtered view includes solde initial
-  // Positive = montant dû (client nous doit / nous devons au fournisseur)
-  let soldeCumulatif = Number(selectedContact?.solde ?? 0);
-    return filtered.map((t) => {
-      const montant = Number(t.montant) || 0;
-      let delta = 0;
-
-      // Unified rule for filtered view as well
-      if (isPaymentStatut(t) || isAvoirType(t)) {
-        delta = -montant;
-      } else {
-        delta = +montant;
-      }
-
-      soldeCumulatif += delta;
-      return { ...t, soldeCumulatif };
-    });
-  }, [combinedTransactions, statusFilter]);
+  // Onglet transactions supprimé
+  /*
+  const filteredCombinedTransactions = useMemo(() => [], [selectedContact]);
+  */
+  
+  // Helper functions (kept for product history calculations)
+  // Helpers statut paiement/avoir supprimés (plus utilisés)
 
   // Monthly summary removed (not displayed)
 
-  // Derived list of available statuses for the selected contact's bons
-  // Always include canonical statuses so the multi-select shows all options
-  const availableStatuses = useMemo(() => {
-    const CANONICAL = ['En attente', 'Validé', 'Refusé', 'Annulé', 'Paiement'];
-    if (!selectedContact) return CANONICAL;
-    const stsSet = new Set<string>(CANONICAL);
-    // add from bons
-    for (const b of bonsForContact) if (b.statut) stsSet.add(String(b.statut));
-    // from payments add 'Paiement' as an option if payments exist
-    if (payments.some((p: any) => String(p.contact_id) === String(selectedContact.id))) stsSet.add('Paiement');
-    return Array.from(stsSet);
-  }, [selectedContact, bonsForContact, payments]);
+  // availableStatuses supprimé
 
 
   const productHistory = useMemo(() => {
@@ -417,7 +344,9 @@ const ContactsPage: React.FC = () => {
     }
 
     // Ajouter les paiements comme des entrées séparées
-    const paymentsForContact = payments.filter((p: any) => String(p.contact_id) === String(selectedContact.id));
+    const paymentsForContact = payments.filter(
+      (p: any) => String(p.contact_id) === String(selectedContact.id) && isAllowedStatut(p.statut)
+    );
     for (const p of paymentsForContact) {
       items.push({
         id: `payment-${p.id}`,
@@ -434,6 +363,18 @@ const ContactsPage: React.FC = () => {
         type: 'paiement',
         created_at: p.created_at,
       });
+    }
+
+    // Appliquer le filtre de période maintenant :
+    //  - Les bons sont déjà filtrés par date_creation dans bonsForContact
+    //  - Les paiements doivent être filtrés ici via leur date_paiement (stockée dans bon_date_iso)
+    if (dateFrom || dateTo) {
+      const filtered = items.filter((it) => {
+        // Priorité à la date ISO si disponible, sinon utiliser la date affichée (JJ-MM-YYYY)
+        return isWithinDateRange(it.bon_date_iso || it.bon_date);
+      });
+      items.length = 0;
+      items.push(...filtered);
     }
 
     // Tri par date/heure réelle si bon_date_iso dispo, sinon fallback sur bon_date (JJ-MM-YYYY)
@@ -457,28 +398,18 @@ const ContactsPage: React.FC = () => {
 
     let soldeCumulatif = Number(selectedContact?.solde ?? 0);
     return items.map((item) => {
-      const total = Number(item.total) || 0;
-      // Unified rule: produits/commandes augmentent le solde, paiements/avoirs le diminuent
-      let delta = 0;
-      if (item.type === 'paiement' || item.type === 'avoir') {
-        delta = -total;
-      } else {
-        delta = +total;
+      const montant = Number(item.total) || 0;
+      if (item.type === 'produit') {
+        soldeCumulatif += montant; // débit (augmentation)
+      } else if (item.type === 'paiement' || item.type === 'avoir') {
+        soldeCumulatif -= montant; // crédit (diminution)
       }
-      soldeCumulatif += delta;
       return { ...item, soldeCumulatif };
     });
-  }, [selectedContact, bonsForContact, products, payments]);
+  }, [selectedContact, bonsForContact, products, payments, dateFrom, dateTo]);
 
-  // Apply status filter to product history for display and printing
-  const filteredProductHistory = useMemo(() => {
-    return productHistory.filter((item) => {
-      if (!statusFilter || (Array.isArray(statusFilter) && statusFilter.length === 0)) return true;
-  // 'ALL' not used; statusFilter is a list
-      if (Array.isArray(statusFilter)) return statusFilter.some((s) => String(item.bon_statut) === s);
-      return (item.bon_statut && String(item.bon_statut) === statusFilter);
-    });
-  }, [productHistory, statusFilter]);
+  // Plus de filtre de statut dynamique
+  const filteredProductHistory = productHistory;
 
   // Search term and filtering for the Products detail tab
   const [productSearch, setProductSearch] = useState('');
@@ -496,26 +427,22 @@ const ContactsPage: React.FC = () => {
     });
   }, [filteredProductHistory, productSearch]);
 
-  // Inject a synthetic first row for initial balance in both views
+  // Solde net final (solde cumulé après la dernière ligne) pour le bloc récapitulatif
+  const finalSoldeNet = useMemo(() => {
+    if (!selectedContact) return 0;
+    const arr = searchedProductHistory;
+    if (!arr || arr.length === 0) return Number(selectedContact.solde ?? 0);
+    const last = arr[arr.length - 1];
+    return Number(last.soldeCumulatif ?? selectedContact.solde ?? 0);
+  }, [searchedProductHistory, selectedContact]);
+
+  // Onglet transactions supprimé
+  /*
   const displayedTransactions = useMemo(() => {
     if (!selectedContact) return [] as any[];
-    const initialSolde = Number(selectedContact?.solde ?? 0);
-    const initRow = {
-      id: 'initial-solde-transaction',
-      numero: '—',
-      type: 'Solde initial',
-      dateISO: '',
-      date: '',
-      montant: 0,
-      statut: '-',
-      isPayment: false,
-      mode: null,
-      created_at: '',
-      soldeCumulatif: initialSolde,
-      syntheticInitial: true,
-    } as any;
-    return [initRow, ...filteredCombinedTransactions];
+    return [];
   }, [filteredCombinedTransactions, selectedContact]);
+  */
 
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
@@ -594,18 +521,14 @@ const ContactsPage: React.FC = () => {
     setIsDetailsModalOpen(true);
     setDateFrom('');
     setDateTo('');
-    setDetailsTab('transactions');
+  // detailsTab removed
   };
 
   // Impression avec détails des produits et transactions
   const handlePrint = () => {
     if (!selectedContact) return;
 
-  const filteredBons = bonsForContact.filter((b: any) => {
-    if (!statusFilter || (Array.isArray(statusFilter) && statusFilter.length === 0)) return true;
-    if (Array.isArray(statusFilter)) return statusFilter.some((s) => b.statut && String(b.statut) === s);
-    return (b.statut && String(b.statut) === statusFilter);
-  });
+  const filteredBons = bonsForContact; // déjà filtré par statuts autorisés
     const filteredProducts = filteredProductHistory.filter(item => 
       isWithinDateRange(new Date(`${item.bon_date.split('-').reverse().join('-')}`).toISOString())
     );
@@ -784,7 +707,7 @@ const ContactsPage: React.FC = () => {
                   });
                   return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total||0), 0) / realBons.length).toFixed(2) : '0.00';
                 })()} DH</p>
-                <p><strong>Solde actuel:</strong> ${combinedTransactions.length > 0 ? combinedTransactions[combinedTransactions.length - 1].soldeCumulatif.toFixed(2) : Number(selectedContact.solde || 0).toFixed(2)} DH</p>
+                <p><strong>Solde actuel:</strong> ${Number(selectedContact.solde || 0).toFixed(2)} DH</p>
               </div>
             </div>
           </div>
@@ -1077,45 +1000,10 @@ const ContactsPage: React.FC = () => {
   };
 
 
-  // Open print modal for transactions
-  const openPrintTransactions = () => {
-    setDetailsTab('transactions');
-    // Build subset based on selection; if none selected, use all displayed (excluding synthetic initial)
-    const baseRows = displayedTransactions.filter((t: any) => !t.syntheticInitial);
-    const rows = (selectedTransactionIds && selectedTransactionIds.size > 0)
-      ? baseRows.filter((t: any) => selectedTransactionIds.has(String(t.id)))
-      : baseRows;
-
-    // Recompute cumulative balance over selected rows
-    // If user selected specific rows, ignore initial balance and start from 0
-    const hasSelection = selectedTransactionIds && selectedTransactionIds.size > 0;
-    const startingSolde = hasSelection ? 0 : Number(selectedContact?.solde ?? 0);
-    let soldeCumulatif = startingSolde;
-    const recomputed = rows.map((t: any) => {
-      const montant = Number(t.montant) || 0;
-      const statut = String(t?.statut || '').toLowerCase();
-      const type = String(t?.type || '').toLowerCase();
-      const isPayment = statut === 'paiement' || type === 'paiement';
-      const isAvoir = type === 'avoir' || type === 'avoirfournisseur';
-      const delta = (isPayment || isAvoir) ? -montant : +montant;
-      soldeCumulatif += delta;
-      return { ...t, soldeCumulatif };
-    });
-    // Only include synthetic initial row when no selection (so we keep initial balance)
-    if (hasSelection) {
-      setPrintTransactions(recomputed);
-    } else {
-      const initialSolde = Number(selectedContact?.solde ?? 0);
-      const initRow: any = {
-        id: 'initial-solde-transaction', numero: '—', type: 'Solde initial', dateISO: '', date: '', montant: 0, statut: '-', isPayment: false, mode: null, created_at: '', syntheticInitial: true, soldeCumulatif: initialSolde,
-      };
-      setPrintTransactions([initRow, ...recomputed]);
-    }
-    setPrintModal({ open: true, mode: 'transactions' });
-  };
+  // Fonction d'impression des transactions supprimée
   // Open print modal for products
   const openPrintProducts = () => {
-    setDetailsTab('produits');
+  // detailsTab usage removed
     const baseRows = displayedProductHistory.filter((it: any) => !it.syntheticInitial);
     const rows = (selectedProductIds && selectedProductIds.size > 0)
       ? baseRows.filter((it: any) => selectedProductIds.has(String(it.id)))
@@ -1677,9 +1565,7 @@ const ContactsPage: React.FC = () => {
                     onClick={() => {
                       setIsDetailsModalOpen(false);
                       setSelectedContact(null);
-                      setSelectedTransactionIds(new Set());
                       setSelectedProductIds(new Set());
-                      setPrintTransactions([]);
                       setPrintProducts([]);
                     }}
                     className="text-white hover:text-gray-200"
@@ -1824,312 +1710,20 @@ const ContactsPage: React.FC = () => {
                   >
                     Toutes les dates
                   </button>
-                  <div className="ml-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Filtrer par statut (multi)</label>
-                    <div className="flex items-center gap-2">
-                      <select
-                        multiple
-                        value={statusFilter}
-                        onChange={(e) => {
-                          const vals = Array.from(e.target.selectedOptions).map(o => o.value);
-                          setStatusFilter(vals);
-                        }}
-                        className="px-3 py-2 border border-gray-300 rounded-md h-28"
-                      >
-                        {availableStatuses.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-                      <div className="flex flex-col gap-2">
-                        <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([])}>Tous</button>
-                        <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([...(availableStatuses || [])])}>Tout sélectionner</button>
-                      </div>
-                    </div>
-                  </div>
+                  {/* Bloc filtre de statut supprimé */}
                 </div>
               </div>
 
-              {/* Tabs */}
+              {/* Onglet unique : Détail des Produits */}
               <div className="border-b border-gray-200 mb-4">
                 <nav className="flex space-x-8">
-                  <button
-                    className={`py-2 px-1 font-medium ${detailsTab === 'transactions' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                    onClick={() => { setDetailsTab('transactions'); }}
-                  >
-                    Transactions
-                  </button>
-                  <button
-                    className={`py-2 px-1 font-medium ${detailsTab === 'produits' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                    onClick={() => { setDetailsTab('produits'); }}
-                  >
+                  <div className="py-2 px-1 font-medium border-b-2 border-blue-600 text-blue-600">
                     Détail Produits
-                  </button>
-                  {/* Client Remise tab removed */}
+                  </div>
                 </nav>
               </div>
 
-              {/* Contenu */}
-              {detailsTab === 'transactions' ? (
-                <div className="mb-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-lg flex items-center gap-2">
-                      <FileText size={20} />
-                      Historique des Transactions
-                      {(dateFrom || dateTo) && (
-                        <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded-full text-xs">
-                          Filtré du {dateFrom || '...'} au {dateTo || '...'}
-                        </span>
-                      )}
-                    </h3>
-                    <div className="flex items-center gap-3">
-                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-                        {displayedTransactions.length} éléments
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {Array.from(selectedTransactionIds).length > 0 ? `${Array.from(selectedTransactionIds).length} sélectionné(s)` : 'Aucune sélection'}
-                      </span>
-                      {Array.from(selectedTransactionIds).length > 0 && (
-                        <button onClick={() => setSelectedTransactionIds(new Set())} className="text-xs px-2 py-1 bg-gray-100 rounded">Effacer sélection</button>
-                      )}
-                      <button
-                        onClick={openPrintTransactions}
-                        className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
-                        title="Imprimer uniquement les transactions"
-                      >
-                        <Printer size={14} />
-                        Imprimer
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-2 py-3">
-                            <input
-                              type="checkbox"
-                              aria-label="Sélectionner tout"
-                              checked={displayedTransactions.filter((t:any)=>!t.syntheticInitial).every((t:any)=>selectedTransactionIds.has(String(t.id))) && displayedTransactions.filter((t:any)=>!t.syntheticInitial).length>0}
-                              onChange={(e)=>{
-                                const all = new Set<string>(selectedTransactionIds);
-                                const nonInitial = displayedTransactions.filter((t:any)=>!t.syntheticInitial);
-                                if(e.target.checked){
-                                  nonInitial.forEach((t:any)=>all.add(String(t.id)));
-                                }else{
-                                  nonInitial.forEach((t:any)=>all.delete(String(t.id)));
-                                }
-                                setSelectedTransactionIds(all);
-                              }}
-                            />
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Numéro</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montant</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut/Mode</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Solde Cumulé</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {displayedTransactions.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
-                              Aucune transaction trouvée pour cette période
-                            </td>
-                          </tr>
-                        ) : (
-                          displayedTransactions.map((t) => (
-                            <tr key={t.id} className="hover:bg-gray-50">
-                              <td className="px-2 py-4 whitespace-nowrap">
-                                {t.syntheticInitial ? (
-                                  <span className="text-xs text-gray-400">—</span>
-                                ) : (
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedTransactionIds.has(String(t.id))}
-                                    onChange={(e)=>{
-                                      const next = new Set<string>(selectedTransactionIds);
-                                      const id = String(t.id);
-                                      if(e.target.checked) next.add(id); else next.delete(id);
-                                      setSelectedTransactionIds(next);
-                                    }}
-                                  />
-                                )}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-700">{t.syntheticInitial ? '-' : formatDateTimeWithHour(t.dateISO)}</div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-medium text-gray-900">{t.numero}</div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span
-                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                    t.type === 'Solde initial' ? 'bg-gray-200 text-gray-700' : t.type === 'Paiement'
-                                      ? 'bg-green-200 text-green-700'
-                                      : t.type === 'Avoir' || t.type === 'AvoirFournisseur'
-                                      ? 'bg-orange-200 text-orange-700'
-                                      : t.type === 'Commande'
-                                      ? 'bg-blue-200 text-blue-700'
-                                      : t.type === 'Sortie'
-                                      ? 'bg-purple-200 text-purple-700'
-                                      : t.type === 'Devis'
-                                      ? 'bg-yellow-200 text-yellow-700'
-                                      : t.type === 'Comptant'
-                                      ? 'bg-indigo-200 text-indigo-700'
-                                      : 'bg-gray-200 text-gray-700'
-                                  }`}
-                                >
-                                  {t.type}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                {(() => {
-                                  if (t.syntheticInitial) {
-                                    return <div className="text-sm text-gray-500">—</div>;
-                                  }
-                                  const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || 
-                                                  String(t.type || '').toLowerCase() === 'paiement';
-                                  const isAvoir = String(t.type || '').toLowerCase() === 'avoir' || 
-                                                String(t.type || '').toLowerCase() === 'avoirfournisseur';
-                                  
-                                  if (isPayment) {
-                                    return <div className="text-sm font-semibold text-green-600">-{t.montant.toFixed(2)} DH</div>;
-                                  } else if (isAvoir) {
-                                    return <div className="text-sm font-semibold text-orange-600">-{t.montant.toFixed(2)} DH</div>;
-                                  } else {
-                                    return <div className="text-sm font-semibold text-blue-600">+{t.montant.toFixed(2)} DH</div>;
-                                  }
-                                })()}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                {t.syntheticInitial ? (
-                                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">-</span>
-                                ) : (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement') ? (
-                                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-200 text-gray-700">{displayStatut(t.statut)}</span>
-                                ) : (
-                                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${t.statut === 'Validé' ? 'bg-green-200 text-green-700' : t.statut === 'En cours' ? 'bg-yellow-200 text-yellow-700' : 'bg-gray-200 text-gray-700'}`}>{t.statut}</span>
-                                )}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div
-                                  className={`text-sm font-bold ${
-                                    t.soldeCumulatif > 0
-                                      ? 'text-green-600'
-                                      : t.soldeCumulatif < 0
-                                      ? 'text-red-600'
-                                      : 'text-gray-600'
-                                  }`}
-                                >
-                                  {Number(t.soldeCumulatif ?? 0).toFixed(2)} DH
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {displayedTransactions.length > 0 && (
-                    <div className="mt-4 bg-gray-50 rounded-lg p-4">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <p className="font-semibold text-gray-600">Total Ventes/Achats:</p>
-                          <p className="text-lg font-bold text-blue-600">
-                            {displayedTransactions.filter((t) => {
-                              const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || 
-                                              String(t.type || '').toLowerCase() === 'paiement';
-                              const isAvoir = String(t.type || '').toLowerCase() === 'avoir' || 
-                                            String(t.type || '').toLowerCase() === 'avoirfournisseur';
-                              return !t.syntheticInitial && !isPayment && !isAvoir;
-                            }).reduce((s, t) => s + (t.montant || 0), 0).toFixed(2)} DH
-                          </p>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-600">Total Paiements:</p>
-                          <p className="text-lg font-bold text-green-600">
-                            {displayedTransactions.filter((t) => !t.syntheticInitial && (String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement')).reduce((s, t) => s + (t.montant || 0), 0).toFixed(2)} DH
-                          </p>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-600">Total Avoirs:</p>
-                          <p className="text-lg font-bold text-orange-600">
-                            {displayedTransactions.filter((t) => {
-                              const isAvoir = String(t.type || '').toLowerCase() === 'avoir' || 
-                                            String(t.type || '').toLowerCase() === 'avoirfournisseur';
-                              return !t.syntheticInitial && isAvoir;
-                            }).reduce((s, t) => s + (t.montant || 0), 0).toFixed(2)} DH
-                          </p>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-600">Solde Final:</p>
-                          <p
-                            className={`text-lg font-bold ${
-                              displayedTransactions[displayedTransactions.length - 1].soldeCumulatif > 0
-                                ? 'text-green-600'
-                                : 'text-red-600'
-                            }`}
-                          >
-                            {Number(displayedTransactions[displayedTransactions.length - 1].soldeCumulatif ?? 0).toFixed(2)} DH
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-      
-                  {/* Résumé badges */}
-                  <div className="mt-8 bg-blue-50 rounded-lg p-4">
-                    <h3 className="font-bold text-lg mb-3">Résumé de la période</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-blue-600">
-                          {bonsForContact.filter((b: any) => {
-                            const type = String(b.type || '').toLowerCase();
-                            // Exclure les avoirs du nombre de bons
-                            return type !== 'avoir' && type !== 'avoirfournisseur';
-                          }).length}
-                        </p>
-                        <p className="text-sm text-gray-600">Bons</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-green-600">
-                          {filteredCombinedTransactions.filter((t) => {
-                            const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || 
-                                            String(t.type || '').toLowerCase() === 'paiement';
-                            return isPayment;
-                          }).length}
-                        </p>
-                        <p className="text-sm text-gray-600">Paiements</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-orange-600">
-                          {bonsForContact.filter((b: any) => {
-                            const type = String(b.type || '').toLowerCase();
-                            // Inclure seulement les avoirs
-                            return type === 'avoir' || type === 'avoirfournisseur';
-                          }).length}
-                        </p>
-                        <p className="text-sm text-gray-600">Avoirs</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-purple-600">
-                          {bonsForContact
-                            .filter((b: any) => {
-                              const type = String(b.type || '').toLowerCase();
-                              // Exclure les avoirs du total des bons
-                              return type !== 'avoir' && type !== 'avoirfournisseur';
-                            })
-                            .reduce((s: number, b: any) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH
-                        </p>
-                        <p className="text-sm text-gray-600">Total Bons</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : detailsTab === 'produits' ? (
+              
                 <div className="mb-8">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-lg flex items-center gap-2">
@@ -2175,16 +1769,12 @@ const ContactsPage: React.FC = () => {
           isOpen={printModal.open}
           onClose={() => setPrintModal({ open: false, mode: null })}
           contact={selectedContact}
-          mode={printModal.mode as any}
-      transactions={printModal.mode === 'transactions' && printTransactions.length > 0 ? printTransactions : displayedTransactions}
-      productHistory={printModal.mode === 'products' && printProducts.length > 0 ? printProducts : displayedProductHistory}
+          mode="products"
+          transactions={[]} /* Array vide car transactions supprimées */
+          productHistory={printProducts.length > 0 ? printProducts : displayedProductHistory}
           dateFrom={dateFrom}
           dateTo={dateTo}
-          skipInitialRow={
-            printModal.mode === 'transactions'
-              ? (printTransactions.length > 0 && selectedTransactionIds.size > 0)
-              : (printModal.mode === 'products' ? (printProducts.length > 0 && selectedProductIds.size > 0) : false)
-          }
+          skipInitialRow={printProducts.length > 0 && selectedProductIds.size > 0}
         />
       )}
                     </div>
@@ -2427,21 +2017,9 @@ const ContactsPage: React.FC = () => {
                             </p>
                           </div>
                           <div>
-                            <p className="font-semibold text-gray-600">Solde Net:</p>
-                            <p
-                              className={`text-lg font-bold ${
-                                (searchedProductHistory.filter((i: any) => i.type === 'produit').reduce((s: number, i: any) => s + i.total, 0) -
-                                  searchedProductHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0) -
-                                  searchedProductHistory.filter((i: any) => i.type === 'avoir').reduce((s: number, i: any) => s + i.total, 0)) > 0
-                                  ? 'text-red-600'
-                                  : 'text-green-600'
-                              }`}
-                            >
-                              {(
-                                searchedProductHistory.filter((i: any) => i.type === 'produit').reduce((s: number, i: any) => s + i.total, 0) -
-                                searchedProductHistory.filter((i: any) => i.type === 'paiement').reduce((s: number, i: any) => s + i.total, 0) -
-                                searchedProductHistory.filter((i: any) => i.type === 'avoir').reduce((s: number, i: any) => s + i.total, 0)
-                              ).toFixed(2)} DH
+                            <p className="font-semibold text-gray-600">Solde Net (Cumulé):</p>
+                            <p className={`text-lg font-bold ${finalSoldeNet > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                              {finalSoldeNet.toFixed(2)} DH
                             </p>
                           </div>
                         </div>
@@ -2449,7 +2027,7 @@ const ContactsPage: React.FC = () => {
                     </>
                   )}
                 </div>
-              ) : null}
+              {/* Onglet transactions supprimé */}
             </div>
           </div>
         </div>
