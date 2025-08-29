@@ -759,21 +759,22 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         if (client && client.plafond && Number(client.plafond) > 0) {
           const nouveauSolde = Number(client.solde || 0) + montantTotal;
           if (nouveauSolde > Number(client.plafond)) {
-            const confirmation = window.confirm(
-              `⚠️ ATTENTION - PLAFOND DÉPASSÉ ⚠️\n\n` +
+            const depassement = nouveauSolde - Number(client.plafond);
+            
+            // Annulation automatique de la création - Plafond dépassé
+            showError(
+              `🚫 CRÉATION ANNULÉE - PLAFOND DÉPASSÉ 🚫\n\n` +
               `Client: ${client.nom_complet}\n` +
               `Solde actuel: ${Number(client.solde || 0).toFixed(2)} DH\n` +
               `Montant du bon: ${montantTotal.toFixed(2)} DH\n` +
               `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
               `Plafond autorisé: ${Number(client.plafond).toFixed(2)} DH\n\n` +
-              `Le nouveau solde dépassera le plafond de ${(nouveauSolde - Number(client.plafond)).toFixed(2)} DH.\n\n` +
-              `Voulez-vous continuer malgré le dépassement ?`
+              `Le nouveau solde dépasserait le plafond de ${depassement.toFixed(2)} DH.\n\n` +
+              `❌ La création du bon a été automatiquement annulée.\n` +
+              `Veuillez réduire le montant ou contacter votre responsable.`
             );
-            
-            if (!confirmation) {
-              setSubmitting(false);
-              return;
-            }
+            setSubmitting(false);
+            return;
           }
         }
       }
