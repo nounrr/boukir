@@ -11,22 +11,30 @@ interface BonPrintTemplateProps {
   companyType?: 'DIAMOND' | 'MPC';
 }
 
-// Petit composant réutilisable pour le pied de page
-const CompanyFooter: React.FC<{
-  data: { address: string; phones: string; email: string; extra?: string };
-}> = ({ data }) => (
-  <div style={{ position: 'absolute', left: 0, right: 0, bottom: '12mm', padding: '0 16px' }} className="mt-8 pt-4  space-y-1 ">
-    {/* Cachet client rectangle */}
-  <div className="w-full mb-4 " style={{ textAlign: 'center' }}>
-      <div className='text-center'  style={{border: '2px solid #000',  width: '40mm', height: '20mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span className="text-sm font-bold">CACHET CLIENT</span>
+// Pied de page toujours positionné en bas de la DERNIÈRE page si l'espace existe.
+// Technique: on insère un "spacer" (réservé) dans le flux avant le footer absolu.
+// Si le spacer tient sur la page courante, le footer s'y affiche; sinon le spacer passe à la page suivante et le footer aussi, sans créer une page supplémentaire vide.
+const CompanyFooter: React.FC<{ data: { address: string; phones: string; email: string; extra?: string } }>
+ = ({ data }) => (
+  <div
+    className="company-footer"
+    style={{
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: '10mm',
+      padding: '0 16px'
+    }}
+  >
+    <div className="w-full mb-3 flex justify-center">
+      <div style={{ border: '2px solid #000', width: '42mm', height: '22mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span className="text-xs font-bold">CACHET / SIGNATURE CLIENT</span>
       </div>
     </div>
-    <div className="border-t border-gray-300 text-center text-xs text-gray-600 space-y-1">
+    <div className="border-t border-gray-300 text-center text-[10px] text-gray-600 pt-2 leading-snug">
       <p>{data.address}</p>
       <p>{data.phones} | {data.email}</p>
-      
-    
+      {data.extra && <p>{data.extra}</p>}
     </div>
   </div>
 );
@@ -111,19 +119,22 @@ const formatHeure = (dateStr: string) => {
 
   return (
     <div 
-      className={`bg-white ${size === 'A5' ? 'w-[148mm] h-[210mm]' : 'w-[210mm] h-[297mm]'} mx-auto p-4 font-sans text-sm print:shadow-none`}
+      className={`print-root bg-white ${size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'} mx-auto p-4 font-sans text-sm print:shadow-none`}
       style={{ fontFamily: 'sans-serif', position: 'relative' }}
     >
-      {/* Styles spécifiques impression pour assurer largeur totale du tableau */}
+    {/* Styles spécifiques impression pour assurer largeur totale du tableau */}
       <style>
         {`@media print {
-          /* Supprimer marges latérales du conteneur pour exploiter toute la zone interne */
-          .print-no-horizontal-padding { padding-left:0 !important; padding-right:0 !important; }
-          /* Forcer le tableau à prendre toute la largeur disponible */
-          .print-table-full { width:100% !important; table-layout: fixed !important; border-collapse: collapse !important; }
-          .print-table-full th, .print-table-full td { word-break: break-word; }
-          /* Neutraliser les largeurs forcées Tailwind sur colonnes pour impression */
-          .print-table-full th[class*='w-'], .print-table-full td[class*='w-'] { width:auto !important; }
+      .print-root { position: relative; }
+      .print-footer-spacer { height: 48mm; }
+      /* Le spacer disparaît à l'écran mais réserve la place à l'impression */
+      .company-footer { page-break-inside: avoid; break-inside: avoid; }
+      .print-table-full { width:100% !important; border-collapse: collapse !important; }
+      .print-table-full th, .print-table-full td { word-break: break-word; }
+      .totals-section, .client-stamp { page-break-inside: avoid; break-inside: avoid; }
+      /* Empêcher un saut de page juste avant le spacer si il reste assez d'espace */
+      .print-footer-spacer { page-break-inside: avoid; break-inside: avoid; }
+      body { margin:0; padding:0; }
         }`}
       </style>
       {/* Options */}
@@ -247,7 +258,7 @@ const formatHeure = (dateStr: string) => {
 
       {/* Totaux */}
       {printMode === 'WITH_PRICES' && (
-        <div className="flex justify-end mb-6">
+        <div className="flex justify-end mb-6 totals-section">
           <div className="w-80">
             <div className="p-4 rounded">
               <div className="flex justify-between items-center text-lg font-bold">
@@ -269,36 +280,38 @@ const formatHeure = (dateStr: string) => {
         </div>
       )}
 
-      {/* Footer area: fixed cachet client and vehicle info (positioned at bottom) */}
-      <div >
-        <div className="flex justify-between items-end">
-         
-
-          {/* Vehicle info (if exists) */}
-          <div className="text-right text-sm">
-            {(
-              bon?.vehicule_nom || bon?.vehicule?.nom || bon?.vehicule_designation || bon?.vehicule_label
-            ) && (
-              <div className="mb-1">
-                <div className="font-medium">Véhicule: {bon?.vehicule_nom}</div>
-                
-              </div>
-            )}
-            {(
-              bon?.vehicule_immatriculation || bon?.vehicule?.immatriculation || bon?.immatriculation
-            ) && (
-              <div>
-                <div className="font-medium">Immatriculation:</div>
-                <div>{bon?.vehicule_immatriculation || bon?.vehicule?.immatriculation || bon?.immatriculation}</div>
-              </div>
-            )}
+      {/* Vehicle info section */}
+      {(
+        bon?.vehicule_nom || bon?.vehicule?.nom || bon?.vehicule_designation || bon?.vehicule_label ||
+        bon?.vehicule_immatriculation || bon?.vehicule?.immatriculation || bon?.immatriculation
+      ) && (
+        <div className="mb-4">
+          <div className="flex justify-end">
+            <div className="text-right text-sm">
+              {(
+                bon?.vehicule_nom || bon?.vehicule?.nom || bon?.vehicule_designation || bon?.vehicule_label
+              ) && (
+                <div className="mb-1">
+                  <div className="font-medium">Véhicule: {bon?.vehicule_nom}</div>
+                </div>
+              )}
+              {(
+                bon?.vehicule_immatriculation || bon?.vehicule?.immatriculation || bon?.immatriculation
+              ) && (
+                <div>
+                  <div className="font-medium">Immatriculation:</div>
+                  <div>{bon?.vehicule_immatriculation || bon?.vehicule?.immatriculation || bon?.immatriculation}</div>
+                </div>
+              )}
+            </div>
           </div>
-          
         </div>
-      </div>
+      )}
 
-      {/* Pied de page (dépend de selectedCompany) */}
-      <CompanyFooter data={companyFooters[selectedCompany]}  />
+  {/* Spacer qui réserve la place du footer (impression) */}
+  <div className="print-footer-spacer" />
+  {/* Pied de page (toujours essaie de rester dans la dernière page si place) */}
+  <CompanyFooter data={companyFooters[selectedCompany]} />
     </div>
   );
 };
