@@ -564,7 +564,7 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-sm">{currentTab === 'Vehicule' ? (bon.vehicule_nom || '-') : getContactName(bon)}</td>
                       <td className="px-4 py-2 text-sm">{(bon as any).adresse_livraison ?? (bon as any).adresseLivraison ?? '-'}</td>
                       <td className="px-4 py-2">
-                        <div className="text-sm font-semibold text-gray-900">{bon.montant_total ?? 0} DH</div>
+                        <div className="text-sm font-semibold text-gray-900">{Number(bon.montant_total ?? 0).toFixed(2)} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
                       </td>
                       <td className="px-4 py-2 text-sm">
@@ -578,8 +578,8 @@ const BonsPage = () => {
                           else if (profit < 0) cls = 'text-red-600';
                           return (
                             <span className={`font-semibold ${cls}`}> 
-                              {profit} DH{marginPct !== null && (
-                                <span className="text-xs font-normal ml-1">({marginPct}%)</span>
+                              {profit.toFixed(2)} DH{marginPct !== null && (
+                                <span className="text-xs font-normal ml-1">({marginPct.toFixed(1)}%)</span>
                               )}
                             </span>
                           );
@@ -846,7 +846,7 @@ const BonsPage = () => {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Montant total:</p>
-                      <p className="text-lg font-bold text-blue-600">{selectedBon.montant_total ?? 0} DH</p>
+                      <p className="text-lg font-bold text-blue-600">{Number(selectedBon.montant_total ?? 0).toFixed(2)} DH</p>
                     </div>
                   </div>
 
@@ -883,7 +883,7 @@ const BonsPage = () => {
                       </table>
                     </div>
                     <div className="flex justify-end text-base font-semibold mt-2">
-                      Total: {selectedBon.montant_total ?? 0} DH
+                      Total: {Number(selectedBon.montant_total ?? 0).toFixed(2)} DH
                     </div>
                   </div>
 

@@ -180,6 +180,7 @@ router.put('/:id', async (req, res) => {
       client_id,
       montant_total,
       statut,
+      adresse_livraison,
       items = []
     } = req.body || {};
 

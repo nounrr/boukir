@@ -753,6 +753,31 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         }
       }
     } else {
+      // Vérification du plafond pour les bons clients (Sortie, Comptant, Avoir)
+      if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(requestType) && cleanBonData.client_id) {
+        const client = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
+        if (client && client.plafond && Number(client.plafond) > 0) {
+          const nouveauSolde = Number(client.solde || 0) + montantTotal;
+          if (nouveauSolde > Number(client.plafond)) {
+            const confirmation = window.confirm(
+              `⚠️ ATTENTION - PLAFOND DÉPASSÉ ⚠️\n\n` +
+              `Client: ${client.nom_complet}\n` +
+              `Solde actuel: ${Number(client.solde || 0).toFixed(2)} DH\n` +
+              `Montant du bon: ${montantTotal.toFixed(2)} DH\n` +
+              `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
+              `Plafond autorisé: ${Number(client.plafond).toFixed(2)} DH\n\n` +
+              `Le nouveau solde dépassera le plafond de ${(nouveauSolde - Number(client.plafond)).toFixed(2)} DH.\n\n` +
+              `Voulez-vous continuer malgré le dépassement ?`
+            );
+            
+            if (!confirmation) {
+              setSubmitting(false);
+              return;
+            }
+          }
+        }
+      }
+
       const created = await createBon({ type: requestType, ...cleanBonData }).unwrap();
       showSuccess(`${currentTab} créé avec succès`);
 
