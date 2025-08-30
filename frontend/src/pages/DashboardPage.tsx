@@ -53,7 +53,7 @@ const DashboardPage: React.FC = () => {
   // - Pending orders = docs not finalized: statuses in ['Brouillon','En attente','En cours'] across Sortie + Commande
   const stats = useMemo(() => {
     const salesDocs = [...sorties, ...comptants];
-    const orders = salesDocs.length; // sales-related documents only
+    const orders = salesDocs.filter((b: any) => isToday(b.date_creation)).length; // sales-related documents only for today
 
     // Calculate revenue from sales (Sortie + Comptant) today
     const salesRevenue = salesDocs

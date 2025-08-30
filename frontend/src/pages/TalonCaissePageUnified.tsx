@@ -30,7 +30,7 @@ interface UnifiedTalonPayment {
   id: string; // Unique identifier (payment:id ou old:id)
   type: 'payment' | 'old'; // Type pour différencier
   numero?: string; // Numéro du paiement (pour payments)
-  date_paiement: string | null;
+  date_paiement: string;
   montant_total: number;
   statut: string;
   talon_id: number;
@@ -153,26 +153,24 @@ const TalonCaissePage = () => {
     return diffDays <= 5;
   };
 
-  // Helper: formater une date ou afficher le texte tel quel
-  const formatDateOrText = (dateValue: string | undefined | null) => {
-    if (!dateValue) return '-';
+  // Statistiques basées sur les données unifiées
+  const statistiques = useMemo(() => {
+    const total = unifiedPayments.length;
+    const validés = unifiedPayments.filter((p) => p.statut === 'Validé').length;
+    const enAttente = unifiedPayments.filter((p) => p.statut === 'En attente').length;
+    const montantTotal = unifiedPayments.reduce((sum: number, p) => sum + p.montant_total, 0);
+    const echeanceProche = unifiedPayments.filter((p) => {
+      if (p.type === 'payment' && p.date_echeance) {
+        return isDueSoon({ date_echeance: p.date_echeance });
+      }
+      if (p.type === 'old' && p.date_cheque) {
+        return isDueSoon({ date_echeance: p.date_cheque });
+      }
+      return false;
+    }).length;
     
-    const date = new Date(dateValue);
-    if (isNaN(date.getTime())) {
-      // Ce n'est pas une date valide, afficher le texte tel quel
-      return dateValue;
-    }
-    
-    // C'est une date valide, la formater
-    return date.toLocaleDateString('fr-FR');
-  };
-
-  // Helper: vérifier si une valeur est une date valide
-  const isValidDate = (dateValue: string | undefined | null): boolean => {
-    if (!dateValue) return false;
-    const date = new Date(dateValue);
-    return !isNaN(date.getTime());
-  };
+    return { total, validés, enAttente, montantTotal, echeanceProche };
+  }, [unifiedPayments]);
 
   // Filtrage des paiements unifiés
   const filteredPayments = useMemo(() => {
@@ -194,18 +192,14 @@ const TalonCaissePage = () => {
                  statut.includes(term) ||
                  talonName.includes(term) ||
                  montant.includes(term) ||
-                 (payment.designation || '').toLowerCase().includes(term) ||
-                 (payment.personnel || '').toLowerCase().includes(term);
+                 (payment.designation || '').toLowerCase().includes(term);
         } else {
           return numero.includes(term) ||
                  (payment.fournisseur || '').toLowerCase().includes(term) ||
                  (payment.numero_cheque || '').toLowerCase().includes(term) ||
                  statut.includes(term) ||
                  talonName.includes(term) ||
-                 montant.includes(term) ||
-                 (payment.originalOldTalon?.personne || '').toLowerCase().includes(term) ||
-                 (payment.originalOldTalon?.factures || '').toLowerCase().includes(term) ||
-                 (payment.originalOldTalon?.disponible || '').toLowerCase().includes(term);
+                 montant.includes(term);
         }
       });
     }
@@ -248,10 +242,10 @@ const TalonCaissePage = () => {
     if (onlyDueSoon) {
       filtered = filtered.filter((p) => {
         if (p.type === 'payment' && p.date_echeance) {
-          return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance });
+          return isDueSoon({ date_echeance: p.date_echeance });
         }
         if (p.type === 'old' && p.date_cheque) {
-          return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque });
+          return isDueSoon({ date_echeance: p.date_cheque });
         }
         return false;
       });
@@ -282,23 +276,14 @@ const TalonCaissePage = () => {
             bValue = b.montant_total;
             break;
           case 'date':
-            aValue = new Date(a.date_paiement || '1900-01-01').getTime();
-            bValue = new Date(b.date_paiement || '1900-01-01').getTime();
+            aValue = new Date(a.date_paiement || 0).getTime();
+            bValue = new Date(b.date_paiement || 0).getTime();
             break;
           case 'echeance': {
             const aEcheance = a.type === 'payment' ? a.date_echeance : a.date_cheque;
             const bEcheance = b.type === 'payment' ? b.date_echeance : b.date_cheque;
-            
-            // Gérer les dates invalides
-            const aValid = aEcheance && isValidDate(aEcheance);
-            const bValid = bEcheance && isValidDate(bEcheance);
-            
-            if (!aValid && !bValid) return 0;
-            if (!aValid) return 1; // Les dates invalides en fin
-            if (!bValid) return -1;
-            
-            aValue = new Date(aEcheance!).getTime();
-            bValue = new Date(bEcheance!).getTime();
+            aValue = aEcheance ? new Date(aEcheance).getTime() : Number.POSITIVE_INFINITY;
+            bValue = bEcheance ? new Date(bEcheance).getTime() : Number.POSITIVE_INFINITY;
             break;
           }
           default:
@@ -314,46 +299,19 @@ const TalonCaissePage = () => {
       filtered = [...filtered].sort((a, b) => {
         const aEcheance = a.type === 'payment' ? a.date_echeance : a.date_cheque;
         const bEcheance = b.type === 'payment' ? b.date_echeance : b.date_cheque;
-        
-        const aValid = aEcheance && isValidDate(aEcheance);
-        const bValid = bEcheance && isValidDate(bEcheance);
-        
-        if (!aValid && !bValid) return 0;
-        if (!aValid) return 1; // Les dates invalides en fin
-        if (!bValid) return -1;
-        
-        const aDue = isDueSoon({ date_echeance: aEcheance });
-        const bDue = isDueSoon({ date_echeance: bEcheance });
+        const aDue = aEcheance ? isDueSoon({ date_echeance: aEcheance }) : false;
+        const bDue = bEcheance ? isDueSoon({ date_echeance: bEcheance }) : false;
         
         if (aDue !== bDue) return aDue ? -1 : 1;
         
-        const aTs = new Date(aEcheance!).getTime();
-        const bTs = new Date(bEcheance!).getTime();
+        const aTs = aEcheance ? new Date(aEcheance).getTime() : Number.POSITIVE_INFINITY;
+        const bTs = bEcheance ? new Date(bEcheance).getTime() : Number.POSITIVE_INFINITY;
         return aTs - bTs;
       });
     }
 
     return filtered;
   }, [unifiedPayments, searchTerm, dateFilter, statusFilter, modeFilter, selectedTalonFilter, onlyDueSoon, sortField, sortDirection, talons]);
-
-  // Statistiques basées sur les données filtrées
-  const statistiques = useMemo(() => {
-    const total = filteredPayments.length;
-    const validés = filteredPayments.filter((p) => p.statut === 'Validé').length;
-    const enAttente = filteredPayments.filter((p) => p.statut === 'En attente').length;
-    const montantTotal = filteredPayments.reduce((sum: number, p) => sum + p.montant_total, 0);
-    const echeanceProche = filteredPayments.filter((p) => {
-      if (p.type === 'payment' && p.date_echeance) {
-        return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance });
-      }
-      if (p.type === 'old' && p.date_cheque) {
-        return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque });
-      }
-      return false;
-    }).length;
-    
-    return { total, validés, enAttente, montantTotal, echeanceProche };
-  }, [filteredPayments]);
 
   // Pagination
   const totalItems = filteredPayments.length;
@@ -510,9 +468,9 @@ const TalonCaissePage = () => {
                       <p>Date: ${new Date().toLocaleDateString('fr-FR')}</p>
                     </div>
                     <table>
-                      <tr><th>N° Paiement</th><th>Type</th><th>Talon</th><th>Montant</th><th>Mode/Fournisseur</th><th>Personne</th><th>Factures</th><th>Disponible</th><th>Statut</th><th>Date</th><th>Échéance</th></tr>
+                      <tr><th>N° Paiement</th><th>Type</th><th>Talon</th><th>Montant</th><th>Mode/Fournisseur</th><th>Statut</th><th>Date</th><th>Échéance</th></tr>
                       ${filteredPayments.map((p: UnifiedTalonPayment) => 
-                        `<tr><td>${p.numero || ''}</td><td>${p.type === 'payment' ? 'Paiement' : 'Ancien Talon'}</td><td>${getTalonName(p.talon_id)}</td><td>${p.montant_total} DH</td><td>${p.type === 'payment' ? p.mode_paiement : p.fournisseur}</td><td>${p.type === 'payment' && p.personnel ? p.personnel : (p.type === 'old' && p.originalOldTalon?.personne ? p.originalOldTalon.personne : '-')}</td><td>${p.type === 'old' && p.originalOldTalon?.factures ? p.originalOldTalon.factures : '-'}</td><td>${p.type === 'old' && p.originalOldTalon?.disponible ? p.originalOldTalon.disponible : '-'}</td><td>${p.statut}</td><td>${formatDateOrText(p.date_paiement)}</td><td>${p.type === 'payment' && p.date_echeance ? formatDateOrText(p.date_echeance) : (p.type === 'old' && p.date_cheque ? formatDateOrText(p.date_cheque) : '')}</td></tr>`
+                        `<tr><td>${p.numero || ''}</td><td>${p.type === 'payment' ? 'Paiement' : 'Ancien Talon'}</td><td>${getTalonName(p.talon_id)}</td><td>${p.montant_total} DH</td><td>${p.type === 'payment' ? p.mode_paiement : p.fournisseur}</td><td>${p.statut}</td><td>${new Date(p.date_paiement).toLocaleDateString('fr-FR')}</td><td>${p.type === 'payment' && p.date_echeance ? new Date(p.date_echeance).toLocaleDateString('fr-FR') : (p.type === 'old' && p.date_cheque ? new Date(p.date_cheque).toLocaleDateString('fr-FR') : '')}</td></tr>`
                       ).join('')}
                     </table>
                   </body>
@@ -529,26 +487,6 @@ const TalonCaissePage = () => {
             <FileText size={16} />
             Imprimer Rapport ({filteredPayments.length})
           </button>
-        </div>
-        {/* Onglets de talons */}
-        <div className="mt-6">
-          <div className="flex flex-wrap gap-2">
-            <button
-              className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${selectedTalonFilter === '' ? 'bg-orange-600 text-white border-orange-600' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}`}
-              onClick={() => setSelectedTalonFilter('')}
-            >
-              Tous les talons
-            </button>
-            {talons.map((talon: Talon) => (
-              <button
-                key={talon.id}
-                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${selectedTalonFilter === String(talon.id) ? 'bg-orange-600 text-white border-orange-600' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}`}
-                onClick={() => setSelectedTalonFilter(String(talon.id))}
-              >
-                {talon.nom}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -608,7 +546,7 @@ const TalonCaissePage = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Montant Total</p>
-              <p className="text-3xl font-bold text-gray-900">{statistiques.montantTotal.toFixed(2)} DH</p>
+              <p className="text-3xl font-bold text-gray-900">{statistiques.montantTotal} DH</p>
             </div>
           </div>
         </div>
@@ -785,15 +723,6 @@ const TalonCaissePage = () => {
                   Mode/Info
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Personne
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Factures
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Disponible
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Statut
                 </th>
                 <th 
@@ -826,7 +755,7 @@ const TalonCaissePage = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                     <div className="flex flex-col items-center">
                       <FileText className="w-12 h-12 text-gray-300 mb-4" />
                       <p className="text-lg font-medium">Aucun paiement talon trouvé</p>
@@ -869,32 +798,6 @@ const TalonCaissePage = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {payment.type === 'payment' && payment.personnel 
-                          ? payment.personnel 
-                          : payment.type === 'old' && payment.originalOldTalon?.personne
-                          ? payment.originalOldTalon.personne
-                          : '-'
-                        }
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {payment.type === 'old' && payment.originalOldTalon?.factures
-                          ? payment.originalOldTalon.factures
-                          : '-'
-                        }
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {payment.type === 'old' && payment.originalOldTalon?.disponible
-                          ? payment.originalOldTalon.disponible
-                          : '-'
-                        }
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         {getStatusIcon(payment.statut)}
                         <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(payment.statut)}`}>
@@ -904,20 +807,20 @@ const TalonCaissePage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {formatDateOrText(payment.date_paiement)}
+                        {new Date(payment.date_paiement).toLocaleDateString('fr-FR')}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
                         {payment.type === 'payment' && payment.date_echeance 
-                          ? formatDateOrText(payment.date_echeance)
+                          ? new Date(payment.date_echeance).toLocaleDateString('fr-FR')
                           : payment.type === 'old' && payment.date_cheque
-                          ? formatDateOrText(payment.date_cheque)
+                          ? new Date(payment.date_cheque).toLocaleDateString('fr-FR')
                           : '-'
                         }
                         {/* Indicateur d'échéance proche */}
-                        {(payment.type === 'payment' && payment.date_echeance && isValidDate(payment.date_echeance) && isDueSoon({ date_echeance: payment.date_echeance })) ||
-                         (payment.type === 'old' && payment.date_cheque && isValidDate(payment.date_cheque) && isDueSoon({ date_echeance: payment.date_cheque })) ? (
+                        {(payment.type === 'payment' && payment.date_echeance && isDueSoon({ date_echeance: payment.date_echeance })) ||
+                         (payment.type === 'old' && payment.date_cheque && isDueSoon({ date_echeance: payment.date_cheque })) ? (
                           <span className="ml-2 inline-flex px-1 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded">
                             ≤ 5j
                           </span>
@@ -1062,7 +965,7 @@ const TalonCaissePage = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Date de paiement</label>
                   <p className="text-sm text-gray-900">
-                    {formatDateOrText(selectedUnifiedPayment.date_paiement)}
+                    {new Date(selectedUnifiedPayment.date_paiement).toLocaleDateString('fr-FR')}
                   </p>
                 </div>
 
@@ -1085,7 +988,7 @@ const TalonCaissePage = () => {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Date d'échéance</label>
                         <p className="text-sm text-gray-900">
-                          {formatDateOrText(selectedUnifiedPayment.date_echeance)}
+                          {new Date(selectedUnifiedPayment.date_echeance).toLocaleDateString('fr-FR')}
                         </p>
                       </div>
                     )}
@@ -1123,7 +1026,7 @@ const TalonCaissePage = () => {
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Date du chèque</label>
                         <p className="text-sm text-gray-900">
-                          {formatDateOrText(selectedUnifiedPayment.date_cheque)}
+                          {new Date(selectedUnifiedPayment.date_cheque).toLocaleDateString('fr-FR')}
                         </p>
                       </div>
                     )}
@@ -1134,33 +1037,6 @@ const TalonCaissePage = () => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Banque</label>
                     <p className="text-sm text-gray-900">{selectedUnifiedPayment.banque}</p>
-                  </div>
-                )}
-
-                {/* Nouvelles colonnes spécifiques */}
-                {(selectedUnifiedPayment.type === 'payment' && selectedUnifiedPayment.personnel) || 
-                 (selectedUnifiedPayment.type === 'old' && selectedUnifiedPayment.originalOldTalon?.personne) ? (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Personne</label>
-                    <p className="text-sm text-gray-900">
-                      {selectedUnifiedPayment.type === 'payment' 
-                        ? selectedUnifiedPayment.personnel 
-                        : selectedUnifiedPayment.originalOldTalon?.personne}
-                    </p>
-                  </div>
-                ) : null}
-
-                {selectedUnifiedPayment.type === 'old' && selectedUnifiedPayment.originalOldTalon?.factures && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Factures</label>
-                    <p className="text-sm text-gray-900">{selectedUnifiedPayment.originalOldTalon.factures}</p>
-                  </div>
-                )}
-
-                {selectedUnifiedPayment.type === 'old' && selectedUnifiedPayment.originalOldTalon?.disponible && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Disponible</label>
-                    <p className="text-sm text-gray-900">{selectedUnifiedPayment.originalOldTalon.disponible}</p>
                   </div>
                 )}
               </div>

@@ -3,7 +3,7 @@ import { Formik, Form, Field, FieldArray, ErrorMessage } from 'formik';
 import type { FormikProps } from 'formik';
 import * as Yup from 'yup';
 import { Plus, Trash2, Search, Printer } from 'lucide-react';
-import { showSuccess, showError } from '../utils/notifications';
+import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
@@ -21,7 +21,7 @@ import BonPrintModal from './BonPrintModal';
 
 /* -------------------------- Select avec recherche -------------------------- */
 interface SearchableSelectProps {
-  options: { value: string; label: string; data?: any }[];
+  options: { value: string; label: string; data?: any; disabled?: boolean }[];
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -157,27 +157,38 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                     <button
                       key={option.value}
                       type="button"
-                      className={`w-full px-3 py-2 text-left hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0 overflow-hidden ${idx === highlightIndex ? 'bg-blue-50' : ''}`}
+                      disabled={option.disabled}
+                      className={`w-full px-3 py-2 text-left text-sm border-b border-gray-100 last:border-b-0 overflow-hidden ${
+                        option.disabled 
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                          : idx === highlightIndex 
+                            ? 'bg-blue-50 hover:bg-gray-100' 
+                            : 'hover:bg-gray-100'
+                      }`}
                       onClick={(ev) => {
                         // Avoid bubbling to form handlers
                         ev.stopPropagation();
-                        onChange(option.value);
-                        setIsOpen(false);
-                        setSearchTerm('');
-                        setHighlightIndex(-1);
-                      }}
-                      onKeyDown={(ev) => {
-                        if (ev.key === 'Enter' || ev.key === ' ') {
-                          // Prevent global Enter from adding a new line when choosing here
-                          ev.preventDefault();
-                          ev.stopPropagation();
+                        if (!option.disabled) {
                           onChange(option.value);
                           setIsOpen(false);
                           setSearchTerm('');
                           setHighlightIndex(-1);
                         }
                       }}
-                      title={option.label}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter' || ev.key === ' ') {
+                          // Prevent global Enter from adding a new line when choosing here
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          if (!option.disabled) {
+                            onChange(option.value);
+                            setIsOpen(false);
+                            setSearchTerm('');
+                            setHighlightIndex(-1);
+                          }
+                        }
+                      }}
+                      title={option.disabled ? "Client non sélectionnable - Plafond dépassé" : option.label}
                     >
                       <span className="block truncate">{option.label}</span>
                     </button>
@@ -260,6 +271,10 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const formikRef = useRef<FormikProps<any>>(null);
   // Container ref to detect when Enter is pressed within the products area
   const itemsContainerRef = useRef<HTMLDivElement>(null);
+  
+  // État pour mémoriser si le PDG a accepté un client déjà au-dessus du plafond
+  const [pdgApprovedOverLimit, setPdgApprovedOverLimit] = useState<{ clientId: string; timestamp: number } | null>(null);
+  
   // Remises UI state
   const [showRemisePanel, setShowRemisePanel] = useState(false); // panel application des remises (affiche colonnes)
   const [showAddRemiseClient, setShowAddRemiseClient] = useState(false); // formulaire inline ajout client remise
@@ -550,9 +565,17 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       setUnitPriceRaw({});
       setQtyRaw({});
       setRemiseRaw({});
+      setPdgApprovedOverLimit(null); // Reset PDG approval
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialValues]);
+
+  // Reset PDG approval when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setPdgApprovedOverLimit(null);
+    }
+  }, [isOpen]);
 
   // Focus manager for arrow navigation between cells
   const focusCell = (rowIndex: number, colKey: string) => {
@@ -757,24 +780,100 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(requestType) && cleanBonData.client_id) {
         const client = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
         if (client && client.plafond && Number(client.plafond) > 0) {
-          const nouveauSolde = Number(client.solde || 0) + montantTotal;
-          if (nouveauSolde > Number(client.plafond)) {
-            const depassement = nouveauSolde - Number(client.plafond);
+          // Utiliser le solde cumulé calculé, pas le solde DB brut
+          const soldeCumule = computeClientBalance(cleanBonData.client_id.toString()) || 0;
+          const plafond = Number(client.plafond);
+          const nouveauSolde = soldeCumule + montantTotal;
+          
+          // Cas 1: Client déjà au-dessus du plafond AVANT ce bon
+          if (soldeCumule > plafond) {
+            const depassementActuel = soldeCumule - plafond;
             
-            // Annulation automatique de la création - Plafond dépassé
-            showError(
-              `🚫 CRÉATION ANNULÉE - PLAFOND DÉPASSÉ 🚫\n\n` +
-              `Client: ${client.nom_complet}\n` +
-              `Solde actuel: ${Number(client.solde || 0).toFixed(2)} DH\n` +
-              `Montant du bon: ${montantTotal.toFixed(2)} DH\n` +
-              `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
-              `Plafond autorisé: ${Number(client.plafond).toFixed(2)} DH\n\n` +
-              `Le nouveau solde dépasserait le plafond de ${depassement.toFixed(2)} DH.\n\n` +
-              `❌ La création du bon a été automatiquement annulée.\n` +
-              `Veuillez réduire le montant ou contacter votre responsable.`
-            );
-            setSubmitting(false);
-            return;
+            if (user?.role === 'PDG') {
+              // Vérifier si le PDG a déjà approuvé ce client récemment (dans les 30 dernières minutes)
+              const hasRecentApproval = pdgApprovedOverLimit && 
+                                       pdgApprovedOverLimit.clientId === cleanBonData.client_id.toString() &&
+                                       (Date.now() - pdgApprovedOverLimit.timestamp) < 30 * 60 * 1000; // 30 min
+
+              if (!hasRecentApproval) {
+                // PDG : Alerte informative mais peut continuer
+                const result = await showConfirmation(
+                  `⚠️ ATTENTION - CLIENT DÉJÀ AU-DESSUS DU PLAFOND ⚠️\n\n` +
+                  `Client: ${client.nom_complet}\n` +
+                  `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
+                  `Plafond autorisé: ${plafond.toFixed(2)} DH\n` +
+                  `Dépassement actuel: ${depassementActuel.toFixed(2)} DH\n\n` +
+                  `Montant du nouveau bon: ${montantTotal.toFixed(2)} DH\n` +
+                  `Solde après ce bon: ${nouveauSolde.toFixed(2)} DH\n\n` +
+                  `Ce client a déjà dépassé son plafond de crédit.\n` +
+                  `Voulez-vous tout de même créer ce bon ?`,
+                  'Client au-dessus du plafond',
+                  'Continuer',
+                  'Annuler'
+                );
+                
+                if (!result.isConfirmed) {
+                  setSubmitting(false);
+                  return;
+                }
+              }
+              // Si approbation récente ou nouvelle approbation, continuer
+            } else {
+              // Autres rôles : Interdiction complète
+              showError(
+                `🚫 CRÉATION INTERDITE - CLIENT AU-DESSUS DU PLAFOND 🚫\n\n` +
+                `Client: ${client.nom_complet}\n` +
+                `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
+                `Plafond autorisé: ${plafond.toFixed(2)} DH\n` +
+                `Dépassement actuel: ${depassementActuel.toFixed(2)} DH\n\n` +
+                `❌ Ce client a déjà dépassé son plafond de crédit.\n` +
+                `Vous n'êtes pas autorisé à créer de nouveaux bons pour ce client.\n` +
+                `Contactez votre responsable.`
+              );
+              setSubmitting(false);
+              return;
+            }
+          }
+          // Cas 2: Client dans les limites mais ce bon le ferait dépasser
+          else if (nouveauSolde > plafond) {
+            const depassement = nouveauSolde - plafond;
+            
+            if (user?.role === 'PDG') {
+              // PDG : Popup personnalisé avec boutons Continuer/Annuler
+              const result = await showConfirmation(
+                `⚠️ ATTENTION - CE BON DÉPASSERA LE PLAFOND ⚠️\n\n` +
+                `Client: ${client.nom_complet}\n` +
+                `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
+                `Montant du bon: ${montantTotal.toFixed(2)} DH\n` +
+                `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
+                `Plafond autorisé: ${plafond.toFixed(2)} DH\n\n` +
+                `Ce bon ferait dépasser le plafond de ${depassement.toFixed(2)} DH.\n\n` +
+                `Voulez-vous autoriser la création malgré le dépassement ?`,
+                'Dépassement de plafond détecté',
+                'Continuer',
+                'Annuler'
+              );
+              
+              if (!result.isConfirmed) {
+                setSubmitting(false);
+                return;
+              }
+            } else {
+              // Autres rôles : Annulation automatique
+              showError(
+                `🚫 CRÉATION INTERDITE - DÉPASSEMENT DE PLAFOND 🚫\n\n` +
+                `Client: ${client.nom_complet}\n` +
+                `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
+                `Montant du bon: ${montantTotal.toFixed(2)} DH\n` +
+                `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
+                `Plafond autorisé: ${plafond.toFixed(2)} DH\n\n` +
+                `Ce bon dépasserait le plafond de ${depassement.toFixed(2)} DH.\n\n` +
+                `❌ Vous n'êtes pas autorisé à créer ce bon.\n` +
+                `Veuillez réduire le montant ou contacter votre responsable.`
+              );
+              setSubmitting(false);
+              return;
+            }
           }
         }
       }
@@ -901,48 +1000,166 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     return bestPrice;
   };
 
-  // ---------------- Solde cumulé (comme sur ContactsPage) -----------------
+  // ---------------- Solde cumulé (formule corrigée avec solde initial) -----------------
   const computeClientBalance = (clientId: string | null | undefined) => {
     if (!clientId) return null;
     const cidNum = Number(clientId);
+    
+    // Récupérer le solde initial de la base de données
     const contact = clients.find((c: any) => Number(c.id) === cidNum);
-    // Align with Contacts page: start from DB solde (initial) for this contact
-    const base = Number((contact as any)?.solde ?? 0) || 0;
+    const soldeInitial = Number((contact as any)?.solde ?? 0) || 0;
 
-    const sum = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'client_id') =>
-      (arr || []).reduce((s, b: any) => s + (Number(b?.montant_total ?? 0) || 0) * (Number(b?.[pickId]) === cidNum ? 1 : 0), 0);
+    // Fonction pour sommer les bons par statut (Validé ou En attente)
+    const sumBonsByStatus = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'client_id') =>
+      (arr || []).reduce((s, b: any) => {
+        const isCorrectClient = Number(b?.[pickId]) === cidNum;
+        const isValidStatus = ['Validé', 'En attente'].includes(b?.statut);
+        const montant = Number(b?.montant_total ?? 0) || 0;
+        return s + (isCorrectClient && isValidStatus ? montant : 0);
+      }, 0);
 
-    const ventes = sum(sortiesHistory as any[], 'client_id') + sum(comptantHistory as any[], 'client_id');
-    const avoirs = sum(avoirsClientAll as any[], 'client_id');
-    // Contacts page sums all payments by contact_id (no statut/type filtering)
-    const pays = (payments as any[]).reduce((s, p: any) => {
-      return s + (Number(p?.contact_id) === cidNum ? Number(p?.montant ?? p?.montant_total ?? 0) || 0 : 0);
+    // Fonction pour sommer les paiements par statut (Validé ou En attente)
+    const sumPaymentsByStatus = (payments as any[]).reduce((s, p: any) => {
+      const isCorrectClient = Number(p?.contact_id) === cidNum;
+      const isValidStatus = ['Validé', 'En attente'].includes(p?.statut);
+      const montant = Number(p?.montant ?? p?.montant_total ?? 0) || 0;
+      return s + (isCorrectClient && isValidStatus ? montant : 0);
     }, 0);
 
-    // Formula consistent with Contacts: solde (DB) + ventes - avoirs - paiements
-    return base + ventes - avoirs - pays;
+    // CALCUL : SOLDE_INITIAL + VENTES - PAIEMENTS - AVOIRS
+    const ventes = sumBonsByStatus(sortiesHistory as any[], 'client_id') + 
+                   sumBonsByStatus(comptantHistory as any[], 'client_id');
+    const avoirs = sumBonsByStatus(avoirsClientAll as any[], 'client_id');
+    const paiements = sumPaymentsByStatus;
+
+    // Formule corrigée : Solde Initial + Ventes - Paiements - Avoirs
+    return soldeInitial + ventes - paiements - avoirs;
+  };
+
+  // Fonction utilitaire pour vérifier le plafond en temps réel
+  const checkClientCreditLimitRealTime = async (values: any) => {
+    // Vérifier seulement pour les bons clients avec plafond
+    if (!['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(values.type) || !values.client_id) {
+      return true;
+    }
+
+    const client = clients.find((c: any) => Number(c.id) === Number(values.client_id));
+    if (!client || !client.plafond || Number(client.plafond) <= 0) {
+      return true;
+    }
+
+    // Calculer le montant du bon actuel en utilisant les valeurs passées en paramètre
+    const montantBon = values.items.reduce((sum: number, item: any) => {
+      const q = Number(item.quantite || 0);
+      const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
+      const u = Number(item[priceField] || 0);
+      return sum + q * u;
+    }, 0);
+
+    const soldeCumule = computeClientBalance(values.client_id) || 0;
+    const plafond = Number(client.plafond);
+    const nouveauSolde = soldeCumule + montantBon;
+
+    // Si client déjà au-dessus du plafond
+    if (soldeCumule > plafond) {
+      if (user?.role === 'PDG') {
+        // PDG : juste un rappel discret (pas de popup répétitive)
+        console.warn(`⚠️ Client ${client.nom_complet} déjà au-dessus du plafond (${soldeCumule.toFixed(2)} DH / ${plafond.toFixed(2)} DH)`);
+        return true;
+      } else {
+        // Autres rôles : bloquant
+        showError(
+          `🚫 MODIFICATION BLOQUÉE 🚫\n\n` +
+          `Client ${client.nom_complet} a déjà dépassé son plafond.\n` +
+          `Solde actuel: ${soldeCumule.toFixed(2)} DH\n` +
+          `Plafond: ${plafond.toFixed(2)} DH\n\n` +
+          `Vous ne pouvez pas modifier ce bon.`
+        );
+        return false;
+      }
+    }
+    // Si ce bon ferait dépasser le plafond
+    else if (nouveauSolde > plafond) {
+      const depassement = nouveauSolde - plafond;
+      
+      if (user?.role === 'PDG') {
+        // PDG : avertissement mais peut continuer
+        console.warn(`⚠️ Ce bon ferait dépasser le plafond de ${depassement.toFixed(2)} DH pour ${client.nom_complet}`);
+        return true;
+      } else {
+        // Autres rôles : bloquant
+        showError(
+          `🚫 MODIFICATION BLOQUÉE 🚫\n\n` +
+          `Cette modification ferait dépasser le plafond de crédit.\n` +
+          `Client: ${client.nom_complet}\n` +
+          `Solde actuel: ${soldeCumule.toFixed(2)} DH\n` +
+          `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
+          `Plafond: ${plafond.toFixed(2)} DH\n` +
+          `Dépassement: ${depassement.toFixed(2)} DH`
+        );
+        return false;
+      }
+    }
+
+    return true;
   };
 
   // Helper: detailed breakdown for client balance (for debugging/logging)
   const getClientBalanceBreakdown = (clientId: string | null | undefined) => {
     if (!clientId) return null;
     const cidNum = Number(clientId);
+    
+    // Récupérer le solde initial de la base de données
     const contact = clients.find((c: any) => Number(c.id) === cidNum);
-    const base = Number((contact as any)?.solde ?? 0) || 0;
+    const soldeInitial = Number((contact as any)?.solde ?? 0) || 0;
 
-    const sum = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'client_id') =>
-      (arr || []).reduce((s, b: any) => s + (Number(b?.montant_total ?? 0) || 0) * (Number(b?.[pickId]) === cidNum ? 1 : 0), 0);
+    // Fonction pour sommer les bons par statut avec détail
+    const sumBonsByStatusDetailed = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'client_id') => {
+      let valide = 0, enAttente = 0, autres = 0;
+      (arr || []).forEach((b: any) => {
+        const isCorrectClient = Number(b?.[pickId]) === cidNum;
+        const montant = Number(b?.montant_total ?? 0) || 0;
+        if (!isCorrectClient || montant === 0) return;
+        
+        if (b?.statut === 'Validé') valide += montant;
+        else if (b?.statut === 'En attente') enAttente += montant;
+        else autres += montant;
+      });
+      return { valide, enAttente, autres, total: valide + enAttente };
+    };
 
-    const sortiesSum = sum(sortiesHistory as any[], 'client_id');
-    const comptantSum = sum(comptantHistory as any[], 'client_id');
-    const ventes = sortiesSum + comptantSum;
-    const avoirs = sum(avoirsClientAll as any[], 'client_id');
-    const paymentsSum = (payments as any[]).reduce((s, p: any) => {
-      return s + (Number(p?.contact_id) === cidNum ? Number(p?.montant ?? p?.montant_total ?? 0) || 0 : 0);
-    }, 0);
+    // Fonction pour sommer les paiements par statut avec détail
+    const sumPaymentsDetailed = () => {
+      let valide = 0, enAttente = 0, autres = 0;
+      (payments as any[]).forEach((p: any) => {
+        const isCorrectClient = Number(p?.contact_id) === cidNum;
+        const montant = Number(p?.montant ?? p?.montant_total ?? 0) || 0;
+        if (!isCorrectClient || montant === 0) return;
+        
+        if (p?.statut === 'Validé') valide += montant;
+        else if (p?.statut === 'En attente') enAttente += montant;
+        else autres += montant;
+      });
+      return { valide, enAttente, autres, total: valide + enAttente };
+    };
 
-    const total = base + ventes - avoirs - paymentsSum;
-    return { base, sorties: sortiesSum, comptant: comptantSum, ventes, avoirs, payments: paymentsSum, total };
+    const sortiesDetail = sumBonsByStatusDetailed(sortiesHistory as any[], 'client_id');
+    const comptantDetail = sumBonsByStatusDetailed(comptantHistory as any[], 'client_id');
+    const avoirsDetail = sumBonsByStatusDetailed(avoirsClientAll as any[], 'client_id');
+    const paymentsDetail = sumPaymentsDetailed();
+
+    const ventesTotal = sortiesDetail.total + comptantDetail.total;
+    const total = soldeInitial + ventesTotal - paymentsDetail.total - avoirsDetail.total;
+
+    return {
+      soldeInitial, // Ajout du solde initial
+      sorties: sortiesDetail,
+      comptant: comptantDetail,
+      ventes: { total: ventesTotal },
+      avoirs: avoirsDetail,
+      payments: paymentsDetail,
+      total
+    };
   };
 
   const computeFournisseurBalance = (fournisseurId: string | null | undefined) => {
@@ -968,7 +1185,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
   /* ------------------------------ Appliquer produit ------------------------------ */
   /* ------------------------------ Appliquer produit ------------------------------ */
-const applyProductToRow = (rowIndex: number, product: any) => {
+const applyProductToRow = async (rowIndex: number, product: any) => {
   if (!formikRef.current) return;
   const setFieldValue = formikRef.current.setFieldValue;
   const values = formikRef.current.values;
@@ -982,6 +1199,26 @@ const applyProductToRow = (rowIndex: number, product: any) => {
   // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
   const priceForDisplay = values.type === 'Commande' ? pa : unit;
   const totalPrice = q * priceForDisplay;
+
+  // Créer une version temporaire des valeurs avec le nouveau produit
+  const tempValues = {
+    ...values,
+    items: values.items.map((item: any, idx: number) => 
+      idx === rowIndex ? {
+        ...item,
+        product_id: product.id,
+        prix_achat: pa,
+        prix_unitaire: unit,
+        total: totalPrice
+      } : item
+    )
+  };
+
+  // Vérifier le plafond avant d'appliquer les changements
+  const canProceed = await checkClientCreditLimitRealTime(tempValues);
+  if (!canProceed) {
+    return; // Bloquer la modification
+  }
 
   setFieldValue(`items.${rowIndex}.product_id`, product.id);
   setFieldValue(`items.${rowIndex}.product_reference`, String(product.reference ?? product.id));
@@ -1105,41 +1342,87 @@ const applyProductToRow = (rowIndex: number, product: any) => {
                     </button>
                   </div>
                   <SearchableSelect
-                    options={clients.map((c: Contact) => ({
-                      value: c.id.toString(),
-                      label: `${c.nom_complet} ${c.reference ? `(${c.reference})` : ''}`,
-                      data: c,
-                    }))}
+                    options={clients.map((c: Contact) => {
+                      const soldeCumule = computeClientBalance(c.id.toString()) || 0;
+                      const plafond = Number(c.plafond || 0);
+                      const isOverLimit = plafond > 0 && soldeCumule > plafond;
+                      const depassement = isOverLimit ? soldeCumule - plafond : 0;
+                      
+                      // Pour les rôles non-PDG, désactiver les clients déjà au-dessus du plafond
+                      const isDisabled = isOverLimit && user?.role !== 'PDG';
+                      
+                      return {
+                        value: c.id.toString(),
+                        label: isOverLimit 
+                          ? `${c.nom_complet} ${c.reference ? `(${c.reference})` : ''} ⚠️ DÉPASSÉ de ${depassement.toFixed(2)} DH`
+                          : `${c.nom_complet} ${c.reference ? `(${c.reference})` : ''}`,
+                        data: c,
+                        disabled: isDisabled
+                      };
+                    })}
                     value={values.client_id}
-                    onChange={(clientId) => {
-                      setFieldValue('client_id', clientId);
-                      if (clientId) {
-                        const c = clients.find((x: Contact) => x.id.toString() === clientId);
-                        if (c) {
-                          setFieldValue('client_nom', c.nom_complet);
-                          setFieldValue('client_adresse', c.adresse || '');
-                          setFieldValue('client_societe', (c as any).societe || '');
-                          // Debug: log detailed breakdown of client balance calculation
-                          const breakdown = getClientBalanceBreakdown(clientId);
-                          if (breakdown) {
-                            // Keep it compact and readable in console
-                            console.groupCollapsed(`Solde cumulé (Client ${c.id} - ${c.nom_complet})`);
-                            console.log('Formule: solde(DB) + ventes - avoirs - paiements');
-                            console.table({
-                              base_db: breakdown.base,
-                              ventes_sorties: breakdown.sorties,
-                              ventes_comptant: breakdown.comptant,
-                              ventes_total: breakdown.ventes,
-                              avoirs: breakdown.avoirs,
-                              paiements: breakdown.payments,
-                              total: breakdown.total,
+                    onChange={async (clientId) => {
+                      const client = clients.find((c: Contact) => c.id.toString() === clientId);
+                      if (!client) {
+                        setFieldValue('client_id', clientId);
+                        return;
+                      }
+                      
+                      const soldeCumule = computeClientBalance(clientId) || 0;
+                      const plafond = Number(client.plafond || 0);
+                      const isOverLimit = plafond > 0 && soldeCumule > plafond;
+                      
+                      if (isOverLimit) {
+                        const depassement = soldeCumule - plafond;
+                        
+                        if (user?.role === 'PDG') {
+                          // PDG : Alerte mais peut continuer
+                          const result = await showConfirmation(
+                            `⚠️ ATTENTION - CLIENT DÉJÀ AU-DESSUS DU PLAFOND ⚠️\n\n` +
+                            `Client: ${client.nom_complet}\n` +
+                            `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
+                            `Plafond autorisé: ${plafond.toFixed(2)} DH\n` +
+                            `Dépassement actuel: ${depassement.toFixed(2)} DH\n\n` +
+                            `Ce client a déjà dépassé son plafond de crédit.\n` +
+                            `Voulez-vous tout de même continuer avec ce client ?`,
+                            'Client au-dessus du plafond',
+                            'Continuer',
+                            'Choisir un autre client'
+                          );
+                          
+                          if (result.isConfirmed) {
+                            // PDG accepte de continuer - mémoriser cette approbation
+                            setPdgApprovedOverLimit({
+                              clientId: clientId,
+                              timestamp: Date.now()
                             });
-                            console.groupEnd();
+                            setFieldValue('client_id', clientId);
+                            setFieldValue('client_nom', client.nom_complet);
+                            setFieldValue('client_adresse', client.adresse || '');
+                            setFieldValue('client_societe', (client as any).societe || '');
                           }
+                          // Sinon ne pas sélectionner le client
+                        } else {
+                          // Autres rôles : Interdiction complète
+                          showError(
+                            `🚫 CLIENT NON SÉLECTIONNABLE 🚫\n\n` +
+                            `Client: ${client.nom_complet}\n` +
+                            `Solde cumulé: ${soldeCumule.toFixed(2)} DH\n` +
+                            `Plafond autorisé: ${plafond.toFixed(2)} DH\n` +
+                            `Dépassement: ${depassement.toFixed(2)} DH\n\n` +
+                            `❌ Ce client a déjà dépassé son plafond de crédit.\n` +
+                            `Veuillez choisir un autre client ou contactez votre responsable.`
+                          );
+                          // Ne pas sélectionner le client
                         }
                       } else {
-                        setFieldValue('client_nom', '');
-                        setFieldValue('client_adresse', '');
+                        // Client dans les limites, sélection normale
+                        setFieldValue('client_id', clientId);
+                        setFieldValue('client_nom', client.nom_complet);
+                        setFieldValue('client_adresse', client.adresse || '');
+                        setFieldValue('client_societe', (client as any).societe || '');
+                        // Reset previous PDG approval when selecting different client
+                        setPdgApprovedOverLimit(null);
                       }
                     }}
                     placeholder="Sélectionnez un client"
@@ -1583,10 +1866,27 @@ const applyProductToRow = (rowIndex: number, product: any) => {
         setQtyRaw((prev) => ({ ...prev, [index]: '' }));
       }
     }}
-    onBlur={() => {
+    onBlur={async () => {
       const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? '')) || 0;
+      
+      // Créer une version temporaire des valeurs avec la nouvelle quantité
+      const tempValues = {
+        ...values,
+        items: values.items.map((item: any, idx: number) => 
+          idx === index ? { ...item, quantite: q } : item
+        )
+      };
+      
+      // Vérifier le plafond avant d'appliquer les changements
+      const canProceed = await checkClientCreditLimitRealTime(tempValues);
+      if (!canProceed) {
+        // Remettre l'ancienne valeur
+        setQtyRaw((prev) => ({ ...prev, [index]: String(values.items[index].quantite || 0) }));
+        return;
+      }
+      
       setFieldValue(`items.${index}.quantite`, q);
-  setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) }));
+      setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) }));
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       setFieldValue(`items.${index}.total`, q * u);
     }}
@@ -1623,15 +1923,36 @@ const applyProductToRow = (rowIndex: number, product: any) => {
         parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
       setFieldValue(`items.${index}.total`, q * unit);
     }}
-    onBlur={() => {
+    onBlur={async () => {
       const val = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+      
+      // Créer une version temporaire des valeurs avec le nouveau prix
+      const tempValues = {
+        ...values,
+        items: values.items.map((item: any, idx: number) => 
+          idx === index ? {
+            ...item,
+            [values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire']: val
+          } : item
+        )
+      };
+      
+      // Vérifier le plafond avant d'appliquer les changements
+      const canProceed = await checkClientCreditLimitRealTime(tempValues);
+      if (!canProceed) {
+        // Remettre l'ancienne valeur
+        const oldVal = values.type === 'Commande' ? values.items[index].prix_achat : values.items[index].prix_unitaire;
+        setUnitPriceRaw((prev) => ({ ...prev, [index]: String(oldVal || 0) }));
+        return;
+      }
+      
       if (values.type === 'Commande') {
         setFieldValue(`items.${index}.prix_achat`, val);
       } else {
         setFieldValue(`items.${index}.prix_unitaire`, val);
       }
-  // Conserver la saisie brute (normalisée . pour décimale) sans arrondi
-  setUnitPriceRaw((prev) => ({ ...prev, [index]: (unitPriceRaw[index] ?? '').replace(',', '.') }));
+      // Conserver la saisie brute (normalisée . pour décimale) sans arrondi
+      setUnitPriceRaw((prev) => ({ ...prev, [index]: (unitPriceRaw[index] ?? '').replace(',', '.') }));
 
       const q =
         parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;

@@ -20,7 +20,6 @@ import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
 import ContactPrintModal from '../components/ContactPrintModal';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-// import removed: remises tab no longer used
 import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
@@ -48,8 +47,6 @@ const ContactsPage: React.FC = () => {
   // Backend products for enriching product details (remove fake data)
   const { data: products = [] } = useGetProductsQuery();
 
-  // Onglet détail produits uniquement (transactions supprimées)
-  // detailsTab unique supprimé (un seul onglet produits)
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs'>('clients');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -58,7 +55,6 @@ const ContactsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  // Filtre de statut supprimé: on restreint en interne aux statuts Validé / En attente
   const isAllowedStatut = (s: any) => {
     if (!s) return false;
     const norm = String(s).toLowerCase();
@@ -66,8 +62,6 @@ const ContactsPage: React.FC = () => {
   };
   // Print modal state
   const [printModal, setPrintModal] = useState<{ open: boolean; mode: 'products' | null }>({ open: false, mode: null });
-  // Multi-select states and print data (transactions features removed)
-  // Anciennes states transactions supprimées (transactions tab retiré)
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [printProducts, setPrintProducts] = useState<any[]>([]);
   
@@ -193,9 +187,7 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  // parseBonItems helper supprimé (plus utilisé)
-
-  // computeBonTotal helper supprimé (plus utilisé)
+  
 
   // Bons du contact sélectionné
   const bonsForContact = useMemo(() => {
@@ -221,82 +213,6 @@ const ContactsPage: React.FC = () => {
     filtered.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return filtered;
   }, [selectedContact, sorties, devis, comptants, avoirsClient, commandes, avoirsFournisseur, dateFrom, dateTo]);
-
-  // Onglet transactions supprimé - CODE SUPPRIMÉ
-  /*
-  const combinedTransactions = useMemo(() => {
-    if (!selectedContact) return [] as any[];
-    const combined = [];
-
-    // Add payments related to this contact
-    const paymentsForContact = payments.filter((p: any) => 
-      String(p.contact_id) === String(selectedContact.id) && isAllowedStatut(p.statut)
-    );
-    for (const p of paymentsForContact) {
-      combined.push({
-        id: `payment-${p.id}`,
-        numero: getDisplayNumeroPayment(p),
-        type: 'Paiement',
-        dateISO: p.date_paiement,
-        date: formatDateDMY(p.date_paiement),
-        montant: Number(p.montant ?? p.montant_total ?? 0) || 0,
-        statut: p.statut ? String(p.statut) : 'Paiement',
-        isPayment: true,
-        mode: (p.mode_paiement as any) || null,
-        created_at: p.created_at,
-      });
-    }
-
-    combined.sort((a, b) => new Date(a.dateISO).getTime() - new Date(b.dateISO).getTime());
-
-    // Helper to detect payments by statut value 'Paiement'
-    const isPaymentStatut = (entry: any) => {
-      const statut = String(entry?.statut || '').toLowerCase();
-      const type = String(entry?.type || '').toLowerCase();
-      return statut === 'paiement' || type === 'paiement';
-    };
-    
-    // Helper to detect avoirs (which should reduce balance)
-    const isAvoirType = (entry: any) => {
-      const type = String(entry?.type || '').toLowerCase();
-      return type === 'avoir' || type === 'avoirfournisseur';
-    };
-
-    // Start with base solde from database, then apply ALL transactions chronologically
-    let soldeCumulatif = Number(selectedContact?.solde ?? 0);
-    return combined.map((t) => {
-      const montant = Number(t.montant) || 0;
-      let delta = 0;
-
-      // Unified rule: Bons/Commandes/Produits increase balance; Paiements/Avoirs decrease balance
-      if (isPaymentStatut(t) || isAvoirType(t)) {
-        delta = -montant;
-      } else {
-        delta = +montant;
-      }
-
-      soldeCumulatif += delta;
-      return { ...t, soldeCumulatif };
-    });
-  }, [selectedContact, bonsForContact]);
-  */
-
-  // Calcul du solde réel du contact sélectionné (incluant les avoirs)
-  // Deprecated: kept logic inline in UI where needed
-
-  // displayStatut helper removed (statuts limités et affichage direct)
-
-  // Onglet transactions supprimé
-  /*
-  const filteredCombinedTransactions = useMemo(() => [], [selectedContact]);
-  */
-  
-  // Helper functions (kept for product history calculations)
-  // Helpers statut paiement/avoir supprimés (plus utilisés)
-
-  // Monthly summary removed (not displayed)
-
-  // availableStatuses supprimé
 
 
   const productHistory = useMemo(() => {
@@ -436,14 +352,7 @@ const ContactsPage: React.FC = () => {
     return Number(last.soldeCumulatif ?? selectedContact.solde ?? 0);
   }, [searchedProductHistory, selectedContact]);
 
-  // Onglet transactions supprimé
-  /*
-  const displayedTransactions = useMemo(() => {
-    if (!selectedContact) return [] as any[];
-    return [];
-  }, [filteredCombinedTransactions, selectedContact]);
-  */
-
+ 
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
@@ -1000,7 +909,6 @@ const ContactsPage: React.FC = () => {
   };
 
 
-  // Fonction d'impression des transactions supprimée
   // Open print modal for products
   const openPrintProducts = () => {
   // detailsTab usage removed
@@ -1710,7 +1618,6 @@ const ContactsPage: React.FC = () => {
                   >
                     Toutes les dates
                   </button>
-                  {/* Bloc filtre de statut supprimé */}
                 </div>
               </div>
 
@@ -1770,7 +1677,7 @@ const ContactsPage: React.FC = () => {
           onClose={() => setPrintModal({ open: false, mode: null })}
           contact={selectedContact}
           mode="products"
-          transactions={[]} /* Array vide car transactions supprimées */
+          transactions={[]}
           productHistory={printProducts.length > 0 ? printProducts : displayedProductHistory}
           dateFrom={dateFrom}
           dateTo={dateTo}
@@ -2027,7 +1934,6 @@ const ContactsPage: React.FC = () => {
                     </>
                   )}
                 </div>
-              {/* Onglet transactions supprimé */}
             </div>
           </div>
         </div>
