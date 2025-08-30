@@ -30,6 +30,7 @@ import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
+import { canModifyPayments } from '../utils/permissions';
 import { formatDateTimeWithHour, formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { toBackendUrl } from '../utils/url';
@@ -700,6 +701,11 @@ const paymentValidationSchema = Yup.object({
               <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
                 {user.role}
               </span>
+              <span className={`text-xs px-2 py-1 rounded ${
+                canModifyPayments(user) ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+              }`}>
+                {canModifyPayments(user) ? '✅ Peut modifier les paiements' : '❌ Lecture seule'}
+              </span>
             </div>
           )}
         </div>
@@ -1092,13 +1098,15 @@ const paymentValidationSchema = Yup.object({
                           >
                             <Eye size={20} />
                           </button>
-                          <button
-                            onClick={() => handleEditPayment(payment)}
-                            className="text-green-600 hover:text-green-900"
-                            title="Modifier"
-                          >
-                            <Edit size={20} />
-                          </button>
+                          {canModifyPayments(user) && (
+                            <button
+                              onClick={() => handleEditPayment(payment)}
+                              className="text-green-600 hover:text-green-900"
+                              title="Modifier"
+                            >
+                              <Edit size={20} />
+                            </button>
+                          )}
                           <button
                             onClick={() => handlePrintPayment(payment)}
                             className="text-purple-600 hover:text-purple-900"
@@ -1173,9 +1181,11 @@ const paymentValidationSchema = Yup.object({
                   <button onClick={() => handleViewPayment(payment)} className="flex items-center gap-1 text-blue-600 text-xs font-medium px-2 py-1 bg-blue-50 rounded">
                     <Eye size={18} /> Voir
                   </button>
-                  <button onClick={() => handleEditPayment(payment)} className="flex items-center gap-1 text-green-600 text-xs font-medium px-2 py-1 bg-green-50 rounded">
-                    <Edit size={18} /> Edit
-                  </button>
+                  {canModifyPayments(user) && (
+                    <button onClick={() => handleEditPayment(payment)} className="flex items-center gap-1 text-green-600 text-xs font-medium px-2 py-1 bg-green-50 rounded">
+                      <Edit size={18} /> Edit
+                    </button>
+                  )}
                   <button onClick={() => handlePrintPayment(payment)} className="flex items-center gap-1 text-purple-600 text-xs font-medium px-2 py-1 bg-purple-50 rounded">
                     <Printer size={18} /> Imp
                   </button>

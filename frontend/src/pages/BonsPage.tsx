@@ -29,6 +29,7 @@ import React, { useState, useMemo } from 'react';
   import { getBonNumeroDisplay } from '../utils/numero';
   import { logout } from '../store/slices/authSlice';
   import { useAppDispatch } from '../hooks/redux';
+  import { canModifyBons } from '../utils/permissions';
   
   
 
@@ -372,7 +373,24 @@ const BonsPage = () => {
         )}
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Gestion des Bons</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-gray-900">Gestion des Bons</h1>
+            {/* Badge de rôle pour débogage */}
+            <div className="flex flex-col gap-1">
+              <span className={`px-3 py-1 text-sm font-medium rounded-full ${
+                currentUser?.role === 'PDG' ? 'bg-red-100 text-red-800' :
+                currentUser?.role === 'Manager' ? 'bg-orange-100 text-orange-800' :
+                'bg-blue-100 text-blue-800'
+              }`}>
+                Rôle: {currentUser?.role || 'Non défini'}
+              </span>
+              <span className={`text-xs px-2 py-1 rounded ${
+                canModifyBons(currentUser) ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+              }`}>
+                {canModifyBons(currentUser) ? '✅ Peut modifier les bons' : '❌ Lecture seule'}
+              </span>
+            </div>
+          </div>
           <button
             onClick={() => {
               setSelectedBon(null);
@@ -698,15 +716,17 @@ const BonsPage = () => {
                               <Eye size={ACTION_ICON_SIZE} />
                             </button>
                           )}
+                          {canModifyBons(currentUser) && (
+                            <button
+                              onClick={() => { setSelectedBon(bon); setIsCreateModalOpen(true); }}
+                              className="text-blue-600 hover:text-blue-800"
+                              title="Modifier"
+                            >
+                              <Edit size={ACTION_ICON_SIZE} />
+                            </button>
+                          )}
                           {currentUser?.role === 'PDG' && (
                             <>
-                              <button
-                                onClick={() => { setSelectedBon(bon); setIsCreateModalOpen(true); }}
-                                className="text-blue-600 hover:text-blue-800"
-                                title="Modifier"
-                              >
-                                <Edit size={ACTION_ICON_SIZE} />
-                              </button>
                               <button
                                 onClick={() => {
                                   // Ouvrir la modal de duplication AWATEF

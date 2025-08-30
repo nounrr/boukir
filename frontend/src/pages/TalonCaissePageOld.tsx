@@ -1,36 +1,29 @@
 import React, { useState, useMemo } from 'react';
-import {
-  Search,
-  Calendar,
-  FileText,
-  DollarSign,
-  CheckCircle,
+import { 
+  Search, 
+  Eye, 
+  Trash2, 
   Clock,
-  X,
   XCircle,
+  X,
+  CreditCard, 
+  DollarSign,
   Receipt,
-  CreditCard,
-  Eye,
-  Edit,
-  Trash2,
+  Calendar,
+  User,
+  FileText,
+  CheckCircle,
   ChevronUp,
   ChevronDown
 } from 'lucide-react';
-import { showConfirmation, showError, showSuccess } from '../utils/notifications';
-import { useGetPaymentsQuery, useDeletePaymentMutation, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
-import { useGetTalonsQuery } from '../store/api/talonsApi';
-import { useGetOldTalonsCaisseQuery, useDeleteOldTalonCaisseMutation, useChangeOldTalonCaisseStatusMutation } from '../store/slices/oldTalonsCaisseSlice';
 import type { Payment, Talon, OldTalonCaisse } from '../types';
-import { canModifyPayments } from '../utils/permissions';
-import { useSelector } from 'react-redux';
-import type { RootState } from '../store';
 
 // Interface unifiée pour afficher les paiements talon
 interface UnifiedTalonPayment {
   id: string; // Unique identifier (payment:id ou old:id)
   type: 'payment' | 'old'; // Type pour différencier
   numero?: string; // Numéro du paiement (pour payments)
-  date_paiement: string | null;
+  date_paiement: string;
   montant_total: number;
   statut: string;
   talon_id: number;
@@ -49,13 +42,57 @@ interface UnifiedTalonPayment {
   originalPayment?: Payment;
   originalOldTalon?: OldTalonCaisse;
 }
+import { useGetPaymentsQuery, useDeletePaymentMutation, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
+import { useGetTalonsQuery } from '../store/api/talonsApi';
+import { useGetOldTalonsCaisseQuery, useDeleteOldTalonCaisseMutation, useChangeOldTalonCaisseStatusMutation } from '../store/slices/oldTalonsCaisseSlice';
+import { showSuccess, showError, showConfirmation } from '../utils/notifications';
+import { formatDateTimeWithHour } from '../utils/dateUtils';
 
 // Types & constants for status badges
 type StatusType = 'En attente' | 'Validé' | 'Refusé' | 'Annulé';
+const STATUS_BASE: Record<StatusType, string> = {
+  'Validé': 'border-green-300 text-green-800',
+  'En attente': 'border-yellow-300 text-yellow-800',
+  'Refusé': 'border-orange-300 text-orange-800',
+  'Annulé': 'border-red-300 text-red-800',
+};
+const STATUS_BG_SELECTED: Record<StatusType, string> = {
+  'Validé': 'bg-green-100',
+  'En attente': 'bg-yellow-100',
+  'Refusé': 'bg-orange-100',
+  'Annulé': 'bg-red-100',
+};
+const STATUS_BG_UNSELECTED: Record<StatusType, string> = {
+  'Validé': 'bg-green-50 hover:bg-green-100',
+  'En attente': 'bg-yellow-50 hover:bg-yellow-100',
+  'Refusé': 'bg-orange-50 hover:bg-orange-100',
+  'Annulé': 'bg-red-50 hover:bg-red-100',
+};
+
+function StatusBadgeToggle(props: Readonly<{
+  status: StatusType;
+  selected: boolean;
+  onToggle: (s: StatusType) => void;
+}>) {
+  const { status, selected, onToggle } = props;
+  const base = STATUS_BASE[status];
+  const bg = selected ? STATUS_BG_SELECTED[status] : STATUS_BG_UNSELECTED[status];
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(status)}
+      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border transition-colors ${base} ${bg}`}
+      title={`Filtrer: ${status}`}
+    >
+      {status}
+    </button>
+  );
+}
 
 const TalonCaissePage = () => {
-  const currentUser = useSelector((state: RootState) => state.auth.user);
-  
+  const toggleStatusFilter = (s: StatusType) => {
+    setStatusFilter((prev) => (prev.length === 1 && prev[0] === s ? [] : [s]));
+  };
   // États locaux
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -63,6 +100,8 @@ const TalonCaissePage = () => {
   const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite'>('all');
   const [selectedTalonFilter, setSelectedTalonFilter] = useState<string>('');
   const [onlyDueSoon, setOnlyDueSoon] = useState<boolean>(false);
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   
   // Sorting
   const [sortField, setSortField] = useState<'numero' | 'talon' | 'montant' | 'date' | 'echeance' | null>(null);
@@ -71,10 +110,6 @@ const TalonCaissePage = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
-
-  // État pour la visualisation
-  const [selectedUnifiedPayment, setSelectedUnifiedPayment] = useState<UnifiedTalonPayment | null>(null);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
   // RTK Query hooks
   const { data: allPayments = [], isLoading: paymentsLoading } = useGetPaymentsQuery();
@@ -139,9 +174,7 @@ const TalonCaissePage = () => {
       setSortField(field);
       setSortDirection('asc');
     }
-  };
-
-  // Helper: est en échéance proche (<= 5 jours) par rapport à aujourd'hui
+  };  // Helper: est en échéance proche (<= 5 jours) par rapport à aujourd'hui
   const isDueSoon = (payment: any) => {
     if (!payment?.date_echeance) return false;
     const today = new Date();
@@ -150,29 +183,28 @@ const TalonCaissePage = () => {
     if (isNaN(due.getTime())) return false;
     due.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    // <= 5 jours restants (inclut en retard: diffDays <= 0)
     return diffDays <= 5;
   };
 
-  // Helper: formater une date ou afficher le texte tel quel
-  const formatDateOrText = (dateValue: string | undefined | null) => {
-    if (!dateValue) return '-';
+  // Statistiques basées sur les données unifiées
+  const statistiques = useMemo(() => {
+    const total = unifiedPayments.length;
+    const validés = unifiedPayments.filter((p) => p.statut === 'Validé').length;
+    const enAttente = unifiedPayments.filter((p) => p.statut === 'En attente').length;
+    const montantTotal = unifiedPayments.reduce((sum: number, p) => sum + p.montant_total, 0);
+    const echeanceProche = unifiedPayments.filter((p) => {
+      if (p.type === 'payment' && p.date_echeance) {
+        return isDueSoon({ date_echeance: p.date_echeance });
+      }
+      if (p.type === 'old' && p.date_cheque) {
+        return isDueSoon({ date_echeance: p.date_cheque });
+      }
+      return false;
+    }).length;
     
-    const date = new Date(dateValue);
-    if (isNaN(date.getTime())) {
-      // Ce n'est pas une date valide, afficher le texte tel quel
-      return dateValue;
-    }
-    
-    // C'est une date valide, la formater
-    return date.toLocaleDateString('fr-FR');
-  };
-
-  // Helper: vérifier si une valeur est une date valide
-  const isValidDate = (dateValue: string | undefined | null): boolean => {
-    if (!dateValue) return false;
-    const date = new Date(dateValue);
-    return !isNaN(date.getTime());
-  };
+    return { total, validés, enAttente, montantTotal, echeanceProche };
+  }, [unifiedPayments]);
 
   // Filtrage des paiements unifiés
   const filteredPayments = useMemo(() => {
@@ -194,18 +226,14 @@ const TalonCaissePage = () => {
                  statut.includes(term) ||
                  talonName.includes(term) ||
                  montant.includes(term) ||
-                 (payment.designation || '').toLowerCase().includes(term) ||
-                 (payment.personnel || '').toLowerCase().includes(term);
+                 (payment.designation || '').toLowerCase().includes(term);
         } else {
           return numero.includes(term) ||
                  (payment.fournisseur || '').toLowerCase().includes(term) ||
                  (payment.numero_cheque || '').toLowerCase().includes(term) ||
                  statut.includes(term) ||
                  talonName.includes(term) ||
-                 montant.includes(term) ||
-                 (payment.originalOldTalon?.personne || '').toLowerCase().includes(term) ||
-                 (payment.originalOldTalon?.factures || '').toLowerCase().includes(term) ||
-                 (payment.originalOldTalon?.disponible || '').toLowerCase().includes(term);
+                 montant.includes(term);
         }
       });
     }
@@ -248,10 +276,10 @@ const TalonCaissePage = () => {
     if (onlyDueSoon) {
       filtered = filtered.filter((p) => {
         if (p.type === 'payment' && p.date_echeance) {
-          return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance });
+          return isDueSoon({ date_echeance: p.date_echeance });
         }
         if (p.type === 'old' && p.date_cheque) {
-          return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque });
+          return isDueSoon({ date_echeance: p.date_cheque });
         }
         return false;
       });
@@ -282,23 +310,14 @@ const TalonCaissePage = () => {
             bValue = b.montant_total;
             break;
           case 'date':
-            aValue = new Date(a.date_paiement || '1900-01-01').getTime();
-            bValue = new Date(b.date_paiement || '1900-01-01').getTime();
+            aValue = new Date(a.date_paiement || 0).getTime();
+            bValue = new Date(b.date_paiement || 0).getTime();
             break;
           case 'echeance': {
             const aEcheance = a.type === 'payment' ? a.date_echeance : a.date_cheque;
             const bEcheance = b.type === 'payment' ? b.date_echeance : b.date_cheque;
-            
-            // Gérer les dates invalides
-            const aValid = aEcheance && isValidDate(aEcheance);
-            const bValid = bEcheance && isValidDate(bEcheance);
-            
-            if (!aValid && !bValid) return 0;
-            if (!aValid) return 1; // Les dates invalides en fin
-            if (!bValid) return -1;
-            
-            aValue = new Date(aEcheance!).getTime();
-            bValue = new Date(bEcheance!).getTime();
+            aValue = aEcheance ? new Date(aEcheance).getTime() : Number.POSITIVE_INFINITY;
+            bValue = bEcheance ? new Date(bEcheance).getTime() : Number.POSITIVE_INFINITY;
             break;
           }
           default:
@@ -314,46 +333,19 @@ const TalonCaissePage = () => {
       filtered = [...filtered].sort((a, b) => {
         const aEcheance = a.type === 'payment' ? a.date_echeance : a.date_cheque;
         const bEcheance = b.type === 'payment' ? b.date_echeance : b.date_cheque;
-        
-        const aValid = aEcheance && isValidDate(aEcheance);
-        const bValid = bEcheance && isValidDate(bEcheance);
-        
-        if (!aValid && !bValid) return 0;
-        if (!aValid) return 1; // Les dates invalides en fin
-        if (!bValid) return -1;
-        
-        const aDue = isDueSoon({ date_echeance: aEcheance });
-        const bDue = isDueSoon({ date_echeance: bEcheance });
+        const aDue = aEcheance ? isDueSoon({ date_echeance: aEcheance }) : false;
+        const bDue = bEcheance ? isDueSoon({ date_echeance: bEcheance }) : false;
         
         if (aDue !== bDue) return aDue ? -1 : 1;
         
-        const aTs = new Date(aEcheance!).getTime();
-        const bTs = new Date(bEcheance!).getTime();
+        const aTs = aEcheance ? new Date(aEcheance).getTime() : Number.POSITIVE_INFINITY;
+        const bTs = bEcheance ? new Date(bEcheance).getTime() : Number.POSITIVE_INFINITY;
         return aTs - bTs;
       });
     }
 
     return filtered;
   }, [unifiedPayments, searchTerm, dateFilter, statusFilter, modeFilter, selectedTalonFilter, onlyDueSoon, sortField, sortDirection, talons]);
-
-  // Statistiques basées sur les données filtrées
-  const statistiques = useMemo(() => {
-    const total = filteredPayments.length;
-    const validés = filteredPayments.filter((p) => p.statut === 'Validé').length;
-    const enAttente = filteredPayments.filter((p) => p.statut === 'En attente').length;
-    const montantTotal = filteredPayments.reduce((sum: number, p) => sum + p.montant_total, 0);
-    const echeanceProche = filteredPayments.filter((p) => {
-      if (p.type === 'payment' && p.date_echeance) {
-        return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance });
-      }
-      if (p.type === 'old' && p.date_cheque) {
-        return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque });
-      }
-      return false;
-    }).length;
-    
-    return { total, validés, enAttente, montantTotal, echeanceProche };
-  }, [filteredPayments]);
 
   // Pagination
   const totalItems = filteredPayments.length;
@@ -367,12 +359,10 @@ const TalonCaissePage = () => {
     setCurrentPage(1);
   }, [searchTerm, dateFilter, statusFilter, modeFilter, selectedTalonFilter, onlyDueSoon]);
 
+  // (dropdown removed) – no outside-click handler needed
+
   // Fonctions utilitaires
-  const getModeIcon = (mode: string, type: 'payment' | 'old') => {
-    if (type === 'old') {
-      return <Receipt size={16} className="text-blue-600" />; // Tous les anciens talons sont des chèques
-    }
-    
+  const getModeIcon = (mode: string) => {
     switch (mode) {
       case 'Espèces':
         return <DollarSign size={16} className="text-green-600" />;
@@ -464,10 +454,18 @@ const TalonCaissePage = () => {
     }
   };
 
+  // (bulk status actions removed)
+
+  // État pour la visualisation
+  const [selectedUnifiedPayment, setSelectedUnifiedPayment] = useState<UnifiedTalonPayment | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+
   const handleViewPayment = (unifiedPayment: UnifiedTalonPayment) => {
     setSelectedUnifiedPayment(unifiedPayment);
     setIsViewModalOpen(true);
   };
+
+  // (status filter now handled via multi-select)
 
   if (paymentsLoading || talonsLoading || oldTalonsLoading) {
     return (
@@ -487,7 +485,7 @@ const TalonCaissePage = () => {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Talon Caisse</h1>
-            <p className="text-gray-600 mt-1">Gestion des paiements liés aux talons (incluant anciens talons)</p>
+            <p className="text-gray-600 mt-1">Gestion des paiements liés aux talons</p>
           </div>
           <button
             onClick={() => {
@@ -510,9 +508,9 @@ const TalonCaissePage = () => {
                       <p>Date: ${new Date().toLocaleDateString('fr-FR')}</p>
                     </div>
                     <table>
-                      <tr><th>N° Paiement</th><th>Type</th><th>Talon</th><th>Montant</th><th>Mode/Fournisseur</th><th>Personne</th><th>Factures</th><th>Disponible</th><th>Statut</th><th>Date</th><th>Échéance</th></tr>
-                      ${filteredPayments.map((p: UnifiedTalonPayment) => 
-                        `<tr><td>${p.numero || ''}</td><td>${p.type === 'payment' ? 'Paiement' : 'Ancien Talon'}</td><td>${getTalonName(p.talon_id)}</td><td>${p.montant_total} DH</td><td>${p.type === 'payment' ? p.mode_paiement : p.fournisseur}</td><td>${p.type === 'payment' && p.personnel ? p.personnel : (p.type === 'old' && p.originalOldTalon?.personne ? p.originalOldTalon.personne : '-')}</td><td>${p.type === 'old' && p.originalOldTalon?.factures ? p.originalOldTalon.factures : '-'}</td><td>${p.type === 'old' && p.originalOldTalon?.disponible ? p.originalOldTalon.disponible : '-'}</td><td>${p.statut}</td><td>${formatDateOrText(p.date_paiement)}</td><td>${p.type === 'payment' && p.date_echeance ? formatDateOrText(p.date_echeance) : (p.type === 'old' && p.date_cheque ? formatDateOrText(p.date_cheque) : '')}</td></tr>`
+                      <tr><th>N° Paiement</th><th>Talon</th><th>Montant</th><th>Mode</th><th>Statut</th><th>Date</th><th>Échéance</th></tr>
+                      ${filteredPayments.map((p: any) => 
+                        `<tr><td>PAY${String(p.id).padStart(2, '0')}</td><td>${getTalonName(p.talon_id)}</td><td>${Number(p.montant_total || 0)} DH</td><td>${p.mode_paiement}</td><td>${p.statut || 'En attente'}</td><td>${new Date(p.date_paiement).toLocaleDateString('fr-FR')}</td><td>${p.date_echeance ? new Date(p.date_echeance).toLocaleDateString('fr-FR') : ''}</td></tr>`
                       ).join('')}
                     </table>
                   </body>
@@ -530,30 +528,10 @@ const TalonCaissePage = () => {
             Imprimer Rapport ({filteredPayments.length})
           </button>
         </div>
-        {/* Onglets de talons */}
-        <div className="mt-6">
-          <div className="flex flex-wrap gap-2">
-            <button
-              className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${selectedTalonFilter === '' ? 'bg-orange-600 text-white border-orange-600' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}`}
-              onClick={() => setSelectedTalonFilter('')}
-            >
-              Tous les talons
-            </button>
-            {talons.map((talon: Talon) => (
-              <button
-                key={talon.id}
-                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${selectedTalonFilter === String(talon.id) ? 'bg-orange-600 text-white border-orange-600' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}`}
-                onClick={() => setSelectedTalonFilter(String(talon.id))}
-              >
-                {talon.nom}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* Cartes de statistiques */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center">
             <div className="p-2 bg-red-100 rounded-lg">
@@ -608,14 +586,14 @@ const TalonCaissePage = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Montant Total</p>
-              <p className="text-3xl font-bold text-gray-900">{statistiques.montantTotal.toFixed(2)} DH</p>
+              <p className="text-3xl font-bold text-gray-900">{statistiques.montantTotal} DH</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Filtres */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
+  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label htmlFor="search_filter" className="block text-sm text-gray-600 mb-1">Recherche</label>
@@ -659,7 +637,7 @@ const TalonCaissePage = () => {
             >
               <option value="all">Tous les modes</option>
               <option value="Espèces">Espèces</option>
-              <option value="Chèque">Chèque (inclut anciens talons)</option>
+              <option value="Chèque">Chèque</option>
               <option value="Virement">Virement</option>
               <option value="Traite">Traite</option>
             </select>
@@ -677,6 +655,31 @@ const TalonCaissePage = () => {
           </div>
           
           <div className="flex gap-4 items-start flex-wrap">
+            {/* Statut: badges colorés */}
+            <div className="flex flex-col gap-2">
+              <span className="text-sm text-gray-600">Statut</span>
+              <div className="flex flex-wrap gap-2">
+                {(['En attente', 'Validé', 'Refusé', 'Annulé'] as const).map((s) => (
+                  <StatusBadgeToggle
+                    key={s}
+                    status={s}
+                    selected={statusFilter.includes(s)}
+                    onToggle={toggleStatusFilter}
+                  />
+                ))}
+                {/* Raccourcis */}
+                <button
+                  type="button"
+                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100"
+                  onClick={() => setStatusFilter([])}
+                  title="Afficher tous les statuts"
+                >
+                  Tous
+                </button>
+                {/* Single-select mode: keep only clear button */}
+              </div>
+            </div>
+
             {/* Échéance ≤ 5j */}
             <div className="flex flex-col gap-2">
               <span className="text-sm text-gray-600">Échéance</span>
@@ -746,79 +749,67 @@ const TalonCaissePage = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('numero')}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     N° Paiement
                     {sortField === 'numero' && (
-                      sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('talon')}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     Talon
                     {sortField === 'talon' && (
-                      sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                     )}
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('montant')}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     Montant
                     {sortField === 'montant' && (
-                      sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Mode/Info
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Mode
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Personne
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Factures
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Disponible
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Statut
                 </th>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('date')}
                 >
-                  <div className="flex items-center gap-2">
-                    Date Paiement
+                  <div className="flex items-center gap-1">
+                    Date
                     {sortField === 'date' && (
-                      sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                     )}
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('echeance')}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     Échéance
                     {sortField === 'echeance' && (
-                      sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -826,137 +817,137 @@ const TalonCaissePage = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={8} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center">
-                      <FileText className="w-12 h-12 text-gray-300 mb-4" />
-                      <p className="text-lg font-medium">Aucun paiement talon trouvé</p>
-                      <p className="text-sm">Ajustez vos filtres pour voir plus de résultats</p>
+                      <FileText className="w-12 h-12 text-gray-400 mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun paiement trouvé</h3>
+                      <p className="text-gray-500 max-w-sm">
+                        {talonPayments.length === 0 
+                          ? "Aucun paiement avec talon associé n'a été trouvé." 
+                          : "Aucun paiement ne correspond à vos critères de recherche."}
+                      </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                paginatedPayments.map((payment: UnifiedTalonPayment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50">
+                paginatedPayments.map((payment: any) => (
+                  <tr key={payment.id} className={`transition-colors ${isDueSoon(payment) ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-orange-50'}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <span className="text-sm font-medium text-gray-900">{payment.numero}</span>
+                      <div className="text-sm font-semibold text-gray-900">
+                        PAY{String(payment.id).padStart(2, '0')}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        payment.type === 'payment' 
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-purple-100 text-purple-800'
-                      }`}>
-                        {payment.type === 'payment' ? 'Paiement' : 'Ancien Talon'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{getTalonName(payment.talon_id)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{payment.montant_total} DH</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        {getModeIcon(payment.mode_paiement || '', payment.type)}
-                        <span className="ml-2 text-sm text-gray-900">
-                          {payment.type === 'payment' ? payment.mode_paiement : payment.fournisseur}
-                        </span>
-                      </div>
-                      {payment.type === 'old' && payment.numero_cheque && (
-                        <div className="text-xs text-gray-500">Chèque: {payment.numero_cheque}</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {payment.type === 'payment' && payment.personnel 
-                          ? payment.personnel 
-                          : payment.type === 'old' && payment.originalOldTalon?.personne
-                          ? payment.originalOldTalon.personne
-                          : '-'
-                        }
+                        <div className="flex-shrink-0 h-10 w-10">
+                          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center border border-orange-200">
+                            <User className="w-5 h-5 text-orange-600" />
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900">
+                            {getTalonName(payment.talon_id)}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {payment.type === 'old' && payment.originalOldTalon?.factures
-                          ? payment.originalOldTalon.factures
-                          : '-'
-                        }
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {payment.type === 'old' && payment.originalOldTalon?.disponible
-                          ? payment.originalOldTalon.disponible
-                          : '-'
-                        }
+                      <div className="text-sm font-semibold text-gray-900">
+                        {Number(payment.montant_total || 0)} DH
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        {getStatusIcon(payment.statut)}
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(payment.statut)}`}>
-                          {payment.statut}
-                        </span>
+                        {getModeIcon(payment.mode_paiement)}
+                        <span className="text-sm text-gray-900">{payment.mode_paiement}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {formatDateOrText(payment.date_paiement)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {payment.type === 'payment' && payment.date_echeance 
-                          ? formatDateOrText(payment.date_echeance)
-                          : payment.type === 'old' && payment.date_cheque
-                          ? formatDateOrText(payment.date_cheque)
-                          : '-'
-                        }
-                        {/* Indicateur d'échéance proche */}
-                        {(payment.type === 'payment' && payment.date_echeance && isValidDate(payment.date_echeance) && isDueSoon({ date_echeance: payment.date_echeance })) ||
-                         (payment.type === 'old' && payment.date_cheque && isValidDate(payment.date_cheque) && isDueSoon({ date_echeance: payment.date_cheque })) ? (
-                          <span className="ml-2 inline-flex px-1 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded">
-                            ≤ 5j
+                      <div className="flex flex-col items-start gap-1">
+                        <div className="flex items-center gap-2">
+                          {getStatusIcon(payment.statut || 'En attente')}
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(payment.statut || 'En attente')}`}>
+                            {payment.statut || 'En attente'}
                           </span>
-                        ) : null}
+                        </div>
+                        {/* Actions statut sur une nouvelle ligne */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleChangeStatus(payment, 'En attente')}
+                            title="Mettre en attente"
+                            className={`p-1 rounded ${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-500 hover:text-yellow-700'} hover:bg-yellow-50`}
+                            disabled={payment.statut === 'En attente'}
+                          >
+                            <Clock size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleChangeStatus(payment, 'Validé')}
+                            title="Valider"
+                            className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-700' : 'text-gray-500 hover:text-green-700'} hover:bg-green-50`}
+                            disabled={payment.statut === 'Validé'}
+                          >
+                            <CheckCircle size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleChangeStatus(payment, 'Refusé')}
+                            title="Refuser"
+                            className={`p-1 rounded ${payment.statut === 'Refusé' ? 'text-orange-600' : 'text-gray-500 hover:text-orange-600'} hover:bg-orange-50`}
+                            disabled={payment.statut === 'Refusé'}
+                          >
+                            <X size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleChangeStatus(payment, 'Annulé')}
+                            title="Annuler"
+                            className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-500 hover:text-red-700'} hover:bg-red-50`}
+                            disabled={payment.statut === 'Annulé'}
+                          >
+                            <XCircle size={14} />
+                          </button>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center text-sm text-gray-900">
+                        <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                        <span>{formatDateTimeWithHour(payment.date_paiement)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center text-sm">
+                        {payment.date_echeance ? (
+                          <>
+                            <Calendar className={`w-4 h-4 mr-2 ${isDueSoon(payment) ? 'text-red-500' : 'text-gray-400'}`} />
+                            <span className={`${isDueSoon(payment) ? 'text-red-700 font-semibold' : 'text-gray-900'}`}>
+                              {formatDateTimeWithHour(payment.date_echeance)}
+                            </span>
+                            {isDueSoon(payment) && (
+                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200">
+                                URGENT
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <div className="flex justify-end gap-2">
                         <button
                           onClick={() => handleViewPayment(payment)}
-                          className="text-blue-600 hover:text-blue-800 transition-colors"
-                          title="Voir les détails"
+                          className="p-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                          title="Voir détails"
                         >
-                          <Eye size={16} />
+                          <Eye className="w-4 h-4" />
                         </button>
-                        
-                        {canModifyPayments(currentUser) && (
-                          <>
-                            <select
-                              value={payment.statut}
-                              onChange={(e) => handleChangeStatus(payment, e.target.value)}
-                              className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                              title="Changer le statut"
-                            >
-                              <option value="En attente">En attente</option>
-                              <option value="Validé">Validé</option>
-                              <option value="Refusé">Refusé</option>
-                              <option value="Annulé">Annulé</option>
-                            </select>
-                            
-                            <button
-                              onClick={() => handleDelete(payment)}
-                              className="text-red-600 hover:text-red-800 transition-colors"
-                              title="Supprimer"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
-                        )}
+                        <button
+                          onClick={() => handleDelete(payment.id)}
+                          className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1018,12 +1009,12 @@ const TalonCaissePage = () => {
       )}
 
       {/* Modal de visualisation */}
-      {isViewModalOpen && selectedUnifiedPayment && (
+      {isViewModalOpen && selectedPayment && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900">
-                Détails du {selectedUnifiedPayment.type === 'payment' ? 'paiement' : 'ancien talon caisse'} {selectedUnifiedPayment.numero}
+                Détails du paiement PAY{String(selectedPayment.id).padStart(2, '0')}
               </h2>
               <button
                 onClick={() => setIsViewModalOpen(false)}
@@ -1033,134 +1024,58 @@ const TalonCaissePage = () => {
               </button>
             </div>
             
-            <div className="p-6 overflow-y-auto max-h-[70vh]">
+            <div className="p-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                  <p className="text-sm text-gray-900">
-                    {selectedUnifiedPayment.type === 'payment' ? 'Paiement normal' : 'Ancien talon caisse'}
-                  </p>
+                  <div className="block text-sm font-medium text-gray-600">Talon associé</div>
+                  <p className="text-gray-900">{selectedPayment.talon_id ? getTalonName(selectedPayment.talon_id) : 'Aucun talon'}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Numéro</label>
-                  <p className="text-sm text-gray-900">{selectedUnifiedPayment.numero}</p>
+                  <div className="block text-sm font-medium text-gray-600">Montant</div>
+                  <p className="text-gray-900">{Number(selectedPayment.montant_total || 0)} DH</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Talon</label>
-                  <p className="text-sm text-gray-900">{getTalonName(selectedUnifiedPayment.talon_id)}</p>
+                  <div className="block text-sm font-medium text-gray-600">Mode de paiement</div>
+                  <p className="text-gray-900">{selectedPayment.mode_paiement}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Montant</label>
-                  <p className="text-sm text-gray-900">{selectedUnifiedPayment.montant_total} DH</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(selectedUnifiedPayment.statut)}`}>
-                    {selectedUnifiedPayment.statut}
+                  <div className="block text-sm font-medium text-gray-600">Statut</div>
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(selectedPayment.statut || 'En attente')}`}>
+                    {selectedPayment.statut || 'En attente'}
                   </span>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date de paiement</label>
-                  <p className="text-sm text-gray-900">
-                    {formatDateOrText(selectedUnifiedPayment.date_paiement)}
-                  </p>
+                  <div className="block text-sm font-medium text-gray-600">Date de paiement</div>
+                  <p className="text-gray-900">{formatDateTimeWithHour(selectedPayment.date_paiement)}</p>
                 </div>
-
-                {/* Champs spécifiques aux paiements normaux */}
-                {selectedUnifiedPayment.type === 'payment' && (
-                  <>
-                    {selectedUnifiedPayment.mode_paiement && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Mode de paiement</label>
-                        <p className="text-sm text-gray-900">{selectedUnifiedPayment.mode_paiement}</p>
-                      </div>
-                    )}
-                    {selectedUnifiedPayment.designation && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Désignation</label>
-                        <p className="text-sm text-gray-900">{selectedUnifiedPayment.designation}</p>
-                      </div>
-                    )}
-                    {selectedUnifiedPayment.date_echeance && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Date d'échéance</label>
-                        <p className="text-sm text-gray-900">
-                          {formatDateOrText(selectedUnifiedPayment.date_echeance)}
-                        </p>
-                      </div>
-                    )}
-                    {selectedUnifiedPayment.personnel && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Personnel</label>
-                        <p className="text-sm text-gray-900">{selectedUnifiedPayment.personnel}</p>
-                      </div>
-                    )}
-                    {selectedUnifiedPayment.code_reglement && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Code règlement</label>
-                        <p className="text-sm text-gray-900">{selectedUnifiedPayment.code_reglement}</p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Champs spécifiques aux anciens talons */}
-                {selectedUnifiedPayment.type === 'old' && (
-                  <>
-                    {selectedUnifiedPayment.fournisseur && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur</label>
-                        <p className="text-sm text-gray-900">{selectedUnifiedPayment.fournisseur}</p>
-                      </div>
-                    )}
-                    {selectedUnifiedPayment.numero_cheque && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Numéro de chèque</label>
-                        <p className="text-sm text-gray-900">{selectedUnifiedPayment.numero_cheque}</p>
-                      </div>
-                    )}
-                    {selectedUnifiedPayment.date_cheque && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Date du chèque</label>
-                        <p className="text-sm text-gray-900">
-                          {formatDateOrText(selectedUnifiedPayment.date_cheque)}
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {selectedUnifiedPayment.banque && (
+                {selectedPayment.date_echeance && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Banque</label>
-                    <p className="text-sm text-gray-900">{selectedUnifiedPayment.banque}</p>
+                    <div className="block text-sm font-medium text-gray-600">Date d'échéance</div>
+                    <p className="text-gray-900">{formatDateTimeWithHour(selectedPayment.date_echeance)}</p>
                   </div>
                 )}
-
-                {/* Nouvelles colonnes spécifiques */}
-                {(selectedUnifiedPayment.type === 'payment' && selectedUnifiedPayment.personnel) || 
-                 (selectedUnifiedPayment.type === 'old' && selectedUnifiedPayment.originalOldTalon?.personne) ? (
+                {selectedPayment.banque && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Personne</label>
-                    <p className="text-sm text-gray-900">
-                      {selectedUnifiedPayment.type === 'payment' 
-                        ? selectedUnifiedPayment.personnel 
-                        : selectedUnifiedPayment.originalOldTalon?.personne}
-                    </p>
-                  </div>
-                ) : null}
-
-                {selectedUnifiedPayment.type === 'old' && selectedUnifiedPayment.originalOldTalon?.factures && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Factures</label>
-                    <p className="text-sm text-gray-900">{selectedUnifiedPayment.originalOldTalon.factures}</p>
+                    <div className="block text-sm font-medium text-gray-600">Banque</div>
+                    <p className="text-gray-900">{selectedPayment.banque}</p>
                   </div>
                 )}
-
-                {selectedUnifiedPayment.type === 'old' && selectedUnifiedPayment.originalOldTalon?.disponible && (
+                {selectedPayment.personnel && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Disponible</label>
-                    <p className="text-sm text-gray-900">{selectedUnifiedPayment.originalOldTalon.disponible}</p>
+                    <div className="block text-sm font-medium text-gray-600">Personnel</div>
+                    <p className="text-gray-900">{selectedPayment.personnel}</p>
+                  </div>
+                )}
+                {selectedPayment.code_reglement && (
+                  <div>
+                    <div className="block text-sm font-medium text-gray-600">Code règlement</div>
+                    <p className="text-gray-900">{selectedPayment.code_reglement}</p>
+                  </div>
+                )}
+                {selectedPayment.notes && (
+                  <div className="col-span-2">
+                    <div className="block text-sm font-medium text-gray-600">Notes</div>
+                    <p className="text-gray-900">{selectedPayment.notes}</p>
                   </div>
                 )}
               </div>
