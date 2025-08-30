@@ -208,7 +208,7 @@ const validationSchemaCreate = Yup.object({
   cin: Yup.string().required('CIN requis'),
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
-  role: Yup.string().oneOf(['PDG', 'Employé']).optional(),
+  role: Yup.string().oneOf(['PDG', 'Manager', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').required('Mot de passe requis'),
 });
@@ -217,7 +217,7 @@ const validationSchemaEdit = Yup.object({
   cin: Yup.string().required('CIN requis'),
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
-  role: Yup.string().oneOf(['PDG', 'Employé']).optional(),
+  role: Yup.string().oneOf(['PDG', 'Manager', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').optional(),
 });
@@ -284,14 +284,14 @@ const EmployeePage: React.FC = () => { // NOSONAR
           cin: string;
           nom_complet: string | null;
           date_embauche: string | null;
-          role: 'PDG' | 'Employé' | null;
+          role: 'PDG' | 'Manager' | 'Employé' | null;
           salaire: number | null;
           password: string;
         } = {
           cin: values.cin.trim(),
           nom_complet: values.nom_complet?.trim() || null,
           date_embauche: values.date_embauche?.trim() ? values.date_embauche : null,
-          role: values.role ? (values.role as 'PDG' | 'Employé') : null,
+          role: values.role ? (values.role as 'PDG' | 'Manager' | 'Employé') : null,
           salaire: values.salaire !== undefined && values.salaire !== null && String(values.salaire).trim() !== ''
             ? Number(values.salaire)
             : null,
@@ -720,6 +720,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="Employé">Employé</option>
+                    <option value="Manager">Manager</option>
                     <option value="PDG">PDG</option>
                   </select>
                   {formik.touched.role && formik.errors.role && (

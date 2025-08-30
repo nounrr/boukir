@@ -328,3 +328,88 @@ export const getCurrentDateTimeInput = (): string => {
   
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
+
+// Vérifie si une chaîne est une date valide
+export const isValidDateString = (str: string): boolean => {
+  if (!str) return false;
+  
+  const dateFormats = [
+    /^\d{4}-\d{2}-\d{2}$/,  // YYYY-MM-DD
+    /^\d{2}\/\d{2}\/\d{4}$/  // DD/MM/YYYY
+  ];
+  
+  const isDateFormat = dateFormats.some(format => format.test(str));
+  
+  if (isDateFormat) {
+    try {
+      let dateToValidate: Date;
+      if (str.includes('/')) {
+        const [day, month, year] = str.split('/').map(Number);
+        dateToValidate = new Date(year, month - 1, day);
+      } else {
+        dateToValidate = new Date(str);
+      }
+      
+      return !isNaN(dateToValidate.getTime()) && 
+             dateToValidate.getFullYear() >= 1900 && 
+             dateToValidate.getFullYear() <= 2100;
+    } catch {
+      return false;
+    }
+  }
+  
+  return false;
+};
+
+// Formate une date ou retourne le texte tel quel
+export const formatDateOrText = (value: string): string => {
+  if (!value) return '';
+  
+  if (isValidDateString(value)) {
+    try {
+      let date: Date;
+      if (value.includes('/')) {
+        const [day, month, year] = value.split('/').map(Number);
+        date = new Date(year, month - 1, day);
+      } else {
+        date = new Date(value);
+      }
+      
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleDateString('fr-FR'); // Format français DD/MM/YYYY
+      }
+    } catch {
+      // Si parsing échoue, retourner le texte tel quel
+    }
+  }
+  
+  return value; // Retourner le texte tel quel
+};
+
+// Vérifie si une chaîne représente une date et la normalise au format YYYY-MM-DD
+export const normalizeDateString = (value: string): string => {
+  if (!value) return '';
+  
+  if (isValidDateString(value)) {
+    try {
+      let date: Date;
+      if (value.includes('/')) {
+        const [day, month, year] = value.split('/').map(Number);
+        date = new Date(year, month - 1, day);
+      } else {
+        date = new Date(value);
+      }
+      
+      if (!isNaN(date.getTime())) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch {
+      // Si parsing échoue, retourner le texte tel quel
+    }
+  }
+  
+  return value; // Retourner le texte tel quel
+};

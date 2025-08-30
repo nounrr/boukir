@@ -30,6 +30,22 @@ export const canDeleteItems = (user: User | null): boolean => {
   return user?.role === 'PDG'; // Seuls les PDG peuvent supprimer des éléments
 };
 
+export const canModifyBons = (user: User | null): boolean => {
+  const result = user?.role === 'PDG' || user?.role === 'Manager';
+  console.log('canModifyBons:', { userRole: user?.role, result });
+  return result; // PDG et Manager peuvent modifier les bons
+};
+
+export const canModifyPayments = (user: User | null): boolean => {
+  const result = user?.role === 'PDG' || user?.role === 'Manager';
+  console.log('canModifyPayments:', { userRole: user?.role, result });
+  return result; // PDG et Manager peuvent modifier les paiements
+};
+
+export const canAccessAdvancedFeatures = (user: User | null): boolean => {
+  return user?.role === 'PDG'; // Seuls les PDG ont accès aux fonctionnalités avancées
+};
+
 // Middleware pour injecter automatiquement created_by/updated_by
 export const withCreatedBy = <T extends object>(
   data: T,

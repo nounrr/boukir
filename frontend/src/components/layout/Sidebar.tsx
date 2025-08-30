@@ -77,11 +77,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
 
   return (
     <aside
-      className={`hidden md:block sidebar transition-all duration-300 ease-in-out ${
+      className={`hidden md:block fixed top-14 left-0 z-30 bg-white border-r border-gray-200 transition-all duration-300 ease-in-out ${
         isOpen ? 'w-64' : 'w-16'
       }`}
+      style={{ height: 'calc(100vh - 56px)' }}
     >
-      <nav className="p-3 space-y-4 overflow-y-auto h-[calc(100vh-56px)]">
+      <nav className="p-3 space-y-4 h-full overflow-y-auto">
         {groups.map(group => {
           const visible = group.items.filter(i => i.show);
           if (!visible.length) return null;

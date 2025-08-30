@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ImportContacts from './Excelcontact';
 import ImportProducts from './excelproduct';
+import ImportOldTalons from './ImportOldTalons';
 
-type TabKey = 'contacts' | 'products';
+type TabKey = 'contacts' | 'products' | 'oldtalons';
 
 export default function ImportExcelTabs() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -23,6 +24,7 @@ export default function ImportExcelTabs() {
     () => [
       { key: 'contacts' as TabKey, label: 'Importer contacts' },
       { key: 'products' as TabKey, label: 'Importer produits' },
+      { key: 'oldtalons' as TabKey, label: 'Importer anciens talons' },
     ],
     []
   );
@@ -50,7 +52,9 @@ export default function ImportExcelTabs() {
       </div>
 
       <div style={{ marginTop: 12 }}>
-        {tab === 'contacts' ? <ImportContacts /> : <ImportProducts />}
+        {tab === 'contacts' ? <ImportContacts /> : 
+         tab === 'products' ? <ImportProducts /> : 
+         <ImportOldTalons />}
       </div>
     </div>
   );

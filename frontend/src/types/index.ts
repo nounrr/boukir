@@ -1,5 +1,5 @@
 // Types pour l'authentification
-export type Role = 'PDG' | 'Employé';
+export type Role = 'PDG' | 'Manager' | 'Employé';
 export interface User {
   id: number;
   nom_complet?: string | null;
@@ -255,7 +255,7 @@ export interface Payment {
   talon_id?: number; // ID du talon associé
   montant_total: number;
   mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement';
-  date_paiement: string;
+  date_paiement: string | null;
   designation: string;
   // Champs spécifiques pour Chèque et Traite
   date_echeance?: string;
@@ -284,7 +284,7 @@ export interface CreatePaymentData {
   bon_id?: number;
   montant_total: number;
   mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement';
-  date_paiement: string;
+  date_paiement: string | null;
   designation: string;
   date_echeance?: string;
   banque?: string;
@@ -350,4 +350,36 @@ export interface FilterState {
   type?: string;
   page?: number;
   limit?: number;
+}
+
+// Types pour les anciens talons caisse (saisie manuelle)
+export interface OldTalonCaisse {
+  id: number;
+  date_paiement: string | null; // Date du paiement
+  fournisseur: string; // Nom du fournisseur
+  montant_cheque: number; // Montant du chèque
+  date_cheque: string; // Date du chèque
+  numero_cheque?: string | null; // Numéro du chèque (optionnel)
+  validation: 'Validé' | 'En attente' | 'Refusé' | 'Annulé'; // Statut de validation
+  banque?: string; // Nom de la banque
+  personne?: string; // Nom de la personne
+  factures?: string; // Informations sur les factures
+  disponible?: string; // Statut de disponibilité
+  id_talon: number; // ID du talon associé
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateOldTalonCaisseData {
+  date_paiement: string | null;
+  fournisseur: string;
+  montant_cheque: number;
+  date_cheque: string;
+  numero_cheque?: string | null; // Optionnel et peut être null
+  validation?: 'Validé' | 'En attente' | 'Refusé' | 'Annulé';
+  banque?: string;
+  personne?: string; // Nom de la personne
+  factures?: string; // Informations sur les factures
+  disponible?: string; // Statut de disponibilité
+  id_talon: number;
 }

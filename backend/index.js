@@ -30,6 +30,7 @@ import remisesRouter from './routes/remises.js';
 import talonsRouter from './routes/talons.js';
 import documentsRouter from './routes/documents.js';
 import employeSalairesRouter from './routes/employe_salaires.js';
+import oldTalonsCaisseRouter from './routes/old-talons-caisse.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -102,6 +103,7 @@ app.use('/api/import/products-excel', importProuctsRouter);
 app.use('/api/import/contacts-excel', importContactsRouter);
 app.use('/api/remises', remisesRouter);
 app.use('/api/talons', talonsRouter);
+app.use('/api/old-talons-caisse', oldTalonsCaisseRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api', employeSalairesRouter);
 
