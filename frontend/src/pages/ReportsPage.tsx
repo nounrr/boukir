@@ -328,6 +328,13 @@ const ReportsPage: React.FC = () => {
     return { total, count: list.length };
   }, [filteredPayments, clientIds]);
 
+  // Paiements Fournisseurs (période en cours)
+  const fournisseurPaymentsStats = useMemo(() => {
+    const list = filteredPayments.filter((p) => p.contact_id && fournisseurIds.has(String(p.contact_id)));
+    const total = list.reduce((sum, p) => sum + toNumber(p.montant), 0);
+    return { total, count: list.length };
+  }, [filteredPayments, fournisseurIds]);
+
   // Statistiques séparées pour bons clients et fournisseurs
   const clientBonsStats = useMemo(() => {
     const total = bonsClients.reduce((sum, bon) => sum + toNumber(bon.montant), 0);
@@ -365,10 +372,10 @@ const ReportsPage: React.FC = () => {
 
   const totalCouts = useMemo(() => {
     const commandesTotal = bonsFournisseurs.reduce((sum, bon) => sum + toNumber(bon.montant), 0);
-    const paymentsTotal = filteredPayments.reduce((sum, p) => sum + toNumber(p.montant), 0);
+    const paymentsFournisseursTotal = fournisseurPaymentsStats.total;
     const avoirsFournisseursTotal = filteredAvoirsFournisseur.reduce((sum, avoir) => sum + toNumber(avoir.montant), 0);
-    return commandesTotal + paymentsTotal - avoirsFournisseursTotal;
-  }, [bonsFournisseurs, filteredPayments, filteredAvoirsFournisseur]);
+    return commandesTotal + paymentsFournisseursTotal - avoirsFournisseursTotal;
+  }, [bonsFournisseurs, fournisseurPaymentsStats.total, filteredAvoirsFournisseur]);
 
   const beneficeNet = useMemo(() => totalRevenus - totalCouts, [totalRevenus, totalCouts]);
 
@@ -1071,14 +1078,118 @@ const ReportsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Section Relations Commerciales */}
+      <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <Users className="text-indigo-600" size={24} />
+          Relations Commerciales - Vue d'ensemble
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Clients */}
+          <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
+            <h3 className="font-semibold text-blue-900 mb-3">Clients</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-blue-700">Nombre:</span>
+                <span className="font-semibold text-blue-900">{clients.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-blue-700">Ventes (période):</span>
+                <span className="font-semibold text-blue-900">{clientBonsStats.total.toFixed(2)} DH</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-blue-700">Paiements (période):</span>
+                <span className="font-semibold text-blue-900">{clientPaymentsStats.total.toFixed(2)} DH</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-blue-700">Solde total:</span>
+                <span className={`font-semibold ${totalSoldeClients >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {totalSoldeClients.toFixed(2)} DH
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Fournisseurs */}
+          <div className="bg-orange-50 p-4 rounded-lg border-l-4 border-orange-500">
+            <h3 className="font-semibold text-orange-900 mb-3">Fournisseurs</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-orange-700">Nombre:</span>
+                <span className="font-semibold text-orange-900">{fournisseurs.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-orange-700">Achats (période):</span>
+                <span className="font-semibold text-orange-900">{fournisseurBonsStats.total.toFixed(2)} DH</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-orange-700">Paiements (période):</span>
+                <span className="font-semibold text-orange-900">{fournisseurPaymentsStats.total.toFixed(2)} DH</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-orange-700">Solde total:</span>
+                <span className={`font-semibold ${totalSoldeFournisseurs >= 0 ? "text-red-600" : "text-green-600"}`}>
+                  {totalSoldeFournisseurs.toFixed(2)} DH
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Flux de trésorerie */}
+          <div className="bg-green-50 p-4 rounded-lg border-l-4 border-green-500">
+            <h3 className="font-semibold text-green-900 mb-3">Flux de Trésorerie</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-green-700">Entrées (clients):</span>
+                <span className="font-semibold text-green-900">+{clientPaymentsStats.total.toFixed(2)} DH</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-green-700">Sorties (fournisseurs):</span>
+                <span className="font-semibold text-red-600">-{fournisseurPaymentsStats.total.toFixed(2)} DH</span>
+              </div>
+              <div className="flex justify-between border-t pt-1">
+                <span className="text-sm font-medium text-green-700">Flux net:</span>
+                <span className={`font-bold ${(clientPaymentsStats.total - fournisseurPaymentsStats.total) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {(clientPaymentsStats.total - fournisseurPaymentsStats.total).toFixed(2)} DH
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Indicateurs de performance */}
+          <div className="bg-purple-50 p-4 rounded-lg border-l-4 border-purple-500">
+            <h3 className="font-semibold text-purple-900 mb-3">Performance</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-purple-700">Marge bénéficiaire:</span>
+                <span className={`font-semibold ${beneficeNet >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {totalRevenus > 0 ? ((beneficeNet / totalRevenus) * 100).toFixed(1) : "0.0"}%
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-purple-700">Ratio créances/dettes:</span>
+                <span className="font-semibold text-purple-900">
+                  {totalSoldeFournisseurs !== 0 ? (totalSoldeClients / Math.abs(totalSoldeFournisseurs)).toFixed(2) : "∞"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-purple-700">Évolution trésorerie:</span>
+                <span className={`font-semibold ${(clientPaymentsStats.total - fournisseurPaymentsStats.total) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {(clientPaymentsStats.total - fournisseurPaymentsStats.total) >= 0 ? "↗ Positif" : "↘ Négatif"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       {/* Section Clients - À recevoir */}
       <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <Users className="text-blue-600" size={24} />
           Rapport Clients - À Recevoir
         </h2>
-  {/* Sous-section: À Recevoir */}
-  <h3 className="text-lg font-semibold text-gray-900 mb-3">À Recevoir</h3>
+        {/* Sous-section: À Recevoir */}
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">À Recevoir</h3>
   <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
           <div className="bg-blue-50 p-4 rounded-lg">
             <h3 className="font-semibold text-blue-900 mb-2">Total à Recevoir</h3>
@@ -1126,6 +1237,20 @@ const ReportsPage: React.FC = () => {
             <h3 className="font-semibold text-teal-900 mb-2">Paiements Clients (période)</h3>
             <p className="text-3xl font-bold text-teal-600 mb-2">{clientPaymentsStats.total.toFixed(2)} DH</p>
             <p className="text-sm text-gray-600">{clientPaymentsStats.count} paiements</p>
+          </div>
+
+          <div className="bg-orange-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-orange-900 mb-2">Paiements Fournisseurs (période)</h3>
+            <p className="text-3xl font-bold text-orange-600 mb-2">{fournisseurPaymentsStats.total.toFixed(2)} DH</p>
+            <p className="text-sm text-gray-600">{fournisseurPaymentsStats.count} paiements</p>
+          </div>
+
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-gray-900 mb-2">Solde Net des Relations</h3>
+            <p className={`text-3xl font-bold mb-2 ${totalSoldeClients - totalSoldeFournisseurs >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {(totalSoldeClients - totalSoldeFournisseurs).toFixed(2)} DH
+            </p>
+            <p className="text-sm text-gray-600">Clients - Fournisseurs</p>
           </div>
         </div>
       </div>
@@ -1241,6 +1366,10 @@ const ReportsPage: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Total Paiements</p>
                 <p className="text-2xl font-bold text-gray-900">{totalPayments.toFixed(2)} DH</p>
                 <p className="text-sm text-gray-500">{filteredPayments.length} paiements</p>
+                <div className="flex gap-4 mt-1">
+                  <span className="text-xs text-teal-600">Clients: {clientPaymentsStats.total.toFixed(0)} DH</span>
+                  <span className="text-xs text-orange-600">Fourn: {fournisseurPaymentsStats.total.toFixed(0)} DH</span>
+                </div>
               </div>
             </div>
             <Eye className="text-gray-400" size={20} />
@@ -1458,8 +1587,8 @@ const ReportsPage: React.FC = () => {
                       <span className="font-semibold">{fournisseurBonsStats.total.toFixed(2)} DH</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Paiements:</span>
-                      <span className="font-semibold">{totalPayments.toFixed(2)} DH</span>
+                      <span className="text-gray-600">Paiements Fournisseurs:</span>
+                      <span className="font-semibold">{fournisseurPaymentsStats.total.toFixed(2)} DH</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">- Avoirs Fournisseurs:</span>
@@ -1515,7 +1644,7 @@ const ReportsPage: React.FC = () => {
                     <span className="text-gray-600">• Commandes: {fournisseurBonsStats.total.toFixed(2)} DH</span>
                   </div>
                   <div className="flex justify-between pl-4">
-                    <span className="text-gray-600">• Paiements: {totalPayments.toFixed(2)} DH</span>
+                    <span className="text-gray-600">• Paiements Fournisseurs: {fournisseurPaymentsStats.total.toFixed(2)} DH</span>
                   </div>
                   <div className="flex justify-between pl-4">
                     <span className="text-gray-600">• Moins Avoirs Fournisseurs: -{avoirsFournisseurStats.total.toFixed(2)} DH</span>
