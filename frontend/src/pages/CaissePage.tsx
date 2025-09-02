@@ -1435,7 +1435,12 @@ function getContactSolde(contactId: string | number, type: 'Client' | 'Fournisse
                         autoOpenOnFocus={true}
                       />
                       <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
-                      
+                      {/* Affichage du solde cumulé */}
+                      {values.contact_id && (
+                        <div className="mt-2 text-xs text-blue-700 font-semibold">
+                          Solde cumulé : {getContactSolde(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client')} DH
+                        </div>
+                      )}
                     </div>
                     {/* Numéro supprimé: il sera égal à l'ID automatiquement */}
 
