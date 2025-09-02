@@ -75,10 +75,15 @@ const CaissePage = () => {
   const [uploadPaymentImage] = useUploadPaymentImageMutation();
   const [deletePaymentImage] = useDeletePaymentImageMutation();
   const { data: personnelNames = [] } = useGetPersonnelNamesQuery();
-  // Bons from database: only Sorties and Comptant (client-linked only)
+  
+  // Bons from database: utiliser les mêmes sources que BonFormModal
   const { data: sorties = [], isLoading: sortiesLoading } = useGetBonsByTypeQuery('Sortie');
   const { data: comptantsRaw = [], isLoading: comptantsLoading } = useGetBonsByTypeQuery('Comptant');
   const { data: commandes = [], isLoading: commandesLoading } = useGetBonsByTypeQuery('Commande');
+  // Avoirs pour le calcul du solde cumulé (comme BonFormModal)
+  const { data: avoirsClientAll = [] } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsFournisseurAll = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
+  
   const bonsLoading = sortiesLoading || comptantsLoading || commandesLoading;
   const bons: Bon[] = [
     ...(Array.isArray(sorties) ? sorties : []),
@@ -687,6 +692,63 @@ const paymentValidationSchema = Yup.object({
   return 'Code règlement (optionnel)';
     }
   };
+
+  // Fonction pour calculer le solde cumulé d'un contact (même formule exacte que BonFormModal)
+function getContactSolde(contactId: string | number, type: 'Client' | 'Fournisseur') {
+  if (!contactId) return 0;
+  
+  if (type === 'Client') {
+    const cidNum = Number(contactId);
+    const contact = clients.find((c: any) => Number(c.id) === cidNum);
+    const soldeInitial = Number((contact as any)?.solde ?? 0) || 0;
+
+    // Fonction pour sommer les bons par statut (Validé ou En attente seulement)
+    const sumBonsByStatus = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'client_id') =>
+      (arr || []).reduce((s, b: any) => {
+        const isCorrectClient = Number(b?.[pickId]) === cidNum;
+        const isValidStatus = ['Validé', 'En attente'].includes(b?.statut);
+        const montant = Number(b?.montant_total ?? 0) || 0;
+        return s + (isCorrectClient && isValidStatus ? montant : 0);
+      }, 0);
+
+    // Fonction pour sommer les paiements par statut (Validé ou En attente seulement)
+    const sumPaymentsByStatus = (payments as any[]).reduce((s, p: any) => {
+      const isCorrectClient = Number(p?.contact_id) === cidNum;
+      const isValidStatus = ['Validé', 'En attente'].includes(p?.statut);
+      const montant = Number(p?.montant ?? p?.montant_total ?? 0) || 0;
+      return s + (isCorrectClient && isValidStatus ? montant : 0);
+    }, 0);
+
+    // CALCUL : SOLDE_INITIAL + VENTES - PAIEMENTS - AVOIRS (comme BonFormModal)
+    const ventes = sumBonsByStatus(sorties as any[], 'client_id') + 
+                   sumBonsByStatus(comptantsRaw as any[], 'client_id');
+    const avoirs = sumBonsByStatus(avoirsClientAll as any[], 'client_id');
+    const paiements = sumPaymentsByStatus;
+
+    // Formule exacte de BonFormModal : Solde Initial + Ventes - Paiements - Avoirs
+    return soldeInitial + ventes - paiements - avoirs;
+    
+  } else {
+    // Pour les fournisseurs (même logique que BonFormModal)
+    const fidNum = Number(contactId);
+    const contact = fournisseurs.find((f: any) => Number(f.id) === fidNum);
+    const base = Number((contact as any)?.solde ?? 0) || 0;
+
+    const sum = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'fournisseur_id') =>
+      (arr || []).reduce((s, b: any) => s + (Number(b?.montant_total ?? 0) || 0) * (Number(b?.[pickId]) === fidNum ? 1 : 0), 0);
+
+    const achats = sum(commandes as any[], 'fournisseur_id');
+    const avoirs = sum(avoirsFournisseurAll as any[], 'fournisseur_id');
+    
+    // Sum all payments by contact_id (no statut/type filtering for fournisseurs)
+    const pays = (payments as any[]).reduce((s, p: any) => {
+      return s + (Number(p?.contact_id) === fidNum ? Number(p?.montant ?? p?.montant_total ?? 0) || 0 : 0);
+    }, 0);
+
+    // Fournisseur balance: initial + achats - avoirs - paiements
+    return base + achats - avoirs - pays;
+  }
+}
 
   return (
     <div className="p-4 sm:p-6">
@@ -1373,6 +1435,7 @@ const paymentValidationSchema = Yup.object({
                         autoOpenOnFocus={true}
                       />
                       <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
+                      
                     </div>
                     {/* Numéro supprimé: il sera égal à l'ID automatiquement */}
 

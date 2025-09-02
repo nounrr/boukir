@@ -20,7 +20,15 @@ const clientSchema = Yup.object({
     .required('Solde requis'), // négatif autorisé désormais
   plafond: Yup.number()
     .nullable()
-    .transform((value, originalValue) => (originalValue === '' ? null : value))
+    .transform((value, originalValue) => {
+      // Si la valeur originale est une chaîne vide, retourner null
+      if (originalValue === '' || originalValue === null || originalValue === undefined) {
+        return null;
+      }
+      // Sinon convertir en nombre (cela accepte 0)
+      const numValue = Number(originalValue);
+      return isNaN(numValue) ? null : numValue;
+    })
     .min(0, 'Le plafond ne peut pas être négatif'),
 });
 
@@ -106,7 +114,11 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 rib: values.rib || '',
                 type: contactType,
                 solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
-                ...(contactType === 'Client' && { plafond: values.plafond || undefined })
+                ...(contactType === 'Client' && { 
+                  plafond: values.plafond !== null && values.plafond !== undefined && values.plafond !== '' 
+                    ? Number(values.plafond) 
+                    : undefined 
+                })
               };
 
               let result;
