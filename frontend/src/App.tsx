@@ -32,6 +32,7 @@ import TalonCaissePage from './pages/TalonCaissePage';
 import ArchivedProductsPage from './pages/ArchivedProductsPage';
 import ProfilePage from './pages/ProfilePage';
 import EmployeeSalariesPage from './pages/EmployeeSalariesPage';
+import AuditPage from './pages/AuditPage';
 
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
@@ -266,6 +267,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <ArchivedProductsPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/audit"
+          element={
+            <ProtectedRoute requiredRole="PDG">
+              <Layout>
+                <AuditPage />
               </Layout>
             </ProtectedRoute>
           }

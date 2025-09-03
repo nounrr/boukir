@@ -20,7 +20,8 @@ import avoirsClientRouter from './routes/avoirs_client.js';
 import avoirsFournisseurRouter from './routes/avoirs_fournisseur.js';
 import avoirsComptantRouter from './routes/avoirs_comptant.js';
 import bonsVehiculeRouter from './routes/bons_vehicule.js';
-import pool from './db/pool.js';
+import pool, { requestContext } from './db/pool.js';
+import { verifyToken } from './middleware/auth.js';
 import bcrypt from 'bcryptjs';
 import paymentsRouter from './routes/payments.js';
 import uploadRouter from './routes/upload.js';
@@ -31,6 +32,8 @@ import talonsRouter from './routes/talons.js';
 import documentsRouter from './routes/documents.js';
 import employeSalairesRouter from './routes/employe_salaires.js';
 import oldTalonsCaisseRouter from './routes/old-talons-caisse.js';
+import auditRouter from './routes/audit.js';
+import { randomUUID } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -40,6 +43,36 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Contexte par requête pour l'audit (userId + requestId)
+app.use((req, _res, next) => {
+  requestContext.run({
+    userId: req.headers['x-user-id'] || (req.user && req.user.id) || null,
+    requestId: req.headers['x-request-id'] || randomUUID(),
+  }, () => next());
+});
+
+// Auth global (sauf endpoints publics) + sync userId après vérification
+const PUBLIC_PATHS = new Set([
+  '/api/health',
+  '/api/db/ping',
+  '/api/db/info',
+  '/api/auth/login',
+  '/api/auth/register'
+]);
+
+app.use((req, res, next) => {
+  if (PUBLIC_PATHS.has(req.path)) return next();
+  // Laisser accès GET lecture publique pour certains (adapter si besoin)
+  // if (req.method === 'GET') return next(); // décommenter si lecture publique
+  verifyToken(req, res, () => {
+    const store = requestContext.getStore();
+    if (store && req.user?.id) {
+      store.userId = req.user.id;
+    }
+    next();
+  });
+});
 
 app.use(morgan('dev'));
 // Static serving for uploaded files (images, etc.)
@@ -106,6 +139,7 @@ app.use('/api/talons', talonsRouter);
 app.use('/api/old-talons-caisse', oldTalonsCaisseRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api', employeSalairesRouter);
+app.use('/api/audit', auditRouter);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not Found', path: req.path });

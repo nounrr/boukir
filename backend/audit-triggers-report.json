@@ -1,0 +1,549 @@
+{
+  "generatedAt": "2025-09-03T17:00:19.051Z",
+  "results": [
+    {
+      "table": "audit_log",
+      "cols": [
+        "id",
+        "table_name",
+        "operation",
+        "changed_at",
+        "user_id",
+        "request_id",
+        "pk",
+        "old_data",
+        "new_data"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "avoir_client_items",
+      "cols": [
+        "id",
+        "avoir_client_id",
+        "product_id",
+        "quantite",
+        "prix_unitaire",
+        "remise_pourcentage",
+        "remise_montant",
+        "total",
+        "created_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "avoir_comptant_items",
+      "cols": [
+        "id",
+        "avoir_comptant_id",
+        "product_id",
+        "quantite",
+        "prix_unitaire",
+        "remise_pourcentage",
+        "remise_montant",
+        "total"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "avoir_fournisseur_items",
+      "cols": [
+        "id",
+        "avoir_fournisseur_id",
+        "product_id",
+        "quantite",
+        "prix_unitaire",
+        "remise_pourcentage",
+        "remise_montant",
+        "total",
+        "created_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "avoirs_client",
+      "cols": [
+        "id",
+        "date_creation",
+        "client_id",
+        "montant_total",
+        "lieu_chargement",
+        "statut",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "adresse_livraison"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "avoirs_comptant",
+      "cols": [
+        "id",
+        "date_creation",
+        "client_nom",
+        "lieu_chargement",
+        "adresse_livraison",
+        "montant_total",
+        "statut",
+        "created_by",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "avoirs_fournisseur",
+      "cols": [
+        "id",
+        "date_creation",
+        "fournisseur_id",
+        "montant_total",
+        "lieu_chargement",
+        "statut",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "adresse_livraison"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "bons_commande",
+      "cols": [
+        "id",
+        "date_creation",
+        "fournisseur_id",
+        "vehicule_id",
+        "lieu_chargement",
+        "montant_total",
+        "statut",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "adresse_livraison"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "bons_comptant",
+      "cols": [
+        "id",
+        "date_creation",
+        "client_id",
+        "client_nom",
+        "vehicule_id",
+        "lieu_chargement",
+        "montant_total",
+        "statut",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "adresse_livraison"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "bons_sortie",
+      "cols": [
+        "id",
+        "date_creation",
+        "client_id",
+        "vehicule_id",
+        "lieu_chargement",
+        "montant_total",
+        "statut",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "adresse_livraison"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "bons_vehicule",
+      "cols": [
+        "id",
+        "date_creation",
+        "vehicule_id",
+        "lieu_chargement",
+        "adresse_livraison",
+        "montant_total",
+        "statut",
+        "created_by",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "categories",
+      "cols": [
+        "id",
+        "nom",
+        "description",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "client_remises",
+      "cols": [
+        "id",
+        "nom",
+        "phone",
+        "cin",
+        "note",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "commande_items",
+      "cols": [
+        "id",
+        "bon_commande_id",
+        "product_id",
+        "quantite",
+        "prix_unitaire",
+        "remise_pourcentage",
+        "remise_montant",
+        "total",
+        "created_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "comptant_items",
+      "cols": [
+        "id",
+        "bon_comptant_id",
+        "product_id",
+        "quantite",
+        "prix_unitaire",
+        "remise_pourcentage",
+        "remise_montant",
+        "total",
+        "created_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "contacts",
+      "cols": [
+        "id",
+        "nom_complet",
+        "type",
+        "telephone",
+        "email",
+        "adresse",
+        "rib",
+        "ice",
+        "solde",
+        "plafond",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at",
+        "societe"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "devis",
+      "cols": [
+        "id",
+        "numero",
+        "date_creation",
+        "client_id",
+        "montant_total",
+        "lieu_chargement",
+        "statut",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "adresse_livraison"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "devis_items",
+      "cols": [
+        "id",
+        "devis_id",
+        "product_id",
+        "quantite",
+        "prix_unitaire",
+        "remise_pourcentage",
+        "remise_montant",
+        "total",
+        "created_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "document_types",
+      "cols": [
+        "id",
+        "nom",
+        "description",
+        "created_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "employe_doc",
+      "cols": [
+        "id",
+        "employe_id",
+        "type_doc_id",
+        "path",
+        "created_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "employe_salaire",
+      "cols": [
+        "id",
+        "employe_id",
+        "montant",
+        "note",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "employees",
+      "cols": [
+        "id",
+        "nom_complet",
+        "cin",
+        "date_embauche",
+        "role",
+        "salaire",
+        "password",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "item_remises",
+      "cols": [
+        "id",
+        "client_remise_id",
+        "product_id",
+        "bon_id",
+        "bon_type",
+        "is_achat",
+        "qte",
+        "prix_remise",
+        "statut",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "old_talons_caisse",
+      "cols": [
+        "id",
+        "date_paiement",
+        "fournisseur",
+        "montant_cheque",
+        "date_cheque",
+        "numero_cheque",
+        "validation",
+        "banque",
+        "id_talon",
+        "created_at",
+        "updated_at",
+        "personne",
+        "factures",
+        "disponible"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "payments",
+      "cols": [
+        "id",
+        "numero",
+        "type_paiement",
+        "contact_id",
+        "bon_id",
+        "montant_total",
+        "mode_paiement",
+        "date_paiement",
+        "designation",
+        "date_echeance",
+        "banque",
+        "personnel",
+        "code_reglement",
+        "image_url",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at",
+        "statut",
+        "talon_id"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "products",
+      "cols": [
+        "id",
+        "designation",
+        "categorie_id",
+        "quantite",
+        "prix_achat",
+        "cout_revient_pourcentage",
+        "cout_revient",
+        "prix_gros_pourcentage",
+        "prix_gros",
+        "prix_vente_pourcentage",
+        "prix_vente",
+        "est_service",
+        "is_deleted",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at",
+        "kg"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "sortie_items",
+      "cols": [
+        "id",
+        "bon_sortie_id",
+        "product_id",
+        "quantite",
+        "prix_unitaire",
+        "remise_pourcentage",
+        "remise_montant",
+        "total",
+        "created_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "talons",
+      "cols": [
+        "id",
+        "nom",
+        "phone",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "vehicule_items",
+      "cols": [
+        "id",
+        "bon_vehicule_id",
+        "product_id",
+        "quantite",
+        "prix_unitaire",
+        "remise_pourcentage",
+        "remise_montant",
+        "total",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    },
+    {
+      "table": "vehicules",
+      "cols": [
+        "id",
+        "nom",
+        "marque",
+        "modele",
+        "immatriculation",
+        "annee",
+        "type_vehicule",
+        "capacite_charge",
+        "statut",
+        "created_by",
+        "updated_by",
+        "created_at",
+        "updated_at"
+      ],
+      "pkCols": [
+        "id"
+      ]
+    }
+  ]
+}
