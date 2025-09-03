@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { requestContext } from '../db/pool.js';
 
 export function verifyToken(req, res, next) {
   const authHeader = req.headers['authorization'] || '';
@@ -7,6 +8,11 @@ export function verifyToken(req, res, next) {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
     req.user = payload;
+    // Met à jour le contexte d'audit si présent
+    const store = requestContext.getStore();
+    if (store) {
+      store.userId = payload.id || payload.user_id || payload.userId || store.userId || null;
+    }
     next();
   } catch (err) {
     return res.status(401).json({ message: 'Token invalide' });

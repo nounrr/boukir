@@ -63,6 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     {
       title: 'Rapports',
       items: [
+  { name: 'Audit', href: '/audit', icon: Activity, show: user?.role === 'PDG' },
         { name: 'Rapports', href: '/reports', icon: BarChart3, show: user?.role === 'PDG' },
         { name: 'Stats détaillées', href: '/reports/details', icon: Activity, show: user?.role === 'PDG' },
       ],
