@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import type { Contact } from '../types';
+import type { Contact } from '../types'; // Contact now includes optional solde_cumule from backend
 import { 
   useGetClientsQuery, 
   useGetFournisseursQuery,
@@ -268,7 +268,7 @@ const ContactsPage: React.FC = () => {
         id: `payment-${p.id}`,
         bon_numero: getDisplayNumeroPayment(p),
         bon_type: 'Paiement',
-        bon_date: formatDateDMY(p.date_paiement),
+  bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()),
         bon_date_iso: p.date_paiement, // conserver la date/heure réelle du paiement
         bon_statut: p.statut ? String(p.statut) : 'Paiement',
         product_reference: 'PAIEMENT',
@@ -1042,18 +1042,20 @@ const ContactsPage: React.FC = () => {
         aValue = a.societe?.toLowerCase() || '';
         bValue = b.societe?.toLowerCase() || '';
       } else if (sortField === 'solde') {
-        // Calculer le solde cumulé pour chaque contact
-        const baseA = Number(a.solde) || 0;
-        const salesA = activeTab === 'clients' ? (salesByClient.get(a.id) || 0) : 0;
-        const purchasesA = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(a.id) || 0) : 0;
-        const paidA = paymentsByContact.get(a.id) || 0;
-        aValue = activeTab === 'clients' ? (baseA + salesA - paidA) : (baseA + purchasesA - paidA);
-        
-        const baseB = Number(b.solde) || 0;
-        const salesB = activeTab === 'clients' ? (salesByClient.get(b.id) || 0) : 0;
-        const purchasesB = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(b.id) || 0) : 0;
-        const paidB = paymentsByContact.get(b.id) || 0;
-        bValue = activeTab === 'clients' ? (baseB + salesB - paidB) : (baseB + purchasesB - paidB);
+  // Utiliser la valeur backend (solde_cumule) si disponible, sinon fallback calcul local.
+  const baseA = Number(a.solde) || 0;
+  const salesA = activeTab === 'clients' ? (salesByClient.get(a.id) || 0) : 0;
+  const purchasesA = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(a.id) || 0) : 0;
+  const paidA = paymentsByContact.get(a.id) || 0;
+  const computedA = activeTab === 'clients' ? (baseA + salesA - paidA) : (baseA + purchasesA - paidA);
+  aValue = (a as any).solde_cumule != null ? Number((a as any).solde_cumule) : computedA;
+
+  const baseB = Number(b.solde) || 0;
+  const salesB = activeTab === 'clients' ? (salesByClient.get(b.id) || 0) : 0;
+  const purchasesB = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(b.id) || 0) : 0;
+  const paidB = paymentsByContact.get(b.id) || 0;
+  const computedB = activeTab === 'clients' ? (baseB + salesB - paidB) : (baseB + purchasesB - paidB);
+  bValue = (b as any).solde_cumule != null ? Number((b as any).solde_cumule) : computedB;
       }
       
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
@@ -1167,16 +1169,15 @@ const ContactsPage: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Solde cumulé</p>
               <p className="text-3xl font-bold text-gray-900">
-                {(
-                  sortedContacts.reduce((sum: number, c: any) => {
-                    const base = Number(c.solde) || 0;
-                    const sales = activeTab === 'clients' ? (salesByClient.get(c.id) || 0) : 0;
-                    const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(c.id) || 0) : 0;
-                    const paid = paymentsByContact.get(c.id) || 0;
-                    const balance = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
-                    return sum + balance;
-                  }, 0)
-                ).toFixed(2)} DH
+                {sortedContacts.reduce((sum: number, c: any) => {
+                  if (c.solde_cumule != null) return sum + Number(c.solde_cumule || 0);
+                  const base = Number(c.solde) || 0;
+                  const sales = activeTab === 'clients' ? (salesByClient.get(c.id) || 0) : 0;
+                  const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(c.id) || 0) : 0;
+                  const paid = paymentsByContact.get(c.id) || 0;
+                  const balance = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
+                  return sum + balance;
+                }, 0).toFixed(2)} DH
               </p>
             </div>
           </div>
@@ -1330,11 +1331,18 @@ const ContactsPage: React.FC = () => {
                     )}
                     <td className="px-6 py-4 whitespace-nowrap">
                       {(() => {
-                        const base = Number(contact.solde) || 0;
-                        const sales = activeTab === 'clients' ? (salesByClient.get(contact.id) || 0) : 0;
-                        const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
-                        const paid = paymentsByContact.get(contact.id) || 0;
-                        const display = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
+                        const backend = (contact as any).solde_cumule;
+                        let display: number;
+                        if (backend != null) {
+                          display = Number(backend) || 0;
+                        } else {
+                          // Fallback local calc (rare / compat)
+                          const base = Number(contact.solde) || 0;
+                          const sales = activeTab === 'clients' ? (salesByClient.get(contact.id) || 0) : 0;
+                          const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
+                          const paid = paymentsByContact.get(contact.id) || 0;
+                          display = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
+                        }
                         const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
                         return (
                           <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
@@ -1523,25 +1531,25 @@ const ContactsPage: React.FC = () => {
                     <div className="bg-white rounded-lg p-3 border">
                       <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
                       {(() => {
+                        const backend = (selectedContact as any).solde_cumule;
                         const soldeInitial = Number(selectedContact.solde) || 0;
                         const isClient = selectedContact.type === 'Client';
                         const id = selectedContact.id;
-                        
-                        // Calculer le total des ventes/achats (incluent déjà les avoirs soustraits)
                         const sales = isClient ? (salesByClient.get(id) || 0) : 0;
                         const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
                         const paid = paymentsByContact.get(id) || 0;
-                        
-                        // Solde cumulé = solde initial + ventes/achats - paiements 
-                        // (les avoirs sont déjà inclus dans sales/purchases)
-                        const soldeCumule = isClient 
-                          ? (soldeInitial + sales - paid)
-                          : (soldeInitial + purchases - paid);
-                        
+                        const localComputed = isClient ? (soldeInitial + sales - paid) : (soldeInitial + purchases - paid);
+                        const value = backend != null ? Number(backend) : localComputed;
+                        const diff = backend != null ? (Number(backend) - localComputed) : 0;
                         return (
-                          <p className={`font-bold text-lg ${soldeCumule >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {soldeCumule.toFixed(2)} DH
-                          </p>
+                          <div className="space-y-1">
+                            <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(2)} DH</p>
+                            {backend != null && Math.abs(diff) > 0.01 && (
+                              <p className="text-xs text-orange-600 font-medium">
+                                Attention: différence entre calcul local ({localComputed.toFixed(2)} DH) et base ({Number(backend).toFixed(2)} DH) = {diff > 0 ? '+' : ''}{diff.toFixed(2)} DH
+                              </p>
+                            )}
+                          </div>
                         );
                       })()}
                     </div>
