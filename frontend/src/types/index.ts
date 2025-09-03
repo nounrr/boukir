@@ -127,6 +127,7 @@ export interface Contact {
   rib?: string;
   ice?: string;
   solde: number;
+  solde_cumule?: number; // Solde cumulé calculé côté backend
   plafond?: number; // Plafond de crédit (clients)
   created_by?: number;
   updated_by?: number;
