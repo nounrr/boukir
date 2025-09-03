@@ -157,17 +157,18 @@ router.post('/', async (req, res) => {
     const commandeId = commandeResult.insertId;
 
     // Items (facultatifs)
+    const productPriceCandidateMap = new Map(); // product_id -> new prix_achat candidate
     for (const item of items) {
       const {
         product_id,
         quantite,
-        prix_unitaire,
+        prix_unitaire, // pour Commande = prix d'achat saisi
         remise_pourcentage = 0,
         remise_montant = 0,
         total
-      } = item;
+      } = item || {};
 
-      // petite validation utile
+      // Validation item
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
@@ -179,6 +180,41 @@ router.post('/', async (req, res) => {
           remise_pourcentage, remise_montant, total
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [commandeId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+
+      // Enregistrer le nouveau prix d'achat potentiel (dernier prix saisi pour ce produit dans cette commande)
+      // On ignore si prix_unitaire <= 0
+      if (Number(prix_unitaire) > 0) {
+        productPriceCandidateMap.set(Number(product_id), Number(prix_unitaire));
+      }
+    }
+
+    // Mise à jour des prix d'achat produits si différents
+    if (productPriceCandidateMap.size) {
+      const productIds = Array.from(productPriceCandidateMap.keys());
+      const [existingProducts] = await connection.query(
+        `SELECT id, prix_achat, cout_revient_pourcentage, prix_gros_pourcentage, prix_vente_pourcentage
+           FROM products WHERE id IN (?) FOR UPDATE`,
+        [productIds]
+      );
+
+      for (const row of existingProducts) {
+        const newPA = productPriceCandidateMap.get(row.id);
+        if (newPA == null) continue;
+        const currentPA = Number(row.prix_achat);
+        // Mettre à jour seulement si changement réel (tolérance 0.0001)
+        if (Math.abs(newPA - currentPA) > 0.0001) {
+          const crp = Number(row.cout_revient_pourcentage || 0);
+          const pgp = Number(row.prix_gros_pourcentage || 0);
+          const pvp = Number(row.prix_vente_pourcentage || 0);
+          const cout_revient = newPA * (1 + crp / 100);
+          const prix_gros = newPA * (1 + pgp / 100);
+          const prix_vente = newPA * (1 + pvp / 100);
+          await connection.execute(
+            `UPDATE products SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente = ?, updated_at = NOW() WHERE id = ?`,
+            [newPA, cout_revient, prix_gros, prix_vente, row.id]
+          );
+        }
+      }
     }
 
   await connection.commit();
@@ -302,6 +338,41 @@ router.put('/:id', async (req, res) => {
           remise_pourcentage, remise_montant, total
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+    }
+
+    // Synchroniser les nouveaux prix d'achat potentiels (comme dans POST)
+    if (items?.length) {
+      const candidateMap = new Map();
+      for (const it of items) {
+        if (it && it.product_id && Number(it.prix_unitaire) > 0) {
+          candidateMap.set(Number(it.product_id), Number(it.prix_unitaire));
+        }
+      }
+      if (candidateMap.size) {
+        const idsProducts = Array.from(candidateMap.keys());
+        const [existingProducts] = await connection.query(
+          `SELECT id, prix_achat, cout_revient_pourcentage, prix_gros_pourcentage, prix_vente_pourcentage
+             FROM products WHERE id IN (?) FOR UPDATE`,
+          [idsProducts]
+        );
+        for (const row of existingProducts) {
+          const newPA = candidateMap.get(row.id);
+          if (newPA == null) continue;
+            const currentPA = Number(row.prix_achat);
+          if (Math.abs(newPA - currentPA) > 0.0001) {
+            const crp = Number(row.cout_revient_pourcentage || 0);
+            const pgp = Number(row.prix_gros_pourcentage || 0);
+            const pvp = Number(row.prix_vente_pourcentage || 0);
+            const cout_revient = newPA * (1 + crp / 100);
+            const prix_gros = newPA * (1 + pgp / 100);
+            const prix_vente = newPA * (1 + pvp / 100);
+            await connection.execute(
+              `UPDATE products SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente = ?, updated_at = NOW() WHERE id = ?`,
+              [newPA, cout_revient, prix_gros, prix_vente, row.id]
+            );
+          }
+        }
+      }
     }
 
     await connection.commit();

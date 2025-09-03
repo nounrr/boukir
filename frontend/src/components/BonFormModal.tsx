@@ -7,6 +7,8 @@ import { showSuccess, showError, showConfirmation } from '../utils/notifications
 import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
+import { useDispatch } from 'react-redux';
+import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantQuery } from '../store/api/comptantApi';
 import { useGetClientsQuery, useGetFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
@@ -268,6 +270,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   onBonAdded,
 }) => {
   const { user } = useAuth();
+  const dispatch = useDispatch();
   const formikRef = useRef<FormikProps<any>>(null);
   // Container ref to detect when Enter is pressed within the products area
   const itemsContainerRef = useRef<HTMLDivElement>(null);
@@ -338,7 +341,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ----------------------- Initialisation des valeurs ----------------------- */
   const getInitialValues = () => {
-    if (initialValues) {
+  if (initialValues) {
   // (formatDateForInput removed - unused after refactor)
 
       const rawItems = Array.isArray(initialValues.items)
@@ -752,6 +755,10 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     if (initialValues) {
       await updateBonMutation({ id: initialValues.id, type: requestType, ...cleanBonData }).unwrap();
       showSuccess('Bon mis à jour avec succès');
+      if (requestType === 'Commande') {
+        // Invalider le cache produits pour refléter nouveaux prix d'achat
+        dispatch(api.util.invalidateTags(['Product']));
+      }
 
       // Enregistrer/ajouter les remises pour un bon existant si un client remise est choisi
       if ((values.type === 'Sortie' || values.type === 'Comptant') && typeof selectedRemiseId === 'number') {
@@ -881,6 +888,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
       const created = await createBon({ type: requestType, ...cleanBonData }).unwrap();
       showSuccess(`${currentTab} créé avec succès`);
+      if (requestType === 'Commande') {
+        dispatch(api.util.invalidateTags(['Product']));
+      }
 
       // Enregistrer les remises appliquées dans item_remises si un client remise est sélectionné
       if ((values.type === 'Sortie' || values.type === 'Comptant') && typeof selectedRemiseId === 'number') {
