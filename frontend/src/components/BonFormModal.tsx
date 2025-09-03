@@ -780,8 +780,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(requestType) && cleanBonData.client_id) {
         const client = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
         if (client && client.plafond && Number(client.plafond) > 0) {
-          // Utiliser le solde cumulé calculé, pas le solde DB brut
-          const soldeCumule = computeClientBalance(cleanBonData.client_id.toString()) || 0;
+          // Utiliser le solde cumulé fourni par le backend (fallback sur solde initial)
+          const backendClientSolde = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
+          const soldeCumule = Number(backendClientSolde?.solde_cumule ?? backendClientSolde?.solde ?? 0) || 0;
           const plafond = Number(client.plafond);
           const nouveauSolde = soldeCumule + montantTotal;
           
@@ -1000,41 +1001,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     return bestPrice;
   };
 
-  // ---------------- Solde cumulé (formule corrigée avec solde initial) -----------------
-  const computeClientBalance = (clientId: string | null | undefined) => {
-    if (!clientId) return null;
-    const cidNum = Number(clientId);
-    
-    // Récupérer le solde initial de la base de données
-    const contact = clients.find((c: any) => Number(c.id) === cidNum);
-    const soldeInitial = Number((contact as any)?.solde ?? 0) || 0;
-
-    // Fonction pour sommer les bons par statut (Validé ou En attente)
-    const sumBonsByStatus = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'client_id') =>
-      (arr || []).reduce((s, b: any) => {
-        const isCorrectClient = Number(b?.[pickId]) === cidNum;
-        const isValidStatus = ['Validé', 'En attente'].includes(b?.statut);
-        const montant = Number(b?.montant_total ?? 0) || 0;
-        return s + (isCorrectClient && isValidStatus ? montant : 0);
-      }, 0);
-
-    // Fonction pour sommer les paiements par statut (Validé ou En attente)
-    const sumPaymentsByStatus = (payments as any[]).reduce((s, p: any) => {
-      const isCorrectClient = Number(p?.contact_id) === cidNum;
-      const isValidStatus = ['Validé', 'En attente'].includes(p?.statut);
-      const montant = Number(p?.montant ?? p?.montant_total ?? 0) || 0;
-      return s + (isCorrectClient && isValidStatus ? montant : 0);
-    }, 0);
-
-    // CALCUL : SOLDE_INITIAL + VENTES - PAIEMENTS - AVOIRS
-    const ventes = sumBonsByStatus(sortiesHistory as any[], 'client_id') + 
-                   sumBonsByStatus(comptantHistory as any[], 'client_id');
-    const avoirs = sumBonsByStatus(avoirsClientAll as any[], 'client_id');
-    const paiements = sumPaymentsByStatus;
-
-    // Formule corrigée : Solde Initial + Ventes - Paiements - Avoirs
-    return soldeInitial + ventes - paiements - avoirs;
-  };
+    // (Removed local cumulative balance calculations; using backend provided solde_cumule)
 
   // Fonction utilitaire pour vérifier le plafond en temps réel
   const checkClientCreditLimitRealTime = async (values: any) => {
@@ -1056,7 +1023,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       return sum + q * u;
     }, 0);
 
-    const soldeCumule = computeClientBalance(values.client_id) || 0;
+  const backendClient = clients.find((c: any) => c.id.toString() === values.client_id.toString());
+  const soldeCumule = Number(backendClient?.solde_cumule) || 0;
     const plafond = Number(client.plafond);
     const nouveauSolde = soldeCumule + montantBon;
 
@@ -1104,84 +1072,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     return true;
   };
 
-  // Helper: detailed breakdown for client balance (for debugging/logging)
-  const getClientBalanceBreakdown = (clientId: string | null | undefined) => {
-    if (!clientId) return null;
-    const cidNum = Number(clientId);
-    
-    // Récupérer le solde initial de la base de données
-    const contact = clients.find((c: any) => Number(c.id) === cidNum);
-    const soldeInitial = Number((contact as any)?.solde ?? 0) || 0;
-
-    // Fonction pour sommer les bons par statut avec détail
-    const sumBonsByStatusDetailed = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'client_id') => {
-      let valide = 0, enAttente = 0, autres = 0;
-      (arr || []).forEach((b: any) => {
-        const isCorrectClient = Number(b?.[pickId]) === cidNum;
-        const montant = Number(b?.montant_total ?? 0) || 0;
-        if (!isCorrectClient || montant === 0) return;
-        
-        if (b?.statut === 'Validé') valide += montant;
-        else if (b?.statut === 'En attente') enAttente += montant;
-        else autres += montant;
-      });
-      return { valide, enAttente, autres, total: valide + enAttente };
-    };
-
-    // Fonction pour sommer les paiements par statut avec détail
-    const sumPaymentsDetailed = () => {
-      let valide = 0, enAttente = 0, autres = 0;
-      (payments as any[]).forEach((p: any) => {
-        const isCorrectClient = Number(p?.contact_id) === cidNum;
-        const montant = Number(p?.montant ?? p?.montant_total ?? 0) || 0;
-        if (!isCorrectClient || montant === 0) return;
-        
-        if (p?.statut === 'Validé') valide += montant;
-        else if (p?.statut === 'En attente') enAttente += montant;
-        else autres += montant;
-      });
-      return { valide, enAttente, autres, total: valide + enAttente };
-    };
-
-    const sortiesDetail = sumBonsByStatusDetailed(sortiesHistory as any[], 'client_id');
-    const comptantDetail = sumBonsByStatusDetailed(comptantHistory as any[], 'client_id');
-    const avoirsDetail = sumBonsByStatusDetailed(avoirsClientAll as any[], 'client_id');
-    const paymentsDetail = sumPaymentsDetailed();
-
-    const ventesTotal = sortiesDetail.total + comptantDetail.total;
-    const total = soldeInitial + ventesTotal - paymentsDetail.total - avoirsDetail.total;
-
-    return {
-      soldeInitial, // Ajout du solde initial
-      sorties: sortiesDetail,
-      comptant: comptantDetail,
-      ventes: { total: ventesTotal },
-      avoirs: avoirsDetail,
-      payments: paymentsDetail,
-      total
-    };
-  };
-
-  const computeFournisseurBalance = (fournisseurId: string | null | undefined) => {
-    if (!fournisseurId) return null;
-    const fidNum = Number(fournisseurId);
-    const contact = fournisseurs.find((f: any) => Number(f.id) === fidNum);
-    // Align with Contacts: start from DB solde
-    const base = Number((contact as any)?.solde ?? 0) || 0;
-
-    const sum = (arr: any[], pickId: 'client_id' | 'fournisseur_id' = 'fournisseur_id') =>
-      (arr || []).reduce((s, b: any) => s + (Number(b?.montant_total ?? 0) || 0) * (Number(b?.[pickId]) === fidNum ? 1 : 0), 0);
-
-    const achats = sum(commandesAll as any[], 'fournisseur_id');
-    const avoirs = sum(avoirsFournisseurAll as any[], 'fournisseur_id');
-    // Sum all payments by contact_id (no statut/type filtering)
-    const pays = (payments as any[]).reduce((s, p: any) => {
-      return s + (Number(p?.contact_id) === fidNum ? Number(p?.montant ?? p?.montant_total ?? 0) || 0 : 0);
-    }, 0);
-
-    // Fournisseur balance: initial + achats - avoirs - paiements
-    return base + achats - avoirs - pays;
-  };
+  // (Removed debugging breakdown + fournisseur local balance; rely on backend fields.)
 
   /* ------------------------------ Appliquer produit ------------------------------ */
   /* ------------------------------ Appliquer produit ------------------------------ */
@@ -1343,7 +1234,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </div>
                   <SearchableSelect
                     options={clients.map((c: Contact) => {
-                      const soldeCumule = computeClientBalance(c.id.toString()) || 0;
+                      const soldeCumule = Number(c.solde_cumule ?? c.solde ?? 0) || 0;
                       const plafond = Number(c.plafond || 0);
                       const isOverLimit = plafond > 0 && soldeCumule > plafond;
                       const depassement = isOverLimit ? soldeCumule - plafond : 0;
@@ -1368,7 +1259,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         return;
                       }
                       
-                      const soldeCumule = computeClientBalance(clientId) || 0;
+                      const soldeCumule = Number(client.solde_cumule ?? client.solde ?? 0) || 0;
                       const plafond = Number(client.plafond || 0);
                       const isOverLimit = plafond > 0 && soldeCumule > plafond;
                       
@@ -1436,8 +1327,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       <span className="text-sm text-blue-700 font-medium">Solde cumulé: </span>
                       <span className="text-sm text-blue-800 font-semibold">
                         {(() => {
-                          const solde = computeClientBalance(values.client_id);
-                          return solde != null ? `${solde.toFixed(2)} DH` : '—';
+                          const selectedClient = clients.find((c: Contact) => c.id.toString() === values.client_id.toString());
+                          const solde = Number(selectedClient?.solde_cumule ?? selectedClient?.solde ?? 0);
+                          return Number.isFinite(solde) ? `${solde.toFixed(2)} DH` : '—';
                         })()}
                       </span>
                     </div>
@@ -1523,8 +1415,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       <span className="text-sm text-blue-700 font-medium">Solde cumulé: </span>
                       <span className="text-sm text-blue-800 font-semibold">
                         {(() => {
-                          const solde = computeFournisseurBalance(values.fournisseur_id);
-                          return solde != null ? `${solde.toFixed(2)} DH` : '—';
+                          const fournisseurSel = fournisseurs.find((f: Contact) => f.id.toString() === values.fournisseur_id.toString());
+                          const solde = Number(fournisseurSel?.solde_cumule ?? fournisseurSel?.solde ?? 0);
+                          return Number.isFinite(solde) ? `${solde.toFixed(2)} DH` : '—';
                         })()}
                       </span>
                     </div>

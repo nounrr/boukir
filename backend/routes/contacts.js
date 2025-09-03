@@ -3,33 +3,196 @@ import pool from '../db/pool.js';
 
 const router = express.Router();
 
-// GET /api/contacts - Get all contacts with optional type filter
+// GET /api/contacts - Get all contacts with optional type filter (avec solde_cumule calculé)
 router.get('/', async (req, res) => {
   try {
     const { type } = req.query;
-    let query = 'SELECT * FROM contacts WHERE 1=1';
+    let query = `
+      SELECT 
+        c.*,
+        CASE 
+          WHEN c.type = 'Client' THEN
+            COALESCE(c.solde, 0)
+            + COALESCE(ventes_client.total_ventes, 0)
+            - COALESCE(paiements_client.total_paiements, 0)
+            - COALESCE(avoirs_client.total_avoirs, 0)
+          WHEN c.type = 'Fournisseur' THEN
+            COALESCE(c.solde, 0)
+            + COALESCE(achats_fournisseur.total_achats, 0)
+            - COALESCE(paiements_fournisseur.total_paiements, 0)
+            - COALESCE(avoirs_fournisseur.total_avoirs, 0)
+          ELSE c.solde
+        END AS solde_cumule
+      FROM contacts c
+
+      -- Ventes client = bons_sortie + bons_comptant
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_ventes
+        FROM (
+          SELECT client_id, montant_total, statut FROM bons_sortie
+          UNION ALL
+          SELECT client_id, montant_total, statut FROM bons_comptant
+        ) vc
+        WHERE vc.client_id IS NOT NULL
+        AND vc.statut IN ('Validé','En attente')
+        GROUP BY client_id
+      ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
+
+      -- Achats fournisseur = bons_commande
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_achats
+        FROM bons_commande
+        WHERE fournisseur_id IS NOT NULL
+          AND statut IN ('Validé','En attente')
+        GROUP BY fournisseur_id
+      ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+
+      -- Paiements client
+      LEFT JOIN (
+        SELECT contact_id, SUM(montant_total) AS total_paiements
+        FROM payments
+        WHERE type_paiement = 'Client'
+          AND statut IN ('Validé','En attente')
+        GROUP BY contact_id
+      ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
+
+      -- Paiements fournisseur
+      LEFT JOIN (
+        SELECT contact_id, SUM(montant_total) AS total_paiements
+        FROM payments
+        WHERE type_paiement = 'Fournisseur'
+          AND statut IN ('Validé','En attente')
+        GROUP BY contact_id
+      ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
+
+      -- Avoirs client (avoirs_client table)
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_client
+        WHERE statut IN ('Validé','En attente')
+        GROUP BY client_id
+      ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
+
+      -- Avoirs fournisseur (avoirs_fournisseur table)
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_fournisseur
+        WHERE statut IN ('Validé','En attente')
+        GROUP BY fournisseur_id
+      ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+
+      WHERE 1=1`;
+    
     const params = [];
 
     if (type && (type === 'Client' || type === 'Fournisseur')) {
-      query += ' AND type = ?';
+      query += ' AND c.type = ?';
       params.push(type);
     }
 
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY c.created_at DESC ';
 
     const [rows] = await pool.execute(query, params);
-    res.json(rows);
+    
+    console.log(`=== CONTACTS RÉCUPÉRÉS ===`);
+    console.log(`Total: ${rows.length} contacts`);
+    console.log(`Type filter: ${type || 'Tous'}`);
+    
+    // Convertir solde_cumule en nombre pour éviter les problèmes de type
+    const processedRows = rows.map(row => ({
+      ...row,
+      solde_cumule: Number(row.solde_cumule || 0)
+    }));
+    
+    processedRows.forEach((contact, index) => {
+      if (index < 20) { // Afficher les 20 premiers pour debug
+        console.log(`${index + 1}. ID: ${contact.id}, Nom: ${contact.nom_complet}, Type: ${contact.type}, Solde initial: ${contact.solde}, Solde cumulé: ${contact.solde_cumule}`);
+      }
+    });
+    
+    if (processedRows.length > 20) {
+      console.log(`... et ${processedRows.length - 20} autres contacts`);
+    }
+    
+    res.json(processedRows);
   } catch (error) {
     console.error('Error fetching contacts:', error);
     res.status(500).json({ error: 'Failed to fetch contacts' });
   }
 });
 
-// GET /api/contacts/:id - Get contact by ID
+// GET /api/contacts/:id - Get contact by ID with calculated solde_cumule
 router.get('/:id', async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      'SELECT * FROM contacts WHERE id = ?',
+      `SELECT 
+        c.*,
+        CASE 
+          WHEN c.type = 'Client' THEN
+            COALESCE(c.solde, 0)
+            + COALESCE(ventes_client.total_ventes, 0)
+            - COALESCE(paiements_client.total_paiements, 0)
+            - COALESCE(avoirs_client.total_avoirs, 0)
+          WHEN c.type = 'Fournisseur' THEN
+            COALESCE(c.solde, 0)
+            + COALESCE(achats_fournisseur.total_achats, 0)
+            - COALESCE(paiements_fournisseur.total_paiements, 0)
+            - COALESCE(avoirs_fournisseur.total_avoirs, 0)
+          ELSE c.solde
+        END AS solde_cumule
+      FROM contacts c
+
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_ventes
+        FROM (
+          SELECT client_id, montant_total, statut FROM bons_sortie
+          UNION ALL
+          SELECT client_id, montant_total, statut FROM bons_comptant
+        ) vc
+        WHERE vc.client_id IS NOT NULL
+          AND vc.statut IN ('Validé','En attente')
+        GROUP BY client_id
+      ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
+
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_achats
+        FROM bons_commande
+        WHERE fournisseur_id IS NOT NULL
+          AND statut IN ('Validé','En attente')
+        GROUP BY fournisseur_id
+      ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+
+      LEFT JOIN (
+        SELECT contact_id, SUM(montant_total) AS total_paiements
+        FROM payments
+        WHERE type_paiement = 'Client'
+          AND statut IN ('Validé','En attente')
+        GROUP BY contact_id
+      ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
+
+      LEFT JOIN (
+        SELECT contact_id, SUM(montant_total) AS total_paiements
+        FROM payments
+        WHERE type_paiement = 'Fournisseur'
+          AND statut IN ('Validé','En attente')
+        GROUP BY contact_id
+      ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
+
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_client
+        WHERE statut IN ('Validé','En attente')
+        GROUP BY client_id
+      ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
+
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_fournisseur
+        WHERE statut IN ('Validé','En attente')
+        GROUP BY fournisseur_id
+      ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+
+      WHERE c.id = ?`,
       [req.params.id]
     );
 
@@ -37,7 +200,13 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Contact not found' });
     }
 
-    res.json(rows[0]);
+    // Convertir solde_cumule en nombre
+    const contact = {
+      ...rows[0],
+      solde_cumule: Number(rows[0].solde_cumule || 0)
+    };
+
+    res.json(contact);
   } catch (error) {
     console.error('Error fetching contact:', error);
     res.status(500).json({ error: 'Failed to fetch contact' });
