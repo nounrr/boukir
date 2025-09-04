@@ -36,6 +36,14 @@ const EmployeeSalariesPage: React.FC = () => {
   const [editNote, setEditNote] = useState('');
 
   const totalMonth = useMemo(() => entries.reduce((sum: number, e: EmployeeSalaireEntry) => sum + Number(e.montant || 0), 0), [entries]);
+  
+  // Difference entre salaire prévu et total ce mois
+  const salaireDiff = useMemo(() => {
+    if (employee?.salaire == null) return null;
+    const salaireNum = Number(employee.salaire) || 0;
+    const diff = salaireNum - totalMonth; // positif => reste à payer, négatif => dépassement
+    return { diff, salaire: salaireNum, total: totalMonth };
+  }, [employee?.salaire, totalMonth]);
 
   const onAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,6 +212,27 @@ const EmployeeSalariesPage: React.FC = () => {
                       return 'Partiel';
                     })()}
                   </div>
+                  {salaireDiff && (
+                    <div className="mt-2 text-sm">
+                      {(() => {
+                        if (salaireDiff.diff > 0) {
+                          return (
+                            <span className="font-medium text-blue-600">
+                              Reste à payer: {salaireDiff.diff.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
+                            </span>
+                          );
+                        }
+                        if (salaireDiff.diff < 0) {
+                          return (
+                            <span className="font-medium text-red-600">
+                              Dépassement: {Math.abs(salaireDiff.diff).toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
+                            </span>
+                          );
+                        }
+                        return <span className="font-medium text-emerald-600">Aucun reste à payer</span>;
+                      })()}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

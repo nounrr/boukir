@@ -50,8 +50,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { name: 'Bons', href: '/bons', icon: FileText, show: true },
         { name: 'Véhicules', href: '/vehicules', icon: Truck, show: true },
         { name: 'Caisse', href: '/caisse', icon: CreditCard, show: true },
-        { name: 'Talons', href: '/talons', icon: ClipboardList, show: user?.role === 'PDG' },
-        { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: user?.role === 'PDG' },
+  { name: 'Talons', href: '/talons', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'Manager' },
+  { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: user?.role === 'PDG' || user?.role === 'Manager' },
       ],
     },
     {

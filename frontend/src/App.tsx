@@ -33,6 +33,7 @@ import ArchivedProductsPage from './pages/ArchivedProductsPage';
 import ProfilePage from './pages/ProfilePage';
 import EmployeeSalariesPage from './pages/EmployeeSalariesPage';
 import AuditPage from './pages/AuditPage';
+import ChiffreAffairesPage from './pages/ChiffreAffairesPage';
 
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
@@ -165,7 +166,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/talons"
           element={
-            <ProtectedRoute requiredRole="PDG">
+            <ProtectedRoute requiredRoles={['PDG','Manager']}>
               <Layout>
                 <TalonsPage />
               </Layout>
@@ -176,7 +177,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/talon-caisse"
           element={
-            <ProtectedRoute requiredRole="PDG">
+            <ProtectedRoute requiredRoles={['PDG','Manager']}>
               <Layout>
                 <TalonCaissePage />
               </Layout>
@@ -201,6 +202,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <ReportsPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/chiffre-affaires"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ChiffreAffairesPage />
               </Layout>
             </ProtectedRoute>
           }

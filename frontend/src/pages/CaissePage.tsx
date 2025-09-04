@@ -25,7 +25,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import type { Payment, Bon, Contact } from '../types';
-import { getBonNumeroDisplay } from '../utils/numero';
+import { displayBonNumero } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
@@ -81,8 +81,7 @@ const CaissePage = () => {
   const { data: comptantsRaw = [], isLoading: comptantsLoading } = useGetBonsByTypeQuery('Comptant');
   const { data: commandes = [], isLoading: commandesLoading } = useGetBonsByTypeQuery('Commande');
   // Avoirs pour le calcul du solde cumulé (comme BonFormModal)
-  const { data: avoirsClientAll = [] } = useGetBonsByTypeQuery('Avoir');
-  const { data: avoirsFournisseurAll = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
+  // Removed unused avoirs queries (kept fetching later only if needed)
   
   const bonsLoading = sortiesLoading || comptantsLoading || commandesLoading;
   const bons: Bon[] = [
@@ -603,7 +602,16 @@ const paymentValidationSchema = Yup.object({
   const getBonInfo = (bonId?: number) => {
     if (!bonId) return 'Paiement libre';
     const bon = bons.find((b: Bon) => b.id === bonId);
-    return bon ? `${bon.type} ${getBonNumeroDisplay(bon)}` : 'Bon supprimé';
+    if (!bon) return 'Bon supprimé';
+    return displayBonNumero(bon);
+  };
+
+  // Version détaillée (même format que le select: NUMERO - MONTANT DH)
+  const getBonInfoDetailed = (bonId?: number) => {
+    if (!bonId) return 'Paiement libre';
+    const bon = bons.find((b: Bon) => b.id === bonId);
+    if (!bon) return 'Bon supprimé';
+    return `${displayBonNumero(bon)} - ${Number(bon.montant_total ?? 0)} DH`;
   };
 
   const getModeIcon = (mode: string) => {
@@ -977,10 +985,10 @@ const paymentValidationSchema = Yup.object({
                       <div className="text-sm font-medium text-gray-900">{getDisplayNumeroPayment(payment)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">{formatDateTimeWithHour(payment.date_paiement)}</div>
+                      <div className="text-sm text-gray-700">{payment.date_paiement ? formatDateTimeWithHour(payment.date_paiement) : '-'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{getBonInfo(payment.bon_id)}</div>
+                      <div className="text-sm text-gray-900">{getBonInfoDetailed(payment.bon_id)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-sm text-gray-900">
@@ -1167,7 +1175,7 @@ const paymentValidationSchema = Yup.object({
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <h3 className="text-base font-semibold text-gray-900">{getDisplayNumeroPayment(payment)}</h3>
-                    <p className="text-xs text-gray-500">{formatDateTimeWithHour(payment.date_paiement)}</p>
+                    <p className="text-xs text-gray-500">{payment.date_paiement ? formatDateTimeWithHour(payment.date_paiement) : '-'}</p>
                   </div>
                   <div>
                     <span className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-full ${getStatusClasses(displayStatut(payment.statut))}`}>
@@ -1190,7 +1198,7 @@ const paymentValidationSchema = Yup.object({
                   {payment.date_echeance && (
                     <p className="text-xs text-gray-500">Échéance: {formatYMD(payment.date_echeance)}</p>
                   )}
-                  <p className="text-xs text-gray-500">{getBonInfo(payment.bon_id)}</p>
+                  <p className="text-xs text-gray-500">{getBonInfoDetailed(payment.bon_id)}</p>
                 </div>
                 <div className="flex flex-wrap gap-2 pt-2 border-t">
                   {/* Actions principales */}
@@ -1475,11 +1483,15 @@ const paymentValidationSchema = Yup.object({
                   ? bon.type === 'Commande'
                   : bon.type === 'Sortie' || bon.type === 'Comptant';
               })
-              .map((bon: Bon) => (
-                          <option key={bon.id} value={bon.id}>
-              {bon.type} {getBonNumeroDisplay(bon)} - {Number(bon.montant_total ?? 0)} DH
-                          </option>
-                        ))}
+              .map((bon: Bon) => {
+                const display = displayBonNumero(bon);
+                return (
+                  <option key={bon.id} value={bon.id}>
+                    {display} - {Number(bon.montant_total ?? 0)} DH
+                  </option>
+                );
+              })}
+                        
                       </Field>
                     </div>
 
@@ -1681,7 +1693,7 @@ const paymentValidationSchema = Yup.object({
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Date de paiement:</p>
-                  <p className="text-lg">{formatYMD(selectedPayment.date_paiement)}</p>
+                  <p className="text-lg">{selectedPayment.date_paiement ? formatYMD(selectedPayment.date_paiement) : '-'}</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Montant:</p>
@@ -1696,7 +1708,7 @@ const paymentValidationSchema = Yup.object({
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Bon associé:</p>
-                  <p className="text-lg">{getBonInfo(selectedPayment.bon_id)}</p>
+                  <p className="text-lg">{selectedPayment.bon_id }</p>
                 </div>
                 
                 
@@ -1783,7 +1795,7 @@ const paymentValidationSchema = Yup.object({
 
               <div className="border-t pt-4">
                 <p className="text-xs text-gray-500">
-                  Date de paiement: {new Date(selectedPayment.date_paiement).toLocaleString('fr-FR')}
+                  Date de paiement: {selectedPayment.date_paiement ? new Date(selectedPayment.date_paiement).toLocaleString('fr-FR') : '-'}
                   {selectedPayment.updated_at && (
                     <>
                       <br />
