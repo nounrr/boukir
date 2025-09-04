@@ -4,6 +4,7 @@ import { useGetProductsQuery } from "../store/api/productsApi";
 import { useGetClientsQuery } from "../store/api/contactsApi";
 import { useGetComptantQuery } from "../store/api/comptantApi";
 import { useGetSortiesQuery } from "../store/api/sortiesApi";
+import SearchableSelect from "../components/SearchableSelect";
 
 const toNumber = (value: any): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -44,6 +45,8 @@ const StatsDetailPage: React.FC = () => {
   const [detailMatrixMode, setDetailMatrixMode] = useState<"produits" | "clients">("produits");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [selectedClientId, setSelectedClientId] = useState<string>("");
+  // Etat d'expansion des clients par produit (productId -> clientId -> boolean)
+  const [expandedClients, setExpandedClients] = useState<Record<string, Record<string, boolean>>>({});
 
   useEffect(() => {
     setSelectedProductId("");
@@ -100,18 +103,39 @@ const StatsDetailPage: React.FC = () => {
         const productId = String(it.product_id ?? it.id ?? "");
         if (!productId) continue;
         const qty = toNumber(it.quantite ?? it.qty ?? 0);
-        const unit = toNumber(it.prix ?? it.prix_vente ?? it.price ?? 0);
+        // Déterminer le prix unitaire selon le type de bon
+        const rawUnit = (() => {
+          if (bon.type === 'Commande') {
+            return it.prix_achat ?? it.prix_unitaire ?? it.prix ?? it.prix_vente ?? it.price;
+          }
+            // Sortie / Comptant / autres: prix_unitaire prioritaire
+          return it.prix_unitaire ?? it.prix ?? it.prix_vente ?? it.price ?? it.prix_achat;
+        })();
+        const unit = toNumber(rawUnit);
         const total = toNumber(it.total ?? it.montant ?? unit * qty);
 
         if (!pcs[productId]) pcs[productId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, clients: {} };
         const pcEntry = pcs[productId];
-        if (!pcEntry.clients[clientId]) pcEntry.clients[clientId] = { ventes: 0, quantite: 0, montant: 0 };
+        if (!pcEntry.clients[clientId]) pcEntry.clients[clientId] = { ventes: 0, quantite: 0, montant: 0, details: [] };
         pcEntry.clients[clientId].ventes += 1;
         pcEntry.clients[clientId].quantite += qty;
         pcEntry.clients[clientId].montant += total;
         pcEntry.totalVentes += 1;
         pcEntry.totalQuantite += qty;
         pcEntry.totalMontant += total;
+
+        // Détails par bon pour l'accordéon (vue produits)
+        pcEntry.clients[clientId].details.push({
+          bonId: bon.id,
+          bonNumero: bon.numero || bon.numero_bon || bon.code || `#${bon.id}`,
+          date: toDisplayDate(bon.date || bon.date_creation),
+            // conserver valeurs brutes aussi
+          quantite: qty,
+          prix_unitaire: unit,
+          total,
+          statut: bon.statut,
+          type: bon.type,
+        });
 
         // Pour les produits : calculer les statistiques des clients
         if (!cps[clientId]) cps[clientId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, products: {} };
@@ -130,6 +154,31 @@ const StatsDetailPage: React.FC = () => {
     // puisque clientBonsForItems contient les bons filtrés par statut
     return { productClientStats: pcs, clientProductStats: cps };
   }, [clientBonsForItems]);
+
+  // Options recherchables (produits & clients)
+  const productOptions = useMemo(() => {
+    const base = [{ value: "", label: "Tous" }];
+    const ids = Object.keys(productClientStats);
+    const mapped = ids.map((pid) => {
+      const p: any = products.find((x: any) => String(x.id) === String(pid));
+      const ref = p?.reference ? String(p.reference).trim() : "";
+      const designation = p?.designation ? String(p.designation).trim() : "";
+      const label = [ref, designation].filter(Boolean).join(" - ") || `Produit ${pid}`;
+      return { value: pid, label };
+    });
+    return base.concat(mapped);
+  }, [productClientStats, products]);
+
+  const clientOptions = useMemo(() => {
+    const base = [{ value: "", label: "Tous" }];
+    const ids = Object.keys(clientProductStats);
+    const mapped = ids.map((cid) => {
+      const c: any = clients.find((x: any) => String(x.id) === String(cid));
+      const label = c?.nom_complet ? String(c.nom_complet) : `Client ${cid}`;
+      return { value: cid, label };
+    });
+    return base.concat(mapped);
+  }, [clientProductStats, clients]);
 
   return (
     <div className="p-6">
@@ -199,45 +248,29 @@ const StatsDetailPage: React.FC = () => {
 
           {detailMatrixMode === "produits" ? (
             <div>
-              <label htmlFor="detailProduct" className="block text-sm font-medium text-gray-700 mb-1">
-                Produit
-              </label>
-              <select
-                id="detailProduct"
+              <label htmlFor="detailProductSearch" className="block text-sm font-medium text-gray-700 mb-1">Produit</label>
+              <SearchableSelect
+                options={productOptions}
                 value={selectedProductId}
-                onChange={(e) => setSelectedProductId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value="">Tous</option>
-                {Object.keys(productClientStats).map((pid) => {
-                  const p = products.find((x: any) => String(x.id) === String(pid));
-                  const label = p?.designation ?? `Produit ${pid}`;
-                  return (
-                    <option key={pid} value={pid}>{label}</option>
-                  );
-                })}
-              </select>
+                onChange={(v) => setSelectedProductId(v)}
+                placeholder="Rechercher produit (réf ou désignation)"
+                className="w-full"
+                autoOpenOnFocus
+                id="detailProductSearch"
+              />
             </div>
           ) : (
             <div>
-              <label htmlFor="detailClient" className="block text-sm font-medium text-gray-700 mb-1">
-                Client
-              </label>
-              <select
-                id="detailClient"
+              <label htmlFor="detailClientSearch" className="block text-sm font-medium text-gray-700 mb-1">Client</label>
+              <SearchableSelect
+                options={clientOptions}
                 value={selectedClientId}
-                onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value="">Tous</option>
-                {Object.keys(clientProductStats).map((cid) => {
-                  const c = clients.find((x: any) => String(x.id) === String(cid));
-                  const label = c?.nom_complet ?? `Client ${cid}`;
-                  return (
-                    <option key={cid} value={cid}>{label}</option>
-                  );
-                })}
-              </select>
+                onChange={(v) => setSelectedClientId(v)}
+                placeholder="Rechercher client (nom)"
+                className="w-full"
+                autoOpenOnFocus
+                id="detailClientSearch"
+              />
             </div>
           )}
         </div>
@@ -260,9 +293,23 @@ const StatsDetailPage: React.FC = () => {
                 const product = products.find((p: any) => String(p.id) === String(row.productId));
                 const title = product?.designation ?? `Produit ${row.productId}`;
                 const clientRows = Object.entries(row.clients)
-                  .map(([cid, stats]: any) => ({ clientId: cid, ...(stats as any) }))
+                  .map(([cid, stats]: any) => ({ clientId: cid, ...stats }))
                   .sort((a: any, b: any) => b.montant - a.montant)
                   .slice(0, 10);
+
+                const toggle = (cid: string) => {
+                  setExpandedClients(prev => {
+                    const currentProduct = prev[row.productId] || {};
+                    const currentVal = currentProduct[cid];
+                    return {
+                      ...prev,
+                      [row.productId]: {
+                        ...currentProduct,
+                        [cid]: currentVal === undefined ? false : !currentVal,
+                      }
+                    };
+                  });
+                };
 
                 return (
                   <div key={row.productId} className="border rounded-lg">
@@ -294,13 +341,56 @@ const StatsDetailPage: React.FC = () => {
                           {clientRows.map((cr: any) => {
                             const c = clients.find((x: any) => String(x.id) === String(cr.clientId));
                             const cname = c?.nom_complet ?? `Client ${cr.clientId}`;
+                            const isOpen = (expandedClients[row.productId] &&
+                              expandedClients[row.productId][String(cr.clientId)]) !== undefined
+                              ? expandedClients[row.productId][String(cr.clientId)]
+                              : true; // ouvert par défaut si pas encore dans l'état
                             return (
-                              <tr key={cr.clientId} className="hover:bg-gray-50">
-                                <td className="px-4 py-2 text-sm text-gray-900">{cname}</td>
-                                <td className="px-4 py-2 text-sm text-right text-gray-900">{cr.ventes}</td>
-                                <td className="px-4 py-2 text-sm text-right text-gray-900">{toNumber(cr.quantite)}</td>
-                                <td className="px-4 py-2 text-sm text-right font-semibold text-gray-900">{toNumber(cr.montant).toFixed(2)} DH</td>
-                              </tr>
+                              <React.Fragment key={cr.clientId}>
+                                <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggle(String(cr.clientId))}>
+                                  <td className="px-4 py-2 text-sm text-gray-900">
+                                    <div className="flex items-center gap-2">
+                                      <span className="inline-block w-3 text-gray-500">{isOpen ? '▾' : '▸'}</span>
+                                      <span>{cname}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2 text-sm text-right text-gray-900">{cr.ventes}</td>
+                                  <td className="px-4 py-2 text-sm text-right text-gray-900">{toNumber(cr.quantite)}</td>
+                                  <td className="px-4 py-2 text-sm text-right font-semibold text-gray-900">{toNumber(cr.montant).toFixed(2)} DH</td>
+                                </tr>
+                                {isOpen && cr.details && cr.details.length > 0 && (
+                                  <tr className="bg-gray-50/60">
+                                    <td colSpan={4} className="px-4 pb-4 pt-0">
+                                      <div className="mt-2 border border-gray-200 rounded-md bg-white">
+                                        <table className="min-w-full text-xs">
+                                          <thead className="bg-gray-100">
+                                            <tr>
+                                              <th className="px-2 py-1 text-left font-medium text-gray-600">Bon</th>
+                                              <th className="px-2 py-1 text-left font-medium text-gray-600">Date</th>
+                                              <th className="px-2 py-1 text-right font-medium text-gray-600">Qté</th>
+                                              <th className="px-2 py-1 text-right font-medium text-gray-600">P.Unit</th>
+                                              <th className="px-2 py-1 text-right font-medium text-gray-600">Total</th>
+                                              <th className="px-2 py-1 text-left font-medium text-gray-600">Statut</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {cr.details.map((d: any, idx: number) => (
+                                              <tr key={idx} className="border-t last:border-b-0">
+                                                <td className="px-2 py-1">{d.bonNumero}</td>
+                                                <td className="px-2 py-1">{d.date}</td>
+                                                <td className="px-2 py-1 text-right">{toNumber(d.quantite)}</td>
+                                                <td className="px-2 py-1 text-right">{toNumber(d.prix_unitaire).toFixed(2)} DH</td>
+                                                <td className="px-2 py-1 text-right font-medium">{toNumber(d.total).toFixed(2)} DH</td>
+                                                <td className="px-2 py-1">{d.statut}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             );
                           })}
                         </tbody>
@@ -326,7 +416,7 @@ const StatsDetailPage: React.FC = () => {
                 const c = clients.find((x: any) => String(x.id) === String(row.clientId));
                 const cname = c?.nom_complet ?? `Client ${row.clientId}`;
                 const productRows = Object.entries(row.products)
-                  .map(([pid, stats]: any) => ({ productId: pid, ...(stats as any) }))
+                  .map(([pid, stats]: any) => ({ productId: pid, ...stats }))
                   .sort((a: any, b: any) => b.montant - a.montant)
                   .slice(0, 10);
 

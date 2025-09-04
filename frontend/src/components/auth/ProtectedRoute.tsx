@@ -2,14 +2,18 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/redux';
 
+type Role = 'PDG' | 'Employé' | 'Manager';
+
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: 'PDG' | 'Employé';
+  requiredRole?: Role;
+  requiredRoles?: Role[];
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
   children, 
-  requiredRole 
+  requiredRole,
+  requiredRoles
 }) => {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
@@ -19,8 +23,16 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Si un rôle spécifique est requis et que l'utilisateur ne l'a pas
-  if (requiredRole && user?.role !== requiredRole) {
+  // Calcul des rôles autorisés (support backward compatibility)
+  let allowedRoles: Role[] | null = null;
+  if (requiredRoles && requiredRoles.length > 0) {
+    allowedRoles = requiredRoles;
+  } else if (requiredRole) {
+    allowedRoles = [requiredRole];
+  }
+
+  // Si des rôles sont requis et que l'utilisateur ne les a pas
+  if (allowedRoles && (!user?.role || !allowedRoles.includes(user.role as any))) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -32,7 +44,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
               Vous n'avez pas les permissions nécessaires pour accéder à cette page.
             </p>
             <p className="text-sm text-gray-500 mt-2">
-              Rôle requis : {requiredRole}
+              Rôles requis : {allowedRoles.join(', ')}
             </p>
           </div>
         </div>

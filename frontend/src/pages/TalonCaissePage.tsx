@@ -63,6 +63,9 @@ const TalonCaissePage = () => {
   const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite'>('all');
   const [selectedTalonFilter, setSelectedTalonFilter] = useState<string>('');
   const [onlyDueSoon, setOnlyDueSoon] = useState<boolean>(false);
+
+  // Options de statuts disponibles (utilisé dans le select)
+  const statusOptions: StatusType[] = ['En attente', 'Validé', 'Refusé', 'Annulé'];
   
   // Sorting
   const [sortField, setSortField] = useState<'numero' | 'talon' | 'montant' | 'date' | 'echeance' | null>(null);
@@ -121,8 +124,8 @@ const TalonCaissePage = () => {
         statut: oldTalon.validation,
         talon_id: oldTalon.id_talon,
         fournisseur: oldTalon.fournisseur,
-        numero_cheque: oldTalon.numero_cheque,
-        date_cheque: oldTalon.date_cheque,
+  numero_cheque: oldTalon.numero_cheque || undefined,
+  date_cheque: oldTalon.date_cheque || undefined,
         banque: oldTalon.banque,
         originalOldTalon: oldTalon
       });
@@ -144,6 +147,7 @@ const TalonCaissePage = () => {
   // Helper: est en échéance proche (<= 5 jours) par rapport à aujourd'hui
   const isDueSoon = (payment: any) => {
     if (!payment?.date_echeance) return false;
+    if (payment.statut === 'Validé') return false; // exclure les validés
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const due = new Date(payment.date_echeance);
@@ -248,10 +252,10 @@ const TalonCaissePage = () => {
     if (onlyDueSoon) {
       filtered = filtered.filter((p) => {
         if (p.type === 'payment' && p.date_echeance) {
-          return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance });
+          return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance, statut: p.statut });
         }
         if (p.type === 'old' && p.date_cheque) {
-          return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque });
+          return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque, statut: p.statut });
         }
         return false;
       });
@@ -322,8 +326,8 @@ const TalonCaissePage = () => {
         if (!aValid) return 1; // Les dates invalides en fin
         if (!bValid) return -1;
         
-        const aDue = isDueSoon({ date_echeance: aEcheance });
-        const bDue = isDueSoon({ date_echeance: bEcheance });
+  const aDue = isDueSoon({ date_echeance: aEcheance, statut: a.statut });
+  const bDue = isDueSoon({ date_echeance: bEcheance, statut: b.statut });
         
         if (aDue !== bDue) return aDue ? -1 : 1;
         
@@ -344,10 +348,10 @@ const TalonCaissePage = () => {
     const montantTotal = filteredPayments.reduce((sum: number, p) => sum + p.montant_total, 0);
     const echeanceProche = filteredPayments.filter((p) => {
       if (p.type === 'payment' && p.date_echeance) {
-        return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance });
+        return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance, statut: p.statut });
       }
       if (p.type === 'old' && p.date_cheque) {
-        return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque });
+        return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque, statut: p.statut });
       }
       return false;
     }).length;
@@ -616,7 +620,7 @@ const TalonCaissePage = () => {
 
       {/* Filtres */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div>
             <label htmlFor="search_filter" className="block text-sm text-gray-600 mb-1">Recherche</label>
             <div className="relative">
@@ -645,6 +649,24 @@ const TalonCaissePage = () => {
                 <option key={talon.id} value={talon.id}>
                   {talon.nom}
                 </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="status_filter" className="block text-sm text-gray-600 mb-1">Statut</label>
+            <select
+              id="status_filter"
+              value={statusFilter[0] || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                setStatusFilter(val ? [val] : []);
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            >
+              <option value="">Tous les statuts</option>
+              {statusOptions.map(st => (
+                <option key={st} value={st}>{st}</option>
               ))}
             </select>
           </div>
@@ -836,7 +858,7 @@ const TalonCaissePage = () => {
                 </tr>
               ) : (
                 paginatedPayments.map((payment: UnifiedTalonPayment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50">
+                  <tr key={payment.id} className={`hover:bg-gray-50 ${payment.statut === 'Validé' ? 'bg-green-50' : ''}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <span className="text-sm font-medium text-gray-900">{payment.numero}</span>
@@ -916,8 +938,8 @@ const TalonCaissePage = () => {
                           : '-'
                         }
                         {/* Indicateur d'échéance proche */}
-                        {(payment.type === 'payment' && payment.date_echeance && isValidDate(payment.date_echeance) && isDueSoon({ date_echeance: payment.date_echeance })) ||
-                         (payment.type === 'old' && payment.date_cheque && isValidDate(payment.date_cheque) && isDueSoon({ date_echeance: payment.date_cheque })) ? (
+                        {(payment.statut !== 'Validé') && ((payment.type === 'payment' && payment.date_echeance && isValidDate(payment.date_echeance) && isDueSoon({ date_echeance: payment.date_echeance, statut: payment.statut })) ||
+                         (payment.type === 'old' && payment.date_cheque && isValidDate(payment.date_cheque) && isDueSoon({ date_echeance: payment.date_cheque, statut: payment.statut })) ) ? (
                           <span className="ml-2 inline-flex px-1 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded">
                             ≤ 5j
                           </span>

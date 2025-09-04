@@ -897,6 +897,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         const bonId = Number(created?.id || 0);
         if (bonId) {
           const promises = cleanBonData.items
+            // Filtrer uniquement les remises positives (> 0)
             .filter((it: any) => Number(it.remise_montant || 0) > 0)
             .map((it: any) =>
               createRemiseItem({
@@ -1452,7 +1453,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-md font-medium">Produits</h3>
                   <div className="flex gap-2">
-                    {/* Bouton supprimé: le panneau remise est toujours affiché pour Sortie/Comptant */}
+                    {(values.type === 'Sortie' || values.type === 'Comptant') && (
+                      <button
+                        type="button"
+                        onClick={() => setShowRemisePanel((v) => !v)}
+                        className="flex items-center text-purple-600 hover:text-purple-800"
+                        title={showRemisePanel ? 'Masquer remises' : 'Afficher / appliquer des remises'}
+                      >
+                        {showRemisePanel ? 'Masquer remises' : 'Appliquer remises'}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -1520,7 +1530,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 </div>
 
                 {/* Remise panel */}
-                {(values.type === 'Sortie' || values.type === 'Comptant') && (
+                {showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
                   <div className="mb-4 p-3 border rounded bg-purple-50">
                     <div className="flex items-center gap-3 flex-wrap">
                       <label className="text-sm text-gray-700">Client Remise</label>
@@ -2021,7 +2031,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 </div>
 
 {/* Total Remises (DH) */}
-{(values.type === 'Sortie' || values.type === 'Comptant') && (
+{showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant') && (
   <div className="flex justify-between items-center mt-2">
     <span className="text-md font-semibold text-purple-700">Total Remises:</span>
     <span className="text-md font-semibold text-purple-700">

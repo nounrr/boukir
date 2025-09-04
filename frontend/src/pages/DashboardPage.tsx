@@ -46,27 +46,92 @@ const DashboardPage: React.FC = () => {
            d.getDate() === today.getDate();
   };
 
+  // Helper functions for movement calculation (same logic as BonsPage)
+  const parseItemsSafe = (raw: any): any[] => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return []; } }
+    return [];
+  };
+
+  const resolveCost = (it: any): number => {
+    if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
+    if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
+    const pid = it.product_id || it.produit_id;
+    if (pid) {
+      const prod = (products as any[]).find(p => String(p.id) === String(pid));
+      if (prod) return Number(prod.cout_revient ?? prod.prix_achat ?? 0) || 0;
+    }
+    return 0;
+  };
+
+  const computeMouvementDetail = (bon: any): { profit: number; costBase: number; marginPct: number | null } => {
+    const items = parseItemsSafe(bon?.items);
+    let profit = 0; let costBase = 0;
+    for (const it of items) {
+      const q = Number(it.quantite ?? it.qty ?? 0) || 0;
+      if (!q) continue;
+      // Utiliser le prix_unitaire enregistré sur la ligne
+      const prixVente = Number(it.prix_unitaire ?? 0) || 0;
+      // Coût: cout_revient sinon prix_achat; fallback produit uniquement si les deux sont absents
+      let cost = 0;
+      if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
+      else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
+      else cost = resolveCost(it); // dernier recours
+      profit += (prixVente - cost) * q;
+      costBase += cost * q;
+    }
+    const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
+    return { profit, costBase, marginPct };
+  };
+
   // Rules
-  // - Orders card = sales documents only: Sortie + Comptant (flow of sales)
-  // - Revenue = sum of montant_total for Sortie + Comptant of TODAY minus Avoir Client of TODAY
+  // - Orders card = sales documents only: Sortie + Comptant (flow of sales) with status "En attente" or "Validé"
+  // - Revenue = sum of montant_total for Sortie + Comptant of TODAY with status "En attente" or "Validé" minus Avoir Client of TODAY with status "En attente" or "Validé"
+  // - Purchase Revenue (Chiffre Bénéficiaire) = sum of profits from Sortie + Comptant of TODAY with status "En attente" or "Validé" minus profits from Avoir Client of TODAY with status "En attente" or "Validé"
+  // - Purchase Orders Revenue (CA des Achats) = sum of montant_total for Commandes of TODAY with status "En attente" or "Validé"
   // - Low stock = products with quantite <= 5
   // - Pending orders = docs not finalized: statuses in ['Brouillon','En attente','En cours'] across Sortie + Commande
   const stats = useMemo(() => {
+    const validStatuses = new Set(['En attente', 'Validé']);
+    
     const salesDocs = [...sorties, ...comptants];
-    const orders = salesDocs.filter((b: any) => isToday(b.date_creation)).length; // sales-related documents only for today
+    const orders = salesDocs.filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut)).length; // sales-related documents only for today with valid status
 
-    // Calculate revenue from sales (Sortie + Comptant) today
+    // Calculate revenue from sales (Sortie + Comptant) today with valid status
     const salesRevenue = salesDocs
-      .filter((b: any) => isToday(b.date_creation))
+      .filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut))
       .reduce((sum: number, b: any) => sum + Number(b.montant_total || 0), 0);
 
-    // Calculate avoir client (returns) today to subtract
+    // Calculate avoir client (returns) today with valid status to subtract
     const avoirClientAmount = avoirsClient
-      .filter((a: any) => isToday(a.date_creation))
+      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
       .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0);
 
     // Final revenue = sales - returns
     const revenue = salesRevenue - avoirClientAmount;
+
+    // Calculate purchase revenue (chiffre bénéficiaire) based on profits with valid status
+    const salesMovements = salesDocs
+      .filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut))
+      .reduce((sum: number, b: any) => {
+        const { profit } = computeMouvementDetail(b);
+        return sum + profit;
+      }, 0);
+
+    const avoirMovements = avoirsClient
+      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
+      .reduce((sum: number, a: any) => {
+        const { profit } = computeMouvementDetail(a);
+        return sum + profit;
+      }, 0);
+
+    // Final purchase revenue = sales profits - avoir profits
+    const purchaseRevenue = salesMovements - avoirMovements;
+
+    // Calculate purchase revenue from commandes (chiffre d'affaires des achats)
+    const purchaseOrdersRevenue = commandes
+      .filter((c: any) => isToday(c.date_creation) && validStatuses.has(c.statut))
+      .reduce((sum: number, c: any) => sum + Number(c.montant_total || 0), 0);
 
     const lowStock = products.filter((p: any) => Number(p.quantite || 0) <= 5).length;
 
@@ -87,6 +152,8 @@ const DashboardPage: React.FC = () => {
       products: products.length,
       orders,
       revenue,
+      purchaseRevenue,
+      purchaseOrdersRevenue,
       lowStock,
       pendingOrders,
       talonDueSoon,
@@ -193,7 +260,7 @@ const DashboardPage: React.FC = () => {
         </p>
       </div>
       
-      {/* Stats Cards */}
+      {/* Stats Cards - Première ligne (4 cartes) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
         <button 
           type="button"
@@ -209,19 +276,19 @@ const DashboardPage: React.FC = () => {
           </div>
         </button>
 
-          <button 
-            type="button"
-            onClick={() => navigate('/talon-caisse')}
-            className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
-          >
-            <div className="flex items-center">
-              <AlertTriangle className="text-red-500" size={24} />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-500">Talons à échéance (≤ 5j)</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.talonDueSoon}</p>
-              </div>
+        <button 
+          type="button"
+          onClick={() => navigate('/talon-caisse')}
+          className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+        >
+          <div className="flex items-center">
+            <AlertTriangle className="text-red-500" size={24} />
+            <div className="ml-3">
+              <p className="text-sm font-medium text-gray-500">Talons à échéance (≤ 5j)</p>
+              <p className="text-2xl font-semibold text-gray-900">{stats.talonDueSoon}</p>
             </div>
-          </button>
+          </div>
+        </button>
 
         <button 
           type="button"
@@ -250,29 +317,68 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
         </button>
-
-        <button 
-          type="button"
-          onClick={() => navigate('/caisse')}
-          className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
-        >
-          <div className="flex items-center">
-            <DollarSign className="text-yellow-500" size={24} />
-            <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">Chiffre d'affaires net (aujourd'hui)</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.revenue.toFixed(2)} DH</p>
-              {avoirsClient.filter((a: any) => isToday(a.date_creation)).length > 0 && (
-                <p className="text-xs text-gray-400 mt-1">
-                  Avoirs déduits: -{avoirsClient
-                    .filter((a: any) => isToday(a.date_creation))
-                    .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0)
-                    .toFixed(2)} DH
-                </p>
-              )}
-            </div>
-          </div>
-        </button>
       </div>
+
+      {/* Stats Cards - Deuxième ligne (3 cartes) - Visible seulement pour PDG */}
+      {user?.role === 'PDG' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+          <button 
+            type="button"
+            onClick={() => navigate('/chiffre-affaires?type=revenue')}
+            className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+          >
+            <div className="flex items-center">
+              <DollarSign className="text-yellow-500" size={24} />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">Chiffre d'affaires net (aujourd'hui)</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.revenue.toFixed(2)} DH</p>
+                {avoirsClient.filter((a: any) => isToday(a.date_creation) && new Set(['En attente', 'Validé']).has(a.statut)).length > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Avoirs déduits: -{avoirsClient
+                      .filter((a: any) => isToday(a.date_creation) && new Set(['En attente', 'Validé']).has(a.statut))
+                      .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0)
+                      .toFixed(2)} DH
+                  </p>
+                )}
+              </div>
+            </div>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => navigate('/chiffre-affaires?type=purchase')}
+            className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+          >
+            <div className="flex items-center">
+              <TrendingUp className="text-emerald-500" size={24} />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">Chiffre bénéficiaire (aujourd'hui)</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.purchaseRevenue.toFixed(2)} DH</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Basé sur les bénéfices (profits)
+                </p>
+              </div>
+            </div>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => navigate('/chiffre-affaires?type=commandes')}
+            className="w-full text-left bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+          >
+            <div className="flex items-center">
+              <Package className="text-indigo-500" size={24} />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">CA des Achats (aujourd'hui)</p>
+                <p className="text-2xl font-semibold text-gray-900">{stats.purchaseOrdersRevenue.toFixed(2)} DH</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Commandes d'aujourd'hui validées et en attente
+                </p>
+              </div>
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* Alerts & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
