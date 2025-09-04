@@ -37,3 +37,20 @@ export function getBonNumeroDisplay(bon: { id?: number | string; type?: string; 
   const computed = (id != null && id !== '') ? `${bonPrefix(type)}${padId(id, width)}` : '';
   return bon?.numero ?? computed;
 }
+
+// Standardized display (business) prefixes: Commande=CMD, Sortie=SOR, Comptant=CMP
+// Falls back to bonPrefix for other types. Always strips any existing leading letters from stored numero.
+export function displayBonNumero(bon: { id?: number | string; type?: string; numero?: string }, width = 2) {
+  if (!bon) return '';
+  const prefixMap: Record<string, string> = {
+    'Commande': 'CMD',
+    'Sortie': 'SOR',
+    'Comptant': 'CMP',
+  };
+  const prefix = prefixMap[bon.type || ''] || bonPrefix(bon.type);
+  const raw = bon.numero || '';
+  const regex = /(\d+)/;
+  const execRes = regex.exec(raw);
+  const numeric = execRes?.[1] || padId(bon.id ?? '', width);
+  return `${prefix}${numeric}`;
+}

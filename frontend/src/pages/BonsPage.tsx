@@ -74,6 +74,9 @@ const BonsPage = () => {
   // Auth context
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isEmployee = currentUser?.role === 'Employé';
+  // Manager full access only for Commande & AvoirFournisseur
+  const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
+  const isManager = currentUser?.role === 'Manager';
 
   // RTK Query hooks
   // Load bons by type
@@ -613,10 +616,10 @@ const BonsPage = () => {
                         <div className="inline-flex gap-2">
                           {/* Status-change actions */}
                           {(() => {
-                            if (currentUser?.role === 'PDG') {
+                            if (currentUser?.role === 'PDG' || isFullAccessManager) {
                               return (
                                 <>
-                                  {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant') && (
+              {(currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
                                     <>
                                       <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Marquer Validé">
                                         <CheckCircle2 size={ACTION_ICON_SIZE} />
@@ -629,7 +632,7 @@ const BonsPage = () => {
                                       </button>
                                     </>
                                   )}
-                                  {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant') && (
+              {( (currentTab === 'AvoirFournisseur' && isFullAccessManager) || (currentUser?.role === 'PDG' && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ) && (
                                     <>
                                       <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Valider l'avoir">
                                         <CheckCircle2 size={ACTION_ICON_SIZE} />
@@ -642,7 +645,7 @@ const BonsPage = () => {
                                       </button>
                                     </>
                                   )}
-                                  {currentTab === 'Devis' && (
+              {currentTab === 'Devis' && currentUser?.role === 'PDG' && (
                                     <>
                                       <button onClick={() => handleChangeStatus(bon, 'Accepté')} className="text-green-600 hover:text-green-800" title="Accepter et transformer">
                                         <CheckCircle2 size={ACTION_ICON_SIZE} />
@@ -685,6 +688,14 @@ const BonsPage = () => {
                                 </>
                               );
                             }
+                            // Managers (other tabs) limited: can only Annuler
+                            if (isManager) {
+                              return (
+                                <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
+                                  <XCircle size={ACTION_ICON_SIZE} />
+                                </button>
+                              );
+                            }
                             return null;
                           })()}
                           <button
@@ -725,7 +736,7 @@ const BonsPage = () => {
                               <Edit size={ACTION_ICON_SIZE} />
                             </button>
                           )}
-                          {currentUser?.role === 'PDG' && (
+                          {( (currentUser?.role === 'PDG') || isManager ) && (
                             <>
                               <button
                                 onClick={() => {
@@ -738,13 +749,15 @@ const BonsPage = () => {
                               >
                                 <Copy size={ACTION_ICON_SIZE} />
                               </button>
-                              <button
-                                onClick={() => handleDelete(bon)}
-                                className="text-red-600 hover:text-red-800"
-                                title="Supprimer"
-                              >
-                                <Trash2 size={ACTION_ICON_SIZE} />
-                              </button>
+                              {(currentUser?.role === 'PDG' || isFullAccessManager) && (
+                                <button
+                                  onClick={() => handleDelete(bon)}
+                                  className="text-red-600 hover:text-red-800"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 size={ACTION_ICON_SIZE} />
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
