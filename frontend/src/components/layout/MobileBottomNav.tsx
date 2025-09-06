@@ -94,29 +94,29 @@ const MobileBottomNav: React.FC = () => {
             if (!g) return null;
             const items = g.items.filter(i => i.show);
             return (
-              <div className="absolute bottom-20 left-2 right-2 rounded-xl bg-white shadow-lg p-3 max-h-[55vh] overflow-y-auto animate-slide-up border">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-gray-700">{g.label}</h3>
+              <div className="absolute bottom-20 left-2 right-2 rounded-xl bg-white shadow-xl p-4 max-h-[55vh] overflow-y-auto animate-slide-up border border-gray-200">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-base font-semibold text-gray-800">{g.label}</h3>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setOpenGroup(null); }}
                     className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="grid grid-cols-2 gap-3 text-sm">
                   {items.map(o => (
                     <NavLink
                       key={o.name}
                       to={o.to}
                       onClick={(e) => { e.stopPropagation(); setOpenGroup(null); }}
-                      className={({ isActive }) => `flex flex-col items-center justify-center rounded-md p-2 border text-center transition-colors ${isActive ? 'bg-primary-50 text-primary-700 border-primary-300' : 'text-gray-600 hover:bg-gray-50'}`}
+                      className={({ isActive }) => `flex flex-col items-center justify-center rounded-xl p-4 border text-center transition-colors min-h-[80px] ${isActive ? 'bg-primary-50 text-primary-700 border-primary-300' : 'text-gray-600 hover:bg-gray-50 border-gray-200'}`}
                     >
                       {/* try to find icon from groups definitions */}
                       {/* Use group icon as fallback; not storing per-item icon here to keep overlay compact */}
-                      <g.icon className="w-6 h-6 mb-1" />
-                      <span className="truncate leading-tight">{o.name}</span>
+                      <g.icon className="w-7 h-7 mb-2" />
+                      <span className="font-medium leading-tight">{o.name}</span>
                     </NavLink>
                   ))}
                 </div>
@@ -125,7 +125,7 @@ const MobileBottomNav: React.FC = () => {
           })()}
         </button>
       )}
-      <nav className="fixed md:hidden bottom-0 left-0 right-0 z-50 bg-white border-t shadow-sm flex justify-around items-stretch h-16 px-1">
+      <nav className="fixed md:hidden bottom-0 left-0 right-0 z-50 bg-white border-t shadow-lg flex justify-around items-stretch h-20 px-1 py-1">
         {visibleGroups.map(g => {
           const Icon = g.icon;
           const active = openGroup === g.key; // simple active state highlight when open
@@ -134,10 +134,10 @@ const MobileBottomNav: React.FC = () => {
               key={g.key}
               type="button"
               onClick={() => handleGroupPress(g)}
-              className={`flex flex-col items-center justify-center flex-1 text-[11px] font-medium transition-colors ${active ? 'text-primary-600' : 'text-gray-600 hover:text-gray-800'}`}
+              className={`flex flex-col items-center justify-center flex-1 text-[10px] font-medium transition-colors px-1 py-1 rounded-lg ${active ? 'text-primary-600 bg-primary-50' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'}`}
             >
-              <Icon className="w-6 h-6" />
-              <span className="leading-none mt-1">{g.label}</span>
+              <Icon className="w-5 h-5 mb-1" />
+              <span className="leading-tight text-center">{g.label}</span>
             </button>
           );
         })}
