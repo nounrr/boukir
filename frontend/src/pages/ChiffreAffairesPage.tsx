@@ -14,9 +14,10 @@ interface ChiffreAffairesData {
 
 // Utility functions
 const formatAmount = (amount: number): string => {
+  // Préserver les décimales exactes, sans arrondi forcé
   return new Intl.NumberFormat('fr-FR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 10, // Permet jusqu'à 10 décimales si nécessaire
   }).format(amount);
 };
 
@@ -80,7 +81,7 @@ const ChiffreAffairesPage: React.FC = () => {
     
     for (const it of items) {
       const q = Number(it.quantite || 0);
-      const prixVente = Number(it.prix_unitaire || it.prix_vente || 0);
+      const prixVente = Number(it.prix_unitaire || 0);
       
       let cost = 0;
       if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
@@ -352,7 +353,7 @@ const ChiffreAffairesPage: React.FC = () => {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-blue-700 truncate">Chiffre d'Affaires Net</p>
                   <p className="text-xl font-bold text-blue-900">
-                    {chiffreAffairesData.totalChiffreAffaires.toFixed(2)} DH
+                    {formatAmount(chiffreAffairesData.totalChiffreAffaires)} DH
                   </p>
                 </div>
               </div>
@@ -365,7 +366,7 @@ const ChiffreAffairesPage: React.FC = () => {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-emerald-700 truncate">Chiffre Bénéficiaire</p>
                   <p className="text-xl font-bold text-emerald-900">
-                    {chiffreAffairesData.totalChiffreAffairesAchat.toFixed(2)} DH
+                    {formatAmount(chiffreAffairesData.totalChiffreAffairesAchat)} DH
                   </p>
                 </div>
               </div>
@@ -378,7 +379,7 @@ const ChiffreAffairesPage: React.FC = () => {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-indigo-700 truncate">CA des Achats</p>
                   <p className="text-xl font-bold text-indigo-900">
-                    {chiffreAffairesData.totalChiffreAchats.toFixed(2)} DH
+                    {formatAmount(chiffreAffairesData.totalChiffreAchats)} DH
                   </p>
                   <p className="text-xs text-indigo-600 mt-1">Commandes validées et en attente</p>
                 </div>
@@ -415,10 +416,15 @@ const ChiffreAffairesPage: React.FC = () => {
               {chiffreAffairesData.dailyData.map((day: ChiffreAffairesData) => (
                 <tr key={day.date} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {formatDate(day.date)}
-                    </div>
-                    <div className="text-sm text-gray-500">{day.date}</div>
+                    <button
+                      onClick={() => navigate(`/chiffre-affaires/detail/${day.date}`)}
+                      className="text-left hover:bg-blue-50 rounded-lg p-2 transition-colors cursor-pointer w-full"
+                    >
+                      <div className="text-sm font-medium text-blue-600 hover:text-blue-800">
+                        {formatDate(day.date)}
+                      </div>
+                      <div className="text-sm text-gray-500">{day.date}</div>
+                    </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-blue-900">
