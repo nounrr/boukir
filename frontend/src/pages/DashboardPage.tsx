@@ -27,6 +27,14 @@ const DashboardPage: React.FC = () => {
   const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
   const { data: allPayments = [] } = useGetPaymentsQuery();
 
+  // Utility function to format amounts without forced rounding
+  const formatAmount = (amount: number): string => {
+    return new Intl.NumberFormat('fr-FR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 10, // Permet jusqu'à 10 décimales si nécessaire
+    }).format(amount);
+  };
+
   // Helpers
   const isSameMonth = (iso?: string) => {
     if (!iso) return false;
@@ -180,7 +188,7 @@ const DashboardPage: React.FC = () => {
       const timeAgo = Math.floor((now.getTime() - new Date(bon.date_creation).getTime()) / (1000 * 60 * 60));
       activities.push({
         type: 'bon',
-        message: `${bon.type} ${bon.numero || `#${bon.id}`} créé - ${Number(bon.montant_total || 0).toFixed(2)} DH`,
+        message: `${bon.type} ${bon.numero || `#${bon.id}`} créé - ${formatAmount(Number(bon.montant_total || 0))} DH`,
         time: timeAgo > 0 ? `Il y a ${timeAgo}h` : "À l'instant",
         color: bon.type === 'Sortie' ? 'green' : bon.type === 'Comptant' ? 'blue' : 'purple',
         priority: bon.statut === 'Validé' ? 'high' : 'medium'
@@ -200,7 +208,7 @@ const DashboardPage: React.FC = () => {
       const timeAgo = Math.floor((now.getTime() - new Date(payment.date_paiement).getTime()) / (1000 * 60 * 60));
       activities.push({
         type: 'payment',
-        message: `Paiement PAY${String(payment.id).padStart(2, '0')} - ${Number(payment.montant_total || 0).toFixed(2)} DH (${payment.mode_paiement})`,
+        message: `Paiement PAY${String(payment.id).padStart(2, '0')} - ${formatAmount(Number(payment.montant_total || 0))} DH (${payment.mode_paiement})`,
         time: timeAgo > 0 ? `Il y a ${timeAgo}h` : "À l'instant",
         color: 'yellow',
         priority: 'high'
@@ -331,13 +339,12 @@ const DashboardPage: React.FC = () => {
               <DollarSign className="text-yellow-500" size={24} />
               <div className="ml-3">
                 <p className="text-sm font-medium text-gray-500">Chiffre d'affaires net (aujourd'hui)</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.revenue.toFixed(2)} DH</p>
+                <p className="text-2xl font-semibold text-gray-900">{formatAmount(stats.revenue)} DH</p>
                 {avoirsClient.filter((a: any) => isToday(a.date_creation) && new Set(['En attente', 'Validé']).has(a.statut)).length > 0 && (
                   <p className="text-xs text-gray-400 mt-1">
-                    Avoirs déduits: -{avoirsClient
+                    Avoirs déduits: -{formatAmount(avoirsClient
                       .filter((a: any) => isToday(a.date_creation) && new Set(['En attente', 'Validé']).has(a.statut))
-                      .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0)
-                      .toFixed(2)} DH
+                      .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0))} DH
                   </p>
                 )}
               </div>
@@ -353,7 +360,7 @@ const DashboardPage: React.FC = () => {
               <TrendingUp className="text-emerald-500" size={24} />
               <div className="ml-3">
                 <p className="text-sm font-medium text-gray-500">Chiffre bénéficiaire (aujourd'hui)</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.purchaseRevenue.toFixed(2)} DH</p>
+                <p className="text-2xl font-semibold text-gray-900">{formatAmount(stats.purchaseRevenue)} DH</p>
                 <p className="text-xs text-gray-400 mt-1">
                   Basé sur les bénéfices (profits)
                 </p>
@@ -370,7 +377,7 @@ const DashboardPage: React.FC = () => {
               <Package className="text-indigo-500" size={24} />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">CA des Achats (aujourd'hui)</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.purchaseOrdersRevenue.toFixed(2)} DH</p>
+                <p className="text-2xl font-semibold text-gray-900">{formatAmount(stats.purchaseOrdersRevenue)} DH</p>
                 <p className="text-xs text-gray-400 mt-1">
                   Commandes d'aujourd'hui validées et en attente
                 </p>

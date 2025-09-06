@@ -34,6 +34,7 @@ import ProfilePage from './pages/ProfilePage';
 import EmployeeSalariesPage from './pages/EmployeeSalariesPage';
 import AuditPage from './pages/AuditPage';
 import ChiffreAffairesPage from './pages/ChiffreAffairesPage';
+import ChiffreAffairesDetailPage from './pages/ChiffreAffairesDetailPage';
 
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
@@ -213,6 +214,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <ChiffreAffairesPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/chiffre-affaires/detail/:date"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ChiffreAffairesDetailPage />
               </Layout>
             </ProtectedRoute>
           }
