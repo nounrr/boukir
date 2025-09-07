@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
-import { useAppSelector } from '../hooks/redux';
+import { useAppSelector, useAuth } from '../hooks/redux';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { 
@@ -39,6 +39,7 @@ import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '..
 import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
 import PaymentPrintModal from '../components/PaymentPrintModal';
+import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
 
 const CaissePage = () => {
   const dispatch = useDispatch();
@@ -75,6 +76,30 @@ const CaissePage = () => {
   const [uploadPaymentImage] = useUploadPaymentImageMutation();
   const [deletePaymentImage] = useDeletePaymentImageMutation();
   const { data: personnelNames = [] } = useGetPersonnelNamesQuery();
+  const [createOldTalonCaisse] = useCreateOldTalonCaisseMutation();
+  const { token } = useAuth();
+
+  // Audit meta for payments (created_by_name / updated_by_name)
+  const [paymentsMeta, setPaymentsMeta] = useState<Record<string, { created_by_name: any; updated_by_name: any }>>({});
+
+  // Safely render any text value (handles Buffer-like {type:'Buffer', data:[..]})
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isBufferLike = (o: any): o is { type: 'Buffer'; data: number[] } => {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    return !!o && typeof o === 'object' && (o as any).type === 'Buffer' && Array.isArray((o as any).data);
+  };
+  const safeText = (v: any): string => {
+    if (v == null) return '-';
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (isBufferLike(v)) {
+      try {
+        return new TextDecoder('utf-8').decode(new Uint8Array(v.data));
+      } catch {
+        return '[Binary]';
+      }
+    }
+    return String(v);
+  };
   
   // Bons from database: utiliser les mêmes sources que BonFormModal
   const { data: sorties = [], isLoading: sortiesLoading } = useGetBonsByTypeQuery('Sortie');
@@ -221,6 +246,21 @@ const CaissePage = () => {
       return 0;
     });
   }, [payments, searchTerm, dateFilter, statusFilter, modeFilter, sortField, sortDirection, clients, fournisseurs]);
+
+  // Fetch audit meta for displayed payments
+  useEffect(() => {
+    const ids = sortedPayments.map((p: any) => p.id).filter(Boolean);
+    if (!ids.length) { setPaymentsMeta({}); return; }
+    const ctrl = new AbortController();
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch(`/api/audit/meta?table=payments&ids=${ids.join(',')}`, { signal: ctrl.signal, headers })
+      .then(r => r.ok ? r.json() : r.text().then(tx => Promise.reject(new Error(tx))))
+      .then(obj => setPaymentsMeta(obj || {}))
+      .catch(() => {})
+      .finally(() => {});
+    return () => ctrl.abort();
+  }, [sortedPayments, token]);
 
   // Calculs statistiques
   const amountOf = (p: Payment) => Number(p.montant ?? p.montant_total ?? 0);
@@ -585,7 +625,52 @@ const paymentValidationSchema = Yup.object({
           created_by: user?.id || 1,
         };
         if (paymentData.contact_id !== null) body.contact_id = paymentData.contact_id;
-        await createPayment(body).unwrap();
+        const created = await createPayment(body).unwrap();
+        // Duplication dans old_talons_caisse (legacy) pour TOUT paiement associé à un talon
+        try {
+          if (created?.talon_id) {
+            // Normaliser toutes les dates en format YYYY-MM-DD pour la table legacy
+            const toYMD = (d: any): string | null => {
+              if (!d) return null;
+              if (typeof d === 'string') {
+                // 1) si déjà au format (ou commence par) YYYY-MM-DD, prendre les 10 premiers
+                if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
+                // 2) extraire un motif YYYY-MM-DD si présent dans la chaîne
+                const m = d.match(/(\d{4}-\d{2}-\d{2})/);
+                if (m) return m[1];
+                // 3) tenter une conversion Date() puis ISO
+                const dt = new Date(d);
+                if (!isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+                return null;
+              }
+              if (d instanceof Date) {
+                return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+              }
+              // number ou autre
+              const dt = new Date(d);
+              return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+            };
+
+            const oldPayload = {
+              date_paiement: toYMD(created.date_paiement),
+              fournisseur: created.type_paiement === 'Fournisseur'
+                ? (fournisseurs.find(f => f.id === created.contact_id)?.nom_complet || 'Fournisseur')
+                : (clients.find(c => c.id === created.contact_id)?.nom_complet || 'Client'),
+              montant_cheque: Number(created.montant_total || 0),
+              // Pour les modes non-chèque/traite, on garde une date_cheque cohérente (date échéance si dispo sinon date paiement)
+              date_cheque: toYMD(created.date_echeance) ?? toYMD(created.date_paiement),
+              numero_cheque: created.code_reglement || null,
+              validation: created.statut || 'En attente',
+              banque: created.banque || undefined,
+              personne: created.personnel || undefined,
+              factures: created.designation || undefined,
+              disponible: undefined,
+              id_talon: created.talon_id,
+            } as const;
+            // Post silently; ignore failures so main save succeeds
+            await createOldTalonCaisse(oldPayload as any).unwrap().catch(() => {});
+          }
+        } catch {}
         showSuccess('Paiement enregistré avec succès');
       }
       
@@ -763,7 +848,7 @@ const paymentValidationSchema = Yup.object({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Encaissements</p>
-              <p className="text-2xl font-bold text-gray-900">{totalEncaissements} DH</p>
+              <p className="text-2xl font-bold text-gray-900">{totalEncaissements.toFixed(2)} DH</p>
             </div>
             <div className="p-3 bg-blue-100 rounded-full">
               <DollarSign className="h-6 w-6 text-blue-600" />
@@ -967,6 +1052,12 @@ const paymentValidationSchema = Yup.object({
                   Statut
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Créé par
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Dernière modif.
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -974,7 +1065,7 @@ const paymentValidationSchema = Yup.object({
             <tbody className="bg-white divide-y divide-gray-200">
               {sortedPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={12} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun paiement trouvé
                   </td>
                 </tr>
@@ -1050,6 +1141,12 @@ const paymentValidationSchema = Yup.object({
                           {displayStatut(payment.statut)}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{safeText((paymentsMeta as any)[payment.id]?.created_by_name)}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{safeText((paymentsMeta as any)[payment.id]?.updated_by_name)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-3">
@@ -1199,6 +1296,14 @@ const paymentValidationSchema = Yup.object({
                     <p className="text-xs text-gray-500">Échéance: {formatYMD(payment.date_echeance)}</p>
                   )}
                   <p className="text-xs text-gray-500">{getBonInfoDetailed(payment.bon_id)}</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
+                    <div>
+                      <span className="text-gray-400">Créé par:</span> <span className="text-gray-700">{safeText((paymentsMeta as any)[payment.id]?.created_by_name)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Dernière modif.:</span> <span className="text-gray-700">{safeText((paymentsMeta as any)[payment.id]?.updated_by_name)}</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2 pt-2 border-t">
                   {/* Actions principales */}

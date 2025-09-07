@@ -1,52 +1,52 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  Search, 
-  Eye, 
-  Trash2, 
-  Clock,
-  XCircle,
-  X,
-  CreditCard, 
-  DollarSign,
-  Receipt,
+import React, { useMemo, useState } from 'react';
+import {
   Calendar,
-  User,
-  FileText,
   CheckCircle,
+  ChevronDown,
   ChevronUp,
-  ChevronDown
+  CreditCard,
+  DollarSign,
+  Eye,
+  FileText,
+  Receipt,
+  Search,
+  Trash2,
+  X,
+  XCircle,
+  Clock,
+  User,
 } from 'lucide-react';
-import type { Payment, Talon, OldTalonCaisse } from '../types';
+import type { Talon, OldTalonCaisse } from '../types';
+import { useGetTalonsQuery } from '../store/api/talonsApi';
+import {
+  useGetOldTalonsCaisseQuery,
+  useDeleteOldTalonCaisseMutation,
+  useChangeOldTalonCaisseStatusMutation,
+} from '../store/slices/oldTalonsCaisseSlice';
+import { showConfirmation, showError, showSuccess } from '../utils/notifications';
+import { formatDateTimeWithHour } from '../utils/dateUtils';
 
-// Interface unifiée pour afficher les paiements talon
+// Interface unifiée (old only)
 interface UnifiedTalonPayment {
-  id: string; // Unique identifier (payment:id ou old:id)
-  type: 'payment' | 'old'; // Type pour différencier
-  numero?: string; // Numéro du paiement (pour payments)
-  date_paiement: string;
+  id: string; // ex: "old-12"
+  type: 'old';
+  numero?: string; // affichage (PAYxx)
+  date_paiement: string | null;
   montant_total: number;
-  statut: string;
+  statut: StatusType;
   talon_id: number;
-  // Champs spécifiques aux anciens talons
+  // Champs spécifiques old
   fournisseur?: string;
-  numero_cheque?: string;
-  date_cheque?: string;
+  numero_cheque?: string | null;
+  date_cheque?: string | null;
   banque?: string;
-  // Champs spécifiques aux paiements normaux
-  mode_paiement?: string;
+  mode_paiement?: 'Chèque';
   designation?: string;
-  date_echeance?: string;
+  date_echeance?: string | null; // alias de date_cheque pour l'affichage générique
   personnel?: string;
   code_reglement?: string;
-  // Données originales
-  originalPayment?: Payment;
-  originalOldTalon?: OldTalonCaisse;
+  originalOldTalon: OldTalonCaisse;
 }
-import { useGetPaymentsQuery, useDeletePaymentMutation, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
-import { useGetTalonsQuery } from '../store/api/talonsApi';
-import { useGetOldTalonsCaisseQuery, useDeleteOldTalonCaisseMutation, useChangeOldTalonCaisseStatusMutation } from '../store/slices/oldTalonsCaisseSlice';
-import { showSuccess, showError, showConfirmation } from '../utils/notifications';
-import { formatDateTimeWithHour } from '../utils/dateUtils';
 
 // Types & constants for status badges
 type StatusType = 'En attente' | 'Validé' | 'Refusé' | 'Annulé';
@@ -89,257 +89,178 @@ function StatusBadgeToggle(props: Readonly<{
   );
 }
 
+// eslint-disable-next-line sonarjs/cognitive-complexity
 const TalonCaissePage = () => {
-  const toggleStatusFilter = (s: StatusType) => {
-    setStatusFilter((prev) => (prev.length === 1 && prev[0] === s ? [] : [s]));
-  };
-  // États locaux
-  const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite'>('all');
-  const [selectedTalonFilter, setSelectedTalonFilter] = useState<string>('');
-  const [onlyDueSoon, setOnlyDueSoon] = useState<boolean>(false);
-  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  
-  // Sorting
-  const [sortField, setSortField] = useState<'numero' | 'talon' | 'montant' | 'date' | 'echeance' | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
-
-  // RTK Query hooks
-  const { data: allPayments = [], isLoading: paymentsLoading } = useGetPaymentsQuery();
+  // Data
   const { data: talons = [], isLoading: talonsLoading } = useGetTalonsQuery(undefined);
-  const { data: oldTalonsCaisse = [], isLoading: oldTalonsLoading } = useGetOldTalonsCaisseQuery();
-  const [deletePaymentApi] = useDeletePaymentMutation();
-  const [changePaymentStatusApi] = useChangePaymentStatusMutation();
+  const { data: oldTalons = [], isLoading: oldTalonsLoading } = useGetOldTalonsCaisseQuery();
   const [deleteOldTalonCaisseApi] = useDeleteOldTalonCaisseMutation();
   const [changeOldTalonCaisseStatusApi] = useChangeOldTalonCaisseStatusMutation();
 
-  // Unifier les paiements talon normaux et les anciens talons caisse
-  const unifiedPayments = useMemo(() => {
-    const unified: UnifiedTalonPayment[] = [];
+  // State
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusType[]>([]);
+  const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite'>('all');
+  const [selectedTalonFilter, setSelectedTalonFilter] = useState('');
+  const [onlyDueSoon, setOnlyDueSoon] = useState(false);
+  const [sortField, setSortField] = useState<'numero' | 'talon' | 'montant' | 'date' | 'echeance' | ''>('');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
-    // Ajouter les paiements talon normaux
-    const talonPayments = allPayments.filter((payment: any) => payment.talon_id);
-    talonPayments.forEach((payment: any) => {
-      unified.push({
-        id: `payment:${payment.id}`,
-        type: 'payment',
-        numero: `PAY${String(payment.id).padStart(2, '0')}`,
-        date_paiement: payment.date_paiement,
-        montant_total: Number(payment.montant_total || 0),
-        statut: payment.statut || 'En attente',
-        talon_id: payment.talon_id,
-        mode_paiement: payment.mode_paiement,
-        designation: payment.designation,
-        date_echeance: payment.date_echeance,
-        banque: payment.banque,
-        personnel: payment.personnel,
-        code_reglement: payment.code_reglement,
-        originalPayment: payment
-      });
-    });
+  const toggleStatusFilter = (s: StatusType) => {
+    setStatusFilter((prev) => (prev.length === 1 && prev[0] === s ? [] : [s]));
+  };
 
-    // Ajouter les anciens talons caisse
-    oldTalonsCaisse.forEach((oldTalon: OldTalonCaisse) => {
-      unified.push({
-        id: `old:${oldTalon.id}`,
-        type: 'old',
-        numero: `OLD${String(oldTalon.id).padStart(2, '0')}`,
-        date_paiement: oldTalon.date_paiement,
-        montant_total: Number(oldTalon.montant_cheque || 0),
-        statut: oldTalon.validation,
-        talon_id: oldTalon.id_talon,
-        fournisseur: oldTalon.fournisseur,
-        numero_cheque: oldTalon.numero_cheque,
-        date_cheque: oldTalon.date_cheque,
-        banque: oldTalon.banque,
-        originalOldTalon: oldTalon
-      });
-    });
-
-    return unified;
-  }, [allPayments, oldTalonsCaisse]);
-
-  // Handle sorting
   const handleSort = (field: 'numero' | 'talon' | 'montant' | 'date' | 'echeance') => {
     if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
       setSortDirection('asc');
     }
-  };  // Helper: est en échéance proche (<= 5 jours) par rapport à aujourd'hui
-  const isDueSoon = (payment: any) => {
-    if (!payment?.date_echeance) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(payment.date_echeance);
-    if (isNaN(due.getTime())) return false;
-    due.setHours(0, 0, 0, 0);
-    const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    // <= 5 jours restants (inclut en retard: diffDays <= 0)
+  };
+
+  // Unifier (old only)
+  const unifiedPayments: UnifiedTalonPayment[] = useMemo(() => {
+    return oldTalons.map((o) => ({
+      id: `old-${o.id}`,
+      type: 'old',
+      numero: `PAY${String(o.id).padStart(2, '0')}`,
+      date_paiement: o.date_paiement,
+      montant_total: Number(o.montant_cheque || 0),
+      statut: o.validation || 'En attente',
+      talon_id: o.id_talon,
+      fournisseur: o.fournisseur,
+      numero_cheque: o.numero_cheque ?? null,
+      date_cheque: o.date_cheque ?? null,
+      banque: o.banque,
+      mode_paiement: 'Chèque',
+      date_echeance: o.date_cheque ?? null,
+      personnel: o.personne,
+      code_reglement: undefined,
+      designation: o.factures,
+      originalOldTalon: o,
+    }));
+  }, [oldTalons]);
+
+  // Utils
+  const isDueSoon = (obj: { date_echeance?: string | null; date_cheque?: string | null } | UnifiedTalonPayment) => {
+    const dateStr = (obj as any).date_echeance ?? (obj as any).date_cheque ?? null;
+    if (!dateStr) return false;
+    const now = new Date();
+    const due = new Date(dateStr);
+    const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     return diffDays <= 5;
   };
 
-  // Statistiques basées sur les données unifiées
+  const getTalonName = (talonId: number) => {
+    const talon = talons.find((t: Talon) => t.id === talonId);
+    return talon ? talon.nom : `Talon #${talonId}`;
+  };
+
+  // Statistiques
   const statistiques = useMemo(() => {
     const total = unifiedPayments.length;
-    const validés = unifiedPayments.filter((p) => p.statut === 'Validé').length;
+    const valides = unifiedPayments.filter((p) => p.statut === 'Validé').length;
     const enAttente = unifiedPayments.filter((p) => p.statut === 'En attente').length;
-    const montantTotal = unifiedPayments.reduce((sum: number, p) => sum + p.montant_total, 0);
-    const echeanceProche = unifiedPayments.filter((p) => {
-      if (p.type === 'payment' && p.date_echeance) {
-        return isDueSoon({ date_echeance: p.date_echeance });
-      }
-      if (p.type === 'old' && p.date_cheque) {
-        return isDueSoon({ date_echeance: p.date_cheque });
-      }
-      return false;
-    }).length;
-    
-    return { total, validés, enAttente, montantTotal, echeanceProche };
+    const montantTotal = unifiedPayments.reduce((sum, p) => sum + (Number(p.montant_total) || 0), 0);
+    const echeanceProche = unifiedPayments.filter((p) => isDueSoon(p)).length;
+    return { total, validés: valides, enAttente, montantTotal, echeanceProche };
   }, [unifiedPayments]);
 
   // Filtrage des paiements unifiés
   const filteredPayments = useMemo(() => {
-    let filtered = unifiedPayments;
+    let filtered = [...unifiedPayments];
 
-    // Filtre par terme de recherche
+    // Recherche
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter((payment) => {
-        const numero = payment.numero?.toLowerCase() || '';
-        const talonName = talons.find((t: Talon) => t.id === payment.talon_id)?.nom?.toLowerCase() || '';
-        const statut = payment.statut.toLowerCase();
-        const montant = String(payment.montant_total);
-        
-        // Recherche spécifique selon le type
-        if (payment.type === 'payment') {
-          return numero.includes(term) ||
-                 (payment.mode_paiement || '').toLowerCase().includes(term) ||
-                 statut.includes(term) ||
-                 talonName.includes(term) ||
-                 montant.includes(term) ||
-                 (payment.designation || '').toLowerCase().includes(term);
-        } else {
-          return numero.includes(term) ||
-                 (payment.fournisseur || '').toLowerCase().includes(term) ||
-                 (payment.numero_cheque || '').toLowerCase().includes(term) ||
-                 statut.includes(term) ||
-                 talonName.includes(term) ||
-                 montant.includes(term);
-        }
+      filtered = filtered.filter((p) => {
+        const numero = (p.numero || '').toLowerCase();
+        const talonName = getTalonName(p.talon_id).toLowerCase();
+        const statut = (p.statut || '').toLowerCase();
+        const montant = String(p.montant_total);
+        return (
+          numero.includes(term) ||
+          talonName.includes(term) ||
+          statut.includes(term) ||
+          montant.includes(term) ||
+          (p.fournisseur || '').toLowerCase().includes(term) ||
+          (p.numero_cheque || '').toLowerCase().includes(term)
+        );
       });
     }
 
-    // Filtre par date
+    // Date
     if (dateFilter) {
-      filtered = filtered.filter((payment) => {
-        const paymentDate = payment.date_paiement ? payment.date_paiement.slice(0, 10) : '';
-        return paymentDate === dateFilter;
-      });
+      filtered = filtered.filter((p) => (p.date_paiement ? p.date_paiement.slice(0, 10) === dateFilter : false));
     }
 
-    // Filtre par statut
+    // Statut
     if (statusFilter.length > 0) {
-      filtered = filtered.filter((payment) => statusFilter.includes(payment.statut));
+      filtered = filtered.filter((p) => statusFilter.includes(p.statut));
     }
 
-    // Filtre par mode de paiement (seulement pour les paiements normaux)
+    // Mode (les old = Chèque)
     if (modeFilter !== 'all') {
       if (modeFilter === 'Chèque') {
-        // Inclure les paiements mode "Chèque" ET les anciens talons (qui sont tous des chèques)
-        filtered = filtered.filter((payment) => 
-          (payment.type === 'payment' && payment.mode_paiement === 'Chèque') ||
-          payment.type === 'old'
-        );
+        filtered = filtered.filter((p) => p.mode_paiement === 'Chèque');
       } else {
-        // Autres modes : seulement les paiements normaux
-        filtered = filtered.filter((payment) => 
-          payment.type === 'payment' && payment.mode_paiement === modeFilter
-        );
+        filtered = [];
       }
     }
 
-    // Filtre par talon
+    // Talon
     if (selectedTalonFilter) {
-      filtered = filtered.filter((payment) => String(payment.talon_id) === selectedTalonFilter);
+      filtered = filtered.filter((p) => String(p.talon_id) === selectedTalonFilter);
     }
 
-    // Filtre: seulement échéance ≤ 5 jours
+    // Échéance proche
     if (onlyDueSoon) {
-      filtered = filtered.filter((p) => {
-        if (p.type === 'payment' && p.date_echeance) {
-          return isDueSoon({ date_echeance: p.date_echeance });
-        }
-        if (p.type === 'old' && p.date_cheque) {
-          return isDueSoon({ date_echeance: p.date_cheque });
-        }
-        return false;
-      });
+      filtered = filtered.filter((p) => isDueSoon(p));
     }
 
-    // Apply sorting if specified
+    // Tri
     if (sortField) {
-      filtered = [...filtered].sort((a, b) => {
-        let aValue: any;
-        let bValue: any;
-
-        const getTalonName = (talonId: number) => {
-          const talon = talons.find((t: Talon) => t.id === talonId);
-          return talon ? talon.nom : `Talon #${talonId}`;
-        };
-
+      filtered.sort((a, b) => {
+        let aVal: any = '';
+        let bVal: any = '';
         switch (sortField) {
           case 'numero':
-            aValue = (a.numero || '').toLowerCase();
-            bValue = (b.numero || '').toLowerCase();
+            aVal = (a.numero || '').toLowerCase();
+            bVal = (b.numero || '').toLowerCase();
             break;
           case 'talon':
-            aValue = getTalonName(a.talon_id).toLowerCase();
-            bValue = getTalonName(b.talon_id).toLowerCase();
+            aVal = getTalonName(a.talon_id).toLowerCase();
+            bVal = getTalonName(b.talon_id).toLowerCase();
             break;
           case 'montant':
-            aValue = a.montant_total;
-            bValue = b.montant_total;
+            aVal = a.montant_total;
+            bVal = b.montant_total;
             break;
           case 'date':
-            aValue = new Date(a.date_paiement || 0).getTime();
-            bValue = new Date(b.date_paiement || 0).getTime();
+            aVal = a.date_paiement ? new Date(a.date_paiement).getTime() : 0;
+            bVal = b.date_paiement ? new Date(b.date_paiement).getTime() : 0;
             break;
-          case 'echeance': {
-            const aEcheance = a.type === 'payment' ? a.date_echeance : a.date_cheque;
-            const bEcheance = b.type === 'payment' ? b.date_echeance : b.date_cheque;
-            aValue = aEcheance ? new Date(aEcheance).getTime() : Number.POSITIVE_INFINITY;
-            bValue = bEcheance ? new Date(bEcheance).getTime() : Number.POSITIVE_INFINITY;
+          case 'echeance':
+            aVal = a.date_echeance ? new Date(a.date_echeance).getTime() : Number.POSITIVE_INFINITY;
+            bVal = b.date_echeance ? new Date(b.date_echeance).getTime() : Number.POSITIVE_INFINITY;
             break;
-          }
-          default:
-            return 0;
         }
-
-        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
         return 0;
       });
     } else {
-      // Default sorting: Prioriser les paiements avec échéance proche, puis trier par date d'échéance croissante
-      filtered = [...filtered].sort((a, b) => {
-        const aEcheance = a.type === 'payment' ? a.date_echeance : a.date_cheque;
-        const bEcheance = b.type === 'payment' ? b.date_echeance : b.date_cheque;
-        const aDue = aEcheance ? isDueSoon({ date_echeance: aEcheance }) : false;
-        const bDue = bEcheance ? isDueSoon({ date_echeance: bEcheance }) : false;
-        
+      // Par défaut: échéance proche d'abord, puis date d'échéance croissante
+      filtered.sort((a, b) => {
+        const aDue = a.date_echeance ? isDueSoon({ date_echeance: a.date_echeance }) : false;
+        const bDue = b.date_echeance ? isDueSoon({ date_echeance: b.date_echeance }) : false;
         if (aDue !== bDue) return aDue ? -1 : 1;
-        
-        const aTs = aEcheance ? new Date(aEcheance).getTime() : Number.POSITIVE_INFINITY;
-        const bTs = bEcheance ? new Date(bEcheance).getTime() : Number.POSITIVE_INFINITY;
+        const aTs = a.date_echeance ? new Date(a.date_echeance).getTime() : Number.POSITIVE_INFINITY;
+        const bTs = b.date_echeance ? new Date(b.date_echeance).getTime() : Number.POSITIVE_INFINITY;
         return aTs - bTs;
       });
     }
@@ -359,9 +280,9 @@ const TalonCaissePage = () => {
     setCurrentPage(1);
   }, [searchTerm, dateFilter, statusFilter, modeFilter, selectedTalonFilter, onlyDueSoon]);
 
-  // (dropdown removed) – no outside-click handler needed
+  // (dropdown removed)
 
-  // Fonctions utilitaires
+  // UI utils
   const getModeIcon = (mode: string) => {
     switch (mode) {
       case 'Espèces':
@@ -407,14 +328,9 @@ const TalonCaissePage = () => {
     }
   };
 
-  const getTalonName = (talonId: number) => {
-    const talon = talons.find((t: Talon) => t.id === talonId);
-    return talon ? talon.nom : `Talon #${talonId}`;
-  };
-
   // Fonctions de gestion
   const handleDelete = async (unifiedPayment: UnifiedTalonPayment) => {
-    const type = unifiedPayment.type === 'payment' ? 'paiement' : 'ancien talon caisse';
+    const type = 'ancien talon caisse';
     const result = await showConfirmation(
       'Cette action est irréversible.',
       `Êtes-vous sûr de vouloir supprimer ce ${type} ?`,
@@ -424,11 +340,7 @@ const TalonCaissePage = () => {
     
     if (result.isConfirmed) {
       try {
-        if (unifiedPayment.type === 'payment' && unifiedPayment.originalPayment) {
-          await deletePaymentApi({ id: unifiedPayment.originalPayment.id }).unwrap();
-        } else if (unifiedPayment.type === 'old' && unifiedPayment.originalOldTalon) {
-          await deleteOldTalonCaisseApi({ id: unifiedPayment.originalOldTalon.id }).unwrap();
-        }
+        await deleteOldTalonCaisseApi({ id: unifiedPayment.originalOldTalon.id }).unwrap();
         showSuccess(`${type.charAt(0).toUpperCase() + type.slice(1)} supprimé avec succès`);
       } catch (error: any) {
         console.error('Erreur lors de la suppression:', error);
@@ -439,14 +351,10 @@ const TalonCaissePage = () => {
 
   const handleChangeStatus = async (unifiedPayment: UnifiedTalonPayment, newStatus: string) => {
     try {
-      if (unifiedPayment.type === 'payment' && unifiedPayment.originalPayment) {
-        await changePaymentStatusApi({ id: unifiedPayment.originalPayment.id, statut: newStatus }).unwrap();
-      } else if (unifiedPayment.type === 'old' && unifiedPayment.originalOldTalon) {
-        await changeOldTalonCaisseStatusApi({ 
-          id: unifiedPayment.originalOldTalon.id, 
-          validation: newStatus as 'Validé' | 'En attente' | 'Refusé' | 'Annulé'
-        }).unwrap();
-      }
+      await changeOldTalonCaisseStatusApi({ 
+        id: unifiedPayment.originalOldTalon.id, 
+        validation: newStatus as 'Validé' | 'En attente' | 'Refusé' | 'Annulé'
+      }).unwrap();
       showSuccess(`Statut mis à jour: ${newStatus}`);
     } catch (error: any) {
       console.error('Erreur lors du changement de statut:', error);
@@ -454,9 +362,7 @@ const TalonCaissePage = () => {
     }
   };
 
-  // (bulk status actions removed)
-
-  // État pour la visualisation
+  // Modal
   const [selectedUnifiedPayment, setSelectedUnifiedPayment] = useState<UnifiedTalonPayment | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
@@ -467,7 +373,7 @@ const TalonCaissePage = () => {
 
   // (status filter now handled via multi-select)
 
-  if (paymentsLoading || talonsLoading || oldTalonsLoading) {
+  if (talonsLoading || oldTalonsLoading) {
     return (
       <div className="p-6">
         <div className="flex justify-center items-center py-12">
@@ -510,7 +416,7 @@ const TalonCaissePage = () => {
                     <table>
                       <tr><th>N° Paiement</th><th>Talon</th><th>Montant</th><th>Mode</th><th>Statut</th><th>Date</th><th>Échéance</th></tr>
                       ${filteredPayments.map((p: any) => 
-                        `<tr><td>PAY${String(p.id).padStart(2, '0')}</td><td>${getTalonName(p.talon_id)}</td><td>${Number(p.montant_total || 0)} DH</td><td>${p.mode_paiement}</td><td>${p.statut || 'En attente'}</td><td>${new Date(p.date_paiement).toLocaleDateString('fr-FR')}</td><td>${p.date_echeance ? new Date(p.date_echeance).toLocaleDateString('fr-FR') : ''}</td></tr>`
+                        `<tr><td>${p.numero || ''}</td><td>${getTalonName(p.talon_id)}</td><td>${Number(p.montant_total || 0)} DH</td><td>${p.mode_paiement || 'Chèque'}</td><td>${p.statut || 'En attente'}</td><td>${p.date_paiement ? new Date(p.date_paiement).toLocaleDateString('fr-FR') : ''}</td><td>${p.date_echeance ? new Date(p.date_echeance).toLocaleDateString('fr-FR') : ''}</td></tr>`
                       ).join('')}
                     </table>
                   </body>
@@ -822,7 +728,7 @@ const TalonCaissePage = () => {
                       <FileText className="w-12 h-12 text-gray-400 mb-4" />
                       <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun paiement trouvé</h3>
                       <p className="text-gray-500 max-w-sm">
-                        {talonPayments.length === 0 
+                        {unifiedPayments.length === 0 
                           ? "Aucun paiement avec talon associé n'a été trouvé." 
                           : "Aucun paiement ne correspond à vos critères de recherche."}
                       </p>
@@ -834,7 +740,7 @@ const TalonCaissePage = () => {
                   <tr key={payment.id} className={`transition-colors ${isDueSoon(payment) ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-orange-50'}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-semibold text-gray-900">
-                        PAY{String(payment.id).padStart(2, '0')}
+                        {payment.numero}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -858,8 +764,8 @@ const TalonCaissePage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        {getModeIcon(payment.mode_paiement)}
-                        <span className="text-sm text-gray-900">{payment.mode_paiement}</span>
+                        {getModeIcon(payment.mode_paiement || 'Chèque')}
+                        <span className="text-sm text-gray-900">{payment.mode_paiement || 'Chèque'}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -942,7 +848,7 @@ const TalonCaissePage = () => {
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(payment.id)}
+                          onClick={() => handleDelete(payment)}
                           className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           title="Supprimer"
                         >
@@ -1009,12 +915,12 @@ const TalonCaissePage = () => {
       )}
 
       {/* Modal de visualisation */}
-      {isViewModalOpen && selectedPayment && (
+    {isViewModalOpen && selectedUnifiedPayment && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900">
-                Détails du paiement PAY{String(selectedPayment.id).padStart(2, '0')}
+        Détails du paiement {selectedUnifiedPayment.numero}
               </h2>
               <button
                 onClick={() => setIsViewModalOpen(false)}
@@ -1028,54 +934,54 @@ const TalonCaissePage = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="block text-sm font-medium text-gray-600">Talon associé</div>
-                  <p className="text-gray-900">{selectedPayment.talon_id ? getTalonName(selectedPayment.talon_id) : 'Aucun talon'}</p>
+          <p className="text-gray-900">{selectedUnifiedPayment.talon_id ? getTalonName(selectedUnifiedPayment.talon_id) : 'Aucun talon'}</p>
                 </div>
                 <div>
                   <div className="block text-sm font-medium text-gray-600">Montant</div>
-                  <p className="text-gray-900">{Number(selectedPayment.montant_total || 0)} DH</p>
+          <p className="text-gray-900">{Number(selectedUnifiedPayment.montant_total || 0)} DH</p>
                 </div>
                 <div>
                   <div className="block text-sm font-medium text-gray-600">Mode de paiement</div>
-                  <p className="text-gray-900">{selectedPayment.mode_paiement}</p>
+          <p className="text-gray-900">{selectedUnifiedPayment.mode_paiement || 'Chèque'}</p>
                 </div>
                 <div>
                   <div className="block text-sm font-medium text-gray-600">Statut</div>
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(selectedPayment.statut || 'En attente')}`}>
-                    {selectedPayment.statut || 'En attente'}
+          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(selectedUnifiedPayment.statut || 'En attente')}`}>
+          {selectedUnifiedPayment.statut || 'En attente'}
                   </span>
                 </div>
                 <div>
                   <div className="block text-sm font-medium text-gray-600">Date de paiement</div>
-                  <p className="text-gray-900">{formatDateTimeWithHour(selectedPayment.date_paiement)}</p>
+          <p className="text-gray-900">{selectedUnifiedPayment.date_paiement ? formatDateTimeWithHour(selectedUnifiedPayment.date_paiement) : ''}</p>
                 </div>
-                {selectedPayment.date_echeance && (
+        {selectedUnifiedPayment.date_echeance && (
                   <div>
                     <div className="block text-sm font-medium text-gray-600">Date d'échéance</div>
-                    <p className="text-gray-900">{formatDateTimeWithHour(selectedPayment.date_echeance)}</p>
+          <p className="text-gray-900">{formatDateTimeWithHour(selectedUnifiedPayment.date_echeance)}</p>
                   </div>
                 )}
-                {selectedPayment.banque && (
+        {selectedUnifiedPayment.banque && (
                   <div>
                     <div className="block text-sm font-medium text-gray-600">Banque</div>
-                    <p className="text-gray-900">{selectedPayment.banque}</p>
+          <p className="text-gray-900">{selectedUnifiedPayment.banque}</p>
                   </div>
                 )}
-                {selectedPayment.personnel && (
+        {selectedUnifiedPayment.personnel && (
                   <div>
                     <div className="block text-sm font-medium text-gray-600">Personnel</div>
-                    <p className="text-gray-900">{selectedPayment.personnel}</p>
+          <p className="text-gray-900">{selectedUnifiedPayment.personnel}</p>
                   </div>
                 )}
-                {selectedPayment.code_reglement && (
+        {selectedUnifiedPayment.code_reglement && (
                   <div>
                     <div className="block text-sm font-medium text-gray-600">Code règlement</div>
-                    <p className="text-gray-900">{selectedPayment.code_reglement}</p>
+          <p className="text-gray-900">{selectedUnifiedPayment.code_reglement}</p>
                   </div>
                 )}
-                {selectedPayment.notes && (
+        {(selectedUnifiedPayment.designation || selectedUnifiedPayment.numero_cheque) && (
                   <div className="col-span-2">
-                    <div className="block text-sm font-medium text-gray-600">Notes</div>
-                    <p className="text-gray-900">{selectedPayment.notes}</p>
+          <div className="block text-sm font-medium text-gray-600">Détails</div>
+          <p className="text-gray-900">{[selectedUnifiedPayment.designation, selectedUnifiedPayment.numero_cheque].filter(Boolean).join(' — ')}</p>
                   </div>
                 )}
               </div>

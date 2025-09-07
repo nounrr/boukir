@@ -11,13 +11,12 @@ import {
   Receipt,
   CreditCard,
   Eye,
-  Edit,
   Trash2,
   ChevronUp,
   ChevronDown
 } from 'lucide-react';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
-import { useGetPaymentsQuery, useDeletePaymentMutation, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
+// Payments API not used in this view
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { useGetOldTalonsCaisseQuery, useDeleteOldTalonCaisseMutation, useChangeOldTalonCaisseStatusMutation } from '../store/slices/oldTalonsCaisseSlice';
 import type { Payment, Talon, OldTalonCaisse } from '../types';
@@ -80,40 +79,18 @@ const TalonCaissePage = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
   // RTK Query hooks
-  const { data: allPayments = [], isLoading: paymentsLoading } = useGetPaymentsQuery();
+  // Désactivé: cette vue n'affiche plus les paiements récents
+  // const { data: allPayments = [], isLoading: paymentsLoading } = useGetPaymentsQuery();
   const { data: talons = [], isLoading: talonsLoading } = useGetTalonsQuery(undefined);
   const { data: oldTalonsCaisse = [], isLoading: oldTalonsLoading } = useGetOldTalonsCaisseQuery();
-  const [deletePaymentApi] = useDeletePaymentMutation();
-  const [changePaymentStatusApi] = useChangePaymentStatusMutation();
+  
   const [deleteOldTalonCaisseApi] = useDeleteOldTalonCaisseMutation();
   const [changeOldTalonCaisseStatusApi] = useChangeOldTalonCaisseStatusMutation();
 
   // Unifier les paiements talon normaux et les anciens talons caisse
   const unifiedPayments = useMemo(() => {
     const unified: UnifiedTalonPayment[] = [];
-
-    // Ajouter les paiements talon normaux
-    const talonPayments = allPayments.filter((payment: any) => payment.talon_id);
-    talonPayments.forEach((payment: any) => {
-      unified.push({
-        id: `payment:${payment.id}`,
-        type: 'payment',
-        numero: `PAY${String(payment.id).padStart(2, '0')}`,
-        date_paiement: payment.date_paiement,
-        montant_total: Number(payment.montant_total || 0),
-        statut: payment.statut || 'En attente',
-        talon_id: payment.talon_id,
-        mode_paiement: payment.mode_paiement,
-        designation: payment.designation,
-        date_echeance: payment.date_echeance,
-        banque: payment.banque,
-        personnel: payment.personnel,
-        code_reglement: payment.code_reglement,
-        originalPayment: payment
-      });
-    });
-
-    // Ajouter les anciens talons caisse
+    // N'inclure que les anciens talons caisse
     oldTalonsCaisse.forEach((oldTalon: OldTalonCaisse) => {
       unified.push({
         id: `old:${oldTalon.id}`,
@@ -124,15 +101,14 @@ const TalonCaissePage = () => {
         statut: oldTalon.validation,
         talon_id: oldTalon.id_talon,
         fournisseur: oldTalon.fournisseur,
-  numero_cheque: oldTalon.numero_cheque || undefined,
-  date_cheque: oldTalon.date_cheque || undefined,
+        numero_cheque: oldTalon.numero_cheque || undefined,
+        date_cheque: oldTalon.date_cheque || undefined,
         banque: oldTalon.banque,
         originalOldTalon: oldTalon
       });
     });
-
     return unified;
-  }, [allPayments, oldTalonsCaisse]);
+  }, [oldTalonsCaisse]);
 
   // Handle sorting
   const handleSort = (field: 'numero' | 'talon' | 'montant' | 'date' | 'echeance') => {
@@ -428,7 +404,7 @@ const TalonCaissePage = () => {
 
   // Fonctions de gestion
   const handleDelete = async (unifiedPayment: UnifiedTalonPayment) => {
-    const type = unifiedPayment.type === 'payment' ? 'paiement' : 'ancien talon caisse';
+    const type = 'ancien talon caisse';
     const result = await showConfirmation(
       'Cette action est irréversible.',
       `Êtes-vous sûr de vouloir supprimer ce ${type} ?`,
@@ -438,9 +414,7 @@ const TalonCaissePage = () => {
     
     if (result.isConfirmed) {
       try {
-        if (unifiedPayment.type === 'payment' && unifiedPayment.originalPayment) {
-          await deletePaymentApi({ id: unifiedPayment.originalPayment.id }).unwrap();
-        } else if (unifiedPayment.type === 'old' && unifiedPayment.originalOldTalon) {
+        if (unifiedPayment.originalOldTalon) {
           await deleteOldTalonCaisseApi({ id: unifiedPayment.originalOldTalon.id }).unwrap();
         }
         showSuccess(`${type.charAt(0).toUpperCase() + type.slice(1)} supprimé avec succès`);
@@ -453,9 +427,7 @@ const TalonCaissePage = () => {
 
   const handleChangeStatus = async (unifiedPayment: UnifiedTalonPayment, newStatus: string) => {
     try {
-      if (unifiedPayment.type === 'payment' && unifiedPayment.originalPayment) {
-        await changePaymentStatusApi({ id: unifiedPayment.originalPayment.id, statut: newStatus }).unwrap();
-      } else if (unifiedPayment.type === 'old' && unifiedPayment.originalOldTalon) {
+      if (unifiedPayment.originalOldTalon) {
         await changeOldTalonCaisseStatusApi({ 
           id: unifiedPayment.originalOldTalon.id, 
           validation: newStatus as 'Validé' | 'En attente' | 'Refusé' | 'Annulé'
@@ -473,7 +445,7 @@ const TalonCaissePage = () => {
     setIsViewModalOpen(true);
   };
 
-  if (paymentsLoading || talonsLoading || oldTalonsLoading) {
+  if (talonsLoading || oldTalonsLoading) {
     return (
       <div className="p-6">
         <div className="flex justify-center items-center py-12">

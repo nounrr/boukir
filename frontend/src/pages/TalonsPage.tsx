@@ -3,7 +3,7 @@ import {
   Plus, Edit, Trash2, Search, FileText, User, Phone, Eye
 } from 'lucide-react';
 import { useGetTalonsQuery, useDeleteTalonMutation } from '../store/api/talonsApi';
-import { useGetPaymentsQuery } from '../store/api/paymentsApi';
+import { useGetOldTalonsCaisseQuery } from '../store/slices/oldTalonsCaisseSlice';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import TalonFormModal from '../components/TalonFormModal';
 import { formatDateTimeWithHour } from '../utils/dateUtils';
@@ -23,7 +23,7 @@ const TalonsPage = () => {
 
   // RTK Query hooks
   const { data: talons = [], isLoading } = useGetTalonsQuery(undefined);
-  const { data: payments = [] } = useGetPaymentsQuery();
+  const { data: oldTalonsCaisse = [] } = useGetOldTalonsCaisseQuery();
   const [deleteTalonMutation] = useDeleteTalonMutation();
 
   // Filtrage des talons
@@ -33,7 +33,7 @@ const TalonsPage = () => {
     const term = searchTerm.toLowerCase();
     return talons.filter((talon: Talon) =>
       talon.nom.toLowerCase().includes(term) ||
-      (talon.phone && talon.phone.toLowerCase().includes(term))
+      talon.phone?.toLowerCase().includes(term)
     );
   }, [talons, searchTerm]);
 
@@ -94,11 +94,19 @@ const TalonsPage = () => {
     setSelectedTalonForPayments(null);
   };
 
-  // Filtrer les paiements pour le talon sélectionné
-  const talonPayments = useMemo(() => {
-    if (!selectedTalonForPayments) return [];
-    return payments.filter((payment: any) => payment.talon_id === selectedTalonForPayments.id);
-  }, [payments, selectedTalonForPayments]);
+  // Filtrer les anciens talons caisse pour le talon sélectionné (legacy only)
+  const talonOldCaisse = useMemo(() => {
+    if (!selectedTalonForPayments) return [] as any[];
+    return (oldTalonsCaisse as any[]).filter((row: any) => String(row.id_talon) === String(selectedTalonForPayments.id));
+  }, [oldTalonsCaisse, selectedTalonForPayments]);
+
+  const getLegacyStatusBadge = (validation?: string) => {
+    const v = String(validation || '').trim();
+    if (v === 'Validé') return 'bg-green-100 text-green-800';
+    if (v === 'En attente') return 'bg-yellow-100 text-yellow-800';
+    if (v === 'Refusé') return 'bg-red-100 text-red-800';
+    return 'bg-gray-100 text-gray-800';
+  };
 
   if (isLoading) {
     return (
@@ -211,7 +219,7 @@ const TalonsPage = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Paiements Liés</p>
               <p className="text-3xl font-bold text-gray-900">
-                {payments.filter((p: any) => p.talon_id).length}
+                {(oldTalonsCaisse as any[]).filter((p: any) => p.id_talon).length}
               </p>
             </div>
           </div>
@@ -348,7 +356,7 @@ const TalonsPage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-700">
-                        {formatDateTimeWithHour(talon.date_creation)}
+                        {formatDateTimeWithHour((talon as any).created_at || (talon as any).date_creation)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -359,7 +367,7 @@ const TalonsPage = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <div className="text-sm font-medium text-gray-900">
-                          {payments.filter((p: any) => p.talon_id === talon.id).length}
+                          {(oldTalonsCaisse as any[]).filter((p: any) => String(p.id_talon) === String(talon.id)).length}
                         </div>
                         <span className="text-xs text-gray-500">paiement(s)</span>
                       </div>
@@ -457,14 +465,14 @@ const TalonsPage = () => {
         }}
       />
 
-      {/* Modal des paiements liés au talon */}
+  {/* Modal des paiements liés au talon (legacy old_talons_caisse uniquement) */}
       {isPaymentsModalOpen && selectedTalonForPayments && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Paiements liés au talon: {selectedTalonForPayments.nom}
+      Paiements (anciens) liés au talon: {selectedTalonForPayments.nom}
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   {selectedTalonForPayments.phone && `Téléphone: ${selectedTalonForPayments.phone}`}
@@ -479,14 +487,14 @@ const TalonsPage = () => {
             </div>
             
             <div className="p-6 overflow-y-auto max-h-[70vh]">
-              {talonPayments.length === 0 ? (
+              {talonOldCaisse.length === 0 ? (
                 <div className="text-center py-12">
                   <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">
                     Aucun paiement trouvé
                   </h3>
                   <p className="text-gray-500">
-                    Ce talon n'a pas encore de paiements associés.
+                    Ce talon n'a pas encore de paiements associés (legacy).
                   </p>
                 </div>
               ) : (
@@ -494,52 +502,39 @@ const TalonsPage = () => {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fournisseur/Client</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Numéro
+                          Montant chèque
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Type
+                          N° chèque
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Montant
+                          Date paiement
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Mode
+                          Date échéance
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Date
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Statut
-                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Banque</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {talonPayments.map((payment: any) => (
-                        <tr key={payment.id} className="hover:bg-gray-50">
+                      {talonOldCaisse.map((row: any, idx: number) => (
+                        <tr key={`${row.id || idx}`} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            PAY{String(payment.id).padStart(2, '0')}
+                            {row.id ?? idx + 1}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {payment.type_paiement}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {Number(payment.montant_total || 0).toFixed(2)} DH
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {payment.mode_paiement}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {formatDateTimeWithHour(payment.date_paiement)}
-                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.fournisseur || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{Number(row.montant_cheque || 0).toFixed(2)} DH</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.numero_cheque || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.date_paiement || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.date_cheque || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.banque || '-'}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              payment.statut === 'Validé' ? 'bg-green-100 text-green-800' :
-                              payment.statut === 'En attente' ? 'bg-yellow-100 text-yellow-800' :
-                              payment.statut === 'Refusé' ? 'bg-red-100 text-red-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {payment.statut || 'En attente'}
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getLegacyStatusBadge(row.validation)}`}>
+                              {row.validation || 'En attente'}
                             </span>
                           </td>
                         </tr>
@@ -552,10 +547,10 @@ const TalonsPage = () => {
               <div className="mt-6 pt-4 border-t border-gray-200">
                 <div className="flex justify-between items-center">
                   <div className="text-sm text-gray-600">
-                    Total: {talonPayments.length} paiement(s)
+                    Total: {talonOldCaisse.length} paiement(s)
                   </div>
                   <div className="text-sm font-medium text-gray-900">
-                    Montant total: {talonPayments.reduce((sum: number, p: any) => sum + Number(p.montant_total || 0), 0).toFixed(2)} DH
+                    Montant total: {talonOldCaisse.reduce((sum: number, r: any) => sum + Number(r.montant_cheque || 0), 0).toFixed(2)} DH
                   </div>
                 </div>
               </div>
