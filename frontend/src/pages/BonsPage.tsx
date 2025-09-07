@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown } from 'lucide-react';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
@@ -28,12 +28,15 @@ import React, { useState, useMemo } from 'react';
   import type { RootState } from '../store';
   import { getBonNumeroDisplay } from '../utils/numero';
   import { logout } from '../store/slices/authSlice';
-  import { useAppDispatch } from '../hooks/redux';
+  import { useAppDispatch, useAuth } from '../hooks/redux';
   import { canModifyBons } from '../utils/permissions';
+  import { useNavigate } from 'react-router-dom';
   
   
 
+// eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
+  const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule'>('Commande');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -251,6 +254,61 @@ const BonsPage = () => {
   const endIndex = startIndex + itemsPerPage;
   const paginatedBons = sortedBons.slice(startIndex, endIndex);
 
+  // Show audit columns only for PDG and Manager
+  const showAuditCols = currentUser?.role === 'PDG' || currentUser?.role === 'Manager';
+
+  // Safely render any text value (handles Buffer-like {type:'Buffer', data:[..]})
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isBufferLike = (o: any): o is { type: 'Buffer'; data: number[] } => {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    return !!o && typeof o === 'object' && (o as any).type === 'Buffer' && Array.isArray((o as any).data);
+  };
+  const safeText = (v: any): string => {
+    if (v == null) return '-';
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (isBufferLike(v)) {
+      try {
+        const arr = Uint8Array.from(v.data.map((n) => Number(n) || 0));
+        return new TextDecoder().decode(arr) || '-';
+      } catch {
+        return '[binaire]';
+      }
+    }
+    return String(v);
+  };
+
+  // Audit meta: created_by_name and updated_by_name per bon id, by type->table mapping
+  const tableForType = (t: string) => {
+    switch (t) {
+      case 'Commande': return 'bons_commande';
+      case 'Sortie': return 'bons_sortie';
+      case 'Comptant': return 'bons_comptant';
+      case 'Devis': return 'devis';
+      case 'Avoir': return 'avoirs_client';
+      case 'AvoirFournisseur': return 'avoirs_fournisseur';
+      case 'AvoirComptant': return 'avoirs_comptant';
+      case 'Vehicule': return 'bons_vehicule';
+      default: return '';
+    }
+  };
+  const [auditMeta, setAuditMeta] = useState<Record<string, { created_by_name: string|null; updated_by_name: string|null }>>({});
+  const { token } = useAuth();
+  useEffect(() => {
+    if (!showAuditCols) { setAuditMeta({}); return; }
+    const ids = paginatedBons.map(b => b.id).filter(Boolean);
+    const t = tableForType(currentTab);
+    if (!ids.length || !t) { setAuditMeta({}); return; }
+    const ctrl = new AbortController();
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    fetch(`/api/audit/meta?table=${encodeURIComponent(t)}&ids=${ids.join(',')}`, { signal: ctrl.signal, headers })
+      .then(r => r.ok ? r.json() : r.text().then(tx => Promise.reject(new Error(tx))))
+      .then(obj => setAuditMeta(obj || {}))
+      .catch(() => {})
+      .finally(() => {});
+    return () => ctrl.abort();
+  }, [currentTab, startIndex, endIndex, sortedBons.length, token, showAuditCols]);
+
   // Réinitialiser la page quand on change d'onglet ou de recherche
   React.useEffect(() => {
     setCurrentPage(1);
@@ -380,13 +438,16 @@ const BonsPage = () => {
             <h1 className="text-2xl font-bold text-gray-900">Gestion des Bons</h1>
             {/* Badge de rôle pour débogage */}
             <div className="flex flex-col gap-1">
-              <span className={`px-3 py-1 text-sm font-medium rounded-full ${
-                currentUser?.role === 'PDG' ? 'bg-red-100 text-red-800' :
-                currentUser?.role === 'Manager' ? 'bg-orange-100 text-orange-800' :
-                'bg-blue-100 text-blue-800'
-              }`}>
-                Rôle: {currentUser?.role || 'Non défini'}
-              </span>
+              {(() => {
+                let roleCls = 'bg-blue-100 text-blue-800';
+                if (currentUser?.role === 'PDG') roleCls = 'bg-red-100 text-red-800';
+                else if (currentUser?.role === 'Manager') roleCls = 'bg-orange-100 text-orange-800';
+                return (
+                  <span className={`px-3 py-1 text-sm font-medium rounded-full ${roleCls}`}>
+                    Rôle: {currentUser?.role || 'Non défini'}
+                  </span>
+                );
+              })()}
               <span className={`text-xs px-2 py-1 rounded ${
                 canModifyBons(currentUser) ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
               }`}>
@@ -560,6 +621,16 @@ const BonsPage = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Mouvement
                   </th>
+                  {showAuditCols && (
+                    <>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Créé par
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Dernier modifié par
+                      </th>
+                    </>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Statut
                   </th>
@@ -571,7 +642,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={showAuditCols ? 10 : 8} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTab}
                     </td>
                   </tr>
@@ -606,6 +677,22 @@ const BonsPage = () => {
                           );
                         })()}
                       </td>
+                      {showAuditCols && (
+                        <>
+                          <td className="px-4 py-2 text-sm">
+                            {(() => {
+                              const meta = auditMeta[String(bon.id)];
+                              return safeText(meta?.created_by_name);
+                            })()}
+                          </td>
+                          <td className="px-4 py-2 text-sm">
+                            {(() => {
+                              const meta = auditMeta[String(bon.id)];
+                              return safeText(meta?.updated_by_name);
+                            })()}
+                          </td>
+                        </>
+                      )}
                       <td className="px-4 py-2">
                         <span className={`inline-flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(bon.statut)}`}>
                           {getStatusIcon(bon.statut)}
@@ -718,6 +805,19 @@ const BonsPage = () => {
                           >
                             <Printer size={ACTION_ICON_SIZE} />
                           </button>
+                          {(currentUser?.role === 'PDG') && (
+                            <button
+                              onClick={() => {
+                                const t = tableForType(bon.type || currentTab);
+                                if (t) navigate(`/audit?mode=group&t=${encodeURIComponent(t)}&id=${encodeURIComponent(String(bon.id))}&details=1`);
+                              }}
+                              className="text-indigo-600 hover:text-indigo-800"
+                              title="Voir l'historique d'audit"
+                            >
+                              {/* simple clock/history icon substitute using existing icons */}
+                              <Clock size={ACTION_ICON_SIZE} />
+                            </button>
+                          )}
                           {currentUser?.role !== 'Employé' && (
                             <button
                               onClick={() => { setSelectedBon(bon); setIsViewModalOpen(true); }}
@@ -850,6 +950,19 @@ const BonsPage = () => {
                   ✕
                 </button>
               </div>
+              {currentUser?.role === 'PDG' && (
+                <div className="mb-3">
+                  <button
+                    onClick={() => {
+                      const t = tableForType(selectedBon.type || currentTab);
+                      if (t) navigate(`/audit?mode=group&t=${encodeURIComponent(t)}&id=${encodeURIComponent(String(selectedBon.id))}&details=1`);
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700"
+                  >
+                    <Clock size={16} /> Voir l'historique d'audit
+                  </button>
+                </div>
+              )}
               
               {selectedBon && (
                 <div className="space-y-4">
