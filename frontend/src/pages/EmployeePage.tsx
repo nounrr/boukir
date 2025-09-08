@@ -390,7 +390,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
   }
 
   return (
-    <div className="p-6">
+    <div className="w-screen max-w-screen overflow-x-hidden box-border p-4 sm:p-6 bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Gestion des Employés</h1>
@@ -473,8 +473,91 @@ const EmployeePage: React.FC = () => { // NOSONAR
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      {/* Liste mobile (cartes) */}
+      <div className="sm:hidden space-y-3">
+        {paginatedEmployees.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-600">
+            Aucun employé trouvé
+          </div>
+        ) : (
+          paginatedEmployees.map((employee: Employee) => (
+            <div key={employee.id} className={`bg-white rounded-xl shadow-sm border border-gray-100 p-4 ${isOverSalary(employee) ? 'ring-1 ring-red-200 bg-red-50/30' : ''}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setExpandedEmployee(expandedEmployee === employee.id ? null : employee.id)}
+                      className="text-gray-600 hover:text-gray-900"
+                      aria-label="Toggle détails"
+                    >
+                      {expandedEmployee === employee.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                    <span className="font-mono text-sm font-semibold text-gray-900">{employee.cin}</span>
+                  </div>
+                  <div className="mt-1 text-base font-semibold text-gray-900 truncate">{employee.nom_complet || '-'}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                    {employee.role ? (
+                      <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${employee.role === 'PDG' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>
+                        {employee.role}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                    <span className="text-gray-500">•</span>
+                    <span className="text-gray-700">{employee.date_embauche ? new Date(employee.date_embauche).toLocaleDateString('fr-FR') : '-'}</span>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="text-xs text-gray-500">Salaire</div>
+                  <div className={`text-sm font-semibold ${isOverSalary(employee) ? 'text-red-600' : 'text-gray-900'}`}>
+                    {employee.salaire != null ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' }) : '-'}
+                  </div>
+                  <div className="mt-2"><EmployeeDocsStats employeeId={employee.id} /></div>
+                </div>
+              </div>
+
+              {expandedEmployee === employee.id && (
+                <div className="mt-4 border-t pt-3">
+                  <EmployeeAccordionContent employee={employee} selectedMonth={selectedMonth} salaryMap={salaryMap} />
+                </div>
+              )}
+
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  onClick={() => handleEdit(employee)}
+                  className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Modifier"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => handleDelete(employee.id)}
+                  className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Supprimer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => { setSalaryModalEmployee(employee); setSalaryMontant(''); setSalaryNote(''); setIsSalaryModalOpen(true); }}
+                  className="p-2 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg transition-colors"
+                  title="Ajouter montant"
+                >
+                  <Banknote className="w-4 h-4" />
+                </button>
+                <Link to={`/employees/${employee.id}/documents`} className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg" title="Documents">
+                  <FileText className="w-4 h-4" />
+                </Link>
+                <Link to={`/employees/${employee.id}/salaries`} className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg" title="Salaires">
+                  <Wallet className="w-4 h-4" />
+                </Link>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Table (desktop) */}
+      <div className="hidden sm:block bg-white rounded-lg shadow overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

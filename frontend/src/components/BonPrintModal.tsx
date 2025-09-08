@@ -24,6 +24,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   const [size, setSize] = useState<'A4' | 'A5'>('A4');
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  // Screen preview fills available width; actual print dimensions are controlled inside BonPrintTemplate via print CSS.
 
   if (!isOpen) return null;
 
@@ -146,17 +147,17 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-2 sm:p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full h-full sm:h-auto sm:max-h-[95vh] sm:max-w-6xl overflow-hidden flex flex-col">
         {/* En-tête modal */}
-        <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-          <div className="flex items-center space-x-4">
-            <h2 className="text-lg font-semibold">
+        <div className="flex justify-between items-start sm:items-center p-3 sm:p-4 border-b bg-gray-50 sticky top-0 z-10 gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <h2 className="text-base sm:text-lg font-semibold">
               Aperçu d'impression - {bon.type} {getBonNumeroDisplay(bon)}
             </h2>
             
             {/* Sélecteur de taille */}
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <label htmlFor="size-selector" className="text-sm font-medium">Taille:</label>
               <select
                 id="size-selector"
@@ -171,11 +172,11 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
           </div>
 
           {/* Boutons d'action */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <button
               onClick={handlePrint}
               disabled={isGenerating}
-              className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              className="w-full sm:w-auto flex items-center px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
               <Printer size={16} className="mr-1" />
               Imprimer
@@ -184,7 +185,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
             <button
               onClick={generatePDF}
               disabled={isGenerating}
-              className="flex items-center px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+              className="w-full sm:w-auto flex items-center px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
             >
               <Download size={16} className="mr-1" />
               {isGenerating ? 'Génération...' : 'PDF'}
@@ -192,7 +193,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
             
             <button
               onClick={onClose}
-              className="px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+              className="w-full sm:w-auto px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
             >
               Fermer
             </button>
@@ -200,14 +201,13 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
         </div>
 
         {/* Zone d'aperçu */}
-        <div className="flex-1 overflow-auto bg-gray-100 p-4">
+        <div className="flex-1 overflow-auto bg-gray-100 p-2 sm:p-4">
           <div className="flex justify-center">
             <div 
               ref={printRef}
-              className="bg-white shadow-lg"
+              className="bg-white shadow-lg w-full"
               style={{
-                width: size === 'A5' ? '148mm' : '210mm',
-                minHeight: size === 'A5' ? '210mm' : '297mm'
+                width: '100%'
               }}
             >
               <BonPrintTemplate
@@ -225,7 +225,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
           Aperçu d'impression - Les couleurs peuvent différer de l'impression finale
         </div>
       </div>
-    </div>
+  </div>
   );
 };
 

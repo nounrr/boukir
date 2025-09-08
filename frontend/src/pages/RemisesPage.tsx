@@ -50,7 +50,7 @@ const RemisesPage: React.FC = () => {
   }, 0);
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="w-screen max-w-screen overflow-x-hidden box-border p-4 sm:p-6 bg-gray-50 min-h-screen">
       {/* En-tête */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Gestion des Remises</h1>
@@ -119,8 +119,73 @@ const RemisesPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Tableau des clients avec style amélioré */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+      {/* Liste mobile (cartes) */}
+      <div className="sm:hidden space-y-3 mb-6">
+        {filtered.length === 0 ? (
+          <div className="bg-white rounded-xl shadow p-5 text-center text-gray-500">Aucun client remise</div>
+        ) : (
+          filtered.map((c: any) => {
+            const totalC = Array.isArray(c.items)
+              ? c.items
+                  .filter((it: any) => it.statut !== 'Annulé')
+                  .reduce((sum: number, it: any) => sum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0)
+              : Number(c.total_remise ?? 0);
+            return (
+              <div key={c.id} className="bg-white rounded-lg shadow p-4 border border-gray-100">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-base font-semibold text-gray-900">{c.nom}</div>
+                    <div className="mt-1 text-sm text-gray-600">Tél: {c.phone || '-'}</div>
+                    <div className="text-sm text-gray-600">CIN: {c.cin || '-'}</div>
+                    <div className="text-xs text-gray-500 mt-1">Créé le: {c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '-'}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-gray-500">Total</div>
+                    <div className="text-lg font-bold text-purple-600">{totalC} DH</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                    title="Détails"
+                    onClick={() => { setSelected(c); setIsDetailsModalOpen(true); }}
+                  >
+                    <Eye size={20} />
+                  </button>
+                  <button
+                    className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg"
+                    title="Modifier"
+                    onClick={() => {
+                      setEditingId(c.id);
+                      setForm({ nom: c.nom || '', phone: c.phone || '', cin: c.cin || '' });
+                      setIsFormModalOpen(true);
+                    }}
+                  >
+                    <Edit size={20} />
+                  </button>
+                  {user?.role === 'PDG' && (
+                    <button
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                      title="Supprimer"
+                      onClick={async () => {
+                        if (confirm('Supprimer ce client de remise ?')) {
+                          await deleteClient(c.id).unwrap();
+                          refetch();
+                        }
+                      }}
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Tableau des clients avec style amélioré (≥ sm) */}
+      <div className="hidden sm:block bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
           <h3 className="text-lg font-semibold text-gray-900">Liste des Clients Remises</h3>
         </div>
@@ -295,15 +360,15 @@ const RemisesPage: React.FC = () => {
 
       {/* Modal Détails (style comme Contacts) */}
       {isDetailsModalOpen && selected && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-4">
           <button
             type="button"
             className="absolute inset-0"
             aria-label="Fermer le modal"
             onClick={() => { setIsDetailsModalOpen(false); setSelected(null); }}
           />
-          <div className="relative bg-white rounded-lg w-full max-w-8xl max-h-[95vh] overflow-y-auto">
-            <div className="bg-blue-600 px-6 py-4 rounded-t-lg">
+          <div className="relative bg-white w-full max-w-full sm:max-w-6xl h-full sm:h-auto max-h-screen sm:max-h-[95vh] overflow-y-auto rounded-none sm:rounded-lg">
+            <div className="bg-blue-600 px-4 sm:px-6 py-4 rounded-t-none sm:rounded-t-lg">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold text-white">Détails Remises - {selected?.nom || '-'}</h2>
                 <button
@@ -314,7 +379,7 @@ const RemisesPage: React.FC = () => {
                 </button>
               </div>
             </div>
-            <div className="p-6 w-full">
+            <div className="p-4 sm:p-6 w-full">
               <RemiseDetail clientRemise={selected} onItemsChanged={refetch} />
             </div>
           </div>
@@ -373,11 +438,11 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
   
 
   return (
-    <div className="mt-2">
+    <div className="mt-2 w-screen max-w-screen overflow-x-hidden">
       {/* Infos client */}
       <div className="bg-gray-50 rounded-lg p-4 mb-4">
         <h3 className="font-bold text-lg mb-2">Informations Client Remise</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 text-sm">
           <div>
             <p className="font-semibold text-gray-600">Nom:</p>
             <p>{clientRemise.nom || '-'}</p>
@@ -403,10 +468,10 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
 
       <div className="grid grid-cols-1 gap-6">
         <div className="bg-white rounded shadow p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold">Produits Remisés</h3>
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="w-56">
+          <div className="mb-3">
+            <h3 className="font-semibold mb-2 sm:mb-3">Produits Remisés</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 items-end">
+              <div className="w-full">
                 <label htmlFor="remise-add-produit" className="text-sm font-medium text-gray-700 mb-1 block">Produit</label>
                 <SearchableSelect
                   id="remise-add-produit"
@@ -416,15 +481,15 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                   placeholder="Choisir un produit"
                 />
               </div>
-              <div className="w-28">
+              <div className="w-full">
                 <label htmlFor="remise-add-qte" className="text-sm font-medium text-gray-700 mb-1 block">Qté</label>
                 <input id="remise-add-qte" type="number" className="border rounded px-2 py-1 w-full" placeholder="Qté" value={newItem.qte} onChange={(e) => setNewItem({ ...newItem, qte: Number(e.target.value) })} />
               </div>
-              <div className="w-32">
+              <div className="w-full">
                 <label htmlFor="remise-add-prix" className="text-sm font-medium text-gray-700 mb-1 block">Prix remise</label>
                 <input id="remise-add-prix" type="number" className="border rounded px-2 py-1 w-full" placeholder="Prix remise" value={newItem.prix_remise} onChange={(e) => setNewItem({ ...newItem, prix_remise: Number(e.target.value) })} />
               </div>
-              <div className="w-40">
+              <div className="w-full">
                 <label htmlFor="remise-add-negative" className="text-sm font-medium text-gray-700 mb-1 block">Remise négative</label>
                 <div className="flex items-center h-[38px] gap-2">
                   <input
@@ -437,12 +502,12 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                 </div>
               </div>
               {newItem.isNegative ? (
-                <div className="w-32">
+                <div className="w-full">
                   <span className="text-sm font-medium text-gray-700 mb-1 block">Prix unitaire</span>
                   <div className="h-[38px] flex items-center">{unitPrice} DH</div>
                 </div>
               ) : (
-                <div className="w-56">
+                <div className="w-full">
                   <label htmlFor="remise-add-bon" className="text-sm font-medium text-gray-700 mb-1 block">Bon (optionnel)</label>
                   <SearchableSelect
                     id="remise-add-bon"
@@ -453,7 +518,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                   />
                 </div>
               )}
-              <button className="px-3 py-1 bg-green-600 text-white rounded" onClick={async () => {
+              <button className="px-4 py-2 bg-green-600 text-white rounded w-full" onClick={async () => {
                 let bon_id: number | undefined = undefined;
                 let bon_type: string | undefined = undefined;
                 if (!newItem.isNegative && newItem.bon_select) {
@@ -471,73 +536,129 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
             </div>
           </div>
 
-          <table className="min-w-full divide-y divide-gray-200 table-fixed">
-            <colgroup>
-              <col className="w-[30%]" />
-              <col className="w-[18%]" />
-              <col className="w-[8%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[8%]" />
-            </colgroup>
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produit</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bon</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qté</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Prix Remise</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créer le</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {items.map((it: any) => (
-                <tr key={it.id}>
-                  <td className="px-4 py-2 max-w-0 truncate">{it.reference ? `${it.reference} - ${it.designation}` : it.product_id}</td>
-                  <td className="px-4 py-2 max-w-0 truncate">{it.bon_id ? `${it.bon_type || ''} #${it.bon_id}` : '-'}</td>
-                  <td className="px-4 py-2 text-right whitespace-nowrap">{it.qte}</td>
-                  <td className="px-4 py-2 text-right whitespace-nowrap">{Number(it.prix_remise || 0)} DH</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{it.created_at ? new Date(it.created_at).toLocaleDateString('fr-FR') : '-'}</td>
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <button
-                        className={`p-1 rounded ${it.statut === 'En attente' ? 'bg-yellow-50 text-yellow-600' : 'text-gray-500 hover:text-yellow-600'}`}
-                        title="Mettre en attente"
-                        onClick={async () => { await updateItem({ id: it.id, data: { statut: 'En attente' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
-                      >
-                        <Clock size={18} />
-                      </button>
-                      {user?.role === 'PDG' && (
-                        <button
-                          className={`p-1 rounded ${it.statut === 'Validé' ? 'bg-green-50 text-green-600' : 'text-gray-500 hover:text-green-600'}`}
-                          title="Valider"
-                          onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Validé' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
-                        >
-                          <CheckCircle size={18} />
-                        </button>
-                      )}
-                      <button
-                        className={`p-1 rounded ${it.statut === 'Annulé' ? 'bg-red-50 text-red-600' : 'text-gray-500 hover:text-red-600'}`}
-                        title="Annuler"
-                        onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Annulé' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
-                      >
-                        <XCircle size={18} />
-                      </button>
+          {/* Liste mobile des items (cartes) */}
+          <div className="sm:hidden space-y-3 mt-4">
+            {items.length === 0 ? (
+              <div className="bg-gray-50 border border-dashed border-gray-200 rounded p-4 text-center text-gray-500">Aucun article</div>
+            ) : (
+              items.map((it: any) => {
+                let statusClass = 'bg-yellow-50 text-yellow-700';
+                if (it.statut === 'Validé') statusClass = 'bg-green-50 text-green-700';
+                else if (it.statut === 'Annulé') statusClass = 'bg-red-50 text-red-700';
+                return (
+                <div key={it.id} className="bg-white rounded-lg border border-gray-100 shadow-sm p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-gray-900 text-sm">{it.reference ? `${it.reference} - ${it.designation}` : it.product_id}</div>
+                      <div className="text-xs text-gray-600 mt-1">Bon: {it.bon_id ? `${it.bon_type || ''} #${it.bon_id}` : '-'}</div>
+                      <div className="text-xs text-gray-600">Qté: {it.qte}</div>
+                      <div className="text-xs text-gray-600">Prix remise: {Number(it.prix_remise || 0)} DH</div>
+                      <div className="text-xs text-gray-500">Créer le: {it.created_at ? new Date(it.created_at).toLocaleDateString('fr-FR') : '-'}</div>
                     </div>
-                  </td>
-                  <td className="px-4 py-2 whitespace-nowrap">
+                    <div className="text-right">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusClass}`}>
+                        {it.statut}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button
+                      className={`p-2 rounded ${it.statut === 'En attente' ? 'bg-yellow-50 text-yellow-600' : 'text-gray-500 hover:bg-yellow-50 hover:text-yellow-600'}`}
+                      title="Mettre en attente"
+                      onClick={async () => { await updateItem({ id: it.id, data: { statut: 'En attente' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
+                    >
+                      <Clock size={18} />
+                    </button>
                     {user?.role === 'PDG' && (
-                      <button className="text-gray-500 hover:text-red-600" title="Supprimer" onClick={async () => { await deleteItem(it.id).unwrap(); await refetchItems(); onItemsChanged?.(); }}>
+                      <button
+                        className={`p-2 rounded ${it.statut === 'Validé' ? 'bg-green-50 text-green-600' : 'text-gray-500 hover:bg-green-50 hover:text-green-600'}`}
+                        title="Valider"
+                        onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Validé' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
+                      >
+                        <CheckCircle size={18} />
+                      </button>
+                    )}
+                    <button
+                      className={`p-2 rounded ${it.statut === 'Annulé' ? 'bg-red-50 text-red-600' : 'text-gray-500 hover:bg-red-50 hover:text-red-600'}`}
+                      title="Annuler"
+                      onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Annulé' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
+                    >
+                      <XCircle size={18} />
+                    </button>
+                    {user?.role === 'PDG' && (
+                      <button className="p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 rounded" title="Supprimer" onClick={async () => { await deleteItem(it.id).unwrap(); await refetchItems(); onItemsChanged?.(); }}>
                         <Trash2 size={18} />
                       </button>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Cartes desktop des items */}
+          <div className="hidden sm:block mt-4">
+            {items.length === 0 ? (
+              <div className="bg-gray-50 border border-dashed border-gray-200 rounded p-6 text-center text-gray-500">Aucun article</div>
+            ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {items.map((it: any) => {
+              let statusClass = 'bg-yellow-50 text-yellow-700';
+              if (it.statut === 'Validé') statusClass = 'bg-green-50 text-green-700';
+              else if (it.statut === 'Annulé') statusClass = 'bg-red-50 text-red-700';
+              return (
+                <div key={it.id} className="bg-white rounded-lg border border-gray-100 shadow-sm p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-gray-900 truncate">{it.reference ? `${it.reference} - ${it.designation}` : it.product_id}</div>
+                      <div className="text-sm text-gray-600 mt-1 truncate">Bon: {it.bon_id ? `${it.bon_type || ''} #${it.bon_id}` : '-'}</div>
+                      <div className="text-sm text-gray-600">Qté: {it.qte}</div>
+                      <div className="text-sm text-gray-600">Prix remise: {Number(it.prix_remise || 0)} DH</div>
+                      <div className="text-xs text-gray-500">Créer le: {it.created_at ? new Date(it.created_at).toLocaleDateString('fr-FR') : '-'}</div>
+                    </div>
+                    <div className="text-right">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusClass}`}>
+                        {it.statut}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button
+                      className={`p-2 rounded ${it.statut === 'En attente' ? 'bg-yellow-50 text-yellow-600' : 'text-gray-500 hover:bg-yellow-50 hover:text-yellow-600'}`}
+                      title="Mettre en attente"
+                      onClick={async () => { await updateItem({ id: it.id, data: { statut: 'En attente' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
+                    >
+                      <Clock size={18} />
+                    </button>
+                    {user?.role === 'PDG' && (
+                      <button
+                        className={`p-2 rounded ${it.statut === 'Validé' ? 'bg-green-50 text-green-600' : 'text-gray-500 hover:bg-green-50 hover:text-green-600'}`}
+                        title="Valider"
+                        onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Validé' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
+                      >
+                        <CheckCircle size={18} />
+                      </button>
+                    )}
+                    <button
+                      className={`p-2 rounded ${it.statut === 'Annulé' ? 'bg-red-50 text-red-600' : 'text-gray-500 hover:bg-red-50 hover:text-red-600'}`}
+                      title="Annuler"
+                      onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Annulé' } }).unwrap(); await refetchItems(); onItemsChanged?.(); }}
+                    >
+                      <XCircle size={18} />
+                    </button>
+                    {user?.role === 'PDG' && (
+                      <button className="p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 rounded" title="Supprimer" onClick={async () => { await deleteItem(it.id).unwrap(); await refetchItems(); onItemsChanged?.(); }}>
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            </div>
+            )}
+          </div>
         </div>
 
   {/* Section achats supprimée: flux négatif géré via prix_remise négatif */}

@@ -424,7 +424,7 @@ const BonsPage = () => {
     
 
   return (
-      <div className="p-6">
+      <div className="w-screen max-w-screen overflow-x-hidden box-border p-4 sm:p-6 text-[15px] sm:text-base">
         {/* Loading indicator */}
         {(bonsLoading || clientsLoading || suppliersLoading || productsLoading) && (
           <div className="flex justify-center items-center py-8">
@@ -471,7 +471,8 @@ const BonsPage = () => {
 
         {/* Tabs */}
         <div className="border-b border-gray-200 mb-6">
-          <nav className="-mb-px flex space-x-8">
+          <div className="w-full">
+            <nav className="-mb-px flex flex-wrap gap-2 sm:flex-nowrap sm:gap-8">
             {[
               { key: 'Commande', label: 'Bon de Commande' },
               { key: 'Sortie', label: 'Bon de Sortie' },
@@ -485,7 +486,7 @@ const BonsPage = () => {
               <button
                 key={tab.key}
                 onClick={() => setCurrentTab(tab.key as any)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                className={`py-2 px-2 sm:px-3 border-b-2 font-medium text-sm whitespace-nowrap ${
                   currentTab === tab.key
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -494,7 +495,8 @@ const BonsPage = () => {
                 {tab.label}
               </button>
             ))}
-          </nav>
+            </nav>
+          </div>
         </div>
         
   {/* Contenu standard */}
@@ -558,8 +560,109 @@ const BonsPage = () => {
           </div>
         </div>
 
-  {/* Table */}
-        <div className="bg-white rounded-lg shadow">
+  {/* Liste mobile (cartes) */}
+        <div className="sm:hidden space-y-4">
+          {paginatedBons.length === 0 ? (
+            <div className="bg-white rounded-lg shadow p-6 text-center text-gray-500">
+              Aucun bon trouvé
+            </div>
+          ) : (
+            paginatedBons.map((bon) => (
+              <div key={bon.id} className="bg-white rounded-lg shadow p-5 border border-gray-100">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-base font-semibold text-gray-900">{getDisplayNumero(bon)}</span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-sm font-medium rounded-full ${getStatusClasses(bon.statut)}`}>
+                        {bon.statut || '-'}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[15px] text-gray-700">
+                      {(currentTab === 'Vehicule' ? (bon.vehicule_nom || '') : getContactName(bon)) || '-'}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {((bon as any).adresse_livraison ?? (bon as any).adresseLivraison) ? (
+                        <span>Adresse: {(bon as any).adresse_livraison ?? (bon as any).adresseLivraison}</span>
+                      ) : (
+                        <span>Adresse: -</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-gray-900">{Number(bon.montant_total || 0)} DH</div>
+                    <div className="text-sm text-gray-500">{bon.date_creation ? new Date(bon.date_creation).toLocaleDateString('fr-FR') : '-'}</div>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
+                  <div>Articles: <span className="font-medium">{parseItemsSafe(bon?.items).length}</span></div>
+                  <div>
+                    Mouvement:{' '}
+                    {(() => {
+                      const type = bon.type || currentTab;
+                      if (!['Sortie','Comptant','Avoir','AvoirComptant'].includes(type)) return <span className="text-gray-400">-</span>;
+                      const { profit, marginPct } = computeMouvementDetail(bon);
+                      let cls = 'text-gray-600';
+                      if (profit > 0) cls = 'text-green-600';
+                      else if (profit < 0) cls = 'text-red-600';
+                      return (
+                        <span className={`font-semibold ${cls}`}>
+                          {profit.toFixed(2)} DH{marginPct !== null && (
+                            <span className="text-xs font-normal ml-1">({marginPct.toFixed(1)}%)</span>
+                          )}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  {showAuditCols && (
+                    <>
+                      <div>
+                        Créé par: <span className="font-medium">{(() => { const m = auditMeta[String(bon.id)]; return safeText(m?.created_by_name); })()}</span>
+                      </div>
+                      <div>
+                        Modifié par: <span className="font-medium">{(() => { const m = auditMeta[String(bon.id)]; return safeText(m?.updated_by_name); })()}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  {/* Actions (same as desktop, compact) */}
+                  <button onClick={() => { setSelectedBon(bon); setIsViewModalOpen(true); }} className="text-gray-700 hover:text-gray-900" title="Voir">
+                    <Eye size={ACTION_ICON_SIZE} />
+                  </button>
+                  <button onClick={() => { setSelectedBon(bon); setIsCreateModalOpen(true); }} className="text-blue-600 hover:text-blue-800" title="Modifier">
+                    <Edit size={ACTION_ICON_SIZE} />
+                  </button>
+                  <button onClick={() => { setSelectedBonForPrint(bon); setIsThermalPrintModalOpen(true); }} className="text-purple-600 hover:text-purple-800" title="Imprimer (Thermique 5cm)">
+                    <Printer size={ACTION_ICON_SIZE} />
+                  </button>
+                  <button onClick={() => { setSelectedBonForPDFPrint(bon); setIsPrintModalOpen(true); }} className="text-green-600 hover:text-green-800" title="Imprimer PDF (A4/A5)">
+                    <Printer size={ACTION_ICON_SIZE} />
+                  </button>
+                  {(currentUser?.role === 'PDG') && (
+                    <button onClick={() => { const t = tableForType(bon.type || currentTab); if (t) navigate(`/audit?mode=group&t=${encodeURIComponent(t)}&id=${encodeURIComponent(String(bon.id))}&details=1`); }} className="text-indigo-600 hover:text-indigo-800" title="Historique">
+                      <Clock size={ACTION_ICON_SIZE} />
+                    </button>
+                  )}
+                  {( (currentUser?.role === 'PDG') || isManager ) && (
+                    <>
+                      <button onClick={() => { setSelectedBonForDuplicate(bon); setIsDuplicateModalOpen(true); }} className="text-pink-600 hover:text-pink-800" title="Dupliquer AWATEF">
+                        <Copy size={ACTION_ICON_SIZE} />
+                      </button>
+                      {(currentUser?.role === 'PDG' || isFullAccessManager) && (
+                        <button onClick={() => handleDelete(bon)} className="text-red-600 hover:text-red-800" title="Supprimer">
+                          <Trash2 size={ACTION_ICON_SIZE} />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+  {/* Table (≥ sm) */}
+        <div className="hidden sm:block bg-white rounded-lg shadow">
           <div className="responsive-table-container">
             <table
               className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact"

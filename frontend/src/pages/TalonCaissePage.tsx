@@ -733,8 +733,106 @@ const TalonCaissePage = () => {
         </div>
       </div>
 
-      {/* Tableau des paiements */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      {/* Liste mobile (cartes) */}
+      <div className="sm:hidden space-y-3">
+        {paginatedPayments.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-500">
+            <div className="flex flex-col items-center">
+              <FileText className="w-12 h-12 text-gray-300 mb-4" />
+              <p className="text-lg font-medium">Aucun paiement talon trouvé</p>
+              <p className="text-sm">Ajustez vos filtres pour voir plus de résultats</p>
+            </div>
+          </div>
+        ) : (
+          paginatedPayments.map((p: UnifiedTalonPayment) => {
+            const echeanceDate = p.type === 'payment' ? p.date_echeance : p.date_cheque;
+            const showDueSoon =
+              p.statut !== 'Validé' &&
+              echeanceDate &&
+              isValidDate(echeanceDate) &&
+              isDueSoon({ date_echeance: echeanceDate, statut: p.statut });
+
+            return (
+              <div key={p.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-gray-900">{p.numero}</span>
+                      <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
+                        p.type === 'payment' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                      }`}>
+                        {p.type === 'payment' ? 'Paiement' : 'Ancien Talon'}
+                      </span>
+                      <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full border ${getStatusColor(p.statut)}`}>
+                        {p.statut}
+                      </span>
+                      {showDueSoon && (
+                        <span className="inline-flex px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-800 rounded">
+                          ≤ 5j
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 text-sm text-gray-600">{getTalonName(p.talon_id)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-gray-900">{p.montant_total} DH</div>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-2">
+                  <div className="flex items-center text-sm text-gray-800">
+                    {getModeIcon(p.mode_paiement || '', p.type)}
+                    <span className="ml-2">{p.type === 'payment' ? p.mode_paiement : p.fournisseur}</span>
+                  </div>
+                  {p.type === 'old' && p.numero_cheque && (
+                    <div className="text-xs text-gray-500">Chèque: {p.numero_cheque}</div>
+                  )}
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="text-gray-600">
+                      <span className="text-gray-500">Date:</span> {formatDateOrText(p.date_paiement)}
+                    </div>
+                    <div className="text-gray-600">
+                      <span className="text-gray-500">Échéance:</span>{' '}
+                      {echeanceDate ? formatDateOrText(echeanceDate) : '-'}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                    <div>
+                      <span className="text-gray-500">Personne:</span>{' '}
+                      {p.type === 'payment' && p.personnel
+                        ? p.personnel
+                        : p.type === 'old' && p.originalOldTalon?.personne
+                        ? p.originalOldTalon.personne
+                        : '-'}
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Factures:</span>{' '}
+                      {p.type === 'old' && p.originalOldTalon?.factures ? p.originalOldTalon.factures : '-'}
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Disponible:</span>{' '}
+                      {p.type === 'old' && p.originalOldTalon?.disponible ? p.originalOldTalon.disponible : '-'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => handleViewPayment(p)}
+                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm"
+                    title="Voir les détails"
+                  >
+                    <Eye size={16} /> Détails
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Tableau des paiements (≥ sm) */}
+      <div className="hidden sm:block bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">

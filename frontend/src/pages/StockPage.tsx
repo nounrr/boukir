@@ -107,7 +107,7 @@ const StockPage: React.FC = () => {
   }, [searchTerm, filterCategory]);
 
   return (
-    <div className="p-6">
+    <div className="w-screen max-w-screen overflow-x-hidden box-border p-4 sm:p-6 text-[15px] sm:text-base">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Gestion du Stock</h1>
@@ -217,8 +217,64 @@ const StockPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      {/* Liste mobile (cartes) */}
+      <div className="sm:hidden space-y-3">
+        {paginatedProducts.length === 0 ? (
+          <div className="bg-white rounded-lg shadow p-5 text-center text-gray-500">Aucun produit trouvé</div>
+        ) : (
+          paginatedProducts.map((product: Product) => (
+            <div key={product.id} className="bg-white rounded-lg shadow p-4 border border-gray-100">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-base font-semibold text-gray-900">{product.designation}</div>
+                  <div className="mt-1 text-sm text-gray-600">Ref: {product.reference ?? product.id}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                      {product.categorie?.nom || 'N/A'}
+                    </span>
+                    <span className={`${product.est_service ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'} inline-flex px-2 py-0.5 text-xs font-semibold rounded-full`}>
+                      {product.est_service ? 'Service' : 'Produit'}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-gray-500">Qté</div>
+                  <div className="text-lg font-bold text-gray-900">{product.est_service ? '-' : product.quantite}</div>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-gray-700">
+                <div>
+                  <div className="text-gray-500">Prix achat</div>
+                  <div className="font-medium">{product.prix_achat} DH</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Coût de revient</div>
+                  <div className="font-medium">{product.cout_revient} DH <span className="text-xs text-gray-500">({product.cout_revient_pourcentage}%)</span></div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Prix gros</div>
+                  <div className="font-medium">{product.prix_gros} DH <span className="text-xs text-gray-500">({product.prix_gros_pourcentage}%)</span></div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Prix vente</div>
+                  <div className="font-medium">{product.prix_vente} DH <span className="text-xs text-gray-500">({product.prix_vente_pourcentage}%)</span></div>
+                </div>
+              </div>
+              <div className="mt-3 flex justify-end gap-2">
+                <button onClick={() => handleEdit(product)} className="text-blue-600 hover:text-blue-800" title="Modifier">
+                  <Edit size={20} />
+                </button>
+                <button onClick={() => handleDelete(product.id)} className="text-red-600 hover:text-red-800" title="Supprimer">
+                  <Trash2 size={20} />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Table (≥ sm) */}
+      <div className="hidden sm:block bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
