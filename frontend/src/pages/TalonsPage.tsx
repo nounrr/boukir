@@ -275,8 +275,8 @@ const TalonsPage = () => {
         </div>
       </div>
 
-      {/* Tableau moderne (desktop/tablette) */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hidden sm:block">
+      {/* Tableau moderne */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -403,84 +403,6 @@ const TalonsPage = () => {
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* Liste cartes (mobile) */}
-      <div className="sm:hidden bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {paginatedTalons.length === 0 ? (
-          <div className="px-4 py-10 text-center">
-            <FileText className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-            <div className="text-sm text-gray-600">Aucun talon trouvé</div>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {paginatedTalons.map((talon: Talon) => {
-              const paymentCount = (oldTalonsCaisse as any[]).filter((p: any) => String(p.id_talon) === String(talon.id)).length;
-              return (
-                <div
-                  key={talon.id}
-                  className="p-4 hover:bg-orange-50 transition-colors cursor-pointer"
-                  onClick={() => handleViewPayments(talon)}
-                >
-                  {/* Top row: avatar + name + actions */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center border border-orange-200">
-                        <User className="w-5 h-5 text-orange-600" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-gray-900 truncate">{talon.nom}</div>
-                        <div className="flex items-center gap-1 text-xs text-gray-600">
-                          <Phone className="w-3.5 h-3.5 text-gray-400" />
-                          <span className="font-mono">{talon.phone || 'Non renseigné'}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => handleViewPayments(talon)}
-                        className="p-1.5 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-md"
-                        title="Voir paiements"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleEdit(talon)}
-                        className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-md"
-                        title="Modifier"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(talon.id)}
-                        className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-md"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Meta & stats */}
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-700">
-                    <div>
-                      <span className="text-gray-500">Créé:</span>{' '}
-                      {formatDateTimeWithHour((talon as any).created_at || (talon as any).date_creation)}
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Modifié:</span>{' '}
-                      {formatDateTimeWithHour(talon.updated_at)}
-                    </div>
-                    <div className="col-span-2 flex items-center gap-2">
-                      <span className="text-gray-500">Paiements liés:</span>
-                      <span className="text-gray-900 font-medium">{paymentCount}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* Navigation de pagination moderne */}

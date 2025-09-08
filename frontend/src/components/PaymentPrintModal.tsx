@@ -39,12 +39,12 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
   const generatePDF = async () => {
     if (!printRef.current) return;
     setIsGenerating(true);
-    let hiddenEls: Element[] = [];
+    let hiddenEls: HTMLElement[] = [];
     let previousDisplay: string[] = [];
     try {
-      hiddenEls = Array.from(printRef.current.querySelectorAll('.print-hidden'));
-      previousDisplay = hiddenEls.map(el => (el as HTMLElement).style.display);
-      hiddenEls.forEach(el => { (el as HTMLElement).style.display = 'none'; });
+      hiddenEls = Array.from(printRef.current.querySelectorAll('.print-hidden')) as HTMLElement[];
+      previousDisplay = hiddenEls.map(el => el.style.display);
+      hiddenEls.forEach(el => { el.style.display = 'none'; });
       const canvas = await html2canvas(printRef.current, {
         scale: 2,
         useCORS: true,
@@ -74,8 +74,8 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
       alert('Erreur lors de la génération du PDF');
     } finally {
       if (printRef.current) {
-        const els = Array.from(printRef.current.querySelectorAll('.print-hidden'));
-        els.forEach((el, i) => { (el as HTMLElement).style.display = previousDisplay[i] || ''; });
+        const els = Array.from(printRef.current.querySelectorAll('.print-hidden')) as HTMLElement[];
+        els.forEach((el, i) => { el.style.display = previousDisplay[i] || ''; });
       }
       setIsGenerating(false);
     }
@@ -86,27 +86,30 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
     if (!printRef.current) return;
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    const doc = printWindow.document;
-    doc.title = `Impression Paiement ${payment.id}`;
-    // Styles de la page et @page size
-    const styleEl = doc.createElement('style');
-    let collectedCss = '';
-    for (const styleSheet of Array.from(document.styleSheets)) {
-      try {
-        collectedCss += Array.from((styleSheet as CSSStyleSheet).cssRules).map(r => r.cssText).join('');
-      } catch {
-        // Ignorer les CORS errors
-      }
-    }
-    styleEl.textContent = `body { margin: 0; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-@page { size: ${size}; margin: 0.5cm; }
-@media print { body { margin: 0; } .print-hidden { display: none !important; } }
-${collectedCss}`;
-    doc.head.appendChild(styleEl);
-    // Contenu
-    const container = doc.createElement('div');
-    container.innerHTML = printRef.current?.innerHTML || '';
-    doc.body.appendChild(container);
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Impression Paiement ${payment.id}</title>
+          <style>
+            body { margin: 0; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { size: ${size}; margin: 0.5cm; }
+            @media print { body { margin: 0; } .print-hidden { display: none !important; } }
+            ${Array.from(document.styleSheets).map(styleSheet => {
+              try {
+                return Array.from(styleSheet.cssRules).map(rule => rule.cssText).join('');
+              } catch (error) {
+                return '';
+              }
+            }).join('')}
+          </style>
+        </head>
+        <body>
+          ${printRef.current?.innerHTML || ''}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
@@ -116,53 +119,32 @@ ${collectedCss}`;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white shadow-xl w-screen h-screen sm:w-full sm:h-auto sm:max-w-4xl sm:max-h-[95vh] overflow-hidden flex flex-col rounded-none sm:rounded-lg">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* En-tête modal */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border-b bg-gray-50 sticky top-0 z-10">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
-            <h2 className="text-base sm:text-lg font-semibold truncate max-w-[80vw] sm:max-w-none">Aperçu impression Paiement N° {payment.id}</h2>
-            <div className="flex items-center flex-wrap gap-2">
-              <label htmlFor="size-selector" className="text-sm font-medium hidden sm:block">Taille:</label>
+        <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-lg font-semibold">Aperçu impression Paiement N° {payment.id}</h2>
+            <div className="flex items-center space-x-2">
+              <label htmlFor="size-selector" className="text-sm font-medium">Taille:</label>
               <select
                 id="size-selector"
                 value={size}
                 onChange={(e) => setSize(e.target.value as 'A4' | 'A5')}
-                className="px-2 py-1 sm:px-3 sm:py-1.5 border border-gray-300 rounded-md text-sm"
+                className="px-3 py-1 border border-gray-300 rounded-md text-sm"
               >
                 <option value="A4">A4 (210x297mm)</option>
                 <option value="A5">A5 (148x210mm)</option>
               </select>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 justify-end">
-            <button
-              onClick={handlePrint}
-              disabled={isGenerating}
-              title="Imprimer"
-              aria-label="Imprimer"
-              className="flex items-center px-2 py-1 text-sm sm:px-3 sm:py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
-              <Printer size={16} className="mr-1" />
-              <span className="hidden sm:inline">Imprimer</span>
+          <div className="flex items-center space-x-2">
+            <button onClick={handlePrint} disabled={isGenerating} className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
+              <Printer size={16} className="mr-1" /> Imprimer
             </button>
-            <button
-              onClick={generatePDF}
-              disabled={isGenerating}
-              title="Télécharger PDF"
-              aria-label="Télécharger PDF"
-              className="flex items-center px-2 py-1 text-sm sm:px-3 sm:py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-            >
-              <Download size={16} className="mr-1" />
-              <span className="hidden sm:inline">{isGenerating ? 'Génération...' : 'PDF'}</span>
+            <button onClick={generatePDF} disabled={isGenerating} className="flex items-center px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">
+              <Download size={16} className="mr-1" /> {isGenerating ? 'Génération...' : 'PDF'}
             </button>
-            <button
-              onClick={onClose}
-              title="Fermer"
-              aria-label="Fermer"
-              className="px-2 py-1 text-sm sm:px-3 sm:py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
-            >
-              <span className="">Fermer</span>
-            </button>
+            <button onClick={onClose} className="px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">Fermer</button>
           </div>
         </div>
         {/* Zone d'aperçu */}
@@ -170,7 +152,8 @@ ${collectedCss}`;
           <div className="flex justify-center">
             <div
               ref={printRef}
-              className={`bg-white shadow-lg w-full ${size === 'A5' ? 'print:w-[148mm] print:min-h-[210mm]' : 'print:w-[210mm] print:min-h-[297mm]'}`}
+              className="bg-white shadow-lg"
+              style={{ width: size === 'A5' ? '148mm' : '210mm', minHeight: size === 'A5' ? '210mm' : '297mm' }}
             >
               <PaymentPrintTemplate 
                 payment={payment} 
