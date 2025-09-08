@@ -16,16 +16,7 @@ interface BonPrintTemplateProps {
 // Si le spacer tient sur la page courante, le footer s'y affiche; sinon le spacer passe à la page suivante et le footer aussi, sans créer une page supplémentaire vide.
 const CompanyFooter: React.FC<{ data: { address: string; phones: string; email: string; extra?: string } }>
  = ({ data }) => (
-  <div
-    className="company-footer"
-    style={{
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: '10mm',
-      padding: '0 16px'
-    }}
-  >
+  <div className="company-footer mt-8 print:mt-auto px-4">
     <div className="w-full mb-3 flex justify-center">
       <div style={{ border: '2px solid #000', width: '42mm', height: '22mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span className="text-xs font-bold">CACHET / SIGNATURE CLIENT</span>
@@ -117,23 +108,22 @@ const formatHeure = (dateStr: string) => {
       : (contact?.nom_complet || '-')
   );
 
+  // Print layout helper: keep right "cartouche" narrow so both blocks stay on one line
+  const rightBoxPrintWidthClass = size === 'A5' ? 'print:w-[60mm]' : 'print:w-[80mm]';
+
   return (
     <div 
-      className={`print-root bg-white ${size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'} mx-auto p-4 font-sans text-sm print:shadow-none`}
+      className={`print-root bg-white w-full ${size === 'A5' ? 'print:w-[148mm] print:min-h-[210mm]' : 'print:w-[210mm] print:min-h-[297mm]'} print:flex print:flex-col mx-auto p-4 font-sans text-sm print:shadow-none`}
       style={{ fontFamily: 'sans-serif', position: 'relative' }}
     >
     {/* Styles spécifiques impression pour assurer largeur totale du tableau */}
       <style>
         {`@media print {
       .print-root { position: relative; }
-      .print-footer-spacer { height: 48mm; }
-      /* Le spacer disparaît à l'écran mais réserve la place à l'impression */
       .company-footer { page-break-inside: avoid; break-inside: avoid; }
       .print-table-full { width:100% !important; border-collapse: collapse !important; }
       .print-table-full th, .print-table-full td { word-break: break-word; }
       .totals-section, .client-stamp { page-break-inside: avoid; break-inside: avoid; }
-      /* Empêcher un saut de page juste avant le spacer si il reste assez d'espace */
-      .print-footer-spacer { page-break-inside: avoid; break-inside: avoid; }
       body { margin:0; padding:0; }
         }`}
       </style>
@@ -170,14 +160,14 @@ const formatHeure = (dateStr: string) => {
       {/* En-tête */}
       <CompanyHeader companyType={selectedCompany} />
 
-      {/* Infos document */}
-      <div className="flex justify-between items-start mb-6 mt-6">
+  {/* Infos document: keep both blocks on the same line when printing */}
+  <div className="flex flex-col md:flex-row print:flex-row print:flex-nowrap justify-between items-start gap-4 print:gap-6 mb-6 mt-6">
         {/* Contact */}
-        <div className="flex-1">
+    <div className="flex-1 print:flex-1 print:min-w-0">
           <h3 className="text-lg font-semibold text-gray-800 mb-3">{contactLabel} :</h3>
           {contact && (
             <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                 <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
                 <div><span className="font-medium">Téléphone:</span> {contact.telephone}</div>
                 <div><span className="font-medium">Email:</span> {contact.email}</div>
@@ -188,7 +178,7 @@ const formatHeure = (dateStr: string) => {
         </div>
 
         {/* Cartouche */}
-        <div className="ml-6 text-right">
+  <div className={`md:ml-6 text-right w-full md:w-auto print:ml-6 shrink-0 ${rightBoxPrintWidthClass}`}>
           <div className="p-4 rounded border border-orange-200">
             <h2 className="text-lg font-bold text-orange-700 mb-3">
               BON DEVIS {getBonNumeroDisplay(bon)}
@@ -207,19 +197,19 @@ const formatHeure = (dateStr: string) => {
       </div>
 
       {/* Table articles */}
-      <div className="mb-6">
-        <table style={{width:'100%'}} className="no-mobile-scroll print-table-full w-full border-collapse border border-gray-300">
+      <div className="mb-6 overflow-x-auto">
+        <table style={{width:'100%'}} className="no-mobile-scroll print-table-full w-full table-fixed border-collapse border border-gray-300 text-[12px] sm:text-sm">
           <thead>
             <tr className="bg-orange-500 text-white">
-              <th className="border border-gray-300 px-2 py-2 text-left font-semibold w-16">CODE</th>
-              <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Article</th>
+              <th className="border border-gray-300 px-2 py-2 text-left font-semibold w-16 break-words whitespace-normal">CODE</th>
+              <th className="border border-gray-300 px-3 py-2 text-left font-semibold break-words whitespace-normal">Article</th>
               {printMode !== 'PRODUCTS_ONLY' && (
-                <th className="border border-gray-300 px-3 py-2 text-center font-semibold">Qté</th>
+                <th className="border border-gray-300 px-3 py-2 text-center font-semibold break-words whitespace-normal">Qté</th>
               )}
               {printMode === 'WITH_PRICES' && (
                 <>
-                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold">{bon?.type === 'Commande' ? 'P.A (DH)' : 'P.U. (DH)'}</th>
-                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold">Total (DH)</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold break-words whitespace-normal">{bon?.type === 'Commande' ? 'P.A (DH)' : 'P.U. (DH)'}</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold break-words whitespace-normal">Total (DH)</th>
                 </>
               )}
             </tr>
@@ -233,20 +223,20 @@ const formatHeure = (dateStr: string) => {
               const rowKey = productId || `${item.designation}-${index}`;
               return (
                 <tr key={rowKey} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="border border-gray-300 px-2 py-2 text-xs text-gray-700">{productId}</td>
+                  <td className="border border-gray-300 px-2 py-2 text-xs text-gray-700 break-words whitespace-normal">{productId}</td>
                   <td className="border border-gray-300 px-3 py-2">
-                    <div className="font-medium">{item.designation}</div>
+                    <div className="font-medium break-words whitespace-normal">{item.designation}</div>
                     {item.description && (
-                      <div className="text-xs text-gray-600 italic">{item.description}</div>
+                      <div className="text-xs text-gray-600 italic break-words whitespace-normal">{item.description}</div>
                     )}
                   </td>
                   {printMode !== 'PRODUCTS_ONLY' && (
-                    <td className="border border-gray-300 px-3 py-2 text-center">{quantite}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-center break-words whitespace-normal">{quantite}</td>
                   )}
                   {printMode === 'WITH_PRICES' && (
                     <>
-                      <td className="border border-gray-300 px-3 py-2 text-right">{prixUnitaire.toFixed(2)}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-right font-medium">{total.toFixed(2)}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal">{prixUnitaire.toFixed(2)}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-right font-medium break-words whitespace-normal">{total.toFixed(2)}</td>
                     </>
                   )}
                 </tr>
@@ -308,9 +298,7 @@ const formatHeure = (dateStr: string) => {
         </div>
       )}
 
-  {/* Spacer qui réserve la place du footer (impression) */}
-  <div className="print-footer-spacer" />
-  {/* Pied de page (toujours essaie de rester dans la dernière page si place) */}
+  {/* Pied de page */}
   <CompanyFooter data={companyFooters[selectedCompany]} />
     </div>
   );
