@@ -199,15 +199,15 @@ const VehiculesPage = () => {
   }
 
   return (
-    <div className="w-screen max-w-screen overflow-x-hidden box-border p-4 sm:p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header moderne avec onglets */}
       <div className="mb-8">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0 mb-6">
+        <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Gestion des Véhicules</h1>
             <p className="text-gray-600 mt-1">Gérez votre flotte de véhicules et suivez leur état</p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => {
                 const printContent = `
@@ -245,7 +245,7 @@ const VehiculesPage = () => {
                   printWindow.print();
                 }
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors w-full sm:w-auto justify-center"
+              className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
               title="Imprimer rapport global des véhicules"
             >
               <FileText size={16} />
@@ -253,7 +253,7 @@ const VehiculesPage = () => {
             </button>
             <button
               onClick={handleCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors w-full sm:w-auto justify-center"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             >
               <Plus size={20} />
               Nouveau Véhicule
@@ -262,7 +262,7 @@ const VehiculesPage = () => {
         </div>
 
         {/* Onglets de statut */}
-  <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-6">
+        <div className="flex gap-1 border-b border-gray-200 mb-6">
           {[
             { key: 'tous', label: 'Tous', count: statistiques.total },
             { key: 'disponibles', label: 'Disponibles', count: statistiques.disponibles },
@@ -296,7 +296,7 @@ const VehiculesPage = () => {
       </div>
 
       {/* Cartes de statistiques */}
-  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center justify-between">
             <div>
@@ -475,87 +475,8 @@ const VehiculesPage = () => {
         </div>
       </div>
 
-      {/* Liste mobile (cartes) */}
-      <div className="sm:hidden space-y-3">
-        {paginatedVehicules.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-600">
-            <div className="flex flex-col items-center">
-              <Truck className="w-10 h-10 text-gray-400 mb-2" />
-              Aucun véhicule trouvé
-            </div>
-          </div>
-        ) : (
-          paginatedVehicules.map((vehicule) => (
-            <div key={vehicule.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center border border-orange-200 flex-shrink-0">
-                    {getTypeIcon(vehicule.type_vehicule)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-base font-semibold text-gray-900 truncate">{vehicule.nom}</div>
-                    <div className="text-sm text-gray-500 truncate">{vehicule.marque} {vehicule.modele}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {getStatutIcon(vehicule.statut)}
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatutColor(vehicule.statut)}`}>
-                    {vehicule.statut}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <div className="text-xs text-gray-500">Immatriculation</div>
-                  <div className="font-mono font-medium bg-gray-50 inline-block px-2 py-1 rounded">{vehicule.immatriculation}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Type & Capacité</div>
-                  <div className="text-gray-800">{vehicule.type_vehicule}{vehicule.capacite_charge ? ` · ${vehicule.capacite_charge} kg` : ''}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Année</div>
-                  <div className="text-gray-800">{vehicule.annee || 'N/A'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Créé le</div>
-                  <div className="text-gray-800">{formatDateTimeWithHour(vehicule.date_creation)}</div>
-                </div>
-                <div className="col-span-2">
-                  <div className="text-xs text-gray-500">Activité</div>
-                  <div className="text-gray-800">{statistiques.bonsParVehicule.get(vehicule.id) || 0} bons</div>
-                </div>
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
-                <button
-                  onClick={() => setDetailsVehicule(vehicule)}
-                  className="p-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                  title="Voir détails et bons"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleEdit(vehicule)}
-                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  title="Modifier véhicule"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(vehicule.id)}
-                  className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  title="Supprimer véhicule"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Tableau moderne (desktop) */}
-      <div className="hidden sm:block bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mt-2">
+      {/* Tableau moderne */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">

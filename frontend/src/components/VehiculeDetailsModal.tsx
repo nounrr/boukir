@@ -130,10 +130,10 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
   const statutInfo = getStatutInfo(vehicule.statut);
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-0 sm:p-4">
-      <div className="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-[95vw] overflow-y-auto shadow-2xl rounded-none sm:rounded-xl">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-[95vw] max-h-[95vh] overflow-y-auto shadow-2xl">
         {/* Header moderne avec couleur orange pour véhicules */}
-        <div className="bg-gradient-to-r from-orange-600 to-orange-700 px-6 py-4 sm:rounded-t-xl sticky top-0 z-10">
+        <div className="bg-gradient-to-r from-orange-600 to-orange-700 px-6 py-4 rounded-t-xl">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-white bg-opacity-20 rounded-lg">
@@ -191,7 +191,7 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
               </div>
               <div>
                 <p className="font-semibold text-gray-600">Date de création:</p>
-                <p>{formatDateTime((vehicule as any)?.date_creation || vehicule.created_at)}</p>
+                <p>{formatDateTime(vehicule.date_creation)}</p>
               </div>
             </div>
             
@@ -201,7 +201,7 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
                 <DollarSign size={16} />
                 Statut et Activité
               </h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white rounded-lg p-4 border">
                   <p className="font-semibold text-gray-600 text-sm mb-2">Statut Actuel:</p>
                   <div className="flex items-center gap-2">
@@ -319,7 +319,7 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
 
           {/* Statistiques des bons filtrés */}
           {stats.statuts.size > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               {Array.from(stats.statuts.entries()).map(([statut, count]) => (
                 <div key={statut} className="bg-white p-4 rounded-xl border border-gray-200">
                   <div className="text-sm text-gray-600">{statut}</div>
@@ -329,7 +329,7 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
             </div>
           )}
 
-          {/* Bons du véhicule - cartes responsives */}
+          {/* Tableau des bons */}
           <div className="bg-white border rounded-xl overflow-hidden">
             <div className="px-6 py-4 bg-gray-50 border-b">
               <h3 className="font-bold text-lg flex items-center gap-2">
@@ -340,122 +340,85 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
                 </span>
               </h3>
             </div>
-            <div className="p-4">
-        {bons.length === 0 ? (
-                <div className="px-6 py-12 text-center">
-                  <div className="flex flex-col items-center">
-                    <FileText className="w-12 h-12 text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun bon trouvé</h3>
-                    <p className="text-gray-500 max-w-sm">
-                      {(() => {
-                        if (isLoading) return 'Chargement des bons...';
-                        if (dateFrom || dateTo || statusFilter || search) return 'Aucun bon ne correspond aux filtres appliqués.';
-                        return 'Aucun bon lié à ce véhicule.';
-                      })()}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <>
-          {/* Grille mobile 2 colonnes */}
-          <div className="sm:hidden grid grid-cols-2 gap-3">
-                    {bons.map((bon: any) => (
-                      <div key={bon.id} className="bg-white border rounded-lg p-4 shadow-sm">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm text-gray-500">N° Bon</div>
-                            <div className="text-base font-semibold text-gray-900">
-                              {bon.numero || `VEH${String(bon.id).padStart(3, '0')}`}
-                            </div>
-                            <div className="text-sm text-gray-600">{formatDate(bon.date_creation)}</div>
-                          </div>
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200 flex-shrink-0">
-                            {bon.statut || 'Non défini'}
-                          </span>
+            
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">N° Bon</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Lieu chargement</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Montant</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Statut</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {bons.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center">
+                        <div className="flex flex-col items-center">
+                          <FileText className="w-12 h-12 text-gray-400 mb-4" />
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun bon trouvé</h3>
+                          <p className="text-gray-500 max-w-sm">
+                            {(() => {
+                              if (isLoading) return 'Chargement des bons...';
+                              if (dateFrom || dateTo || statusFilter || search) return 'Aucun bon ne correspond aux filtres appliqués.';
+                              return 'Aucun bon lié à ce véhicule.';
+                            })()}
+                          </p>
                         </div>
-                        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                          <div className="col-span-2">
-                            <div className="text-xs text-gray-500">Lieu chargement</div>
-                            <div className="flex items-center gap-1 text-gray-800">
-                              <MapPin className="w-4 h-4 text-gray-400" />
-                              {bon.lieu_chargement || 'Non spécifié'}
-                            </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    bons.map((bon: any) => (
+                      <tr key={bon.id} className="hover:bg-orange-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-semibold text-gray-900">
+                            {bon.numero || `VEH${String(bon.id).padStart(3, '0')}`}
                           </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Montant</div>
-                            <div className="font-semibold text-gray-900">
-                              {Number(bon.montant_total || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} DH
-                            </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-700">{formatDate(bon.date_creation)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center text-sm text-gray-700">
+                            <MapPin className="w-4 h-4 mr-1 text-gray-400" />
+                            {bon.lieu_chargement || 'Non spécifié'}
                           </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Créé le</div>
-                            <div className="text-gray-800">{formatDateTime(bon.date_creation)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-semibold text-gray-900">
+                            {Number(bon.montant_total || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} DH
                           </div>
-                        </div>
-                        <div className="mt-3 flex justify-end gap-2">
-                          <button
-                            onClick={() => setPrintBon(bon)}
-                            className="p-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                            title="Imprimer bon thermal"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
-                          <button
-                            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Voir détails"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Grille desktop */}
-                  <div className="hidden sm:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {bons.map((bon: any) => (
-                      <div key={bon.id} className="bg-white border rounded-lg p-5 shadow-sm hover:shadow transition-shadow">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="text-xs text-gray-500">N° Bon</div>
-                            <div className="text-lg font-semibold text-gray-900">
-                              {bon.numero || `VEH${String(bon.id).padStart(3, '0')}`}
-                            </div>
-                            <div className="text-sm text-gray-600">{formatDate(bon.date_creation)}</div>
-                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
                             {bon.statut || 'Non défini'}
                           </span>
-                        </div>
-                        <div className="mt-4 space-y-2 text-sm">
-                          <div className="flex items-center text-gray-700">
-                            <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-                            {bon.lieu_chargement || 'Non spécifié'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => setPrintBon(bon)}
+                              className="p-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                              title="Imprimer bon thermal"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                            <button
+                              className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Voir détails"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
                           </div>
-                          <div className="font-semibold text-gray-900">
-                            {Number(bon.montant_total || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} DH
-                          </div>
-                        </div>
-                        <div className="mt-4 flex justify-end gap-2">
-                          <button
-                            onClick={() => setPrintBon(bon)}
-                            className="p-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                            title="Imprimer bon thermal"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
-                          <button
-                            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Voir détails"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
