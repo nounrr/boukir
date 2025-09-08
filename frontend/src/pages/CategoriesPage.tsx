@@ -51,7 +51,7 @@ const CategoriesPage: React.FC = () => {
 	};
 
 	return (
-		<div className="p-6">
+		<div className="w-screen max-w-screen overflow-x-hidden box-border p-4 sm:p-6 text-[15px] sm:text-base">
 			<div className="flex justify-between items-center mb-6">
 				<div className="flex items-center gap-3">
 					<Tags className="text-purple-600" size={28} />
@@ -78,7 +78,48 @@ const CategoriesPage: React.FC = () => {
 				</div>
 			</div>
 
-			<div className="bg-white rounded-lg shadow overflow-hidden">
+			{/* Liste mobile (cartes) */}
+			<div className="sm:hidden space-y-3">
+				{isLoading && (
+					<div className="bg-white rounded-lg shadow p-5 text-center text-gray-500">Chargement...</div>
+				)}
+				{!isLoading && filtered.length === 0 && (
+					<div className="bg-white rounded-lg shadow p-5 text-center text-gray-500">Aucune catégorie</div>
+				)}
+				{!isLoading && filtered.length > 0 && (
+					filtered.map((c) => (
+						<div key={c.id} className="bg-white rounded-lg shadow p-4 border border-gray-100">
+							<div className="flex items-start justify-between gap-3">
+								<div>
+									<div className="text-base font-semibold text-gray-900">{c.nom}</div>
+									<div className="mt-1 text-sm text-gray-700">{c.description || '-'}</div>
+								</div>
+								<div className="flex items-center gap-2">
+									<button
+										onClick={() => handleEdit(c)}
+										className="text-blue-600 hover:text-blue-800"
+										title="Modifier"
+									>
+										<Edit size={20} />
+									</button>
+									{!(String(c.nom).toUpperCase() === 'UNCATEGORIZED' || c.id === 1) && (
+										<button
+											onClick={() => handleDelete(c.id)}
+											className="text-red-600 hover:text-red-800"
+											title="Supprimer"
+										>
+											<Trash2 size={20} />
+										</button>
+									)}
+								</div>
+							</div>
+						</div>
+					))
+				)}
+			</div>
+
+			{/* Table (≥ sm) */}
+			<div className="hidden sm:block bg-white rounded-lg shadow overflow-hidden">
 				<div className="overflow-x-auto">
 					<table className="min-w-full divide-y divide-gray-200">
 						<thead className="bg-gray-50">

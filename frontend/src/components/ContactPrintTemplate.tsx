@@ -129,14 +129,14 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
 
   return (
     <div
-      className={`bg-white ${size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'} mx-auto p-4 font-sans text-sm`}
+      className={`bg-white w-full ${size === 'A5' ? 'max-w-[148mm] print:w-[148mm] print:min-h-[210mm]' : 'max-w-[210mm] print:w-[210mm] print:min-h-[297mm]'} mx-auto p-4 font-sans text-sm`}
       style={{ position: 'relative' }}
     >
       {/* Header */}
       <CompanyHeader companyType={companyType} />
 
       {/* Contact block */}
-      <div className="mt-4 mb-6 grid grid-cols-2 gap-4">
+  <div className="mt-4 mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
           <div className="text-sm"><span className="font-semibold">Nom:</span> {contactDisplayName}</div>
           <div className="text-sm"><span className="font-semibold">Téléphone:</span> {contact?.telephone || '-'}</div>
@@ -157,20 +157,20 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
         <div>
           <h2 className="text-lg font-bold mb-3">Historique des Transactions</h2>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-gray-300">
+            <table className="w-full table-fixed border-collapse border border-gray-300">
               <thead>
-                <tr className="bg-orange-500 text-white">
-                  <th className="border border-gray-300 px-3 py-2 text-left">Date</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Numéro</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Type</th>
+                <tr className="bg-orange-500 text-white text-[11px] sm:text-sm">
+                  <th className="border border-gray-300 px-3 py-2 text-left break-words whitespace-normal align-top">Date</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left break-words whitespace-normal align-top">Numéro</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left break-words whitespace-normal align-top">Type</th>
                   {showPrices && (
                     <>
-                      <th className="border border-gray-300 px-3 py-2 text-right">Montant (DH)</th>
-                      <th className="border border-gray-300 px-3 py-2 text-right">Solde Cumulé</th>
+                      <th className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top">Montant (DH)</th>
+                      <th className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top">Solde Cumulé</th>
                     </>
                   )}
                   {!showPrices && (
-                    <th className="border border-gray-300 px-3 py-2 text-left">Statut/Mode</th>
+                    <th className="border border-gray-300 px-3 py-2 text-left break-words whitespace-normal align-top">Statut/Mode</th>
                   )}
                 </tr>
               </thead>
@@ -186,19 +186,19 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                     // Unified: paiements/avoirs reduce balance, others increase
                     const reduceBalance = (isPayment || isAvoir);
                     return (
-                      <tr key={t.id} className="odd:bg-gray-50">
-                        <td className="border border-gray-300 px-3 py-2">{t.syntheticInitial ? '-' : fmtDateTime(t.dateISO || t.date)}</td>
-                        <td className="border border-gray-300 px-3 py-2">{t.numero}</td>
-                        <td className="border border-gray-300 px-3 py-2">{t.type}</td>
+                      <tr key={t.id} className="odd:bg-gray-50 text-[11px] sm:text-sm">
+                        <td className="border border-gray-300 px-3 py-2 break-words whitespace-normal align-top">{t.syntheticInitial ? '-' : fmtDateTime(t.dateISO || t.date)}</td>
+                        <td className="border border-gray-300 px-3 py-2 break-words whitespace-normal align-top">{t.numero}</td>
+                        <td className="border border-gray-300 px-3 py-2 break-words whitespace-normal align-top">{t.type}</td>
                         {showPrices ? (
                           <>
-                            <td className={`border border-gray-300 px-3 py-2 text-right ${t.syntheticInitial ? 'text-gray-600' : reduceBalance ? 'text-green-700' : 'text-blue-700'} font-medium`}>
+                            <td className={`border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top ${t.syntheticInitial ? 'text-gray-600' : reduceBalance ? 'text-green-700' : 'text-blue-700'} font-medium`}>
                               {t.syntheticInitial ? '—' : (reduceBalance ? '-' : '+')}{t.syntheticInitial ? '' : fmt(t.montant)}
                             </td>
-                            <td className="border border-gray-300 px-3 py-2 text-right text-gray-800 font-semibold">{fmt(t.soldeCumulatif)}</td>
+                            <td className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top text-gray-800 font-semibold">{fmt(t.soldeCumulatif)}</td>
                           </>
                         ) : (
-                          <td className="border border-gray-300 px-3 py-2">{t.syntheticInitial ? '-' : (t.statut || (isPayment ? 'Paiement' : '-'))}</td>
+                          <td className="border border-gray-300 px-3 py-2 break-words whitespace-normal align-top">{t.syntheticInitial ? '-' : (t.statut || (isPayment ? 'Paiement' : '-'))}</td>
                         )}
                       </tr>
                     );
@@ -212,23 +212,23 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
         <div>
           <h2 className="text-lg font-bold mb-3">Historique Détaillé des Produits</h2>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-gray-300">
+            <table className="w-full table-fixed border-collapse border border-gray-300">
               <thead>
-                <tr className="bg-orange-500 text-white">
-                  <th className="border border-gray-300 px-3 py-2 text-left">Date</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Bon N°</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Référence</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Désignation</th>
-                  <th className="border border-gray-300 px-3 py-2 text-right">Qté</th>
+                <tr className="bg-orange-500 text-white text-[11px] sm:text-sm">
+                  <th className="border border-gray-300 px-3 py-2 text-left break-words whitespace-normal align-top">Date</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left break-words whitespace-normal align-top">Bon N°</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left break-words whitespace-normal align-top">Référence</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left break-words whitespace-normal align-top">Désignation</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top">Qté</th>
                   {showPrices && (
                     <>
-                      <th className="border border-gray-300 px-3 py-2 text-right">{isFournisseur ? 'Prix Achat' : 'Prix Unit.'}</th>
-                      <th className="border border-gray-300 px-3 py-2 text-right">Total</th>
-                      <th className="border border-gray-300 px-3 py-2 text-right">Solde Cumulé</th>
+                      <th className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top">{isFournisseur ? 'Prix Achat' : 'Prix Unit.'}</th>
+                      <th className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top">Total</th>
+                      <th className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top">Solde Cumulé</th>
                     </>
                   )}
                   {!showPrices && (
-                    <th className="border border-gray-300 px-3 py-2 text-left">Statut</th>
+                    <th className="border border-gray-300 px-3 py-2 text-left break-words whitespace-normal align-top">Statut</th>
                   )}
                 </tr>
               </thead>
@@ -246,20 +246,20 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                     const reduceBalance = isPaymentOrAvoir;
                     const displayTotal = it.syntheticInitial ? '' : (reduceBalance ? -totalVal : totalVal);
                     return (
-                      <tr key={it.id} className="odd:bg-gray-50">
-                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : fmtDateTime(it.bon_date_iso || it.date || it.bon_date)}</td>
-                        <td className="border border-gray-300 px-3 py-2">{it.bon_numero}</td>
-                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '—' : it.product_reference}</td>
-                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? 'Solde initial' : it.product_designation}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : it.quantite}</td>
+                      <tr key={it.id} className="odd:bg-gray-50 text-[11px] sm:text-sm">
+                        <td className="border border-gray-300 px-3 py-2 break-words whitespace-normal align-top">{it.syntheticInitial ? '-' : fmtDateTime(it.bon_date_iso || it.date || it.bon_date)}</td>
+                        <td className="border border-gray-300 px-3 py-2 break-words whitespace-normal align-top">{it.bon_numero}</td>
+                        <td className="border border-gray-300 px-3 py-2 break-words whitespace-normal align-top">{it.syntheticInitial ? '—' : it.product_reference}</td>
+                        <td className="border border-gray-300 px-3 py-2 break-words whitespace-normal align-top">{it.syntheticInitial ? 'Solde initial' : it.product_designation}</td>
+                        <td className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top">{it.syntheticInitial ? '—' : it.quantite}</td>
                         {showPrices ? (
                           <>
-                            <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : fmt(isFournisseur ? (it.prix_achat ?? it.prix_unitaire) : it.prix_unitaire)}</td>
-                            <td className={`border border-gray-300 px-3 py-2 text-right font-medium ${it.syntheticInitial ? 'text-gray-600' : reduceBalance ? 'text-green-700' : ''}`}>{it.syntheticInitial ? '—' : fmt(displayTotal)}</td>
-                            <td className="border border-gray-300 px-3 py-2 text-right text-gray-800 font-semibold">{fmt(it.soldeCumulatif)}</td>
+                            <td className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top">{it.syntheticInitial ? '—' : fmt(isFournisseur ? (it.prix_achat ?? it.prix_unitaire) : it.prix_unitaire)}</td>
+                            <td className={`border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top font-medium ${it.syntheticInitial ? 'text-gray-600' : reduceBalance ? 'text-green-700' : ''}`}>{it.syntheticInitial ? '—' : fmt(displayTotal)}</td>
+                            <td className="border border-gray-300 px-3 py-2 text-right break-words whitespace-normal align-top text-gray-800 font-semibold">{fmt(it.soldeCumulatif)}</td>
                           </>
                         ) : (
-                          <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : (it.bon_statut || '-')}</td>
+                          <td className="border border-gray-300 px-3 py-2 break-words whitespace-normal align-top">{it.syntheticInitial ? '-' : (it.bon_statut || '-')}</td>
                         )}
                       </tr>
                     );
@@ -269,14 +269,14 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
               {showPrices && (
                 <tfoot>
                   <tr className="bg-gray-100 font-semibold">
-                    <td className="border border-gray-300 px-3 py-2">—</td>
-                    <td className="border border-gray-300 px-3 py-2">—</td>
-                    <td className="border border-gray-300 px-3 py-2">—</td>
-                    <td className="border border-gray-300 px-3 py-2 text-left">TOTAL</td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">{totalQtyProducts}</td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">—</td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">{fmt(totalAmountProducts)}</td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">{fmt(finalSoldeProducts)}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-[11px] sm:text-sm">—</td>
+                    <td className="border border-gray-300 px-3 py-2 text-[11px] sm:text-sm">—</td>
+                    <td className="border border-gray-300 px-3 py-2 text-[11px] sm:text-sm">—</td>
+                    <td className="border border-gray-300 px-3 py-2 text-left text-[11px] sm:text-sm">TOTAL</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right text-[11px] sm:text-sm">{totalQtyProducts}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right text-[11px] sm:text-sm">—</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right text-[11px] sm:text-sm">{fmt(totalAmountProducts)}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right text-[11px] sm:text-sm">{fmt(finalSoldeProducts)}</td>
                   </tr>
                 </tfoot>
               )}

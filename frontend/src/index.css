@@ -94,7 +94,7 @@ html { -webkit-text-size-adjust: 100%; }
   table:not(.no-mobile-scroll) {
     display: block;              /* allow overflow on element itself */
     overflow-x: auto;            /* horizontal scroll if wider than viewport */
-    max-width: 100vw;            /* never exceed viewport width */
+    max-width: 130vw;            /* never exceed viewport width */
     -webkit-overflow-scrolling: touch; /* smooth momentum scroll iOS */
   }
   table:not(.no-mobile-scroll) thead { display: table-header-group; }
