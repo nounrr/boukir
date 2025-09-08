@@ -23,7 +23,7 @@ import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
-
+import logo from '../components/logo.png';
 // Validation du formulaire de contact
 const contactValidationSchema = Yup.object({
   nom_complet: Yup.string().nullable(),
@@ -387,7 +387,8 @@ const ContactsPage: React.FC = () => {
         <div style="display:flex;align-items:center;justify-content:center;margin-bottom:8px;gap:12px;">
           <div style="display:flex;align-items:center;justify-content:center;">
             <img 
-              src="" alt="${c.name}"
+              src="${logo}" 
+              alt="${c.name}"
               className=" object-contain"
               style="width:110px"
             />
