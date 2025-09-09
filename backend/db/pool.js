@@ -16,7 +16,12 @@ export const requestContext = new AsyncLocalStorage();
 // });
 // prod
 
-const pool = mysql.createPool({
+
+// Patch getConnection pour injecter @app_user_id / @app_request_id si disponibles
+const originalGetConnection = pool.getConnection.bind(pool);
+pool.getConnection = async function patchedGetConnection() {
+  const conn = await originalGetConnection();
+  try {const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER || 'boukir',
@@ -27,11 +32,6 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
-// Patch getConnection pour injecter @app_user_id / @app_request_id si disponibles
-const originalGetConnection = pool.getConnection.bind(pool);
-pool.getConnection = async function patchedGetConnection() {
-  const conn = await originalGetConnection();
-  try {
     const ctx = requestContext.getStore();
     if (ctx) {
       await conn.query('SET @app_user_id = ?, @app_request_id = ?', [ctx.userId || null, ctx.requestId || null]);

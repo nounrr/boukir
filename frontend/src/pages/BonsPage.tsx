@@ -168,17 +168,20 @@ const BonsPage = () => {
   const computeMouvementDetail = (bon: any): { profit: number; costBase: number; marginPct: number | null } => {
     const items = parseItemsSafe(bon?.items);
     let profit = 0; let costBase = 0;
+    const type = bon?.type || currentTab;
+    const applyRemise = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(type);
     for (const it of items) {
       const q = Number(it.quantite ?? it.qty ?? 0) || 0;
       if (!q) continue;
-      // Utiliser le prix_unitaire enregistré sur la ligne (NE PAS rafraîchir via produit pour éviter les changements ultérieurs)
       const prixVente = Number(it.prix_unitaire ?? 0) || 0;
-      // Coût: cout_revient sinon prix_achat; fallback produit uniquement si les deux sont absents
       let cost = 0;
       if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
       else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
-      else cost = resolveCost(it); // dernier recours
-      profit += (prixVente - cost) * q;
+      else cost = resolveCost(it);
+      const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0; // support legacy key
+      const remiseTotale = remiseUnitaire * q;
+      // Profit net si types concernés, sinon brut
+      profit += (prixVente - cost) * q - (applyRemise ? remiseTotale : 0);
       costBase += cost * q;
     }
     const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
