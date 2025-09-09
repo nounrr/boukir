@@ -36,13 +36,7 @@ const DashboardPage: React.FC = () => {
   };
 
   // Helpers
-  const isSameMonth = (iso?: string) => {
-    if (!iso) return false;
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return false;
-    const now = new Date();
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  };
+  // isSameMonth removed (unused)
 
   const isToday = (iso?: string) => {
     if (!iso) return false;
@@ -72,24 +66,26 @@ const DashboardPage: React.FC = () => {
     return 0;
   };
 
-  const computeMouvementDetail = (bon: any): { profit: number; costBase: number; marginPct: number | null } => {
+  const computeMouvementDetail = (bon: any): { profit: number; costBase: number; marginPct: number | null; totalRemise: number } => {
     const items = parseItemsSafe(bon?.items);
-    let profit = 0; let costBase = 0;
+    let profit = 0; let costBase = 0; let totalRemise = 0;
     for (const it of items) {
       const q = Number(it.quantite ?? it.qty ?? 0) || 0;
       if (!q) continue;
-      // Utiliser le prix_unitaire enregistré sur la ligne
       const prixVente = Number(it.prix_unitaire ?? 0) || 0;
-      // Coût: cout_revient sinon prix_achat; fallback produit uniquement si les deux sont absents
       let cost = 0;
       if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
       else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
-      else cost = resolveCost(it); // dernier recours
-      profit += (prixVente - cost) * q;
+      else cost = resolveCost(it);
+      const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0;
+      const remiseTotaleLigne = remiseUnitaire * q;
+      totalRemise += remiseTotaleLigne;
+      // Profit net après remise
+      profit += (prixVente - cost) * q - remiseTotaleLigne;
       costBase += cost * q;
     }
     const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
-    return { profit, costBase, marginPct };
+    return { profit, costBase, marginPct, totalRemise };
   };
 
   // Rules
@@ -119,17 +115,17 @@ const DashboardPage: React.FC = () => {
     const revenue = salesRevenue - avoirClientAmount;
 
     // Calculate purchase revenue (chiffre bénéficiaire) based on profits with valid status
-    const salesMovements = salesDocs
+  const salesMovements = salesDocs
       .filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut))
       .reduce((sum: number, b: any) => {
-        const { profit } = computeMouvementDetail(b);
+    const { profit } = computeMouvementDetail(b); // déjà net des remises
         return sum + profit;
       }, 0);
 
-    const avoirMovements = avoirsClient
+  const avoirMovements = avoirsClient
       .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
       .reduce((sum: number, a: any) => {
-        const { profit } = computeMouvementDetail(a);
+    const { profit } = computeMouvementDetail(a); // net remises
         return sum + profit;
       }, 0);
 
@@ -186,11 +182,18 @@ const DashboardPage: React.FC = () => {
 
     recentBons.forEach((bon: any) => {
       const timeAgo = Math.floor((now.getTime() - new Date(bon.date_creation).getTime()) / (1000 * 60 * 60));
+      const bonNumero = bon.numero ? bon.numero : `#${bon.id}`;
+      const montantBon = formatAmount(Number(bon.montant_total || 0));
+      const getBonColor = (t: string) => {
+        if (t === 'Sortie') return 'green';
+        if (t === 'Comptant') return 'blue';
+        return 'purple';
+      };
       activities.push({
         type: 'bon',
-        message: `${bon.type} ${bon.numero || `#${bon.id}`} créé - ${formatAmount(Number(bon.montant_total || 0))} DH`,
+        message: `${bon.type} ${bonNumero} créé - ${montantBon} DH`,
         time: timeAgo > 0 ? `Il y a ${timeAgo}h` : "À l'instant",
-        color: bon.type === 'Sortie' ? 'green' : bon.type === 'Comptant' ? 'blue' : 'purple',
+        color: getBonColor(bon.type),
         priority: bon.statut === 'Validé' ? 'high' : 'medium'
       });
     });
@@ -249,12 +252,11 @@ const DashboardPage: React.FC = () => {
     }
 
     // Sort by priority and time
-    return activities
-      .sort((a, b) => {
-        const priorityOrder = { critical: 0, high: 1, medium: 2 };
-        return priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder];
-      })
-      .slice(0, 5);
+    const priorityOrder = { critical: 0, high: 1, medium: 2 } as const;
+    activities.sort((a: any, b: any) => {
+      return priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder];
+    });
+    return activities.slice(0, 5);
   }, [sorties, comptants, commandes, allPayments, products]);
 
   return (
@@ -475,7 +477,7 @@ const DashboardPage: React.FC = () => {
           <div className="p-6">
             {recentActivity.length > 0 ? (
               <div className="space-y-4">
-                {recentActivity.map((activity, index) => {
+        {recentActivity.map((activity) => {
                   const getColorClasses = (color: string) => {
                     switch (color) {
                       case 'red': return 'bg-red-500';
@@ -488,7 +490,7 @@ const DashboardPage: React.FC = () => {
                   };
 
                   return (
-                    <div key={index} className="flex items-center space-x-3">
+          <div key={`${activity.type}-${activity.message}-${activity.time}`} className="flex items-center space-x-3">
                       <div className={`w-2 h-2 rounded-full ${getColorClasses(activity.color)}`}></div>
                       <div className="flex-1">
                         <p className={`text-sm ${activity.priority === 'critical' ? 'font-semibold text-red-900' : 'text-gray-900'}`}>

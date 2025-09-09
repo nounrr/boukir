@@ -35,9 +35,16 @@ interface ChiffreDetail {
       prix_achat?: number;
       montant_ligne: number;
       profit?: number;
+      // Ajouts pour vérification des remises et profits
+      remise_unitaire?: number;
+      remise_total?: number;
+      profitBrut?: number; // Profit avant remise
     }>;
     totalBon: number;
     profitBon?: number;
+    // Totaux supplémentaires pour contrôle des remises
+    totalRemiseBon?: number;
+    netTotalBon?: number; // totalBon - totalRemiseBon
   }>;
 }
 
@@ -93,6 +100,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                   Coût
                 </th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
+                  Remise
+                </th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                   Profit
                 </th>
               </>
@@ -119,6 +129,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                   <td className="px-4 py-2 text-sm text-gray-900 text-right">
                     {formatAmount(item.cout_revient || item.prix_achat || 0)} DH
                   </td>
+                  <td className="px-4 py-2 text-sm text-amber-600 text-right">
+                    {formatAmount(item.remise_total || 0)} DH
+                  </td>
                   <td className="px-4 py-2 text-sm text-emerald-600 text-right">
                     {formatAmount(item.profit || 0)} DH
                   </td>
@@ -131,6 +144,21 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           ))}
         </tbody>
       </table>
+      {isBeneficiaire && (
+        <div className="flex flex-wrap gap-6 mt-3 text-xs sm:text-sm text-gray-700 border-t pt-3">
+          <span>
+            Total Remises Bon: <span className="font-semibold text-amber-600">{formatAmount(calcul.totalRemiseBon || 0)} DH</span>
+          </span>
+          <span>
+            Profit Net Bon: <span className="font-semibold text-emerald-600">{formatAmount(calcul.profitBon || 0)} DH</span>
+          </span>
+          {typeof calcul.netTotalBon === 'number' && (
+            <span>
+              Total Net (Vente - Remise): <span className="font-semibold text-blue-600">{formatAmount(calcul.netTotalBon || 0)} DH</span>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -206,8 +234,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
   const computeBonDetail = (bon: any) => {
     const items = parseItemsSafe(bon.items);
     const itemsDetail = [];
-    let totalBon = 0;
-    let profitBon = 0;
+    let totalBon = 0; // Total brut (avant remises)
+    let profitBon = 0; // Profit net après remises
+    let totalRemiseBon = 0;
 
     for (const item of items) {
       const quantite = Number(item.quantite || 0);
@@ -221,12 +250,15 @@ const ChiffreAffairesDetailPage: React.FC = () => {
       } else {
         cost = resolveCost(item);
       }
-
-      const montant_ligne = prix_unitaire * quantite;
-      const profit = (prix_unitaire - cost) * quantite;
+      const remiseUnitaire = Number(item.remise_montant || item.remise_valeur || 0) || 0; // support legacy key
+      const remiseTotal = remiseUnitaire * quantite;
+      const montant_ligne = prix_unitaire * quantite; // brut
+      const profitBrut = (prix_unitaire - cost) * quantite;
+      const profitNet = profitBrut - remiseTotal; // retirer remise du profit
 
       totalBon += montant_ligne;
-      profitBon += profit;
+      totalRemiseBon += remiseTotal;
+      profitBon += profitNet;
 
       itemsDetail.push({
         designation: item.designation || 'Produit sans nom',
@@ -235,7 +267,10 @@ const ChiffreAffairesDetailPage: React.FC = () => {
         cout_revient: item.cout_revient,
         prix_achat: item.prix_achat,
         montant_ligne,
-        profit
+        profit: profitNet,
+        profitBrut,
+        remise_unitaire: remiseUnitaire,
+        remise_total: remiseTotal
       });
     }
 
@@ -244,8 +279,10 @@ const ChiffreAffairesDetailPage: React.FC = () => {
       bonNumero: bon.numero || `#${bon.id}`,
       bonType: bon.type,
       items: itemsDetail,
-      totalBon,
-      profitBon
+      totalBon, // brut
+      profitBon, // net
+      totalRemiseBon,
+      netTotalBon: totalBon - totalRemiseBon
     };
   };
 
@@ -277,7 +314,8 @@ const ChiffreAffairesDetailPage: React.FC = () => {
     // Add ventes (positive)
     dayVentes.forEach(bon => {
       const detail = computeBonDetail(bon);
-      caNetDetails.total += detail.totalBon;
+  // CA Net = total brut (les remises ne réduisent pas le chiffre d'affaires, seulement le profit)
+  caNetDetails.total += detail.totalBon;
       caNetDetails.bons.push(bon);
       caNetDetails.calculs.push(detail);
     });
@@ -285,9 +323,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
     // Subtract avoirs (negative)
     dayAvoirs.forEach(avoir => {
       const detail = computeBonDetail(avoir);
-      caNetDetails.total -= detail.totalBon;
+  caNetDetails.total -= detail.totalBon; // soustraction brute
       caNetDetails.bons.push(avoir);
-      const avoirDetail = { ...detail, totalBon: -detail.totalBon };
+  const avoirDetail = { ...detail, totalBon: -detail.totalBon };
       caNetDetails.calculs.push(avoirDetail);
     });
 
@@ -519,7 +557,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                       )}
                       {chiffre.type === 'BENEFICIAIRE' && (
                         <div className="text-sm text-gray-500 mt-2">
-                          * Calcul: (Prix de vente - Coût) × Quantité par article
+                          * Calcul: ((Prix de vente - Coût) × Quantité) - Remise totale des lignes
+                          <br />
+                          * Profit net ligne = ((PV - Coût) × Qté) - (Remise unitaire × Qté)
                         </div>
                       )}
                     </div>
