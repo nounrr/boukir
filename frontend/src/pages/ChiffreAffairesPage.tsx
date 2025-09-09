@@ -7,9 +7,11 @@ import { useGetProductsQuery } from '../store/api/productsApi';
 // Types
 interface ChiffreAffairesData {
   date: string;
-  chiffreAffaires: number;
-  chiffreAffairesAchat: number;
+  chiffreAffaires: number; // CA Net brut (sans remises)
+  chiffreAffairesAchat: number; // Profit net (après remises)
+  chiffreAffairesAchatBrut: number; // Profit brut (avant remises) pour contrôle
   chiffreAchats: number;
+  totalRemises: number; // Remises totales du jour (ventes - avoirs)
 }
 
 // Utility functions
@@ -76,24 +78,27 @@ const ChiffreAffairesPage: React.FC = () => {
 
   const computeMouvementDetail = (bon: any) => {
     const items = parseItemsSafe(bon.items);
-    let profit = 0;
+    let profitNet = 0; // après remises
+    let profitBrut = 0; // avant remises
     let costBase = 0;
-    
+    let totalRemise = 0;
     for (const it of items) {
       const q = Number(it.quantite || 0);
+      if (!q) continue;
       const prixVente = Number(it.prix_unitaire || 0);
-      
       let cost = 0;
       if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
       else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
       else cost = resolveCost(it);
-      
-      profit += (prixVente - cost) * q;
+      const remiseLigne = Number(it.remise_montant || it.remise_valeur || 0) || 0;
+      const remiseTotale = remiseLigne * q;
+      profitBrut += (prixVente - cost) * q;
+      profitNet += (prixVente - cost) * q - remiseTotale;
+      totalRemise += remiseTotale;
       costBase += cost * q;
     }
-    
-    const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
-    return { profit, costBase, marginPct };
+    const marginPct = costBase > 0 ? (profitNet / costBase) * 100 : null;
+    return { profitNet, profitBrut, costBase, marginPct, totalRemise };
   };
 
   // Calculate data based on filter
@@ -164,16 +169,9 @@ const ChiffreAffairesPage: React.FC = () => {
       sum + Number(c.montant_total || 0), 0
     );
     
-    // Calculate profit-based movements
-    const salesMovements = filteredSales.reduce((sum: number, b: any) => {
-      const { profit } = computeMouvementDetail(b);
-      return sum + profit;
-    }, 0);
-    
-    const avoirMovements = filteredAvoirs.reduce((sum: number, a: any) => {
-      const { profit } = computeMouvementDetail(a);
-      return sum + profit;
-    }, 0);
+  // Prepare totals for remises
+  let totalRemisesVente = 0; // cumul des remises sur ventes
+  let totalRemisesAvoir = 0; // cumul des remises sur avoirs
 
     // Group by date for detailed view - only show days with activity
     const dailyData: { [key: string]: ChiffreAffairesData } = {};
@@ -182,29 +180,35 @@ const ChiffreAffairesPage: React.FC = () => {
     filteredSales.forEach((bon: any) => {
       const date = bon.date_creation?.split('T')[0] || 'Unknown';
       if (!dailyData[date]) {
-        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAchats: 0 };
+        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
       }
+      const { profitNet, profitBrut, totalRemise } = computeMouvementDetail(bon);
       dailyData[date].chiffreAffaires += Number(bon.montant_total || 0);
-      const { profit } = computeMouvementDetail(bon);
-      dailyData[date].chiffreAffairesAchat += profit;
+      dailyData[date].chiffreAffairesAchat += profitNet;
+      dailyData[date].chiffreAffairesAchatBrut += profitBrut;
+      dailyData[date].totalRemises += totalRemise;
+      totalRemisesVente += totalRemise;
     });
     
     // Process avoirs (subtract)
     filteredAvoirs.forEach((avoir: any) => {
       const date = avoir.date_creation?.split('T')[0] || 'Unknown';
       if (!dailyData[date]) {
-        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAchats: 0 };
+        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
       }
+      const { profitNet, profitBrut, totalRemise } = computeMouvementDetail(avoir);
       dailyData[date].chiffreAffaires -= Number(avoir.montant_total || 0);
-      const { profit } = computeMouvementDetail(avoir);
-      dailyData[date].chiffreAffairesAchat -= profit;
+      dailyData[date].chiffreAffairesAchat -= profitNet;
+      dailyData[date].chiffreAffairesAchatBrut -= profitBrut;
+      dailyData[date].totalRemises -= totalRemise; // remise liée à retour diminue le cumul
+      totalRemisesAvoir += totalRemise;
     });
     
     // Process commandes
     filteredCommandes.forEach((commande: any) => {
       const date = commande.date_creation?.split('T')[0] || 'Unknown';
       if (!dailyData[date]) {
-        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAchats: 0 };
+        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
       }
       dailyData[date].chiffreAchats += Number(commande.montant_total || 0);
     });
@@ -219,12 +223,17 @@ const ChiffreAffairesPage: React.FC = () => {
       b.date.localeCompare(a.date)
     );
 
+    // Assurer cohérence: recalculer total bénéficiaire à partir des jours (évite dérives d'arrondi)
+    const totalBeneficiaireFromDays = sortedDailyData.reduce((s, d) => s + d.chiffreAffairesAchat, 0);
     return {
       totalChiffreAffaires: salesRevenue - avoirAmount,
-      totalChiffreAffairesAchat: salesMovements - avoirMovements,
+      totalChiffreAffairesAchat: totalBeneficiaireFromDays,
       totalChiffreAchats: commandesRevenue,
       totalBons: filteredSales.length,
       dailyData: sortedDailyData,
+      totalRemisesNet: totalRemisesVente - totalRemisesAvoir,
+      totalRemisesVente,
+      totalRemisesAvoir
     };
   }, [sorties, comptants, avoirsClient, commandes, products, filterType, selectedDate, startDate, endDate, selectedMonth]);
 
@@ -405,7 +414,13 @@ const ChiffreAffairesPage: React.FC = () => {
                   CA Net (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Chiffre Bénéficiaire (DH)
+                  Bénéficiaire Net (DH)
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Bénéficiaire Brut (DH)
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Remises (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   CA Achats (DH)
@@ -434,6 +449,16 @@ const ChiffreAffairesPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-emerald-900">
                       {formatAmount(day.chiffreAffairesAchat)} DH
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-emerald-900/70">
+                      {formatAmount(day.chiffreAffairesAchatBrut)} DH
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-amber-700">
+                      {formatAmount(day.totalRemises)} DH
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
