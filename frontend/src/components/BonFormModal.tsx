@@ -12,8 +12,8 @@ import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantQuery } from '../store/api/comptantApi';
 import { useGetClientsQuery, useGetFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
-import { useGetPaymentsQuery } from '../store/api/paymentsApi';
-import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
+// Removed unused: useGetPaymentsQuery, useGetBonsByTypeQuery
+import { useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useCreateClientRemiseMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
 import type { Contact } from '../types';
@@ -304,10 +304,11 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined);
   // For cumulative balances
-  const { data: commandesAll = [] } = useGetBonsByTypeQuery('Commande');
-  const { data: avoirsClientAll = [] } = useGetBonsByTypeQuery('Avoir');
-  const { data: avoirsFournisseurAll = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
-  const { data: payments = [] } = useGetPaymentsQuery();
+  // Removed unused aggregated queries to reduce unnecessary re-renders / warnings
+  // const { data: commandesAll = [] } = useGetBonsByTypeQuery('Commande');
+  // const { data: avoirsClientAll = [] } = useGetBonsByTypeQuery('Avoir');
+  // const { data: avoirsFournisseurAll = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
+  // const { data: payments = [] } = useGetPaymentsQuery();
 
   // Mutations
   const [createBon] = useCreateBonMutation();
@@ -991,6 +992,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     let bestTime = -1;
 
     const scan = (bon: any, itemsField: any) => {
+      // Ne considérer que les bons VALIDÉS
+      const statut = String(bon.statut || '').toLowerCase();
+      if (statut !== 'validé' && statut !== 'valide' && statut !== 'validée') return;
       const items = parseItems(itemsField);
       const bonClientId = String(bon.client_id ?? bon.contact_id ?? '');
       if (bonClientId !== cid) return;
@@ -1881,7 +1885,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       values.items[index].product_id
     );
     return last && Number.isFinite(last) ? (
-  <div className="text-xs text-gray-500 mt-1">Dernier: {formatFull(Number(last))} DH</div>
+      <div className="text-xs text-gray-500 mt-1">Dernier (Validé): {formatFull(Number(last))} DH</div>
     ) : null;
   })()}
 </td>
