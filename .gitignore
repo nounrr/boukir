@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backend secrets & config
+backend/.env
+backend/.env.*
+!backend/.env.example
+# Ignore real pool with credentials (use pool.example.js)
+backend/db/pool.js

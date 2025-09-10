@@ -4,43 +4,43 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 // local
 export const requestContext = new AsyncLocalStorage();
 
-// const pool = mysql.createPool({
-//   host: process.env.DB_HOST || 'localhost',
-//   port: Number(process.env.DB_PORT || 3307),
-//   user: process.env.DB_USER || 'root',
-//   password: process.env.DB_PASSWORD || 'rootroot@',
-//   database: process.env.DB_NAME || 'boukir',
-//   waitForConnections: true,
-//   connectionLimit: 10,
-//   queueLimit: 0,
-// });
-// prod
-
-
-// Patch getConnection pour injecter @app_user_id / @app_request_id si disponibles
-const originalGetConnection = pool.getConnection.bind(pool);
-pool.getConnection = async function patchedGetConnection() {
-  const conn = await originalGetConnection();
-  try {const pool = mysql.createPool({
+const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || 'boukir',
-  password: process.env.DB_PASSWORD || 'Ton46-l,yk,hbMotDePasse',
+  port: Number(process.env.DB_PORT || 3307),
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || 'rootroot@',
   database: process.env.DB_NAME || 'boukir',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
 });
+// prod
 
-    const ctx = requestContext.getStore();
-    if (ctx) {
-      await conn.query('SET @app_user_id = ?, @app_request_id = ?', [ctx.userId || null, ctx.requestId || null]);
-    }
-  } catch (e) {
-    // silencieux
-  }
-  return conn;
-};
+
+// Patch getConnection pour injecter @app_user_id / @app_request_id si disponibles
+const originalGetConnection = pool.getConnection.bind(pool);
+// pool.getConnection = async function patchedGetConnection() {
+//   const conn = await originalGetConnection();
+//   try {const pool = mysql.createPool({
+//   host: process.env.DB_HOST || 'localhost',
+//   port: Number(process.env.DB_PORT || 3306),
+//   user: process.env.DB_USER || 'boukir',
+//   password: process.env.DB_PASSWORD || 'Ton46-l,yk,hbMotDePasse',
+//   database: process.env.DB_NAME || 'boukir',
+//   waitForConnections: true,
+//   connectionLimit: 10,
+//   queueLimit: 0,
+// });
+
+//     const ctx = requestContext.getStore();
+//     if (ctx) {
+//       await conn.query('SET @app_user_id = ?, @app_request_id = ?', [ctx.userId || null, ctx.requestId || null]);
+//     }
+//   } catch (e) {
+//     // silencieux
+//   }
+//   return conn;
+// };
 
 // Patch pool.query pour garantir même session si contexte présent
 const originalQuery = pool.query.bind(pool);

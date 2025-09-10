@@ -22,7 +22,7 @@ router.get('/', async (_req, res) => {
     // 2) Charger tous les items liés en une requête
     const ids = rows.map((r) => r.id);
     const [items] = await pool.query(
-      `SELECT ci.*, p.designation
+      `SELECT ci.*, p.designation, p.kg AS product_kg
          FROM commande_items ci
          LEFT JOIN products p ON p.id = ci.product_id
         WHERE ci.bon_commande_id IN (?)`,
@@ -41,6 +41,7 @@ router.get('/', async (_req, res) => {
         remise_pourcentage: it.remise_pourcentage,
         remise_montant: it.remise_montant,
         total: it.total,
+        kg: it.product_kg, // pour calcul poids côté frontend
       });
       byCommande.set(it.bon_commande_id, arr);
     }
@@ -79,7 +80,7 @@ router.get('/:id', async (req, res) => {
 
     // 2) Items de la commande
     const [items] = await pool.query(
-      `SELECT ci.*, p.designation
+      `SELECT ci.*, p.designation, p.kg AS product_kg
          FROM commande_items ci
          LEFT JOIN products p ON p.id = ci.product_id
         WHERE ci.bon_commande_id = ?`,
@@ -99,6 +100,7 @@ router.get('/:id', async (req, res) => {
         remise_pourcentage: it.remise_pourcentage,
         remise_montant: it.remise_montant,
         total: it.total,
+        kg: it.product_kg,
       })),
     };
 
