@@ -157,7 +157,6 @@ router.post('/', async (req, res) => {
     const commandeId = commandeResult.insertId;
 
     // Items (facultatifs)
-    const productPriceCandidateMap = new Map(); // product_id -> new prix_achat candidate
     for (const item of items) {
       const {
         product_id,
@@ -181,41 +180,10 @@ router.post('/', async (req, res) => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [commandeId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
 
-      // Enregistrer le nouveau prix d'achat potentiel (dernier prix saisi pour ce produit dans cette commande)
-      // On ignore si prix_unitaire <= 0
-      if (Number(prix_unitaire) > 0) {
-        productPriceCandidateMap.set(Number(product_id), Number(prix_unitaire));
-      }
+  // (Suppression de la collecte des nouveaux prix d'achat)
     }
 
-    // Mise à jour des prix d'achat produits si différents
-    if (productPriceCandidateMap.size) {
-      const productIds = Array.from(productPriceCandidateMap.keys());
-      const [existingProducts] = await connection.query(
-        `SELECT id, prix_achat, cout_revient_pourcentage, prix_gros_pourcentage, prix_vente_pourcentage
-           FROM products WHERE id IN (?) FOR UPDATE`,
-        [productIds]
-      );
-
-      for (const row of existingProducts) {
-        const newPA = productPriceCandidateMap.get(row.id);
-        if (newPA == null) continue;
-        const currentPA = Number(row.prix_achat);
-        // Mettre à jour seulement si changement réel (tolérance 0.0001)
-        if (Math.abs(newPA - currentPA) > 0.0001) {
-          const crp = Number(row.cout_revient_pourcentage || 0);
-          const pgp = Number(row.prix_gros_pourcentage || 0);
-          const pvp = Number(row.prix_vente_pourcentage || 0);
-          const cout_revient = newPA * (1 + crp / 100);
-          const prix_gros = newPA * (1 + pgp / 100);
-          const prix_vente = newPA * (1 + pvp / 100);
-          await connection.execute(
-            `UPDATE products SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente = ?, updated_at = NOW() WHERE id = ?`,
-            [newPA, cout_revient, prix_gros, prix_vente, row.id]
-          );
-        }
-      }
-    }
+  // Désactivé: on ne met plus à jour automatiquement le prix_achat produit (conservation des anciens prix)
 
   await connection.commit();
   const numero = `CMD${String(commandeId).padStart(2, '0')}`;
@@ -231,44 +199,124 @@ router.post('/', async (req, res) => {
 
 // PATCH /commandes/:id/statut
 router.patch('/:id/statut', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
     const { id } = req.params;
     const { statut } = req.body;
 
-    if (!statut) return res.status(400).json({ message: 'Statut requis' });
+    if (!statut) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Statut requis' });
+    }
 
-    // Statuts valides pour bons_commande
     const valides = ['Brouillon', 'En attente', 'Validé', 'Livré', 'Facturé', 'Annulé'];
     if (!valides.includes(statut)) {
+      await connection.rollback();
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    // Seul le role PDG peut mettre un bon en 'Validé'
+    // Rôle PDG requis pour valider (inchangé)
     const userRole = req.user?.role;
     const lower = String(statut).toLowerCase();
     if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+      await connection.rollback();
       return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
     }
 
-    const [result] = await pool.execute(
-      `UPDATE bons_commande SET statut = ?, updated_at = NOW() WHERE id = ?`,
-      [statut, id]
-    );
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Commande non trouvée' });
+    // Charger ancien statut pour savoir si transition
+    const [oldRows] = await connection.execute(`SELECT statut FROM bons_commande WHERE id = ? FOR UPDATE`, [id]);
+    if (!Array.isArray(oldRows) || oldRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Commande non trouvée' });
+    }
+    const oldStatut = oldRows[0].statut;
+    if (oldStatut === statut) {
+      await connection.rollback();
+      return res.status(200).json({ success: true, message: 'Aucun changement de statut', data: { id, statut } });
+    }
 
-    // renvoyer l’objet mis à jour (avec noms utiles)
-    const [rows] = await pool.execute(`
+    // Mettre à jour le statut
+    await connection.execute(`UPDATE bons_commande SET statut = ?, updated_at = NOW() WHERE id = ?`, [statut, id]);
+
+    const enteringValidation = oldStatut !== 'Validé' && statut === 'Validé';
+    const leavingValidation = oldStatut === 'Validé' && statut !== 'Validé';
+
+    if (enteringValidation || leavingValidation) {
+      // Récupérer items + produits
+      const [items] = await connection.execute(`
+        SELECT ci.id AS ci_id, ci.product_id, ci.prix_unitaire, ci.old_prix_achat, ci.price_applied,
+               p.prix_achat AS prod_prix_achat,
+               p.cout_revient_pourcentage, p.prix_gros_pourcentage, p.prix_vente_pourcentage,
+               p.cout_revient, p.prix_gros, p.prix_vente
+          FROM commande_items ci
+          JOIN products p ON p.id = ci.product_id
+         WHERE ci.bon_commande_id = ?
+      `, [id]);
+
+      for (const row of items) {
+        const {
+          ci_id, product_id, prix_unitaire, old_prix_achat, price_applied,
+          prod_prix_achat,
+          cout_revient_pourcentage, prix_gros_pourcentage, prix_vente_pourcentage
+        } = row;
+
+        if (enteringValidation) {
+          if (prix_unitaire > 0 && Number(prix_unitaire) !== Number(prod_prix_achat)) {
+            const newPrixAchat = Number(prix_unitaire);
+            const oldPrix = Number(prod_prix_achat);
+            const newCoutRevient = cout_revient_pourcentage != null ? newPrixAchat * (1 + cout_revient_pourcentage / 100) : row.cout_revient;
+            const newPrixGros = prix_gros_pourcentage != null ? newPrixAchat * (1 + prix_gros_pourcentage / 100) : row.prix_gros;
+            const newPrixVente = prix_vente_pourcentage != null ? newPrixAchat * (1 + prix_vente_pourcentage / 100) : row.prix_vente;
+
+            // Sauvegarde old prix dans commande_items et marque applied
+            await connection.execute(`UPDATE commande_items SET old_prix_achat = ?, price_applied = 1 WHERE id = ?`, [oldPrix, ci_id]);
+            // Appliquer au produit
+            await connection.execute(`
+              UPDATE products
+                 SET prix_achat = ?,
+                     cout_revient = ?,
+                     prix_gros = ?,
+                     prix_vente = ?
+               WHERE id = ?
+            `, [newPrixAchat, newCoutRevient, newPrixGros, newPrixVente, product_id]);
+          }
+        } else if (leavingValidation) {
+          // Revert seulement si on avait appliqué et si le prix produit correspond toujours au prix_unitaire (sécurité)
+          if (price_applied === 1 && old_prix_achat != null) {
+            // Vérifier prix produit courant
+            if (Number(prod_prix_achat) === Number(prix_unitaire)) {
+              const revertPrix = Number(old_prix_achat);
+              const newCoutRevient = cout_revient_pourcentage != null ? revertPrix * (1 + cout_revient_pourcentage / 100) : row.cout_revient;
+              const newPrixGros = prix_gros_pourcentage != null ? revertPrix * (1 + prix_gros_pourcentage / 100) : row.prix_gros;
+              const newPrixVente = prix_vente_pourcentage != null ? revertPrix * (1 + prix_vente_pourcentage / 100) : row.prix_vente;
+
+              await connection.execute(`UPDATE products SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente = ? WHERE id = ?`, [revertPrix, newCoutRevient, newPrixGros, newPrixVente, product_id]);
+            }
+            // Dans tous les cas on remet le flag (on ne peut revert qu'une fois)
+            await connection.execute(`UPDATE commande_items SET price_applied = 0 WHERE id = ?`, [ci_id]);
+          }
+        }
+      }
+    }
+
+    // Charger la version enrichie pour réponse
+    const [rows] = await connection.execute(`
       SELECT bc.*, f.nom_complet AS fournisseur_nom, v.nom AS vehicule_nom
-      FROM bons_commande bc
-      LEFT JOIN contacts f ON f.id = bc.fournisseur_id
-      LEFT JOIN vehicules v ON v.id = bc.vehicule_id
-      WHERE bc.id = ?
+        FROM bons_commande bc
+        LEFT JOIN contacts f ON f.id = bc.fournisseur_id
+        LEFT JOIN vehicules v ON v.id = bc.vehicule_id
+       WHERE bc.id = ?
     `, [id]);
 
+    await connection.commit();
     res.json({ success: true, message: `Statut mis à jour: ${statut}`, data: rows[0] });
   } catch (error) {
+    await connection.rollback();
     console.error('PATCH /commandes/:id/statut', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  } finally {
+    connection.release();
   }
 });
 
@@ -340,40 +388,7 @@ router.put('/:id', async (req, res) => {
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
     }
 
-    // Synchroniser les nouveaux prix d'achat potentiels (comme dans POST)
-    if (items?.length) {
-      const candidateMap = new Map();
-      for (const it of items) {
-        if (it && it.product_id && Number(it.prix_unitaire) > 0) {
-          candidateMap.set(Number(it.product_id), Number(it.prix_unitaire));
-        }
-      }
-      if (candidateMap.size) {
-        const idsProducts = Array.from(candidateMap.keys());
-        const [existingProducts] = await connection.query(
-          `SELECT id, prix_achat, cout_revient_pourcentage, prix_gros_pourcentage, prix_vente_pourcentage
-             FROM products WHERE id IN (?) FOR UPDATE`,
-          [idsProducts]
-        );
-        for (const row of existingProducts) {
-          const newPA = candidateMap.get(row.id);
-          if (newPA == null) continue;
-            const currentPA = Number(row.prix_achat);
-          if (Math.abs(newPA - currentPA) > 0.0001) {
-            const crp = Number(row.cout_revient_pourcentage || 0);
-            const pgp = Number(row.prix_gros_pourcentage || 0);
-            const pvp = Number(row.prix_vente_pourcentage || 0);
-            const cout_revient = newPA * (1 + crp / 100);
-            const prix_gros = newPA * (1 + pgp / 100);
-            const prix_vente = newPA * (1 + pvp / 100);
-            await connection.execute(
-              `UPDATE products SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente = ?, updated_at = NOW() WHERE id = ?`,
-              [newPA, cout_revient, prix_gros, prix_vente, row.id]
-            );
-          }
-        }
-      }
-    }
+  // Désactivé: pas de synchronisation automatique des prix d'achat lors d'un PUT.
 
     await connection.commit();
     res.json({ message: 'Bon de commande mis à jour avec succès' });
