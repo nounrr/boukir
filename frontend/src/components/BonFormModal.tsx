@@ -399,7 +399,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
               0
           ) || 0;
 
-        const kg = Number(it.kg ?? it.kg_value ?? it.product?.kg ?? it.produit?.kg ?? 0) || 0;
+  const kg = Number(it.kg ?? it.kg_value ?? it.product_kg ?? it.product?.kg ?? it.produit?.kg ?? 0) || 0;
 
         if (productFound) {
           try {
@@ -2004,16 +2004,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 <div className="flex justify-between items-center mt-2">
   <span className="text-md font-semibold">Total poids (kg):</span>
   <span className="text-md font-semibold text-gray-700">
-    {formatFull(
-      values.items
-        .reduce((sum: number, item: any, idx: number) => {
-          const itemKg = Number(item.kg ?? item.product?.kg ?? 0) || 0;
-          const q =
-            parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-          return sum + itemKg * q;
-        }, 0)
-    )}{' '}
-    kg
+    {formatFull(values.items.reduce((sum: number, item: any, idx: number) => {
+      const itemKg = Number(item.kg ?? item.product?.kg ?? 0) || 0;
+      const raw = qtyRaw[idx];
+      const q = raw !== undefined && raw !== '' ? (parseFloat(normalizeDecimal(raw)) || 0) : (Number(item.quantite ?? item.qty ?? 0) || 0);
+      return sum + itemKg * q;
+    }, 0))} kg
   </span>
 </div>
                   {/* Total DH */}
