@@ -190,6 +190,25 @@ const BonsPage = () => {
     return { profit, costBase, marginPct };
   };
 
+  // Calcule le poids total d'un bon = somme (quantite * kg_unitaire)
+  const computeTotalPoids = (bon: any): number => {
+    const items = parseItemsSafe(bon?.items);
+    let total = 0;
+    for (const it of items) {
+      const q = Number(it.quantite ?? it.qty ?? 0) || 0;
+      if (!q) continue;
+      let kgUnit = Number(it.kg ?? it.kg_value ?? 0);
+      if (!kgUnit) {
+        const pid = it.product_id || it.produit_id;
+        const prod = (products as any[]).find(p => String(p.id) === String(pid));
+        kgUnit = Number(prod?.kg ?? 0) || 0;
+      }
+  // Ancien fallback supprimé: si le poids n'est pas défini ou vaut 0, on considère désormais 0 (pas 1)
+      total += kgUnit * q;
+    }
+    return total;
+  };
+
   // Handle sorting
   const handleSort = (field: 'numero' | 'date' | 'contact' | 'montant') => {
     if (sortField === field) {
@@ -624,6 +643,9 @@ const BonsPage = () => {
                     </div>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Poids (kg)
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Mouvement
                   </th>
                   {showAuditCols && (
@@ -647,7 +669,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={showAuditCols ? 10 : 8} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={showAuditCols ? 11 : 9} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTab}
                     </td>
                   </tr>
@@ -664,6 +686,7 @@ const BonsPage = () => {
                         <div className="text-sm font-semibold text-gray-900">{Number(bon.montant_total ?? 0).toFixed(2)} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
                       </td>
+                      <td className="px-4 py-2 text-sm">{computeTotalPoids(bon).toFixed(2)}</td>
                       <td className="px-4 py-2 text-sm">
                         {(() => {
                           // Show mouvement only for sales/stock out types (Sortie, Comptant, Avoir, AvoirComptant)
@@ -997,6 +1020,10 @@ const BonsPage = () => {
                       <p className="text-sm font-semibold text-gray-600">Montant total:</p>
                       <p className="text-lg font-bold text-blue-600">{Number(selectedBon.montant_total ?? 0).toFixed(2)} DH</p>
                     </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-600">Poids total:</p>
+                      <p className="text-lg font-bold text-amber-600">{computeTotalPoids(selectedBon).toFixed(2)} kg</p>
+                    </div>
                   </div>
 
                   <div className="border rounded-md p-4">
@@ -1009,22 +1036,37 @@ const BonsPage = () => {
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Produit</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantité</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Prix unitaire</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qté</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Kg/U</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Poids</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">PU</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                           {selectedBon.items.map((item: any) => {
                             const pid = item.product_id ?? item.produit_id;
                             const product = products.find((p: any) => String(p.id) === String(pid));
-                            const displayDesignation = item.designation || item.designation_custom || product?.designation || 'Produit non trouvé';
+                            const designation = item.designation || item.designation_custom || product?.designation || 'Produit';
+                            const q = Number(item.quantite ?? item.qty ?? 0) || 0;
+                            const rawKgCandidate = item.kg ?? item.kg_value;
+                            let kgUnit: number;
+                            if (rawKgCandidate === undefined || rawKgCandidate === null || rawKgCandidate === '') {
+                              // fallback uniquement si totalement absent
+                              const prodKg = product?.kg;
+                              kgUnit = (prodKg === undefined || prodKg === null) ? 0 : Number(prodKg) || 0;
+                            } else {
+                              kgUnit = Number(rawKgCandidate) || 0; // si 0 => reste 0
+                            }
+                            const poids = kgUnit * q;
                             return (
-                              <tr key={item.id}>
-                                <td className="px-4 py-2 text-sm">{displayDesignation}</td>
-                                <td className="px-4 py-2 text-sm">{item.quantite}</td>
-                                <td className="px-4 py-2 text-sm">{item.prix_unitaire ?? 0} DH</td>
-                                <td className="px-4 py-2 text-sm font-semibold">{item.montant_ligne ?? 0} DH</td>
+                              <tr key={item.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-2 text-sm text-gray-700">{designation}</td>
+                                <td className="px-4 py-2 text-sm text-right">{q}</td>
+                                <td className="px-4 py-2 text-sm text-right">{kgUnit.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-sm text-right font-medium">{poids.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-sm text-right">{Number(item.prix_unitaire || 0).toFixed(2)} DH</td>
+                                <td className="px-4 py-2 text-sm text-right font-semibold">{Number(item.montant_ligne || item.total || 0).toFixed(2)} DH</td>
                               </tr>
                             );
                           })}
@@ -1032,7 +1074,7 @@ const BonsPage = () => {
                       </table>
                     </div>
                     <div className="flex justify-end text-base font-semibold mt-2">
-                      Total: {Number(selectedBon.montant_total ?? 0).toFixed(2)} DH
+                      Total poids: {computeTotalPoids(selectedBon).toFixed(2)} kg | Total montant: {Number(selectedBon.montant_total ?? 0).toFixed(2)} DH
                     </div>
                   </div>
 
