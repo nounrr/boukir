@@ -86,7 +86,7 @@ const BonsPage = () => {
   const { data: bons = [], isLoading: bonsLoading } = useGetBonsByTypeQuery(currentTab);
   const { data: clients = [], isLoading: clientsLoading } = useGetClientsQuery();
   const { data: suppliers = [], isLoading: suppliersLoading } = useGetFournisseursQuery();
-  const { data: products = [], isLoading: productsLoading } = useGetProductsQuery();
+  const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery();
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
   const [createBon] = useCreateBonMutation();
@@ -109,6 +109,8 @@ const BonsPage = () => {
       
       await updateBonStatus({ id: bon.id, statut, type: bon.type || currentTab }).unwrap();
       showSuccess(`Statut mis à jour: ${statut}`);
+      // IMPORTANT: refetch stock/products after status change (validation or cancel)
+      refetchProducts();
     } catch (error: any) {
       console.error('Erreur mise à jour statut:', error);
       const status = error?.status;
@@ -706,10 +708,10 @@ const BonsPage = () => {
                         <div className="inline-flex gap-2">
                           {/* Status-change actions */}
                           {(() => {
-                            if (currentUser?.role === 'PDG' || isFullAccessManager) {
+                            if (currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande'))) {
                               return (
                                 <>
-              {(currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
+                                  {(currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
                                     <>
                                       <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Marquer Validé">
                                         <CheckCircle2 size={ACTION_ICON_SIZE} />
@@ -808,7 +810,7 @@ const BonsPage = () => {
                           >
                             <Printer size={ACTION_ICON_SIZE} />
                           </button>
-                          {(currentUser?.role === 'PDG') && (
+                          {(currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande'))) && (
                             <button
                               onClick={() => {
                                 const t = tableForType(bon.type || currentTab);
@@ -839,7 +841,7 @@ const BonsPage = () => {
                               <Edit size={ACTION_ICON_SIZE} />
                             </button>
                           )}
-                          {( (currentUser?.role === 'PDG') || isManager ) && (
+                          {((currentUser?.role === 'PDG') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande'))) && (
                             <>
                               <button
                                 onClick={() => {
@@ -852,15 +854,13 @@ const BonsPage = () => {
                               >
                                 <Copy size={ACTION_ICON_SIZE} />
                               </button>
-                              {(currentUser?.role === 'PDG' || isFullAccessManager) && (
-                                <button
-                                  onClick={() => handleDelete(bon)}
-                                  className="text-red-600 hover:text-red-800"
-                                  title="Supprimer"
-                                >
-                                  <Trash2 size={ACTION_ICON_SIZE} />
-                                </button>
-                              )}
+                              <button
+                                onClick={() => handleDelete(bon)}
+                                className="text-red-600 hover:text-red-800"
+                                title="Supprimer"
+                              >
+                                <Trash2 size={ACTION_ICON_SIZE} />
+                              </button>
                             </>
                           )}
                         </div>
