@@ -22,10 +22,35 @@ async function ensureRemisesTables() {
       phone VARCHAR(50) NULL,
       cin VARCHAR(50) NULL,
       note TEXT NULL,
+      type ENUM('client-remise', 'client_abonne') NOT NULL DEFAULT 'client-remise',
+      contact_id INT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+
+  // Ajouter colonnes type et contact_id si elles n'existent pas (pour tables existantes)
+  const [typeCols] = await pool.execute(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'client_remises' AND COLUMN_NAME = 'type'
+  `);
+  if (!typeCols.length) {
+    await pool.execute(`
+      ALTER TABLE client_remises 
+      ADD COLUMN type ENUM('client-remise', 'client_abonne') NOT NULL DEFAULT 'client-remise' AFTER cin
+    `);
+  }
+
+  const [contactCols] = await pool.execute(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'client_remises' AND COLUMN_NAME = 'contact_id'
+  `);
+  if (!contactCols.length) {
+    await pool.execute(`
+      ALTER TABLE client_remises 
+      ADD COLUMN contact_id INT NULL AFTER type
+    `);
+  }
 
   const hasProducts = await tableExists('products');
 
@@ -128,16 +153,56 @@ router.get('/clients', async (_req, res) => {
   }
 });
 
+// Vérifier ou récupérer un client_abonné existant par contact_id
+router.get('/clients/by-contact/:contactId', async (req, res) => {
+  try {
+    const { contactId } = req.params;
+    const [rows] = await pool.execute(`
+      SELECT cr.*,
+        (
+          SELECT COALESCE(SUM(ir.qte * ir.prix_remise), 0)
+          FROM item_remises ir
+          WHERE ir.client_remise_id = cr.id AND ir.statut <> 'Annulé'
+        ) AS total_remise
+      FROM client_remises cr
+      WHERE cr.contact_id = ? AND cr.type = 'client_abonne'
+      ORDER BY cr.id DESC
+      LIMIT 1
+    `, [contactId]);
+    
+    if (rows.length > 0) {
+      res.json(rows[0]); // Retourne le client_abonné existant
+    } else {
+      res.status(404).json({ message: 'Aucun client_abonné trouvé pour ce contact' });
+    }
+  } catch (e) {
+    console.error('remises clients by-contact error', e);
+    res.status(500).json({ message: 'Erreur du serveur', detail: e?.message, code: e?.code });
+  }
+});
+
 // Créer un client remise
 router.post('/clients', verifyToken, async (req, res) => {
   try {
-    const { nom, phone, cin, note } = req.body;
+    const { nom, phone, cin, note, type, contact_id } = req.body;
     if (!nom || !String(nom).trim()) {
       return res.status(400).json({ message: 'nom requis' });
     }
+    
+    // Valider le type
+    const validTypes = ['client-remise', 'client_abonne'];
+    const clientType = type && validTypes.includes(type) ? type : 'client-remise';
+    
     const [r] = await pool.execute(
-      'INSERT INTO client_remises (nom, phone, cin, note) VALUES (?, ?, ?, ?)',
-      [String(nom).trim(), phone ?? null, cin ?? null, note ?? null]
+      'INSERT INTO client_remises (nom, phone, cin, note, type, contact_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        String(nom).trim(), 
+        phone ?? null, 
+        cin ?? null, 
+        note ?? null, 
+        clientType,
+        contact_id ?? null
+      ]
     );
     const [rows] = await pool.execute('SELECT * FROM client_remises WHERE id = ?', [r.insertId]);
     res.status(201).json(rows[0]);
