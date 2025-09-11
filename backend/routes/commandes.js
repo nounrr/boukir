@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken } from '../middleware/auth.js';
+import { canManageBon, canValidate } from '../utils/permissions.js';
 
 const router = express.Router();
 
@@ -114,12 +115,16 @@ router.get('/:id', async (req, res) => {
 
 
 // POST /commandes - Créer un nouveau bon de commande
-router.post('/', async (req, res) => {
+router.post('/', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    console.log('Données reçues:', req.body);
+    // Permissions: Manager & PDG peuvent créer des commandes
+    if (!canManageBon('Commande', req.user?.role)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
 
   const {
       date_creation,
@@ -218,12 +223,17 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    // Rôle PDG requis pour valider (inchangé)
     const userRole = req.user?.role;
     const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+    if ((lower === 'validé' || lower === 'valid') && !canValidate('Commande', userRole)) {
       await connection.rollback();
-      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
+      return res.status(403).json({ message: 'Rôle Manager ou PDG requis pour valider' });
+    }
+
+    // General modification rights check
+    if (!canManageBon('Commande', userRole)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé' });
     }
 
     // Charger ancien statut pour savoir si transition
@@ -324,7 +334,11 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 
 // PUT /commandes/:id - Mettre à jour un bon de commande
 // PUT /commandes/:id - Mettre à jour un bon de commande
-router.put('/:id', async (req, res) => {
+router.put('/:id', verifyToken, async (req, res) => {
+    if (!canManageBon('Commande', req.user?.role)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -405,9 +419,12 @@ router.put('/:id', async (req, res) => {
 
 
 // DELETE /commandes/:id - Supprimer un bon de commande
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
+    if (!canManageBon('Commande', req.user?.role)) {
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
     
     const [result] = await pool.execute('DELETE FROM bons_commande WHERE id = ?', [id]);
     

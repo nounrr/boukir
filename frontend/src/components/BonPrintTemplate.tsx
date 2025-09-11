@@ -27,8 +27,8 @@ const CompanyFooter: React.FC<{ data: { address: string; phones: string; email: 
     }}
   >
     <div className="w-full mb-3 flex justify-center">
-      <div style={{ border: '2px solid #000', width: '42mm', height: '22mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span className="text-xs font-bold">CACHET / SIGNATURE CLIENT</span>
+      <div style={{ border: '1px solid #000', width: '82mm', height: '32mm', display: 'flex', justifyContent: 'center' }}>
+        <h6 className="text-xs mt-2 font-bold">CACHET / SIGNATURE CLIENT</h6>
       </div>
     </div>
     <div className="border-t border-gray-300 text-center text-[10px] text-gray-600 pt-2 leading-snug">

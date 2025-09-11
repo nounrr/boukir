@@ -1071,7 +1071,10 @@ const paymentValidationSchema = Yup.object({
                 </tr>
               ) : (
                 sortedPayments.map((payment: Payment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50">
+                  <tr
+                    key={payment.id}
+                    className={`hover:bg-gray-50 transition-colors ${payment.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70 shadow-[inset_0_0_0_9999px_rgba(34,197,94,0.06)]' : ''}`}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{getDisplayNumeroPayment(payment)}</div>
                     </td>
@@ -1268,7 +1271,10 @@ const paymentValidationSchema = Yup.object({
               ? (fournisseurs.find(f => f.id === payment.contact_id)?.societe || '-')
               : (clients.find(c => c.id === payment.contact_id)?.societe || '-');
             return (
-              <div key={payment.id} className="bg-white rounded-lg shadow p-4 flex flex-col gap-3">
+              <div
+                key={payment.id}
+                className={`rounded-lg shadow p-4 flex flex-col gap-3 transition-colors ${payment.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70' : 'bg-white'}`}
+              >
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <h3 className="text-base font-semibold text-gray-900">{getDisplayNumeroPayment(payment)}</h3>

@@ -830,7 +830,10 @@ const TalonCaissePage = () => {
                 </tr>
               ) : (
                 paginatedPayments.map((payment: UnifiedTalonPayment) => (
-                  <tr key={payment.id} className={`hover:bg-gray-50 ${payment.statut === 'Validé' ? 'bg-green-50' : ''}`}>
+                  <tr
+                    key={payment.id}
+                    className={`hover:bg-gray-50 transition-colors ${payment.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70 shadow-[inset_0_0_0_9999px_rgba(34,197,94,0.06)]' : ''}`}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <span className="text-sm font-medium text-gray-900">{payment.numero}</span>
