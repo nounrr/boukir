@@ -48,6 +48,10 @@ const ContactsPage: React.FC = () => {
   const { data: products = [] } = useGetProductsQuery();
 
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs'>('clients');
+  // Forcer les employés à rester sur l'onglet clients uniquement
+  React.useEffect(() => {
+    if (isEmployee && activeTab !== 'clients') setActiveTab('clients');
+  }, [isEmployee, activeTab]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -1104,15 +1108,17 @@ const ContactsPage: React.FC = () => {
                 Clients
               </div>
             </button>
-            <button
-              className={`px-6 py-2 font-medium ${activeTab === 'fournisseurs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-              onClick={() => setActiveTab('fournisseurs')}
-            >
-              <div className="flex items-center gap-2">
-                <Truck size={18} />
-                Fournisseurs
-              </div>
-            </button>
+            {!isEmployee && (
+              <button
+                className={`px-6 py-2 font-medium ${activeTab === 'fournisseurs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setActiveTab('fournisseurs')}
+              >
+                <div className="flex items-center gap-2">
+                  <Truck size={18} />
+                  Fournisseurs
+                </div>
+              </button>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">

@@ -675,7 +675,10 @@ const BonsPage = () => {
                   </tr>
                 ) : (
                   paginatedBons.map((bon) => (
-                    <tr key={bon.id} className="hover:bg-gray-50">
+                    <tr
+                      key={bon.id}
+                      className={`hover:bg-gray-50 transition-colors ${bon.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70 shadow-[inset_0_0_0_9999px_rgba(34,197,94,0.08)]' : ''}`}
+                    >
                       <td className="px-4 py-2 text-sm">{getDisplayNumero(bon)}</td>
                       <td className="px-4 py-2 text-sm">
                         <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.date_creation)}</div>
@@ -731,7 +734,10 @@ const BonsPage = () => {
                         <div className="inline-flex gap-2">
                           {/* Status-change actions */}
                           {(() => {
-                            if (currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande'))) {
+                            // Full privileged actions (validate/en attente/annuler) for:
+                            //  - PDG on all relevant tabs
+                            //  - Manager on Commande & AvoirFournisseur (align backend)
+                            if (currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) {
                               return (
                                 <>
                                   {(currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
@@ -747,7 +753,7 @@ const BonsPage = () => {
                                       </button>
                                     </>
                                   )}
-              {( (currentTab === 'AvoirFournisseur' && isFullAccessManager) || (currentUser?.role === 'PDG' && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ) && (
+              {( (currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || (currentUser?.role === 'PDG' && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ) && (
                                     <>
                                       <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Valider l'avoir">
                                         <CheckCircle2 size={ACTION_ICON_SIZE} />
@@ -833,7 +839,7 @@ const BonsPage = () => {
                           >
                             <Printer size={ACTION_ICON_SIZE} />
                           </button>
-                          {(currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande'))) && (
+                          {(currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
                             <button
                               onClick={() => {
                                 const t = tableForType(bon.type || currentTab);
@@ -864,7 +870,7 @@ const BonsPage = () => {
                               <Edit size={ACTION_ICON_SIZE} />
                             </button>
                           )}
-                          {((currentUser?.role === 'PDG') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande'))) && (
+                          {((currentUser?.role === 'PDG') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
                             <>
                               <button
                                 onClick={() => {
