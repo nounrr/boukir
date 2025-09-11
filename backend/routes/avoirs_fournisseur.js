@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken } from '../middleware/auth.js';
+import { canManageBon, canValidate } from '../utils/permissions.js';
 
 const router = express.Router();
 
@@ -95,7 +96,11 @@ router.get('/:id', async (req, res) => {
 });
 
 /* ===== POST / (création) ===== */
-router.post('/', async (req, res) => {
+router.post('/', verifyToken, async (req, res) => {
+    if (!canManageBon('AvoirFournisseur', req.user?.role)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -180,7 +185,11 @@ router.post('/', async (req, res) => {
 });
 
 /* ==== PUT /:id (mise à jour) ==== */
-router.put('/:id', async (req, res) => {
+router.put('/:id', verifyToken, async (req, res) => {
+    if (!canManageBon('AvoirFournisseur', req.user?.role)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -275,11 +284,13 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    // PDG-only for validation
     const userRole = req.user?.role;
     const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
-      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
+    if ((lower === 'validé' || lower === 'valid') && !canValidate('AvoirFournisseur', userRole)) {
+      return res.status(403).json({ message: 'Rôle Manager ou PDG requis pour valider' });
+    }
+    if (!canManageBon('AvoirFournisseur', userRole)) {
+      return res.status(403).json({ message: 'Accès refusé' });
     }
 
     const [result] = await pool.execute(
@@ -303,7 +314,11 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 });
 
 /* ====== DELETE /:id ====== */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyToken, async (req, res) => {
+    if (!canManageBon('AvoirFournisseur', req.user?.role)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
