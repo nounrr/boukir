@@ -1173,7 +1173,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           </button>
         </div>
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-32 pt-4">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4">
         <Formik
           initialValues={initialFormValues}
           enableReinitialize={true}
@@ -2074,10 +2074,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 </div>
               </div>
 
-              {/* Footer spacer (for sticky bar) */}
-              <div className="h-4" />
-              {/* Sticky footer actions */}
-              <div className="border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 px-4 sm:px-6 py-3 rounded-b-lg flex flex-wrap gap-3 justify-between items-center sticky bottom-0 -mx-4 sm:-mx-6 mt-4">
+              {/* Footer actions - Position normale en bas du contenu */}
+              <div className="border-t bg-gray-50 px-4 sm:px-6 py-4 mt-6 flex flex-wrap gap-3 justify-between items-center">
                 <div className="flex gap-2 flex-wrap">
                   <button
                     type="button"

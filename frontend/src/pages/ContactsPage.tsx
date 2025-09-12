@@ -268,6 +268,7 @@ const ContactsPage: React.FC = () => {
           created_at: b.created_at,
           remise_pourcentage,
           remise_montant,
+          adresse_livraison: b.adresse_livraison || '',
         });
       }
     }
@@ -2110,6 +2111,7 @@ const ContactsPage: React.FC = () => {
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Référence</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse Livraison</th>
                           {/* Remises séparées par type */}
                           <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Remise Abonné</th>
                           <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Remise Client</th>
@@ -2130,7 +2132,7 @@ const ContactsPage: React.FC = () => {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {displayedProductHistory.length === 0 ? (
                           <tr>
-                            <td colSpan={12} className="px-6 py-4 text-center text-sm text-gray-500">
+                            <td colSpan={13} className="px-6 py-4 text-center text-sm text-gray-500">
                               Aucun produit trouvé pour cette période
                             </td>
                           </tr>
@@ -2191,6 +2193,11 @@ const ContactsPage: React.FC = () => {
                                   {item.type === 'paiement' && item.mode && (
                                     <span className="ml-2 text-xs text-gray-500">({item.mode})</span>
                                   )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {item.syntheticInitial || item.type === 'paiement' ? '-' : (item.adresse_livraison || '-')}
                                 </div>
                               </td>
                               {/* Remises séparées par type */}

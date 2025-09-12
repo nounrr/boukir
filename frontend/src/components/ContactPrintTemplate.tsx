@@ -219,6 +219,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                   <th className="border border-gray-300 px-3 py-2 text-left">Bon N°</th>
                   <th className="border border-gray-300 px-3 py-2 text-left">Référence</th>
                   <th className="border border-gray-300 px-3 py-2 text-left">Désignation</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left">Adresse Livraison</th>
                   <th className="border border-gray-300 px-3 py-2 text-right">Qté</th>
                   {showPrices && (
                     <>
@@ -235,7 +236,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
               <tbody>
                 {prList.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-4 text-center text-gray-500" colSpan={showPrices ? 8 : 6}>Aucune donnée</td>
+                    <td className="px-3 py-4 text-center text-gray-500" colSpan={showPrices ? 9 : 7}>Aucune donnée</td>
                   </tr>
                 ) : (
                   prList.map((it: any) => {
@@ -251,6 +252,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                         <td className="border border-gray-300 px-3 py-2">{it.bon_numero}</td>
                         <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '—' : it.product_reference}</td>
                         <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? 'Solde initial' : it.product_designation}</td>
+                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : (it.adresse_livraison || '-')}</td>
                         <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : it.quantite}</td>
                         {showPrices ? (
                           <>
@@ -273,6 +275,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                     <td className="border border-gray-300 px-3 py-2">—</td>
                     <td className="border border-gray-300 px-3 py-2">—</td>
                     <td className="border border-gray-300 px-3 py-2 text-left">TOTAL</td>
+                    <td className="border border-gray-300 px-3 py-2">—</td>
                     <td className="border border-gray-300 px-3 py-2 text-right">{totalQtyProducts}</td>
                     <td className="border border-gray-300 px-3 py-2 text-right">—</td>
                     <td className="border border-gray-300 px-3 py-2 text-right">{fmt(totalAmountProducts)}</td>
