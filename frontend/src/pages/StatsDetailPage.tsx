@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Activity, Filter } from "lucide-react";
 import { useGetProductsQuery } from "../store/api/productsApi";
 import { useGetClientsQuery } from "../store/api/contactsApi";
-import { useGetComptantQuery } from "../store/api/comptantApi";
 import { useGetSortiesQuery } from "../store/api/sortiesApi";
+import { useGetComptantQuery } from "../store/api/comptantApi";
 import SearchableSelect from "../components/SearchableSelect";
 
 const toNumber = (value: any): number => {
@@ -37,8 +37,8 @@ const convertDisplayToISO = (displayDate: string) => {
 const StatsDetailPage: React.FC = () => {
   const { data: products = [] } = useGetProductsQuery();
   const { data: clients = [] } = useGetClientsQuery();
-  const { data: bonsComptant = [] } = useGetComptantQuery(undefined);
   const { data: bonsSortie = [] } = useGetSortiesQuery(undefined);
+  const { data: bonsComptant = [] } = useGetComptantQuery(undefined);
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -47,6 +47,9 @@ const StatsDetailPage: React.FC = () => {
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   // Etat d'expansion des clients par produit (productId -> clientId -> boolean)
   const [expandedClients, setExpandedClients] = useState<Record<string, Record<string, boolean>>>({});
+  // Filtres de type de bons
+  const [includeSortie, setIncludeSortie] = useState<boolean>(true);
+  const [includeComptant, setIncludeComptant] = useState<boolean>(true);
 
   useEffect(() => {
     setSelectedProductId("");
@@ -65,14 +68,37 @@ const StatsDetailPage: React.FC = () => {
   };
 
   const clientBonsForItems = useMemo(() => {
-    const all = [...bonsComptant, ...bonsSortie];
-    // Filtrer par date ET par statut (exclure "Refusé" et "Annulé" pour tous)
+    // Inclure bons selon cases cochées (Sortie / Comptant) + mêmes statuts
+    const all = [...bonsSortie, ...bonsComptant];
     return all.filter((b: any) => {
+      // Déterminer le type du bon (forcer 'Comptant' pour les bons venant de bonsComptant)
+      let bonType = b.type;
+      if (!bonType) {
+        // Si pas de type défini, déduire selon la source
+        bonType = bonsComptant.includes(b) ? 'Comptant' : 'Sortie';
+      }
+      
+      if (bonType === 'Sortie' && !includeSortie) return false;
+      if (bonType === 'Comptant' && !includeComptant) return false;
+      if (bonType !== 'Sortie' && bonType !== 'Comptant') return false;
+      
       const inRange = inDateRange(toDisplayDate(b.date || b.date_creation));
-      const validStatus = b.statut === 'En attente' || b.statut === 'Validé';
+      
+      // Logique de statut inspirée de BonsPage - plus permissive pour Comptant
+      const statut = b.statut;
+      let validStatus = false;
+      
+      if (bonType === 'Sortie') {
+        // Pour Sortie: En attente, Validé, Livré
+        validStatus = ['En attente', 'Validé', 'Livré'].includes(statut);
+      } else if (bonType === 'Comptant') {
+        // Pour Comptant: tous sauf Annulé et Avoir (inclut Brouillon)
+        validStatus = statut && !['Annulé', 'Avoir'].includes(statut);
+      }
+      
       return inRange && validStatus;
     });
-  }, [bonsComptant, bonsSortie, dateFrom, dateTo]);
+  }, [bonsSortie, bonsComptant, dateFrom, dateTo, includeSortie, includeComptant]);
 
   // clientBonsForItems contient déjà les bons filtrés par statut et date
   // On peut l'utiliser pour les deux vues (produits et contacts)
@@ -87,7 +113,14 @@ const StatsDetailPage: React.FC = () => {
 
     // Pour les produits : utiliser seulement les bons "En attente" et "Validé"
     for (const bon of clientBonsForItems) {
-      const clientId = String(bon.client_id ?? bon.contact_id ?? "");
+      // Pour les bons Comptant, utiliser client_nom si client_id est absent
+      let clientId = String(bon.client_id ?? bon.contact_id ?? "");
+      
+      // Si pas de client_id et que c'est un bon Comptant avec client_nom
+      if (!clientId && bon.client_nom && (bon.type === 'Comptant' || bonsComptant.includes(bon))) {
+        clientId = `comptant_${bon.client_nom}`; // Créer un ID fictif basé sur le nom
+      }
+      
       if (!clientId) continue;
 
       let items: any[] = [];
@@ -103,14 +136,8 @@ const StatsDetailPage: React.FC = () => {
         const productId = String(it.product_id ?? it.id ?? "");
         if (!productId) continue;
         const qty = toNumber(it.quantite ?? it.qty ?? 0);
-        // Déterminer le prix unitaire selon le type de bon
-        const rawUnit = (() => {
-          if (bon.type === 'Commande') {
-            return it.prix_achat ?? it.prix_unitaire ?? it.prix ?? it.prix_vente ?? it.price;
-          }
-            // Sortie / Comptant / autres: prix_unitaire prioritaire
-          return it.prix_unitaire ?? it.prix ?? it.prix_vente ?? it.price ?? it.prix_achat;
-        })();
+  // Prix unitaire (Sortie & Comptant) : priorité prix_unitaire puis prix / prix_vente / price / prix_achat
+  const rawUnit = it.prix_unitaire ?? it.prix ?? it.prix_vente ?? it.price ?? it.prix_achat;
         const unit = toNumber(rawUnit);
         const total = toNumber(it.total ?? it.montant ?? unit * qty);
 
@@ -134,7 +161,7 @@ const StatsDetailPage: React.FC = () => {
           prix_unitaire: unit,
           total,
           statut: bon.statut,
-          type: bon.type,
+          type: bon.type || (bonsComptant.includes(bon) ? 'Comptant' : 'Sortie'),
         });
 
         // Pour les produits : calculer les statistiques des clients
@@ -173,6 +200,12 @@ const StatsDetailPage: React.FC = () => {
     const base = [{ value: "", label: "Tous" }];
     const ids = Object.keys(clientProductStats);
     const mapped = ids.map((cid) => {
+      // Gérer les clients fictifs pour Comptant
+      if (cid.startsWith('comptant_')) {
+        const clientNom = cid.replace('comptant_', '');
+        return { value: cid, label: `${clientNom} (Comptant)` };
+      }
+      
       const c: any = clients.find((x: any) => String(x.id) === String(cid));
       const label = c?.nom_complet ? String(c.nom_complet) : `Client ${cid}`;
       return { value: cid, label };
@@ -198,10 +231,31 @@ const StatsDetailPage: React.FC = () => {
         
         {/* Indicateur de filtrage par statut */}
         <div className="mb-4">
-          <div className="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200">
-            <Filter className="w-3 h-3 mr-2" />
-            Affichage : Bons "En attente" et "Validé" uniquement (exclut "Refusé" et "Annulé")
-          </div>
+          {(() => {
+            const totalSortie = bonsSortie.length;
+            const totalComptant = bonsComptant.length;
+            const filteredSortie = clientBonsForItems.filter((b:any)=> {
+              const type = b.type || (bonsComptant.includes(b) ? 'Comptant' : 'Sortie');
+              return type === 'Sortie';
+            }).length;
+            const filteredComptant = clientBonsForItems.filter((b:any)=> {
+              const type = b.type || (bonsComptant.includes(b) ? 'Comptant' : 'Sortie');
+              return type === 'Comptant';
+            }).length;
+            const typesLabel = includeSortie && includeComptant
+              ? 'Bons Sortie & Comptant'
+              : includeSortie
+                ? 'Bons Sortie'
+                : includeComptant
+                  ? 'Bons Comptant'
+                  : 'Aucun type sélectionné';
+            return (
+              <div className="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                <Filter className="w-3 h-3 mr-2" />
+                Affichage : {typesLabel} (statuts filtrés) | Sortie {filteredSortie}/{totalSortie} - Comptant {filteredComptant}/{totalComptant}
+              </div>
+            );
+          })()}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -274,6 +328,33 @@ const StatsDetailPage: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Cases à cocher pour filtrer les types de bons */}
+        <div className="mt-4 flex flex-wrap gap-6 items-center">
+          <div className="flex items-center gap-2">
+            <input
+              id="chkSortie"
+              type="checkbox"
+              checked={includeSortie}
+              onChange={() => setIncludeSortie(prev => (prev && !includeComptant ? prev : !prev))}
+              className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+            />
+            <label htmlFor="chkSortie" className="text-sm text-gray-700">Inclure Sortie</label>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="chkComptant"
+              type="checkbox"
+              checked={includeComptant}
+              onChange={() => setIncludeComptant(prev => (prev && !includeSortie ? prev : !prev))}
+              className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+            />
+            <label htmlFor="chkComptant" className="text-sm text-gray-700">Inclure Comptant</label>
+          </div>
+          {(!includeSortie && !includeComptant) && (
+            <p className="text-xs text-red-600 font-medium">Sélectionnez au moins un type de bon.</p>
+          )}
+        </div>
       </div>
 
       {/* Matrices */}
@@ -339,8 +420,15 @@ const StatsDetailPage: React.FC = () => {
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {clientRows.map((cr: any) => {
-                            const c = clients.find((x: any) => String(x.id) === String(cr.clientId));
-                            const cname = c?.nom_complet ?? `Client ${cr.clientId}`;
+                            // Gérer l'affichage du nom client pour les bons Comptant
+                            let cname;
+                            if (String(cr.clientId).startsWith('comptant_')) {
+                              cname = String(cr.clientId).replace('comptant_', '') + ' (Comptant)';
+                            } else {
+                              const c = clients.find((x: any) => String(x.id) === String(cr.clientId));
+                              cname = c?.nom_complet ?? `Client ${cr.clientId}`;
+                            }
+                            
                             const isOpen = (expandedClients[row.productId] &&
                               expandedClients[row.productId][String(cr.clientId)]) !== undefined
                               ? expandedClients[row.productId][String(cr.clientId)]
@@ -413,8 +501,15 @@ const StatsDetailPage: React.FC = () => {
               if (top.length === 0) return <div className="text-sm text-gray-500">Aucune donnée à afficher.</div>;
 
               return top.map((row: any) => {
-                const c = clients.find((x: any) => String(x.id) === String(row.clientId));
-                const cname = c?.nom_complet ?? `Client ${row.clientId}`;
+                // Gérer l'affichage du nom client pour les bons Comptant  
+                let cname;
+                if (String(row.clientId).startsWith('comptant_')) {
+                  cname = String(row.clientId).replace('comptant_', '') + ' (Comptant)';
+                } else {
+                  const c = clients.find((x: any) => String(x.id) === String(row.clientId));
+                  cname = c?.nom_complet ?? `Client ${row.clientId}`;
+                }
+                
                 const productRows = Object.entries(row.products)
                   .map(([pid, stats]: any) => ({ productId: pid, ...stats }))
                   .sort((a: any, b: any) => b.montant - a.montant)
