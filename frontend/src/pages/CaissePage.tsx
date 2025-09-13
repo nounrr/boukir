@@ -172,6 +172,7 @@ const CaissePage = () => {
         String(payment.id).includes(term) ||
         (payment.numero?.toLowerCase?.() || '').includes(term) ||
         displayPayNum.includes(term) ||
+        (payment.code_reglement?.toLowerCase?.() || '').includes(term) ||
         (payment.notes?.toLowerCase?.() || '').includes(term) ||
         contactName.includes(term) ||
         contactSociete.includes(term)
@@ -1026,6 +1027,9 @@ const paymentValidationSchema = Yup.object({
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Mode de paiement
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Règlement
+                </th>
                 <th 
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('montant')}
@@ -1065,7 +1069,7 @@ const paymentValidationSchema = Yup.object({
             <tbody className="bg-white divide-y divide-gray-200">
               {sortedPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={13} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun paiement trouvé
                   </td>
                 </tr>
@@ -1126,6 +1130,11 @@ const paymentValidationSchema = Yup.object({
                             📷 Image
                           </span>
                         )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-xs text-gray-700 max-w-[140px] truncate" title={payment.code_reglement || ''}>
+                        {payment.code_reglement || '-'}
                       </div>
                     </td>
                     
