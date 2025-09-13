@@ -776,6 +776,9 @@ const TalonCaissePage = () => {
                   </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  N° Chèque
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Mode/Info
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -820,7 +823,7 @@ const TalonCaissePage = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={13} className="px-6 py-12 text-center text-gray-500">
                     <div className="flex flex-col items-center">
                       <FileText className="w-12 h-12 text-gray-300 mb-4" />
                       <p className="text-lg font-medium">Aucun paiement talon trouvé</p>
@@ -853,6 +856,11 @@ const TalonCaissePage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{payment.montant_total} DH</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {payment.type === 'old' ? (payment.numero_cheque || '-') : (payment.code_reglement || '-')}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
