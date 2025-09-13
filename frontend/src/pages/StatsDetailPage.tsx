@@ -116,9 +116,11 @@ const StatsDetailPage: React.FC = () => {
       // Pour les bons Comptant, utiliser client_nom si client_id est absent
       let clientId = String(bon.client_id ?? bon.contact_id ?? "");
       
-      // Si pas de client_id et que c'est un bon Comptant avec client_nom
-      if (!clientId && bon.client_nom && (bon.type === 'Comptant' || bonsComptant.includes(bon))) {
-        clientId = `comptant_${bon.client_nom}`; // Créer un ID fictif basé sur le nom
+      // Si pas de client_id et que c'est un bon Comptant
+      if (!clientId && (bon.type === 'Comptant' || bonsComptant.includes(bon))) {
+        // Utiliser client_nom s'il existe, sinon "Sans nom"
+        const clientNom = bon.client_nom || 'Sans nom';
+        clientId = `comptant_${clientNom}`; // Créer un ID fictif basé sur le nom
       }
       
       if (!clientId) continue;
