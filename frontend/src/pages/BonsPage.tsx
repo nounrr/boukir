@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown } from 'lucide-react';
+import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
   import ContactFormModal from '../components/ContactFormModal';
@@ -90,6 +91,26 @@ const BonsPage = () => {
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
   const [createBon] = useCreateBonMutation();
+  // Bon links API: record duplications
+  const [createBonLink] = useCreateBonLinkMutation();
+  const [getBonLinksBatch] = useGetBonLinksBatchMutation();
+  const [bonLinksMap, setBonLinksMap] = useState<Record<string, { outgoing: any[]; incoming: any[] }>>({});
+
+  // Helper to format numero for a type+id quickly
+  const formatNumeroByType = (type: string, id: number) => {
+    const map: Record<string, string> = {
+      'Commande': 'CMD',
+      'Sortie': 'SOR',
+      'Comptant': 'COM',
+      'Devis': 'DEV',
+      'Avoir': 'AVC',
+      'AvoirFournisseur': 'AVF',
+      'AvoirComptant': 'AVC',
+      'Vehicule': 'VEH',
+    };
+    const pref = map[type] || (type?.slice(0, 3).toUpperCase());
+    return `${pref}${String(id).padStart(2, '0')}`;
+  };
   const dispatch = useAppDispatch();
   // const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
@@ -278,6 +299,18 @@ const BonsPage = () => {
   const endIndex = startIndex + itemsPerPage;
   const paginatedBons = sortedBons.slice(startIndex, endIndex);
 
+  // Fetch linked info for the visible bons
+  useEffect(() => {
+    const ids = paginatedBons.map((b) => b.id).filter(Boolean);
+    if (!ids.length) { setBonLinksMap({}); return; }
+    // Only request for known types
+    const type = currentTab as string;
+    getBonLinksBatch({ type, ids }).unwrap()
+      .then((res) => setBonLinksMap(res || {}))
+      .catch(() => setBonLinksMap({}));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTab, startIndex, endIndex, sortedBons.length]);
+
   // Show audit columns only for PDG and Manager
   const showAuditCols = currentUser?.role === 'PDG' || currentUser?.role === 'Manager';
 
@@ -413,8 +446,29 @@ const BonsPage = () => {
         };
         
         if (duplicateType === 'fournisseur') {
+          // Dupliquer vers Commande en utilisant le PRIX D'ACHAT (cout_revient/prix_achat) comme prix_unitaire
           newBonData.type = 'Commande';
           newBonData.fournisseur_id = parseInt(selectedContactForDuplicate);
+
+          const srcItems = parseItemsSafe(selectedBonForDuplicate.items);
+          const mapped = srcItems.map((it: any) => {
+            const q = Number(it.quantite ?? it.qty ?? 0) || 0;
+            // Prix d'achat / coût de revient depuis l'item ou le produit
+            const purchaseUnit = resolveCost(it);
+            const total = Number(purchaseUnit) * q;
+            return {
+              product_id: it.product_id || it.produit_id || it.id,
+              quantite: q,
+              prix_unitaire: Number(purchaseUnit) || 0,
+              remise_pourcentage: 0,
+              remise_montant: 0,
+              total,
+            };
+          }).filter((it: any) => it.product_id && it.quantite > 0);
+
+          const newTotal = mapped.reduce((sum: number, it: any) => sum + (Number(it.total) || 0), 0);
+          newBonData.items = mapped;
+          newBonData.montant_total = newTotal;
         } else if (duplicateType === 'client') {
           newBonData.type = 'Sortie';
           newBonData.client_id = parseInt(selectedContactForDuplicate);
@@ -424,7 +478,27 @@ const BonsPage = () => {
         }
         
         // Créer le bon directement via l'API
-        await createBon({ type: newBonData.type, ...newBonData }).unwrap();
+        const created = await createBon({ type: newBonData.type, ...newBonData }).unwrap();
+        try {
+          // Try to record duplication link (best-effort)
+          const sourceType = selectedBonForDuplicate.type || currentTab;
+          const targetType = newBonData.type;
+          const sourceId = Number(selectedBonForDuplicate.id);
+          const targetId = Number(created?.id || created?.data?.id);
+          if (sourceId && targetId && sourceType && targetType) {
+            if (createBonLink) {
+              await createBonLink({
+                relation_type: 'duplication',
+                source_bon_type: sourceType,
+                source_bon_id: sourceId,
+                target_bon_type: targetType,
+                target_bon_id: targetId,
+              }).unwrap?.();
+            }
+          }
+        } catch {
+          // non-blocking
+        }
         
         showSuccess(`${newBonData.type} dupliqué avec succès !`);
         
@@ -659,6 +733,9 @@ const BonsPage = () => {
                     </>
                   )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Lié
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Statut
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -669,7 +746,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={showAuditCols ? 11 : 9} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={showAuditCols ? 12 : 10} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTab}
                     </td>
                   </tr>
@@ -724,6 +801,33 @@ const BonsPage = () => {
                           </td>
                         </>
                       )}
+                      {/* Linked info (placed after audit cols, before Statut) */}
+                      <td className="px-4 py-2 text-xs text-gray-700">
+                        {(() => {
+                          const lk = bonLinksMap[String(bon.id)] || { outgoing: [], incoming: [] };
+                          if ((!lk.incoming || lk.incoming.length === 0) && (!lk.outgoing || lk.outgoing.length === 0)) {
+                            return <span className="text-gray-400">-</span>;
+                          }
+                          return (
+                            <div className="space-y-1">
+                              {lk.incoming?.map((r, idx) => (
+                                <div key={`in-${idx}`} className="flex items-center gap-1">
+                                  <span className="inline-block px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-700 rounded">de</span>
+                                  <span>{r.relation_type}</span>
+                                  <span className="text-gray-500">{r.from_type} {formatNumeroByType(r.from_type, r.from_id)}</span>
+                                </div>
+                              ))}
+                              {lk.outgoing?.map((r, idx) => (
+                                <div key={`out-${idx}`} className="flex items-center gap-1">
+                                  <span className="inline-block px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded">vers</span>
+                                  <span>{r.relation_type}</span>
+                                  <span className="text-gray-500">{r.to_type} {formatNumeroByType(r.to_type, r.to_id)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="px-4 py-2">
                         <span className={`inline-flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(bon.statut)}`}>
                           {getStatusIcon(bon.statut)}
