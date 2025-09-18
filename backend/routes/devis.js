@@ -10,7 +10,7 @@ router.get('/', async (_req, res) => {
     const [rows] = await pool.execute(`
       SELECT
         d.*,
-        c.nom_complet AS client_nom,
+        COALESCE(d.client_nom, c.nom_complet) AS client_nom,
         COALESCE((
           SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
@@ -53,7 +53,7 @@ router.get('/:id', async (req, res) => {
     const [rows] = await pool.execute(`
       SELECT
         d.*,
-        c.nom_complet AS client_nom,
+        COALESCE(d.client_nom, c.nom_complet) AS client_nom,
         COALESCE((
           SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
@@ -103,6 +103,7 @@ router.post('/', async (req, res) => {
     const {
       date_creation,
       client_id,
+      client_nom,
       montant_total,
       statut = 'Brouillon',
   items = [],
@@ -123,18 +124,25 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'Champs requis manquants', missing });
     }
 
+    // Validation: il faut soit client_id soit client_nom
+    if (!client_id && !client_nom) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Il faut spécifier soit un client_id soit un client_nom' });
+    }
+
     const cId = client_id ?? null;
+    const cNom = client_nom ? client_nom.trim() : null;
     const st  = statut ?? 'Brouillon';
 
     const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
 
-    console.log('📦 POST devis payload:', { date_creation, client_id: cId, montant_total, st, lieu });
+    console.log('📦 POST devis payload:', { date_creation, client_id: cId, client_nom: cNom, montant_total, st, lieu });
 
     const [devisResult] = await connection.execute(`
       INSERT INTO devis (
-        numero, date_creation, client_id, montant_total, statut, created_by, lieu_chargement, adresse_livraison
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [tmpNumero, date_creation, cId, montant_total, st, created_by, lieu, adresse_livraison ?? null]);
+        numero, date_creation, client_id, client_nom, montant_total, statut, created_by, lieu_chargement, adresse_livraison
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [tmpNumero, date_creation, cId, cNom, montant_total, st, created_by, lieu, adresse_livraison ?? null]);
 
     const devisId = devisResult.insertId;
 
@@ -178,6 +186,7 @@ router.put('/:id', async (req, res) => {
     const {
       date_creation,
       client_id,
+      client_nom,
       montant_total,
       statut,
       adresse_livraison,
@@ -195,15 +204,16 @@ router.put('/:id', async (req, res) => {
     }
 
     const cId = client_id ?? null;
+    const cNom = client_nom ? client_nom.trim() : null;
     const st  = statut ?? null;
 
-    console.log('🛠️ PUT devis payload:', { id, date_creation, client_id: cId, montant_total, st, lieu });
+    console.log('🛠️ PUT devis payload:', { id, date_creation, client_id: cId, client_nom: cNom, montant_total, st, lieu });
 
     await connection.execute(`
       UPDATE devis SET
-        date_creation = ?, client_id = ?, montant_total = ?, statut = ?, lieu_chargement = ?, adresse_livraison = ?
+        date_creation = ?, client_id = ?, client_nom = ?, montant_total = ?, statut = ?, lieu_chargement = ?, adresse_livraison = ?
       WHERE id = ?
-    `, [date_creation, cId, montant_total, st, lieu, adresse_livraison ?? null, id]);
+    `, [date_creation, cId, cNom, montant_total, st, lieu, adresse_livraison ?? null, id]);
 
     await connection.execute('DELETE FROM devis_items WHERE devis_id = ?', [id]);
 

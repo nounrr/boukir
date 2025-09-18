@@ -11,33 +11,55 @@ interface BonPrintTemplateProps {
   companyType?: 'DIAMOND' | 'MPC';
 }
 
-// Pied de page toujours positionné en bas de la DERNIÈRE page si l'espace existe.
+// Pied de page adaptatif selon le nombre d'articles et le format A4/A5
 // Technique: on insère un "spacer" (réservé) dans le flux avant le footer absolu.
-// Si le spacer tient sur la page courante, le footer s'y affiche; sinon le spacer passe à la page suivante et le footer aussi, sans créer une page supplémentaire vide.
-const CompanyFooter: React.FC<{ data: { address: string; phones: string; email: string; extra?: string } }>
- = ({ data }) => (
-  <div
-    className="company-footer"
-    style={{
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: '10mm',
-      padding: '0 16px'
-    }}
-  >
-    <div className="w-full mb-3 flex justify-center">
-      <div style={{ border: '1px solid #000', width: '82mm', height: '32mm', display: 'flex', justifyContent: 'center' }}>
-        <h6 className="text-xs mt-2 font-bold">CACHET / SIGNATURE CLIENT</h6>
+// Le spacer s'adapte dynamiquement selon le nombre d'articles pour éviter le chevauchement.
+const CompanyFooter: React.FC<{ 
+  data: { address: string; phones: string; email: string; extra?: string };
+  size: 'A4' | 'A5';
+}>
+ = ({ data, size }) => {
+  // Ajuster la taille du cachet selon le format
+  const isA5 = size === 'A5';
+  const cachetWidth = isA5 ? '60mm' : '82mm';
+  const cachetHeight = isA5 ? '24mm' : '32mm';
+  const fontSize = isA5 ? 'text-[8px]' : 'text-xs';
+  const bottomPosition = isA5 ? '8mm' : '10mm';
+  const padding = isA5 ? '0 12px' : '0 16px';
+  
+  return (
+    <div
+      className="company-footer"
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: bottomPosition,
+        padding: padding
+      }}
+    >
+      <div className="w-full mb-3 flex justify-center">
+        <div style={{ 
+          border: '1px solid #000', 
+          width: cachetWidth, 
+          height: cachetHeight, 
+          display: 'flex', 
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}>
+          <h6 className={`${fontSize} mt-1 font-bold text-center`}>
+            CACHET / SIGNATURE CLIENT
+          </h6>
+        </div>
+      </div>
+      <div className={`border-t border-gray-300 text-center ${isA5 ? 'text-[8px]' : 'text-[10px]'} text-gray-600 pt-2 leading-snug`}>
+        <p>{data.address}</p>
+        <p>{data.phones} | {data.email}</p>
+        {data.extra && <p>{data.extra}</p>}
       </div>
     </div>
-    <div className="border-t border-gray-300 text-center text-[10px] text-gray-600 pt-2 leading-snug">
-      <p>{data.address}</p>
-      <p>{data.phones} | {data.email}</p>
-      {data.extra && <p>{data.extra}</p>}
-    </div>
-  </div>
-);
+  );
+};
 
 const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({ 
   bon, 
@@ -109,6 +131,15 @@ const formatHeure = (dateStr: string) => {
   const sousTotal = items.reduce((sum: number, item: any) => 
     sum + (parseFloat(item.quantite || 0) * parseFloat(item.prix_unitaire || 0)), 0);
 
+  // Calculer la hauteur dynamique du spacer selon le nombre d'articles et le format
+  // Base différente selon format: A5 (40mm) vs A4 (48mm) + ajustement par article
+  // Maximum: 160mm pour A5, 180mm pour A4 pour éviter des spacers trop grands
+  const itemsCount = items.length;
+  const baseHeight = size === 'A5' ? 40 : 48;
+  const increment = size === 'A5' ? 4 : 6; // Espacement plus serré en A5
+  const maxHeight = size === 'A5' ? 160 : 180;
+  const dynamicSpacerHeight = Math.min(maxHeight, Math.max(baseHeight, baseHeight + Math.max(0, itemsCount - 5) * increment));
+
   const contact = client || fournisseur || ((bon?.type === 'Comptant' && bon?.client_nom) ? { nom_complet: bon.client_nom } as any : undefined);
   const contactLabel = contact ? 'Contact' : '';
   const contactDisplayName = (
@@ -117,17 +148,35 @@ const formatHeure = (dateStr: string) => {
       : (contact?.nom_complet || '-')
   );
 
+  // Variables de taille adaptées au format
+  const isA5 = size === 'A5';
+  const textSizes = {
+    header: isA5 ? 'text-base' : 'text-lg',
+    subheader: isA5 ? 'text-sm' : 'text-base', 
+    normal: isA5 ? 'text-xs' : 'text-sm',
+    small: isA5 ? 'text-[10px]' : 'text-xs',
+    tableHeader: isA5 ? 'text-[10px]' : 'text-xs',
+    tableCell: isA5 ? 'text-[9px]' : 'text-xs'
+  };
+  const spacing = {
+    padding: isA5 ? 'p-3' : 'p-4',
+    margin: isA5 ? 'mb-2' : 'mb-3',
+    gap: isA5 ? 'gap-1' : 'gap-2'
+  };
+
   return (
     <div 
-      className={`print-root bg-white ${size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'} mx-auto p-4 font-sans text-sm print:shadow-none`}
+      className={`print-root bg-white ${size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'} mx-auto ${spacing.padding} font-sans ${textSizes.normal} print:shadow-none`}
       style={{ fontFamily: 'sans-serif', position: 'relative' }}
     >
     {/* Styles spécifiques impression pour assurer largeur totale du tableau */}
       <style>
         {`@media print {
       .print-root { position: relative; }
-      .print-footer-spacer { height: 48mm; }
-      /* Le spacer disparaît à l'écran mais réserve la place à l'impression */
+      .print-footer-spacer { height: ${dynamicSpacerHeight}mm; }
+      /* Le spacer adapte sa hauteur selon le nombre d'articles pour éviter le chevauchement avec le cachet */
+      /* Pour les très gros bons, forcer une nouvelle page pour le cachet (seuil adapté au format) */
+      ${itemsCount > (size === 'A5' ? 20 : 25) ? `.print-footer-spacer { page-break-before: always; height: ${size === 'A5' ? '50mm' : '60mm'}; }` : ''}
       .company-footer { page-break-inside: avoid; break-inside: avoid; }
       .print-table-full { width:100% !important; border-collapse: collapse !important; }
       .print-table-full th, .print-table-full td { word-break: break-word; }
@@ -135,7 +184,23 @@ const formatHeure = (dateStr: string) => {
       /* Empêcher un saut de page juste avant le spacer si il reste assez d'espace */
       .print-footer-spacer { page-break-inside: avoid; break-inside: avoid; }
       body { margin:0; padding:0; }
-        }`}
+      }
+      /* Indicateur visuel à l'écran pour voir l'espace réservé */
+      @media screen {
+        .print-footer-spacer { 
+          height: ${Math.max(20, Math.min(dynamicSpacerHeight, 60))}px; 
+          background: linear-gradient(to bottom, transparent 0%, rgba(59, 130, 246, 0.1) 50%, rgba(59, 130, 246, 0.2) 100%);
+          border: 1px dashed #3b82f6;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 10px;
+          color: #3b82f6;
+        }
+        .print-footer-spacer::after {
+          content: "${itemsCount} articles - Format ${size} - Spacer: ${dynamicSpacerHeight}mm ${itemsCount > (size === 'A5' ? 20 : 25) ? '(Nouvelle page)' : ''}";
+        }
+      }`}
       </style>
       {/* Options */}
       <div className="flex justify-end items-center gap-4 mb-2 print-hidden">
@@ -174,10 +239,10 @@ const formatHeure = (dateStr: string) => {
       <div className="flex justify-between items-start mb-6 mt-6">
         {/* Contact */}
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-gray-800 mb-3">{contactLabel} :</h3>
+          <h3 className={`${textSizes.header} font-semibold text-gray-800 ${spacing.margin}`}>{contactLabel} :</h3>
           {contact && (
-            <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
-              <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className={`bg-gray-50 ${spacing.padding} rounded border-l-4 border-orange-500`}>
+              <div className={`grid grid-cols-2 ${spacing.gap} ${textSizes.normal}`}>
                 <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
                 <div><span className="font-medium">Téléphone:</span> {contact.telephone}</div>
                 <div><span className="font-medium">Email:</span> {contact.email}</div>
@@ -188,12 +253,12 @@ const formatHeure = (dateStr: string) => {
         </div>
 
         {/* Cartouche */}
-        <div className="ml-6 text-right">
-          <div className="p-4 rounded border border-orange-200">
-            <h2 className="text-lg font-bold text-orange-700 mb-3">
+        <div className={`ml-6 text-right ${isA5 ? 'ml-3' : 'ml-6'}`}>
+          <div className={`${spacing.padding} rounded border border-orange-200`}>
+            <h2 className={`${textSizes.header} font-bold text-orange-700 ${spacing.margin}`}>
               BON DEVIS {getBonNumeroDisplay(bon)}
             </h2>
-            <div className="space-y-2 text-sm">
+            <div className={`space-y-2 ${textSizes.normal}`}>
               <div><span className="font-medium">Date:</span> {formatHeure(bon.date_creation)}</div>
               {bon.adresse_livraison && (
                 <div><span className="font-medium">Livraison:</span> {bon.adresse_livraison}</div>
@@ -207,19 +272,19 @@ const formatHeure = (dateStr: string) => {
       </div>
 
       {/* Table articles */}
-      <div className="mb-6">
+      <div className={spacing.margin}>
         <table style={{width:'100%'}} className="no-mobile-scroll print-table-full w-full border-collapse border border-gray-300">
           <thead>
             <tr className="bg-orange-500 text-white">
-              <th className="border border-gray-300 px-2 py-2 text-left font-semibold w-16">CODE</th>
-              <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Article</th>
+              <th className={`border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-left font-semibold ${isA5 ? 'w-12' : 'w-16'} ${textSizes.tableHeader}`}>CODE</th>
+              <th className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-left font-semibold ${textSizes.tableHeader}`}>Article</th>
               {printMode !== 'PRODUCTS_ONLY' && (
-                <th className="border border-gray-300 px-3 py-2 text-center font-semibold">Qté</th>
+                <th className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center font-semibold ${textSizes.tableHeader}`}>Qté</th>
               )}
               {printMode === 'WITH_PRICES' && (
                 <>
-                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold">{bon?.type === 'Commande' ? 'P.A (DH)' : 'P.U. (DH)'}</th>
-                  <th className="border border-gray-300 px-3 py-2 text-right font-semibold">Total (DH)</th>
+                  <th className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>{bon?.type === 'Commande' ? 'P.A (DH)' : 'P.U. (DH)'}</th>
+                  <th className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>Total (DH)</th>
                 </>
               )}
             </tr>
@@ -233,20 +298,20 @@ const formatHeure = (dateStr: string) => {
               const rowKey = productId || `${item.designation}-${index}`;
               return (
                 <tr key={rowKey} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="border border-gray-300 px-2 py-2 text-xs text-gray-700">{productId}</td>
-                  <td className="border border-gray-300 px-3 py-2">
-                    <div className="font-medium">{item.designation}</div>
+                  <td className={`border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} ${textSizes.tableCell} text-gray-700`}>{productId}</td>
+                  <td className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'}`}>
+                    <div className={`font-medium ${textSizes.tableCell}`}>{item.designation}</div>
                     {item.description && (
-                      <div className="text-xs text-gray-600 italic">{item.description}</div>
+                      <div className={`${textSizes.small} text-gray-600 italic`}>{item.description}</div>
                     )}
                   </td>
                   {printMode !== 'PRODUCTS_ONLY' && (
-                    <td className="border border-gray-300 px-3 py-2 text-center">{quantite}</td>
+                    <td className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center ${textSizes.tableCell}`}>{quantite}</td>
                   )}
                   {printMode === 'WITH_PRICES' && (
                     <>
-                      <td className="border border-gray-300 px-3 py-2 text-right">{prixUnitaire.toFixed(2)}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-right font-medium">{total.toFixed(2)}</td>
+                      <td className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right ${textSizes.tableCell}`}>{prixUnitaire.toFixed(2)}</td>
+                      <td className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-medium ${textSizes.tableCell}`}>{total.toFixed(2)}</td>
                     </>
                   )}
                 </tr>
@@ -258,10 +323,10 @@ const formatHeure = (dateStr: string) => {
 
       {/* Totaux */}
       {printMode === 'WITH_PRICES' && (
-        <div className="flex justify-end mb-6 totals-section">
-          <div className="w-80">
-            <div className="p-4 rounded">
-              <div className="flex justify-between items-center text-lg font-bold">
+        <div className={`flex justify-end ${spacing.margin} totals-section`}>
+          <div className={isA5 ? 'w-60' : 'w-80'}>
+            <div className={`${spacing.padding} rounded`}>
+              <div className={`flex justify-between items-center ${textSizes.subheader} font-bold`}>
                 <span>TOTAL GÉNÉRAL:</span>
                 <span>{sousTotal.toFixed(2)} DH</span>
               </div>
@@ -272,7 +337,7 @@ const formatHeure = (dateStr: string) => {
 
       {/* Observations */}
       {bon.notes && (
-        <div className="mb-4">
+        <div className={spacing.margin}>
           <h4 className="font-semibold text-gray-800 mb-2">Observations:</h4>
           <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
             <p className="text-sm text-gray-700">{bon.notes}</p>
@@ -311,7 +376,7 @@ const formatHeure = (dateStr: string) => {
   {/* Spacer qui réserve la place du footer (impression) */}
   <div className="print-footer-spacer" />
   {/* Pied de page (toujours essaie de rester dans la dernière page si place) */}
-  <CompanyFooter data={companyFooters[selectedCompany]} />
+  <CompanyFooter data={companyFooters[selectedCompany]} size={size} />
     </div>
   );
 };

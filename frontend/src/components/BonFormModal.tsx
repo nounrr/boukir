@@ -236,11 +236,14 @@ const bonValidationSchema = Yup.object({
   adresse_livraison: Yup.string(),
   client_id: Yup.number().when('type', ([type], schema) => {
     if (type === 'Sortie' || type === 'Avoir') return schema.required('Client requis');
+    // Pour Devis : client_id OU client_nom requis (pas les deux obligatoires)
+    if (type === 'Devis') return schema.nullable();
     return schema.nullable();
   }),
-  // Pour Comptant, on saisit un nom libre
-  client_nom: Yup.string().when('type', ([type], schema) => {
+  // Pour Comptant et Devis, on peut saisir un nom libre
+  client_nom: Yup.string().when(['type', 'client_id'], ([type, client_id], schema) => {
     if (type === 'Comptant' || type === 'AvoirComptant') return schema.trim();
+    if (type === 'Devis' && !client_id) return schema.trim().required('Veuillez sélectionner un client ou entrer un nom');
     return schema.optional();
   }),
   fournisseur_id: Yup.number().when('type', ([type], schema) => {
@@ -713,7 +716,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       adresse_livraison: values.adresse_livraison || '',
       statut: values.statut || 'Brouillon',
   client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
-  client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant') ? (values.client_nom || null) : undefined,
+  client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
       montant_total: montantTotal,
       created_by: user?.id || 1,
@@ -1306,6 +1309,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             setFieldValue('client_nom', client.nom_complet);
                             setFieldValue('client_adresse', client.adresse || '');
                             setFieldValue('client_societe', (client as any).societe || '');
+                            // Clear client_nom when selecting from dropdown
+                            if (values.type === 'Devis') setFieldValue('client_nom', '');
                           }
                           // Sinon ne pas sélectionner le client
                         } else {
@@ -1329,6 +1334,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         setFieldValue('client_societe', (client as any).societe || '');
                         // Reset previous PDG approval when selecting different client
                         setPdgApprovedOverLimit(null);
+                        // Clear client_nom when selecting from dropdown
+                        if (values.type === 'Devis') setFieldValue('client_nom', '');
                       }
                     }}
                     placeholder="Sélectionnez un client"
@@ -1359,6 +1366,36 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     <div className="mt-2 p-2 bg-gray-50 rounded">
                       <span className="text-sm text-gray-600">Société: </span>
                       <span className="text-sm">{values.client_societe}</span>
+                    </div>
+                  )}
+                  
+                  {/* Champ client_nom pour devis (alternative au client_id) */}
+                  {values.type === 'Devis' && (
+                    <div className="mt-3">
+                      <div className="text-center text-sm text-gray-500 mb-2">-- OU --</div>
+                      <label htmlFor="client_nom_devis" className="block text-sm font-medium text-gray-700 mb-1">
+                        Nom du client (texte libre)
+                      </label>
+                      <Field
+                        type="text"
+                        id="client_nom_devis"
+                        name="client_nom"
+                        placeholder="Entrer le nom du client"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          setFieldValue('client_nom', e.target.value);
+                          // Clear client_id when typing in client_nom
+                          if (e.target.value.trim()) {
+                            setFieldValue('client_id', '');
+                            setFieldValue('client_adresse', '');
+                            setFieldValue('client_societe', '');
+                          }
+                        }}
+                      />
+                      <div className="text-xs text-gray-500 mt-1">
+                        Ce client ne sera pas ajouté automatiquement à la page Contacts.
+                      </div>
+                      <ErrorMessage name="client_nom" component="div" className="text-red-500 text-sm mt-1" />
                     </div>
                   )}
                 </div>

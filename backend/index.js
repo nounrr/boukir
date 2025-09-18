@@ -34,6 +34,8 @@ import employeSalairesRouter from './routes/employe_salaires.js';
 import oldTalonsCaisseRouter from './routes/old-talons-caisse.js';
 import auditRouter from './routes/audit.js';
 import bonLinksRouter from './routes/bon_links.js';
+import accessSchedulesRouter from './routes/accessSchedules.js';
+import accessSchedulesDetailedRouter from './routes/accessSchedulesDetailed.js';
 import { randomUUID } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -142,6 +144,8 @@ app.use('/api/documents', documentsRouter);
 app.use('/api', employeSalairesRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/bon-links', bonLinksRouter);
+app.use('/api/access-schedules', accessSchedulesRouter);
+app.use('/api/access-schedules', accessSchedulesDetailedRouter);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not Found', path: req.path });

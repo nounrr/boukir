@@ -26,6 +26,17 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+  user-select: none;
+}
+
+/* Table resizing state */
+.responsive-table.resizing {
+  user-select: none;
+  pointer-events: none;
+}
+
+.responsive-table.resizing * {
+  cursor: col-resize !important;
 }
 
 /* Sticky header utility */
@@ -76,6 +87,17 @@ html { -webkit-text-size-adjust: 100%; }
   background: linear-gradient(to left, rgba(255,255,255,0.9), rgba(255,255,255,0));
 }
 
+/* Column resize handle */
+.col-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 20;
+}
+
 /* Utility to emphasize numeric columns alignment */
 .text-numeric { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -108,5 +130,52 @@ html { -webkit-text-size-adjust: 100%; }
 @media print {
   table { display: table !important; overflow: visible !important; max-width: 100% !important; width: 100% !important; }
   table th, table td { white-space: normal !important; }
+}
+
+/* ========= Column Resizing Styles (Excel-like) ========= */
+.responsive-table.resizing {
+  user-select: none;
+}
+
+.responsive-table th {
+  position: relative;
+}
+
+.responsive-table th:hover {
+  background-color: #f9fafb;
+}
+
+/* Visual indicator for resizable columns */
+.responsive-table th::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 100%;
+  background-color: transparent;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.responsive-table th:hover::after {
+  background-color: #3b82f6;
+  opacity: 0.5;
+}
+
+.responsive-table:hover th::after {
+  background-color: #e5e7eb;
+  opacity: 0.3;
+}
+
+/* Active resizing state */
+.responsive-table.resizing th::after {
+  background-color: #3b82f6;
+  opacity: 0.8;
+}
+
+/* Remove the old resize handle styles */
+.col-resize-handle {
+  display: none !important;
 }
 

@@ -17,6 +17,8 @@ import {
   Percent,
   ClipboardList,
   Wallet,
+  Archive,
+  CalendarClock,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,7 +36,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: true },
         { name: 'Remises', href: '/remises', icon: Percent, show: true },
         { name: 'Catégories', href: '/categories', icon: Tags, show: true },
-        { name: 'Contacts', href: '/contacts', icon: UserCheck, show: true },
+        { name: 'Contacts', href: '/contacts', icon: UserCheck, show: user?.role !== 'Employé' },
+        { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: user?.role !== 'Employé' },
       ],
     },
     {
@@ -48,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Opérations',
       items: [
         { name: 'Bons', href: '/bons', icon: FileText, show: true },
-        { name: 'Véhicules', href: '/vehicules', icon: Truck, show: true },
+        { name: 'Véhicules', href: '/vehicules', icon: Truck, show: user?.role !== 'Employé' },
         { name: 'Caisse', href: '/caisse', icon: CreditCard, show: true },
   { name: 'Talons', href: '/talons', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'Manager' },
   { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: user?.role === 'PDG' || user?.role === 'Manager' },
@@ -58,6 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Administration',
       items: [
         { name: 'Employés', href: '/employees', icon: Users, show: canManageEmployees(user) },
+        { name: 'Horaires d\'Accès', href: '/access-schedules', icon: CalendarClock, show: user?.role === 'PDG' || user?.role === 'Manager' },
       ],
     },
     {
