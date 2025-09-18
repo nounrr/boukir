@@ -21,7 +21,8 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   client,
   fournisseur
 }) => {
-  const [size, setSize] = useState<'A4' | 'A5'>('A4');
+  // Taille fixée à A4 par défaut
+  const size = 'A4' as const;
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -155,18 +156,9 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
               Aperçu d'impression - {bon.type} {getBonNumeroDisplay(bon)}
             </h2>
             
-            {/* Sélecteur de taille */}
+            {/* Format fixé à A4 */}
             <div className="flex items-center space-x-2">
-              <label htmlFor="size-selector" className="text-sm font-medium">Taille:</label>
-              <select
-                id="size-selector"
-                value={size}
-                onChange={(e) => setSize(e.target.value as 'A4' | 'A5')}
-                className="px-3 py-1 border border-gray-300 rounded-md text-sm"
-              >
-                <option value="A4">A4 (210x297mm)</option>
-                <option value="A5">A5 (148x210mm)</option>
-              </select>
+              <span className="text-sm text-gray-600">Format: A4 (210x297mm)</span>
             </div>
           </div>
 
@@ -206,8 +198,8 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
               ref={printRef}
               className="bg-white shadow-lg"
               style={{
-                width: size === 'A5' ? '148mm' : '210mm',
-                minHeight: size === 'A5' ? '210mm' : '297mm'
+                width: '210mm',
+                minHeight: '297mm'
               }}
             >
               <BonPrintTemplate

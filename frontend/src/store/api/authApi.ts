@@ -10,7 +10,14 @@ const authApi = api.injectEndpoints({
     me: builder.query<User, void>({
       query: () => ({ url: '/auth/me', method: 'GET' }),
     }),
+    checkAccess: builder.query<{ hasAccess: boolean; reason: string }, void>({
+      query: () => ({ url: '/auth/check-access', method: 'GET' }),
+    }),
   }),
 });
 
-export const { useLoginMutation, useMeQuery: useValidateTokenQuery } = authApi;
+export const { 
+  useLoginMutation, 
+  useMeQuery: useValidateTokenQuery,
+  useCheckAccessQuery 
+} = authApi;

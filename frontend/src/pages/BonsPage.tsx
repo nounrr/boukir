@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, MoreHorizontal } from 'lucide-react';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
@@ -64,8 +64,13 @@ const BonsPage = () => {
   const [duplicateType, setDuplicateType] = useState<'fournisseur' | 'client' | 'comptant'>('client');
   const [selectedContactForDuplicate, setSelectedContactForDuplicate] = useState<string>('');
   const [comptantClientName, setComptantClientName] = useState<string>('');
+  const [isDuplicationComplete, setIsDuplicationComplete] = useState(true);
+  const [selectedArticlesForDuplicate, setSelectedArticlesForDuplicate] = useState<number[]>([]);
   // Clé pour forcer le remontage du formulaire (assure un état 100% vierge entre créations)
   const [bonFormKey, setBonFormKey] = useState(0);
+
+  // Menu actions state
+  const [openMenuBonId, setOpenMenuBonId] = useState<string | null>(null);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -112,14 +117,179 @@ const BonsPage = () => {
     return `${pref}${String(id).padStart(2, '0')}`;
   };
   const dispatch = useAppDispatch();
+  // Column resizing state (persistent during the component lifetime)
+  const showAuditCols = currentUser?.role === 'PDG' || currentUser?.role === 'Manager';
+  const defaultColWidths = useMemo(() => {
+    const base = ['120','120','220','220','120','80','120']; // numero,date,contact,adresse,montant,poids,mouvement
+    if (showAuditCols) {
+      base.push('140','140'); // created_by, updated_by
+    }
+    base.push('180','120','120'); // lié, statut, actions
+    return base.map(v => `${v}px`);
+  }, [showAuditCols]);
+
+  // Load column widths from localStorage or use defaults
+  const getStoredColWidths = useCallback(() => {
+    try {
+      const storageKey = `bonsPage_colWidths_${showAuditCols ? 'with' : 'without'}Audit`;
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // Validate that stored widths match expected column count
+        if (Array.isArray(parsed) && parsed.length === defaultColWidths.length) {
+          return parsed;
+        }
+      }
+    } catch (error) {
+      console.warn('Erreur lors du chargement des largeurs de colonnes:', error);
+    }
+    return defaultColWidths;
+  }, [defaultColWidths, showAuditCols]);
+
+  const [colWidths, setColWidths] = useState<string[]>(getStoredColWidths);
+
+  // Save column widths to localStorage whenever they change
+  useEffect(() => {
+    try {
+      const storageKey = `bonsPage_colWidths_${showAuditCols ? 'with' : 'without'}Audit`;
+      localStorage.setItem(storageKey, JSON.stringify(colWidths));
+    } catch (error) {
+      console.warn('Erreur lors de la sauvegarde des largeurs de colonnes:', error);
+    }
+  }, [colWidths, showAuditCols]);
+
+  // Update widths when audit cols toggle (load from localStorage for new configuration)
+  useEffect(() => {
+    setColWidths(getStoredColWidths());
+  }, [getStoredColWidths]);
+
+  const resizingRef = useRef<{colIndex:number; startX:number; startWidth:number; isResizing:boolean}>({
+    colIndex: -1,
+    startX: 0,
+    startWidth: 0,
+    isResizing: false
+  });
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Calculer la largeur minimale basée sur le contenu de la colonne
+  const getMinColumnWidth = useCallback((colIndex: number) => {
+    const table = document.querySelector('.responsive-table') as HTMLTableElement;
+    if (!table) return 50; // fallback
+
+    // Créer un élément temporaire pour mesurer le texte
+    const measureElement = document.createElement('div');
+    measureElement.style.position = 'absolute';
+    measureElement.style.visibility = 'hidden';
+    measureElement.style.whiteSpace = 'nowrap';
+    measureElement.style.fontSize = '12px'; // taille des headers
+    measureElement.style.fontWeight = '500';
+    measureElement.style.padding = '0 24px'; // padding des th
+    document.body.appendChild(measureElement);
+
+    let maxWidth = 50; // minimum absolu
+
+    // Mesurer le header
+    const headerCell = table.querySelector(`thead th:nth-child(${colIndex + 1})`);
+    if (headerCell) {
+      const headerText = headerCell.textContent || '';
+      measureElement.textContent = headerText;
+      maxWidth = Math.max(maxWidth, measureElement.offsetWidth + 20); // +20 pour la poignée
+    }
+
+    // Mesurer quelques cellules de données
+    const dataCells = table.querySelectorAll(`tbody td:nth-child(${colIndex + 1})`);
+    const sampleSize = Math.min(5, dataCells.length); // Échantillon de 5 cellules
+    
+    measureElement.style.fontSize = '14px'; // taille du contenu
+    measureElement.style.fontWeight = '400';
+    measureElement.style.padding = '0 16px'; // padding des td
+    
+    for (let i = 0; i < sampleSize; i++) {
+      const cell = dataCells[i];
+      if (cell) {
+        const cellText = cell.textContent || '';
+        measureElement.textContent = cellText;
+        maxWidth = Math.max(maxWidth, measureElement.offsetWidth);
+      }
+    }
+
+    document.body.removeChild(measureElement);
+    return Math.min(maxWidth, 300); // Maximum 300px pour éviter des colonnes trop larges
+  }, []);
+
+  const onMouseMove = useCallback((e: MouseEvent) => {
+    const r = resizingRef.current;
+
+    // Si on est en train de redimensionner
+    if (r.isResizing && r.colIndex >= 0) {
+      const delta = e.clientX - r.startX;
+      const minWidth = 30; // Largeur minimale absolue simple
+      const newW = Math.max(minWidth, Math.round(r.startWidth + delta));
+      setColWidths((prev) => {
+        const next = [...prev];
+        next[r.colIndex] = `${newW}px`;
+        return next;
+      });
+      return;
+    }
+
+    // Détecter si on est près d'un bord de colonne pour changer le curseur
+    const table = document.querySelector('.responsive-table') as HTMLTableElement;
+    if (!table) return;
+
+    // Pour un redimensionnement libre, on supprime la logique de détection automatique
+    // Le curseur sera géré par les poignées de redimensionnement uniquement
+  }, [colWidths]);
+
+  const onMouseDown = useCallback((e: MouseEvent) => {
+    // Fonction simplifiée - la logique de redimensionnement est maintenant dans startResize
+    return;
+  }, []);
+
+  const stopResize = useCallback(() => {
+    resizingRef.current.isResizing = false;
+
+    // Remove resizing class from table
+    const table = document.querySelector('.responsive-table') as HTMLTableElement;
+    if (table) {
+      table.classList.remove('resizing');
+      table.style.cursor = '';
+    }
+
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', stopResize);
+  }, [onMouseMove]);
+
+  const startResize = useCallback((e: React.MouseEvent, colIndex: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    resizingRef.current.colIndex = colIndex;
+    resizingRef.current.isResizing = true;
+    resizingRef.current.startX = e.clientX;
+    resizingRef.current.startWidth = parseInt(String(colWidths[colIndex] || '120').replace('px',''));
+
+    // Add resizing class to table for visual feedback
+    const table = document.querySelector('.responsive-table') as HTMLTableElement;
+    if (table) table.classList.add('resizing');
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', stopResize);
+  }, [colWidths, onMouseMove, stopResize]);
   // const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
   const handleChangeStatus = async (bon: any, statut: 'Validé' | 'En attente' | 'Annulé' | 'Accepté' | 'Envoyé' | 'Refusé') => {
     try {
-      // Employé: uniquement Annuler ou En attente (y compris pour Devis)
-      if (isEmployee && !['Annulé','En attente'].includes(statut)) {
-        showError("Permission refusée: l'employé ne peut que mettre En attente ou Annuler.");
-        return;
+      // Employé: uniquement Annuler ou En attente, mais pas sur les bons déjà validés
+      if (isEmployee) {
+        if (bon.statut === 'Validé') {
+          showError("Permission refusée: l'employé ne peut pas modifier un bon déjà validé.");
+          return;
+        }
+        if (!['Annulé','En attente'].includes(statut)) {
+          showError("Permission refusée: l'employé ne peut que mettre En attente ou Annuler.");
+          return;
+        }
       }
       // Si c'est un devis et qu'on l'accepte, ouvrir le modal de transformation
       if (bon.type === 'Devis' && statut === 'Accepté') {
@@ -150,8 +320,8 @@ const BonsPage = () => {
 
   // Helper to get contact name (client or fournisseur) used by filtering/render
   const getContactName = (bon: any) => {
-    // Comptant: if client_nom is present (free text), prefer it
-  if ((bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || currentTab === 'Comptant' || currentTab === 'AvoirComptant') && bon?.client_nom) {
+    // Comptant et Devis: if client_nom is present (free text), prefer it
+    if ((bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || currentTab === 'Comptant' || currentTab === 'AvoirComptant' || bon?.type === 'Devis' || currentTab === 'Devis') && bon?.client_nom) {
       return bon.client_nom;
     }
     const clientId = bon?.client_id ?? bon?.contact_id;
@@ -311,8 +481,7 @@ const BonsPage = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTab, startIndex, endIndex, sortedBons.length]);
 
-  // Show audit columns only for PDG and Manager
-  const showAuditCols = currentUser?.role === 'PDG' || currentUser?.role === 'Manager';
+  // showAuditCols already declared earlier; reuse it
 
   // Safely render any text value (handles Buffer-like {type:'Buffer', data:[..]})
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -365,6 +534,33 @@ const BonsPage = () => {
       .finally(() => {});
     return () => ctrl.abort();
   }, [currentTab, startIndex, endIndex, sortedBons.length, token, showAuditCols]);
+
+  // Handle click outside to close menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenuBonId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Add table mouse events for column resizing
+  useEffect(() => {
+    const table = document.querySelector('.responsive-table') as HTMLTableElement;
+    if (table) {
+      table.addEventListener('mousemove', onMouseMove);
+      table.addEventListener('mousedown', onMouseDown);
+      return () => {
+        table.removeEventListener('mousemove', onMouseMove);
+        table.removeEventListener('mousedown', onMouseDown);
+      };
+    }
+  }, [onMouseMove, onMouseDown]);
 
   // Réinitialiser la page quand on change d'onglet ou de recherche
   React.useEffect(() => {
@@ -433,9 +629,23 @@ const BonsPage = () => {
       if (!selectedBonForDuplicate) return;
       
       try {
+        // Helper pour convertir les dates au format MySQL
+        const formatDateForMySQL = (dateString: string | null | undefined): string => {
+          if (!dateString) {
+            return new Date().toISOString().slice(0, 19).replace('T', ' ');
+          }
+          try {
+            const date = new Date(dateString);
+            return date.toISOString().slice(0, 19).replace('T', ' ');
+          } catch {
+            return new Date().toISOString().slice(0, 19).replace('T', ' ');
+          }
+        };
+
         // Créer le nouveau bon selon le type sélectionné
         let newBonData: any = {
-          date_creation: new Date().toISOString().slice(0, 19).replace('T', ' '),
+          date_creation: formatDateForMySQL(selectedBonForDuplicate.date_creation),
+          created_at: formatDateForMySQL(selectedBonForDuplicate.created_at),
           vehicule_id: selectedBonForDuplicate.vehicule_id || undefined,
           lieu_chargement: selectedBonForDuplicate.lieu_chargement || selectedBonForDuplicate.lieu_charge || '',
           adresse_livraison: selectedBonForDuplicate.adresse_livraison || '',
@@ -444,14 +654,22 @@ const BonsPage = () => {
           created_by: currentUser?.id || 1,
           items: selectedBonForDuplicate.items || []
         };
+
+        // Traiter les articles selon le type de duplication
+        const sourceItems = parseItemsSafe(selectedBonForDuplicate.items);
+        let itemsToDuplicate = sourceItems;
+        
+        if (!isDuplicationComplete && selectedArticlesForDuplicate.length > 0) {
+          // Duplication par articles sélectionnés
+          itemsToDuplicate = sourceItems.filter((_, index) => selectedArticlesForDuplicate.includes(index));
+        }
         
         if (duplicateType === 'fournisseur') {
           // Dupliquer vers Commande en utilisant le PRIX D'ACHAT (cout_revient/prix_achat) comme prix_unitaire
           newBonData.type = 'Commande';
           newBonData.fournisseur_id = parseInt(selectedContactForDuplicate);
 
-          const srcItems = parseItemsSafe(selectedBonForDuplicate.items);
-          const mapped = srcItems.map((it: any) => {
+          const mapped = itemsToDuplicate.map((it: any) => {
             const q = Number(it.quantite ?? it.qty ?? 0) || 0;
             // Prix d'achat / coût de revient depuis l'item ou le produit
             const purchaseUnit = resolveCost(it);
@@ -472,9 +690,31 @@ const BonsPage = () => {
         } else if (duplicateType === 'client') {
           newBonData.type = 'Sortie';
           newBonData.client_id = parseInt(selectedContactForDuplicate);
+          newBonData.items = itemsToDuplicate;
+          
+          // Recalculer le montant total si duplication partielle
+          if (!isDuplicationComplete) {
+            const newTotal = itemsToDuplicate.reduce((sum: number, it: any) => {
+              const q = Number(it.quantite ?? it.qty ?? 0) || 0;
+              const price = Number(it.prix_unitaire ?? 0) || 0;
+              return sum + (q * price);
+            }, 0);
+            newBonData.montant_total = newTotal;
+          }
         } else if (duplicateType === 'comptant') {
           newBonData.type = 'Comptant';
           newBonData.client_nom = comptantClientName;
+          newBonData.items = itemsToDuplicate;
+          
+          // Recalculer le montant total si duplication partielle
+          if (!isDuplicationComplete) {
+            const newTotal = itemsToDuplicate.reduce((sum: number, it: any) => {
+              const q = Number(it.quantite ?? it.qty ?? 0) || 0;
+              const price = Number(it.prix_unitaire ?? 0) || 0;
+              return sum + (q * price);
+            }, 0);
+            newBonData.montant_total = newTotal;
+          }
         }
         
         // Créer le bon directement via l'API
@@ -500,13 +740,16 @@ const BonsPage = () => {
           // non-blocking
         }
         
-        showSuccess(`${newBonData.type} dupliqué avec succès !`);
+        const dupTypeText = isDuplicationComplete ? 'complète' : 'partielle';
+        showSuccess(`${newBonData.type} dupliqué avec succès (duplication ${dupTypeText}) !`);
         
-        // Fermer la modal de duplication
+        // Fermer la modal de duplication et réinitialiser les états
         setIsDuplicateModalOpen(false);
         setSelectedBonForDuplicate(null);
         setSelectedContactForDuplicate('');
         setComptantClientName('');
+        setIsDuplicationComplete(true);
+        setSelectedArticlesForDuplicate([]);
         
         // Changer l'onglet vers le bon type créé si nécessaire
         if (newBonData.type !== currentTab) {
@@ -661,12 +904,18 @@ const BonsPage = () => {
           <div className="responsive-table-container">
             <table
               className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact"
-              style={{ minWidth: 960 }}
+              style={{ minWidth: 960, tableLayout: 'fixed', width: 'auto' }}
             >
+              {/* colgroup driven by colWidths so headers/cols can be resized */}
+              <colgroup>
+                {colWidths.map((w, idx) => (
+                  <col key={idx} style={{ width: w }} />
+                ))}
+              </colgroup>
               <thead className="bg-gray-50">
                 <tr>
                   <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                     onClick={() => handleSort('numero')}
                   >
                     <div className="flex items-center gap-1">
@@ -675,9 +924,14 @@ const BonsPage = () => {
                         sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                       )}
                     </div>
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, 0)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
                   <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                     onClick={() => handleSort('date')}
                   >
                     <div className="flex items-center gap-1">
@@ -686,9 +940,14 @@ const BonsPage = () => {
                         sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                       )}
                     </div>
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, 1)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
                   <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                     onClick={() => handleSort('contact')}
                   >
                     <div className="flex items-center gap-1">
@@ -701,12 +960,22 @@ const BonsPage = () => {
                         sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                       )}
                     </div>
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, 2)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                     Adresse livraison
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, 3)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
                   <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                     onClick={() => handleSort('montant')}
                   >
                     <div className="flex items-center gap-1">
@@ -715,31 +984,71 @@ const BonsPage = () => {
                         sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                       )}
                     </div>
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, 4)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                     Poids (kg)
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, 5)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                     Mouvement
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, 6)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
                   {showAuditCols && (
                     <>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                         Créé par
+                        <span 
+                          className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                          onMouseDown={(e) => startResize(e, 7)}
+                          title="Glisser pour redimensionner"
+                        />
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                         Dernier modifié par
+                        <span 
+                          className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                          onMouseDown={(e) => startResize(e, 8)}
+                          title="Glisser pour redimensionner"
+                        />
                       </th>
                     </>
                   )}
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                     Lié
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, showAuditCols ? 9 : 7)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                     Statut
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, showAuditCols ? 10 : 8)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                     Actions
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, showAuditCols ? 11 : 9)}
+                      title="Glisser pour redimensionner"
+                    />
                   </th>
                 </tr>
               </thead>
@@ -813,14 +1122,14 @@ const BonsPage = () => {
                               {lk.incoming?.map((r, idx) => (
                                 <div key={`in-${idx}`} className="flex items-center gap-1">
                                   <span className="inline-block px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-700 rounded">de</span>
-                                  <span>{r.relation_type}</span>
+                                  <span></span>
                                   <span className="text-gray-500">{r.from_type} {formatNumeroByType(r.from_type, r.from_id)}</span>
                                 </div>
                               ))}
                               {lk.outgoing?.map((r, idx) => (
                                 <div key={`out-${idx}`} className="flex items-center gap-1">
                                   <span className="inline-block px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded">vers</span>
-                                  <span>{r.relation_type}</span>
+                                  <span></span>
                                   <span className="text-gray-500">{r.to_type} {formatNumeroByType(r.to_type, r.to_id)}</span>
                                 </div>
                               ))}
@@ -835,94 +1144,8 @@ const BonsPage = () => {
                         </span>
                       </td>
                       <td className="px-4 py-2 text-right">
-                        <div className="inline-flex gap-2">
-                          {/* Status-change actions */}
-                          {(() => {
-                            // Full privileged actions (validate/en attente/annuler) for:
-                            //  - PDG on all relevant tabs
-                            //  - Manager on Commande & AvoirFournisseur (align backend)
-                            if (currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) {
-                              return (
-                                <>
-                                  {(currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
-                                    <>
-                                      <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Marquer Validé">
-                                        <CheckCircle2 size={ACTION_ICON_SIZE} />
-                                      </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre En attente">
-                                        <Clock size={ACTION_ICON_SIZE} />
-                                      </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
-                                        <XCircle size={ACTION_ICON_SIZE} />
-                                      </button>
-                                    </>
-                                  )}
-              {( (currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || (currentUser?.role === 'PDG' && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ) && (
-                                    <>
-                                      <button onClick={() => handleChangeStatus(bon, 'Validé')} className="text-green-600 hover:text-green-800" title="Valider l'avoir">
-                                        <CheckCircle2 size={ACTION_ICON_SIZE} />
-                                      </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre en attente">
-                                        <Clock size={ACTION_ICON_SIZE} />
-                                      </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler l'avoir">
-                                        <XCircle size={ACTION_ICON_SIZE} />
-                                      </button>
-                                    </>
-                                  )}
-              {currentTab === 'Devis' && currentUser?.role === 'PDG' && (
-                                    <>
-                                      <button onClick={() => handleChangeStatus(bon, 'Accepté')} className="text-green-600 hover:text-green-800" title="Accepter et transformer">
-                                        <CheckCircle2 size={ACTION_ICON_SIZE} />
-                                      </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre En attente">
-                                        <Clock size={ACTION_ICON_SIZE} />
-                                      </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler le devis">
-                                        <XCircle size={ACTION_ICON_SIZE} />
-                                      </button>
-                                    </>
-                                  )}
-                                </>
-                              );
-                            }
-                            if (isEmployee) {
-                              return (
-                                <>
-                                  {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant' || currentTab === 'Devis') && (
-                                    <>
-                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Mettre En attente">
-                                        <Clock size={ACTION_ICON_SIZE} />
-                                      </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
-                                        <XCircle size={ACTION_ICON_SIZE} />
-                                      </button>
-                                    </>
-                                  )}
-                                  {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant') && (
-                                    <>
-                                      <button onClick={() => handleChangeStatus(bon, 'En attente')} className="text-yellow-600 hover:text-yellow-800" title="Remettre En attente">
-                                        <Clock size={ACTION_ICON_SIZE} />
-                                      </button>
-                                      <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler l'avoir">
-                                        <XCircle size={ACTION_ICON_SIZE} />
-                                      </button>
-                                    </>
-                                  )}
-                                  {/* Devis: pas d'action d'annulation / attente explicite pour Employé */}
-                                </>
-                              );
-                            }
-                            // Managers (other tabs) limited: can only Annuler
-                            if (isManager) {
-                              return (
-                                <button onClick={() => handleChangeStatus(bon, 'Annulé')} className="text-red-600 hover:text-red-800" title="Annuler">
-                                  <XCircle size={ACTION_ICON_SIZE} />
-                                </button>
-                              );
-                            }
-                            return null;
-                          })()}
+                        <div className="inline-flex gap-2 items-center relative">
+                          {/* Always visible: Print thermal */}
                           <button
                             onClick={() => { 
                               setSelectedBonForPrint(bon); 
@@ -933,6 +1156,8 @@ const BonsPage = () => {
                           >
                             <Printer size={ACTION_ICON_SIZE} />
                           </button>
+                          
+                          {/* Always visible: Print PDF */}
                           <button
                             onClick={() => { 
                               setSelectedBonForPDFPrint(bon); 
@@ -943,28 +1168,8 @@ const BonsPage = () => {
                           >
                             <Printer size={ACTION_ICON_SIZE} />
                           </button>
-                          {(currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
-                            <button
-                              onClick={() => {
-                                const t = tableForType(bon.type || currentTab);
-                                if (t) navigate(`/audit?mode=group&t=${encodeURIComponent(t)}&id=${encodeURIComponent(String(bon.id))}&details=1`);
-                              }}
-                              className="text-indigo-600 hover:text-indigo-800"
-                              title="Voir l'historique d'audit"
-                            >
-                              {/* simple clock/history icon substitute using existing icons */}
-                              <Clock size={ACTION_ICON_SIZE} />
-                            </button>
-                          )}
-                          {currentUser?.role !== 'Employé' && (
-                            <button
-                              onClick={() => { setSelectedBon(bon); setIsViewModalOpen(true); }}
-                              className="text-gray-600 hover:text-gray-900"
-                              title="Voir"
-                            >
-                              <Eye size={ACTION_ICON_SIZE} />
-                            </button>
-                          )}
+                          
+                          {/* Always visible: Edit */}
                           {canModifyBons(currentUser) && (
                             <button
                               onClick={() => { setSelectedBon(bon); setIsCreateModalOpen(true); }}
@@ -974,28 +1179,222 @@ const BonsPage = () => {
                               <Edit size={ACTION_ICON_SIZE} />
                             </button>
                           )}
-                          {((currentUser?.role === 'PDG') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
-                            <>
-                              <button
-                                onClick={() => {
-                                  // Ouvrir la modal de duplication AWATEF
-                                  setSelectedBonForDuplicate(bon);
-                                  setIsDuplicateModalOpen(true);
-                                }}
-                                className="text-pink-600 hover:text-pink-800"
-                                title="Dupliquer AWATEF (Avoir Client)"
-                              >
-                                <Copy size={ACTION_ICON_SIZE} />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(bon)}
-                                className="text-red-600 hover:text-red-800"
-                                title="Supprimer"
-                              >
-                                <Trash2 size={ACTION_ICON_SIZE} />
-                              </button>
-                            </>
-                          )}
+                          
+                          {/* 3-dot menu for other actions */}
+                          <div className="relative" ref={openMenuBonId === String(bon.id) ? menuRef : null}>
+                            <button
+                              onClick={() => setOpenMenuBonId(openMenuBonId === String(bon.id) ? null : String(bon.id))}
+                              className="text-gray-600 hover:text-gray-800 p-1 rounded hover:bg-gray-100"
+                              title="Plus d'actions"
+                            >
+                              <MoreHorizontal size={ACTION_ICON_SIZE} />
+                            </button>
+                            
+                            {/* Popup menu */}
+                            {openMenuBonId === String(bon.id) && (
+                              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 p-1">
+                                <div className="flex flex-col gap-1">
+                                  {/* Status-change actions */}
+                                  {(() => {
+                                    // Full privileged actions (validate/en attente/annuler) for:
+                                    //  - PDG on all relevant tabs
+                                    //  - Manager on Commande & AvoirFournisseur (align backend)
+                                    if (currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) {
+                                      return (
+                                        <>
+                                          {(currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
+                                            <div className="flex gap-1">
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'Validé'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-green-600 hover:bg-green-50 hover:text-green-800 rounded"
+                                                title="Marquer Validé"
+                                              >
+                                                <CheckCircle2 size={16} />
+                                              </button>
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
+                                                title="Mettre En attente"
+                                              >
+                                                <Clock size={16} />
+                                              </button>
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                                title="Annuler"
+                                              >
+                                                <XCircle size={16} />
+                                              </button>
+                                            </div>
+                                          )}
+                                          {( (currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || (currentUser?.role === 'PDG' && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ) && (
+                                            <div className="flex gap-1">
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'Validé'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-green-600 hover:bg-green-50 hover:text-green-800 rounded"
+                                                title="Valider l'avoir"
+                                              >
+                                                <CheckCircle2 size={16} />
+                                              </button>
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
+                                                title="Mettre en attente"
+                                              >
+                                                <Clock size={16} />
+                                              </button>
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                                title="Annuler l'avoir"
+                                              >
+                                                <XCircle size={16} />
+                                              </button>
+                                            </div>
+                                          )}
+                                          {currentTab === 'Devis' && currentUser?.role === 'PDG' && (
+                                            <div className="flex gap-1">
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'Accepté'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-green-600 hover:bg-green-50 hover:text-green-800 rounded"
+                                                title="Accepter et transformer"
+                                              >
+                                                <CheckCircle2 size={16} />
+                                              </button>
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
+                                                title="Mettre En attente"
+                                              >
+                                                <Clock size={16} />
+                                              </button>
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                                title="Annuler le devis"
+                                              >
+                                                <XCircle size={16} />
+                                              </button>
+                                            </div>
+                                          )}
+                                        </>
+                                      );
+                                    }
+                                    if (isEmployee) {
+                                      return (
+                                        <>
+                                          {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant' || currentTab === 'Devis') && bon.statut !== 'Validé' && (
+                                            <div className="flex gap-1">
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
+                                                title="Mettre En attente"
+                                              >
+                                                <Clock size={16} />
+                                              </button>
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                                title="Annuler"
+                                              >
+                                                <XCircle size={16} />
+                                              </button>
+                                            </div>
+                                          )}
+                                          {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant') && bon.statut !== 'Validé' && (
+                                            <div className="flex gap-1">
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
+                                                title="Remettre En attente"
+                                              >
+                                                <Clock size={16} />
+                                              </button>
+                                              <button 
+                                                onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                                className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                                title="Annuler l'avoir"
+                                              >
+                                                <XCircle size={16} />
+                                              </button>
+                                            </div>
+                                          )}
+                                        </>
+                                      );
+                                    }
+                                    // Managers (other tabs) limited: can only Annuler
+                                    if (isManager) {
+                                      return (
+                                        <button 
+                                          onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                          className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                          title="Annuler"
+                                        >
+                                          <XCircle size={16} />
+                                        </button>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                  
+                                  {/* Other actions */}
+                                  <div className="flex gap-1">
+                                    {/* Audit history */}
+                                    {(currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
+                                      <button
+                                        onClick={() => {
+                                          const t = tableForType(bon.type || currentTab);
+                                          if (t) navigate(`/audit?mode=group&t=${encodeURIComponent(t)}&id=${encodeURIComponent(String(bon.id))}&details=1`);
+                                          setOpenMenuBonId(null);
+                                        }}
+                                        className="p-2 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 rounded"
+                                        title="Voir l'historique d'audit"
+                                      >
+                                        <Clock size={16} />
+                                      </button>
+                                    )}
+                                    
+                                    {/* View */}
+                                    {currentUser?.role !== 'Employé' && (
+                                      <button
+                                        onClick={() => { setSelectedBon(bon); setIsViewModalOpen(true); setOpenMenuBonId(null); }}
+                                        className="p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-800 rounded"
+                                        title="Voir"
+                                      >
+                                        <Eye size={16} />
+                                      </button>
+                                    )}
+                                    
+                                    {/* Duplicate */}
+                                    {((currentUser?.role === 'PDG') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
+                                      <button
+                                        onClick={() => {
+                                          setSelectedBonForDuplicate(bon);
+                                          setIsDuplicateModalOpen(true);
+                                          setOpenMenuBonId(null);
+                                        }}
+                                        className="p-2 text-pink-600 hover:bg-pink-50 hover:text-pink-800 rounded"
+                                        title="Dupliquer AWATEF"
+                                      >
+                                        <Copy size={16} />
+                                      </button>
+                                    )}
+                                    
+                                    {/* Delete - Masqué pour Manager sur Commande et AvoirFournisseur */}
+                                    {currentUser?.role === 'PDG' && (
+                                      <button
+                                        onClick={() => { handleDelete(bon); setOpenMenuBonId(null); }}
+                                        className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                        title="Supprimer"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -1219,7 +1618,7 @@ const BonsPage = () => {
                     )}
                     {selectedBon.statut === 'Validé' && (
                       <>
-                        {(selectedBon.type !== 'Avoir' && selectedBon.type !== 'AvoirFournisseur') && (
+                        {(selectedBon.type !== 'Avoir' && selectedBon.type !== 'AvoirFournisseur') && !isEmployee && (
                           <button
                             onClick={() => {
                               showSuccess('Bon marqué comme livré');
@@ -1230,7 +1629,7 @@ const BonsPage = () => {
                             Marquer comme livré
                           </button>
                         )}
-                        {(selectedBon.type === 'Avoir' || selectedBon.type === 'AvoirFournisseur') && (
+                        {(selectedBon.type === 'Avoir' || selectedBon.type === 'AvoirFournisseur') && !isEmployee && (
                           <>
                             <button
                               onClick={() => {
@@ -1412,10 +1811,15 @@ const BonsPage = () => {
           contact={(() => {
             const b = selectedBonForPrint;
             if (!b) return null;
-            // Devis: always a client; prefer client_id, fallback to contact_id
+            // Devis: always a client; prefer client_id, fallback to contact_id, then client_nom
             if (currentTab === 'Devis') {
               const id = b.client_id ?? b.contact_id;
-              return clients.find((c) => String(c.id) === String(id)) || null;
+              const found = clients.find((c) => String(c.id) === String(id)) || null;
+              if (!found && b.client_nom) {
+                // Build a minimal contact-like object for display with client_nom
+                return { nom_complet: b.client_nom } as any;
+              }
+              return found;
             }
             // Commande & AvoirFournisseur: suppliers; prefer fournisseur_id, fallback to contact_id
             if (currentTab === 'Commande' || currentTab === 'AvoirFournisseur') {
@@ -1471,7 +1875,7 @@ const BonsPage = () => {
             if (!selectedBonForPDFPrint) return undefined;
             const bon = selectedBonForPDFPrint;
             const found = clients.find(c => c.id === bon.client_id);
-            if (!found && ((bon.type === 'Comptant' || currentTab === 'Comptant' || bon.type === 'AvoirComptant' || currentTab === 'AvoirComptant') && bon.client_nom)) {
+            if (!found && ((bon.type === 'Comptant' || currentTab === 'Comptant' || bon.type === 'AvoirComptant' || currentTab === 'AvoirComptant' || bon.type === 'Devis' || currentTab === 'Devis') && bon.client_nom)) {
               return { id: 0, nom_complet: bon.client_nom, type: 'Client', solde: 0, created_at: '', updated_at: '' } as any;
             }
             return found;
@@ -1494,6 +1898,8 @@ const BonsPage = () => {
                     setSelectedBonForDuplicate(null);
                     setSelectedContactForDuplicate('');
                     setComptantClientName('');
+                    setIsDuplicationComplete(true);
+                    setSelectedArticlesForDuplicate([]);
                   }}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -1541,6 +1947,61 @@ const BonsPage = () => {
                         />
                         <span>Bon Comptant</span>
                       </label>
+                    </div>
+                  </fieldset>
+                </div>
+
+                <div>
+                  <fieldset>
+                    <legend className="block text-sm font-medium text-gray-700 mb-2">Mode de duplication :</legend>
+                    <div className="space-y-2">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={isDuplicationComplete}
+                          onChange={(e) => {
+                            setIsDuplicationComplete(e.target.checked);
+                            if (e.target.checked) {
+                              setSelectedArticlesForDuplicate([]);
+                            }
+                          }}
+                          className="mr-2"
+                        />
+                        <span>Duplication complète (tous les articles)</span>
+                      </label>
+                      {!isDuplicationComplete && (
+                        <div className="mt-3 p-3 bg-gray-50 rounded border">
+                          <p className="text-sm text-gray-700 mb-2">Sélectionner les articles à dupliquer :</p>
+                          <div className="max-h-40 overflow-y-auto space-y-1">
+                            {parseItemsSafe(selectedBonForDuplicate?.items || []).map((item: any, index: number) => {
+                              const productName = products.find(p => String(p.id) === String(item.product_id || item.produit_id))?.designation || `Article ${index + 1}`;
+                              return (
+                                <label key={index} className="flex items-center text-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedArticlesForDuplicate.includes(index)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedArticlesForDuplicate(prev => [...prev, index]);
+                                      } else {
+                                        setSelectedArticlesForDuplicate(prev => prev.filter(i => i !== index));
+                                      }
+                                    }}
+                                    className="mr-2"
+                                  />
+                                  <span>
+                                    {productName} - Qté: {item.quantite || item.qty || 0} - 
+                                    Prix: {Number(item.prix_unitaire || 0).toFixed(2)} €
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          {selectedArticlesForDuplicate.length === 0 && (
+                            <p className="text-sm text-red-600 mt-2">Veuillez sélectionner au moins un article à dupliquer.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </fieldset>
                 </div>
@@ -1614,6 +2075,8 @@ const BonsPage = () => {
                       setSelectedBonForDuplicate(null);
                       setSelectedContactForDuplicate('');
                       setComptantClientName('');
+                      setIsDuplicationComplete(true);
+                      setSelectedArticlesForDuplicate([]);
                     }}
                     className="px-4 py-2 text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-50"
                   >
@@ -1622,13 +2085,15 @@ const BonsPage = () => {
                   <button
                     onClick={handleDuplicateAwatef}
                     disabled={
+                      !selectedBonForDuplicate ||
                       (duplicateType === 'client' && !selectedContactForDuplicate) ||
                       (duplicateType === 'fournisseur' && !selectedContactForDuplicate) ||
-                      (duplicateType === 'comptant' && !comptantClientName.trim())
+                      (duplicateType === 'comptant' && !comptantClientName.trim()) ||
+                      (!isDuplicationComplete && selectedArticlesForDuplicate.length === 0)
                     }
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Dupliquer
+                    Dupliquer {!isDuplicationComplete ? `(${selectedArticlesForDuplicate.length} article${selectedArticlesForDuplicate.length > 1 ? 's' : ''})` : ''}
                   </button>
                 </div>
               </div>

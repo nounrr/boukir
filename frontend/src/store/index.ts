@@ -15,6 +15,7 @@ import './api/contactsApi';
 import './api/bonsApi';
 import './api/paymentsApi';
 import './api/talonsApi';
+import './api/accessSchedulesApi';
 
 import productsReducer from './slices/productsSlice';
 import categoriesReducer from './slices/categoriesSlice';
