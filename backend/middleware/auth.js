@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { requestContext } from '../db/pool.js';
+import { checkUserAccess } from './accessSchedule.js';
 
 export function verifyToken(req, res, next) {
   const authHeader = req.headers['authorization'] || '';
@@ -33,4 +34,68 @@ export function requireRole(role) {
     if (u.role !== role) return res.status(403).json({ message: 'Rôle insuffisant' });
     next();
   };
+}
+
+// Middleware combiné: vérification token + horaires d'accès
+export function verifyTokenWithSchedule(req, res, next) {
+  // D'abord vérifier le token
+  verifyToken(req, res, async (err) => {
+    if (err) return; // L'erreur a déjà été traitée par verifyToken
+    
+    try {
+      // Ensuite vérifier les horaires d'accès
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: 'Utilisateur non identifié' });
+      }
+
+      const accessCheck = await checkUserAccess(userId);
+      if (!accessCheck.hasAccess) {
+        return res.status(403).json({
+          message: 'Accès refusé - Horaire non autorisé',
+          access_denied: true,
+          reason: accessCheck.reason,
+          error_type: 'ACCESS_SCHEDULE_RESTRICTION'
+        });
+      }
+
+      // Accès autorisé
+      next();
+    } catch (error) {
+      console.error('Erreur vérification horaires dans middleware:', error);
+      // En cas d'erreur, continuer (ne pas bloquer l'accès)
+      next();
+    }
+  });
+}
+
+// Middleware strict: vérification token + horaires (échoue en cas d'erreur)
+export function verifyTokenWithScheduleStrict(req, res, next) {
+  verifyToken(req, res, async (err) => {
+    if (err) return;
+    
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: 'Utilisateur non identifié' });
+      }
+
+      const accessCheck = await checkUserAccess(userId);
+      if (!accessCheck.hasAccess) {
+        return res.status(403).json({
+          message: 'Accès refusé - Horaire non autorisé',
+          access_denied: true,
+          reason: accessCheck.reason
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error('Erreur vérification horaires strict:', error);
+      return res.status(500).json({
+        message: 'Erreur de vérification des horaires',
+        access_denied: true
+      });
+    }
+  });
 }

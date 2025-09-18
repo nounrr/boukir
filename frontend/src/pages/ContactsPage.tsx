@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Plus, Edit, Trash2, Search, Users, Truck, Phone, Mail, MapPin,
   CreditCard, Building2, DollarSign, Eye, Printer, Calendar, FileText,
-  ChevronUp, ChevronDown, Receipt
+  ChevronUp, ChevronDown, Receipt, AlertTriangle, Settings
 } from 'lucide-react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -20,6 +20,7 @@ import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
 import ContactPrintModal from '../components/ContactPrintModal';
+import PeriodConfig from '../components/PeriodConfig';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useSelector } from 'react-redux';
@@ -47,6 +48,54 @@ const ContactsPage: React.FC = () => {
   const [deleteContactMutation] = useDeleteContactMutation();
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createRemiseItem] = useCreateRemiseItemMutation();
+
+  // Fonction pour détecter les contacts en retard de paiement (solde > 0 fixe depuis la période configurée)
+  const isOverdueContact = (contact: Contact): boolean => {
+    const backend = (contact as any).solde_cumule;
+    let solde: number;
+    
+    if (backend != null) {
+      solde = Number(backend) || 0;
+    } else {
+      // Calcul local du solde si pas de valeur backend
+      const base = Number(contact.solde) || 0;
+      // Pour simplifier, on prend juste le solde de base ici
+      solde = base;
+    }
+    
+    if (solde <= 0) return false;
+    
+    // Si pas de date de dernière modification, considérer comme en retard
+    if (!contact.updated_at) return true;
+    
+    try {
+      const lastUpdate = new Date(contact.updated_at);
+      const now = new Date();
+      
+      // Vérifier que la date est valide
+      if (isNaN(lastUpdate.getTime())) {
+        console.warn('Date invalide pour contact:', contact.id, contact.updated_at);
+        return true; // Considérer comme en retard si date invalide
+      }
+      
+      // Calculer la différence en millisecondes
+      const diffMs = now.getTime() - lastUpdate.getTime();
+      
+      if (overdueUnit === 'days') {
+        // Convertir en jours
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        return diffDays >= overdueValue;
+      } else {
+        // Convertir en mois (approximatif: 30 jours par mois)
+        const diffMonths = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30));
+        return diffMonths >= overdueValue;
+      }
+    } catch (error) {
+      console.error('Erreur calcul date pour contact:', contact.id, error);
+      return true; // En cas d'erreur, considérer comme en retard
+    }
+  };
+
   // Backend products for enriching product details (remove fake data)
   const { data: products = [] } = useGetProductsQuery();
 
@@ -62,6 +111,23 @@ const ContactsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  
+  // États pour la configuration des périodes
+  const [showSettings, setShowSettings] = useState(false);
+  const [overdueValue, setOverdueValue] = useState(() => {
+    const saved = localStorage.getItem('contacts-overdue-value');
+    return saved ? parseInt(saved) : 4;
+  });
+  const [overdueUnit, setOverdueUnit] = useState<'days' | 'months'>(() => {
+    const saved = localStorage.getItem('contacts-overdue-unit');
+    return (saved as 'days' | 'months') || 'months';
+  });
+  
+  // Sauvegarder les paramètres dans localStorage
+  React.useEffect(() => {
+    localStorage.setItem('contacts-overdue-value', overdueValue.toString());
+    localStorage.setItem('contacts-overdue-unit', overdueUnit);
+  }, [overdueValue, overdueUnit]);
   // États pour l'application des remises
   const [showRemiseMode, setShowRemiseMode] = useState(false);
   const [remisePrices, setRemisePrices] = useState<Record<string, number>>({});
@@ -229,6 +295,21 @@ const ContactsPage: React.FC = () => {
   const productHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const items: any[] = [];
+    // Helper to resolve cost like in BonsPage: prefer cout_revient, then prix_achat, then product fallback
+    const resolveCost = (it: any) => {
+      if (it == null) return 0;
+      if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
+      if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
+      const pid = it.product_id || it.produit_id;
+      if (pid) {
+        const prod = (products as any[]).find(p => String(p.id) === String(pid));
+        if (prod) {
+          if (prod.cout_revient !== undefined && prod.cout_revient !== null) return Number(prod.cout_revient) || 0;
+          if (prod.prix_achat !== undefined && prod.prix_achat !== null) return Number(prod.prix_achat) || 0;
+        }
+      }
+      return 0;
+    };
     
     // Ajouter les produits des bons
     for (const b of bonsForContact) {
@@ -248,6 +329,15 @@ const ContactsPage: React.FC = () => {
           if (remise_pourcentage > 0) total = total * (1 - remise_pourcentage / 100);
           if (remise_montant > 0) total = total - remise_montant;
         }
+        // Compute mouvement (profit) and remises per the BonsPage rules
+        const q = Number(it.quantite) || 0;
+        const cost = resolveCost(it);
+        const mouvement = (prixUnit - cost) * q;
+        const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0; // per-unit remise as in BonsPage
+        const remiseTotale = remiseUnitaire * q;
+        // Apply remises only for types that affect mouvement (same list as BonsPage)
+        const applyRemise = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(b.type);
+        const benefice = mouvement - (applyRemise ? remiseTotale : 0);
         // Déterminer le type d'item basé sur le type de bon
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
         items.push({
@@ -264,6 +354,10 @@ const ContactsPage: React.FC = () => {
           quantite: Number(it.quantite) || 0,
           prix_unitaire: prixUnit,
           total,
+          mouvement,
+          remise_unitaire: remiseUnitaire,
+          remise_totale: remiseTotale,
+          benefice,
           type: itemType,
           created_at: b.created_at,
           remise_pourcentage,
@@ -1290,9 +1384,23 @@ const ContactsPage: React.FC = () => {
 
   // Fonction de tri
   const sortedContacts = useMemo(() => {
-    if (!sortField) return filteredContacts;
-    
     const sorted = [...filteredContacts].sort((a, b) => {
+      // 🔥 PRIORITÉ ABSOLUE : Contacts en retard de paiement toujours en premier
+      const aOverdue = isOverdueContact(a);
+      const bOverdue = isOverdueContact(b);
+      
+      // Si l'un est en retard et pas l'autre, le contact en retard vient en premier
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+      
+      // Si les deux ont le même statut de retard, appliquer le tri normal
+      if (!sortField) {
+        // Tri par défaut par nom si aucun champ de tri n'est sélectionné
+        const aName = a.nom_complet?.toLowerCase() || '';
+        const bName = b.nom_complet?.toLowerCase() || '';
+        return aName.localeCompare(bName);
+      }
+      
       let aValue: any = '';
       let bValue: any = '';
       
@@ -1303,20 +1411,20 @@ const ContactsPage: React.FC = () => {
         aValue = a.societe?.toLowerCase() || '';
         bValue = b.societe?.toLowerCase() || '';
       } else if (sortField === 'solde') {
-  // Utiliser la valeur backend (solde_cumule) si disponible, sinon fallback calcul local.
-  const baseA = Number(a.solde) || 0;
-  const salesA = activeTab === 'clients' ? (salesByClient.get(a.id) || 0) : 0;
-  const purchasesA = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(a.id) || 0) : 0;
-  const paidA = paymentsByContact.get(a.id) || 0;
-  const computedA = activeTab === 'clients' ? (baseA + salesA - paidA) : (baseA + purchasesA - paidA);
-  aValue = (a as any).solde_cumule != null ? Number((a as any).solde_cumule) : computedA;
+        // Utiliser la valeur backend (solde_cumule) si disponible, sinon fallback calcul local.
+        const baseA = Number(a.solde) || 0;
+        const salesA = activeTab === 'clients' ? (salesByClient.get(a.id) || 0) : 0;
+        const purchasesA = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(a.id) || 0) : 0;
+        const paidA = paymentsByContact.get(a.id) || 0;
+        const computedA = activeTab === 'clients' ? (baseA + salesA - paidA) : (baseA + purchasesA - paidA);
+        aValue = (a as any).solde_cumule != null ? Number((a as any).solde_cumule) : computedA;
 
-  const baseB = Number(b.solde) || 0;
-  const salesB = activeTab === 'clients' ? (salesByClient.get(b.id) || 0) : 0;
-  const purchasesB = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(b.id) || 0) : 0;
-  const paidB = paymentsByContact.get(b.id) || 0;
-  const computedB = activeTab === 'clients' ? (baseB + salesB - paidB) : (baseB + purchasesB - paidB);
-  bValue = (b as any).solde_cumule != null ? Number((b as any).solde_cumule) : computedB;
+        const baseB = Number(b.solde) || 0;
+        const salesB = activeTab === 'clients' ? (salesByClient.get(b.id) || 0) : 0;
+        const purchasesB = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(b.id) || 0) : 0;
+        const paidB = paymentsByContact.get(b.id) || 0;
+        const computedB = activeTab === 'clients' ? (baseB + salesB - paidB) : (baseB + purchasesB - paidB);
+        bValue = (b as any).solde_cumule != null ? Number((b as any).solde_cumule) : computedB;
       }
       
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
@@ -1325,7 +1433,7 @@ const ContactsPage: React.FC = () => {
     });
     
     return sorted;
-  }, [filteredContacts, sortField, sortDirection, activeTab, salesByClient, purchasesByFournisseur, paymentsByContact]);
+  }, [filteredContacts, sortField, sortDirection, activeTab, salesByClient, purchasesByFournisseur, paymentsByContact, isOverdueContact, overdueValue, overdueUnit]);
 
   // Fonction pour gérer le tri
   const handleSort = (field: 'nom' | 'societe' | 'solde') => {
@@ -1380,6 +1488,18 @@ const ContactsPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+              showSettings 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            title="Paramètres de retard de paiement"
+          >
+            <Settings size={16} />
+            Paramètres
+          </button>
+          <button
             onClick={handleGlobalPrint}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
             title={`Imprimer rapport global de tous les ${activeTab === 'clients' ? 'clients' : 'fournisseurs'} (selon filtres appliqués)`}
@@ -1400,6 +1520,87 @@ const ContactsPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Section Paramètres */}
+      {showSettings && (
+        <div className="mb-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                <Settings className="w-5 h-5 mr-2 text-blue-600" />
+                Paramètres de Retard de Paiement
+              </h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <PeriodConfig
+                title="Période de Retard de Paiement"
+                description={`Contacts avec solde ${'>'}  0 non modifiés depuis cette période seront affichés en rouge`}
+                value={overdueValue}
+                unit={overdueUnit}
+                onValueChange={setOverdueValue}
+                onUnitChange={setOverdueUnit}
+                icon={AlertTriangle}
+                colorClass="red"
+              />
+              
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h3 className="text-sm font-medium text-gray-800 mb-2">Contacts en Retard Détectés</h3>
+                <p className="text-2xl font-bold text-red-600">
+                  {activeTab === 'clients' 
+                    ? clients.filter(c => isOverdueContact(c)).length
+                    : fournisseurs.filter(c => isOverdueContact(c)).length
+                  }
+                </p>
+                <p className="text-xs text-gray-600 mt-1">
+                  Contacts avec retard de paiement selon les paramètres actuels
+                </p>
+                
+                {/* Debug section */}
+                <div className="mt-3 p-2 bg-white border rounded text-xs">
+                  <div className="font-medium mb-1">🔬 Exemple (premiers 2 contacts avec solde {'>'}  0):</div>
+                  {(() => {
+                    const contactsWithPositiveBalance = (activeTab === 'clients' ? clients : fournisseurs)
+                      .filter(c => {
+                        const backend = (c as any).solde_cumule;
+                        const solde = backend != null ? Number(backend) : Number(c.solde || 0);
+                        return solde > 0;
+                      })
+                      .slice(0, 2);
+                      
+                    return contactsWithPositiveBalance.map((contact) => {
+                      const backend = (contact as any).solde_cumule;
+                      const solde = backend != null ? Number(backend) : Number(contact.solde || 0);
+                      const isOverdue = isOverdueContact(contact);
+                      const lastUpdate = contact.updated_at ? new Date(contact.updated_at) : null;
+                      const daysSinceUpdate = lastUpdate ? Math.floor((new Date().getTime() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                      
+                      return (
+                        <div key={contact.id} className="mb-1">
+                          <strong>{contact.nom_complet || 'Sans nom'}</strong> - 
+                          Solde: {solde.toFixed(2)} - 
+                          MAJ: {contact.updated_at || 'Jamais'} - 
+                          Il y a: {daysSinceUpdate || 'N/A'} jours - 
+                          En retard: {isOverdue ? '✅' : '❌'}
+                        </div>
+                      );
+                    });
+                  })()}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Seuil: {overdueValue} {overdueUnit === 'days' ? 'jour(s)' : 'mois'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recherche */}
       <div className="mb-6">
@@ -1486,6 +1687,20 @@ const ContactsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Informations sur le tri */}
+      {(activeTab === 'clients' ? clients : fournisseurs).some(c => isOverdueContact(c)) && (
+        <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-400 mr-2" />
+            <div className="text-sm">
+              <p className="text-red-800">
+                <strong>Priorité d'affichage :</strong> Les contacts en retard de paiement (solde {'>'}  0 depuis {overdueValue} {overdueUnit === 'days' ? 'jour(s)' : 'mois'}) sont affichés en rouge et en priorité dans la liste.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Liste */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {/* Desktop/tablet: table view */}
@@ -1547,12 +1762,14 @@ const ContactsPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                paginatedContacts.map((contact) => (
-                  <tr
-                    key={contact.id}
-                    className="hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleViewDetails(contact)}
-                  >
+                paginatedContacts.map((contact) => {
+                  const isOverdue = isOverdueContact(contact);
+                  return (
+                    <tr
+                      key={contact.id}
+                      className={`hover:bg-gray-50 cursor-pointer ${isOverdue ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
+                      onClick={() => handleViewDetails(contact)}
+                    >
                     {/* Solde en premier */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       {(() => {
@@ -1658,7 +1875,8 @@ const ContactsPage: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1887,31 +2105,71 @@ const ContactsPage: React.FC = () => {
                       </p>
                     </div>
                     <div className="bg-white rounded-lg p-3 border">
-                      <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
+                      <p className="font-semibold text-gray-600 text-sm">Total des remises</p>
                       {(() => {
-                        const backend = (selectedContact as any).solde_cumule;
-                        const soldeInitial = Number(selectedContact.solde) || 0;
-                        const isClient = selectedContact.type === 'Client';
-                        const id = selectedContact.id;
-                        const sales = isClient ? (salesByClient.get(id) || 0) : 0;
-                        const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
-                        const paid = paymentsByContact.get(id) || 0;
-                        const localComputed = isClient ? (soldeInitial + sales - paid) : (soldeInitial + purchases - paid);
-                        const value = backend != null ? Number(backend) : localComputed;
-                        const diff = backend != null ? (Number(backend) - localComputed) : 0;
+                        const list = (displayedProductHistory || []).filter((i:any) => i.type === 'produit' && !i.syntheticInitial);
+                        const sum = list.reduce((s:number, it:any) => {
+                          let r = 0;
+                          if (typeof it.remise_totale === 'number') r = Number(it.remise_totale || 0);
+                          else if (typeof it.remise_montant === 'number') r = Number(it.remise_montant || 0) * (Number(it.quantite) || 0);
+                          else {
+                            try {
+                              const rems = getItemRemises(it);
+                              r = (Number(rems.abonne || 0) + Number(rems.client || 0));
+                            } catch (e) {
+                              r = 0;
+                            }
+                          }
+                          return s + r;
+                        }, 0);
                         return (
                           <div className="space-y-1">
-                            <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(2)} DH</p>
-                            {backend != null && Math.abs(diff) > 0.01 && (
-                              <p className="text-xs text-orange-600 font-medium">
-                                Attention: différence entre calcul local ({localComputed.toFixed(2)} DH) et base ({Number(backend).toFixed(2)} DH) = {diff > 0 ? '+' : ''}{diff.toFixed(2)} DH
-                              </p>
-                            )}
+                            <p className={`font-bold text-lg ${sum >= 0 ? 'text-green-600' : 'text-red-600'}`}>{contactRemises.reduce((sum:number,r:any)=> sum + (r.items||[]).reduce((s:number,i:any)=> s + (Number(i.qte)||0)*(Number(i.prix_remise)||0),0),0).toFixed(2)} DH</p>
+                            <p className="text-xs text-gray-500">Somme des remises applicables aux produits affichés</p>
                           </div>
                         );
                       })()}
                     </div>
-                  </div>
+                    </div>
+                    <div className="flex gap-4 items-stretch">
+                      <div className="bg-white rounded-lg p-3 border flex-1">
+                        <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
+                        {(() => {
+                          const backend = (selectedContact as any).solde_cumule;
+                          const soldeInitial = Number(selectedContact.solde) || 0;
+                          const isClient = selectedContact.type === 'Client';
+                          const id = selectedContact.id;
+                          const sales = isClient ? (salesByClient.get(id) || 0) : 0;
+                          const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
+                          const paid = paymentsByContact.get(id) || 0;
+                          const localComputed = isClient ? (soldeInitial + sales - paid) : (soldeInitial + purchases - paid);
+                          const value = backend != null ? Number(backend) : localComputed;
+                          const diff = backend != null ? (Number(backend) - localComputed) : 0;
+                          return (
+                            <div className="space-y-1">
+                              <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(2)} DH</p>
+                              {backend != null && Math.abs(diff) > 0.01 && (
+                                <p className="text-xs text-orange-600 font-medium">
+                                  Attention: différence entre calcul local ({localComputed.toFixed(2)} DH) et base ({Number(backend).toFixed(2)} DH) = {diff > 0 ? '+' : ''}{diff.toFixed(2)} DH
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border flex-1">
+                        <p className="font-semibold text-gray-600 text-sm">Bénéfice total</p>
+                        <p className={`font-bold text-lg ${(() => {
+                          const sum = (displayedProductHistory || []).filter((i:any)=>i.type==='produit' && !i.syntheticInitial).reduce((s:number,i:any)=>s + Number(i.benefice || 0), 0);
+                          return sum >= 0 ? 'text-green-600' : 'text-red-600';
+                        })()}`}>
+                          {(() => {
+                            const sum = (displayedProductHistory || []).filter((i:any)=>i.type==='produit' && !i.syntheticInitial).reduce((s:number,i:any)=>s + Number(i.benefice || 0), 0);
+                            return `${sum.toFixed(2)} DH`;
+                          })()}
+                        </p>
+                      </div>
+                    </div>
                 </div>
               </div>
 
@@ -2124,6 +2382,7 @@ const ContactsPage: React.FC = () => {
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Prix Unit.'}</th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Bénéfice</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                           {/* Solde Cumulé déplacé à la fin */}
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Solde Cumulé</th>
@@ -2132,7 +2391,7 @@ const ContactsPage: React.FC = () => {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {displayedProductHistory.length === 0 ? (
                           <tr>
-                            <td colSpan={13} className="px-6 py-4 text-center text-sm text-gray-500">
+                            <td colSpan={20} className="px-6 py-4 text-center text-sm text-gray-500">
                               Aucun produit trouvé pour cette période
                             </td>
                           </tr>
@@ -2284,6 +2543,15 @@ const ContactsPage: React.FC = () => {
                                   {item.syntheticInitial ? '—' : item.type === 'paiement' ? '-' : '+'}
                                   {item.syntheticInitial ? '' : `${item.total.toFixed(2)} DH`}
                                 </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                {item.syntheticInitial || item.type === 'paiement' ? (
+                                  <span className="text-gray-400">-</span>
+                                ) : (
+                                  <div className={`font-semibold ${Number(item.benefice) > 0 ? 'text-green-600' : Number(item.benefice) < 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                                    {Number(item.benefice ?? 0).toFixed(2)} DH
+                                  </div>
+                                )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span

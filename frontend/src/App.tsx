@@ -5,11 +5,13 @@ import { store } from './store';
 import { initializeAuth, logout } from './store/slices/authSlice';
 import { useAppDispatch, useAuth } from './hooks/redux';
 import { useValidateTokenQuery } from './store/api/authApi';
+import { useAccessScheduleMonitor } from './hooks/useAccessScheduleMonitor';
 
 // Composants
 import LoginPage from './components/auth/LoginPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Layout from './components/layout/Layout';
+import { AccessWarningPopup } from './components/AccessWarningPopup';
 
 // Pages
 import DashboardPage from './pages/DashboardPage';
@@ -17,6 +19,7 @@ import EmployeePage from './pages/EmployeePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
 import StockPage from './pages/StockPage';
 import ContactsPage from './pages/ContactsPage';
+import ContactArchiverPage from './pages/ContactArchiverPage';
 import BonsPage from './pages/BonsPage';
 import VehiculesPage from './pages/VehiculesPage';
 import CaissePage from './pages/CaissePage';
@@ -33,6 +36,8 @@ import ArchivedProductsPage from './pages/ArchivedProductsPage';
 import ProfilePage from './pages/ProfilePage';
 import EmployeeSalariesPage from './pages/EmployeeSalariesPage';
 import AuditPage from './pages/AuditPage';
+import AccessSchedulePage from './pages/AccessSchedulePage';
+import MultiDayAccessSchedulePage from './pages/MultiDayAccessSchedulePage';
 import ChiffreAffairesPage from './pages/ChiffreAffairesPage';
 import ChiffreAffairesDetailPage from './pages/ChiffreAffairesDetailPage';
 
@@ -40,6 +45,15 @@ import ChiffreAffairesDetailPage from './pages/ChiffreAffairesDetailPage';
 const AppContent: React.FC = () => {
   const dispatch = useAppDispatch();
   const { isAuthenticated } = useAuth();
+
+  // Monitoring des horaires d'accès avec popup d'avertissement
+  const { 
+    showWarning, 
+    timeRemaining,
+    warningMessage,
+    onWarningClose, 
+    onWarningConfirm 
+  } = useAccessScheduleMonitor();
 
   useEffect(() => {
     dispatch(initializeAuth());
@@ -54,17 +68,18 @@ const AppContent: React.FC = () => {
   }, [tokenInvalid, dispatch]);
 
   return (
-    <Router>
-      <Routes>
-        {/* Route de login */}
-        <Route 
-          path="/login" 
-          element={
-            isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
-          } 
-        />
-        
-        {/* Routes protégées */}
+    <>
+      <Router>
+        <Routes>
+          {/* Route de login */}
+          <Route 
+            path="/login" 
+            element={
+              isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
+            } 
+          />
+          
+          {/* Routes protégées */}
         <Route
           path="/dashboard"
           element={
@@ -110,6 +125,28 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/access-schedules"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <AccessSchedulePage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/access-schedules-multi"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <MultiDayAccessSchedulePage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/stock"
           element={
             <ProtectedRoute>
@@ -123,9 +160,20 @@ const AppContent: React.FC = () => {
         <Route
           path="/contacts"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute forbiddenRoles={['Employé']}>
               <Layout>
                 <ContactsPage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/contacts-archiver"
+          element={
+            <ProtectedRoute forbiddenRoles={['Employé']}>
+              <Layout>
+                <ContactArchiverPage />
               </Layout>
             </ProtectedRoute>
           }
@@ -156,7 +204,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/vehicules"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute forbiddenRoles={['Employé']}>
               <Layout>
                 <VehiculesPage />
               </Layout>
@@ -344,6 +392,18 @@ const AppContent: React.FC = () => {
         />
       </Routes>
     </Router>
+    
+    {/* Popup d'avertissement d'expiration d'accès */}
+    {showWarning && (
+      <AccessWarningPopup
+        isOpen={showWarning}
+        message={warningMessage || "Votre session va expirer à cause des horaires d'accès configurés."}
+        timeRemaining={timeRemaining}
+        onConfirm={onWarningConfirm}
+        onExtend={onWarningClose}
+      />
+    )}
+  </>
   );
 };
 
