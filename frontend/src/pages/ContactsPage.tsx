@@ -2342,8 +2342,44 @@ const ContactsPage: React.FC = () => {
       )}
                     </div>
                   </div>
-
-                  <div className="overflow-x-auto">
+{/* Bouton Valider Remises */}
+                  {showRemiseMode && selectedContact?.type === 'Client' && selectedItemsForRemise.size > 0 && (
+                    <div className="mb-4 bg-orange-50 rounded-lg p-4 border border-orange-200">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                          <h4 className="font-bold text-orange-800 mb-2">Remises à valider</h4>
+                          <p className="text-sm text-orange-700">
+                            {selectedItemsForRemise.size} article{selectedItemsForRemise.size > 1 ? 's' : ''} sélectionné{selectedItemsForRemise.size > 1 ? 's' : ''} • 
+                            Total remises: {Object.entries(remisePrices)
+                              .filter(([id]) => selectedItemsForRemise.has(id))
+                              .reduce((sum, [id, price]) => {
+                                const item = displayedProductHistory.find(i => i.id === id);
+                                return sum + (price * (item?.quantite || 0));
+                              }, 0)
+                              .toFixed(2)} DH
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setRemisePrices({});
+                              setSelectedItemsForRemise(new Set());
+                            }}
+                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                          >
+                            Effacer
+                          </button>
+                          <button
+                            onClick={handleValidateRemises}
+                            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+                          >
+                            Valider Remises
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-200 rounded-lg">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
@@ -2483,7 +2519,7 @@ const ContactsPage: React.FC = () => {
                                 <>
                                   {/* Prix remise input */}
                                   <td className="px-4 py-4 whitespace-nowrap text-sm text-right">
-                                    {item.syntheticInitial || item.type === 'paiement' ? (
+                                    {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
                                       <span className="text-gray-400">-</span>
                                     ) : (
                                       <input
@@ -2514,7 +2550,7 @@ const ContactsPage: React.FC = () => {
                                   </td>
                                   {/* Total remise calculé */}
                                   <td className="px-4 py-4 whitespace-nowrap text-sm text-right">
-                                    {item.syntheticInitial || item.type === 'paiement' ? (
+                                    {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
                                       <span className="text-gray-400">-</span>
                                     ) : (
                                       <span className="font-medium text-green-600">
@@ -2679,43 +2715,7 @@ const ContactsPage: React.FC = () => {
                     </>
                   )}
 
-                  {/* Bouton Valider Remises */}
-                  {showRemiseMode && selectedContact?.type === 'Client' && selectedItemsForRemise.size > 0 && (
-                    <div className="mt-6 bg-orange-50 rounded-lg p-4 border border-orange-200">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                        <div>
-                          <h4 className="font-bold text-orange-800 mb-2">Remises à valider</h4>
-                          <p className="text-sm text-orange-700">
-                            {selectedItemsForRemise.size} article{selectedItemsForRemise.size > 1 ? 's' : ''} sélectionné{selectedItemsForRemise.size > 1 ? 's' : ''} • 
-                            Total remises: {Object.entries(remisePrices)
-                              .filter(([id]) => selectedItemsForRemise.has(id))
-                              .reduce((sum, [id, price]) => {
-                                const item = displayedProductHistory.find(i => i.id === id);
-                                return sum + (price * (item?.quantite || 0));
-                              }, 0)
-                              .toFixed(2)} DH
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              setRemisePrices({});
-                              setSelectedItemsForRemise(new Set());
-                            }}
-                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
-                          >
-                            Effacer
-                          </button>
-                          <button
-                            onClick={handleValidateRemises}
-                            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
-                          >
-                            Valider Remises
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  
                 </div>
               
 

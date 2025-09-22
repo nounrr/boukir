@@ -234,6 +234,7 @@ const bonValidationSchema = Yup.object({
   vehicule_id: Yup.number().nullable(),
   lieu_charge: Yup.string(),
   adresse_livraison: Yup.string(),
+  phone: Yup.string().trim(),
   client_id: Yup.number().when('type', ([type], schema) => {
     if (type === 'Sortie' || type === 'Avoir') return schema.required('Client requis');
     // Pour Devis : client_id OU client_nom requis (pas les deux obligatoires)
@@ -477,7 +478,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         fournisseur_nom: initialValues.fournisseur_nom || '',
         fournisseur_adresse: initialValues.fournisseur_adresse || '',
         fournisseur_societe: initialValues.fournisseur_societe || '',
-        adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
+  adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
+  phone: initialValues.phone || '',
         statut: initialValues.statut || 'En attente',
       };
     }
@@ -488,7 +490,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       vehicule_id: '',
       lieu_charge: '',
       date_validation: '',
-      statut: 'En attente',
+  statut: 'En attente',
+  phone: '',
       client_id: '',
       client_nom: '',
       client_adresse: '',
@@ -713,7 +716,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   date_creation: formatDateInputToMySQL(values.date_bon) || new Date().toISOString().slice(0,19).replace('T',' '), // assure string
       vehicule_id: vehiculeId,
       lieu_chargement: values.lieu_charge || '',
-      adresse_livraison: values.adresse_livraison || '',
+  adresse_livraison: values.adresse_livraison || '',
+  phone: values.phone || null,
       statut: values.statut || 'Brouillon',
   client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
@@ -1019,6 +1023,41 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     return bestPrice;
   };
 
+  // Dernier prix pour Comptant/AvoirComptant par produit (ignore le client),
+  // accepte les statuts "Validé" et "En attente". N'affecte pas la logique Sortie.
+  const getLastUnitPriceForComptantProduct = (
+    productId: string | number | undefined
+  ): number | null => {
+    if (!productId) return null;
+    const pid = String(productId);
+
+    type HistItem = { prix_unitaire?: number; total?: number; quantite?: number };
+    let bestPrice: number | null = null;
+    let bestTime = -1;
+
+    const accepted = new Set(['validé', 'valide', 'validée', 'en attente']);
+
+    const scan = (bon: any) => {
+      const statut = String(bon.statut || '').toLowerCase();
+      if (!accepted.has(statut)) return; // n'inclut que Validé ou En attente
+      const items = parseItems(bon.items);
+      const bonTime = toTime(bon.date_creation || bon.date);
+      for (const it of items as HistItem[]) {
+        const itPid = String((it as any).product_id ?? (it as any).id ?? '');
+        if (itPid !== pid) continue;
+        const price = Number((it as any).prix_unitaire ?? (it as any).price ?? 0);
+        if (!Number.isFinite(price) || price <= 0) continue;
+        if (bonTime > bestTime) {
+          bestTime = bonTime;
+          bestPrice = price;
+        }
+      }
+    };
+
+    for (const b of comptantHistory as any[]) scan(b);
+    return bestPrice;
+  };
+
     // (Removed local cumulative balance calculations; using backend provided solde_cumule)
 
   // Fonction utilitaire pour vérifier le plafond en temps réel
@@ -1232,6 +1271,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     Adresse de livraison
                   </label>
                   <Field type="text" id="adresse_livraison" name="adresse_livraison" className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Adresse complète de livraison" />
+                </div>
+                <div>
+                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                    Téléphone du bon
+                  </label>
+                  <Field type="text" id="phone" name="phone" className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Numéro de téléphone lié à ce bon (facultatif)" />
                 </div>
               </div>
 
@@ -1923,6 +1968,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     );
     return last && Number.isFinite(last) ? (
       <div className="text-xs text-gray-500 mt-1">Dernier (Validé): {formatFull(Number(last))} DH</div>
+    ) : null;
+  })()}
+  {/* Dernier prix pour Comptant/AvoirComptant (ignore le client, accepte Validé/En attente) */}
+  {(values.items[index].product_id && (values.type === 'Comptant' || values.type === 'AvoirComptant')) && (() => {
+    const lastC = getLastUnitPriceForComptantProduct(values.items[index].product_id);
+    return lastC && Number.isFinite(lastC) ? (
+      <div className="text-xs text-gray-500 mt-1">Dernier (Comptant): {formatFull(Number(lastC))} DH</div>
     ) : null;
   })()}
 </td>

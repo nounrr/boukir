@@ -125,6 +125,7 @@ router.post('/', async (req, res) => {
       items = [],
       created_by
     } = req.body || {};
+    const phone = req.body?.phone ?? null;
 
   if (!date_creation || !montant_total || !created_by) {
       await connection.rollback();
@@ -138,10 +139,10 @@ router.post('/', async (req, res) => {
 
     const [sortieResult] = await connection.execute(`
       INSERT INTO bons_sortie (
-        date_creation, client_id, vehicule_id,
+        date_creation, client_id, phone, vehicule_id,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, cId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const sortieId = sortieResult.insertId;
 
@@ -200,6 +201,7 @@ router.put('/:id', async (req, res) => {
       statut,
       items = []
     } = req.body || {};
+    const phone = req.body?.phone ?? null;
 
     const [exists] = await connection.execute('SELECT id FROM bons_sortie WHERE id = ?', [id]);
     if (exists.length === 0) {
@@ -214,10 +216,10 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute(`
       UPDATE bons_sortie SET
-        date_creation = ?, client_id = ?,
+        date_creation = ?, client_id = ?, phone = ?,
         vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
       WHERE id = ?
-    `, [date_creation, cId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
+    `, [date_creation, cId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     await connection.execute('DELETE FROM sortie_items WHERE bon_sortie_id = ?', [id]);
 

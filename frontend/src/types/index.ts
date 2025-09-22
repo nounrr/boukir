@@ -206,6 +206,7 @@ export interface Bon {
   date_echeance?: string;
   client_id?: number;
   fournisseur_id?: number;
+  phone?: string | null;
   adresse_livraison?: string;
   montant_total: number;
   statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente' | 'Envoyé' | 'Accepté' | 'Refusé' | 'Expiré' | 'Facturé';
@@ -241,6 +242,7 @@ export interface CreateBonData {
   fournisseur_id?: number;
   vehicule_id?: number;
   lieu_chargement?: string;
+  phone?: string | null;
   adresse_livraison?: string;
   bon_origine_id?: number; // Pour les avoirs, lien vers le bon d'origine
   items: Omit<BonItem, 'id' | 'bon_id'>[];

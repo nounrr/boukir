@@ -123,6 +123,7 @@ router.post('/', async (req, res) => {
       items = [],
       created_by
     } = req.body || {};
+    const phone = req.body?.phone ?? null;
 
   // Validation champs requis (détaillée)
   const missing = [];
@@ -141,10 +142,10 @@ router.post('/', async (req, res) => {
 
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
-        date_creation, client_id, client_nom, vehicule_id,
+        date_creation, client_id, client_nom, phone, vehicule_id,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, cId, client_nom ?? null, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, cId, client_nom ?? null, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const comptantId = comptantResult.insertId;
 
@@ -203,6 +204,7 @@ router.put('/:id', async (req, res) => {
       statut,
       items = []
     } = req.body || {};
+    const phone = req.body?.phone ?? null;
 
     const [exists] = await connection.execute('SELECT id FROM bons_comptant WHERE id = ?', [id]);
     if (exists.length === 0) {
@@ -227,10 +229,10 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute(`
       UPDATE bons_comptant SET
-        date_creation = ?, client_id = ?, client_nom = ?,
+        date_creation = ?, client_id = ?, client_nom = ?, phone = ?,
         vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
       WHERE id = ?
-    `, [date_creation, cId, client_nom ?? null, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
+    `, [date_creation, cId, client_nom ?? null, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     await connection.execute('DELETE FROM comptant_items WHERE bon_comptant_id = ?', [id]);
 
