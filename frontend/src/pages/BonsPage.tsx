@@ -1169,16 +1169,59 @@ const BonsPage = () => {
                             <Printer size={ACTION_ICON_SIZE} />
                           </button>
                           
-                          {/* Always visible: Edit */}
-                          {canModifyBons(currentUser) && (
-                            <button
-                              onClick={() => { setSelectedBon(bon); setIsCreateModalOpen(true); }}
-                              className="text-blue-600 hover:text-blue-800"
-                              title="Modifier"
-                            >
-                              <Edit size={ACTION_ICON_SIZE} />
-                            </button>
-                          )}
+                          {/* Validation icon - visible for authorized users and non-validated bons */}
+                          {(() => {
+                            // Don't show validation icon if already validated/accepted
+                            if (bon.statut === 'Validé' || bon.statut === 'Accepté') return null;
+                            
+                            // Show validation icon for:
+                            // - PDG on all relevant tabs
+                            // - Manager on Commande & AvoirFournisseur only
+                            const canValidate = currentUser?.role === 'PDG' || 
+                              (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'));
+                            
+                            if (!canValidate) return null;
+                            
+                            // Show validation for different tab types
+                            const showForCommande = (currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant'));
+                            const showForAvoir = ((currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || 
+                              (currentUser?.role === 'PDG' && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')));
+                            const showForDevis = currentTab === 'Devis' && currentUser?.role === 'PDG';
+                            
+                            if (!showForCommande && !showForAvoir && !showForDevis) return null;
+                            
+                            const actionText = showForDevis ? 'Accepter' : 'Valider';
+                            const statusToSet = showForDevis ? 'Accepté' : 'Validé';
+                            
+                            return (
+                              <button
+                                onClick={() => handleChangeStatus(bon, statusToSet)}
+                                className="text-emerald-600 hover:text-emerald-800"
+                                title={actionText}
+                              >
+                                <CheckCircle2 size={ACTION_ICON_SIZE} />
+                              </button>
+                            );
+                          })()}
+                          
+                          {/* Edit icon - visible for authorized users and editable bons */}
+                          {(() => {
+                            // Don't show edit icon for validated bons (employees can't edit validated bons)
+                            if (isEmployee && bon.statut === 'Validé') return null;
+                            
+                            // Don't show edit for cancelled bons
+                            if (bon.statut === 'Annulé') return null;
+                            
+                            return canModifyBons(currentUser) ? (
+                              <button
+                                onClick={() => { setSelectedBon(bon); setIsCreateModalOpen(true); }}
+                                className="text-blue-600 hover:text-blue-800"
+                                title="Modifier"
+                              >
+                                <Edit size={ACTION_ICON_SIZE} />
+                              </button>
+                            ) : null;
+                          })()}
                           
                           {/* 3-dot menu for other actions */}
                           <div className="relative" ref={openMenuBonId === String(bon.id) ? menuRef : null}>
@@ -1194,9 +1237,9 @@ const BonsPage = () => {
                             {openMenuBonId === String(bon.id) && (
                               <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 p-1">
                                 <div className="flex flex-col gap-1">
-                                  {/* Status-change actions */}
+                                  {/* Status-change actions - Secondary actions only (En attente/Annuler) */}
                                   {(() => {
-                                    // Full privileged actions (validate/en attente/annuler) for:
+                                    // Full privileged actions for:
                                     //  - PDG on all relevant tabs
                                     //  - Manager on Commande & AvoirFournisseur (align backend)
                                     if (currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) {
@@ -1204,77 +1247,74 @@ const BonsPage = () => {
                                         <>
                                           {(currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
                                             <div className="flex gap-1">
-                                              <button 
-                                                onClick={() => { handleChangeStatus(bon, 'Validé'); setOpenMenuBonId(null); }}
-                                                className="p-2 text-green-600 hover:bg-green-50 hover:text-green-800 rounded"
-                                                title="Marquer Validé"
-                                              >
-                                                <CheckCircle2 size={16} />
-                                              </button>
-                                              <button 
-                                                onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
-                                                className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
-                                                title="Mettre En attente"
-                                              >
-                                                <Clock size={16} />
-                                              </button>
-                                              <button 
-                                                onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
-                                                className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
-                                                title="Annuler"
-                                              >
-                                                <XCircle size={16} />
-                                              </button>
+                                              {/* Show "En attente" only if not already "En attente" */}
+                                              {bon.statut !== 'En attente' && (
+                                                <button 
+                                                  onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
+                                                  className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
+                                                  title="Mettre En attente"
+                                                >
+                                                  <Clock size={16} />
+                                                </button>
+                                              )}
+                                              {/* Show "Annuler" only if not already "Annulé" */}
+                                              {bon.statut !== 'Annulé' && (
+                                                <button 
+                                                  onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                                  className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                                  title="Annuler"
+                                                >
+                                                  <XCircle size={16} />
+                                                </button>
+                                              )}
                                             </div>
                                           )}
                                           {( (currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || (currentUser?.role === 'PDG' && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ) && (
                                             <div className="flex gap-1">
-                                              <button 
-                                                onClick={() => { handleChangeStatus(bon, 'Validé'); setOpenMenuBonId(null); }}
-                                                className="p-2 text-green-600 hover:bg-green-50 hover:text-green-800 rounded"
-                                                title="Valider l'avoir"
-                                              >
-                                                <CheckCircle2 size={16} />
-                                              </button>
-                                              <button 
-                                                onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
-                                                className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
-                                                title="Mettre en attente"
-                                              >
-                                                <Clock size={16} />
-                                              </button>
-                                              <button 
-                                                onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
-                                                className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
-                                                title="Annuler l'avoir"
-                                              >
-                                                <XCircle size={16} />
-                                              </button>
+                                              {/* Show "En attente" only if not already "En attente" */}
+                                              {bon.statut !== 'En attente' && (
+                                                <button 
+                                                  onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
+                                                  className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
+                                                  title="Mettre en attente"
+                                                >
+                                                  <Clock size={16} />
+                                                </button>
+                                              )}
+                                              {/* Show "Annuler" only if not already "Annulé" */}
+                                              {bon.statut !== 'Annulé' && (
+                                                <button 
+                                                  onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                                  className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                                  title="Annuler l'avoir"
+                                                >
+                                                  <XCircle size={16} />
+                                                </button>
+                                              )}
                                             </div>
                                           )}
                                           {currentTab === 'Devis' && currentUser?.role === 'PDG' && (
                                             <div className="flex gap-1">
-                                              <button 
-                                                onClick={() => { handleChangeStatus(bon, 'Accepté'); setOpenMenuBonId(null); }}
-                                                className="p-2 text-green-600 hover:bg-green-50 hover:text-green-800 rounded"
-                                                title="Accepter et transformer"
-                                              >
-                                                <CheckCircle2 size={16} />
-                                              </button>
-                                              <button 
-                                                onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
-                                                className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
-                                                title="Mettre En attente"
-                                              >
-                                                <Clock size={16} />
-                                              </button>
-                                              <button 
-                                                onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
-                                                className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
-                                                title="Annuler le devis"
-                                              >
-                                                <XCircle size={16} />
-                                              </button>
+                                              {/* Show "En attente" only if not already "En attente" */}
+                                              {bon.statut !== 'En attente' && (
+                                                <button 
+                                                  onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
+                                                  className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
+                                                  title="Mettre En attente"
+                                                >
+                                                  <Clock size={16} />
+                                                </button>
+                                              )}
+                                              {/* Show "Annuler" only if not already "Annulé" */}
+                                              {bon.statut !== 'Annulé' && (
+                                                <button 
+                                                  onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                                  className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                                  title="Annuler le devis"
+                                                >
+                                                  <XCircle size={16} />
+                                                </button>
+                                              )}
                                             </div>
                                           )}
                                         </>
@@ -1322,8 +1362,8 @@ const BonsPage = () => {
                                         </>
                                       );
                                     }
-                                    // Managers (other tabs) limited: can only Annuler
-                                    if (isManager) {
+                                    // Managers (other tabs) limited: can only Annuler if not already cancelled
+                                    if (isManager && bon.statut !== 'Annulé') {
                                       return (
                                         <button 
                                           onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
@@ -1365,8 +1405,8 @@ const BonsPage = () => {
                                       </button>
                                     )}
                                     
-                                    {/* Duplicate */}
-                                    {((currentUser?.role === 'PDG') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
+                                    {/* Duplicate - Only for non-cancelled bons */}
+                                    {((currentUser?.role === 'PDG') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && bon.statut !== 'Annulé' && (
                                       <button
                                         onClick={() => {
                                           setSelectedBonForDuplicate(bon);
@@ -1380,8 +1420,8 @@ const BonsPage = () => {
                                       </button>
                                     )}
                                     
-                                    {/* Delete - Masqué pour Manager sur Commande et AvoirFournisseur */}
-                                    {currentUser?.role === 'PDG' && (
+                                    {/* Delete - Only PDG and only for non-validated bons */}
+                                    {currentUser?.role === 'PDG' && bon.statut !== 'Validé' && bon.statut !== 'Accepté' && (
                                       <button
                                         onClick={() => { handleDelete(bon); setOpenMenuBonId(null); }}
                                         className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
