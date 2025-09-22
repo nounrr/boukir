@@ -110,6 +110,7 @@ router.post('/', async (req, res) => {
   adresse_livraison,
       created_by
     } = req.body || {};
+    const phone = req.body?.phone ?? null;
 
     // normaliser le lieu
     const lieuBody = req.body?.lieu_chargement;
@@ -140,9 +141,9 @@ router.post('/', async (req, res) => {
 
     const [devisResult] = await connection.execute(`
       INSERT INTO devis (
-        numero, date_creation, client_id, client_nom, montant_total, statut, created_by, lieu_chargement, adresse_livraison
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [tmpNumero, date_creation, cId, cNom, montant_total, st, created_by, lieu, adresse_livraison ?? null]);
+        numero, date_creation, client_id, client_nom, phone, montant_total, statut, created_by, lieu_chargement, adresse_livraison
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [tmpNumero, date_creation, cId, cNom, phone, montant_total, st, created_by, lieu, adresse_livraison ?? null]);
 
     const devisId = devisResult.insertId;
 
@@ -192,6 +193,7 @@ router.put('/:id', async (req, res) => {
       adresse_livraison,
       items = []
     } = req.body || {};
+    const phone = req.body?.phone ?? null;
 
     // normaliser le lieu
     const lieuBody = req.body?.lieu_chargement;
@@ -211,9 +213,9 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute(`
       UPDATE devis SET
-        date_creation = ?, client_id = ?, client_nom = ?, montant_total = ?, statut = ?, lieu_chargement = ?, adresse_livraison = ?
+        date_creation = ?, client_id = ?, client_nom = ?, phone = ?, montant_total = ?, statut = ?, lieu_chargement = ?, adresse_livraison = ?
       WHERE id = ?
-    `, [date_creation, cId, cNom, montant_total, st, lieu, adresse_livraison ?? null, id]);
+    `, [date_creation, cId, cNom, phone, montant_total, st, lieu, adresse_livraison ?? null, id]);
 
     await connection.execute('DELETE FROM devis_items WHERE devis_id = ?', [id]);
 

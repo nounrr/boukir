@@ -137,6 +137,7 @@ router.post('/', verifyToken, async (req, res) => {
       items = [],
       created_by
     } = req.body || {}; // 👈 évite le crash si req.body est undefined
+    const phone = req.body?.phone ?? null;
 
     // Validation des champs requis (détaillée)
     const missing = [];
@@ -156,10 +157,10 @@ router.post('/', verifyToken, async (req, res) => {
 
     const [commandeResult] = await connection.execute(`
       INSERT INTO bons_commande (
-        date_creation, fournisseur_id, vehicule_id,
+        date_creation, fournisseur_id, phone, vehicule_id,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, fId, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
 
     const commandeId = commandeResult.insertId;
 
@@ -354,6 +355,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       statut,
       items = []
     } = req.body || {};
+    const phone = req.body?.phone ?? null;
 
     // validations minimales (détaillées)
     const missingPut = [];
@@ -371,12 +373,12 @@ router.put('/:id', verifyToken, async (req, res) => {
     const lieu = lieu_chargement ?? null;
     const st  = statut ?? 'Brouillon';
 
-    await connection.execute(`
+  await connection.execute(`
       UPDATE bons_commande
-         SET date_creation = ?, fournisseur_id = ?, vehicule_id = ?,
-             lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, updated_at = NOW()
+     SET date_creation = ?, fournisseur_id = ?, phone = ?, vehicule_id = ?,
+       lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, updated_at = NOW()
        WHERE id = ?
-    `, [date_creation, fId, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
+  `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, id]);
 
     // On remplace tous les items
     await connection.execute('DELETE FROM commande_items WHERE bon_commande_id = ?', [id]);
