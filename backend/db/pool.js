@@ -27,7 +27,7 @@ export const requestContext = new AsyncLocalStorage();
 // -----------------------------------------------------------------------------
 // Patch getConnection : injecter @app_user_id / @app_request_id si disponibles
 // -----------------------------------------------------------------------------
-const originalGetConnection = pool.getConnection.bind(pool);
+//const originalGetConnection = pool.getConnection.bind(pool);
 pool.getConnection = async function patchedGetConnection() {
   const conn = await originalGetConnection();
   try {
