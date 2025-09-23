@@ -1882,6 +1882,45 @@ const ContactsPage: React.FC = () => {
           </table>
         </div>
 
+        {/* Mobile: Sort selector */}
+        <div className="sm:hidden bg-gray-50 border-t border-gray-200 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="mobile-sort" className="text-sm font-medium text-gray-700">
+              Trier par:
+            </label>
+            <div className="flex items-center gap-2">
+              <select
+                id="mobile-sort"
+                value={sortField || ''}
+                onChange={(e) => {
+                  const field = e.target.value as 'nom' | 'societe' | 'solde' | '';
+                  if (field) {
+                    handleSort(field);
+                  } else {
+                    setSortField(null);
+                    setSortDirection('asc');
+                  }
+                }}
+                className="text-sm border border-gray-300 rounded-md px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Par défaut</option>
+                <option value="nom">Nom</option>
+                <option value="societe">Société</option>
+                <option value="solde">Solde</option>
+              </select>
+              {sortField && (
+                <button
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  title={`Ordre ${sortDirection === 'asc' ? 'croissant' : 'décroissant'}`}
+                >
+                  {sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Mobile: card view */}
         <div className="sm:hidden divide-y divide-gray-100">
           {paginatedContacts.length === 0 ? (

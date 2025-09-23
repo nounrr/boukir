@@ -235,6 +235,7 @@ const bonValidationSchema = Yup.object({
   lieu_charge: Yup.string(),
   adresse_livraison: Yup.string(),
   phone: Yup.string().trim(),
+  isNotCalculated: Yup.boolean(),
   client_id: Yup.number().when('type', ([type], schema) => {
     if (type === 'Sortie' || type === 'Avoir') return schema.required('Client requis');
     // Pour Devis : client_id OU client_nom requis (pas les deux obligatoires)
@@ -480,6 +481,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         fournisseur_societe: initialValues.fournisseur_societe || '',
   adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
   phone: initialValues.phone || '',
+        isNotCalculated: initialValues.isNotCalculated || false,
         statut: initialValues.statut || 'En attente',
       };
     }
@@ -503,6 +505,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       adresse_livraison: '',
       montant_ht: 0,
       montant_total: 0,
+      isNotCalculated: false,
       items: [
         {
           _rowId: makeRowId(), // id stable
@@ -718,6 +721,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       lieu_chargement: values.lieu_charge || '',
   adresse_livraison: values.adresse_livraison || '',
   phone: values.phone || null,
+      isNotCalculated: values.isNotCalculated ? true : null,
       statut: values.statut || 'Brouillon',
   client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
@@ -1277,6 +1281,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     Téléphone du bon
                   </label>
                   <Field type="text" id="phone" name="phone" className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Numéro de téléphone lié à ce bon (facultatif)" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Field type="checkbox" id="isNotCalculated" name="isNotCalculated" className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+                  <label htmlFor="isNotCalculated" className="text-sm font-medium text-gray-700">
+                    Non calculé
+                  </label>
+                  <span className="text-xs text-gray-500">(Cocher si ce bon ne doit pas être pris en compte dans les calculs)</span>
                 </div>
               </div>
 
