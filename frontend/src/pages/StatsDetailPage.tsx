@@ -71,6 +71,9 @@ const StatsDetailPage: React.FC = () => {
     // Inclure bons selon cases cochées (Sortie / Comptant) + mêmes statuts
     const all = [...bonsSortie, ...bonsComptant];
     return all.filter((b: any) => {
+      // Exclure les bons avec isNotCalculated = true
+      if (b.isNotCalculated) return false;
+      
       // Déterminer le type du bon (forcer 'Comptant' pour les bons venant de bonsComptant)
       let bonType = b.type;
       if (!bonType) {
@@ -103,6 +106,7 @@ const StatsDetailPage: React.FC = () => {
   // clientBonsForItems contient déjà les bons filtrés par statut et date
   // On peut l'utiliser pour les deux vues (produits et contacts)
 
+  
   const { productClientStats, clientProductStats } = useMemo(() => {
     const pcs: Record<string, any> = {};
     const cps: Record<string, any> = {};

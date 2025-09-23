@@ -112,6 +112,7 @@ router.post('/', async (req, res) => {
       items = []
     } = req.body || {};
     const phone = req.body?.phone ?? null;
+    const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
     if (!date_creation || !montant_total || !created_by) {
       await connection.rollback();
@@ -125,9 +126,9 @@ router.post('/', async (req, res) => {
     const [resAvoir] = await connection.execute(`
       INSERT INTO avoirs_client (
         date_creation, client_id, phone,
-        lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, cId, phone, lieu, adresse_livraison ?? null, montant_total, st, created_by]);
+        lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, cId, phone, lieu, adresse_livraison ?? null, montant_total, st, created_by, isNotCalculated]);
 
     const avoirId = resAvoir.insertId;
     const finalNumero = `AVC${String(avoirId).padStart(2, '0')}`;
@@ -183,6 +184,7 @@ router.put('/:id', async (req, res) => {
       items = []
     } = req.body || {};
     const phone = req.body?.phone ?? null;
+    const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
     const [exists] = await connection.execute('SELECT id FROM avoirs_client WHERE id = ?', [id]);
     if (exists.length === 0) {
@@ -197,9 +199,9 @@ router.put('/:id', async (req, res) => {
     await connection.execute(`
       UPDATE avoirs_client SET
         date_creation = ?, client_id = ?, phone = ?,
-        lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
+        lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?
       WHERE id = ?
-    `, [date_creation, cId, phone, lieu, adresse_livraison ?? null, montant_total, st, id]);
+    `, [date_creation, cId, phone, lieu, adresse_livraison ?? null, montant_total, st, isNotCalculated, id]);
 
     // ✅ bonne colonne FK pour purge des items
     await connection.execute('DELETE FROM avoir_client_items WHERE avoir_client_id = ?', [id]);

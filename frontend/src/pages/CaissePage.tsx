@@ -1267,6 +1267,41 @@ const paymentValidationSchema = Yup.object({
         </div>
       </div>
 
+      {/* Contrôles de tri mobile */}
+      <div className="md:hidden mb-4 bg-white rounded-lg shadow p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Trier par:</span>
+            <select
+              value={sortField || ''}
+              onChange={(e) => {
+                const field = e.target.value as 'numero' | 'date' | 'contact' | 'montant' | 'echeance';
+                if (field) {
+                  handleSort(field);
+                }
+              }}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Sans tri</option>
+              <option value="numero">Numéro</option>
+              <option value="date">Date</option>
+              <option value="contact">Contact</option>
+              <option value="montant">Montant</option>
+              <option value="echeance">Échéance</option>
+            </select>
+          </div>
+          {sortField && (
+            <button
+              onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+              className="flex items-center justify-center w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              title={`Tri ${sortDirection === 'asc' ? 'croissant' : 'décroissant'}`}
+            >
+              {sortDirection === 'asc' ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Liste mobile des paiements */}
       <div className="md:hidden space-y-4 mb-10">
         {sortedPayments.length === 0 ? (

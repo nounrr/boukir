@@ -52,6 +52,8 @@ const ChiffreAffairesPage: React.FC = () => {
   const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
   const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
   const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsComptant = [] } = useGetBonsByTypeQuery('AvoirComptant');
+  const { data: bonsVehicule = [] } = useGetBonsByTypeQuery('Vehicule');
   const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
   const { data: products = [] } = useGetProductsQuery();
 
@@ -107,26 +109,38 @@ const ChiffreAffairesPage: React.FC = () => {
     
     // Get all data sources with valid status
     const salesDocs = [...sorties, ...comptants].filter((b: any) => validStatuses.has(b.statut));
-    const avoirDocs = avoirsClient.filter((a: any) => validStatuses.has(a.statut));
+    const avoirClientDocs = avoirsClient.filter((a: any) => validStatuses.has(a.statut));
+    const avoirComptantDocs = avoirsComptant.filter((a: any) => validStatuses.has(a.statut));
+    const vehiculeDocs = bonsVehicule.filter((v: any) => validStatuses.has(v.statut));
     const commandeDocs = commandes.filter((c: any) => validStatuses.has(c.statut));
     
     // Filter documents based on selected filter type
     let filteredSales: any[] = [];
-    let filteredAvoirs: any[] = [];
+    let filteredAvoirsClient: any[] = [];
+    let filteredAvoirsComptant: any[] = [];
+    let filteredVehicules: any[] = [];
     let filteredCommandes: any[] = [];
     
     switch (filterType) {
       case 'all':
         filteredSales = salesDocs;
-        filteredAvoirs = avoirDocs;
+        filteredAvoirsClient = avoirClientDocs;
+        filteredAvoirsComptant = avoirComptantDocs;
+        filteredVehicules = vehiculeDocs;
         filteredCommandes = commandeDocs;
         break;
       case 'day':
         filteredSales = salesDocs.filter((b: any) => 
           b.date_creation?.startsWith(selectedDate)
         );
-        filteredAvoirs = avoirDocs.filter((a: any) => 
+        filteredAvoirsClient = avoirClientDocs.filter((a: any) => 
           a.date_creation?.startsWith(selectedDate)
+        );
+        filteredAvoirsComptant = avoirComptantDocs.filter((a: any) => 
+          a.date_creation?.startsWith(selectedDate)
+        );
+        filteredVehicules = vehiculeDocs.filter((v: any) => 
+          v.date_creation?.startsWith(selectedDate)
         );
         filteredCommandes = commandeDocs.filter((c: any) => 
           c.date_creation?.startsWith(selectedDate)
@@ -136,8 +150,14 @@ const ChiffreAffairesPage: React.FC = () => {
         filteredSales = salesDocs.filter((b: any) => 
           b.date_creation && isDateInRange(b.date_creation, startDate, endDate)
         );
-        filteredAvoirs = avoirDocs.filter((a: any) => 
+        filteredAvoirsClient = avoirClientDocs.filter((a: any) => 
           a.date_creation && isDateInRange(a.date_creation, startDate, endDate)
+        );
+        filteredAvoirsComptant = avoirComptantDocs.filter((a: any) => 
+          a.date_creation && isDateInRange(a.date_creation, startDate, endDate)
+        );
+        filteredVehicules = vehiculeDocs.filter((v: any) => 
+          v.date_creation && isDateInRange(v.date_creation, startDate, endDate)
         );
         filteredCommandes = commandeDocs.filter((c: any) => 
           c.date_creation && isDateInRange(c.date_creation, startDate, endDate)
@@ -147,8 +167,14 @@ const ChiffreAffairesPage: React.FC = () => {
         filteredSales = salesDocs.filter((b: any) => 
           b.date_creation?.startsWith(selectedMonth)
         );
-        filteredAvoirs = avoirDocs.filter((a: any) => 
+        filteredAvoirsClient = avoirClientDocs.filter((a: any) => 
           a.date_creation?.startsWith(selectedMonth)
+        );
+        filteredAvoirsComptant = avoirComptantDocs.filter((a: any) => 
+          a.date_creation?.startsWith(selectedMonth)
+        );
+        filteredVehicules = vehiculeDocs.filter((v: any) => 
+          v.date_creation?.startsWith(selectedMonth)
         );
         filteredCommandes = commandeDocs.filter((c: any) => 
           c.date_creation?.startsWith(selectedMonth)
@@ -161,7 +187,11 @@ const ChiffreAffairesPage: React.FC = () => {
       sum + Number(b.montant_total || 0), 0
     );
     
-    const avoirAmount = filteredAvoirs.reduce((sum: number, a: any) => 
+    const avoirClientAmount = filteredAvoirsClient.reduce((sum: number, a: any) => 
+      sum + Number(a.montant_total || 0), 0
+    );
+    
+    const avoirComptantAmount = filteredAvoirsComptant.reduce((sum: number, a: any) => 
       sum + Number(a.montant_total || 0), 0
     );
     
@@ -171,12 +201,13 @@ const ChiffreAffairesPage: React.FC = () => {
     
   // Prepare totals for remises
   let totalRemisesVente = 0; // cumul des remises sur ventes
-  let totalRemisesAvoir = 0; // cumul des remises sur avoirs
+  let totalRemisesAvoirClient = 0; // cumul des remises sur avoirs clients
+  let totalRemisesAvoirComptant = 0; // cumul des remises sur avoirs comptant
 
     // Group by date for detailed view - only show days with activity
     const dailyData: { [key: string]: ChiffreAffairesData } = {};
     
-    // Process sales
+    // Process sales (Sortie + Comptant) - ADD to profit
     filteredSales.forEach((bon: any) => {
       const date = bon.date_creation?.split('T')[0] || 'Unknown';
       if (!dailyData[date]) {
@@ -184,24 +215,49 @@ const ChiffreAffairesPage: React.FC = () => {
       }
       const { profitNet, profitBrut, totalRemise } = computeMouvementDetail(bon);
       dailyData[date].chiffreAffaires += Number(bon.montant_total || 0);
-      dailyData[date].chiffreAffairesAchat += profitNet;
+      dailyData[date].chiffreAffairesAchat += profitNet; // ADD profit
       dailyData[date].chiffreAffairesAchatBrut += profitBrut;
       dailyData[date].totalRemises += totalRemise;
       totalRemisesVente += totalRemise;
     });
     
-    // Process avoirs (subtract)
-    filteredAvoirs.forEach((avoir: any) => {
+    // Process avoirs clients - SUBTRACT profit
+    filteredAvoirsClient.forEach((avoir: any) => {
       const date = avoir.date_creation?.split('T')[0] || 'Unknown';
       if (!dailyData[date]) {
         dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
       }
       const { profitNet, profitBrut, totalRemise } = computeMouvementDetail(avoir);
       dailyData[date].chiffreAffaires -= Number(avoir.montant_total || 0);
-      dailyData[date].chiffreAffairesAchat -= profitNet;
+      dailyData[date].chiffreAffairesAchat -= profitNet; // SUBTRACT profit
       dailyData[date].chiffreAffairesAchatBrut -= profitBrut;
-      dailyData[date].totalRemises -= totalRemise; // remise liée à retour diminue le cumul
-      totalRemisesAvoir += totalRemise;
+      dailyData[date].totalRemises -= totalRemise;
+      totalRemisesAvoirClient += totalRemise;
+    });
+    
+    // Process avoirs comptant - SUBTRACT profit
+    filteredAvoirsComptant.forEach((avoir: any) => {
+      const date = avoir.date_creation?.split('T')[0] || 'Unknown';
+      if (!dailyData[date]) {
+        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
+      }
+      const { profitNet, profitBrut, totalRemise } = computeMouvementDetail(avoir);
+      dailyData[date].chiffreAffaires -= Number(avoir.montant_total || 0);
+      dailyData[date].chiffreAffairesAchat -= profitNet; // SUBTRACT profit
+      dailyData[date].chiffreAffairesAchatBrut -= profitBrut;
+      dailyData[date].totalRemises -= totalRemise;
+      totalRemisesAvoirComptant += totalRemise;
+    });
+    
+    // Process bons véhicules - SUBTRACT montant total (not profit, but full amount)
+    filteredVehicules.forEach((vehicule: any) => {
+      const date = vehicule.date_creation?.split('T')[0] || 'Unknown';
+      if (!dailyData[date]) {
+        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
+      }
+      // SUBTRACT full montant_total for vehicles (as requested)
+      dailyData[date].chiffreAffairesAchat -= Number(vehicule.montant_total || 0);
+      dailyData[date].chiffreAffairesAchatBrut -= Number(vehicule.montant_total || 0);
     });
     
     // Process commandes
@@ -226,16 +282,17 @@ const ChiffreAffairesPage: React.FC = () => {
     // Assurer cohérence: recalculer total bénéficiaire à partir des jours (évite dérives d'arrondi)
     const totalBeneficiaireFromDays = sortedDailyData.reduce((s, d) => s + d.chiffreAffairesAchat, 0);
     return {
-      totalChiffreAffaires: salesRevenue - avoirAmount,
+      totalChiffreAffaires: salesRevenue - avoirClientAmount - avoirComptantAmount,
       totalChiffreAffairesAchat: totalBeneficiaireFromDays,
       totalChiffreAchats: commandesRevenue,
       totalBons: filteredSales.length,
       dailyData: sortedDailyData,
-      totalRemisesNet: totalRemisesVente - totalRemisesAvoir,
+      totalRemisesNet: totalRemisesVente - totalRemisesAvoirClient - totalRemisesAvoirComptant,
       totalRemisesVente,
-      totalRemisesAvoir
+      totalRemisesAvoirClient,
+      totalRemisesAvoirComptant
     };
-  }, [sorties, comptants, avoirsClient, commandes, products, filterType, selectedDate, startDate, endDate, selectedMonth]);
+  }, [sorties, comptants, avoirsClient, avoirsComptant, bonsVehicule, commandes, products, filterType, selectedDate, startDate, endDate, selectedMonth]);
 
   const getFilterLabel = (): string => {
     switch (filterType) {
@@ -414,10 +471,7 @@ const ChiffreAffairesPage: React.FC = () => {
                   CA Net (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Bénéficiaire Net (DH)
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Bénéficiaire Brut (DH)
+                  Bénéfice Net (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Remises (DH)
@@ -449,11 +503,6 @@ const ChiffreAffairesPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-emerald-900">
                       {formatAmount(day.chiffreAffairesAchat)} DH
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-emerald-900/70">
-                      {formatAmount(day.chiffreAffairesAchatBrut)} DH
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
