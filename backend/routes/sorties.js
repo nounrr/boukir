@@ -203,6 +203,7 @@ router.put('/:id', async (req, res) => {
       items = []
     } = req.body || {};
     const phone = req.body?.phone ?? null;
+    const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
     const [exists] = await connection.execute('SELECT id FROM bons_sortie WHERE id = ?', [id]);
     if (exists.length === 0) {
