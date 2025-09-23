@@ -417,10 +417,41 @@ const BonsPage = () => {
     const filtered = bons.filter(bon => {
       const term = (searchTerm || '').trim().toLowerCase();
       const contactName = (currentTab === 'Vehicule' ? (bon.vehicule_nom || '') : getContactName(bon)).toLowerCase();
+      
+      // Helper to get phone number from bon or contact
+      const getPhoneNumber = (bon: any): string => {
+        // Check bon.phone first
+        if (bon?.phone) return String(bon.phone).toLowerCase();
+        
+        // Check contact phone based on bon type
+        if (currentTab === 'Vehicule') return ''; // Vehicles don't have contacts
+        
+        // For other types, get contact and check phone
+        const clientId = bon?.client_id ?? bon?.contact_id;
+        const fournisseurId = bon?.fournisseur_id;
+        
+        if (clientId && clients.length > 0) {
+          const client = clients.find((c: any) => String(c.id) === String(clientId));
+          if (client?.telephone) return String(client.telephone).toLowerCase();
+          if (client?.tel) return String(client.tel).toLowerCase();
+        }
+        
+        if (fournisseurId && suppliers.length > 0) {
+          const supplier = suppliers.find((s: any) => String(s.id) === String(fournisseurId));
+          if (supplier?.telephone) return String(supplier.telephone).toLowerCase();
+          if (supplier?.tel) return String(supplier.tel).toLowerCase();
+        }
+        
+        return '';
+      };
+      
+      const phoneNumber = getPhoneNumber(bon);
+      
       const matchesSearch = !term || (
         (getDisplayNumero(bon).toLowerCase() || '').includes(term) ||
         (bon.statut?.toLowerCase() || '').includes(term) ||
-        contactName.includes(term)
+        contactName.includes(term) ||
+        phoneNumber.includes(term)
       );
 
       const matchesStatus = !statusFilter || statusFilter.length === 0 ? true : (bon.statut && statusFilter.includes(String(bon.statut)));
@@ -845,7 +876,7 @@ const BonsPage = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Rechercher un bon..."
+              placeholder="Rechercher par numéro, statut, client ou téléphone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
