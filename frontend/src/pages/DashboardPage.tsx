@@ -25,6 +25,8 @@ const DashboardPage: React.FC = () => {
   const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
   const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
   const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsComptant = [] } = useGetBonsByTypeQuery('AvoirComptant');
+  const { data: bonsVehicule = [] } = useGetBonsByTypeQuery('Vehicule');
   const { data: allPayments = [] } = useGetPaymentsQuery();
 
   // Utility function to format amounts without forced rounding
@@ -56,12 +58,13 @@ const DashboardPage: React.FC = () => {
   };
 
   const resolveCost = (it: any): number => {
-    if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
-    if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
     const pid = it.product_id || it.produit_id;
     if (pid) {
       const prod = (products as any[]).find(p => String(p.id) === String(pid));
-      if (prod) return Number(prod.cout_revient ?? prod.prix_achat ?? 0) || 0;
+      if (prod) {
+        if (prod.prix_achat) return Number(prod.prix_achat) || 0;
+        if (prod.cout_revient) return Number(prod.cout_revient) || 0;
+      }
     }
     return 0;
   };
@@ -111,26 +114,43 @@ const DashboardPage: React.FC = () => {
       .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
       .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0);
 
-    // Final revenue = sales - returns
-    const revenue = salesRevenue - avoirClientAmount;
+    // Calculate avoir comptant today with valid status to subtract
+    const avoirComptantAmount = avoirsComptant
+      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
+      .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0);
+
+    // Final revenue = sales - avoir client - avoir comptant
+    const revenue = salesRevenue - avoirClientAmount - avoirComptantAmount;
 
     // Calculate purchase revenue (chiffre bénéficiaire) based on profits with valid status
-  const salesMovements = salesDocs
+    const salesMovements = salesDocs
       .filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut))
       .reduce((sum: number, b: any) => {
-    const { profit } = computeMouvementDetail(b); // déjà net des remises
+        const { profit } = computeMouvementDetail(b); // déjà net des remises
         return sum + profit;
       }, 0);
 
-  const avoirMovements = avoirsClient
+    const avoirClientMovements = avoirsClient
       .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
       .reduce((sum: number, a: any) => {
-    const { profit } = computeMouvementDetail(a); // net remises
+        const { profit } = computeMouvementDetail(a); // net remises
         return sum + profit;
       }, 0);
 
-    // Final purchase revenue = sales profits - avoir profits
-    const purchaseRevenue = salesMovements - avoirMovements;
+    const avoirComptantMovements = avoirsComptant
+      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
+      .reduce((sum: number, a: any) => {
+        const { profit } = computeMouvementDetail(a); // net remises
+        return sum + profit;
+      }, 0);
+
+    // Calculate vehicle bons total amount (not profit-based, but full montant_total deduction)
+    const vehicleAmount = bonsVehicule
+      .filter((v: any) => isToday(v.date_creation) && validStatuses.has(v.statut))
+      .reduce((sum: number, v: any) => sum + Number(v.montant_total || 0), 0);
+
+    // Final purchase revenue = sales profits - avoir client profits - avoir comptant profits - vehicle total amount
+    const purchaseRevenue = salesMovements - avoirClientMovements - avoirComptantMovements - vehicleAmount;
 
     // Calculate purchase revenue from commandes (chiffre d'affaires des achats)
     const purchaseOrdersRevenue = commandes
@@ -161,8 +181,10 @@ const DashboardPage: React.FC = () => {
       lowStock,
       pendingOrders,
       talonDueSoon,
+      avoirClientAmount,
+      avoirComptantAmount,
     };
-  }, [employees, products, sorties, comptants, commandes, avoirsClient, allPayments]);
+  }, [employees, products, sorties, comptants, commandes, avoirsClient, avoirsComptant, bonsVehicule, allPayments]);
 
   // Recent Activity - Real data from last 24 hours
   const recentActivity = useMemo(() => {
@@ -342,11 +364,9 @@ const DashboardPage: React.FC = () => {
               <div className="ml-3">
                 <p className="text-sm font-medium text-gray-500">Chiffre d'affaires net (aujourd'hui)</p>
                 <p className="text-2xl font-semibold text-gray-900">{formatAmount(stats.revenue)} DH</p>
-                {avoirsClient.filter((a: any) => isToday(a.date_creation) && new Set(['En attente', 'Validé']).has(a.statut)).length > 0 && (
+                {(stats.avoirClientAmount > 0 || stats.avoirComptantAmount > 0) && (
                   <p className="text-xs text-gray-400 mt-1">
-                    Avoirs déduits: -{formatAmount(avoirsClient
-                      .filter((a: any) => isToday(a.date_creation) && new Set(['En attente', 'Validé']).has(a.statut))
-                      .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0))} DH
+                    Avoirs déduits: -{formatAmount(stats.avoirClientAmount + stats.avoirComptantAmount)} DH
                   </p>
                 )}
               </div>
@@ -364,7 +384,7 @@ const DashboardPage: React.FC = () => {
                 <p className="text-sm font-medium text-gray-500">Chiffre bénéficiaire (aujourd'hui)</p>
                 <p className="text-2xl font-semibold text-gray-900">{formatAmount(stats.purchaseRevenue)} DH</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  Basé sur les bénéfices (profits)
+                  Profits (Ventes) - Profits (Avoirs) - Montant (Véhicules)
                 </p>
               </div>
             </div>

@@ -120,6 +120,7 @@ router.post('/', verifyToken, async (req, res) => {
       adresseLivraison: adresseLivCamel
     } = req.body || {};
     const phone = req.body?.phone ?? null;
+    const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
     if (!date_creation || !montant_total || !created_by) {
       await connection.rollback();
@@ -144,9 +145,9 @@ router.post('/', verifyToken, async (req, res) => {
 
     const [ins] = await connection.execute(`
       INSERT INTO avoirs_fournisseur (
-        date_creation, fournisseur_id, phone, lieu_chargement, adresse_livraison, montant_total, statut, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, fId, phone, lieu, adresseLiv, montant_total, st, created_by]);
+        date_creation, fournisseur_id, phone, lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, fId, phone, lieu, adresseLiv, montant_total, st, created_by, isNotCalculated]);
 
     const avoirId = ins.insertId;
     const finalNumero = `AVF${String(avoirId).padStart(2, '0')}`;
@@ -208,6 +209,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       adresseLivraison: adresseLivCamel
   } = req.body || {};
   const phone = req.body?.phone ?? null;
+  const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
     const [exists] = await connection.execute('SELECT id FROM avoirs_fournisseur WHERE id = ?', [id]);
     if (exists.length === 0) {
@@ -233,9 +235,9 @@ router.put('/:id', verifyToken, async (req, res) => {
 
     await connection.execute(`
       UPDATE avoirs_fournisseur SET
-        date_creation = ?, fournisseur_id = ?, phone = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?
+        date_creation = ?, fournisseur_id = ?, phone = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?
       WHERE id = ?
-    `, [date_creation, fId, phone, lieu, adresseLiv, montant_total, st, id]);
+    `, [date_creation, fId, phone, lieu, adresseLiv, montant_total, st, isNotCalculated, id]);
 
     await connection.execute('DELETE FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?', [id]);
 

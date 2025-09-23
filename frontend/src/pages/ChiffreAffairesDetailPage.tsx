@@ -24,19 +24,19 @@ interface ChiffreDetail {
   total: number;
   bons: BonDetail[];
   calculs: Array<{
-    bonId: number;
-    bonNumero: string;
-    bonType: string;
-    items: Array<{
-      designation: string;
-      quantite: number;
-      prix_unitaire: number;
-      cout_revient?: number;
-      prix_achat?: number;
-      montant_ligne: number;
-      profit?: number;
-      // Ajouts pour vérification des remises et profits
-      remise_unitaire?: number;
+  bonId: number;
+  bonNumero: string;
+  bonType: string;
+  items: Array<{
+  designation: string;
+  quantite: number;
+  prix_unitaire: number;
+  cout_revient?: number;
+  prix_achat?: number;
+  montant_ligne: number;
+    profit?: number;
+    // Ajouts pour vérification des remises et profits
+    remise_unitaire?: number;
       remise_total?: number;
       profitBrut?: number; // Profit avant remise
     }>;
@@ -191,6 +191,8 @@ const ChiffreAffairesDetailPage: React.FC = () => {
   const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
   const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
   const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsComptant = [] } = useGetBonsByTypeQuery('AvoirComptant');
+  const { data: bonsVehicule = [] } = useGetBonsByTypeQuery('Vehicule');
   const { data: products = [] } = useGetProductsQuery();
 
   // Utility functions
@@ -226,63 +228,75 @@ const ChiffreAffairesDetailPage: React.FC = () => {
 
   const resolveCost = (item: any): number => {
     const product = products.find((p: any) => p.id === item.product_id);
-    if (product?.cout_revient) return Number(product.cout_revient);
     if (product?.prix_achat) return Number(product.prix_achat);
+    if (product?.cout_revient) return Number(product.cout_revient);
     return 0;
   };
 
-  const computeBonDetail = (bon: any) => {
+  // Use the same calculation logic as ChiffreAffairesPage
+  const computeMouvementDetail = (bon: any) => {
     const items = parseItemsSafe(bon.items);
+    let profitNet = 0; // après remises
+    let profitBrut = 0; // avant remises
+    let costBase = 0;
+    let totalRemise = 0;
     const itemsDetail = [];
-    let totalBon = 0; // Total brut (avant remises)
-    let profitBon = 0; // Profit net après remises
-    let totalRemiseBon = 0;
-
-    for (const item of items) {
-      const quantite = Number(item.quantite || 0);
-      const prix_unitaire = Number(item.prix_unitaire || 0);
-      
+    
+    for (const it of items) {
+      const q = Number(it.quantite || 0);
+      if (!q) continue;
+      const prixVente = Number(it.prix_unitaire || 0);
       let cost = 0;
-      if (item.cout_revient !== undefined && item.cout_revient !== null) {
-        cost = Number(item.cout_revient) || 0;
-      } else if (item.prix_achat !== undefined && item.prix_achat !== null) {
-        cost = Number(item.prix_achat) || 0;
-      } else {
-        cost = resolveCost(item);
-      }
-      const remiseUnitaire = Number(item.remise_montant || item.remise_valeur || 0) || 0; // support legacy key
-      const remiseTotal = remiseUnitaire * quantite;
-      const montant_ligne = prix_unitaire * quantite; // brut
-      const profitBrut = (prix_unitaire - cost) * quantite;
-      const profitNet = profitBrut - remiseTotal; // retirer remise du profit
-
-      totalBon += montant_ligne;
-      totalRemiseBon += remiseTotal;
-      profitBon += profitNet;
+      if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
+      else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
+      else cost = resolveCost(it);
+      const remiseLigne = Number(it.remise_montant || it.remise_valeur || 0) || 0;
+      const remiseTotale = remiseLigne * q;
+      const montant_ligne = prixVente * q;
+      
+      profitBrut += (prixVente - cost) * q;
+      profitNet += (prixVente - cost) * q - remiseTotale;
+      totalRemise += remiseTotale;
+      costBase += cost * q;
 
       itemsDetail.push({
-        designation: item.designation || 'Produit sans nom',
-        quantite,
-        prix_unitaire,
-        cout_revient: item.cout_revient,
-        prix_achat: item.prix_achat,
+        designation: it.designation || 'Produit sans nom',
+        quantite: q,
+        prix_unitaire: prixVente,
+        cout_revient: it.cout_revient,
+        prix_achat: it.prix_achat,
         montant_ligne,
-        profit: profitNet,
-        profitBrut,
-        remise_unitaire: remiseUnitaire,
-        remise_total: remiseTotal
+        profit: (prixVente - cost) * q - remiseTotale,
+        profitBrut: (prixVente - cost) * q,
+        remise_unitaire: remiseLigne,
+        remise_total: remiseTotale
       });
     }
+    
+    const marginPct = costBase > 0 ? (profitNet / costBase) * 100 : null;
+    return { 
+      profitNet, 
+      profitBrut, 
+      costBase, 
+      marginPct, 
+      totalRemise,
+      items: itemsDetail,
+      totalBon: Number(bon.montant_total || 0) // Use the montant_total from bon
+    };
+  };
 
+  const computeBonDetail = (bon: any) => {
+    const detail = computeMouvementDetail(bon);
+    
     return {
       bonId: bon.id,
       bonNumero: bon.numero || `#${bon.id}`,
       bonType: bon.type,
-      items: itemsDetail,
-      totalBon, // brut
-      profitBon, // net
-      totalRemiseBon,
-      netTotalBon: totalBon - totalRemiseBon
+      items: detail.items,
+      totalBon: detail.totalBon,
+      profitBon: detail.profitNet, // Use profitNet from the same calculation as ChiffreAffairesPage
+      totalRemiseBon: detail.totalRemise,
+      netTotalBon: detail.totalBon - detail.totalRemise
     };
   };
 
@@ -297,7 +311,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
     });
 
     const dayVentes = filterByDate([...sorties, ...comptants]);
-    const dayAvoirs = filterByDate(avoirsClient);
+    const dayAvoirsClient = filterByDate(avoirsClient);
+    const dayAvoirsComptant = filterByDate(avoirsComptant);
+    const dayVehicules = filterByDate(bonsVehicule);
     const dayCommandes = filterByDate(commandes);
 
     // CA Net calculation
@@ -320,16 +336,23 @@ const ChiffreAffairesDetailPage: React.FC = () => {
       caNetDetails.calculs.push(detail);
     });
 
-    // Subtract avoirs (negative)
-    dayAvoirs.forEach(avoir => {
+    // Subtract avoirs client (negative)
+    dayAvoirsClient.forEach(avoir => {
       const detail = computeBonDetail(avoir);
-  caNetDetails.total -= detail.totalBon; // soustraction brute
+      caNetDetails.total -= detail.totalBon; // soustraction brute
       caNetDetails.bons.push(avoir);
-  const avoirDetail = { ...detail, totalBon: -detail.totalBon };
+      const avoirDetail = { ...detail, totalBon: -detail.totalBon };
       caNetDetails.calculs.push(avoirDetail);
     });
 
-    // Chiffre Bénéficiaire calculation
+    // Subtract avoirs comptant (negative)
+    dayAvoirsComptant.forEach(avoir => {
+      const detail = computeBonDetail(avoir);
+      caNetDetails.total -= detail.totalBon; // soustraction brute
+      caNetDetails.bons.push(avoir);
+      const avoirDetail = { ...detail, totalBon: -detail.totalBon };
+      caNetDetails.calculs.push(avoirDetail);
+    });    // Chiffre Bénéficiaire calculation
     const beneficiaireDetails: ChiffreDetail = {
       type: 'BENEFICIAIRE',
       title: 'Chiffre Bénéficiaire (Profits)',
@@ -348,13 +371,38 @@ const ChiffreAffairesDetailPage: React.FC = () => {
       beneficiaireDetails.calculs.push(detail);
     });
 
-    // Subtract profits from avoirs
-    dayAvoirs.forEach(avoir => {
+    // Subtract profits from avoirs client
+    dayAvoirsClient.forEach(avoir => {
       const detail = computeBonDetail(avoir);
       beneficiaireDetails.total -= detail.profitBon || 0;
       beneficiaireDetails.bons.push(avoir);
       const avoirDetail = { ...detail, profitBon: -(detail.profitBon || 0) };
       beneficiaireDetails.calculs.push(avoirDetail);
+    });
+
+    // Subtract profits from avoirs comptant
+    dayAvoirsComptant.forEach(avoir => {
+      const detail = computeBonDetail(avoir);
+      beneficiaireDetails.total -= detail.profitBon || 0;
+      beneficiaireDetails.bons.push(avoir);
+      const avoirDetail = { ...detail, profitBon: -(detail.profitBon || 0) };
+      beneficiaireDetails.calculs.push(avoirDetail);
+    });
+
+    // Subtract vehicle bons total amount (not profit-based)
+    dayVehicules.forEach(bon => {
+      const montantTotal = parseFloat(bon.montant_total) || 0;
+      beneficiaireDetails.total -= montantTotal;
+      beneficiaireDetails.bons.push(bon);
+      // Create a special entry for vehicle bons
+      beneficiaireDetails.calculs.push({
+        bonId: bon.id,
+        bonNumero: bon.numero,
+        bonType: 'Bon Véhicule',
+        totalBon: -montantTotal,
+        profitBon: -montantTotal, // For vehicle bons, total amount is the "loss"
+        items: [] // Vehicle bons don't have detailed items
+      });
     });
 
     // CA Achats calculation
@@ -376,7 +424,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
     });
 
     return [caNetDetails, beneficiaireDetails, achatsDetails];
-  }, [selectedDate, sorties, comptants, avoirsClient, commandes, products]);
+  }, [selectedDate, sorties, comptants, avoirsClient, avoirsComptant, bonsVehicule, commandes, products]);
 
   if (!selectedDate) {
     return (
@@ -452,7 +500,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           groups[key].calculs.push(c);
           groups[key].total += amount;
         }
-        const order = ['Comptant', 'Sortie', 'Commande', 'Avoir'];
+        const order = ['Comptant', 'Sortie', 'Commande', 'Avoir', 'Bon Véhicule'];
         const groupKeys = Object.keys(groups).sort((a, b) => {
           const ia = order.indexOf(a);
           const ib = order.indexOf(b);
@@ -557,9 +605,11 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                       )}
                       {chiffre.type === 'BENEFICIAIRE' && (
                         <div className="text-sm text-gray-500 mt-2">
-                          * Calcul: ((Prix de vente - Coût) × Quantité) - Remise totale des lignes
+                          * Calcul: Profits (Ventes) - Profits (Avoirs Client) - Profits (Avoirs Comptant) - Montant Total (Bons Véhicule)
                           <br />
-                          * Profit net ligne = ((PV - Coût) × Qté) - (Remise unitaire × Qté)
+                          * Profit ligne = ((PV - Coût) × Qté) - (Remise unitaire × Qté)
+                          <br />
+                          * Les bons véhicule sont déduits en montant total (pas en profit)
                         </div>
                       )}
                     </div>

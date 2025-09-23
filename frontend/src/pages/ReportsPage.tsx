@@ -71,7 +71,7 @@ const parseBonItems = (items: any): any[] => {
 type BonLite = {
   id: number | string;
   numero: string;
-  type: "Comptant" | "Sortie" | "Commande" | "Avoir" | "AvoirFournisseur";
+  type: "Comptant" | "Sortie" | "Commande" | "Avoir" | "AvoirFournisseur" | "Vehicule";
   contact_id?: number | string | null;
   date: string; // jj-mm-aa
   montant: number;
@@ -96,6 +96,7 @@ const ReportsPage: React.FC = () => {
   const { data: bonsComptant = [] } = useGetComptantQuery(undefined);
   const { data: bonsSortie = [] } = useGetSortiesQuery(undefined);
   const { data: bonsCommande = [] } = useGetCommandesQuery(undefined);
+  const { data: bonsVehicule = [] } = useGetBonsByTypeQuery("Vehicule");
   const { data: payments = [] } = useGetPaymentsQuery(undefined);
   // Avoirs (retours)
   const { data: avoirsClientRaw = [] } = useGetBonsByTypeQuery("Avoir");
@@ -149,8 +150,24 @@ const ReportsPage: React.FC = () => {
       statut: b.statut || b.status || "Validé",
     });
 
-    return [...bonsComptant.map(mapComptant), ...bonsSortie.map(mapSortie), ...bonsCommande.map(mapCommande)];
-  }, [bonsComptant, bonsSortie, bonsCommande]);
+    const mapVehicule = (b: any): BonLite => ({
+      id: b.id,
+      numero: getBonNumeroDisplay({ id: b.id, type: 'Vehicule', numero: b.numero }),
+      type: "Vehicule",
+      contact_id: b.vehicule_id ?? b.contact_id ?? null,
+      date: toDisplayDate(b.date || b.date_creation),
+      montant: toNumber(b.montant_total ?? b.total ?? 0),
+      statut: b.statut || b.status || "Validé",
+    });
+
+    // Exclure les bons avec isNotCalculated = true
+    const filteredComptant = bonsComptant.filter((b: any) => !b.isNotCalculated);
+    const filteredSortie = bonsSortie.filter((b: any) => !b.isNotCalculated);
+    const filteredCommande = bonsCommande.filter((b: any) => !b.isNotCalculated);
+    const filteredVehicule = bonsVehicule.filter((b: any) => !b.isNotCalculated);
+
+    return [...filteredComptant.map(mapComptant), ...filteredSortie.map(mapSortie), ...filteredCommande.map(mapCommande), ...filteredVehicule.map(mapVehicule)];
+  }, [bonsComptant, bonsSortie, bonsCommande, bonsVehicule]);
 
   // Normaliser Avoirs
   const normalizedAvoirsClient: BonLite[] = useMemo(() => {
@@ -164,7 +181,9 @@ const ReportsPage: React.FC = () => {
       statut: b.statut || b.status || "Avoir",
     });
     const list = Array.isArray(avoirsClientRaw) ? avoirsClientRaw : (avoirsClientRaw as any)?.data ?? [];
-    return list.map(mapAvoirC);
+    // Exclure les avoirs avec isNotCalculated = true
+    const filteredList = list.filter((b: any) => !b.isNotCalculated);
+    return filteredList.map(mapAvoirC);
   }, [avoirsClientRaw]);
 
   const normalizedAvoirsFournisseur: BonLite[] = useMemo(() => {
@@ -178,7 +197,9 @@ const ReportsPage: React.FC = () => {
       statut: b.statut || b.status || "Avoir",
     });
     const list = Array.isArray(avoirsFournisseurRaw) ? avoirsFournisseurRaw : (avoirsFournisseurRaw as any)?.data ?? [];
-    return list.map(mapAvoirF);
+    // Exclure les avoirs avec isNotCalculated = true
+    const filteredList = list.filter((b: any) => !b.isNotCalculated);
+    return filteredList.map(mapAvoirF);
   }, [avoirsFournisseurRaw]);
 
   // Function to display payment numbers with PAY prefix
@@ -275,11 +296,13 @@ const ReportsPage: React.FC = () => {
   // RÈGLE MÉTIER :
   // - Bons Clients = Sortie + Comptant
   // - Bons Fournisseurs = Commande
+  // - Bons Véhicules = Vehicule (coûts supplémentaires)
   const bonsFournisseurs = useMemo(() => filteredBons.filter((bon) => bon.type === "Commande"), [filteredBons]);
   const bonsClients = useMemo(
     () => filteredBons.filter((bon) => bon.type === "Sortie" || bon.type === "Comptant"),
     [filteredBons]
   );
+  const bonsVehicules = useMemo(() => filteredBons.filter((bon) => bon.type === "Vehicule"), [filteredBons]);
 
   const filteredPayments = useMemo(
     () => normalizedPayments.filter((p) => inDateRange(p.date) && matchContactTypePayment(p)),
@@ -360,10 +383,22 @@ const ReportsPage: React.FC = () => {
     };
   }, [bonsFournisseurs]);
 
+  const vehiculeBonsStats = useMemo(() => {
+    const total = bonsVehicules.reduce((sum, bon) => sum + toNumber(bon.montant), 0);
+    return {
+      count: bonsVehicules.length,
+      total,
+      byType: bonsVehicules.reduce((acc, bon) => {
+        acc[bon.type] = (acc[bon.type] || 0) + toNumber(bon.montant);
+        return acc;
+      }, {} as Record<string, number>),
+    };
+  }, [bonsVehicules]);
+
   /** ---------- Agrégations globales ---------- */
   // Pour calcul du bénéfice net: 
   // REVENUS = Bons Clients (Sortie + Comptant) - Avoirs Clients
-  // COÛTS = Commandes + Paiements - Avoirs Fournisseurs
+  // COÛTS = Commandes + Bons Véhicules + Paiements - Avoirs Fournisseurs
   const totalRevenus = useMemo(() => {
     const bonsClientsTotal = bonsClients.reduce((sum, bon) => sum + toNumber(bon.montant), 0);
     const avoirsClientsTotal = filteredAvoirsClient.reduce((sum, avoir) => sum + toNumber(avoir.montant), 0);
@@ -372,10 +407,11 @@ const ReportsPage: React.FC = () => {
 
   const totalCouts = useMemo(() => {
     const commandesTotal = bonsFournisseurs.reduce((sum, bon) => sum + toNumber(bon.montant), 0);
+    const vehiculesTotal = bonsVehicules.reduce((sum, bon) => sum + toNumber(bon.montant), 0);
     const paymentsFournisseursTotal = fournisseurPaymentsStats.total;
     const avoirsFournisseursTotal = filteredAvoirsFournisseur.reduce((sum, avoir) => sum + toNumber(avoir.montant), 0);
-    return commandesTotal + paymentsFournisseursTotal - avoirsFournisseursTotal;
-  }, [bonsFournisseurs, fournisseurPaymentsStats.total, filteredAvoirsFournisseur]);
+    return commandesTotal + vehiculesTotal + paymentsFournisseursTotal - avoirsFournisseursTotal;
+  }, [bonsFournisseurs, bonsVehicules, fournisseurPaymentsStats.total, filteredAvoirsFournisseur]);
 
   const beneficeNet = useMemo(() => totalRevenus - totalCouts, [totalRevenus, totalCouts]);
 
@@ -418,7 +454,8 @@ const ReportsPage: React.FC = () => {
   /** ---------- Stats produits (items des bons comptant + sortie) ---------- */
   const productMetrics = useMemo(() => {
     const stats: Record<string, { totalVendu: number; chiffreAffaires: number }> = {};
-    const sourceBons = [...bonsComptant, ...bonsSortie];
+    // Exclure les bons avec isNotCalculated = true
+    const sourceBons = [...bonsComptant, ...bonsSortie].filter((bon: any) => !bon.isNotCalculated);
 
     for (const bon of sourceBons) {
   const items = parseBonItems(bon.items);
@@ -465,6 +502,7 @@ const ReportsPage: React.FC = () => {
       // Détails
       clientBonsStats,
       fournisseurBonsStats,
+      vehiculeBonsStats,
       avoirsClientStats,
       avoirsFournisseurStats,
       nombreBons: filteredBons.length,
