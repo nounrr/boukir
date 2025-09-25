@@ -401,6 +401,79 @@ const ContactsPage: React.FC = () => {
       items.push(...filtered);
     }
 
+    // Si un filtre de période est actif, il faut d'abord calculer le solde au début de la période
+    // en prenant en compte TOUTES les transactions antérieures (même celles filtrées)
+    let soldeDebutPeriode = Number(selectedContact?.solde ?? 0);
+    
+    if (dateFrom || dateTo) {
+      // Créer une liste complète de TOUTES les transactions (sans filtre de période)
+      const allItems: any[] = [];
+      
+      // Tous les bons du contact (sans filtre de date)
+      const allBonsForContact = (() => {
+        if (!selectedContact) return [] as any[];
+        const isClient = selectedContact.type === 'Client';
+        const id = selectedContact.id;
+        const list: any[] = [];
+
+        if (isClient) {
+          for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
+          for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
+          for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
+        } else {
+          for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
+          for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
+        }
+
+        return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
+      })();
+      
+      // Ajouter tous les produits des bons (sans filtre)
+      for (const b of allBonsForContact) {
+        const bonItems = Array.isArray(b.items) ? b.items : [];
+        for (const it of bonItems) {
+          const total = Number((it as any).total ?? (it as any).montant_ligne) || 
+                       ((Number(it.quantite) || 0) * (Number(it.prix_unitaire ?? it.prix ?? 0) || 0));
+          const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
+          allItems.push({
+            bon_date_iso: b.date_creation,
+            total,
+            type: itemType,
+          });
+        }
+      }
+
+      // Ajouter tous les paiements (sans filtre)
+      const allPaymentsForContact = payments.filter(
+        (p: any) => String(p.contact_id) === String(selectedContact.id) && isAllowedStatut(p.statut)
+      );
+      for (const p of allPaymentsForContact) {
+        allItems.push({
+          bon_date_iso: p.date_paiement,
+          total: Number(p.montant ?? p.montant_total ?? 0) || 0,
+          type: 'paiement',
+        });
+      }
+
+      // Trier toutes les transactions par date
+      allItems.sort((a, b) => new Date(a.bon_date_iso).getTime() - new Date(b.bon_date_iso).getTime());
+
+      // Calculer le solde au début de la période en excluant les transactions de la période
+      const from = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+      for (const item of allItems) {
+        const itemDate = new Date(item.bon_date_iso);
+        // Si la transaction est antérieure au début de la période, l'inclure dans le calcul
+        if (from && itemDate < from) {
+          const montant = Number(item.total) || 0;
+          if (item.type === 'produit') {
+            soldeDebutPeriode += montant;
+          } else if (item.type === 'paiement' || item.type === 'avoir') {
+            soldeDebutPeriode -= montant;
+          }
+        }
+      }
+    }
+
     // Tri par date/heure réelle si bon_date_iso dispo, sinon fallback sur bon_date (JJ-MM-YYYY)
     items.sort((a, b) => {
       const dateA = a.bon_date_iso
@@ -420,7 +493,8 @@ const ContactsPage: React.FC = () => {
       return dateA - dateB;
     });
 
-    let soldeCumulatif = Number(selectedContact?.solde ?? 0);
+    // Commencer avec le solde au début de la période (ou solde initial si pas de filtre)
+    let soldeCumulatif = soldeDebutPeriode;
     return items.map((item) => {
       const montant = Number(item.total) || 0;
       if (item.type === 'produit') {
@@ -464,6 +538,20 @@ const ContactsPage: React.FC = () => {
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
+    // Date d'ouverture du compte (ou date de création du contact)
+    const ouverture = selectedContact.date_ouverture || selectedContact.created_at || null;
+    let showSoldeInitial = true;
+    if (dateFrom) {
+      // Si la période commence après la date d'ouverture, on ne montre pas le solde initial
+      if (ouverture) {
+        const ouvertureDate = new Date(ouverture.slice(0, 10));
+        const fromDate = new Date(dateFrom + 'T00:00:00');
+        if (fromDate > ouvertureDate) showSoldeInitial = false;
+      } else {
+        // Si pas de date d'ouverture, on masque si dateFrom existe
+        showSoldeInitial = false;
+      }
+    }
     const initRow = {
       id: 'initial-solde-produit',
       bon_numero: '—',
@@ -480,8 +568,8 @@ const ContactsPage: React.FC = () => {
       soldeCumulatif: initialSolde,
       syntheticInitial: true,
     } as any;
-    return [initRow, ...searchedProductHistory];
-  }, [searchedProductHistory, selectedContact]);
+    return showSoldeInitial ? [initRow, ...searchedProductHistory] : [...searchedProductHistory];
+  }, [searchedProductHistory, selectedContact, dateFrom]);
 
   // Small helper to produce the CompanyHeader HTML used in bons prints
   const getCompanyHeaderHTML = (companyType: 'DIAMOND' | 'MPC' = 'DIAMOND') => {
@@ -790,12 +878,12 @@ const ContactsPage: React.FC = () => {
     if (!selectedContact) return;
 
     const filteredBons = bonsForContact; // déjà filtré par statuts autorisés
-    const filteredProducts = filteredProductHistory.filter(item => 
-      isWithinDateRange(new Date(`${item.bon_date.split('-').reverse().join('-')}`).toISOString())
-    );
+    // Pour l'impression, utiliser la même logique que displayedProductHistory
+    // avec le calcul correct des soldes cumulatifs tenant compte de la période
+    const filteredProductsForDisplay = displayedProductHistory.filter((item: any) => !item.syntheticInitial);
 
-    // Calcul des statistiques par produit
-    const productStats = filteredProducts.reduce((acc: any, item: any) => {
+    // Calcul des statistiques par produit (SEULEMENT pour la période affichée)
+    const productStats = filteredProductsForDisplay.reduce((acc: any, item: any) => {
       const key = `${item.product_reference}-${item.product_designation}`;
       if (!acc[key]) {
         acc[key] = {
@@ -813,6 +901,23 @@ const ContactsPage: React.FC = () => {
       acc[key].prix_moyen = acc[key].montant_total / acc[key].quantite_totale;
       return acc;
     }, {});
+    
+    // Utiliser le solde final de la liste complète (non filtrée par dates)
+    // qui tient compte de TOUTES les transactions 
+    const finalCalculatedSolde = (() => {
+      // Utiliser le dernier solde cumulatif de l'historique complet
+      if (productHistory && productHistory.length > 0) {
+        const lastItem = productHistory[productHistory.length - 1];
+        return Number(lastItem.soldeCumulatif || 0);
+      }
+      // Fallback si pas d'historique
+      const initialSolde = Number(selectedContact?.solde ?? 0);
+      const isClient = selectedContact.type === 'Client';
+      const sales = isClient ? (salesByClient.get(selectedContact.id) || 0) : 0;
+      const purchases = !isClient ? (purchasesByFournisseur.get(selectedContact.id) || 0) : 0;
+      const paid = paymentsByContact.get(selectedContact.id) || 0;
+      return isClient ? (initialSolde + sales - paid) : (initialSolde + purchases - paid);
+    })();
 
     const productStatsArray = Object.values(productStats).sort((a: any, b: any) => b.montant_total - a.montant_total);
 
@@ -854,6 +959,7 @@ const ContactsPage: React.FC = () => {
 
           <div class="section">
             <h3>📊 STATISTIQUES PAR PRODUIT (${productStatsArray.length} produits)</h3>
+            ${(dateFrom || dateTo) ? `<p style="margin:5px 0;font-size:11px;color:#666;font-style:italic;">⚠️ Statistiques filtrées par période sélectionnée</p>` : ''}
             <table>
               <tr>
                 <th>Référence</th>
@@ -913,7 +1019,8 @@ const ContactsPage: React.FC = () => {
           </div>
 
           <div class="section">
-            <h3>🛍️ DÉTAIL DES ACHATS PAR PRODUIT (${filteredProducts.length} lignes)</h3>
+            <h3>🛍️ DÉTAIL DES ACHATS PAR PRODUIT (${filteredProductsForDisplay.length} lignes)</h3>
+            ${(dateFrom || dateTo) ? `<p style="margin:5px 0;font-size:11px;color:#666;font-style:italic;">⚠️ Données filtrées par période - Soldes cumulatifs calculés correctement en tenant compte des transactions antérieures</p>` : ''}
             <table>
               <tr>
                 <th>Date</th>
@@ -924,24 +1031,27 @@ const ContactsPage: React.FC = () => {
                 <th class="numeric">Qté</th>
                 <th class="numeric">Prix Unit.</th>
                 <th class="numeric">Total</th>
+                <th class="numeric">Solde Cumulé</th>
               </tr>
-              ${filteredProducts.map(item =>
+              ${filteredProductsForDisplay.map(item =>
                 `<tr>
                   <td>${item.bon_date}</td>
                   <td>${item.bon_numero}</td>
                   <td>${item.bon_type}</td>
                   <td>${item.product_reference}</td>
                   <td>${item.product_designation}</td>
-                  <td class="numeric">${item.quantite}</td>
-                  <td class="numeric">${item.prix_unitaire.toFixed(2)} DH</td>
-                  <td class="numeric">${item.total.toFixed(2)} DH</td>
+                  <td class="numeric">${item.quantite || 0}</td>
+                  <td class="numeric">${(item.prix_unitaire || 0).toFixed(2)} DH</td>
+                  <td class="numeric">${(item.total || 0).toFixed(2)} DH</td>
+                  <td class="numeric"><strong>${(item.soldeCumulatif || 0).toFixed(2)} DH</strong></td>
                 </tr>`
               ).join('')}
               <tr class="total-row">
-                <td colspan="5"><strong>TOTAL</strong></td>
-                <td class="numeric"><strong>${filteredProducts.reduce((s, p) => s + p.quantite, 0)}</strong></td>
+                <td colspan="5"><strong>TOTAL (période affichée)</strong></td>
+                <td class="numeric"><strong>${filteredProductsForDisplay.reduce((s, p) => s + (p.quantite || 0), 0)}</strong></td>
                 <td></td>
-                <td class="numeric"><strong>${filteredProducts.reduce((s, p) => s + p.total, 0).toFixed(2)} DH</strong></td>
+                <td class="numeric"><strong>${filteredProductsForDisplay.reduce((s, p) => s + (p.total || 0), 0).toFixed(2)} DH</strong></td>
+                <td class="numeric"><strong>${filteredProductsForDisplay.length > 0 ? (filteredProductsForDisplay[filteredProductsForDisplay.length - 1].soldeCumulatif || 0).toFixed(2) : '0.00'} DH</strong></td>
               </tr>
             </table>
           </div>
@@ -953,7 +1063,7 @@ const ContactsPage: React.FC = () => {
                 <h4>Volumes</h4>
                 <p><strong>Nombre de documents:</strong> ${filteredBons.length}</p>
                 <p><strong>Nombre de produits différents:</strong> ${productStatsArray.length}</p>
-                <p><strong>Quantité totale achetée:</strong> ${filteredProducts.reduce((s, p) => s + p.quantite, 0)}</p>
+                <p><strong>Quantité totale achetée (période):</strong> ${filteredProductsForDisplay.reduce((s: number, p: any) => s + p.quantite, 0)}</p>
               </div>
               <div class="info-box">
                 <h4>Montants</h4>
@@ -968,11 +1078,8 @@ const ContactsPage: React.FC = () => {
                   });
                   return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total||0), 0) / realBons.length).toFixed(2) : '0.00';
                 })()} DH</p>
-                <p><strong>Solde actuel:</strong> ${Number(selectedContact.solde || 0).toFixed(2)} DH</p>
+                <p><strong>Solde actuel (calculé sur toutes les transactions):</strong> ${finalCalculatedSolde.toFixed(2)} DH</p>
               </div>
-
-                        // Recharger les remises pour voir immédiatement la colonne "Remise Abonné"
-                        await loadContactRemises();
             </div>
           </div>
 
@@ -2212,6 +2319,42 @@ const ContactsPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Carte Bénéfice des Produits Sélectionnés */}
+              {selectedProductIds.size > 0 && (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-bold text-lg mb-3 flex items-center gap-2 text-green-800">
+                    <DollarSign size={20} className="text-green-600" />
+                    Bénéfice des Produits Sélectionnés
+                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
+                      {selectedProductIds.size} produit{selectedProductIds.size > 1 ? 's' : ''}
+                    </span>
+                  </h3>
+                  <div className="flex justify-center">
+                    <div className="bg-white rounded-lg p-4 border border-green-200 text-center">
+                      <p className="font-semibold text-gray-600 text-sm mb-2">Bénéfice Total des Produits Sélectionnés:</p>
+                      {(() => {
+                        const selectedBenefit = displayedProductHistory
+                          .filter((item: any) => selectedProductIds.has(String(item.id)) && !item.syntheticInitial)
+                          .reduce((sum: number, item: any) => sum + (Number(item.benefice) || 0), 0);
+                        return (
+                          <p className={`font-bold text-2xl ${selectedBenefit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {selectedBenefit.toFixed(2)} DH
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      onClick={() => setSelectedProductIds(new Set())}
+                      className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+                    >
+                      Effacer la sélection
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Filtres de date */}
               <div className="bg-white border rounded-lg p-4 mb-6">
                 <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
@@ -2376,7 +2519,13 @@ const ContactsPage: React.FC = () => {
           productHistory={printProducts.length > 0 ? printProducts : displayedProductHistory}
           dateFrom={dateFrom}
           dateTo={dateTo}
-          skipInitialRow={printProducts.length > 0 && selectedProductIds.size > 0}
+          skipInitialRow={
+            // Skip initial row if:
+            // 1. Selected products mode (specific selection)
+            // 2. OR date filtering is active (period filtering)
+            (printProducts.length > 0 && selectedProductIds.size > 0) || 
+            !!(dateFrom || dateTo)
+          }
         />
       )}
                     </div>
@@ -2420,7 +2569,7 @@ const ContactsPage: React.FC = () => {
                   )}
                   <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-200 rounded-lg">
                     <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr>
                           <th className="px-2 py-3">
                             <input
