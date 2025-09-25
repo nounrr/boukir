@@ -175,7 +175,8 @@ const CaissePage = () => {
         (payment.code_reglement?.toLowerCase?.() || '').includes(term) ||
         (payment.notes?.toLowerCase?.() || '').includes(term) ||
         contactName.includes(term) ||
-        contactSociete.includes(term)
+        contactSociete.includes(term) ||
+        String(payment.montant || payment.montant_total || 0).includes(term)
       );
 
       const matchesDate = !dateFilter || payment.date_paiement === dateFilter;
@@ -913,7 +914,7 @@ const paymentValidationSchema = Yup.object({
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Rechercher (N° paiement, Nom, Société, Notes)..."
+              placeholder="Rechercher (N° paiement, Nom, Société, Notes, Montant)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full sm:w-80 pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
