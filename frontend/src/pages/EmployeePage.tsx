@@ -208,7 +208,7 @@ const validationSchemaCreate = Yup.object({
   cin: Yup.string().required('CIN requis'),
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
-  role: Yup.string().oneOf(['PDG', 'Manager', 'Employé']).optional(),
+  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').required('Mot de passe requis'),
 });
@@ -217,7 +217,7 @@ const validationSchemaEdit = Yup.object({
   cin: Yup.string().required('CIN requis'),
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
-  role: Yup.string().oneOf(['PDG', 'Manager', 'Employé']).optional(),
+  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').optional(),
 });
@@ -518,6 +518,10 @@ const EmployeePage: React.FC = () => { // NOSONAR
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                         employee.role === 'PDG' 
                           ? 'bg-purple-100 text-purple-800' 
+                          : employee.role === 'ManagerPlus'
+                          ? 'bg-blue-100 text-blue-800'
+                          : employee.role === 'Manager'
+                          ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-green-100 text-green-800'
                       }`}>
                         {employee.role}
@@ -721,6 +725,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                   >
                     <option value="Employé">Employé</option>
                     <option value="Manager">Manager</option>
+                    <option value="ManagerPlus">ManagerPlus</option>
                     <option value="PDG">PDG</option>
                   </select>
                   {formik.touched.role && formik.errors.role && (

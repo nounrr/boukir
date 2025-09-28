@@ -1,5 +1,5 @@
 // Types pour l'authentification
-export type Role = 'PDG' | 'Manager' | 'Employé';
+export type Role = 'PDG' | 'Manager' | 'ManagerPlus' | 'Employé';
 export interface User {
   id: number;
   nom_complet?: string | null;

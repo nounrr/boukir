@@ -260,11 +260,11 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    // PDG-only for validation
+    // PDG and ManagerPlus only for validation
     const userRole = req.user?.role;
     const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
-      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
+      return res.status(403).json({ message: 'Rôle PDG ou ManagerPlus requis pour valider' });
     }
 
     const [result] = await pool.execute(

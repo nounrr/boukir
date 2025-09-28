@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/redux';
 
-type Role = 'PDG' | 'Employé' | 'Manager';
+type Role = 'PDG' | 'Employé' | 'Manager' | 'ManagerPlus';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;

@@ -86,6 +86,7 @@ const BonsPage = () => {
   // Manager full access only for Commande & AvoirFournisseur
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
   const isManager = currentUser?.role === 'Manager';
+  const isManagerPlus = currentUser?.role === 'ManagerPlus';
 
   // RTK Query hooks
   // Load bons by type
@@ -118,7 +119,7 @@ const BonsPage = () => {
   };
   const dispatch = useAppDispatch();
   // Column resizing state (persistent during the component lifetime)
-  const showAuditCols = currentUser?.role === 'PDG' || currentUser?.role === 'Manager';
+  const showAuditCols = currentUser?.role === 'PDG' || currentUser?.role === 'Manager' || currentUser?.role === 'ManagerPlus';
   const defaultColWidths = useMemo(() => {
     const base = ['120','120','220','220','120','80','120']; // numero,date,contact,adresse,montant,poids,mouvement
     if (showAuditCols) {
@@ -814,6 +815,7 @@ const BonsPage = () => {
               {(() => {
                 let roleCls = 'bg-blue-100 text-blue-800';
                 if (currentUser?.role === 'PDG') roleCls = 'bg-red-100 text-red-800';
+                else if (currentUser?.role === 'ManagerPlus') roleCls = 'bg-purple-100 text-purple-800';
                 else if (currentUser?.role === 'Manager') roleCls = 'bg-orange-100 text-orange-800';
                 return (
                   <span className={`px-3 py-1 text-sm font-medium rounded-full ${roleCls}`}>
@@ -1207,18 +1209,18 @@ const BonsPage = () => {
                             if (bon.statut === 'Validé' || bon.statut === 'Accepté') return null;
                             
                             // Show validation icon for:
-                            // - PDG on all relevant tabs
+                            // - PDG and ManagerPlus on all relevant tabs
                             // - Manager on Commande & AvoirFournisseur only
-                            const canValidate = currentUser?.role === 'PDG' || 
+                            const canValidate = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' ||
                               (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'));
                             
                             if (!canValidate) return null;
                             
                             // Show validation for different tab types
-                            const showForCommande = (currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant'));
+                            const showForCommande = (currentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Sortie' || currentTab === 'Comptant'));
                             const showForAvoir = ((currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || 
-                              (currentUser?.role === 'PDG' && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')));
-                            const showForDevis = currentTab === 'Devis' && currentUser?.role === 'PDG';
+                              ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')));
+                            const showForDevis = currentTab === 'Devis' && (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus');
                             
                             if (!showForCommande && !showForAvoir && !showForDevis) return null;
                             
@@ -1272,12 +1274,12 @@ const BonsPage = () => {
                                   {/* Status-change actions - Secondary actions only (En attente/Annuler) */}
                                   {(() => {
                                     // Full privileged actions for:
-                                    //  - PDG on all relevant tabs
+                                    //  - PDG and ManagerPlus on all relevant tabs
                                     //  - Manager on Commande & AvoirFournisseur (align backend)
-                                    if (currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) {
+                                    if (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) {
                                       return (
                                         <>
-                                          {(currentTab === 'Commande' || currentUser?.role === 'PDG' && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
+                                          {(currentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
                                             <div className="flex gap-1">
                                               {/* Show "En attente" only if not already "En attente" */}
                                               {bon.statut !== 'En attente' && (
@@ -1301,7 +1303,7 @@ const BonsPage = () => {
                                               )}
                                             </div>
                                           )}
-                                          {( (currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || (currentUser?.role === 'PDG' && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ) && (
+                                          {( (currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ) && (
                                             <div className="flex gap-1">
                                               {/* Show "En attente" only if not already "En attente" */}
                                               {bon.statut !== 'En attente' && (
@@ -1412,7 +1414,7 @@ const BonsPage = () => {
                                   {/* Other actions */}
                                   <div className="flex gap-1">
                                     {/* Audit history */}
-                                    {(currentUser?.role === 'PDG' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
+                                    {(currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
                                       <button
                                         onClick={() => {
                                           const t = tableForType(bon.type || currentTab);
@@ -1438,7 +1440,7 @@ const BonsPage = () => {
                                     )}
                                     
                                     {/* Duplicate - Only for non-cancelled bons */}
-                                    {((currentUser?.role === 'PDG') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && bon.statut !== 'Annulé' && (
+                                    {((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && bon.statut !== 'Annulé' && (
                                       <button
                                         onClick={() => {
                                           setSelectedBonForDuplicate(bon);

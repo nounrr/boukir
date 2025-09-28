@@ -94,7 +94,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
               <Layout>
                 <EmployeePage />
               </Layout>
@@ -105,7 +105,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees/:id/documents"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
               <Layout>
                 <EmployeeDocumentsPage />
               </Layout>
@@ -116,7 +116,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees/:id/salaries"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
               <Layout>
                 <EmployeeSalariesPage />
               </Layout>
@@ -127,7 +127,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/access-schedules"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRoles={['PDG']}>
               <Layout>
                 <AccessSchedulePage />
               </Layout>
@@ -204,7 +204,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/vehicules"
           element={
-            <ProtectedRoute forbiddenRoles={['Employé']}>
+            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus']}>
               <Layout>
                 <VehiculesPage />
               </Layout>
@@ -215,7 +215,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/talons"
           element={
-            <ProtectedRoute requiredRoles={['PDG','Manager']}>
+            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus']}>
               <Layout>
                 <TalonsPage />
               </Layout>
@@ -226,7 +226,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/talon-caisse"
           element={
-            <ProtectedRoute requiredRoles={['PDG','Manager']}>
+            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus']}>
               <Layout>
                 <TalonCaissePage />
               </Layout>
@@ -248,7 +248,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/reports"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
               <Layout>
                 <ReportsPage />
               </Layout>
@@ -292,7 +292,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/reports/details"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
               <Layout>
                 <StatsDetailPage />
               </Layout>

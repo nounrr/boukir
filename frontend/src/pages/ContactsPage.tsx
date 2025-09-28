@@ -2567,9 +2567,9 @@ const ContactsPage: React.FC = () => {
                       </div>
                     </div>
                   )}
-                  <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-200 rounded-lg">
+                  <div className="overflow-x-auto overflow-y-auto max-h-[600px] border border-gray-200 rounded-lg relative">
                     <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50 sticky top-0 z-10">
+                      <thead className="bg-gray-50 sticky top-0 z-20">
                         <tr>
                           <th className="px-2 py-3">
                             <input

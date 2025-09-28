@@ -51,17 +51,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Opérations',
       items: [
         { name: 'Bons', href: '/bons', icon: FileText, show: true },
-        { name: 'Véhicules', href: '/vehicules', icon: Truck, show: user?.role !== 'Employé' },
+        { name: 'Véhicules', href: '/vehicules', icon: Truck, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
         { name: 'Caisse', href: '/caisse', icon: CreditCard, show: true },
-  { name: 'Talons', href: '/talons', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'Manager' },
-  { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: user?.role === 'PDG' || user?.role === 'Manager' },
+  { name: 'Talons', href: '/talons', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+  { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
       ],
     },
     {
       title: 'Administration',
       items: [
         { name: 'Employés', href: '/employees', icon: Users, show: canManageEmployees(user) },
-        { name: 'Horaires d\'Accès', href: '/access-schedules', icon: CalendarClock, show: user?.role === 'PDG' || user?.role === 'Manager' },
+        { name: 'Horaires d\'Accès', href: '/access-schedules', icon: CalendarClock, show: user?.role === 'PDG' },
       ],
     },
     {

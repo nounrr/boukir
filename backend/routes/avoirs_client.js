@@ -257,7 +257,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     // Seul PDG peut valider
     const userRole = req.user?.role;
     const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
       return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
     }
 

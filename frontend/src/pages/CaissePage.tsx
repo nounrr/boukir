@@ -1248,7 +1248,7 @@ const paymentValidationSchema = Yup.object({
                           >
                             <Printer size={20} />
                           </button>
-                          {user?.role !== 'Employé' && (
+                          {user?.role === 'PDG' && (
                             <button
                               onClick={() => handleDelete(payment.id)}
                               className="text-red-600 hover:text-red-900"
@@ -1369,7 +1369,7 @@ const paymentValidationSchema = Yup.object({
                   <button onClick={() => handlePrintPayment(payment)} className="flex items-center gap-1 text-purple-600 text-xs font-medium px-2 py-1 bg-purple-50 rounded">
                     <Printer size={18} /> Imp
                   </button>
-                  {user?.role !== 'Employé' && (
+                  {user?.role === 'PDG' && (
                     <button onClick={() => handleDelete(payment.id)} className="flex items-center gap-1 text-red-600 text-xs font-medium px-2 py-1 bg-red-50 rounded">
                       <Trash2 size={18} /> Suppr
                     </button>
