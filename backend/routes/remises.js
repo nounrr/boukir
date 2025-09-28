@@ -361,8 +361,8 @@ router.post('/clients/:id/items', verifyToken, async (req, res) => {
 
     const { finalBonId, finalBonType } = await resolveBonLink(bon_id, bon_type);
 
-    // Employé cannot create validated items; force 'En attente'
-    if ((req.user?.role || '') !== 'PDG') {
+    // Only PDG and ManagerPlus can create validated items; others force 'En attente'
+    if ((req.user?.role || '') !== 'PDG' && (req.user?.role || '') !== 'ManagerPlus') {
       statut = 'En attente';
     } else {
       statut = statut || 'En attente';
@@ -393,8 +393,8 @@ router.patch('/items/:itemId', verifyToken, async (req, res) => {
     }
 
     const fields = [], vals = [];
-    // Employé cannot validate; ignore statut=Validé from Employé
-    if ((req.user?.role || '') !== 'PDG' && statut === 'Validé') {
+    // Only PDG and ManagerPlus can validate; ignore statut=Validé from others
+    if ((req.user?.role || '') !== 'PDG' && (req.user?.role || '') !== 'ManagerPlus' && statut === 'Validé') {
       statut = undefined;
     }
 

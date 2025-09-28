@@ -36,6 +36,16 @@ export function requireRole(role) {
   };
 }
 
+// Multiple roles guard
+export function requireRoles(...roles) {
+  return function (req, res, next) {
+    const u = req.user || {};
+    if (!u?.role) return res.status(403).json({ message: 'Accès refusé' });
+    if (!roles.includes(u.role)) return res.status(403).json({ message: 'Rôle insuffisant' });
+    next();
+  };
+}
+
 // Middleware combiné: vérification token + horaires d'accès
 export function verifyTokenWithSchedule(req, res, next) {
   // D'abord vérifier le token

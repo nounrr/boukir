@@ -8,9 +8,13 @@ import { showError, showSuccess, showConfirmation } from '../utils/notifications
 import VehiculeFormModal from '../components/VehiculeFormModal';
 import VehiculeDetailsModal from '../components/VehiculeDetailsModal';
 import { formatDateTimeWithHour } from '../utils/dateUtils';
+import { useAuth } from '../hooks/redux';
 import type { Vehicule } from '../types';
 
 const VehiculesPage = () => {
+  // Auth context
+  const { user: currentUser } = useAuth();
+  
   // États de base
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -613,13 +617,15 @@ const VehiculesPage = () => {
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => handleDelete(vehicule.id)}
-                          className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Supprimer véhicule"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {currentUser?.role === 'PDG' && (
+                          <button
+                            onClick={() => handleDelete(vehicule.id)}
+                            className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Supprimer véhicule"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

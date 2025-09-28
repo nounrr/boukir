@@ -31,19 +31,23 @@ export const canDeleteItems = (user: User | null): boolean => {
 };
 
 export const canModifyBons = (user: User | null): boolean => {
-  const result = user?.role === 'PDG' || user?.role === 'Manager';
+  const result = user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus';
   console.log('canModifyBons:', { userRole: user?.role, result });
-  return result; // PDG et Manager peuvent modifier les bons
+  return result; // PDG, Manager et ManagerPlus peuvent modifier les bons
 };
 
 export const canModifyPayments = (user: User | null): boolean => {
-  const result = user?.role === 'PDG' || user?.role === 'Manager';
+  const result = user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus';
   console.log('canModifyPayments:', { userRole: user?.role, result });
-  return result; // PDG et Manager peuvent modifier les paiements
+  return result; // PDG, Manager et ManagerPlus peuvent modifier les paiements
+};
+
+export const canDeletePayments = (user: User | null): boolean => {
+  return user?.role === 'PDG'; // Seuls les PDG peuvent supprimer les paiements
 };
 
 export const canAccessAdvancedFeatures = (user: User | null): boolean => {
-  return user?.role === 'PDG'; // Seuls les PDG ont accès aux fonctionnalités avancées
+  return user?.role === 'PDG' || user?.role === 'ManagerPlus'; // PDG et ManagerPlus ont accès aux fonctionnalités avancées
 };
 
 // Middleware pour injecter automatiquement created_by/updated_by
