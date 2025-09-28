@@ -138,7 +138,7 @@ const AccessSchedulePage: React.FC = () => {
           await saveSchedule({
             user_id: userId,
             user_name: employee?.nom_complet || `Employé ${employee?.cin}`,
-            user_role: employee?.role === 'PDG' ? 'admin' : employee?.role === 'Manager' ? 'manager' : 'employee',
+            user_role: employee?.role === 'PDG' ? 'admin' : employee?.role === 'Manager' ? 'manager' : employee?.role === 'ManagerPlus' ? 'manager' : 'employee',
             ...scheduleData
           }).unwrap();
         } else {
@@ -148,7 +148,7 @@ const AccessSchedulePage: React.FC = () => {
             return {
               user_id: userId,
               user_name: employee?.nom_complet || `Employé ${employee?.cin}`,
-              user_role: employee?.role === 'PDG' ? 'admin' : employee?.role === 'Manager' ? 'manager' : 'employee'
+              user_role: employee?.role === 'PDG' ? 'admin' : employee?.role === 'Manager' ? 'manager' : employee?.role === 'ManagerPlus' ? 'manager' : 'employee'
             };
           }).filter(user => user.user_name);
 
@@ -526,10 +526,13 @@ const AccessSchedulePage: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         employee.role === 'PDG' ? 'bg-purple-100 text-purple-800' :
+                        employee.role === 'ManagerPlus' ? 'bg-indigo-100 text-indigo-800' :
                         employee.role === 'Manager' ? 'bg-blue-100 text-blue-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
                         {employee.role === 'PDG' ? (
+                          <Shield className="w-3 h-3 mr-1" />
+                        ) : employee.role === 'ManagerPlus' ? (
                           <Shield className="w-3 h-3 mr-1" />
                         ) : employee.role === 'Manager' ? (
                           <Users className="w-3 h-3 mr-1" />
@@ -537,6 +540,7 @@ const AccessSchedulePage: React.FC = () => {
                           <UserCheck className="w-3 h-3 mr-1" />
                         )}
                         {employee.role === 'PDG' ? 'PDG' : 
+                         employee.role === 'ManagerPlus' ? 'ManagerPlus' :
                          employee.role === 'Manager' ? 'Manager' : 'Employé'}
                       </span>
                     </td>

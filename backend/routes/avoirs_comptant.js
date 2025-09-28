@@ -229,7 +229,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     if (!valides.includes(statut)) return res.status(400).json({ message: 'Statut invalide' });
     const userRole = req.user?.role;
     const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
       return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
     }
     const [result] = await pool.execute('UPDATE avoirs_comptant SET statut = ?, updated_at = NOW() WHERE id = ?', [statut, id]);

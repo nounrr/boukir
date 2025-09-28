@@ -270,10 +270,10 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 
     if (!statut) return res.status(400).json({ message: 'Statut requis' });
 
-    // Seul le role PDG peut mettre un bon en 'Validé'
+    // Seul le role PDG et ManagerPlus peut mettre un bon en 'Validé'
     const userRole = req.user?.role;
     const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG') {
+    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
       return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
     }
 

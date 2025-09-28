@@ -20,7 +20,7 @@ import { showConfirmation, showError, showSuccess } from '../utils/notifications
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { useGetOldTalonsCaisseQuery, useDeleteOldTalonCaisseMutation, useChangeOldTalonCaisseStatusMutation } from '../store/slices/oldTalonsCaisseSlice';
 import type { Payment, Talon, OldTalonCaisse } from '../types';
-import { canModifyPayments } from '../utils/permissions';
+import { canModifyPayments, canDeletePayments } from '../utils/permissions';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 
@@ -940,27 +940,27 @@ const TalonCaissePage = () => {
                         </button>
                         
                         {canModifyPayments(currentUser) && (
-                          <>
-                            <select
-                              value={payment.statut}
-                              onChange={(e) => handleChangeStatus(payment, e.target.value)}
-                              className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                              title="Changer le statut"
-                            >
-                              <option value="En attente">En attente</option>
-                              <option value="Validé">Validé</option>
-                              <option value="Refusé">Refusé</option>
-                              <option value="Annulé">Annulé</option>
-                            </select>
-                            
-                            <button
-                              onClick={() => handleDelete(payment)}
-                              className="text-red-600 hover:text-red-800 transition-colors"
-                              title="Supprimer"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
+                          <select
+                            value={payment.statut}
+                            onChange={(e) => handleChangeStatus(payment, e.target.value)}
+                            className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                            title="Changer le statut"
+                          >
+                            <option value="En attente">En attente</option>
+                            <option value="Validé">Validé</option>
+                            <option value="Refusé">Refusé</option>
+                            <option value="Annulé">Annulé</option>
+                          </select>
+                        )}
+                        
+                        {canDeletePayments(currentUser) && (
+                          <button
+                            onClick={() => handleDelete(payment)}
+                            className="text-red-600 hover:text-red-800 transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         )}
                       </div>
                     </td>

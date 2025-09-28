@@ -64,6 +64,8 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen }) => {
             >
               {user?.role === 'PDG' ? (
                 <Crown className="w-4 h-4 text-yellow-600" />
+              ) : user?.role === 'ManagerPlus' ? (
+                <Crown className="w-4 h-4 text-blue-600" />
               ) : (
                 <User className="w-4 h-4 text-gray-600" />
               )}
@@ -95,6 +97,8 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen }) => {
               >
                 {user?.role === 'PDG' ? (
                   <Crown className="w-4 h-4 text-yellow-600" />
+                ) : user?.role === 'ManagerPlus' ? (
+                  <Crown className="w-4 h-4 text-blue-600" />
                 ) : (
                   <User className="w-4 h-4 text-gray-600 group-hover:text-primary-600" />
                 )}
