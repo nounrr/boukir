@@ -2185,9 +2185,9 @@ const ContactsPage: React.FC = () => {
 
       {/* Modal de détails */}
       {isDetailsModalOpen && selectedContact && (
-        <div className="fixed inset-0 z-50 bg-white md:bg-black md:bg-opacity-50 md:flex md:items-center md:justify-center p-0 md:p-4">
-          <div className="bg-white w-full h-full overflow-y-auto rounded-none md:rounded-lg md:h-auto md:max-h-[95vh] md:max-w-[95vw]">
-            <div className={`${selectedContact.type === 'Client' ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4 md:rounded-t-lg sticky top-0 z-10`}>
+        <div className="fixed inset-0 z-50 bg-white">
+          <div className="bg-white w-full h-full overflow-y-auto">
+            <div className={`${selectedContact.type === 'Client' ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4 sticky top-0 z-10 shadow-md`}>
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold text-white">Détails - {selectedContact.nom_complet}</h2>
                 <div className="flex items-center gap-4">
@@ -2206,7 +2206,7 @@ const ContactsPage: React.FC = () => {
                       setSelectedProductIds(new Set());
                       setPrintProducts([]);
                     }}
-                    className="text-white hover:text-gray-200"
+                    className="text-white hover:text-gray-200 text-2xl font-bold"
                   >
                     ✕
                   </button>
@@ -2214,7 +2214,7 @@ const ContactsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-6">
+            <div className="h-[calc(100vh-80px)] overflow-y-auto p-6">
               {/* Infos contact */}
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <h3 className="font-bold text-lg mb-3">Informations du {selectedContact.type}</h3>
@@ -2567,11 +2567,12 @@ const ContactsPage: React.FC = () => {
                       </div>
                     </div>
                   )}
-                  <div className="overflow-x-auto overflow-y-auto max-h-[600px] border border-gray-200 rounded-lg relative">
+                  <div className="w-full border border-gray-200 rounded-lg relative">
+                    <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 0px)', minHeight: '400px' }}>
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50 sticky top-0 z-20">
                         <tr>
-                          <th className="px-2 py-3">
+                          <th className="px-1 ">
                             <input
                               type="checkbox"
                               aria-label="Sélectionner tout"
@@ -2588,41 +2589,41 @@ const ContactsPage: React.FC = () => {
                               }}
                             />
                           </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bon N°</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Référence</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse Livraison</th>
+                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</th>
+                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Bon N°</th>
+                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Type</th>
+                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Référence</th>
+                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
+                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse Livraison</th>
                           {/* Remises séparées par type */}
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Remise Abonné</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Remise Client</th>
+                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Abonné</th>
+                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Client</th>
                           {showRemiseMode && selectedContact?.type === 'Client' && (
                             <>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Prix Remise</th>
-                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Remise</th>
+                              <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Prix Remise</th>
+                              <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total Remise</th>
                             </>
                           )}
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Prix Unit.'}</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Bénéfice</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Quantité</th>
+                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Prix Unit.'}</th>
+                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>
+                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Bénéfice</th>
+                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Statut</th>
                           {/* Solde Cumulé déplacé à la fin */}
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Solde Cumulé</th>
+                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Solde Cumulé</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {displayedProductHistory.length === 0 ? (
                           <tr>
-                            <td colSpan={20} className="px-6 py-4 text-center text-sm text-gray-500">
+                            <td colSpan={20} className="px-6  text-center text-sm text-gray-500">
                               Aucun produit trouvé pour cette période
                             </td>
                           </tr>
                         ) : (
                           displayedProductHistory.map((item) => (
                             <tr key={item.id} className={`hover:bg-gray-50 ${item.type === 'paiement' ? 'bg-green-50' : ''}`}>
-                              <td className="px-2 py-4 whitespace-nowrap">
+                              <td className="px-2  whitespace-nowrap">
                                 {item.syntheticInitial ? (
                                   <span className="text-xs text-gray-400">—</span>
                                 ) : (
@@ -2638,7 +2639,7 @@ const ContactsPage: React.FC = () => {
                                   />
                                 )}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-6  whitespace-nowrap">
                                 <div className="text-sm text-gray-700">
                                   {item.syntheticInitial ? '-' : (
                                     item.bon_date_iso
@@ -2647,10 +2648,10 @@ const ContactsPage: React.FC = () => {
                                   )}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-6  whitespace-nowrap">
                                 <div className="text-sm font-medium text-gray-900">{item.bon_numero}</div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-6  whitespace-nowrap">
                                 <span
                                   className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                                     item.bon_type === 'Solde initial' ? 'bg-gray-200 text-gray-700' : item.bon_type === 'Paiement'
@@ -2667,24 +2668,24 @@ const ContactsPage: React.FC = () => {
                                   {item.bon_type}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-1  whitespace-nowrap">
                                 <div className="text-sm text-gray-900">{item.syntheticInitial ? '—' : item.product_reference}</div>
                               </td>
-                              <td className="px-6 py-4">
-                                <div className="text-sm text-gray-900">
+                              <td className="px-1 py-3 max-w-xs">
+                                <div className="text-sm text-gray-900 truncate" title={item.syntheticInitial ? 'Solde initial' : item.product_designation}>
                                   {item.syntheticInitial ? 'Solde initial' : item.product_designation}
                                   {item.type === 'paiement' && item.mode && (
                                     <span className="ml-2 text-xs text-gray-500">({item.mode})</span>
                                   )}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">
+                              <td className="px-1 py-3 max-w-xs">
+                                <div className="text-sm text-gray-900 truncate" title={item.syntheticInitial || item.type === 'paiement' ? '-' : (item.adresse_livraison || '-')}>
                                   {item.syntheticInitial || item.type === 'paiement' ? '-' : (item.adresse_livraison || '-')}
                                 </div>
                               </td>
                               {/* Remises séparées par type */}
-                              <td className="px-4 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                              <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
                                 {(() => {
                                   if (item.syntheticInitial || item.type === 'paiement') return '-';
                                   const remises = getItemRemises(item);
@@ -2693,7 +2694,7 @@ const ContactsPage: React.FC = () => {
                                   return '-';
                                 })()}
                               </td>
-                              <td className="px-4 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                              <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
                                 {(() => {
                                   if (item.syntheticInitial || item.type === 'paiement') return '-';
                                   const remises = getItemRemises(item);
@@ -2706,7 +2707,7 @@ const ContactsPage: React.FC = () => {
                               {showRemiseMode && selectedContact?.type === 'Client' && (
                                 <>
                                   {/* Prix remise input */}
-                                  <td className="px-4 py-4 whitespace-nowrap text-sm text-right">
+                                  <td className="px-1  whitespace-nowrap text-sm text-right">
                                     {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
                                       <span className="text-gray-400">-</span>
                                     ) : (
@@ -2737,7 +2738,7 @@ const ContactsPage: React.FC = () => {
                                     )}
                                   </td>
                                   {/* Total remise calculé */}
-                                  <td className="px-4 py-4 whitespace-nowrap text-sm text-right">
+                                  <td className="px-1  whitespace-nowrap text-sm text-right">
                                     {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
                                       <span className="text-gray-400">-</span>
                                     ) : (
@@ -2751,10 +2752,10 @@ const ContactsPage: React.FC = () => {
                                   </td>
                                 </>
                               )}
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                              <td className="px-6  whitespace-nowrap text-sm text-gray-900 text-right">
                                 {item.syntheticInitial ? '-' : item.type === 'paiement' ? '-' : item.quantite}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                              <td className="px-6  whitespace-nowrap text-sm text-gray-900 text-right">
                                 {item.syntheticInitial ? '-' : (() => {
                                   const v = selectedContact?.type === 'Fournisseur'
                                     ? (item as any).prix_achat ?? item.prix_unitaire
@@ -2762,13 +2763,13 @@ const ContactsPage: React.FC = () => {
                                   return `${(typeof v === 'number' ? v : parseFloat(v) || 0).toFixed(2)} DH`;
                                 })()}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                              <td className="px-6  whitespace-nowrap text-sm text-right">
                                 <div className={`font-semibold ${item.syntheticInitial ? 'text-gray-500' : item.type === 'paiement' ? 'text-green-600' : 'text-blue-600'}`}>
                                   {item.syntheticInitial ? '—' : item.type === 'paiement' ? '-' : '+'}
                                   {item.syntheticInitial ? '' : `${item.total.toFixed(2)} DH`}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                              <td className="px-6  whitespace-nowrap text-sm text-right">
                                 {item.syntheticInitial || item.type === 'paiement' ? (
                                   <span className="text-gray-400">-</span>
                                 ) : (
@@ -2777,7 +2778,7 @@ const ContactsPage: React.FC = () => {
                                   </div>
                                 )}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-6  whitespace-nowrap">
                                 <span
                                   className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                                     item.syntheticInitial ? 'bg-gray-200 text-gray-700' : item.bon_statut === 'Validé' || item.bon_statut === 'Payé'
@@ -2793,7 +2794,7 @@ const ContactsPage: React.FC = () => {
                                 </span>
                               </td>
                               {/* Solde Cumulé colonne finale */}
-                              <td className="px-6 py-4 whitespace-nowrap text-right">
+                              <td className="px-6  whitespace-nowrap text-right">
                                 <div
                                   className={`text-sm font-bold ${
                                     item.soldeCumulatif > 0
@@ -2811,6 +2812,7 @@ const ContactsPage: React.FC = () => {
                         )}
                       </tbody>
                     </table>
+                    </div>
                   </div>
 
                   {/* Résumés */}
