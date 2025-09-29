@@ -609,6 +609,11 @@ const paymentValidationSchema = Yup.object({
   const { id: _id, created_at: _ca, updated_at: _ua, ...rest } = paymentData;
         await updatePaymentApi({ id: selectedPayment.id, updated_by: user?.id || 1, ...rest }).unwrap();
         showSuccess('Paiement mis à jour avec succès');
+        // Fermer le modal après modification
+        setIsCreateModalOpen(false);
+        setSelectedPayment(null);
+        setSelectedImage(null);
+        setImagePreview('');
       } else {
         const body: any = {
           type_paiement: paymentData.type_paiement,
@@ -673,13 +678,14 @@ const paymentValidationSchema = Yup.object({
             await createOldTalonCaisse(oldPayload as any).unwrap().catch(() => {});
           }
         } catch {}
-        showSuccess('Paiement enregistré avec succès');
+        showSuccess('Paiement enregistré avec succès ! Le formulaire reste ouvert pour ajouter un autre paiement.');
+        // Garder le modal ouvert mais réinitialiser les champs et l'image
+        setSelectedPayment(null);
+        setSelectedImage(null);
+        setImagePreview('');
+        setCreateOpenedAt(getCurrentDateTimeInput());
       }
       
-      setIsCreateModalOpen(false);
-      setSelectedPayment(null);
-      setSelectedImage(null);
-      setImagePreview('');
     } catch (error) {
       console.error('Erreur lors de la sauvegarde:', error);
       showError('Erreur lors de la sauvegarde du paiement');
@@ -1409,9 +1415,16 @@ const paymentValidationSchema = Yup.object({
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">
-                {selectedPayment ? 'Modifier' : 'Enregistrer'} un paiement
-              </h2>
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {selectedPayment ? 'Modifier' : 'Enregistrer'} un paiement
+                </h2>
+                {!selectedPayment && (
+                  <p className="text-sm text-blue-600 mt-1">
+                    💡 Le formulaire reste ouvert après l'ajout pour permettre la saisie rapide de plusieurs paiements
+                  </p>
+                )}
+              </div>
               <button
                 onClick={handleCloseModal}
                 className="text-gray-400 hover:text-gray-600"
@@ -1804,7 +1817,7 @@ const paymentValidationSchema = Yup.object({
                     />
                   </div>
 
-                  <div className="flex justify-end space-x-6 pt-4">
+                  <div className="flex justify-end space-x-3 pt-4">
                     <button
                       type="button"
                       onClick={handleCloseModal}
@@ -1816,7 +1829,7 @@ const paymentValidationSchema = Yup.object({
                       type="submit"
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
                     >
-                      {selectedPayment ? 'Mettre à jour' : 'Enregistrer'} le paiement
+                      {selectedPayment ? 'Mettre à jour' : 'Enregistrer et continuer'}
                     </button>
                   </div>
                 </Form>
