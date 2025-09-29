@@ -61,7 +61,7 @@ const BonsPage = () => {
   // État pour la modal de duplication AWATEF
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
   const [selectedBonForDuplicate, setSelectedBonForDuplicate] = useState<any>(null);
-  const [duplicateType, setDuplicateType] = useState<'fournisseur' | 'client' | 'comptant'>('client');
+  const [duplicateType, setDuplicateType] = useState<'fournisseur' | 'client' | 'comptant' | 'avoirClient' | 'avoirFournisseur' | 'avoirComptant'>('client');
   const [selectedContactForDuplicate, setSelectedContactForDuplicate] = useState<string>('');
   const [comptantClientName, setComptantClientName] = useState<string>('');
   const [isDuplicationComplete, setIsDuplicationComplete] = useState(true);
@@ -794,6 +794,48 @@ const BonsPage = () => {
           }
         } else if (duplicateType === 'comptant') {
           newBonData.type = 'Comptant';
+          newBonData.client_nom = comptantClientName;
+          newBonData.items = itemsToDuplicate;
+          
+          // Recalculer le montant total si duplication partielle
+          if (!isDuplicationComplete) {
+            const newTotal = itemsToDuplicate.reduce((sum: number, it: any) => {
+              const q = Number(it.quantite ?? it.qty ?? 0) || 0;
+              const price = Number(it.prix_unitaire ?? 0) || 0;
+              return sum + (q * price);
+            }, 0);
+            newBonData.montant_total = newTotal;
+          }
+        } else if (duplicateType === 'avoirClient') {
+          newBonData.type = 'Avoir';
+          newBonData.client_id = parseInt(selectedContactForDuplicate);
+          newBonData.items = itemsToDuplicate;
+          
+          // Recalculer le montant total si duplication partielle
+          if (!isDuplicationComplete) {
+            const newTotal = itemsToDuplicate.reduce((sum: number, it: any) => {
+              const q = Number(it.quantite ?? it.qty ?? 0) || 0;
+              const price = Number(it.prix_unitaire ?? 0) || 0;
+              return sum + (q * price);
+            }, 0);
+            newBonData.montant_total = newTotal;
+          }
+        } else if (duplicateType === 'avoirFournisseur') {
+          newBonData.type = 'AvoirFournisseur';
+          newBonData.fournisseur_id = parseInt(selectedContactForDuplicate);
+          newBonData.items = itemsToDuplicate;
+          
+          // Recalculer le montant total si duplication partielle
+          if (!isDuplicationComplete) {
+            const newTotal = itemsToDuplicate.reduce((sum: number, it: any) => {
+              const q = Number(it.quantite ?? it.qty ?? 0) || 0;
+              const price = Number(it.prix_unitaire ?? 0) || 0;
+              return sum + (q * price);
+            }, 0);
+            newBonData.montant_total = newTotal;
+          }
+        } else if (duplicateType === 'avoirComptant') {
+          newBonData.type = 'AvoirComptant';
           newBonData.client_nom = comptantClientName;
           newBonData.items = itemsToDuplicate;
           
@@ -2079,6 +2121,39 @@ const BonsPage = () => {
                         />
                         <span>Bon Comptant</span>
                       </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="duplicateType"
+                          value="avoirClient"
+                          checked={duplicateType === 'avoirClient'}
+                          onChange={(e) => setDuplicateType(e.target.value as 'avoirClient')}
+                          className="mr-2"
+                        />
+                        <span>Avoir Client</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="duplicateType"
+                          value="avoirFournisseur"
+                          checked={duplicateType === 'avoirFournisseur'}
+                          onChange={(e) => setDuplicateType(e.target.value as 'avoirFournisseur')}
+                          className="mr-2"
+                        />
+                        <span>Avoir Fournisseur</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="duplicateType"
+                          value="avoirComptant"
+                          checked={duplicateType === 'avoirComptant'}
+                          onChange={(e) => setDuplicateType(e.target.value as 'avoirComptant')}
+                          className="mr-2"
+                        />
+                        <span>Avoir Comptant</span>
+                      </label>
                     </div>
                   </fieldset>
                 </div>
@@ -2138,7 +2213,7 @@ const BonsPage = () => {
                   </fieldset>
                 </div>
 
-                {duplicateType === 'client' && (
+                {(duplicateType === 'client' || duplicateType === 'avoirClient') && (
                   <div>
                     <label htmlFor="client-select" className="block text-sm font-medium text-gray-700 mb-2">
                       Sélectionner un client
@@ -2161,7 +2236,7 @@ const BonsPage = () => {
                   </div>
                 )}
 
-                {duplicateType === 'fournisseur' && (
+                {(duplicateType === 'fournisseur' || duplicateType === 'avoirFournisseur') && (
                   <div>
                     <label htmlFor="fournisseur-select" className="block text-sm font-medium text-gray-700 mb-2">
                       Sélectionner un fournisseur
@@ -2184,7 +2259,7 @@ const BonsPage = () => {
                   </div>
                 )}
 
-                {duplicateType === 'comptant' && (
+                {(duplicateType === 'comptant' || duplicateType === 'avoirComptant') && (
                   <div>
                     <label htmlFor="client-name-input" className="block text-sm font-medium text-gray-700 mb-2">
                       Nom du client
@@ -2218,9 +2293,9 @@ const BonsPage = () => {
                     onClick={handleDuplicateAwatef}
                     disabled={
                       !selectedBonForDuplicate ||
-                      (duplicateType === 'client' && !selectedContactForDuplicate) ||
-                      (duplicateType === 'fournisseur' && !selectedContactForDuplicate) ||
-                      (duplicateType === 'comptant' && !comptantClientName.trim()) ||
+                      ((duplicateType === 'client' || duplicateType === 'avoirClient') && !selectedContactForDuplicate) ||
+                      ((duplicateType === 'fournisseur' || duplicateType === 'avoirFournisseur') && !selectedContactForDuplicate) ||
+                      ((duplicateType === 'comptant' || duplicateType === 'avoirComptant') && !comptantClientName.trim()) ||
                       (!isDuplicationComplete && selectedArticlesForDuplicate.length === 0)
                     }
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
