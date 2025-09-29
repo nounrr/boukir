@@ -382,6 +382,66 @@ const BonsPage = () => {
     return { profit, costBase, marginPct };
   };
 
+  // Calcule le montant total d'un bon (aligné avec BonFormModal + tolérant aux données backend hétérogènes)
+  const computeMontantTotal = (bon: any): number => {
+    const items = parseItemsSafe(bon?.items);
+    if (!items.length) return Number(bon?.montant_total) || 0; // fallback direct
+    const type = bon?.type || currentTab;
+
+    const parseNum = (v: any): number => {
+      if (v == null || v === '') return 0;
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      if (typeof v === 'string') {
+        const cleaned = v.replace(/\s+/g, '').replace(',', '.');
+        const n = parseFloat(cleaned);
+        return isNaN(n) ? 0 : n;
+      }
+      return 0;
+    };
+
+    let total = 0;
+    for (const item of items) {
+      const q = parseNum(item.quantite ?? item.qty ?? item.qte);
+      if (!q) continue;
+
+      // Priorité:
+      // 1. Champ total / montant_ligne déjà calculé (fiable si présent)
+      // 2. Pour Commande: prix_achat sinon fallback prix_unitaire
+      // 3. Pour autres types: prix_unitaire sinon fallback prix_achat
+      // 4. Fallback supplémentaire: prix, prixVente
+      let lineTotal: number | null = null;
+      const rawLineTotal = item.total ?? item.montant_ligne ?? item.montantLigne;
+      if (rawLineTotal != null) {
+        const lt = parseNum(rawLineTotal);
+        if (lt > 0) lineTotal = lt; // n'utiliser que si positif
+      }
+
+      if (lineTotal == null) {
+        let unitPrice: number;
+        if (type === 'Commande') {
+          const puAchat = parseNum(item.prix_achat);
+            // certains items provenant d'anciennes versions n'ont que prix_unitaire
+          const puVenteFallback = parseNum(item.prix_unitaire);
+          unitPrice = puAchat > 0 ? puAchat : (puVenteFallback > 0 ? puVenteFallback : parseNum(item.prix));
+        } else {
+          const puVente = parseNum(item.prix_unitaire);
+          const puAchatFallback = parseNum(item.prix_achat);
+          unitPrice = puVente > 0 ? puVente : (puAchatFallback > 0 ? puAchatFallback : parseNum(item.prixVente ?? item.prix));
+        }
+        lineTotal = q * unitPrice;
+      }
+
+      total += lineTotal;
+    }
+
+    // Si total calculé = 0 mais backend fournit montant_total non nul, utiliser celui-ci
+    if (total === 0) {
+      const backendTotal = parseNum(bon?.montant_total);
+      if (backendTotal > 0) return backendTotal;
+    }
+    return total;
+  };
+
   // Calcule le poids total d'un bon = somme (quantite * kg_unitaire)
   const computeTotalPoids = (bon: any): number => {
     const items = parseItemsSafe(bon?.items);
@@ -434,13 +494,11 @@ const BonsPage = () => {
         if (clientId && clients.length > 0) {
           const client = clients.find((c: any) => String(c.id) === String(clientId));
           if (client?.telephone) return String(client.telephone).toLowerCase();
-          if (client?.tel) return String(client.tel).toLowerCase();
         }
         
         if (fournisseurId && suppliers.length > 0) {
           const supplier = suppliers.find((s: any) => String(s.id) === String(fournisseurId));
           if (supplier?.telephone) return String(supplier.telephone).toLowerCase();
-          if (supplier?.tel) return String(supplier.tel).toLowerCase();
         }
         
         return '';
@@ -453,7 +511,7 @@ const BonsPage = () => {
         (bon.statut?.toLowerCase() || '').includes(term) ||
         contactName.includes(term) ||
         phoneNumber.includes(term) ||
-        String(bon.montant_total || 0).includes(term)
+        String(computeMontantTotal(bon)).includes(term)
       );
 
       const matchesStatus = !statusFilter || statusFilter.length === 0 ? true : (bon.statut && statusFilter.includes(String(bon.statut)));
@@ -482,8 +540,8 @@ const BonsPage = () => {
           bValue = (currentTab === 'Vehicule' ? (b.vehicule_nom || '') : getContactName(b)).toLowerCase();
           break;
         case 'montant':
-          aValue = Number(a.montant_total || 0);
-          bValue = Number(b.montant_total || 0);
+          aValue = computeMontantTotal(a);
+          bValue = computeMontantTotal(b);
           break;
         default:
           return 0;
@@ -1106,7 +1164,7 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-sm">{currentTab === 'Vehicule' ? (bon.vehicule_nom || '-') : getContactName(bon)}</td>
                       <td className="px-4 py-2 text-sm">{(bon as any).adresse_livraison ?? (bon as any).adresseLivraison ?? '-'}</td>
                       <td className="px-4 py-2">
-                        <div className="text-sm font-semibold text-gray-900">{Number(bon.montant_total ?? 0).toFixed(2)} DH</div>
+                        <div className="text-sm font-semibold text-gray-900">{computeMontantTotal(bon).toFixed(2)} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
                       </td>
                       <td className="px-4 py-2 text-sm">{computeTotalPoids(bon).toFixed(2)}</td>
@@ -1601,7 +1659,7 @@ const BonsPage = () => {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Montant total:</p>
-                      <p className="text-lg font-bold text-blue-600">{Number(selectedBon.montant_total ?? 0).toFixed(2)} DH</p>
+                      <p className="text-lg font-bold text-blue-600">{computeMontantTotal(selectedBon).toFixed(2)} DH</p>
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Poids total:</p>
@@ -1657,7 +1715,7 @@ const BonsPage = () => {
                       </table>
                     </div>
                     <div className="flex justify-end text-base font-semibold mt-2">
-                      Total poids: {computeTotalPoids(selectedBon).toFixed(2)} kg | Total montant: {Number(selectedBon.montant_total ?? 0).toFixed(2)} DH
+                      Total poids: {computeTotalPoids(selectedBon).toFixed(2)} kg | Total montant: {computeMontantTotal(selectedBon).toFixed(2)} DH
                     </div>
                   </div>
 
