@@ -19,7 +19,7 @@ interface ContactPrintModalProps {
 }
 
 const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false }) => {
-  const [size, setSize] = useState<'A4' | 'A5'>('A4');
+  const size = 'A4'; // Taille fixe A4
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -80,13 +80,6 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
         <div className="flex justify-between items-center p-4 border-b bg-gray-50">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold">Aperçu - {contact?.nom_complet} ({mode === 'transactions' ? 'Transactions' : 'Produits'})</h2>
-        <div className="flex items-center gap-2">
-          <label htmlFor="contact-size-select" className="text-sm">Taille:</label>
-          <select id="contact-size-select" value={size} onChange={(e) => setSize(e.target.value as any)} className="px-2 py-1 border rounded text-sm">
-                <option value="A4">A4</option>
-                <option value="A5">A5</option>
-              </select>
-            </div>
             <div className="flex items-center gap-2">
           <label htmlFor="contact-company-select" className="text-sm">Société:</label>
           <select id="contact-company-select" value={company} onChange={(e) => setCompany(e.target.value as CompanyType)} className="px-2 py-1 border rounded text-sm">
@@ -114,7 +107,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
         </div>
         <div className="flex-1 overflow-auto bg-gray-100 p-4">
           <div className="flex justify-center">
-            <div ref={printRef} className="bg-white shadow-lg" style={{ width: size === 'A5' ? '148mm' : '210mm', minHeight: size === 'A5' ? '210mm' : '297mm' }}>
+            <div ref={printRef} className="bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
               <ContactPrintTemplate
                 contact={contact}
                 mode={mode}
