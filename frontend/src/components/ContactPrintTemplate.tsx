@@ -110,6 +110,43 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     prList = [prInitialRow, ...prList];
   }
 
+  // ================= Dynamic column presence (products mode) =================
+  const hasAnyAddress = prList.some(r => !r.syntheticInitial && r.adresse_livraison && String(r.adresse_livraison).trim() !== '');
+  const hasAnyReference = prList.some(r => !r.syntheticInitial && r.product_reference && String(r.product_reference).trim() !== '');
+
+  // Base width units (will be normalized to %). We use units instead of direct % so we can redistribute.
+  const baseUnits = {
+    date: 8,
+    bon: 8,
+    reference: hasAnyReference ? 9 : 4, // shrink if empty
+    designation: 24,
+    address: hasAnyAddress ? 18 : 4,    // shrink if empty
+    qty: 5,
+    unit: 9,
+    total: 9,
+    solde: 10,
+  };
+  const colUnits: typeof baseUnits = { ...baseUnits };
+  // If a column is shrunk (empty), reallocate freed units to designation for readability
+  if (!hasAnyAddress) colUnits.designation += 14; // 18 - 4 = 14 freed
+  if (!hasAnyReference) colUnits.designation += 5; // 9 - 4 = 5 freed
+
+  // When prices hidden, remove the price/total/solde columns from unit distribution
+  const unitSum = Object.entries(colUnits)
+    .filter(([k]) => {
+      if (mode !== 'products') return false; // only relevant in products mode
+      if (!showPrices && (k === 'unit' || k === 'total' || k === 'solde')) return false;
+      return true;
+    })
+    .reduce((s, [, v]) => s + v, 0) || 1;
+
+  const toPct = (k: keyof typeof colUnits) => {
+    if (mode !== 'products') return undefined;
+    if (!showPrices && (k === 'unit' || k === 'total' || k === 'solde')) return undefined;
+    const pct = (colUnits[k] / unitSum) * 100;
+    return pct.toFixed(2) + '%';
+  };
+
   // Totals for products print (respect current filtered list)
   const prDataRows: any[] = Array.isArray(prList) ? prList.filter((r: any) => !r?.syntheticInitial) : [];
   // Total quantity: products add, avoir subtract
@@ -132,6 +169,26 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
       className={`bg-white ${size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'} mx-auto p-4 font-sans text-sm`}
       style={{ position: 'relative' }}
     >
+      {/* Compact print styles to prevent table cutting */}
+      <style>{`
+        ${size === 'A5' ? `.print-compact { font-size:11px; } .print-compact h2 { font-size:12px; } @media print { .print-compact { font-size:9px; } }` : `.print-compact { font-size:12px; } .print-compact h2 { font-size:14px; } @media print { .print-compact { font-size:10px; } }`}
+        .print-compact table { width:100%; border-collapse:collapse; table-layout:fixed; }
+        /* default: normal weight for table cells */
+        .print-compact th, .print-compact td { border:1px solid #d1d5db; padding:3px 4px; font-size:10px; line-height:1.15; vertical-align:top; font-weight:normal; }
+        @media print { .print-compact th, .print-compact td { font-size:${size === 'A5' ? '7.5px' : '8.5px'}; padding:2px 3px; } }
+  .print-compact .cell-num { font-family:"Courier New",monospace; text-align:right; white-space:nowrap; font-weight:700; }
+        .print-compact .col-bon { font-weight:normal; }
+        .print-compact .cell-wrap { white-space:normal; word-break:break-word; hyphens:auto; }
+        .print-compact .row-alt:nth-child(odd) { background:#f9fafb; }
+        @media print { .print-compact .row-alt:nth-child(odd) { background:#f3f4f6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+        /* headers remain bold */
+        .print-compact .header-row th, .print-compact .header-row td { background:#f97316; color:#fff; font-weight:700; }
+        @media print { .print-compact .header-row { background:#f97316 !important; color:#fff !important; } }
+        .print-compact .col-empty { opacity:0.6; }
+        .print-compact .truncate-if-empty { max-width:38px; overflow:hidden; text-overflow:ellipsis; }
+  /* Désignation normal weight (only numeric columns are bold) */
+  .print-compact .fit-designation { width:fit-content !important; max-width:320px; min-width:60px; font-weight:normal; }
+      `}</style>
       {/* Header */}
       <CompanyHeader companyType={companyType} />
 
@@ -154,137 +211,103 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
 
       {/* Body */}
       {mode === 'transactions' ? (
-        <div>
-          <h2 className="text-lg font-bold mb-3">Historique des Transactions</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-gray-300">
-              <thead>
-                <tr className="bg-orange-500 text-white">
-                  <th className="border border-gray-300 px-3 py-2 text-left">Date</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Numéro</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Type</th>
-                  {showPrices && (
-                    <>
-                      <th className="border border-gray-300 px-3 py-2 text-right">Montant (DH)</th>
-                      <th className="border border-gray-300 px-3 py-2 text-right">Solde Cumulé</th>
-                    </>
-                  )}
-                  {!showPrices && (
-                    <th className="border border-gray-300 px-3 py-2 text-left">Statut/Mode</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {txList.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-4 text-center text-gray-500" colSpan={showPrices ? 5 : 4}>Aucune donnée</td>
+        <div className="print-compact">
+          <h2 className="font-semibold mb-2">Historique des Transactions</h2>
+          <table>
+            <thead>
+              <tr className="header-row">
+                <th>Date</th>
+                <th>Numéro</th>
+                <th>Type</th>
+                {showPrices ? <th className="cell-num">Montant (DH)</th> : <th>Statut/Mode</th>}
+                {showPrices && <th className="cell-num">Solde Cumulé</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {txList.length === 0 ? (
+                <tr><td colSpan={showPrices ? 5 : 4} className="text-center text-gray-500 py-3">Aucune donnée</td></tr>
+              ) : txList.map(t => {
+                const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement';
+                const isAvoir = String(t.type || '').toLowerCase().includes('avoir');
+                const reduceBalance = isPayment || isAvoir;
+                return (
+                  <tr key={t.id} className="row-alt">
+                    <td>{t.syntheticInitial ? '-' : fmtDateTime(t.dateISO || t.date)}</td>
+                    <td>{t.numero}</td>
+                    <td>{t.type}</td>
+                    {showPrices ? (
+                      <>
+                        <td className={`cell-num ${t.syntheticInitial ? 'text-gray-500' : reduceBalance ? 'text-green-700' : 'text-blue-700'}`}>{t.syntheticInitial ? '—' : (reduceBalance ? '-' : '+')}{t.syntheticInitial ? '' : fmt(t.montant)}</td>
+                        <td className="cell-num">{fmt(t.soldeCumulatif)}</td>
+                      </>
+                    ) : <td>{t.syntheticInitial ? '-' : (t.statut || (isPayment ? 'Paiement' : '-'))}</td>}
                   </tr>
-                ) : (
-                  txList.map((t) => {
-                    const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement';
-                    const isAvoir = String(t.type || '').toLowerCase().includes('avoir');
-                    // Unified: paiements/avoirs reduce balance, others increase
-                    const reduceBalance = (isPayment || isAvoir);
-                    return (
-                      <tr key={t.id} className="odd:bg-gray-50">
-                        <td className="border border-gray-300 px-3 py-2">{t.syntheticInitial ? '-' : fmtDateTime(t.dateISO || t.date)}</td>
-                        <td className="border border-gray-300 px-3 py-2">{t.numero}</td>
-                        <td className="border border-gray-300 px-3 py-2">{t.type}</td>
-                        {showPrices ? (
-                          <>
-                            <td className={`border border-gray-300 px-3 py-2 text-right ${t.syntheticInitial ? 'text-gray-600' : reduceBalance ? 'text-green-700' : 'text-blue-700'} font-medium`}>
-                              {t.syntheticInitial ? '—' : (reduceBalance ? '-' : '+')}{t.syntheticInitial ? '' : fmt(t.montant)}
-                            </td>
-                            <td className="border border-gray-300 px-3 py-2 text-right text-gray-800 font-semibold">{fmt(t.soldeCumulatif)}</td>
-                          </>
-                        ) : (
-                          <td className="border border-gray-300 px-3 py-2">{t.syntheticInitial ? '-' : (t.statut || (isPayment ? 'Paiement' : '-'))}</td>
-                        )}
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       ) : (
-        <div>
-          <h2 className="text-lg font-bold mb-3">Historique Détaillé des Produits</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-gray-300">
-              <thead>
-                <tr className="bg-orange-500 text-white">
-                  <th className="border border-gray-300 px-3 py-2 text-left">Date</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Bon N°</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Référence</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Désignation</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">Adresse Livraison</th>
-                  <th className="border border-gray-300 px-3 py-2 text-right">Qté</th>
-                  {showPrices && (
-                    <>
-                      <th className="border border-gray-300 px-3 py-2 text-right">{isFournisseur ? 'Prix Achat' : 'Prix Unit.'}</th>
-                      <th className="border border-gray-300 px-3 py-2 text-right">Total</th>
-                      <th className="border border-gray-300 px-3 py-2 text-right">Solde Cumulé</th>
-                    </>
-                  )}
-                  {!showPrices && (
-                    <th className="border border-gray-300 px-3 py-2 text-left">Statut</th>
-                  )}
+        <div className="print-compact">
+          <h2 className="font-semibold mb-2">Historique Détaillé des Produits</h2>
+          <table>
+            <thead>
+              <tr className="header-row">
+                <th style={{width: toPct('date')}}>Date</th>
+                <th style={{width: toPct('bon')}} className="col-bon">Bon N°</th>
+                <th style={{width: toPct('reference')}} className={!hasAnyReference ? 'col-empty' : ''}>{hasAnyReference ? 'Référence' : 'Réf.'}</th>
+                <th style={{width:'fit-content', maxWidth:'320px', minWidth:'60px'}} className="fit-designation">Désignation</th>
+                <th style={{width: toPct('address')}} className={!hasAnyAddress ? 'col-empty' : ''}>{hasAnyAddress ? 'Adresse Livraison' : 'Adr.'}</th>
+                <th style={{width: toPct('qty')}} className="cell-num">Qté</th>
+                {showPrices ? <th style={{width: toPct('unit')}} className="cell-num">{isFournisseur ? 'Prix Achat' : 'Prix Unit.'}</th> : <th style={{width: toPct('unit')}}>Statut</th>}
+                {showPrices && <th style={{width: toPct('total')}} className="cell-num">Total</th>}
+                {showPrices && <th style={{width: toPct('solde')}} className="cell-num">Solde Cumulé</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {prList.length === 0 ? (
+                <tr><td colSpan={showPrices ? 9 : 7} className="text-center text-gray-500 py-3">Aucune donnée</td></tr>
+              ) : prList.map(it => {
+                const type = String(it.type || '').toLowerCase();
+                const isPaymentOrAvoir = type === 'paiement' || type === 'avoir';
+                const totalVal = Number(it.total) || 0;
+                const reduceBalance = isPaymentOrAvoir;
+                const displayTotal = it.syntheticInitial ? '' : (reduceBalance ? -totalVal : totalVal);
+                return (
+                  <tr key={it.id} className="row-alt">
+                    <td>{it.syntheticInitial ? '-' : fmtDateTime(it.bon_date_iso || it.date || it.bon_date)}</td>
+                    <td className="col-bon">{it.bon_numero}</td>
+                    <td className={`cell-wrap ${!hasAnyReference ? 'truncate-if-empty' : ''}`}>{it.syntheticInitial ? '—' : (it.product_reference || (!hasAnyReference ? '' : '—'))}</td>
+                    <td className="cell-wrap fit-designation">{it.syntheticInitial ? 'Solde initial' : it.product_designation}</td>
+                    <td className={`cell-wrap ${!hasAnyAddress ? 'truncate-if-empty' : ''}`}>{it.syntheticInitial ? '-' : (it.adresse_livraison || (!hasAnyAddress ? '' : '-'))}</td>
+                    <td className="cell-num">{it.syntheticInitial ? '—' : it.quantite}</td>
+                    {showPrices ? (
+                      <>
+                        <td className="cell-num">{it.syntheticInitial ? '—' : fmt(isFournisseur ? (it.prix_achat ?? it.prix_unitaire) : it.prix_unitaire)}</td>
+                        <td className={`cell-num ${it.syntheticInitial ? 'text-gray-500' : reduceBalance ? 'text-green-700' : ''}`}>{it.syntheticInitial ? '—' : fmt(displayTotal)}</td>
+                        <td className="cell-num">{fmt(it.soldeCumulatif)}</td>
+                      </>
+                    ) : <td>{it.syntheticInitial ? '-' : (it.bon_statut || '-')}</td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+            {showPrices && (
+              <tfoot>
+                <tr>
+                  <td>—</td>
+                  <td>—</td>
+                  <td>{hasAnyReference ? '—' : ''}</td>
+                  <td className="cell-wrap">TOTAL</td>
+                  <td>{hasAnyAddress ? '—' : ''}</td>
+                  <td className="cell-num">{totalQtyProducts}</td>
+                  <td className="cell-num">—</td>
+                  <td className="cell-num">{fmt(totalAmountProducts)}</td>
+                  <td className="cell-num">{fmt(finalSoldeProducts)}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {prList.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-4 text-center text-gray-500" colSpan={showPrices ? 9 : 7}>Aucune donnée</td>
-                  </tr>
-                ) : (
-                  prList.map((it: any) => {
-                    const type = String(it.type || '').toLowerCase();
-                    const isPaymentOrAvoir = type === 'paiement' || type === 'avoir';
-                    const totalVal = Number(it.total) || 0;
-                    // Unified: paiements/avoirs -, produits +
-                    const reduceBalance = isPaymentOrAvoir;
-                    const displayTotal = it.syntheticInitial ? '' : (reduceBalance ? -totalVal : totalVal);
-                    return (
-                      <tr key={it.id} className="odd:bg-gray-50">
-                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : fmtDateTime(it.bon_date_iso || it.date || it.bon_date)}</td>
-                        <td className="border border-gray-300 px-3 py-2">{it.bon_numero}</td>
-                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '—' : it.product_reference}</td>
-                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? 'Solde initial' : it.product_designation}</td>
-                        <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : (it.adresse_livraison || '-')}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : it.quantite}</td>
-                        {showPrices ? (
-                          <>
-                            <td className="border border-gray-300 px-3 py-2 text-right">{it.syntheticInitial ? '—' : fmt(isFournisseur ? (it.prix_achat ?? it.prix_unitaire) : it.prix_unitaire)}</td>
-                            <td className={`border border-gray-300 px-3 py-2 text-right font-medium ${it.syntheticInitial ? 'text-gray-600' : reduceBalance ? 'text-green-700' : ''}`}>{it.syntheticInitial ? '—' : fmt(displayTotal)}</td>
-                            <td className="border border-gray-300 px-3 py-2 text-right text-gray-800 font-semibold">{fmt(it.soldeCumulatif)}</td>
-                          </>
-                        ) : (
-                          <td className="border border-gray-300 px-3 py-2">{it.syntheticInitial ? '-' : (it.bon_statut || '-')}</td>
-                        )}
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-              {showPrices && (
-                <tfoot>
-                  <tr className="bg-gray-100 font-semibold">
-                    <td className="border border-gray-300 px-3 py-2">—</td>
-                    <td className="border border-gray-300 px-3 py-2">—</td>
-                    <td className="border border-gray-300 px-3 py-2">—</td>
-                    <td className="border border-gray-300 px-3 py-2 text-left">TOTAL</td>
-                    <td className="border border-gray-300 px-3 py-2">—</td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">{totalQtyProducts}</td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">—</td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">{fmt(totalAmountProducts)}</td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">{fmt(finalSoldeProducts)}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
+              </tfoot>
+            )}
+          </table>
         </div>
       )}
     </div>

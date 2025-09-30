@@ -717,14 +717,14 @@ const ContactsPage: React.FC = () => {
     const ice = contact.ice || 'N/A';
     const solde = Number(contact.solde || 0).toFixed(2) + ' DH';
     return `
-      <table style="width:100%;border-collapse:collapse;margin:12px 0;">
+      <table style="width:100%;border-collapse:collapse;margin:8px 0;">
         <tr>
-          <td style="border:1px solid #ddd;padding:8px;"><strong>Téléphone:</strong> ${tel}</td>
-          <td style="border:1px solid #ddd;padding:8px;"><strong>Email:</strong> ${email}</td>
+          <td style="border:1px solid #ccc;padding:4px;font-size:10px;width:50%;"><strong>Téléphone:</strong> ${tel}</td>
+          <td style="border:1px solid #ccc;padding:4px;font-size:10px;width:50%;word-wrap:break-word;"><strong>Email:</strong> ${email}</td>
         </tr>
         <tr>
-          <td style="border:1px solid #ddd;padding:8px;"><strong>ICE:</strong> ${ice}</td>
-          <td style="border:1px solid #ddd;padding:8px;"><strong>Solde initial:</strong> ${solde}</td>
+          <td style="border:1px solid #ccc;padding:4px;font-size:10px;"><strong>ICE:</strong> ${ice}</td>
+          <td style="border:1px solid #ccc;padding:4px;font-size:10px;"><strong>Solde initial:</strong> ${solde}</td>
         </tr>
       </table>
     `;
@@ -1023,23 +1023,117 @@ const ContactsPage: React.FC = () => {
         <head>
           <title>Rapport Détaillé - ${selectedContact.nom_complet}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
-            h1, h2, h3 { color: #333; margin-bottom: 10px; }
-            h1 { font-size: 20px; }
-            h2 { font-size: 16px; }
-            h3 { font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
-            th { background-color: #f5f5f5; font-weight: bold; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-            .section { margin-bottom: 25px; page-break-inside: avoid; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 15px 0; }
-            .info-box { border: 1px solid #ddd; padding: 2px; background: #f9f9f9; }
-            .numeric { text-align: right; }
+            body { font-family: Arial, sans-serif; margin: 10px; font-size: 9px; }
+            h1, h2, h3 { color: #333; margin-bottom: 6px; }
+            h1 { font-size: 16px; }
+            h2 { font-size: 12px; }
+            h3 { font-size: 11px; }
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin: 8px 0; 
+              table-layout: fixed;
+              max-width: 100%;
+              overflow: hidden;
+            }
+            th, td { 
+              border: 1px solid #ccc; 
+              padding: 1px 2px; 
+              text-align: left; 
+              font-size: 7px; 
+              word-wrap: break-word;
+              overflow-wrap: break-word;
+              line-height: 1.0;
+              max-width: 100%;
+              box-sizing: border-box;
+            }
+            th { background-color: #f0f0f0; font-weight: bold; font-size: 8px; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+            .section { margin-bottom: 15px; page-break-inside: avoid; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 10px 0; }
+            .info-box { border: 1px solid #ddd; padding: 4px; background: #f9f9f9; }
+            .numeric { 
+              text-align: right; 
+              font-family: 'Courier New', monospace; 
+              font-size: 6px; 
+              white-space: nowrap; 
+              padding: 1px 1px;
+            }
             .total-row { font-weight: bold; background-color: #e8f4f8; }
+            .text-wrap { 
+              white-space: normal; 
+              word-break: break-word;
+              hyphens: auto;
+              line-height: 1.0;
+            }
+            .designation-col { 
+              width: 20%; 
+              white-space: normal;
+              word-wrap: break-word;
+              font-size: 6px;
+              line-height: 1.0;
+              hyphens: auto;
+            }
+            .address-col { 
+              width: 12%; 
+              white-space: normal;
+              word-wrap: break-word;
+              font-size: 6px;
+              line-height: 1.0;
+            }
+            .numeric-col { 
+              width: 8%; 
+              min-width: 35px;
+              text-align: right;
+              font-family: 'Courier New', monospace;
+              font-size: 6px;
+              padding: 1px 1px;
+              white-space: nowrap;
+            }
+            .date-col { width: 8%; font-size: 6px; }
+            .ref-col { width: 8%; font-size: 6px; }
+            .type-col { width: 6%; font-size: 6px; }
+            .status-col { width: 6%; font-size: 6px; }
             @media print {
-              body { margin: 10mm; }
+              @page { 
+                margin: 2mm; 
+                size: A4 landscape; 
+              }
+              body { 
+                margin: 1mm; 
+                font-size: 6px;
+                transform: scale(0.95);
+                transform-origin: top left;
+              }
               .section { page-break-inside: avoid; }
+              table { 
+                page-break-inside: auto; 
+                font-size: 5px;
+                width: 100%;
+                table-layout: fixed;
+              }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+              th, td { 
+                font-size: 5px; 
+                padding: 0.5px 1px; 
+                line-height: 0.9;
+                border: 0.5px solid #999;
+              }
+              .numeric, .numeric-col { 
+                font-size: 5px; 
+                font-family: 'Courier New', monospace;
+                white-space: nowrap;
+              }
+              .designation-col, .address-col { 
+                font-size: 5px;
+                line-height: 0.9;
+                word-break: break-all;
+              }
+              h1 { font-size: 12px; margin: 2px 0; }
+              h2 { font-size: 10px; margin: 2px 0; }
+              h3 { font-size: 9px; margin: 2px 0; }
+              .info-grid { gap: 5px; margin: 5px 0; }
+              .info-box { padding: 2px; font-size: 6px; }
             }
           </style>
         </head>
@@ -1057,29 +1151,29 @@ const ContactsPage: React.FC = () => {
           <div class="section">
             <h3>📊 STATISTIQUES PAR PRODUIT (${productStatsArray.length} produits)</h3>
             ${(dateFrom || dateTo) ? `<p style="margin:5px 0;font-size:11px;color:#666;font-style:italic;">⚠️ Statistiques filtrées par période sélectionnée</p>` : ''}
-            <table>
+            <table style="table-layout: fixed; width: 100%;">
               <tr>
-                <th>Référence</th>
-                <th>Désignation</th>
-                <th class="numeric">Qté Totale</th>
-                <th class="numeric">Montant Total</th>
-                <th class="numeric">Prix Moyen</th>
-                <th class="numeric">Nb Commandes</th>
+                <th style="width: 15%;">Référence</th>
+                <th style="width: 30%;">Désignation</th>
+                <th style="width: 12%;">Qté Totale</th>
+                <th style="width: 15%;">Montant Total</th>
+                <th style="width: 12%;">Prix Moyen</th>
+                <th style="width: 10%;">Nb Commandes</th>
               </tr>
               ${productStatsArray.map((stat: any) =>
                 `<tr>
-                  <td>${stat.reference}</td>
-                  <td>${stat.designation}</td>
-                  <td class="numeric">${stat.quantite_totale}</td>
-                  <td class="numeric">${stat.montant_total.toFixed(2)} DH</td>
-                  <td class="numeric">${stat.prix_moyen.toFixed(2)} DH</td>
-                  <td class="numeric">${stat.nombre_commandes}</td>
+                  <td style="font-size: 6px; word-break: break-all;">${stat.reference}</td>
+                  <td style="font-size: 6px; line-height: 0.9; word-break: break-word; hyphens: auto;">${stat.designation}</td>
+                  <td class="numeric-col">${stat.quantite_totale}</td>
+                  <td class="numeric-col">${stat.montant_total.toFixed(2)} DH</td>
+                  <td class="numeric-col">${stat.prix_moyen.toFixed(2)} DH</td>
+                  <td class="numeric-col">${stat.nombre_commandes}</td>
                 </tr>`
               ).join('')}
               <tr class="total-row">
-                <td colspan="2"><strong>TOTAL</strong></td>
-                <td class="numeric"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.quantite_totale, 0)}</strong></td>
-                <td class="numeric"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.montant_total, 0).toFixed(2)} DH</strong></td>
+                <td colspan="2" class="text-wrap"><strong>TOTAL</strong></td>
+                <td class="numeric-col"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.quantite_totale, 0)}</strong></td>
+                <td class="numeric-col"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.montant_total, 0).toFixed(2)} DH</strong></td>
                 <td colspan="2"></td>
               </tr>
             </table>
@@ -1087,29 +1181,29 @@ const ContactsPage: React.FC = () => {
 
           <div class="section">
             <h3>📋 DÉTAIL DES TRANSACTIONS (${filteredBons.length} documents)</h3>
-            <table>
+            <table style="table-layout: fixed; width: 100%;">
               <tr>
-                <th>N° Bon</th>
-                <th>Type</th>
-                <th>Date</th>
-                <th class="numeric">Montant</th>
-                <th>Statut</th>
-                <th class="numeric">Articles</th>
+                <th style="width: 15%;">N° Bon</th>
+                <th style="width: 12%;">Type</th>
+                <th style="width: 18%;">Date</th>
+                <th style="width: 15%;">Montant</th>
+                <th style="width: 12%;">Statut</th>
+                <th style="width: 10%;">Articles</th>
               </tr>
               ${filteredBons.map(bon => {
                 const bonItems = Array.isArray(bon.items) ? bon.items : [];
                 return `<tr>
-                  <td>${bon.numero}</td>
-                  <td>${bon.type}</td>
-                  <td>${formatDateTimeWithHour(bon.date_creation)}</td>
-                  <td class="numeric">${Number(bon.montant_total||0).toFixed(2)} DH</td>
-                  <td>${bon.statut}</td>
-                  <td class="numeric">${bonItems.length}</td>
+                  <td style="font-size: 6px; word-break: break-all;">${bon.numero}</td>
+                  <td style="font-size: 6px;">${bon.type}</td>
+                  <td style="font-size: 6px;">${formatDateTimeWithHour(bon.date_creation)}</td>
+                  <td class="numeric-col">${Number(bon.montant_total||0).toFixed(2)} DH</td>
+                  <td style="font-size: 6px;">${bon.statut}</td>
+                  <td class="numeric-col">${bonItems.length}</td>
                 </tr>`;
               }).join('')}
               <tr class="total-row">
-                <td colspan="3"><strong>TOTAL</strong></td>
-                <td class="numeric"><strong>${filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</strong></td>
+                <td colspan="3" class="text-wrap"><strong>TOTAL</strong></td>
+                <td class="numeric-col"><strong>${filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</strong></td>
                 <td colspan="2"></td>
               </tr>
             </table>
@@ -1118,37 +1212,37 @@ const ContactsPage: React.FC = () => {
           <div class="section">
             <h3>🛍️ DÉTAIL DES ACHATS PAR PRODUIT (${filteredProductsForDisplay.length} lignes)</h3>
             ${(dateFrom || dateTo) ? `<p style="margin:5px 0;font-size:11px;color:#666;font-style:italic;">⚠️ Données filtrées par période - Soldes cumulatifs calculés correctement en tenant compte des transactions antérieures</p>` : ''}
-            <table>
+            <table style="table-layout: fixed; width: 100%;">
               <tr>
-                <th>Date</th>
-                <th>N° Bon</th>
-                <th>Type</th>
-                <th>Référence</th>
-                <th>Produit</th>
-                <th class="numeric">Qté</th>
-                <th class="numeric">Prix Unit.</th>
-                <th class="numeric">Total</th>
-                <th class="numeric">Solde Cumulé</th>
+                <th style="width: 7%;">Date</th>
+                <th style="width: 7%;">N° Bon</th>
+                <th style="width: 6%;">Type</th>
+                <th style="width: 8%;">Référence</th>
+                <th style="width: 25%;">Produit</th>
+                <th style="width: 6%;">Qté</th>
+                <th style="width: 8%;">Pr U</th>
+                <th style="width: 10%;">Total</th>
+                <th style="width: 12%;">Solde Cumulé</th>
               </tr>
               ${filteredProductsForDisplay.map(item =>
                 `<tr>
-                  <td>${item.bon_date}</td>
-                  <td>${item.bon_numero}</td>
-                  <td>${item.bon_type}</td>
-                  <td>${item.product_reference}</td>
-                  <td>${item.product_designation}</td>
-                  <td class="numeric">${item.quantite || 0}</td>
-                  <td class="numeric">${(item.prix_unitaire || 0).toFixed(2)} DH</td>
-                  <td class="numeric">${(item.total || 0).toFixed(2)} DH</td>
-                  <td class="numeric"><strong>${(item.soldeCumulatif || 0).toFixed(2)} DH</strong></td>
+                  <td style="font-size: 6px;">${item.bon_date}</td>
+                  <td style="font-size: 6px;">${item.bon_numero}</td>
+                  <td style="font-size: 6px;">${item.bon_type}</td>
+                  <td style="font-size: 6px; word-break: break-all;">${item.product_reference}</td>
+                  <td style="font-size: 6px; line-height: 0.9; word-break: break-word; hyphens: auto;">${item.product_designation}</td>
+                  <td class="numeric-col">${item.quantite || 0}</td>
+                  <td class="numeric-col">${(item.prix_unitaire || 0).toFixed(2)} DH</td>
+                  <td class="numeric-col">${(item.total || 0).toFixed(2)} DH</td>
+                  <td class="numeric-col"><strong>${(item.soldeCumulatif || 0).toFixed(2)} DH</strong></td>
                 </tr>`
               ).join('')}
               <tr class="total-row">
-                <td colspan="5"><strong>TOTAL (période affichée)</strong></td>
-                <td class="numeric"><strong>${filteredProductsForDisplay.reduce((s, p) => s + (p.quantite || 0), 0)}</strong></td>
+                <td colspan="5" class="text-wrap"><strong>TOTAL (période affichée)</strong></td>
+                <td class="numeric-col"><strong>${filteredProductsForDisplay.reduce((s, p) => s + (p.quantite || 0), 0)}</strong></td>
                 <td></td>
-                <td class="numeric"><strong>${filteredProductsForDisplay.reduce((s, p) => s + (p.total || 0), 0).toFixed(2)} DH</strong></td>
-                <td class="numeric"><strong>${filteredProductsForDisplay.length > 0 ? (filteredProductsForDisplay[filteredProductsForDisplay.length - 1].soldeCumulatif || 0).toFixed(2) : '0.00'} DH</strong></td>
+                <td class="numeric-col"><strong>${filteredProductsForDisplay.reduce((s, p) => s + (p.total || 0), 0).toFixed(2)} DH</strong></td>
+                <td class="numeric-col"><strong>${filteredProductsForDisplay.length > 0 ? (filteredProductsForDisplay[filteredProductsForDisplay.length - 1].soldeCumulatif || 0).toFixed(2) : '0.00'} DH</strong></td>
               </tr>
             </table>
           </div>
@@ -1238,14 +1332,14 @@ const ContactsPage: React.FC = () => {
         <head>
           <title>Fiche ${contact.nom_complet}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
-            h1, h2, h3 { color: #333; margin-bottom: 10px; }
-            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
+            body { font-family: Arial, sans-serif; margin: 15px; font-size: 9px; }
+            h1, h2, h3 { color: #333; margin-bottom: 6px; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; table-layout: fixed; }
+            th, td { border: 1px solid #ddd; padding: 2px; text-align: left; font-size: 8px; word-wrap: break-word; overflow-wrap: break-word; line-height: 1.1; }
             th { background-color: #f5f5f5; font-weight: bold; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 15px 0; }
-            .info-box { border: 1px solid #ddd; padding: 10px; background: #f9f9f9; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 10px 0; }
+            .info-box { border: 1px solid #ddd; padding: 6px; background: #f9f9f9; }
             .numeric { text-align: right; }
             .total-row { font-weight: bold; background-color: #e8f4f8; }
           </style>
@@ -1338,20 +1432,27 @@ const ContactsPage: React.FC = () => {
           <title>Rapport Global - ${typeLabel}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
-            h1, h2, h3 { color: #333; margin-bottom: 10px; }
-            h1 { font-size: 20px; }
-            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
+            h1, h2, h3 { color: #333; margin-bottom: 6px; }
+            h1 { font-size: 16px; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; table-layout: fixed; }
+            th, td { border: 1px solid #ddd; padding: 2px; text-align: left; font-size: 8px; word-wrap: break-word; overflow-wrap: break-word; line-height: 1.1; }
             th { background-color: #f5f5f5; font-weight: bold; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
             .numeric { text-align: right; }
             .total-row { font-weight: bold; background-color: #e8f4f8; }
-            .info-box { border: 1px solid #ddd; padding: 15px; background: #f9f9f9; margin: 15px 0; }
+            .info-box { border: 1px solid #ddd; padding: 8px; background: #f9f9f9; margin: 10px 0; }
             .positive { color: green; }
             .negative { color: red; }
             @media print {
-              body { margin: 10mm; }
+              body { margin: 3mm; font-size: 8px; }
               .page-break { page-break-before: always; }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+              th, td { font-size: 7px; padding: 1px; }
+              .numeric { font-size: 6px; }
+              h1 { font-size: 14px; }
+              h2 { font-size: 11px; }
+              h3 { font-size: 10px; }
             }
           </style>
         </head>
@@ -2687,7 +2788,7 @@ const ContactsPage: React.FC = () => {
                             </>
                           )}
                           <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Quantité</th>
-                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Prix Unit.'}</th>
+                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Pr U'}</th>
                           <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>
                           <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Bénéfice</th>
                           <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Statut</th>
