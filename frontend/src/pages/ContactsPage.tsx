@@ -525,14 +525,41 @@ const ContactsPage: React.FC = () => {
     });
   }, [filteredProductHistory, productSearch]);
 
+  // Historique complet des produits (sans filtre de date) - utilisé pour les calculs
+  const allProductHistory = useMemo(() => {
+    if (!selectedContact) return [] as any[];
+    const initialSolde = Number(selectedContact?.solde ?? 0);
+    const ouverture = selectedContact.date_ouverture || selectedContact.created_at || null;
+    
+    const initRow = {
+      id: 'initial-solde-produit-all',
+      bon_numero: '—',
+      bon_type: 'Solde initial',
+      bon_date: '',
+      bon_statut: '-',
+      product_reference: '—',
+      product_designation: 'Solde initial',
+      quantite: 0,
+      prix_unitaire: 0,
+      total: 0,
+      type: 'solde',
+      created_at: '',
+      soldeCumulatif: initialSolde,
+      syntheticInitial: true,
+    } as any;
+    
+    // Toujours inclure toutes les transactions pour les calculs complets
+    return [initRow, ...filteredProductHistory];
+  }, [filteredProductHistory, selectedContact]);
+
   // Solde net final (solde cumulé après la dernière ligne) pour le bloc récapitulatif
   const finalSoldeNet = useMemo(() => {
     if (!selectedContact) return 0;
-    const arr = searchedProductHistory;
+    const arr = allProductHistory; // Utiliser l'historique complet
     if (!arr || arr.length === 0) return Number(selectedContact.solde ?? 0);
     const last = arr[arr.length - 1];
     return Number(last.soldeCumulatif ?? selectedContact.solde ?? 0);
-  }, [searchedProductHistory, selectedContact]);
+  }, [allProductHistory, selectedContact]);
 
  
   const displayedProductHistory = useMemo(() => {
@@ -552,8 +579,89 @@ const ContactsPage: React.FC = () => {
         showSoldeInitial = false;
       }
     }
+    
+    // Créer un map des soldes cumulés à partir de l'historique complet
+    const soldesMap = new Map<string, number>();
+    allProductHistory.forEach((item) => {
+      soldesMap.set(item.id, item.soldeCumulatif);
+    });
+    
+    // Filtrer les transactions par date mais garder les soldes calculés sur l'historique complet
+    const filteredTransactions = searchedProductHistory.map(item => ({
+      ...item,
+      soldeCumulatif: soldesMap.get(item.id) || item.soldeCumulatif
+    }));
+    
+    // Calculer le solde au début de la période filtrée
+    let soldeDebutPeriode = initialSolde;
+    if (dateFrom && !showSoldeInitial) {
+      // Trouver le solde juste avant la période filtrée
+      const beforePeriod = allProductHistory.filter(item => {
+        if (item.syntheticInitial) return false;
+        const itemDate = item.bon_date_iso || item.bon_date;
+        if (!itemDate) return false;
+        return itemDate < dateFrom;
+      });
+      if (beforePeriod.length > 0) {
+        const lastBeforePeriod = beforePeriod[beforePeriod.length - 1];
+        soldeDebutPeriode = lastBeforePeriod.soldeCumulatif || initialSolde;
+      }
+    }
+    
     const initRow = {
       id: 'initial-solde-produit',
+      bon_numero: '—',
+      bon_type: 'Solde initial',
+      bon_date: '',
+      bon_statut: '-',
+      product_reference: '—',
+      product_designation: showSoldeInitial ? 'Solde initial' : 'Solde au début de période',
+      quantite: 0,
+      prix_unitaire: 0,
+      total: 0,
+      type: 'solde',
+      created_at: '',
+      soldeCumulatif: showSoldeInitial ? initialSolde : soldeDebutPeriode,
+      syntheticInitial: true,
+    } as any;
+    
+    // Pour l'affichage : montrer ou cacher le solde initial selon le filtre
+    if (showSoldeInitial) {
+      return [initRow, ...filteredTransactions];
+    } else {
+      // Cacher le solde initial mais ajuster le premier élément pour montrer le bon solde de début
+      if (filteredTransactions.length > 0) {
+        const adjustedTransactions = [...filteredTransactions];
+        // Le premier élément affiché doit montrer le solde de début de période
+        adjustedTransactions[0] = {
+          ...adjustedTransactions[0],
+          // Garder le vrai solde cumulé calculé depuis le début
+        };
+        return adjustedTransactions;
+      }
+      return filteredTransactions;
+    }
+  }, [searchedProductHistory, selectedContact, dateFrom, allProductHistory]);
+
+  // Version complète pour les calculs (toujours avec solde initial pour les calculs corrects)
+  const displayedProductHistoryWithInitial = useMemo(() => {
+    if (!selectedContact) return [] as any[];
+    const initialSolde = Number(selectedContact?.solde ?? 0);
+    
+    // Créer un map des soldes cumulés à partir de l'historique complet
+    const soldesMap = new Map<string, number>();
+    allProductHistory.forEach((item) => {
+      soldesMap.set(item.id, item.soldeCumulatif);
+    });
+    
+    // Filtrer les transactions par date mais garder les soldes calculés sur l'historique complet
+    const filteredTransactions = searchedProductHistory.map(item => ({
+      ...item,
+      soldeCumulatif: soldesMap.get(item.id) || item.soldeCumulatif
+    }));
+    
+    const initRow = {
+      id: 'initial-solde-produit-calc',
       bon_numero: '—',
       bon_type: 'Solde initial',
       bon_date: '',
@@ -568,8 +676,10 @@ const ContactsPage: React.FC = () => {
       soldeCumulatif: initialSolde,
       syntheticInitial: true,
     } as any;
-    return showSoldeInitial ? [initRow, ...searchedProductHistory] : [...searchedProductHistory];
-  }, [searchedProductHistory, selectedContact, dateFrom]);
+    
+    // Toujours inclure le solde initial pour les calculs corrects
+    return [initRow, ...filteredTransactions];
+  }, [searchedProductHistory, selectedContact, allProductHistory]);
 
   // Small helper to produce the CompanyHeader HTML used in bons prints
   const getCompanyHeaderHTML = (companyType: 'DIAMOND' | 'MPC' = 'DIAMOND') => {
@@ -904,20 +1014,7 @@ const ContactsPage: React.FC = () => {
     
     // Utiliser le solde final de la liste complète (non filtrée par dates)
     // qui tient compte de TOUTES les transactions 
-    const finalCalculatedSolde = (() => {
-      // Utiliser le dernier solde cumulatif de l'historique complet
-      if (productHistory && productHistory.length > 0) {
-        const lastItem = productHistory[productHistory.length - 1];
-        return Number(lastItem.soldeCumulatif || 0);
-      }
-      // Fallback si pas d'historique
-      const initialSolde = Number(selectedContact?.solde ?? 0);
-      const isClient = selectedContact.type === 'Client';
-      const sales = isClient ? (salesByClient.get(selectedContact.id) || 0) : 0;
-      const purchases = !isClient ? (purchasesByFournisseur.get(selectedContact.id) || 0) : 0;
-      const paid = paymentsByContact.get(selectedContact.id) || 0;
-      return isClient ? (initialSolde + sales - paid) : (initialSolde + purchases - paid);
-    })();
+    const finalCalculatedSolde = finalSoldeNet; // Utiliser le solde calculé correctement
 
     const productStatsArray = Object.values(productStats).sort((a: any, b: any) => b.montant_total - a.montant_total);
 
@@ -1373,31 +1470,16 @@ const ContactsPage: React.FC = () => {
 
   // Open print modal for products
   const openPrintProducts = () => {
-  // detailsTab usage removed
-    const baseRows = displayedProductHistory.filter((it: any) => !it.syntheticInitial);
-    const rows = (selectedProductIds && selectedProductIds.size > 0)
-      ? baseRows.filter((it: any) => selectedProductIds.has(String(it.id)))
-      : baseRows;
-
-    const hasSelection = selectedProductIds && selectedProductIds.size > 0;
-    const startingSolde = hasSelection ? 0 : Number(selectedContact?.solde ?? 0);
-    let soldeCumulatif = startingSolde;
-    const recomputed = rows.map((it: any) => {
-      const total = Number(it.total) || 0;
-      const type = String(it.type || '').toLowerCase();
-      const reduce = (type === 'paiement' || type === 'avoir');
-      const delta = reduce ? -total : +total;
-      soldeCumulatif += delta;
-      return { ...it, soldeCumulatif };
-    });
-    if (hasSelection) {
-      setPrintProducts(recomputed);
+    // Utiliser la même logique que l'affichage du tableau
+    if (selectedProductIds && selectedProductIds.size > 0) {
+      // Mode sélection : utiliser seulement les produits sélectionnés avec leurs vrais soldes
+      const selectedRows = displayedProductHistoryWithInitial.filter((it: any) => 
+        selectedProductIds.has(String(it.id)) && !it.syntheticInitial
+      );
+      setPrintProducts(selectedRows);
     } else {
-      const initialSolde = Number(selectedContact?.solde ?? 0);
-      const initRow: any = {
-        id: 'initial-solde-produit', bon_numero: '—', bon_type: 'Solde initial', bon_date: '', bon_statut: '-', product_reference: '—', product_designation: 'Solde initial', quantite: 0, prix_unitaire: 0, total: 0, type: 'solde', created_at: '', syntheticInitial: true, soldeCumulatif: initialSolde,
-      };
-      setPrintProducts([initRow, ...recomputed]);
+      // Mode complet : utiliser exactement ce qui est affiché dans le tableau
+      setPrintProducts(displayedProductHistory);
     }
     setPrintModal({ open: true, mode: 'products' });
   };
@@ -2253,7 +2335,7 @@ const ContactsPage: React.FC = () => {
                     <div className="bg-white rounded-lg p-3 border">
                       <p className="font-semibold text-gray-600 text-sm">Total des remises</p>
                       {(() => {
-                        const list = (displayedProductHistory || []).filter((i:any) => i.type === 'produit' && !i.syntheticInitial);
+                        const list = (allProductHistory || []).filter((i:any) => i.type === 'produit' && !i.syntheticInitial);
                         const sum = list.reduce((s:number, it:any) => {
                           let r = 0;
                           if (typeof it.remise_totale === 'number') r = Number(it.remise_totale || 0);
@@ -2306,11 +2388,11 @@ const ContactsPage: React.FC = () => {
                       <div className="bg-white rounded-lg p-3 border flex-1">
                         <p className="font-semibold text-gray-600 text-sm">Bénéfice total</p>
                         <p className={`font-bold text-lg ${(() => {
-                          const sum = (displayedProductHistory || []).filter((i:any)=>i.type==='produit' && !i.syntheticInitial).reduce((s:number,i:any)=>s + Number(i.benefice || 0), 0);
+                          const sum = (allProductHistory || []).filter((i:any)=>i.type==='produit' && !i.syntheticInitial).reduce((s:number,i:any)=>s + Number(i.benefice || 0), 0);
                           return sum >= 0 ? 'text-green-600' : 'text-red-600';
                         })()}`}>
                           {(() => {
-                            const sum = (displayedProductHistory || []).filter((i:any)=>i.type==='produit' && !i.syntheticInitial).reduce((s:number,i:any)=>s + Number(i.benefice || 0), 0);
+                            const sum = (allProductHistory || []).filter((i:any)=>i.type==='produit' && !i.syntheticInitial).reduce((s:number,i:any)=>s + Number(i.benefice || 0), 0);
                             return `${sum.toFixed(2)} DH`;
                           })()}
                         </p>
@@ -2333,7 +2415,7 @@ const ContactsPage: React.FC = () => {
                     <div className="bg-white rounded-lg p-4 border border-green-200 text-center">
                       <p className="font-semibold text-gray-600 text-sm mb-2">Bénéfice Total des Produits Sélectionnés:</p>
                       {(() => {
-                        const selectedBenefit = displayedProductHistory
+                        const selectedBenefit = allProductHistory
                           .filter((item: any) => selectedProductIds.has(String(item.id)) && !item.syntheticInitial)
                           .reduce((sum: number, item: any) => sum + (Number(item.benefice) || 0), 0);
                         return (
@@ -2541,7 +2623,7 @@ const ContactsPage: React.FC = () => {
                             Total remises: {Object.entries(remisePrices)
                               .filter(([id]) => selectedItemsForRemise.has(id))
                               .reduce((sum, [id, price]) => {
-                                const item = displayedProductHistory.find(i => i.id === id);
+                                const item = allProductHistory.find(i => i.id === id);
                                 return sum + (price * (item?.quantite || 0));
                               }, 0)
                               .toFixed(2)} DH
