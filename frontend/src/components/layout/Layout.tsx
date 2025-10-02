@@ -5,9 +5,10 @@ import MobileBottomNav from './MobileBottomNav';
 
 interface LayoutProps {
   children: React.ReactNode;
+  manualAccessCheck?: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout: React.FC<LayoutProps> = ({ children, manualAccessCheck }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const toggleSidebar = () => {
@@ -16,7 +17,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Header onToggleSidebar={toggleSidebar} sidebarOpen={sidebarOpen} />
+      <Header onToggleSidebar={toggleSidebar} sidebarOpen={sidebarOpen} manualAccessCheck={manualAccessCheck} />
       
       <div className="flex flex-1 w-full">
         <Sidebar isOpen={sidebarOpen} />
