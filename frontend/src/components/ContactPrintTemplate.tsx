@@ -27,7 +27,6 @@ const fmtDate = (d?: string) => {
     const dt = new Date(d);
     if (!isNaN(dt.getTime())) return dt.toLocaleDateString('fr-FR');
   } catch {}
-  // fallback for dd-mm-yyyy input
   const parts = d.includes('-') ? d.split('-') : [];
   if (parts.length === 3) return `${parts[0]}/${parts[1]}/${parts[2]}`;
   return d;
@@ -39,10 +38,13 @@ const fmtDateTime = (d?: string) => {
   try {
     const dt = new Date(d);
     if (!isNaN(dt.getTime())) {
-      return dt.toLocaleDateString('fr-FR') + ' ' + dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      return (
+        dt.toLocaleDateString('fr-FR') +
+        ' ' +
+        dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      );
     }
   } catch {}
-  // fallback utilise fmtDate (sans heure)
   return fmtDate(d);
 };
 
@@ -60,12 +62,12 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
 }) => {
   const showPrices = priceMode === 'WITH_PRICES';
   const initialSolde = Number((contact as any)?.solde ?? 0);
-  const contactDisplayName = (
-    (typeof contact?.societe === 'string' && contact.societe.trim())
+
+  const contactDisplayName =
+    typeof contact?.societe === 'string' && contact.societe.trim()
       ? contact.societe
-      : (contact?.nom_complet || '-')
-  );
-  // Détection fournisseur
+      : contact?.nom_complet || '-';
+
   const isFournisseur = (() => {
     const t = String((contact as any)?.type || (contact as any)?.categorie || '').toLowerCase();
     if (t.includes('fournisseur')) return true;
@@ -73,7 +75,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     return false;
   })();
 
-  // Synthetic first rows with initial balance
+  // Lignes synthétiques “Solde initial”
   const txInitialRow: any = {
     id: 'initial-solde-transaction',
     date: '',
@@ -100,7 +102,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     syntheticInitial: true,
   };
 
-  // Use incoming lists; optionally prepend synthetic initial row unless skipping
+  // Listes avec éventuelle ligne initiale
   let txList: any[] = Array.isArray(transactions) ? transactions : [];
   if (!(txList[0]?.syntheticInitial) && !skipInitialRow) {
     txList = [txInitialRow, ...txList];
@@ -110,46 +112,16 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     prList = [prInitialRow, ...prList];
   }
 
-  // ================= Dynamic column presence (products mode) =================
-  const hasAnyAddress = prList.some(r => !r.syntheticInitial && r.adresse_livraison && String(r.adresse_livraison).trim() !== '');
-  const hasAnyReference = prList.some(r => !r.syntheticInitial && r.product_reference && String(r.product_reference).trim() !== '');
+  // Présence de colonnes (pour les libellés uniquement)
+  const hasAnyAddress = prList.some(
+    (r) => !r.syntheticInitial && r.adresse_livraison && String(r.adresse_livraison).trim() !== ''
+  );
+  const hasAnyReference = prList.some(
+    (r) => !r.syntheticInitial && r.product_reference && String(r.product_reference).trim() !== ''
+  );
 
-  // Base width units (will be normalized to %). We use units instead of direct % so we can redistribute.
-  const baseUnits = {
-    date: 8,
-    bon: 8,
-    reference: hasAnyReference ? 9 : 4, // shrink if empty
-    designation: 24,
-    address: hasAnyAddress ? 18 : 4,    // shrink if empty
-    qty: 5,
-    unit: 9,
-    total: 9,
-    solde: 10,
-  };
-  const colUnits: typeof baseUnits = { ...baseUnits };
-  // If a column is shrunk (empty), reallocate freed units to designation for readability
-  if (!hasAnyAddress) colUnits.designation += 14; // 18 - 4 = 14 freed
-  if (!hasAnyReference) colUnits.designation += 5; // 9 - 4 = 5 freed
-
-  // When prices hidden, remove the price/total/solde columns from unit distribution
-  const unitSum = Object.entries(colUnits)
-    .filter(([k]) => {
-      if (mode !== 'products') return false; // only relevant in products mode
-      if (!showPrices && (k === 'unit' || k === 'total' || k === 'solde')) return false;
-      return true;
-    })
-    .reduce((s, [, v]) => s + v, 0) || 1;
-
-  const toPct = (k: keyof typeof colUnits) => {
-    if (mode !== 'products') return undefined;
-    if (!showPrices && (k === 'unit' || k === 'total' || k === 'solde')) return undefined;
-    const pct = (colUnits[k] / unitSum) * 100;
-    return pct.toFixed(2) + '%';
-  };
-
-  // Totals for products print (respect current filtered list)
+  // Totaux (produits)
   const prDataRows: any[] = Array.isArray(prList) ? prList.filter((r: any) => !r?.syntheticInitial) : [];
-  // Total quantity: products add, avoir subtract
   const totalQtyProducts: number = prDataRows.reduce((sum: number, r: any) => {
     const t = String(r.type || '').toLowerCase();
     const q = Number(r.quantite) || 0;
@@ -160,39 +132,66 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   const totalAmountProducts: number = prDataRows
     .filter((r: any) => String(r.type || '').toLowerCase() === 'produit')
     .reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0);
-  const finalSoldeProducts: number = (prList && prList.length > 0)
-    ? Number(prList[prList.length - 1]?.soldeCumulatif || initialSolde)
-    : initialSolde;
+  const finalSoldeProducts: number =
+    prList && prList.length > 0 ? Number(prList[prList.length - 1]?.soldeCumulatif || initialSolde) : initialSolde;
+
+  // Rendu “Bon N° + Date” (date intégrée dans la même colonne, en dessous)
+  const renderBonWithDate = (num: any, dateLike?: string) => {
+    const dateTxt = fmtDateTime(dateLike);
+    return (
+      <div className="flex flex-col leading-tight">
+        <span className="font-medium">{num || '—'}</span>
+        <span className="text-[10px] text-gray-600">{dateTxt || '—'}</span>
+      </div>
+    );
+  };
 
   return (
     <div
-      className={`bg-white ${size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'} mx-auto p-4 font-sans text-sm`}
+      className={`bg-white ${
+        size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'
+      } mx-auto p-4 font-sans text-sm`}
       style={{ position: 'relative' }}
     >
-      {/* Compact print styles to prevent table cutting */}
+      {/* Styles impression compacts (sans width:100% ni table-layout:fixed) */}
       <style>{`
-        ${size === 'A5' ? `.print-compact { font-size:11px; } .print-compact h2 { font-size:12px; } @media print { .print-compact { font-size:9px; } }` : `.print-compact { font-size:12px; } .print-compact h2 { font-size:14px; } @media print { .print-compact { font-size:10px; } }`}
-        .print-compact table { width:100%; border-collapse:collapse; table-layout:fixed; }
-        /* default: normal weight for table cells */
-        .print-compact th, .print-compact td { border:1px solid #d1d5db; padding:3px 4px; font-size:10px; line-height:1.15; vertical-align:top; font-weight:normal; }
-        @media print { .print-compact th, .print-compact td { font-size:${size === 'A5' ? '7.5px' : '8.5px'}; padding:2px 3px; } }
-  .print-compact .cell-num { font-family:"Courier New",monospace; text-align:right; white-space:nowrap; font-weight:700; }
-        .print-compact .col-bon { font-weight:normal; }
+        ${size === 'A5'
+          ? `.print-compact { font-size:11px; } .print-compact h2 { font-size:12px; } @media print { .print-compact { font-size:9px; } }`
+          : `.print-compact { font-size:12px; } .print-compact h2 { font-size:14px; } @media print { .print-compact { font-size:15px; } }`
+        }
+        .print-compact table { border-collapse: collapse; /* pas de width:100% */ }
+        .print-compact th, .print-compact td {
+          border:1px solid #d1d5db; padding:4px 6px; line-height:1.2; font-weight:normal; vertical-align:top;
+        }
+        @media print {
+          .print-compact th, .print-compact td { padding:${size === 'A5' ? '2px 3px' : '3px 4px'}; }
+        }
+        .print-compact .cell-num { font-family:"Courier New",monospace; text-align:right; white-space:nowrap; font-weight:700; }
         .print-compact .cell-wrap { white-space:normal; word-break:break-word; hyphens:auto; }
         .print-compact .row-alt:nth-child(odd) { background:#f9fafb; }
         @media print { .print-compact .row-alt:nth-child(odd) { background:#f3f4f6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
-        /* headers remain bold */
+        /* Color coding for product details - display only, not print */
+        .print-compact .row-avoir { background:#fed7aa !important; }
+        .print-compact .row-payment { background:#bbf7d0 !important; }
+        @media print { 
+          .print-compact .row-avoir { background:inherit !important; } 
+          .print-compact .row-payment { background:inherit !important; } 
+        }
         .print-compact .header-row th, .print-compact .header-row td { background:#f97316; color:#fff; font-weight:700; }
         @media print { .print-compact .header-row { background:#f97316 !important; color:#fff !important; } }
-        .print-compact .col-empty { opacity:0.6; }
-        .print-compact .truncate-if-empty { max-width:38px; overflow:hidden; text-overflow:ellipsis; }
-  /* Désignation normal weight (only numeric columns are bold) */
-  .print-compact .fit-designation { width:fit-content !important; max-width:320px; min-width:60px; font-weight:normal; }
+        /* Rendre la table naturellement compacte : les colonnes prennent l'espace de leur contenu */
+        .print-compact table { max-width: 100%; }
+        /* Autoriser le wrap sur Désignation et Adresse */
+        .print-compact .col-designation, .print-compact .col-address { white-space: normal; }
+        /* Légère contrainte pour éviter des colonnes infinies */
+        .print-compact .col-designation { max-width: 320px; }
+        .print-compact .col-address { max-width: 260px; }
       `}</style>
-      {/* Header */}
+
+      {/* En-tête société */}
       <CompanyHeader companyType={companyType} />
 
-      {/* Contact block */}
+      {/* Bloc contact + période */}
       <div className="mt-4 mb-6 grid grid-cols-2 gap-4">
         <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
           <div className="text-sm"><span className="font-semibold">Nom:</span> {contactDisplayName}</div>
@@ -209,7 +208,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
         )}
       </div>
 
-      {/* Body */}
+      {/* Corps */}
       {mode === 'transactions' ? (
         <div className="print-compact">
           <h2 className="font-semibold mb-2">Historique des Transactions</h2>
@@ -225,25 +224,44 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
             </thead>
             <tbody>
               {txList.length === 0 ? (
-                <tr><td colSpan={showPrices ? 5 : 4} className="text-center text-gray-500 py-3">Aucune donnée</td></tr>
-              ) : txList.map(t => {
-                const isPayment = String(t.statut || '').toLowerCase() === 'paiement' || String(t.type || '').toLowerCase() === 'paiement';
-                const isAvoir = String(t.type || '').toLowerCase().includes('avoir');
-                const reduceBalance = isPayment || isAvoir;
-                return (
-                  <tr key={t.id} className="row-alt">
-                    <td>{t.syntheticInitial ? '-' : fmtDateTime(t.dateISO || t.date)}</td>
-                    <td>{t.numero}</td>
-                    <td>{t.type}</td>
-                    {showPrices ? (
-                      <>
-                        <td className={`cell-num ${t.syntheticInitial ? 'text-gray-500' : reduceBalance ? 'text-green-700' : 'text-blue-700'}`}>{t.syntheticInitial ? '—' : (reduceBalance ? '-' : '+')}{t.syntheticInitial ? '' : fmt(t.montant)}</td>
-                        <td className="cell-num">{fmt(t.soldeCumulatif)}</td>
-                      </>
-                    ) : <td>{t.syntheticInitial ? '-' : (t.statut || (isPayment ? 'Paiement' : '-'))}</td>}
-                  </tr>
-                );
-              })}
+                <tr>
+                  <td colSpan={showPrices ? 5 : 4} className="text-center text-gray-500 py-3">Aucune donnée</td>
+                </tr>
+              ) : (
+                txList.map((t) => {
+                  const isPayment =
+                    String(t.statut || '').toLowerCase() === 'paiement' ||
+                    String(t.type || '').toLowerCase() === 'paiement';
+                  const isAvoir = String(t.type || '').toLowerCase().includes('avoir');
+                  const reduceBalance = isPayment || isAvoir;
+                  return (
+                    <tr key={t.id} className="row-alt">
+                      <td>{t.syntheticInitial ? '-' : fmtDateTime(t.dateISO || t.date)}</td>
+                      <td>{t.numero}</td>
+                      <td>{t.type}</td>
+                      {showPrices ? (
+                        <>
+                          <td
+                            className={`cell-num ${
+                              t.syntheticInitial
+                                ? 'text-gray-500'
+                                : reduceBalance
+                                ? 'text-green-700'
+                                : 'text-blue-700'
+                            }`}
+                          >
+                            {t.syntheticInitial ? '—' : reduceBalance ? '-' : '+'}
+                            {t.syntheticInitial ? '' : fmt(t.montant)}
+                          </td>
+                          <td className="cell-num">{fmt(t.soldeCumulatif)}</td>
+                        </>
+                      ) : (
+                        <td>{t.syntheticInitial ? '-' : t.statut || (isPayment ? 'Paiement' : '-')}</td>
+                      )}
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -253,49 +271,105 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
           <table>
             <thead>
               <tr className="header-row">
-                <th style={{width: toPct('date')}}>Date</th>
-                <th style={{width: toPct('bon')}} className="col-bon">Bon N°</th>
-                <th style={{width: toPct('reference')}} className={!hasAnyReference ? 'col-empty' : ''}>{hasAnyReference ? 'Référence' : 'Réf.'}</th>
-                <th style={{width:'fit-content', maxWidth:'320px', minWidth:'60px'}} className="fit-designation">Désignation</th>
-                <th style={{width: toPct('address')}} className={!hasAnyAddress ? 'col-empty' : ''}>{hasAnyAddress ? 'Adresse Livraison' : 'Adr.'}</th>
-                <th style={{width: toPct('qty')}} className="cell-num">Qté</th>
-                {showPrices ? <th style={{width: toPct('unit')}} className="cell-num">{isFournisseur ? 'Prix Achat' : 'Prix Unit.'}</th> : <th style={{width: toPct('unit')}}>Statut</th>}
-                {showPrices && <th style={{width: toPct('total')}} className="cell-num">Total</th>}
-                {showPrices && <th style={{width: toPct('solde')}} className="cell-num">Solde Cumulé</th>}
+                {/* Bon N° avec Date intégrée sous le numéro */}
+                <th>Bon N° / Date</th>
+                <th>{hasAnyReference ? 'Référence' : 'Réf.'}</th>
+                <th className="col-designation">Désignation</th>
+                <th className="col-address">{hasAnyAddress ? 'Adresse Livraison' : 'Adr.'}</th>
+                <th className="cell-num">Qté</th>
+                {showPrices ? (
+                  <>
+                    <th className="cell-num">{isFournisseur ? 'Prix Achat' : 'Prix Unit.'}</th>
+                    <th className="cell-num">Total</th>
+                    <th className="cell-num">Solde Cumulé</th>
+                  </>
+                ) : (
+                  <th>Statut</th>
+                )}
               </tr>
             </thead>
             <tbody>
               {prList.length === 0 ? (
-                <tr><td colSpan={showPrices ? 9 : 7} className="text-center text-gray-500 py-3">Aucune donnée</td></tr>
-              ) : prList.map(it => {
-                const type = String(it.type || '').toLowerCase();
-                const isPaymentOrAvoir = type === 'paiement' || type === 'avoir';
-                const totalVal = Number(it.total) || 0;
-                const reduceBalance = isPaymentOrAvoir;
-                const displayTotal = it.syntheticInitial ? '' : (reduceBalance ? -totalVal : totalVal);
-                return (
-                  <tr key={it.id} className="row-alt">
-                    <td>{it.syntheticInitial ? '-' : fmtDateTime(it.bon_date_iso || it.date || it.bon_date)}</td>
-                    <td className="col-bon">{it.bon_numero}</td>
-                    <td className={`cell-wrap ${!hasAnyReference ? 'truncate-if-empty' : ''}`}>{it.syntheticInitial ? '—' : (it.product_reference || (!hasAnyReference ? '' : '—'))}</td>
-                    <td className="cell-wrap fit-designation">{it.syntheticInitial ? 'Solde initial' : it.product_designation}</td>
-                    <td className={`cell-wrap ${!hasAnyAddress ? 'truncate-if-empty' : ''}`}>{it.syntheticInitial ? '-' : (it.adresse_livraison || (!hasAnyAddress ? '' : '-'))}</td>
-                    <td className="cell-num">{it.syntheticInitial ? '—' : it.quantite}</td>
-                    {showPrices ? (
-                      <>
-                        <td className="cell-num">{it.syntheticInitial ? '—' : fmt(isFournisseur ? (it.prix_achat ?? it.prix_unitaire) : it.prix_unitaire)}</td>
-                        <td className={`cell-num ${it.syntheticInitial ? 'text-gray-500' : reduceBalance ? 'text-green-700' : ''}`}>{it.syntheticInitial ? '—' : fmt(displayTotal)}</td>
-                        <td className="cell-num">{fmt(it.soldeCumulatif)}</td>
-                      </>
-                    ) : <td>{it.syntheticInitial ? '-' : (it.bon_statut || '-')}</td>}
-                  </tr>
-                );
-              })}
+                <tr>
+                  <td colSpan={showPrices ? 8 : 6} className="text-center text-gray-500 py-3">
+                    Aucune donnée
+                  </td>
+                </tr>
+              ) : (
+                prList.map((it) => {
+                  const type = String(it.type || '').toLowerCase();
+                  const isPaymentOrAvoir = type === 'paiement' || type === 'avoir';
+                  const totalVal = Number(it.total) || 0;
+                  const reduceBalance = isPaymentOrAvoir;
+                  const displayTotal = it.syntheticInitial ? '' : reduceBalance ? -totalVal : totalVal;
+                  const dateCandidate = it.bon_date_iso || it.date || it.bon_date;
+
+                  // Get color class based on transaction type
+                  const getRowColorClass = () => {
+                    // Check for all avoir types: Avoir (client), AvoirFournisseur, AvoirComptant
+                    if (type.includes('avoir')) {
+                      return 'row-avoir';
+                    }
+                    if (type === 'paiement') {
+                      return 'row-payment';
+                    }
+                    return '';
+                  };
+
+                  return (
+                    <tr key={it.id} className={`row-alt ${getRowColorClass()}`}>
+                      {/* Bon N° + Date (stack) */}
+                      <td>
+                        {it.syntheticInitial
+                          ? renderBonWithDate('—', '')
+                          : renderBonWithDate(it.bon_numero, dateCandidate)}
+                      </td>
+
+                      {/* Référence (wrap autorisé, libellé court si vide globalement) */}
+                      <td className="cell-wrap">
+                        {it.syntheticInitial
+                          ? '—'
+                          : it.product_reference || (!hasAnyReference ? '' : '—')}
+                      </td>
+
+                      {/* Désignation (wrap libre) */}
+                      <td className="cell-wrap col-designation">
+                        {it.syntheticInitial ? 'Solde initial' : it.product_designation}
+                      </td>
+
+                      {/* Adresse (wrap libre) */}
+                      <td className="cell-wrap col-address">
+                        {it.syntheticInitial ? '-' : it.adresse_livraison || (!hasAnyAddress ? '' : '-')}
+                      </td>
+
+                      {/* Quantité */}
+                      <td className="cell-num">{it.syntheticInitial ? '—' : it.quantite}</td>
+
+                      {/* Prix / Total / Solde ou Statut */}
+                      {showPrices ? (
+                        <>
+                          <td className="cell-num">
+                            {it.syntheticInitial
+                              ? '—'
+                              : fmt(isFournisseur ? (it.prix_achat ?? it.prix_unitaire) : it.prix_unitaire)}
+                          </td>
+                          <td className={`cell-num ${it.syntheticInitial ? 'text-gray-500' : reduceBalance ? 'text-green-700' : ''}`}>
+                            {it.syntheticInitial ? '—' : fmt(displayTotal)}
+                          </td>
+                          <td className="cell-num">{fmt(it.soldeCumulatif)}</td>
+                        </>
+                      ) : (
+                        <td>{it.syntheticInitial ? '-' : it.bon_statut || '-'}</td>
+                      )}
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
+
             {showPrices && (
               <tfoot>
                 <tr>
-                  <td>—</td>
                   <td>—</td>
                   <td>{hasAnyReference ? '—' : ''}</td>
                   <td className="cell-wrap">TOTAL</td>

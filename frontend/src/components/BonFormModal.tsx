@@ -6,6 +6,7 @@ import { Plus, Trash2, Search, Printer } from 'lucide-react';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
+import { useGetEmployeesQueryServer as useGetEmployeesQueryServer } from '../store/api/employeesApi.server';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
@@ -232,6 +233,14 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 const bonValidationSchema = Yup.object({
   date_bon: Yup.string().required('Date du bon requise'),
   vehicule_id: Yup.number().nullable(),
+  livraisons: Yup.array()
+    .of(
+      Yup.object({
+        vehicule_id: Yup.number().typeError('Véhicule invalide').required('Véhicule requis'),
+        user_id: Yup.number().nullable().optional(),
+      })
+    )
+    .optional(),
   lieu_charge: Yup.string(),
   adresse_livraison: Yup.string(),
   phone: Yup.string().trim(),
@@ -303,6 +312,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
   // RTK Query hooks
   const { data: vehicules = [] } = useGetVehiculesQuery();
+  const { data: employeesAll = [] } = useGetEmployeesQueryServer();
+  const chauffeurs = useMemo(() => (employeesAll || []).filter((e: any) => e.role === 'Chauffeur'), [employeesAll]);
   const { data: products = [] } = useGetProductsQuery();
   const { data: clients = [] } = useGetClientsQuery();
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
@@ -468,6 +479,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         client_id: (initialValues.client_id || '').toString(),
         fournisseur_id: (initialValues.fournisseur_id || '').toString(),
         vehicule_id: (initialValues.vehicule_id || '').toString(),
+        livraisons: Array.isArray((initialValues as any)?.livraisons)
+          ? (initialValues as any).livraisons.map((l: any) => ({ vehicule_id: String(l.vehicule_id || ''), user_id: l.user_id ? String(l.user_id) : '' }))
+          : [],
         lieu_charge: initialValues.lieu_chargement || initialValues.lieu_charge || '',
         date_bon: formatMySQLToDateTimeInput(initialValues.date_creation || initialValues.date_bon || '') || getCurrentDateTimeInput(),
         items: normalizedItems,
@@ -489,7 +503,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     return {
   type: currentTab,
       date_bon: getCurrentDateTimeInput(),
-      vehicule_id: '',
+  vehicule_id: '',
+  livraisons: [] as Array<{ vehicule_id: string; user_id?: string }>,
       lieu_charge: '',
       date_validation: '',
   statut: 'En attente',
@@ -715,6 +730,19 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       vehiculeId = parseInt(values.vehicule_id);
     }
 
+    // Préparer les livraisons (multi-véhicules + chauffeur) si fournis
+    const livraisonsClean = Array.isArray(values.livraisons)
+      ? (values.livraisons as Array<{ vehicule_id: string | number; user_id?: string | number }>)
+          .map((l) => {
+            const vehId = Number(l?.vehicule_id);
+            const userId = l?.user_id === '' || l?.user_id == null ? null : Number(l.user_id);
+            return Number.isFinite(vehId) && vehId > 0
+              ? { vehicule_id: vehId, user_id: userId }
+              : null;
+          })
+          .filter((x): x is { vehicule_id: number; user_id: number | null } => x !== null)
+      : [];
+
   const cleanBonData = {
   date_creation: formatDateInputToMySQL(values.date_bon) || new Date().toISOString().slice(0,19).replace('T',' '), // assure string
       vehicule_id: vehiculeId,
@@ -728,6 +756,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
       montant_total: montantTotal,
       created_by: user?.id || 1,
+      // N'envoyer livraisons que si au moins un véhicule est défini
+      livraisons: livraisonsClean.length ? livraisonsClean : undefined,
       items: values.items.map((item: any, idx: number) => {
         const q =
           parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
@@ -1243,25 +1273,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   <ErrorMessage name="date_bon" component="div" className="text-red-500 text-sm mt-1" />
                 </div>
 
-                {/* Véhicule */}
-                {values.type !== 'Avoir' && values.type !== 'AvoirFournisseur' && (
-                  <div>
-                    <label htmlFor="vehicule_id" className="block text-sm font-medium text-gray-700 mb-1">
-                      Véhicule
-                    </label>
-                    <Field as="select" id="vehicule_id" name="vehicule_id" className="w-full px-3 py-2 border border-gray-300 rounded-md">
-                      <option value="">-- Sélectionner un véhicule --</option>
-                      {vehicules
-                        .filter((v) => v.statut === 'Disponible' || v.statut === 'En service')
-                        .map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {v.nom} - {v.immatriculation} ({v.type_vehicule})
-                          </option>
-                        ))}
-                    </Field>
-                    <ErrorMessage name="vehicule_id" component="div" className="text-red-500 text-sm mt-1" />
-                  </div>
-                )}
+                {/* Champ Véhicule (ancien) retiré de l'UI; utiliser la section Livraisons (multi-véhicules) ci-dessous */}
 
                 {/* Lieu / Adresse */}
                 <div>
@@ -1289,6 +1301,73 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </label>
                   <span className="text-xs text-gray-500">(Cocher si ce bon ne doit pas être pris en compte dans les calculs)</span>
                 </div>
+              </div>
+
+              {/* Multi-livraisons (véhicules + chauffeurs) */}
+              <div className="mt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">Livraisons (multi-véhicules)</label>
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-sm bg-blue-600 text-white rounded"
+                    onClick={() => setFieldValue('livraisons', [...(values.livraisons || []), { vehicule_id: '', user_id: '' }])}
+                  >
+                    Ajouter véhicule + chauffeur
+                  </button>
+                </div>
+                <FieldArray name="livraisons">
+                  {({ remove }) => (
+                    <div className="space-y-2">
+                      {(values.livraisons || []).map((l: any, idx: number) => (
+                        <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end bg-gray-50 p-3 rounded">
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">Véhicule</label>
+                            <select
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              value={l.vehicule_id || ''}
+                              onChange={(e) => {
+                                const arr = [...(values.livraisons || [])];
+                                arr[idx] = { ...arr[idx], vehicule_id: e.target.value };
+                                setFieldValue('livraisons', arr);
+                              }}
+                            >
+                              <option value="">Sélectionner</option>
+                              {vehicules.map((v: any) => (
+                                <option key={v.id} value={String(v.id)}>
+                                  {v.nom} - {v.immatriculation}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">Chauffeur (optionnel)</label>
+                            <select
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              value={l.user_id || ''}
+                              onChange={(e) => {
+                                const arr = [...(values.livraisons || [])];
+                                arr[idx] = { ...arr[idx], user_id: e.target.value };
+                                setFieldValue('livraisons', arr);
+                              }}
+                            >
+                              <option value="">Aucun</option>
+                              {chauffeurs.map((c: any) => (
+                                <option key={c.id} value={String(c.id)}>
+                                  {c.nom_complet || c.cin}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button type="button" className="px-2 py-2 bg-red-600 text-white rounded" onClick={() => remove(idx)}>
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </FieldArray>
               </div>
 
               {/* Client */}

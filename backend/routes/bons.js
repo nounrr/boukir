@@ -36,8 +36,28 @@ router.get('/', async (req, res) => {
       ...bon,
       items: bon.items ? JSON.parse(bon.items).filter(item => item.id !== null) : []
     }));
-    
-    res.json(bonsWithItems);
+
+    // Load livraisons for these bons in one query
+    const ids = bonsWithItems.map(b => b.id);
+    let byBonId = new Map();
+    if (ids.length) {
+      const [livs] = await pool.query(
+        `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
+           FROM livraisons l
+           LEFT JOIN vehicules v ON v.id = l.vehicule_id
+           LEFT JOIN employees e ON e.id = l.user_id
+          WHERE l.bon_type = 'Bon' AND l.bon_id IN (?)`,
+        [ids]
+      );
+      byBonId = livs.reduce((acc, r) => {
+        const arr = acc.get(r.bon_id) || [];
+        arr.push(r);
+        acc.set(r.bon_id, arr);
+        return acc;
+      }, new Map());
+    }
+    const withLivraisons = bonsWithItems.map(b => ({ ...b, livraisons: byBonId.get(b.id) || [] }));
+    res.json(withLivraisons);
   } catch (error) {
     console.error('Erreur lors de la récupération des bons:', error);
     res.status(500).json({ message: 'Erreur du serveur' });
@@ -80,8 +100,28 @@ router.get('/type/:type', async (req, res) => {
       ...bon,
       items: bon.items ? JSON.parse(bon.items).filter(item => item.id !== null) : []
     }));
-    
-    res.json(bonsWithItems);
+
+    // Load livraisons for these bons by provided type
+    const ids = bonsWithItems.map(b => b.id);
+    let byBonId = new Map();
+    if (ids.length) {
+      const [livs] = await pool.query(
+        `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
+           FROM livraisons l
+           LEFT JOIN vehicules v ON v.id = l.vehicule_id
+           LEFT JOIN employees e ON e.id = l.user_id
+          WHERE l.bon_type = ? AND l.bon_id IN (?)`,
+        [type, ids]
+      );
+      byBonId = livs.reduce((acc, r) => {
+        const arr = acc.get(r.bon_id) || [];
+        arr.push(r);
+        acc.set(r.bon_id, arr);
+        return acc;
+      }, new Map());
+    }
+    const withLivraisons = bonsWithItems.map(b => ({ ...b, livraisons: byBonId.get(b.id) || [] }));
+    res.json(withLivraisons);
   } catch (error) {
     console.error('Erreur lors de la récupération des bons par type:', error);
     res.status(500).json({ message: 'Erreur du serveur' });
@@ -122,12 +162,20 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Bon non trouvé' });
     }
     
-    const bon = {
+    const bonBase = {
       ...rows[0],
       items: rows[0].items ? JSON.parse(rows[0].items).filter(item => item.id !== null) : []
     };
-    
-    res.json(bon);
+    // Attach livraisons
+    const [livs] = await pool.query(
+      `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
+         FROM livraisons l
+         LEFT JOIN vehicules v ON v.id = l.vehicule_id
+         LEFT JOIN employees e ON e.id = l.user_id
+        WHERE l.bon_type = 'Bon' AND l.bon_id = ?`,
+      [id]
+    );
+    res.json({ ...bonBase, livraisons: livs });
   } catch (error) {
     console.error('Erreur lors de la récupération du bon:', error);
     res.status(500).json({ message: 'Erreur du serveur' });
@@ -153,7 +201,8 @@ router.post('/', async (req, res) => {
       lieu_chargement,
       bon_origine_id,
       items = [],
-      created_by
+      created_by,
+      livraisons
     } = req.body;
 
     // Validation des champs requis avec détail
@@ -180,6 +229,19 @@ router.post('/', async (req, res) => {
     ]);
 
     const bonId = bonResult.insertId;
+
+    // Optional livraisons batch insert
+    if (Array.isArray(livraisons) && livraisons.length) {
+      for (const l of livraisons) {
+        const vehicule_id = Number(l?.vehicule_id);
+        const user_id = l?.user_id != null ? Number(l.user_id) : null;
+        if (!vehicule_id) continue;
+        await connection.execute(
+          `INSERT INTO livraisons (bon_type, bon_id, vehicule_id, user_id) VALUES (?, ?, ?, ?)`
+          , [type, bonId, vehicule_id, user_id]
+        );
+      }
+    }
 
     // Créer les items du bon
     for (const item of items) {
@@ -235,6 +297,15 @@ router.post('/', async (req, res) => {
       ...newBon[0],
       items: newBon[0].items ? JSON.parse(newBon[0].items).filter(item => item.id !== null) : []
     };
+    const [livs] = await pool.query(
+      `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
+         FROM livraisons l
+         LEFT JOIN vehicules v ON v.id = l.vehicule_id
+         LEFT JOIN employees e ON e.id = l.user_id
+        WHERE l.bon_type = ? AND l.bon_id = ?`,
+      [type, bonId]
+    );
+  createdBon.livraisons = livs;
 
     res.status(201).json(createdBon);
   } catch (error) {
@@ -265,7 +336,8 @@ router.patch('/:id', async (req, res) => {
       vehicule,
       lieu_chargement,
       items = [],
-      updated_by
+      updated_by,
+      livraisons
     } = req.body;
 
     // Validation de l'existence du bon
@@ -273,6 +345,21 @@ router.patch('/:id', async (req, res) => {
     if (existingBon.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon non trouvé' });
+    }
+
+    // Replace livraisons if provided
+    if (Array.isArray(livraisons)) {
+      await connection.execute('DELETE FROM livraisons WHERE bon_type = ? AND bon_id = ?', [existingBon[0].type || type || 'Bon', id]);
+      const useType = existingBon[0].type || type || 'Bon';
+      for (const l of livraisons) {
+        const vehicule_id = Number(l?.vehicule_id);
+        const user_id = l?.user_id != null ? Number(l.user_id) : null;
+        if (!vehicule_id) continue;
+        await connection.execute(
+          `INSERT INTO livraisons (bon_type, bon_id, vehicule_id, user_id) VALUES (?, ?, ?, ?)`
+          , [useType, Number(id), vehicule_id, user_id]
+        );
+      }
     }
 
     // Construire la requête de mise à jour dynamiquement
@@ -350,8 +437,15 @@ router.patch('/:id', async (req, res) => {
       ...updatedBon[0],
       items: updatedBon[0].items ? JSON.parse(updatedBon[0].items).filter(item => item.id !== null) : []
     };
-
-    res.json(bon);
+    const [livs2] = await pool.query(
+      `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
+         FROM livraisons l
+         LEFT JOIN vehicules v ON v.id = l.vehicule_id
+         LEFT JOIN employees e ON e.id = l.user_id
+        WHERE l.bon_type = ? AND l.bon_id = ?`,
+      [updatedBon[0].type, id]
+    );
+    res.json({ ...bon, livraisons: livs2 });
   } catch (error) {
     await connection.rollback();
     console.error('Erreur lors de la mise à jour du bon:', error);

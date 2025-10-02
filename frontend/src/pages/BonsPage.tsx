@@ -86,7 +86,7 @@ const BonsPage = () => {
   // Manager full access only for Commande & AvoirFournisseur
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
   const isManager = currentUser?.role === 'Manager';
-  const isManagerPlus = currentUser?.role === 'ManagerPlus';
+  // ManagerPlus role value (not needed here currently)
 
   // RTK Query hooks
   // Load bons by type
@@ -173,50 +173,7 @@ const BonsPage = () => {
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Calculer la largeur minimale basée sur le contenu de la colonne
-  const getMinColumnWidth = useCallback((colIndex: number) => {
-    const table = document.querySelector('.responsive-table') as HTMLTableElement;
-    if (!table) return 50; // fallback
-
-    // Créer un élément temporaire pour mesurer le texte
-    const measureElement = document.createElement('div');
-    measureElement.style.position = 'absolute';
-    measureElement.style.visibility = 'hidden';
-    measureElement.style.whiteSpace = 'nowrap';
-    measureElement.style.fontSize = '12px'; // taille des headers
-    measureElement.style.fontWeight = '500';
-    measureElement.style.padding = '0 24px'; // padding des th
-    document.body.appendChild(measureElement);
-
-    let maxWidth = 50; // minimum absolu
-
-    // Mesurer le header
-    const headerCell = table.querySelector(`thead th:nth-child(${colIndex + 1})`);
-    if (headerCell) {
-      const headerText = headerCell.textContent || '';
-      measureElement.textContent = headerText;
-      maxWidth = Math.max(maxWidth, measureElement.offsetWidth + 20); // +20 pour la poignée
-    }
-
-    // Mesurer quelques cellules de données
-    const dataCells = table.querySelectorAll(`tbody td:nth-child(${colIndex + 1})`);
-    const sampleSize = Math.min(5, dataCells.length); // Échantillon de 5 cellules
-    
-    measureElement.style.fontSize = '14px'; // taille du contenu
-    measureElement.style.fontWeight = '400';
-    measureElement.style.padding = '0 16px'; // padding des td
-    
-    for (let i = 0; i < sampleSize; i++) {
-      const cell = dataCells[i];
-      if (cell) {
-        const cellText = cell.textContent || '';
-        measureElement.textContent = cellText;
-        maxWidth = Math.max(maxWidth, measureElement.offsetWidth);
-      }
-    }
-
-    document.body.removeChild(measureElement);
-    return Math.min(maxWidth, 300); // Maximum 300px pour éviter des colonnes trop larges
-  }, []);
+  // (column measurement helper removed - unused)
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     const r = resizingRef.current;
@@ -242,7 +199,7 @@ const BonsPage = () => {
     // Le curseur sera géré par les poignées de redimensionnement uniquement
   }, [colWidths]);
 
-  const onMouseDown = useCallback((e: MouseEvent) => {
+  const onMouseDown = useCallback((_e: MouseEvent) => {
     // Fonction simplifiée - la logique de redimensionnement est maintenant dans startResize
     return;
   }, []);
@@ -289,6 +246,13 @@ const BonsPage = () => {
         }
         if (!['Annulé','En attente'].includes(statut)) {
           showError("Permission refusée: l'employé ne peut que mettre En attente ou Annuler.");
+          return;
+        }
+      }
+      // Manager: cannot turn a Validé bon into Annulé
+      if (isManager) {
+        if (bon.statut === 'Validé' && statut === 'Annulé') {
+          showError("Permission refusée: un Manager ne peut pas annuler un bon déjà validé.");
           return;
         }
       }
@@ -685,21 +649,7 @@ const BonsPage = () => {
   // (Fonction mark-as-avoir retirée si non utilisée)
     
 
-  // Annuler un avoir (changer son statut en "Annulé")
-    const handleCancelAvoir = async (bon: any) => {
-      try {
-        if (!currentUser?.id) {
-          showError('Utilisateur non authentifié');
-          return;
-        }
-        await updateBonStatus({ id: bon.id, statut: 'Annulé', type: bon.type }).unwrap();
-        showSuccess('Avoir annulé avec succès');
-      } catch (error: any) {
-        console.error('Erreur lors de la mise à jour:', error);
-        showError(`Erreur: ${error.message || 'Erreur inconnue'}`);
-      }
-    };
-
+  // (cancel avoir handled via handleChangeStatus and permissions)
     // Remettre un avoir en attente depuis validé
     const handleAvoirBackToWaiting = async (bon: any) => {
       try {
@@ -1215,6 +1165,12 @@ const BonsPage = () => {
                           // Show mouvement only for sales/stock out types (Sortie, Comptant, Avoir, AvoirComptant)
                           const type = bon.type || currentTab;
                           if (!['Sortie','Comptant','Avoir','AvoirComptant'].includes(type)) return <span className="text-gray-400">-</span>;
+                          // If bon is marked as non-calculated, do not compute mouvement
+                          const bAny = bon as any;
+                          const nonCalculated = bAny?.isNotCalculated === true || bAny?.isNotCalculated === 1 || bAny?.is_not_calculated === true || bAny?.is_not_calculated === 1;
+                          if (nonCalculated) {
+                            return <span className="text-gray-400">-</span>;
+                          }
                           const { profit, marginPct } = computeMouvementDetail(bon);
                           let cls = 'text-gray-600';
                           if (profit > 0) cls = 'text-green-600';
@@ -1391,8 +1347,8 @@ const BonsPage = () => {
                                                   <Clock size={16} />
                                                 </button>
                                               )}
-                                              {/* Show "Annuler" only if not already "Annulé" */}
-                                              {bon.statut !== 'Annulé' && (
+                                              {/* Show "Annuler" only if not already "Annulé" or "Validé" */}
+                                              {bon.statut !== 'Annulé' && bon.statut !== 'Validé' && (
                                                 <button 
                                                   onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
                                                   className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
@@ -1415,8 +1371,8 @@ const BonsPage = () => {
                                                   <Clock size={16} />
                                                 </button>
                                               )}
-                                              {/* Show "Annuler" only if not already "Annulé" */}
-                                              {bon.statut !== 'Annulé' && (
+                                              {/* Show "Annuler" only if not already "Annulé" or "Validé" */}
+                                              {bon.statut !== 'Annulé' && bon.statut !== 'Validé' && (
                                                 <button 
                                                   onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
                                                   className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
@@ -1439,8 +1395,8 @@ const BonsPage = () => {
                                                   <Clock size={16} />
                                                 </button>
                                               )}
-                                              {/* Show "Annuler" only if not already "Annulé" */}
-                                              {bon.statut !== 'Annulé' && (
+                                              {/* Show "Annuler" only if not already "Annulé" or "Validé" */}
+                                              {bon.statut !== 'Annulé' && bon.statut !== 'Validé' && (
                                                 <button 
                                                   onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
                                                   className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
@@ -1496,8 +1452,8 @@ const BonsPage = () => {
                                         </>
                                       );
                                     }
-                                    // Managers (other tabs) limited: can only Annuler if not already cancelled
-                                    if (isManager && bon.statut !== 'Annulé') {
+                                    // Managers (other tabs) limited: can only Annuler if not already cancelled or validated
+                                    if (isManager && bon.statut !== 'Annulé' && bon.statut !== 'Validé') {
                                       return (
                                         <button 
                                           onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
@@ -1805,15 +1761,7 @@ const BonsPage = () => {
                         )}
                         {(selectedBon.type === 'Avoir' || selectedBon.type === 'AvoirFournisseur') && !isEmployee && (
                           <>
-                            <button
-                              onClick={() => {
-                                handleCancelAvoir(selectedBon);
-                                setIsViewModalOpen(false);
-                              }}
-                              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md mr-2"
-                            >
-                              Annuler l'avoir
-                            </button>
+                            {/* Do not show cancel on validated bon; only allow putting back to waiting */}
                             <button
                               onClick={() => {
                                 handleAvoirBackToWaiting(selectedBon);

@@ -20,6 +20,7 @@ import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
 import ContactPrintModal from '../components/ContactPrintModal';
+import NonCalculatedBonsTable from '../components/NonCalculatedBonsTable';
 import PeriodConfig from '../components/PeriodConfig';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
@@ -41,6 +42,11 @@ const contactValidationSchema = Yup.object({
 const ContactsPage: React.FC = () => {
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isEmployee = (currentUser?.role === 'Employé');
+
+  // Helper function to detect non-calculated bons
+  const isNonCalculated = (bon: any) => {
+    return bon?.isNotCalculated || bon?.is_not_calculated || false;
+  };
   const { data: clients = [] } = useGetClientsQuery();
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
   const [createContact] = useCreateContactMutation();
@@ -311,8 +317,12 @@ const ContactsPage: React.FC = () => {
       return 0;
     };
     
-    // Ajouter les produits des bons
+    // Ajouter les produits des bons (exclure les bons non calculés)
     for (const b of bonsForContact) {
+      // Skip non-calculated bons
+      if (isNonCalculated(b)) {
+        continue;
+      }
       const bDate = formatDateDMY(b.date_creation);
       const bonItems = Array.isArray(b.items) ? b.items : [];
       for (const it of bonItems) {
@@ -505,6 +515,12 @@ const ContactsPage: React.FC = () => {
       return { ...item, soldeCumulatif };
     });
   }, [selectedContact, bonsForContact, products, payments, dateFrom, dateTo]);
+
+  // Récupérer les bons non calculés séparément
+  const nonCalculatedBons = useMemo(() => {
+    if (!selectedContact) return [] as any[];
+    return bonsForContact.filter(isNonCalculated);
+  }, [selectedContact, bonsForContact]);
 
   // Plus de filtre de statut dynamique
   const filteredProductHistory = productHistory;
@@ -2805,7 +2821,7 @@ const ContactsPage: React.FC = () => {
                           </tr>
                         ) : (
                           displayedProductHistory.map((item) => (
-                            <tr key={item.id} className={`hover:bg-gray-50 ${item.type === 'paiement' ? 'bg-green-50' : ''}`}>
+                            <tr key={item.id}  className={`hover:bg-gray-50 ${(item.type || '').toLowerCase() === 'paiement' ? 'bg-green-100': (item.type || '').toLowerCase() === 'avoir'? 'bg-orange-100' : ''}`}>
                               <td className="px-2  whitespace-nowrap">
                                 {item.syntheticInitial ? (
                                   <span className="text-xs text-gray-400">—</span>
@@ -3087,6 +3103,12 @@ const ContactsPage: React.FC = () => {
                       </div>
                     </>
                   )}
+
+                  {/* Table des bons non calculés */}
+                  <NonCalculatedBonsTable 
+                    bons={nonCalculatedBons}
+                    contactType={selectedContact?.type === 'client' ? 'client' : 'fournisseur'}
+                  />
 
                   
                 </div>

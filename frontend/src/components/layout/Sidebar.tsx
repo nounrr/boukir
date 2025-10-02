@@ -51,10 +51,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Opérations',
       items: [
         { name: 'Bons', href: '/bons', icon: FileText, show: true },
-        { name: 'Véhicules', href: '/vehicules', icon: Truck, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
-        { name: 'Caisse', href: '/caisse', icon: CreditCard, show: true },
-  { name: 'Talons', href: '/talons', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
-  { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+    { name: 'Véhicules', href: '/vehicules', icon: Truck, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+    { name: 'Caisse', href: '/caisse', icon: CreditCard, show: true },
+    // Talons et Talon Caisse : visibles seulement PDG
+  { name: 'Talons', href: '/talons', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'ManagerPlus' },
+  { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: user?.role === 'PDG' || user?.role === 'ManagerPlus' },
       ],
     },
     {
@@ -67,9 +68,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     {
       title: 'Rapports',
       items: [
-  { name: 'Audit', href: '/audit', icon: Activity, show: user?.role === 'PDG' },
-        { name: 'Rapports', href: '/reports', icon: BarChart3, show: user?.role === 'PDG' },
-        { name: 'Stats détaillées', href: '/reports/details', icon: Activity, show: user?.role === 'PDG' },
+    // Audit et Rapports : visibles seulement PDG
+    { name: 'Audit', href: '/audit', icon: Activity, show: user?.role === 'PDG' },
+    { name: 'Rapports', href: '/reports', icon: BarChart3, show: user?.role === 'PDG' },
+    { name: 'Stats détaillées', href: '/reports/details', icon: Activity, show: user?.role === 'PDG' },
       ],
     },
     {

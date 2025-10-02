@@ -88,8 +88,8 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
               </select>
             </div>
             <div className="flex items-center gap-2">
-          <label htmlFor="contact-price-select" className="text-sm">Prix:</label>
-          <select id="contact-price-select" value={priceMode} onChange={(e) => setPriceMode(e.target.value as PriceMode)} className="px-2 py-1 border rounded text-sm">
+          <label htmlFor="contact-price-select" className="text-base md:text-lg font-medium">Prix:</label>
+          <select id="contact-price-select" value={priceMode} onChange={(e) => setPriceMode(e.target.value as PriceMode)} className="px-3 py-2 border rounded text-base md:text-lg">
                 <option value="WITH_PRICES">Avec prix</option>
                 <option value="WITHOUT_PRICES">Sans prix</option>
               </select>

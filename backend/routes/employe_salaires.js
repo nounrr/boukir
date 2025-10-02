@@ -8,7 +8,7 @@ router.get('/employees/:id/salaires', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { month } = req.query; // format YYYY-MM
-    let sql = 'SELECT id, employe_id, montant, note, created_at, updated_at FROM employe_salaire WHERE employe_id = ?';
+    let sql = 'SELECT id, employe_id, montant, note, statut, created_at, updated_at FROM employe_salaire WHERE employe_id = ?';
     const params = [id];
     if (typeof month === 'string' && /^\d{4}-\d{2}$/.test(month)) {
       sql += ' AND DATE_FORMAT(created_at, "%Y-%m") = ?';
@@ -24,16 +24,18 @@ router.get('/employees/:id/salaires', async (req, res, next) => {
 router.post('/employees/:id/salaires', async (req, res, next) => {
   try {
     const employe_id = Number(req.params.id);
-    const { montant, note, created_by } = req.body;
+    const { montant, note, statut, created_by } = req.body;
     if (montant === undefined || isNaN(Number(montant))) {
       return res.status(400).json({ message: 'Montant invalide' });
     }
+    // Default status to "En attente" if not provided
+    const finalStatut = statut || 'En attente';
     const now = new Date();
     const [result] = await pool.query(
-      'INSERT INTO employe_salaire (employe_id, montant, note, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ',
-      [employe_id, Number(montant), note ?? null, created_by ?? null, created_by ?? null, now, now]
+      'INSERT INTO employe_salaire (employe_id, montant, note, statut, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ',
+      [employe_id, Number(montant), note ?? null, finalStatut, created_by ?? null, created_by ?? null, now, now]
     );
-    const [rows] = await pool.query('SELECT id, employe_id, montant, note, created_at, updated_at FROM employe_salaire WHERE id = ?', [result.insertId]);
+    const [rows] = await pool.query('SELECT id, employe_id, montant, note, statut, created_at, updated_at FROM employe_salaire WHERE id = ?', [result.insertId]);
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -62,7 +64,7 @@ router.put('/employees/:id/salaires/:salaireId', async (req, res, next) => {
   try {
     const employe_id = Number(req.params.id);
     const salaireId = Number(req.params.salaireId);
-    const { montant, note, updated_by } = req.body;
+    const { montant, note, statut, updated_by } = req.body;
 
     // Verify the salary entry exists and belongs to the employee
     const [existing] = await pool.query(
@@ -90,6 +92,10 @@ router.put('/employees/:id/salaires/:salaireId', async (req, res, next) => {
       updates.push('note = ?');
       params.push(note);
     }
+    if (statut !== undefined) {
+      updates.push('statut = ?');
+      params.push(statut);
+    }
     if (updated_by !== undefined) {
       updates.push('updated_by = ?');
       params.push(updated_by);
@@ -106,7 +112,7 @@ router.put('/employees/:id/salaires/:salaireId', async (req, res, next) => {
       );
     }
 
-    const [rows] = await pool.query('SELECT id, employe_id, montant, note, created_at, updated_at FROM employe_salaire WHERE id = ?', [salaireId]);
+    const [rows] = await pool.query('SELECT id, employe_id, montant, note, statut, created_at, updated_at FROM employe_salaire WHERE id = ?', [salaireId]);
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
