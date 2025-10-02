@@ -7,6 +7,7 @@ import {
   Crown,
   Menu,
   X,
+  Shield,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { showConfirmation, showSuccess } from '../../utils/notifications';
@@ -14,9 +15,10 @@ import { showConfirmation, showSuccess } from '../../utils/notifications';
 interface HeaderProps {
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
+  manualAccessCheck?: () => void; // Fonction optionnelle pour vérification manuelle d'accès
 }
 
-const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen }) => {
+const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen, manualAccessCheck }) => {
   const dispatch = useAppDispatch();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -89,26 +91,39 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen }) => {
 
           {/* Version desktop complète */}
           <div className="hidden sm:flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={() => navigate('/profile')}
-                className="flex items-center space-x-1 group"
-              >
-                {user?.role === 'PDG' ? (
-                  <Crown className="w-4 h-4 text-yellow-600" />
-                ) : user?.role === 'ManagerPlus' ? (
-                  <Crown className="w-4 h-4 text-blue-600" />
-                ) : (
-                  <User className="w-4 h-4 text-gray-600 group-hover:text-primary-600" />
-                )}
-                <span className="text-sm font-medium text-gray-700 group-hover:text-primary-600">
-                  {user?.nom_complet}
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/profile')}
+                  className="flex items-center space-x-1 group"
+                >
+                  {user?.role === 'PDG' ? (
+                    <Crown className="w-4 h-4 text-yellow-600" />
+                  ) : user?.role === 'ManagerPlus' ? (
+                    <Crown className="w-4 h-4 text-blue-600" />
+                  ) : (
+                    <User className="w-4 h-4 text-gray-600 group-hover:text-primary-600" />
+                  )}
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-primary-600">
+                    {user?.nom_complet}
+                  </span>
+                </button>
+                <span className="text-xs px-2 py-1 bg-primary-100 text-primary-800 rounded-full">
+                  {user?.role}
                 </span>
-              </button>
-              <span className="text-xs px-2 py-1 bg-primary-100 text-primary-800 rounded-full">
-                {user?.role}
-              </span>
+              </div>
+
+              {/* Bouton de vérification d'accès manuelle */}
+              {manualAccessCheck && (
+                <button
+                  onClick={manualAccessCheck}
+                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                  title="Vérifier l'accès horaire"
+                >
+                  <Shield className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
             <button

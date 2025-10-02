@@ -10,4 +10,4 @@ CREATE INDEX idx_employees_deleted_at ON employees(deleted_at);
 
 -- Mettre à jour les contraintes d'unicité pour exclure les employés supprimés
 -- Note: MySQL ne supporte pas les contraintes d'unicité conditionnelles comme PostgreSQL
--- La logique d'unicité doit être gérée au niveau de l'application
+-- La logique d'unicité doit être gérée au niveau de l'applicationnv

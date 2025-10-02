@@ -42,6 +42,12 @@ import MultiDayAccessSchedulePage from './pages/MultiDayAccessSchedulePage';
 import ChiffreAffairesPage from './pages/ChiffreAffairesPage';
 import ChiffreAffairesDetailPage from './pages/ChiffreAffairesDetailPage';
 
+// Composant Layout avec accès aux fonctions de monitoring
+const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { manualAccessCheck } = useAccessScheduleMonitor();
+  return <Layout manualAccessCheck={manualAccessCheck}>{children}</Layout>;
+};
+
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -53,7 +59,7 @@ const AppContent: React.FC = () => {
     timeRemaining,
     warningMessage,
     onWarningClose, 
-    onWarningConfirm 
+    onWarningConfirm
   } = useAccessScheduleMonitor();
 
   useEffect(() => {
@@ -85,9 +91,9 @@ const AppContent: React.FC = () => {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <DashboardPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -96,9 +102,9 @@ const AppContent: React.FC = () => {
           path="/employees"
           element={
             <ProtectedRoute requiredRoles={['PDG', 'ManagerPlus']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <EmployeePage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -107,9 +113,9 @@ const AppContent: React.FC = () => {
           path="/employees/archive"
           element={
             <ProtectedRoute requiredRoles={['PDG']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <EmployeeArchivePage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -118,9 +124,9 @@ const AppContent: React.FC = () => {
           path="/employees/:id/documents"
           element={
             <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <EmployeeDocumentsPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -129,9 +135,9 @@ const AppContent: React.FC = () => {
           path="/employees/:id/salaries"
           element={
             <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <EmployeeSalariesPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -140,9 +146,9 @@ const AppContent: React.FC = () => {
           path="/access-schedules"
           element={
             <ProtectedRoute requiredRoles={['PDG']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <AccessSchedulePage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -151,9 +157,9 @@ const AppContent: React.FC = () => {
           path="/access-schedules-multi"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <MultiDayAccessSchedulePage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -162,9 +168,9 @@ const AppContent: React.FC = () => {
           path="/stock"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <StockPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -173,9 +179,9 @@ const AppContent: React.FC = () => {
           path="/contacts"
           element={
             <ProtectedRoute forbiddenRoles={['Employé']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ContactsPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -184,9 +190,9 @@ const AppContent: React.FC = () => {
           path="/contacts-archiver"
           element={
             <ProtectedRoute forbiddenRoles={['Employé']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ContactArchiverPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -195,9 +201,9 @@ const AppContent: React.FC = () => {
           path="/bons"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <BonsPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -206,9 +212,9 @@ const AppContent: React.FC = () => {
           path="/categories"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <CategoriesPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -217,9 +223,9 @@ const AppContent: React.FC = () => {
           path="/vehicules"
           element={
             <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <VehiculesPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -228,9 +234,9 @@ const AppContent: React.FC = () => {
           path="/talons"
           element={
             <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <TalonsPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -239,9 +245,9 @@ const AppContent: React.FC = () => {
           path="/talon-caisse"
           element={
             <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <TalonCaissePage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -250,9 +256,9 @@ const AppContent: React.FC = () => {
           path="/caisse"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <CaissePage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -261,9 +267,9 @@ const AppContent: React.FC = () => {
           path="/reports"
           element={
             <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ReportsPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -272,9 +278,9 @@ const AppContent: React.FC = () => {
           path="/chiffre-affaires"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ChiffreAffairesPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -283,9 +289,9 @@ const AppContent: React.FC = () => {
           path="/chiffre-affaires/detail/:date"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ChiffreAffairesDetailPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -294,9 +300,9 @@ const AppContent: React.FC = () => {
           path="/remises"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <RemisesPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -305,9 +311,9 @@ const AppContent: React.FC = () => {
           path="/reports/details"
           element={
             <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <StatsDetailPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -316,9 +322,9 @@ const AppContent: React.FC = () => {
           path="/import"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ExcelUploadPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -327,9 +333,9 @@ const AppContent: React.FC = () => {
           path="/export/products"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ExportProducts />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -338,9 +344,9 @@ const AppContent: React.FC = () => {
           path="/export/contacts"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ExportContacts />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -349,9 +355,9 @@ const AppContent: React.FC = () => {
           path="/products/archived"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ArchivedProductsPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -360,9 +366,9 @@ const AppContent: React.FC = () => {
           path="/audit"
           element={
             <ProtectedRoute requiredRole="PDG">
-              <Layout>
+              <LayoutWithAccessCheck>
                 <AuditPage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />
@@ -371,9 +377,9 @@ const AppContent: React.FC = () => {
           path="/profile"
           element={
             <ProtectedRoute>
-              <Layout>
+              <LayoutWithAccessCheck>
                 <ProfilePage />
-              </Layout>
+              </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
         />

@@ -18,7 +18,9 @@ export const useAccessScheduleMonitor = () => {
   const dispatch = useAppDispatch();
   const { user, isAuthenticated } = useAuth();
   const intervalRef = useRef<number | null>(null);
+  const timeCheckRef = useRef<number | null>(null);
   const warningShownRef = useRef<boolean>(false);
+  const userSchedulesRef = useRef<any[]>([]);
   
   const [accessState, setAccessState] = useState<AccessMonitorState>({
     showWarning: false,
@@ -27,39 +29,71 @@ export const useAccessScheduleMonitor = () => {
     endTime: null
   });
   
-  // Vérifier l'accès toutes les 30 secondes
+  // Vérifier l'accès très fréquemment pour déconnexion immédiate à l'heure de fin
   const {
     data: accessResult,
     error: accessError,
     refetch: checkAccess
   } = useCheckAccessQuery(undefined, {
     skip: !isAuthenticated || !user,
-    pollingInterval: 30000, // 30 secondes
+    pollingInterval: 3000, // 3 secondes pour déconnexion immédiate
   });
 
-  // Calculer le temps restant jusqu'à la fin d'accès
-  const calculateTimeRemaining = () => {
-    const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 5); // HH:MM
-    const currentDay = now.getDay() === 0 ? 7 : now.getDay(); // Convertir dimanche de 0 à 7
-    
-    // Récupérer les horaires de l'utilisateur depuis l'API
-    // (Cette logique pourrait être améliorée avec une API dédiée)
-    
-    // Pour l'instant, utilisons une heure de fin par défaut (à améliorer)
-    const endTime = "19:00"; // À remplacer par la vraie heure de fin de l'utilisateur
-    const [endHour, endMinute] = endTime.split(':').map(Number);
-    
-    const endDate = new Date();
-    endDate.setHours(endHour, endMinute, 0, 0);
-    
-    const timeRemaining = endDate.getTime() - now.getTime();
-    return Math.max(0, Math.floor(timeRemaining / 1000)); // en secondes
-  };
+
 
   const handleWarningClose = () => {
     setAccessState(prev => ({ ...prev, showWarning: false }));
     dispatch(logout());
+  };
+
+  // Fonction pour vérifier si l'utilisateur est dans ses horaires autorisés
+  const isWithinAllowedSchedule = () => {
+    if (!user || userSchedulesRef.current.length === 0) return true;
+    
+    const now = new Date();
+    const currentDay = now.getDay(); // 0 = Dimanche, 1 = Lundi, etc.
+    const dayOfWeek = currentDay === 0 ? 7 : currentDay; // Convertir pour notre système (1-7)
+    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    
+    // Vérifier si l'utilisateur a au moins un horaire actif pour aujourd'hui
+    const todaySchedules = userSchedulesRef.current.filter(schedule => 
+      schedule.is_active && schedule.days_of_week.includes(dayOfWeek)
+    );
+    
+    if (todaySchedules.length === 0) {
+      return false; // Aucun horaire pour aujourd'hui
+    }
+    
+    // Vérifier si l'heure actuelle est dans une plage autorisée
+    for (const schedule of todaySchedules) {
+      if (currentTime >= schedule.start_time && currentTime <= schedule.end_time) {
+        return true;
+      }
+    }
+    
+    return false; // Heure actuelle en dehors des plages autorisées
+  };
+
+  // Fonction pour forcer la déconnexion immédiate si hors horaires
+  const checkTimeBasedAccess = () => {
+    if (!isAuthenticated || !user) return;
+    
+    if (!isWithinAllowedSchedule()) {
+      console.log('Déconnexion forcée - heure de fin atteinte');
+      
+      // Déconnexion immédiate sans popup d'avertissement
+      setAccessState({
+        showWarning: true,
+        warningMessage: 'Votre session a expiré. Vous avez été déconnecté automatiquement.',
+        timeRemaining: 5, // 5 secondes pour voir le message
+        endTime: new Date()
+      });
+      
+      // Déconnexion forcée après 3 secondes
+      setTimeout(() => {
+        dispatch(logout());
+      }, 3000);
+    }
   };
 
   useEffect(() => {
@@ -81,28 +115,22 @@ export const useAccessScheduleMonitor = () => {
             
             console.log('Accès expiré - déconnexion automatique:', errorData.data.reason);
             
-            // Afficher le popup de fermeture
+            // Afficher le popup de fermeture avec déconnexion immédiate
             setAccessState({
               showWarning: true,
-              warningMessage: `Votre accès a expiré: ${errorData.data.reason}`,
-              timeRemaining: 10, // 10 secondes avant fermeture forcée
+              warningMessage: `Votre session a expiré: ${errorData.data.reason}. Déconnexion automatique en cours...`,
+              timeRemaining: 5, // 5 secondes avant fermeture forcée
               endTime: new Date()
             });
+            
+            // Déconnexion automatique après 3 secondes
+            setTimeout(() => {
+              dispatch(logout());
+            }, 3000);
           }
         } else {
-          // Accès autorisé - vérifier s'il faut afficher l'avertissement
-          const timeRemaining = calculateTimeRemaining();
-          const warningThreshold = 5 * 60; // 5 minutes en secondes
-          
-          if (timeRemaining <= warningThreshold && timeRemaining > 0 && !warningShownRef.current) {
-            warningShownRef.current = true;
-            setAccessState({
-              showWarning: true,
-              warningMessage: `Votre session va se terminer dans ${Math.ceil(timeRemaining / 60)} minutes selon votre horaire d'accès.`,
-              timeRemaining,
-              endTime: new Date(Date.now() + timeRemaining * 1000)
-            });
-          }
+          // Accès autorisé - Réinitialiser le flag d'avertissement si l'accès est OK
+          warningShownRef.current = false;
         }
       } catch (error) {
         console.error('Erreur lors de la vérification d\'accès:', error);
@@ -112,12 +140,18 @@ export const useAccessScheduleMonitor = () => {
     // Vérifier immédiatement
     verifyAccess();
 
-    // Puis vérifier toutes les 30 secondes
-    intervalRef.current = window.setInterval(verifyAccess, 30000);
+    // Puis vérifier toutes les 3 secondes pour une déconnexion immédiate
+    intervalRef.current = window.setInterval(verifyAccess, 3000);
+
+    // Vérification temps réel toutes les 5 secondes pour déconnexion immédiate si hors horaires
+    timeCheckRef.current = window.setInterval(checkTimeBasedAccess, 5000);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+      }
+      if (timeCheckRef.current) {
+        clearInterval(timeCheckRef.current);
       }
     };
   }, [isAuthenticated, user, checkAccess, dispatch]);
@@ -134,13 +168,56 @@ export const useAccessScheduleMonitor = () => {
         
         setAccessState({
           showWarning: true,
-          warningMessage: `Accès refusé: ${errorData.data.reason}`,
-          timeRemaining: 10,
+          warningMessage: `Accès refusé: ${errorData.data.reason}. Déconnexion automatique en cours...`,
+          timeRemaining: 5,
           endTime: new Date()
         });
+        
+        // Déconnexion automatique après 3 secondes
+        setTimeout(() => {
+          dispatch(logout());
+        }, 3000);
       }
     }
   }, [accessError, isAuthenticated]);
+
+  // Fonction pour vérifier manuellement l'accès et afficher le popup si nécessaire
+  const manualAccessCheck = async () => {
+    if (!isAuthenticated || !user) return;
+
+    try {
+      const result = await checkAccess();
+      
+      if (result.error) {
+        const errorData = result.error as any;
+        
+        // Si l'accès est refusé pour cause d'horaire
+        if (errorData?.data?.access_denied && 
+            errorData?.data?.error_type === 'ACCESS_SCHEDULE_RESTRICTION') {
+          
+          console.log('Vérification manuelle - accès refusé:', errorData.data.reason);
+          
+          // Afficher le popup de vérification manuelle
+          setAccessState({
+            showWarning: true,
+            warningMessage: `Accès vérifié: ${errorData.data.reason}`,
+            timeRemaining: 60, // 1 minute pour lire le message
+            endTime: new Date(Date.now() + 60000)
+          });
+        }
+      } else {
+        // Accès autorisé - afficher popup de confirmation
+        setAccessState({
+          showWarning: true,
+          warningMessage: 'Accès vérifié: Vous êtes autorisé à accéder au système.',
+          timeRemaining: 60, // 1 minute pour lire le message
+          endTime: new Date(Date.now() + 60000)
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la vérification manuelle d\'accès:', error);
+    }
+  };
 
   return {
     accessResult,
@@ -154,6 +231,8 @@ export const useAccessScheduleMonitor = () => {
     onWarningConfirm: () => {
       setAccessState(prev => ({ ...prev, showWarning: false }));
       dispatch(logout());
-    }
+    },
+    // Fonction pour vérification manuelle
+    manualAccessCheck
   };
 };
