@@ -692,13 +692,6 @@ const paymentValidationSchema = Yup.object({
     }
   };
 
-  const getBonInfo = (bonId?: number) => {
-    if (!bonId) return 'Paiement libre';
-    const bon = bons.find((b: Bon) => b.id === bonId);
-    if (!bon) return 'Bon supprimé';
-    return displayBonNumero(bon);
-  };
-
   // Version détaillée (même format que le select: NUMERO - MONTANT DH)
   const getBonInfoDetailed = (bonId?: number) => {
     if (!bonId) return 'Paiement libre';
@@ -806,10 +799,10 @@ const paymentValidationSchema = Yup.object({
   }
 
   return (
-    <div className="p-4 sm:p-6">
+    <div className="p-2 sm:p-3">
       {/* Header avec informations utilisateur */}
-      <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6 bg-white rounded-lg shadow p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+      <div className="flex flex-col gap-2 md:flex-row md:justify-between md:items-center mb-4 bg-white rounded-lg shadow p-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2">
           <h1 className="text-2xl font-bold text-gray-900">Gestion de la Caisse</h1>
           {user && (
             <div className="flex items-center flex-wrap gap-2 text-sm text-gray-600">
@@ -826,7 +819,7 @@ const paymentValidationSchema = Yup.object({
             </div>
           )}
         </div>
-        <div className="flex flex-wrap gap-3">
+  <div className="flex flex-wrap gap-2">
           <button
             onClick={() => {
               setSelectedPayment(null);
@@ -835,14 +828,14 @@ const paymentValidationSchema = Yup.object({
               setCreateOpenedAt(getCurrentDateTimeInput());
               setIsCreateModalOpen(true);
             }}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded-md transition-colors text-sm"
           >
             <Plus size={18} className="shrink-0" />
             <span className="whitespace-nowrap">Nouveau Paiement</span>
           </button>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+            className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-2 py-1 rounded-md transition-colors text-sm"
           >
             <LogOut size={18} className="shrink-0" />
             <span className="whitespace-nowrap">Déconnexion</span>
@@ -851,8 +844,8 @@ const paymentValidationSchema = Yup.object({
       </div>
 
   {/* Statistiques de caisse */}
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-lg shadow">
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 mb-4">
+    <div className="bg-white p-2 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Encaissements</p>
@@ -864,7 +857,7 @@ const paymentValidationSchema = Yup.object({
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow">
+  <div className="bg-white p-2 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Espèces</p>
@@ -876,7 +869,7 @@ const paymentValidationSchema = Yup.object({
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow">
+  <div className="bg-white p-2 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Chèques</p>
@@ -888,7 +881,7 @@ const paymentValidationSchema = Yup.object({
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow">
+  <div className="bg-white p-2 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Virements</p>
@@ -900,7 +893,7 @@ const paymentValidationSchema = Yup.object({
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow">
+  <div className="bg-white p-2 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Traites</p>
@@ -914,8 +907,8 @@ const paymentValidationSchema = Yup.object({
       </div>
 
       {/* Filtres et recherche */}
-      <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-6">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-start sm:items-center">
+      <div className="flex flex-col gap-2 md:flex-row md:justify-between md:items-center mb-4">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 items-start sm:items-center">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
@@ -923,7 +916,7 @@ const paymentValidationSchema = Yup.object({
               placeholder="Rechercher (N° paiement, Nom, Société, Notes, Montant)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full sm:w-80 pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full sm:w-72 pl-9 pr-2 py-1 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           
@@ -933,7 +926,7 @@ const paymentValidationSchema = Yup.object({
               type="date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="flex-1 sm:flex-none px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="flex-1 sm:flex-none px-2 py-1 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
@@ -942,7 +935,7 @@ const paymentValidationSchema = Yup.object({
             <select
               value={modeFilter}
               onChange={(e) => setModeFilter(e.target.value as any)}
-              className="flex-1 sm:flex-none px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="flex-1 sm:flex-none px-2 py-1 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="all">Tous les modes</option>
               <option value="Espèces">Espèces</option>
@@ -958,14 +951,14 @@ const paymentValidationSchema = Yup.object({
               multiple
               value={statusFilter}
               onChange={(e) => setStatusFilter(Array.from(e.target.selectedOptions).map(o => o.value))}
-              className="px-2 py-2 border border-gray-300 rounded-md h-28 text-sm"
+              className="px-2 py-1 border border-gray-300 rounded-md h-24 text-sm"
               title="Filtrer par statut (sélection multiple)"
             >
               {availableStatuses.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
-            <div className="flex flex-col gap-2 ml-2 shrink-0">
+            <div className="flex flex-col gap-1 ml-2 shrink-0">
               <button type="button" className="px-2 py-1 bg-gray-100 rounded text-xs" onClick={() => setStatusFilter([])}>Tous</button>
               <button type="button" className="px-2 py-1 bg-gray-100 rounded text-xs" onClick={() => setStatusFilter([...availableStatuses])}>Tout</button>
             </div>
@@ -980,9 +973,9 @@ const paymentValidationSchema = Yup.object({
             setStatusFilter([]);
             dispatch(resetFilters());
           }}
-          className="self-start md:self-auto px-4 py-2 text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-50 text-sm"
+          className="self-start md:self-auto px-2 py-1 text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-50 text-sm"
         >
-          Réinitialiser les filtres
+          Réinitialiser
         </button>
       </div>
 
@@ -1194,7 +1187,7 @@ const paymentValidationSchema = Yup.object({
                                 <XCircle size={20} />
                               </button>
                             </>
-                          ) : (
+                          ) : (user?.role === 'PDG' || user?.role === 'ManagerPlus') ? (
                             <>
                               {/* Validé */}
                               <button
@@ -1226,6 +1219,9 @@ const paymentValidationSchema = Yup.object({
                                 <XCircle size={20} />
                               </button>
                             </>
+                          ) : (
+                            // Manager (and any other roles not explicitly allowed) only see En attente button (shown above)
+                            null
                           )}
                         </div>
 
@@ -1238,7 +1234,7 @@ const paymentValidationSchema = Yup.object({
                           >
                             <Eye size={20} />
                           </button>
-                          {canModifyPayments(user) && (
+                          {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
                             <button
                               onClick={() => handleEditPayment(payment)}
                               className="text-green-600 hover:text-green-900"
@@ -1275,8 +1271,8 @@ const paymentValidationSchema = Yup.object({
       </div>
 
       {/* Contrôles de tri mobile */}
-      <div className="md:hidden mb-4 bg-white rounded-lg shadow p-4">
-        <div className="flex items-center justify-between gap-3">
+      <div className="md:hidden mb-2 bg-white rounded-lg shadow p-2">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-1">
             <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Trier par:</span>
             <select
@@ -1287,7 +1283,7 @@ const paymentValidationSchema = Yup.object({
                   handleSort(field);
                 }
               }}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="flex-1 px-2 py-1 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">Sans tri</option>
               <option value="numero">Numéro</option>
@@ -1310,9 +1306,9 @@ const paymentValidationSchema = Yup.object({
       </div>
 
       {/* Liste mobile des paiements */}
-      <div className="md:hidden space-y-4 mb-10">
+      <div className="md:hidden space-y-2 mb-6">
         {sortedPayments.length === 0 ? (
-          <div className="text-center text-sm text-gray-500 bg-white rounded-lg p-6 shadow">Aucun paiement trouvé</div>
+          <div className="text-center text-sm text-gray-500 bg-white rounded-lg p-3 shadow">Aucun paiement trouvé</div>
         ) : (
           sortedPayments.map((payment: Payment) => {
             const contactName = payment.type_paiement === 'Fournisseur'
@@ -1324,7 +1320,7 @@ const paymentValidationSchema = Yup.object({
             return (
               <div
                 key={payment.id}
-                className={`rounded-lg shadow p-4 flex flex-col gap-3 transition-colors ${payment.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70' : 'bg-white'}`}
+                className={`rounded-lg shadow p-2 flex flex-col gap-2 transition-colors ${payment.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70' : 'bg-white'}`}
               >
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
@@ -1338,7 +1334,7 @@ const paymentValidationSchema = Yup.object({
                     </span>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2 text-xs">
+                <div className="flex flex-wrap gap-1 text-xs">
                   <span className={`px-2 py-0.5 rounded-full ${payment.type_paiement === 'Fournisseur' ? 'bg-orange-100 text-orange-800' : 'bg-emerald-100 text-emerald-800'}`}>{payment.type_paiement}</span>
                   <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{payment.mode_paiement}</span>
                   {payment.image_url && (payment.mode_paiement === 'Chèque' || payment.mode_paiement === 'Traite') && (
@@ -1367,7 +1363,7 @@ const paymentValidationSchema = Yup.object({
                   <button onClick={() => handleViewPayment(payment)} className="flex items-center gap-1 text-blue-600 text-xs font-medium px-2 py-1 bg-blue-50 rounded">
                     <Eye size={18} /> Voir
                   </button>
-                  {canModifyPayments(user) && (
+                  {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
                     <button onClick={() => handleEditPayment(payment)} className="flex items-center gap-1 text-green-600 text-xs font-medium px-2 py-1 bg-green-50 rounded">
                       <Edit size={18} /> Edit
                     </button>
@@ -1389,7 +1385,7 @@ const paymentValidationSchema = Yup.object({
                       <button onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
                         <XCircle size={18} />
                       </button>
-                    ) : (
+                    ) : user?.role === 'PDG' || user?.role === 'ManagerPlus' ? (
                       <>
                         <button onClick={() => changePaymentStatus(payment.id, 'Validé')} className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-400'}`} title="Valider">
                           <Check size={18} />
@@ -1401,6 +1397,9 @@ const paymentValidationSchema = Yup.object({
                           <XCircle size={18} />
                         </button>
                       </>
+                    ) : (
+                      // Manager or other roles: only En attente button is available (rendered earlier)
+                      null
                     )}
                   </div>
                 </div>
@@ -1412,8 +1411,8 @@ const paymentValidationSchema = Yup.object({
 
       {/* Modal de création/édition */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
+          <div className="bg-white rounded-lg p-4 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <div>
                 <h2 className="text-lg font-semibold">
@@ -1526,7 +1525,7 @@ const paymentValidationSchema = Yup.object({
                   }}
                 >
                   {/* Responsive grid: 2 cols on small screens, 3 on md+ */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     <div>
                       <label htmlFor="type_paiement" className="block text-sm font-medium text-gray-700 mb-1">
                         Type de paiement
@@ -1842,8 +1841,8 @@ const paymentValidationSchema = Yup.object({
 
       {/* Modal de visualisation */}
       {isViewModalOpen && selectedPayment && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
+          <div className="bg-white rounded-lg p-4 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold">Détails du Paiement {getDisplayNumeroPayment(selectedPayment)}</h2>
               <button
@@ -1854,8 +1853,8 @@ const paymentValidationSchema = Yup.object({
               </button>
             </div>
             
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Numéro:</p>
                   <p className="text-lg">{getDisplayNumeroPayment(selectedPayment)}</p>

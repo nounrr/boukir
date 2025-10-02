@@ -30,12 +30,12 @@ export const employeesServerApi = api.injectEndpoints({
       providesTags: (_r, _e, { id }) => [{ type: 'Employee', id }],
     }),
     // Salary: add entry for an employee
-    addEmployeeSalaireEntry: builder.mutation<EmployeeSalaireEntry, { id: number; montant: number; note?: string; created_by: number }>({
+    addEmployeeSalaireEntry: builder.mutation<EmployeeSalaireEntry, { id: number; montant: number; note?: string; statut?: string; created_by: number }>({
       query: ({ id, ...body }) => ({ url: `/employees/${id}/salaires`, method: 'POST', body }),
       invalidatesTags: (_r, _e, { id }) => [{ type: 'Employee', id }],
     }),
     // Salary: update entry for an employee
-    updateEmployeeSalaireEntry: builder.mutation<EmployeeSalaireEntry, { id: number; salaireId: number; montant?: number; note?: string; updated_by: number }>({
+    updateEmployeeSalaireEntry: builder.mutation<EmployeeSalaireEntry, { id: number; salaireId: number; montant?: number; note?: string; statut?: string; updated_by: number }>({
       query: ({ id, salaireId, ...body }) => ({ url: `/employees/${id}/salaires/${salaireId}`, method: 'PUT', body }),
       invalidatesTags: (_r, _e, { id }) => [{ type: 'Employee', id }],
     }),

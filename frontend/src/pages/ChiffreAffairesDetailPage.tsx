@@ -303,11 +303,15 @@ const ChiffreAffairesDetailPage: React.FC = () => {
   // Calculate detailed data for the specific date
   const chiffresDetail = useMemo(() => {
     const validStatuses = new Set(['En attente', 'Validé']);
+    const isNonCalculated = (b: any): boolean => {
+      const v = (b?.isNotCalculated ?? b?.is_not_calculated);
+      return v === true || v === 1 || v === '1';
+    };
     
     // Filter documents for the specific date
     const filterByDate = (docs: any[]) => docs.filter((doc: any) => {
       const docDate = doc.date_creation?.split('T')[0];
-      return docDate === selectedDate && validStatuses.has(doc.statut);
+      return docDate === selectedDate && validStatuses.has(doc.statut) && !isNonCalculated(doc);
     });
 
     const dayVentes = filterByDate([...sorties, ...comptants]);
