@@ -12,7 +12,7 @@ import {
 import { useGetEmployeeDocsQuery, useGetDocumentTypesQuery } from '../store/api/employeeDocsApi';
 import type { Employee } from '../types';
 import { useAuth } from '../hooks/redux';
-import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote, Wallet, ChevronDown, ChevronRight, Check, X, Clock } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote, Wallet, ChevronDown, ChevronRight, Check, X, Clock, Users } from 'lucide-react';
 // merged imports above
 // imports merged above
 import { Link } from 'react-router-dom';
@@ -512,7 +512,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
 
   const handleDelete = async (id: number) => {
     const result = await showConfirmation(
-      'Cette action est irréversible.',
+      'L\'employé sera désactivé mais ses données seront conservées.',
       'Êtes-vous sûr de vouloir supprimer cet employé ?',
       'Oui, supprimer',
       'Annuler'
@@ -562,19 +562,28 @@ const EmployeePage: React.FC = () => { // NOSONAR
           {user?.role === 'PDG' ? 'Gestion des Employés' : 'Employés - Ajout de montants'}
         </h1>
         {user?.role === 'PDG' && (
-          <button
-            onClick={() => {
-              setEditingEmployee(null);
-              formik.resetForm();
-              setChangePassword(true); // creating: password required, show field
-              setShowPassword(false);
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-          >
-            <Plus size={20} />
-            Nouvel Employé
-          </button>
+          <div className="flex items-center gap-3">
+            <Link 
+              to="/employees/archive"
+              className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors"
+            >
+              <Users size={20} />
+              Employés Archivés
+            </Link>
+            <button
+              onClick={() => {
+                setEditingEmployee(null);
+                formik.resetForm();
+                setChangePassword(true); // creating: password required, show field
+                setShowPassword(false);
+                setIsModalOpen(true);
+              }}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+            >
+              <Plus size={20} />
+              Nouvel Employé
+            </button>
+          </div>
         )}
       </div>
 
