@@ -16,6 +16,7 @@ import { AccessWarningPopup } from './components/AccessWarningPopup';
 // Pages
 import DashboardPage from './pages/DashboardPage';
 import EmployeePage from './pages/EmployeePage';
+import EmployeeArchivePage from './pages/EmployeeArchivePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
 import StockPage from './pages/StockPage';
 import ContactsPage from './pages/ContactsPage';
@@ -97,6 +98,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute requiredRoles={['PDG', 'ManagerPlus']}>
               <Layout>
                 <EmployeePage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/employees/archive"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <Layout>
+                <EmployeeArchivePage />
               </Layout>
             </ProtectedRoute>
           }

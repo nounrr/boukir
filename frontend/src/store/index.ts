@@ -9,6 +9,7 @@ import { combineReducers } from 'redux';
 // Import des APIs pour les endpoints
 import './api/authApi';
 import './api/employeesApi.server';
+import './api/employeeArchiveApi';
 import './api/productsApi';
 import './api/categoriesApi';
 import './api/contactsApi';

@@ -12,7 +12,7 @@ router.post('/login', async (req, res, next) => {
     const { cin, password } = req.body;
     if (!cin || !password) return res.status(400).json({ message: 'CIN et mot de passe requis' });
     
-    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, password FROM employees WHERE cin = ?', [cin]);
+    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, password FROM employees WHERE cin = ? AND deleted_at IS NULL', [cin]);
     const row = rows[0];
     if (!row) return res.status(401).json({ message: 'Identifiants invalides' });
     
@@ -49,7 +49,7 @@ router.get('/me', verifyToken, async (req, res, next) => {
   try {
     const { id } = req.user || {};
     if (!id) return res.status(401).json({ message: 'Non autorisé' });
-    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role FROM employees WHERE id = ?', [id]);
+    const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role FROM employees WHERE id = ? AND deleted_at IS NULL', [id]);
     const user = rows[0];
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
     res.json(user);
