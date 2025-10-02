@@ -1,4 +1,5 @@
 import pool from '../db/pool.js';
+import { getCurrentMoroccoTimeString, getCurrentMoroccoDayOfWeek, checkAccessWithMoroccoTime } from '../utils/timeUtils.js';
 
 /**
  * Middleware pour vérifier les horaires d'accès d'un utilisateur
@@ -30,11 +31,10 @@ export const checkAccessSchedule = async (req, res, next) => {
     }
 
     const schedule = scheduleRows[0];
-    const now = new Date();
     
-    // Convertir le jour de la semaine: dimanche (0) -> 7, lundi (1) -> 1, etc.
-    const currentDay = now.getDay() === 0 ? 7 : now.getDay();
-    const currentTime = now.toTimeString().slice(0, 5); // Format HH:MM
+    // Utiliser l'heure du Maroc pour la vérification
+    const currentDay = getCurrentMoroccoDayOfWeek();
+    const currentTime = getCurrentMoroccoTimeString();
 
     try {
       // MySQL retourne déjà un array JavaScript pour les colonnes JSON

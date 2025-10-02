@@ -444,4 +444,21 @@ router.get('/check/:userId', auth, async (req, res) => {
   }
 });
 
+// Route de débogage pour vérifier les fuseaux horaires
+router.get('/debug/timezone', auth, async (req, res) => {
+  try {
+    const { getTimezoneDebugInfo } = await import('../utils/timeUtils.js');
+    const debugInfo = getTimezoneDebugInfo();
+    
+    res.json({
+      message: 'Informations de fuseau horaire',
+      ...debugInfo,
+      note: 'Le système utilise le fuseau horaire Africa/Casablanca (Maroc)'
+    });
+  } catch (error) {
+    console.error('Erreur debug timezone:', error);
+    res.status(500).json({ error: 'Erreur lors du debug des fuseaux horaires' });
+  }
+});
+
 export default router;

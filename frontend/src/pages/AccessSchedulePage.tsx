@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Clock, Users, Shield, Search, Save, Edit, Trash2,
   CheckSquare, Square, CalendarClock, AlertTriangle,
@@ -34,6 +34,8 @@ const AccessSchedulePage: React.FC = () => {
   const [updateSchedule] = useUpdateAccessScheduleMutation();
   const [deleteSchedule] = useDeleteAccessScheduleMutation();
   const [batchUpdateSchedules] = useBatchUpdateSchedulesMutation();
+
+
   
   // États locaux
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,6 +44,56 @@ const AccessSchedulePage: React.FC = () => {
   const [editingSchedule, setEditingSchedule] = useState<AccessSchedule | null>(null);
   const [loading, setLoading] = useState(false);
   const [showRulesFor, setShowRulesFor] = useState<number | null>(null);
+
+  // Fonction pour s'assurer que l'heure est en format 24H
+  const ensureTimeFormat24H = (time: string): string => {
+    if (!time) return '08:00';
+    
+    // Nettoyer la saisie
+    let cleanTime = time.replace(/[^\d:]/g, '');
+    
+    // Si déjà au format HH:MM, vérifier et retourner directement
+    if (cleanTime.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+      const [hours, minutes] = cleanTime.split(':');
+      const hour = parseInt(hours, 10);
+      const minute = parseInt(minutes, 10);
+      
+      // Validation des valeurs
+      if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+        return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+      }
+    }
+    
+    // Si seulement des chiffres, ajouter les ":"
+    if (cleanTime.match(/^\d{1,4}$/)) {
+      if (cleanTime.length <= 2) {
+        const hour = parseInt(cleanTime, 10);
+        if (hour <= 23) {
+          cleanTime = cleanTime.padStart(2, '0') + ':00';
+        } else {
+          return '08:00';
+        }
+      } else if (cleanTime.length === 3) {
+        const hour = parseInt(cleanTime.substring(0, 2), 10);
+        const minute = parseInt(cleanTime.substring(2, 3), 10);
+        if (hour <= 23 && minute <= 5) {
+          cleanTime = cleanTime.substring(0, 2) + ':' + cleanTime.substring(2, 3) + '0';
+        } else {
+          return '08:00';
+        }
+      } else if (cleanTime.length === 4) {
+        const hour = parseInt(cleanTime.substring(0, 2), 10);
+        const minute = parseInt(cleanTime.substring(2, 4), 10);
+        if (hour <= 23 && minute <= 59) {
+          cleanTime = cleanTime.substring(0, 2) + ':' + cleanTime.substring(2, 4);
+        } else {
+          return '08:00';
+        }
+      }
+    }
+    
+    return '08:00'; // Valeur par défaut si format invalide
+  };
 
   // États du formulaire
   const [formData, setFormData] = useState({
@@ -60,6 +112,35 @@ const AccessSchedulePage: React.FC = () => {
     { value: 6, label: 'Samedi', short: 'S' },
     { value: 7, label: 'Dimanche', short: 'D' }
   ];
+
+  // Debug: Surveiller les changements de formData
+  useEffect(() => {
+    console.log('FormData mis à jour:', formData);
+  }, [formData]);
+
+  // Effet pour mettre à jour formData quand editingSchedule change
+  useEffect(() => {
+    if (editingSchedule) {
+      console.log('Mise à jour formData depuis editingSchedule:', editingSchedule);
+      
+      const formattedStartTime = ensureTimeFormat24H(editingSchedule.start_time);
+      const formattedEndTime = ensureTimeFormat24H(editingSchedule.end_time);
+      
+      console.log('Formatage:', {
+        original_start: editingSchedule.start_time,
+        formatted_start: formattedStartTime,
+        original_end: editingSchedule.end_time,
+        formatted_end: formattedEndTime
+      });
+      
+      setFormData({
+        start_time: formattedStartTime,
+        end_time: formattedEndTime,
+        days_of_week: Array.isArray(editingSchedule.days_of_week) ? editingSchedule.days_of_week : [],
+        is_active: editingSchedule.is_active
+      });
+    }
+  }, [editingSchedule]);
 
   // Filtrage des employés
   const filteredEmployees = useMemo(() => {
@@ -160,15 +241,7 @@ const AccessSchedulePage: React.FC = () => {
       }
 
       // Réinitialiser le formulaire
-      setShowForm(false);
-      setEditingSchedule(null);
-      setSelectedUsers(new Set());
-      setFormData({
-        start_time: '08:00',
-        end_time: '19:00',
-        days_of_week: [1, 2, 3, 4, 5],
-        is_active: true
-      });
+      resetForm();
       
       console.log('Horaires sauvegardés avec succès');
     } catch (error) {
@@ -180,14 +253,24 @@ const AccessSchedulePage: React.FC = () => {
   };
 
   const handleEdit = (schedule: AccessSchedule) => {
+    console.log('Édition d\'un horaire:', schedule);
+    
+    // Le useEffect se chargera de mettre à jour formData
     setEditingSchedule(schedule);
-    setFormData({
-      start_time: schedule.start_time,
-      end_time: schedule.end_time,
-      days_of_week: schedule.days_of_week,
-      is_active: schedule.is_active
-    });
     setShowForm(true);
+  };
+
+  // Fonction pour réinitialiser le formulaire
+  const resetForm = () => {
+    setFormData({
+      start_time: '08:00',
+      end_time: '19:00',
+      days_of_week: [1, 2, 3, 4, 5],
+      is_active: true
+    });
+    setEditingSchedule(null);
+    setSelectedUsers(new Set());
+    setShowForm(false);
   };
 
   // Nouvelle fonction pour ajouter une règle supplémentaire
@@ -219,7 +302,19 @@ const AccessSchedulePage: React.FC = () => {
   };
 
   const formatTimeRange = (start: string, end: string) => {
-    return `${start} - ${end}`;
+    // S'assurer que l'heure est affichée en format 24H
+    const formatTime = (time: string) => {
+      if (!time) return '00:00';
+      // Si l'heure est déjà en format HH:MM, la retourner telle quelle
+      if (time.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+        return time;
+      }
+      // Sinon, essayer de la parser et la reformater
+      const date = new Date(`1970-01-01T${time}`);
+      return date.toTimeString().slice(0, 5);
+    };
+    
+    return `${formatTime(start)} - ${formatTime(end)}`;
   };
 
   const formatDays = (days: number[]) => {
@@ -243,8 +338,11 @@ const AccessSchedulePage: React.FC = () => {
         <div className="flex items-center gap-3">          
           <button
             onClick={() => {
-              setEditingSchedule(null);
-              setShowForm(!showForm);
+              if (showForm) {
+                resetForm();
+              } else {
+                setShowForm(true);
+              }
             }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             disabled={!showForm && selectedUsers.size === 0}
@@ -306,10 +404,19 @@ const AccessSchedulePage: React.FC = () => {
 
       {/* Formulaire de configuration */}
       {showForm && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div key={`form_${editingSchedule?.id || 'new'}`} className="bg-white rounded-lg border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
             <Settings className="w-5 h-5 mr-2 text-blue-600" />
-            {editingSchedule ? 'Modifier l\'Horaire' : 'Configurer les Horaires d\'Accès'}
+            {editingSchedule ? (
+              <>
+                Modifier l'Horaire 
+                <span className="ml-2 text-sm text-blue-600">
+                  (ID: {editingSchedule.id})
+                </span>
+              </>
+            ) : (
+              'Configurer les Horaires d\'Accès'
+            )}
             {!editingSchedule && (
               <span className="ml-2 text-sm text-gray-500">
                 ({selectedUsers.size} utilisateur(s) sélectionné(s))
@@ -323,34 +430,93 @@ const AccessSchedulePage: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-md font-medium text-gray-700 flex items-center">
                   <Clock className="w-4 h-4 mr-2" />
-                  Plage Horaire
+                  Plage Horaire (Format 24H)
                 </h3>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <div className="flex items-center">
+                    <Clock className="w-4 h-4 text-blue-600 mr-2" />
+                    <p className="text-sm text-blue-800">
+                      <strong>Format 24H uniquement :</strong> Utilisez le format HH:MM (ex: 08:00 pour 8h du matin, 19:00 pour 7h du soir)
+                    </p>
+                  </div>
+                  {editingSchedule && (
+                    <div className="mt-2 text-xs text-blue-600">
+                      <strong>Valeurs actuelles:</strong> {formData.start_time} - {formData.end_time}
+                      <br />
+                      <strong>Original:</strong> {editingSchedule.start_time} - {editingSchedule.end_time}
+                    </div>
+                  )}
+                </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Heure de début
+                      Heure de début (Format 24H)
                     </label>
                     <input
-                      type="time"
+                      key={`start_time_${editingSchedule?.id || 'new'}`}
+                      type="text"
                       value={formData.start_time}
-                      onChange={(e) => setFormData(prev => ({ ...prev, start_time: e.target.value }))}
+                      onChange={(e) => {
+                        let value = e.target.value.replace(/[^\d:]/g, '');
+                        
+                        // Auto-format pendant la saisie
+                        if (value.length === 2 && !value.includes(':')) {
+                          value += ':';
+                        }
+                        
+                        // Limiter à 5 caractères (HH:MM)
+                        if (value.length <= 5) {
+                          setFormData(prev => ({ ...prev, start_time: value }));
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const formatted = ensureTimeFormat24H(e.target.value);
+                        setFormData(prev => ({ ...prev, start_time: formatted }));
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       required
+                      pattern="[0-9]{2}:[0-9]{2}"
+                      placeholder="08:00"
+                      maxLength={5}
+                      autoComplete="off"
                     />
+                    <p className="text-xs text-gray-500 mt-1">Format: HH:MM (ex: 08:00, 14:30, 19:00)</p>
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Heure de fin
+                      Heure de fin (Format 24H)
                     </label>
                     <input
-                      type="time"
+                      key={`end_time_${editingSchedule?.id || 'new'}`}
+                      type="text"
                       value={formData.end_time}
-                      onChange={(e) => setFormData(prev => ({ ...prev, end_time: e.target.value }))}
+                      onChange={(e) => {
+                        let value = e.target.value.replace(/[^\d:]/g, '');
+                        
+                        // Auto-format pendant la saisie
+                        if (value.length === 2 && !value.includes(':')) {
+                          value += ':';
+                        }
+                        
+                        // Limiter à 5 caractères (HH:MM)
+                        if (value.length <= 5) {
+                          setFormData(prev => ({ ...prev, end_time: value }));
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const formatted = ensureTimeFormat24H(e.target.value);
+                        setFormData(prev => ({ ...prev, end_time: formatted }));
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       required
+                      pattern="[0-9]{2}:[0-9]{2}"
+                      placeholder="19:00"
+                      maxLength={5}
+                      autoComplete="off"
                     />
+                    <p className="text-xs text-gray-500 mt-1">Format: HH:MM (ex: 08:00, 14:30, 19:00)</p>
                   </div>
                 </div>
               </div>
@@ -409,10 +575,7 @@ const AccessSchedulePage: React.FC = () => {
             <div className="flex justify-end space-x-3">
               <button
                 type="button"
-                onClick={() => {
-                  setShowForm(false);
-                  setEditingSchedule(null);
-                }}
+                onClick={resetForm}
                 className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
               >
                 Annuler
