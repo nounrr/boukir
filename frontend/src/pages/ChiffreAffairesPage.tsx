@@ -106,13 +106,18 @@ const ChiffreAffairesPage: React.FC = () => {
   // Calculate data based on filter
   const chiffreAffairesData = useMemo(() => {
     const validStatuses = new Set(['En attente', 'Validé']);
+    // Exclude bons marked as non-calculated
+    const isNonCalculated = (b: any): boolean => {
+      const v = (b?.isNotCalculated ?? b?.is_not_calculated);
+      return v === true || v === 1 || v === '1';
+    };
     
     // Get all data sources with valid status
-    const salesDocs = [...sorties, ...comptants].filter((b: any) => validStatuses.has(b.statut));
-    const avoirClientDocs = avoirsClient.filter((a: any) => validStatuses.has(a.statut));
-    const avoirComptantDocs = avoirsComptant.filter((a: any) => validStatuses.has(a.statut));
-    const vehiculeDocs = bonsVehicule.filter((v: any) => validStatuses.has(v.statut));
-    const commandeDocs = commandes.filter((c: any) => validStatuses.has(c.statut));
+    const salesDocs = [...sorties, ...comptants].filter((b: any) => validStatuses.has(b.statut) && !isNonCalculated(b));
+    const avoirClientDocs = avoirsClient.filter((a: any) => validStatuses.has(a.statut) && !isNonCalculated(a));
+    const avoirComptantDocs = avoirsComptant.filter((a: any) => validStatuses.has(a.statut) && !isNonCalculated(a));
+    const vehiculeDocs = bonsVehicule.filter((v: any) => validStatuses.has(v.statut) && !isNonCalculated(v));
+    const commandeDocs = commandes.filter((c: any) => validStatuses.has(c.statut) && !isNonCalculated(c));
     
     // Filter documents based on selected filter type
     let filteredSales: any[] = [];

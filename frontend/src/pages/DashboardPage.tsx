@@ -100,23 +100,28 @@ const DashboardPage: React.FC = () => {
   // - Pending orders = docs not finalized: statuses in ['Brouillon','En attente','En cours'] across Sortie + Commande
   const stats = useMemo(() => {
     const validStatuses = new Set(['En attente', 'Validé']);
+    // Helper: exclude bons marked as non calculated (isNotCalculated or is_not_calculated)
+    const isNonCalculated = (b: any): boolean => {
+      const v = (b?.isNotCalculated ?? b?.is_not_calculated);
+      return v === true || v === 1 || v === '1';
+    };
     
     const salesDocs = [...sorties, ...comptants];
     const orders = salesDocs.filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut)).length; // sales-related documents only for today with valid status
 
     // Calculate revenue from sales (Sortie + Comptant) today with valid status
     const salesRevenue = salesDocs
-      .filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut))
+      .filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut) && !isNonCalculated(b))
       .reduce((sum: number, b: any) => sum + Number(b.montant_total || 0), 0);
 
     // Calculate avoir client (returns) today with valid status to subtract
     const avoirClientAmount = avoirsClient
-      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
+      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut) && !isNonCalculated(a))
       .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0);
 
     // Calculate avoir comptant today with valid status to subtract
     const avoirComptantAmount = avoirsComptant
-      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
+      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut) && !isNonCalculated(a))
       .reduce((sum: number, a: any) => sum + Number(a.montant_total || 0), 0);
 
     // Final revenue = sales - avoir client - avoir comptant
@@ -124,21 +129,21 @@ const DashboardPage: React.FC = () => {
 
     // Calculate purchase revenue (chiffre bénéficiaire) based on profits with valid status
     const salesMovements = salesDocs
-      .filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut))
+      .filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut) && !isNonCalculated(b))
       .reduce((sum: number, b: any) => {
         const { profit } = computeMouvementDetail(b); // déjà net des remises
         return sum + profit;
       }, 0);
 
     const avoirClientMovements = avoirsClient
-      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
+      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut) && !isNonCalculated(a))
       .reduce((sum: number, a: any) => {
         const { profit } = computeMouvementDetail(a); // net remises
         return sum + profit;
       }, 0);
 
     const avoirComptantMovements = avoirsComptant
-      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut))
+      .filter((a: any) => isToday(a.date_creation) && validStatuses.has(a.statut) && !isNonCalculated(a))
       .reduce((sum: number, a: any) => {
         const { profit } = computeMouvementDetail(a); // net remises
         return sum + profit;
@@ -146,7 +151,7 @@ const DashboardPage: React.FC = () => {
 
     // Calculate vehicle bons total amount (not profit-based, but full montant_total deduction)
     const vehicleAmount = bonsVehicule
-      .filter((v: any) => isToday(v.date_creation) && validStatuses.has(v.statut))
+      .filter((v: any) => isToday(v.date_creation) && validStatuses.has(v.statut) && !isNonCalculated(v))
       .reduce((sum: number, v: any) => sum + Number(v.montant_total || 0), 0);
 
     // Final purchase revenue = sales profits - avoir client profits - avoir comptant profits - vehicle total amount
@@ -154,7 +159,7 @@ const DashboardPage: React.FC = () => {
 
     // Calculate purchase revenue from commandes (chiffre d'affaires des achats)
     const purchaseOrdersRevenue = commandes
-      .filter((c: any) => isToday(c.date_creation) && validStatuses.has(c.statut))
+      .filter((c: any) => isToday(c.date_creation) && validStatuses.has(c.statut) && !isNonCalculated(c))
       .reduce((sum: number, c: any) => sum + Number(c.montant_total || 0), 0);
 
     const lowStock = products.filter((p: any) => Number(p.quantite || 0) <= 5).length;
@@ -351,7 +356,7 @@ const DashboardPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Stats Cards - Deuxième ligne (3 cartes) - Visible seulement pour PDG */}
+      {/* Stats Cards - Deuxième ligne (3 cartes) - Visible seulement pour PDG (et caché pour ManagerPlus/Manager) */}
       {user?.role === 'PDG' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
           <button 

@@ -47,11 +47,30 @@ router.get('/', async (_req, res) => {
       byCommande.set(it.bon_commande_id, arr);
     }
 
+    const idsLiv = rows.map(r => r.id);
+    let byBonId = new Map();
+    if (idsLiv.length) {
+      const [livs] = await pool.query(
+        `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
+           FROM livraisons l
+           LEFT JOIN vehicules v ON v.id = l.vehicule_id
+           LEFT JOIN employees e ON e.id = l.user_id
+          WHERE l.bon_type = 'Commande' AND l.bon_id IN (?)`,
+        [idsLiv]
+      );
+      byBonId = livs.reduce((acc, r) => {
+        const arr = acc.get(r.bon_id) || [];
+        arr.push(r);
+        acc.set(r.bon_id, arr);
+        return acc;
+      }, new Map());
+    }
     const data = rows.map((r) => ({
       ...r,
       type: 'Commande',
       numero: `CMD${String(r.id).padStart(2, '0')}`,
       items: byCommande.get(r.id) || [],
+      livraisons: byBonId.get(r.id) || []
     }));
 
     res.json(data);
@@ -88,6 +107,14 @@ router.get('/:id', async (req, res) => {
       [id]
     );
 
+    const [livs] = await pool.query(
+      `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
+         FROM livraisons l
+         LEFT JOIN vehicules v ON v.id = l.vehicule_id
+         LEFT JOIN employees e ON e.id = l.user_id
+        WHERE l.bon_type = 'Commande' AND l.bon_id = ?`,
+      [id]
+    );
     const data = {
       ...rows[0],
       type: 'Commande',
@@ -103,6 +130,7 @@ router.get('/:id', async (req, res) => {
         total: it.total,
         kg: it.product_kg,
       })),
+      livraisons: livs
     };
 
     res.json(data);
@@ -135,7 +163,8 @@ router.post('/', verifyToken, async (req, res) => {
       montant_total,
       statut = 'Brouillon',
       items = [],
-      created_by
+    created_by,
+    livraisons
     } = req.body || {}; // 👈 évite le crash si req.body est undefined
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
@@ -164,6 +193,19 @@ router.post('/', verifyToken, async (req, res) => {
     `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by, isNotCalculated]);
 
     const commandeId = commandeResult.insertId;
+
+    // Optional livraisons
+    if (Array.isArray(livraisons) && livraisons.length) {
+      for (const l of livraisons) {
+        const vehiculeId2 = Number(l?.vehicule_id);
+        const userId2 = l?.user_id != null ? Number(l.user_id) : null;
+        if (!vehiculeId2) continue;
+        await connection.execute(
+          `INSERT INTO livraisons (bon_type, bon_id, vehicule_id, user_id) VALUES ('Commande', ?, ?, ?)`,
+          [commandeId, vehiculeId2, userId2]
+        );
+      }
+    }
 
     // Items (facultatifs)
     for (const item of items) {
@@ -338,7 +380,6 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 // PUT /commandes/:id - Mettre à jour un bon de commande
 router.put('/:id', verifyToken, async (req, res) => {
     if (!canManageBon('Commande', req.user?.role)) {
-      await connection.rollback();
       return res.status(403).json({ message: 'Accès refusé' });
     }
   const connection = await pool.getConnection();
@@ -354,7 +395,8 @@ router.put('/:id', verifyToken, async (req, res) => {
   adresse_livraison,
       montant_total,
       statut,
-      items = []
+    items = [],
+    livraisons
     } = req.body || {};
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
@@ -384,6 +426,18 @@ router.put('/:id', verifyToken, async (req, res) => {
 
     // On remplace tous les items
     await connection.execute('DELETE FROM commande_items WHERE bon_commande_id = ?', [id]);
+    if (Array.isArray(livraisons)) {
+      await connection.execute('DELETE FROM livraisons WHERE bon_type = \"Commande\" AND bon_id = ?', [id]);
+      for (const l of livraisons) {
+        const vehiculeId2 = Number(l?.vehicule_id);
+        const userId2 = l?.user_id != null ? Number(l.user_id) : null;
+        if (!vehiculeId2) continue;
+        await connection.execute(
+          `INSERT INTO livraisons (bon_type, bon_id, vehicule_id, user_id) VALUES ('Commande', ?, ?, ?)`,
+          [Number(id), vehiculeId2, userId2]
+        );
+      }
+    }
 
     for (const item of items) {
       const {

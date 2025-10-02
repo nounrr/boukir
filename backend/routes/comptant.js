@@ -37,11 +37,30 @@ router.get('/', async (_req, res) => {
       ORDER BY bc.created_at DESC
     `);
 
+    const ids = rows.map(r => r.id);
+    let byBonId = new Map();
+    if (ids.length) {
+      const [livs] = await pool.query(
+        `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
+           FROM livraisons l
+           LEFT JOIN vehicules v ON v.id = l.vehicule_id
+           LEFT JOIN employees e ON e.id = l.user_id
+          WHERE l.bon_type = 'Comptant' AND l.bon_id IN (?)`,
+        [ids]
+      );
+      byBonId = livs.reduce((acc, r) => {
+        const arr = acc.get(r.bon_id) || [];
+        arr.push(r);
+        acc.set(r.bon_id, arr);
+        return acc;
+      }, new Map());
+    }
     const data = rows.map(r => ({
       ...r,
       // numero no longer stored in DB; compute for display
       numero: `COM${String(r.id).padStart(2, '0')}`,
-      items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
+      items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
+      livraisons: byBonId.get(r.id) || []
     }));
 
     res.json(data);
@@ -90,10 +109,19 @@ router.get('/:id', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ message: 'Bon comptant non trouvé' });
 
     const r = rows[0];
+    const [livs] = await pool.query(
+      `SELECT l.*, v.nom AS vehicule_nom, e.nom_complet AS chauffeur_nom
+         FROM livraisons l
+         LEFT JOIN vehicules v ON v.id = l.vehicule_id
+         LEFT JOIN employees e ON e.id = l.user_id
+        WHERE l.bon_type = 'Comptant' AND l.bon_id = ?`,
+      [id]
+    );
     const data = {
       ...r,
       numero: `COM${String(r.id).padStart(2, '0')}`,
-      items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
+      items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
+      livraisons: livs
     };
 
     res.json(data);
@@ -120,8 +148,9 @@ router.post('/', async (req, res) => {
       adresse_livraison,
       montant_total,
       statut = 'Brouillon',
-      items = [],
-      created_by
+    items = [],
+    created_by,
+    livraisons
     } = req.body || {};
 
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
@@ -150,6 +179,18 @@ router.post('/', async (req, res) => {
     `, [date_creation, cId, client_nom ?? null, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by, isNotCalculated]);
 
     const comptantId = comptantResult.insertId;
+
+    if (Array.isArray(livraisons) && livraisons.length) {
+      for (const l of livraisons) {
+        const vehiculeId2 = Number(l?.vehicule_id);
+        const userId2 = l?.user_id != null ? Number(l.user_id) : null;
+        if (!vehiculeId2) continue;
+        await connection.execute(
+          `INSERT INTO livraisons (bon_type, bon_id, vehicule_id, user_id) VALUES ('Comptant', ?, ?, ?)`,
+          [comptantId, vehiculeId2, userId2]
+        );
+      }
+    }
 
     for (const it of items) {
       const {
@@ -204,7 +245,8 @@ router.put('/:id', async (req, res) => {
       adresse_livraison,
       montant_total,
       statut,
-      items = []
+    items = [],
+    livraisons
     } = req.body || {};
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
@@ -238,6 +280,18 @@ router.put('/:id', async (req, res) => {
     `, [date_creation, cId, client_nom ?? null, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, isNotCalculated, id]);
 
     await connection.execute('DELETE FROM comptant_items WHERE bon_comptant_id = ?', [id]);
+    if (Array.isArray(livraisons)) {
+      await connection.execute('DELETE FROM livraisons WHERE bon_type = \"Comptant\" AND bon_id = ?', [id]);
+      for (const l of livraisons) {
+        const vehiculeId2 = Number(l?.vehicule_id);
+        const userId2 = l?.user_id != null ? Number(l.user_id) : null;
+        if (!vehiculeId2) continue;
+        await connection.execute(
+          `INSERT INTO livraisons (bon_type, bon_id, vehicule_id, user_id) VALUES ('Comptant', ?, ?, ?)`,
+          [Number(id), vehiculeId2, userId2]
+        );
+      }
+    }
 
     for (const it of items) {
       const {

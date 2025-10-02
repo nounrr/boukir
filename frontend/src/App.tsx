@@ -94,7 +94,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees"
           element={
-            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
+            <ProtectedRoute requiredRoles={['PDG', 'ManagerPlus']}>
               <Layout>
                 <EmployeePage />
               </Layout>

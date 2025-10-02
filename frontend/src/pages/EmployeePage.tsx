@@ -6,11 +6,13 @@ import {
   useDeleteEmployeeMutationServer as useDeleteEmployeeMutation,
   useAddEmployeeSalaireEntryMutationServer,
   useGetSalaireMonthlySummaryQueryServer,
+  useGetEmployeeSalaireEntriesQueryServer,
+  useUpdateEmployeeSalaireEntryMutationServer,
 } from '../store/api/employeesApi.server';
 import { useGetEmployeeDocsQuery, useGetDocumentTypesQuery } from '../store/api/employeeDocsApi';
 import type { Employee } from '../types';
 import { useAuth } from '../hooks/redux';
-import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote, Wallet, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote, Wallet, ChevronDown, ChevronRight, Check, X, Clock } from 'lucide-react';
 // merged imports above
 // imports merged above
 import { Link } from 'react-router-dom';
@@ -34,6 +36,167 @@ const EmployeeDocsStats: React.FC<{ employeeId: number }> = ({ employeeId }) => 
       <div className="text-xs text-gray-500">
         docs / types
       </div>
+    </div>
+  );
+};
+
+// Composant pour afficher les montants en attente dans l'accordéon
+const PendingSalaryEntries: React.FC<{ employeeId: number; selectedMonth: string }> = ({ employeeId, selectedMonth }) => {
+  const { user } = useAuth();
+  const { data: entries = [] } = useGetEmployeeSalaireEntriesQueryServer({ id: employeeId, month: selectedMonth });
+  const [updateEntry] = useUpdateEmployeeSalaireEntryMutationServer();
+
+  const pendingEntries = entries.filter((entry: any) => entry.statut === 'En attente');
+
+  const handleUpdateStatus = async (entryId: number, newStatut: 'Validé' | 'Annulé') => {
+    try {
+      await updateEntry({
+        id: employeeId,
+        salaireId: entryId,
+        statut: newStatut,
+        updated_by: user?.id || 1
+      }).unwrap();
+      showSuccess(`Montant ${newStatut.toLowerCase()}`);
+    } catch (err) {
+      console.error(err);
+      showError(`Erreur lors de la mise à jour du statut`);
+    }
+  };
+
+  if (pendingEntries.length === 0) {
+    return (
+      <div className="text-center py-3 text-gray-500 text-sm">
+        Aucun montant en attente pour ce mois
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-medium text-gray-700 mb-2">
+        Montants en attente ({pendingEntries.length})
+      </h4>
+      {pendingEntries.map((entry: any) => (
+        <div key={entry.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Clock size={14} className="text-yellow-600" />
+              <span className="font-semibold text-gray-900">
+                {Number(entry.montant).toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleUpdateStatus(entry.id, 'Validé')}
+                className="p-1 text-green-600 hover:bg-green-100 rounded transition-colors"
+                title="Valider"
+              >
+                <Check size={16} />
+              </button>
+              <button
+                onClick={() => handleUpdateStatus(entry.id, 'Annulé')}
+                className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                title="Annuler"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+          {entry.note && (
+            <p className="text-xs text-gray-600 mb-1">
+              Note: {entry.note}
+            </p>
+          )}
+          <p className="text-xs text-gray-500">
+            Ajouté le {new Date(entry.created_at).toLocaleString('fr-FR')}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Composant pour afficher les montants en attente directement dans le tableau
+const PendingSalaryCell: React.FC<{ employeeId: number; selectedMonth: string }> = ({ employeeId, selectedMonth }) => {
+  const { user } = useAuth();
+  const { data: entries = [] } = useGetEmployeeSalaireEntriesQueryServer({ id: employeeId, month: selectedMonth });
+  const [updateEntry] = useUpdateEmployeeSalaireEntryMutationServer();
+
+  const pendingEntries = entries.filter((entry: any) => entry.statut === 'En attente');
+
+  const handleUpdateStatus = async (entryId: number, newStatut: 'Validé' | 'Annulé') => {
+    try {
+      await updateEntry({
+        id: employeeId,
+        salaireId: entryId,
+        statut: newStatut,
+        updated_by: user?.id || 1
+      }).unwrap();
+      showSuccess(`Montant ${newStatut.toLowerCase()}`);
+    } catch (err) {
+      console.error(err);
+      showError(`Erreur lors de la mise à jour du statut`);
+    }
+  };
+
+  if (pendingEntries.length === 0) {
+    return (
+      <div className="text-gray-400 text-sm">
+        Aucun
+      </div>
+    );
+  }
+
+  const totalPending = pendingEntries.reduce((sum: number, entry: any) => sum + Number(entry.montant), 0);
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1 mb-2">
+        <Clock size={12} className="text-yellow-600" />
+        <span className="text-sm font-medium text-yellow-700">
+          {pendingEntries.length} entrée{pendingEntries.length > 1 ? 's' : ''}
+        </span>
+      </div>
+      <div className="text-sm font-semibold text-gray-900 mb-2">
+        Total: {totalPending.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
+      </div>
+      {pendingEntries.slice(0, 2).map((entry: any) => (
+        <div key={entry.id} className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-medium text-gray-900">
+              {Number(entry.montant).toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
+            </span>
+            {user?.role === 'PDG' && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleUpdateStatus(entry.id, 'Validé')}
+                  className="p-0.5 text-green-600 hover:bg-green-100 rounded transition-colors"
+                  title="Valider"
+                >
+                  <Check size={12} />
+                </button>
+                <button
+                  onClick={() => handleUpdateStatus(entry.id, 'Annulé')}
+                  className="p-0.5 text-red-600 hover:bg-red-100 rounded transition-colors"
+                  title="Annuler"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+          </div>
+          {entry.note && (
+            <p className="text-xs text-gray-600 truncate" title={entry.note}>
+              {entry.note}
+            </p>
+          )}
+        </div>
+      ))}
+      {pendingEntries.length > 2 && (
+        <div className="text-xs text-gray-500 text-center">
+          ... et {pendingEntries.length - 2} autre{pendingEntries.length - 2 > 1 ? 's' : ''}
+        </div>
+      )}
     </div>
   );
 };
@@ -62,7 +225,7 @@ const EmployeeAccordionContent: React.FC<{ employee: Employee; selectedMonth: st
   }, [docs, types]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Statistiques de salaire */}
       <div className="bg-white rounded-lg border p-4">
         <div className="flex items-center justify-between mb-3">
@@ -105,6 +268,18 @@ const EmployeeAccordionContent: React.FC<{ employee: Employee; selectedMonth: st
             Gérer les salaires
           </Link>
         </div>
+      </div>
+
+      {/* Montants en attente */}
+      <div className="bg-white rounded-lg border p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Clock size={18} className="text-yellow-600" />
+            Montants en attente
+          </h3>
+        </div>
+        
+        <PendingSalaryEntries employeeId={employee.id} selectedMonth={selectedMonth} />
       </div>
 
       {/* Documents */}
@@ -174,7 +349,7 @@ const EmployeeAccordionContent: React.FC<{ employee: Employee; selectedMonth: st
       </div>
 
       {/* Informations supplémentaires */}
-      <div className="lg:col-span-2 bg-gray-50 rounded-lg p-4">
+      <div className="lg:col-span-3 bg-gray-50 rounded-lg p-4">
         <h4 className="font-medium text-gray-900 mb-3">Informations de l'employé</h4>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
@@ -208,7 +383,7 @@ const validationSchemaCreate = Yup.object({
   cin: Yup.string().required('CIN requis'),
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
-  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Employé']).optional(),
+  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Chauffeur', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').required('Mot de passe requis'),
 });
@@ -217,7 +392,7 @@ const validationSchemaEdit = Yup.object({
   cin: Yup.string().required('CIN requis'),
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
-  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Employé']).optional(),
+  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Chauffeur', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').optional(),
 });
@@ -284,14 +459,14 @@ const EmployeePage: React.FC = () => { // NOSONAR
           cin: string;
           nom_complet: string | null;
           date_embauche: string | null;
-          role: 'PDG' | 'Manager' | 'Employé' | null;
+          role: 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'Employé' | null;
           salaire: number | null;
           password: string;
         } = {
           cin: values.cin.trim(),
           nom_complet: values.nom_complet?.trim() || null,
           date_embauche: values.date_embauche?.trim() ? values.date_embauche : null,
-          role: values.role ? (values.role as 'PDG' | 'Manager' | 'Employé') : null,
+          role: values.role ? (values.role as 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'Employé') : null,
           salaire: values.salaire !== undefined && values.salaire !== null && String(values.salaire).trim() !== ''
             ? Number(values.salaire)
             : null,
@@ -377,36 +552,30 @@ const EmployeePage: React.FC = () => { // NOSONAR
     return <div className="flex justify-center items-center h-64">Chargement...</div>;
   }
 
-  // Check if user is PDG before rendering content
-  if (user?.role !== 'PDG') {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Accès refusé</h2>
-          <p className="text-gray-600">Seul le PDG peut accéder à la gestion des employés.</p>
-        </div>
-      </div>
-    );
-  }
+  // Access is now controlled by the routing and sidebar permissions
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Gestion des Employés</h1>
-        <button
-          onClick={() => {
-            setEditingEmployee(null);
-            formik.resetForm();
-            setChangePassword(true); // creating: password required, show field
-            setShowPassword(false);
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-        >
-          <Plus size={20} />
-          Nouvel Employé
-        </button>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {user?.role === 'PDG' ? 'Gestion des Employés' : 'Employés - Ajout de montants'}
+        </h1>
+        {user?.role === 'PDG' && (
+          <button
+            onClick={() => {
+              setEditingEmployee(null);
+              formik.resetForm();
+              setChangePassword(true); // creating: password required, show field
+              setShowPassword(false);
+              setIsModalOpen(true);
+            }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+          >
+            <Plus size={20} />
+            Nouvel Employé
+          </button>
+        )}
       </div>
 
       {/* Search */}
@@ -483,6 +652,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date d'embauche</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salaire</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montants en attente</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Documents</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
@@ -493,17 +663,19 @@ const EmployeePage: React.FC = () => { // NOSONAR
                 <tr className={`hover:bg-gray-50 ${isOverSalary(employee) ? 'bg-red-50' : ''}`}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setExpandedEmployee(
-                          expandedEmployee === employee.id ? null : employee.id
-                        )}
-                        className="text-gray-600 hover:text-gray-900"
-                      >
-                        {expandedEmployee === employee.id ? 
-                          <ChevronDown size={16} /> : 
-                          <ChevronRight size={16} />
-                        }
-                      </button>
+                      {user?.role === 'PDG' && (
+                        <button
+                          onClick={() => setExpandedEmployee(
+                            expandedEmployee === employee.id ? null : employee.id
+                          )}
+                          className="text-gray-600 hover:text-gray-900"
+                        >
+                          {expandedEmployee === employee.id ? 
+                            <ChevronDown size={16} /> : 
+                            <ChevronRight size={16} />
+                          }
+                        </button>
+                      )}
                       {employee.cin}
                     </div>
                   </td>
@@ -533,25 +705,32 @@ const EmployeePage: React.FC = () => { // NOSONAR
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {employee.salaire != null ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' }) : '-'}
                   </td>
+                  <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '200px' }}>
+                    <PendingSalaryCell employeeId={employee.id} selectedMonth={selectedMonth} />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     <EmployeeDocsStats employeeId={employee.id} />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex gap-2 items-center">
-                      <button
-                        onClick={() => handleEdit(employee)}
-                        className="text-blue-600 hover:text-blue-900"
-                        title="Modifier"
-                      >
-                        <Edit size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(employee.id)}
-                        className="text-red-600 hover:text-red-900"
-                        title="Supprimer"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {user?.role === 'PDG' && (
+                        <>
+                          <button
+                            onClick={() => handleEdit(employee)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Modifier"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(employee.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => {
                           setSalaryModalEmployee(employee);
@@ -564,20 +743,24 @@ const EmployeePage: React.FC = () => { // NOSONAR
                       >
                         <Banknote size={16} />
                       </button>
-                      <Link to={`/employees/${employee.id}/documents`} className="text-gray-600 hover:text-gray-900" title="Documents">
-                        <FileText size={16} />
-                      </Link>
-                      <Link to={`/employees/${employee.id}/salaries`} className="text-gray-600 hover:text-gray-900" title="Salaires">
-                        <Wallet size={16} />
-                      </Link>
+                      {user?.role === 'PDG' && (
+                        <>
+                          <Link to={`/employees/${employee.id}/documents`} className="text-gray-600 hover:text-gray-900" title="Documents">
+                            <FileText size={16} />
+                          </Link>
+                          <Link to={`/employees/${employee.id}/salaries`} className="text-gray-600 hover:text-gray-900" title="Salaires">
+                            <Wallet size={16} />
+                          </Link>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
 
-                {/* Accordéon avec statistiques et aperçu des documents */}
-                {expandedEmployee === employee.id && (
+                {/* Accordéon avec statistiques et aperçu des documents - PDG seulement */}
+                {user?.role === 'PDG' && expandedEmployee === employee.id && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 bg-gray-50 border-t">
+                    <td colSpan={8} className="px-6 py-4 bg-gray-50 border-t">
                       <EmployeeAccordionContent employee={employee} selectedMonth={selectedMonth} salaryMap={salaryMap} />
                     </td>
                   </tr>
@@ -726,6 +909,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                     <option value="Employé">Employé</option>
                     <option value="Manager">Manager</option>
                     <option value="ManagerPlus">ManagerPlus</option>
+                    <option value="Chauffeur">Chauffeur</option>
                     <option value="PDG">PDG</option>
                   </select>
                   {formik.touched.role && formik.errors.role && (
@@ -846,6 +1030,28 @@ const EmployeePage: React.FC = () => { // NOSONAR
           <div className="bg-white rounded-lg p-6 w-full max-w-sm">
             <h2 className="text-lg font-semibold mb-4">Ajouter montant - {salaryModalEmployee.nom_complet || salaryModalEmployee.cin}</h2>
             
+            {/* Informations sur le statut automatique */}
+            <div className="bg-blue-50 rounded-lg p-3 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="text-sm font-medium text-blue-800">
+                  Statut automatique :
+                </div>
+                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                  user?.role === 'PDG' 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {user?.role === 'PDG' ? 'Validé' : 'En attente'}
+                </span>
+              </div>
+              <div className="text-xs text-blue-600">
+                {user?.role === 'PDG' 
+                  ? 'En tant que PDG, vos montants sont automatiquement validés' 
+                  : 'En tant que ManagerPlus, vos montants nécessitent validation du PDG'
+                }
+              </div>
+            </div>
+            
             {/* Informations sur le salaire actuel */}
             <div className="bg-gray-50 rounded-lg p-3 mb-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -879,6 +1085,9 @@ const EmployeePage: React.FC = () => { // NOSONAR
                   return;
                 }
                 
+                // Déterminer le statut automatiquement selon le rôle
+                const autoStatut = user?.role === 'PDG' ? 'Validé' : 'En attente';
+                
                 // Vérification de dépassement de salaire
                 const currentTotal = salaryMap.get(salaryModalEmployee.id) || 0;
                 const newTotal = currentTotal + Number(salaryMontant);
@@ -889,14 +1098,20 @@ const EmployeePage: React.FC = () => { // NOSONAR
                     `Le total après ajout (${newTotal.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}) dépassera le salaire prévu (${salaryModalEmployee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}). Voulez-vous continuer ?`
                   );
                   
-                  if (!confirmed) {
+                  if (!confirmed.isConfirmed) {
                     return;
                   }
                 }
                 
                 try {
-                  await addSalaireEntry({ id: salaryModalEmployee.id, montant: Number(salaryMontant), note: salaryNote || undefined, created_by: user?.id || 1 }).unwrap();
-                  showSuccess('Montant ajouté');
+                  await addSalaireEntry({ 
+                    id: salaryModalEmployee.id, 
+                    montant: Number(salaryMontant), 
+                    note: salaryNote || undefined, 
+                    statut: autoStatut,
+                    created_by: user?.id || 1 
+                  }).unwrap();
+                  showSuccess(`Montant ajouté avec statut "${autoStatut}"`);
                   setIsSalaryModalOpen(false);
                   setSalaryModalEmployee(null);
                   setSalaryMontant('');
@@ -933,7 +1148,12 @@ const EmployeePage: React.FC = () => { // NOSONAR
               <div className="flex justify-end gap-2 mt-5">
                 <button
                   type="button"
-                  onClick={() => { setIsSalaryModalOpen(false); setSalaryModalEmployee(null); }}
+                  onClick={() => { 
+                    setIsSalaryModalOpen(false); 
+                    setSalaryModalEmployee(null); 
+                    setSalaryMontant('');
+                    setSalaryNote('');
+                  }}
                   className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md"
                 >
                   Annuler

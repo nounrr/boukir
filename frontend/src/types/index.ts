@@ -1,5 +1,5 @@
 // Types pour l'authentification
-export type Role = 'PDG' | 'Manager' | 'ManagerPlus' | 'Employé';
+export type Role = 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'Employé';
 export interface User {
   id: number;
   nom_complet?: string | null;
@@ -53,6 +53,7 @@ export interface EmployeeSalaireEntry {
   employe_id: number;
   montant: number;
   note?: string | null;
+  statut?: string;
   created_at: string;
   updated_at: string;
 }
@@ -217,6 +218,8 @@ export interface Bon {
   lieu_chargement?: string;
   bon_origine_id?: number; // Pour les avoirs, lien vers le bon d'origine
   items: BonItem[];
+  // Multi-vehicule livraison links (optional)
+  livraisons?: Livraison[];
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -246,6 +249,21 @@ export interface CreateBonData {
   adresse_livraison?: string;
   bon_origine_id?: number; // Pour les avoirs, lien vers le bon d'origine
   items: Omit<BonItem, 'id' | 'bon_id'>[];
+  // New: allow attaching multiple vehicules with optional chauffeur
+  livraisons?: Array<{
+    vehicule_id: number;
+    user_id?: number | null;
+  }>;
+}
+
+export interface Livraison {
+  id?: number;
+  bon_type?: string;
+  bon_id?: number;
+  vehicule_id: number;
+  user_id?: number | null;
+  vehicule_nom?: string;
+  chauffeur_nom?: string;
 }
 
 // Types pour les paiements
