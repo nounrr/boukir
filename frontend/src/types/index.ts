@@ -36,6 +36,7 @@ export interface Employee {
   updated_by?: number;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null; // Champ pour soft delete
 }
 
 export interface CreateEmployeeData {
