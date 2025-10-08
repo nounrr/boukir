@@ -131,52 +131,206 @@ const CaissePage = () => {
   };
 
   // Filtrer et trier les paiements
+  // Helper: flatten a payment into a searchable string (includes phones, dates, contact, bank, notes, personnel, talon/bon refs)
+  const flattenPaymentForSearch = (payment: any): string => {
+    const parts: string[] = [];
+
+    const push = (v: any) => {
+      if (v == null) return;
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+        parts.push(String(v));
+        return;
+      }
+      if (isBufferLike(v)) {
+        parts.push(safeText(v));
+        return;
+      }
+    };
+
+    // Normalize phone digits (keep last 9 digits for Morocco)
+    const normalizePhone = (p: any) => {
+      if (p == null) return '';
+      const s = String(p).replace(/\D+/g, '');
+      if (!s) return '';
+      return s.length > 9 ? s.slice(-9) : s;
+    };
+
+    // Basic payment fields
+    push(payment.id);
+    push(payment.numero);
+    push(payment.code_reglement);
+    push(payment.mode_paiement);
+    push(payment.statut);
+    push(payment.notes);
+    push(payment.banque);
+    push(payment.cheque_num || payment.numero_cheque || payment.chequeNumber);
+    push(String(payment.montant || payment.montant_total || ''));
+
+    // Dates: payment date and echeance in multiple formats
+    const pushDateTokens = (dateVal: any) => {
+      if (!dateVal) return;
+      try {
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) {
+          parts.push(d.toISOString());
+          parts.push(d.toISOString().slice(0,10));
+          const dd = String(d.getDate()).padStart(2,'0');
+          const mm = String(d.getMonth()+1).padStart(2,'0');
+          const yyyy = String(d.getFullYear());
+          parts.push(`${dd}/${mm}/${yyyy}`);
+          parts.push(`${dd}-${mm}-${yyyy}`);
+          parts.push(`${mm}/${dd}/${yyyy}`);
+          parts.push(d.toLocaleDateString());
+        } else {
+          parts.push(String(dateVal));
+        }
+      } catch {
+        parts.push(String(dateVal));
+      }
+    };
+    pushDateTokens(payment.date_paiement);
+    pushDateTokens(payment.date_echeance);
+
+    // Contact info (client or fournisseur)
+    const cid = String(payment.contact_id || payment.client_id || payment.fournisseur_id || '');
+    if (cid) {
+      const c = clients.find((cl: any) => String(cl.id) === cid);
+      const f = c ? undefined : fournisseurs.find((fo: any) => String(fo.id) === cid);
+      if (c) {
+        push(c.nom_complet);
+        push(c.telephone);
+        push(c.societe);
+      }
+      if (f) {
+        push(f.nom_complet);
+        push(f.telephone);
+        push(f.societe);
+      }
+    }
+
+    // Personnel / user who recorded payment
+    if (payment.personnel) push(payment.personnel);
+    if (payment.personnel_id) {
+      const p = personnelNames.find((pn: any) => String(pn.id) === String(payment.personnel_id));
+      if (p) push(p.name || p.nom || p.nom_complet || p);
+    }
+
+    // Talon / bon references
+    push(payment.talon_num || payment.talon || payment.talon_id || '');
+    push(payment.bon_numero || payment.bon || payment.bon_id || '');
+
+    // Include payment display like PAY01 so searching PAY01/PAY1 works
+    try {
+      const pid = String(payment?.id ?? '').trim();
+      if (pid) {
+        const padded = `PAY${pid.padStart(2, '0')}`;
+        parts.push(padded);
+        // also add non-padded variant (PAY1) and normalized version
+        parts.push(`PAY${pid}`);
+        parts.push(padded.toLowerCase());
+        parts.push(`PAY${pid}`.toLowerCase());
+        parts.push((`PAY${pid.padStart(2, '0')}`).replace(/[^a-zA-Z0-9]/g, '').toLowerCase());
+      }
+    } catch {}
+
+    // Normalize helper: remove non-alphanum and lowercase
+    const normalizeAlphaNum = (s: any) => {
+      if (s == null) return '';
+      try {
+        return String(s).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      } catch {
+        return '';
+      }
+    };
+
+    // If payment references a bon, include the bon's standard display (e.g., SOR19, COM20)
+    try {
+      const bid = (payment?.bon_id ?? payment?.bon) || payment?.bon_numero || null;
+      if (bid) {
+        const theBon = bons.find((b: any) => String(b.id) === String(bid) || String(b.numero || '') === String(bid));
+        if (theBon) {
+          const disp = displayBonNumero(theBon);
+          parts.push(disp);
+          const norm = normalizeAlphaNum(disp);
+          if (norm) parts.push(norm);
+        }
+        // Also consider payment.bon_numero even if no matching bon object
+        const rawBonNum = payment?.bon_numero || payment?.bon || '';
+        if (rawBonNum) {
+          parts.push(String(rawBonNum));
+          const normRaw = normalizeAlphaNum(rawBonNum);
+          if (normRaw) parts.push(normRaw);
+        }
+      }
+    } catch {}
+
+    // Collect shallow primitive fields
+    try {
+      for (const k of Object.keys(payment)) {
+        const v = payment[k];
+        if (v == null) continue;
+        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') parts.push(String(v));
+      }
+    } catch {}
+
+    // Phone tokens: gather known phone fields and normalized/country variants
+    const phoneCandidates: string[] = [];
+    if (payment.phone) phoneCandidates.push(String(payment.phone));
+    // also look at contact/fournisseur phone collected above
+    const cidNum = String(payment.contact_id || payment.client_id || payment.fournisseur_id || '');
+    if (cidNum) {
+      const c = clients.find((cl: any) => String(cl.id) === cidNum);
+      const f = fournisseurs.find((fo: any) => String(fo.id) === cidNum);
+      if (c && c.telephone) phoneCandidates.push(String(c.telephone));
+      if (f && f.telephone) phoneCandidates.push(String(f.telephone));
+    }
+
+    if (phoneCandidates.length) parts.push(phoneCandidates.join(' '));
+    const normalizedPhones = phoneCandidates.map(p => normalizePhone(p)).filter(Boolean);
+    if (normalizedPhones.length) parts.push(normalizedPhones.join(' '));
+
+    // Country mapping similar to BonsPage (Morocco)
+    const countryCode = '212';
+    const fullDigitTokens: string[] = [];
+    for (const raw of phoneCandidates) {
+      const digits = String(raw).replace(/\D+/g, '');
+      if (!digits) continue;
+      fullDigitTokens.push(digits);
+      if (digits.length >= 9 && digits.startsWith('0')) {
+        const rest = digits.slice(1);
+        fullDigitTokens.push(countryCode + rest);
+      }
+      if (digits.startsWith(countryCode)) {
+        const rest = digits.slice(countryCode.length);
+        if (rest.length > 0) fullDigitTokens.push('0' + rest);
+      }
+    }
+    if (fullDigitTokens.length) parts.push(fullDigitTokens.join(' '));
+
+    return parts.join(' ').toLowerCase();
+  };
+
   const sortedPayments = useMemo(() => {
     // First filter
     const filtered = payments.filter((payment: Payment) => {
       const term = searchTerm.trim().toLowerCase();
-      // Compute display payment number (e.g., PAY01) to allow searching by it
-      const displayPayNum = (() => {
-        const idStr = String(payment?.id ?? '').trim();
-        if (!idStr) return '';
-        return `pay${idStr.padStart(2, '0')}`.toLowerCase();
-      })();
+      const searchText = flattenPaymentForSearch(payment);
 
-      // Search includes payment fields and linked contact name (client or fournisseur)
-      const contactName = (() => {
-        // try to use explicit fields if present
-        const byName = (payment as any).contact_nom || (payment as any).client_nom || (payment as any).fournisseur_nom || '';
-        if (byName) return String(byName).toLowerCase();
-        // fallback: try to lookup in clients/fournisseurs arrays
-        const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
-        if (cid) {
-          const c = clients.find((cl: any) => String(cl.id) === cid);
-          if (c) return String(c.nom_complet || '').toLowerCase();
-          const f = fournisseurs.find((fo: any) => String(fo.id) === cid);
-          if (f) return String(f.nom_complet || '').toLowerCase();
-        }
-        return '';
-      })();
+      // Also compare normalized phone digits
+      const normalizeTermDigits = (s: string) => {
+        if (!s) return '';
+        const digits = s.replace(/\D+/g, '');
+        return digits.length > 9 ? digits.slice(-9) : digits;
+      };
+      const termDigits = normalizeTermDigits(term);
 
-      // Include contact company name (société) in search
-      const contactSociete = (() => {
-        const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
-        if (!cid) return '';
-        const c = clients.find((cl: any) => String(cl.id) === cid);
-        const f = c ? undefined : fournisseurs.find((fo: any) => String(fo.id) === cid);
-        const s = c?.societe ?? f?.societe;
-        return s ? String(s).toLowerCase() : '';
-      })();
+      const normalizeAlphaTerm = (s: string) => s.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      const termAlpha = normalizeAlphaTerm(term);
 
       const matchesSearch = !term || (
-        String(payment.id).includes(term) ||
-        (payment.numero?.toLowerCase?.() || '').includes(term) ||
-        displayPayNum.includes(term) ||
-        (payment.code_reglement?.toLowerCase?.() || '').includes(term) ||
-        (payment.notes?.toLowerCase?.() || '').includes(term) ||
-        contactName.includes(term) ||
-        contactSociete.includes(term) ||
-        String(payment.montant || payment.montant_total || 0).includes(term)
+        searchText.includes(term) ||
+        (termDigits && searchText.includes(termDigits)) ||
+        (termAlpha && searchText.includes(termAlpha))
       );
 
       const matchesDate = !dateFilter || payment.date_paiement === dateFilter;
@@ -678,12 +832,13 @@ const paymentValidationSchema = Yup.object({
             await createOldTalonCaisse(oldPayload as any).unwrap().catch(() => {});
           }
         } catch {}
-        showSuccess('Paiement enregistré avec succès ! Le formulaire reste ouvert pour ajouter un autre paiement.');
-        // Garder le modal ouvert mais réinitialiser les champs et l'image
-        setSelectedPayment(null);
-        setSelectedImage(null);
-        setImagePreview('');
-        setCreateOpenedAt(getCurrentDateTimeInput());
+  showSuccess('Paiement enregistré avec succès !');
+  // Fermer le modal et réinitialiser les champs et l'image
+  setIsCreateModalOpen(false);
+  setSelectedPayment(null);
+  setSelectedImage(null);
+  setImagePreview('');
+  setCreateOpenedAt(null);
       }
       
     } catch (error) {

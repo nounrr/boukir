@@ -24,7 +24,7 @@ import BonPrintModal from './BonPrintModal';
 
 /* -------------------------- Select avec recherche -------------------------- */
 interface SearchableSelectProps {
-  options: { value: string; label: string; data?: any; disabled?: boolean; className?: string }[];
+  options: { value: string; label: string; data?: any; disabled?: boolean }[];
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -162,13 +162,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                       type="button"
                       disabled={option.disabled}
                       className={`w-full px-3 py-2 text-left text-sm border-b border-gray-100 last:border-b-0 overflow-hidden ${
-                        option.disabled && option.className === 'text-red-600'
-                          ? 'bg-gray-100 text-red-600 font-semibold cursor-not-allowed'
-                          : option.disabled
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : idx === highlightIndex
-                              ? 'bg-blue-50 hover:bg-gray-100'
-                              : 'hover:bg-gray-100'
+                        option.disabled 
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                          : idx === highlightIndex 
+                            ? 'bg-blue-50 hover:bg-gray-100' 
+                            : 'hover:bg-gray-100'
                       }`}
                       onClick={(ev) => {
                         // Avoid bubbling to form handlers
@@ -193,9 +191,9 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                           }
                         }
                       }}
-                      title={option.disabled && option.className === 'text-red-600' ? "Produit en rupture de stock (qte=0)" : option.disabled ? "Client non sélectionnable - Plafond dépassé" : option.label}
+                      title={option.disabled ? "Client non sélectionnable - Plafond dépassé" : option.label}
                     >
-                      <span className={`block truncate ${option.className || ''}`}>{option.label}</span>
+                      <span className="block truncate">{option.label}</span>
                     </button>
                   ))}
                   {hasMoreItems && (
@@ -712,34 +710,13 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ------------------------------ Soumission ------------------------------ */
   /* ------------------------------ Soumission ------------------------------ */
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
-
   try {
-    // Vérification stock pour Sortie/Comptant : aucune ligne ne doit dépasser le stock dispo
-    if (values.type === 'Comptant' || values.type === 'Sortie') {
-      let stockError = null;
-      for (let idx = 0; idx < values.items.length; idx++) {
-        const item = values.items[idx];
-        const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-        const product = (products as any).find((p: any) => String(p.id) === String(item.product_id));
-        const stock = Number((product as any)?.qte ?? (product as any)?.quantite ?? (product as any)?.quantity ?? 0);
-        if (q > stock) {
-          stockError = `La quantité demandée pour le produit "${product?.designation || product?.reference || product?.id}" (${q}) dépasse le stock disponible (${stock}).\nVeuillez corriger avant de valider.`;
-          setFieldError?.(`items.${idx}.quantite`, `Max: ${stock}`);
-          break;
-        }
-      }
-      if (stockError) {
-        showError(stockError);
-        setSubmitting(false);
-        return;
-      }
-    }
-
     const montantTotal = values.items.reduce((sum: number, item: any, idx: number) => {
       const q =
         parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+      
       // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
-      const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
+  const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
       const u =
         typeof item[priceField] === 'string'
           ? parseFloat(String(item[priceField]).replace(',', '.')) || 0
@@ -755,8 +732,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     // Préparer les livraisons (multi-véhicules + chauffeur) si fournis
     const livraisonsClean = Array.isArray(values.livraisons)
-      ? (values.livraisons as Array<{ vehicule_id: string | number; user_id?: string | number }>).
-          map((l) => {
+      ? (values.livraisons as Array<{ vehicule_id: string | number; user_id?: string | number }>)
+          .map((l) => {
             const vehId = Number(l?.vehicule_id);
             const userId = l?.user_id === '' || l?.user_id == null ? null : Number(l.user_id);
             return Number.isFinite(vehId) && vehId > 0
@@ -766,16 +743,16 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           .filter((x): x is { vehicule_id: number; user_id: number | null } => x !== null)
       : [];
 
-    const cleanBonData = {
-      date_creation: formatDateInputToMySQL(values.date_bon) || new Date().toISOString().slice(0,19).replace('T',' '), // assure string
+  const cleanBonData = {
+  date_creation: formatDateInputToMySQL(values.date_bon) || new Date().toISOString().slice(0,19).replace('T',' '), // assure string
       vehicule_id: vehiculeId,
       lieu_chargement: values.lieu_charge || '',
-      adresse_livraison: values.adresse_livraison || '',
-      phone: values.phone || null,
+  adresse_livraison: values.adresse_livraison || '',
+  phone: values.phone || null,
       isNotCalculated: values.isNotCalculated ? true : null,
       statut: values.statut || 'Brouillon',
-      client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
-      client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
+  client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
+  client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
       montant_total: montantTotal,
       created_by: user?.id || 1,
@@ -1280,7 +1257,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           onSubmit={handleSubmit}
           innerRef={formikRef}
         >
-          {({ values, isSubmitting, setFieldValue, errors }) => (
+          {({ values, isSubmitting, setFieldValue }) => (
             <Form
               className="space-y-4"
               onKeyDown={(e) => handleFormKeyDown(e)}
@@ -1900,19 +1877,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 {/* Produit combiné (Réf - Désignation) */}
                                 <td className="px-1 py-2 w-[260px]">
                                   <SearchableSelect
-                                    options={products.map((p: any) => {
-                                      // Detect quantity field (qte, quantite, quantity)
-                                      const qte = Number(p.qte ?? p.quantite ?? p.quantity ?? 0);
-                                      const isZeroQte = (values.type === 'Comptant' || values.type === 'Sortie') && qte === 0;
-                                      return {
-                                        value: String(p.id),
-                                        label: `${String(p.reference ?? p.id)} - ${p.designation ?? ''}`.trim() + (isZeroQte ? ' (Stock 0)' : ''),
-                                        data: p,
-                                        disabled: isZeroQte,
-                                        // Add a custom class for red text if disabled for qte=0
-                                        className: isZeroQte ? 'text-red-600' : undefined,
-                                      };
-                                    })}
+                                    options={products.map((p: any) => ({
+                                      value: String(p.id),
+                                      label: `${String(p.reference ?? p.id)} - ${p.designation ?? ''}`.trim(),
+                                      data: p,
+                                    }))}
                                     value={String(values.items[index].product_id || '')}
                                     onChange={(productId) => {
                                       const product = products.find((p: any) => String(p.id) === productId);
@@ -1958,87 +1927,62 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                 {/* Quantité */}
 <td className="px-1 py-2 w-[80px]">
-  {(() => {
-    const raw = qtyRaw[index] ?? String(values.items[index].quantite ?? '');
-    const q = raw !== undefined && raw !== '' ? (parseFloat(normalizeDecimal(raw)) || 0) : (Number(values.items[index].quantite ?? 0) || 0);
-    const product = (products as any).find((p: any) => String(p.id) === String(values.items[index].product_id));
-    const stock = Number((product as any)?.qte ?? (product as any)?.quantite ?? (product as any)?.quantity ?? 0);
-    const liveExceeded = q > stock && stock >= 0;
+  <input
+    type="text"
+    inputMode="decimal"
+    pattern="[0-9]*[.,]?[0-9]*"
+    name={`items.${index}.quantite`}
+    className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+    value={qtyRaw[index] ?? ''}
+    onChange={(e) => {
+      const raw = e.target.value;
+      if (!isDecimalLike(raw)) return;                 // réutilise ta fn existante
+      setQtyRaw((prev) => ({ ...prev, [index]: raw }));
 
-    return (
-      <>
-        <input
-          type="text"
-          inputMode="decimal"
-          pattern="[0-9]*[.,]?[0-9]*"
-          name={`items.${index}.quantite`}
-          aria-invalid={liveExceeded || !!(errors?.items && (errors.items as any)[index] && (errors.items as any)[index].quantite)}
-          className={`w-full px-2 py-1 border ${
-            liveExceeded || (errors?.items && (errors.items as any)[index] && (errors.items as any)[index].quantite) ? 'border-red-500' : 'border-gray-300'
-          } rounded-md text-sm`}
-          value={qtyRaw[index] ?? ''}
-          onChange={(e) => {
-            const rawVal = e.target.value;
-            if (!isDecimalLike(rawVal)) return;                 // réutilise ta fn existante
-            setQtyRaw((prev) => ({ ...prev, [index]: rawVal }));
-
-            const qVal = parseFloat(normalizeDecimal(rawVal)) || 0; // réutilise normalizeDecimal
-            const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-            setFieldValue(`items.${index}.total`, qVal * u);
-          }}
-          onFocus={(e) => {
-            // Sélection rapide (sécurisé)
-            const target = e.currentTarget;
-            setTimeout(() => {
-              try { target && typeof (target as any).select === 'function' && (target as any).select(); } catch {}
-            }, 0);
-            // Effacer si 0
-            const current = qtyRaw[index];
-            if (current === '0' || current === '0.00' || current === '0,00') {
-              setQtyRaw((prev) => ({ ...prev, [index]: '' }));
-            }
-          }}
-          onBlur={async () => {
-            const qVal = parseFloat(normalizeDecimal(qtyRaw[index] ?? '')) || 0;
-
-            // Créer une version temporaire des valeurs avec la nouvelle quantité
-            const tempValues = {
-              ...values,
-              items: values.items.map((item: any, idx: number) => 
-                idx === index ? { ...item, quantite: qVal } : item
-              )
-            };
-
-            // Vérifier le plafond avant d'appliquer les changements
-            const canProceed = await checkClientCreditLimitRealTime(tempValues);
-            if (!canProceed) {
-              // Remettre l'ancienne valeur
-              setQtyRaw((prev) => ({ ...prev, [index]: String(values.items[index].quantite || 0) }));
-              return;
-            }
-
-            setFieldValue(`items.${index}.quantite`, qVal);
-            setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(qVal) }));
-            const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-            setFieldValue(`items.${index}.total`, qVal * u);
-          }}
-          data-row={index}
-          data-col="qty"
-          onKeyDown={onCellKeyDown(index, 'qty')}
-        />
-
-        {/* Live helper / max info */}
-        {stock > 0 ? (
-          <div className={`text-xs mt-1 ${liveExceeded ? 'text-red-600' : 'text-gray-500'}`}>
-            {liveExceeded ? `Quantité demandée (${q}) dépasse le stock disponible (${stock})` : `Max disponible: ${stock}`}
-          </div>
-        ) : (
-          // If product has zero stock, show explicit note
-          product ? <div className="text-xs text-red-600 mt-1">Produit en rupture de stock (Stock 0)</div> : null
-        )}
-      </>
-    );
-  })()}
+      const q = parseFloat(normalizeDecimal(raw)) || 0; // réutilise normalizeDecimal
+      const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+      setFieldValue(`items.${index}.total`, q * u);
+    }}
+    onFocus={(e) => {
+      // Sélection rapide (sécurisé)
+      const target = e.currentTarget;
+      setTimeout(() => {
+        try { target && typeof (target as any).select === 'function' && (target as any).select(); } catch {}
+      }, 0);
+      // Effacer si 0
+      const current = qtyRaw[index];
+      if (current === '0' || current === '0.00' || current === '0,00') {
+        setQtyRaw((prev) => ({ ...prev, [index]: '' }));
+      }
+    }}
+    onBlur={async () => {
+      const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? '')) || 0;
+      
+      // Créer une version temporaire des valeurs avec la nouvelle quantité
+      const tempValues = {
+        ...values,
+        items: values.items.map((item: any, idx: number) => 
+          idx === index ? { ...item, quantite: q } : item
+        )
+      };
+      
+      // Vérifier le plafond avant d'appliquer les changements
+      const canProceed = await checkClientCreditLimitRealTime(tempValues);
+      if (!canProceed) {
+        // Remettre l'ancienne valeur
+        setQtyRaw((prev) => ({ ...prev, [index]: String(values.items[index].quantite || 0) }));
+        return;
+      }
+      
+      setFieldValue(`items.${index}.quantite`, q);
+      setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) }));
+      const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+      setFieldValue(`items.${index}.total`, q * u);
+    }}
+  data-row={index}
+  data-col="qty"
+  onKeyDown={onCellKeyDown(index, 'qty')}
+  />
 </td>
 
 

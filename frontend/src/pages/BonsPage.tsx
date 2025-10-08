@@ -301,6 +301,162 @@ const BonsPage = () => {
     return 'Non défini';
   };
 
+  // Flatten a bon into a single searchable string containing most fields and nested item values
+  const flattenBonForSearch = (bon: any): string => {
+    const parts: string[] = [];
+
+    // Normalize phone numbers to a short canonical form (last 9 digits for Morocco)
+    const normalizePhone = (p: string | number | undefined | null) => {
+      if (p == null) return '';
+      const s = String(p).replace(/\D+/g, '');
+      if (!s) return '';
+      // If longer than 9, keep the last 9 digits (subscriber number)
+      return s.length > 9 ? s.slice(-9) : s;
+    };
+
+    const push = (v: any) => {
+      if (v == null) return;
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+        parts.push(String(v));
+        return;
+      }
+      // Handle Buffer-like objects
+      if (isBufferLike(v)) {
+        parts.push(safeText(v));
+        return;
+      }
+      // Arrays and objects will be processed recursively below
+    };
+
+    // Basic known fields
+    try {
+      push(getDisplayNumero(bon));
+      push(bon?.statut);
+      push(getContactName(bon));
+      push(bon?.client_nom);
+      push(bon?.adresse_livraison);
+      push(bon?.lieu_chargement);
+      push(bon?.observations || bon?.note || bon?.notes);
+      push(String(computeMontantTotal(bon) || ''));
+
+      // Chauffeur / véhicule related fields
+      push(bon?.chauffeur || bon?.chauffeur_nom || bon?.driver || bon?.driver_name);
+      push(bon?.vehicule_nom || bon?.vehicule || bon?.vehicle || '');
+      push(bon?.immatriculation || bon?.vehicle_immatriculation || bon?.numero_immatriculation || '');
+
+      // Dates: include ISO and simple local date so searching by yyyy-mm-dd or dd/mm/yyyy can match
+      if (bon?.date_creation) {
+        try {
+          const d = new Date(bon.date_creation);
+          if (!isNaN(d.getTime())) {
+            // full ISO with time
+            push(d.toISOString());
+            // ISO short yyyy-mm-dd
+            push(d.toISOString().slice(0, 10));
+            // locale representations
+            push(d.toLocaleDateString());
+            push(d.toLocaleString());
+            // dd/mm/yyyy and dd-mm-yyyy with zero padding
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yyyy = String(d.getFullYear());
+            push(`${dd}/${mm}/${yyyy}`);
+            push(`${dd}-${mm}-${yyyy}`);
+            // mm/dd/yyyy also (some users may type month first)
+            push(`${mm}/${dd}/${yyyy}`);
+          } else {
+            push(String(bon.date_creation));
+          }
+        } catch {
+          push(String(bon.date_creation));
+        }
+      }
+    } catch (e) {
+      // ignore helper errors
+    }
+
+  // Phone resolution (try common places)
+  const phoneCandidates: string[] = [];
+  if (bon?.phone) phoneCandidates.push(String(bon.phone));
+    const clientId = bon?.client_id ?? bon?.contact_id;
+    if (clientId && clients.length > 0) {
+      const client = clients.find((c: any) => String(c.id) === String(clientId));
+      if (client) {
+        if (client.telephone) phoneCandidates.push(String(client.telephone));
+        if (client.nom_complet) parts.push(String(client.nom_complet));
+      }
+    }
+    if (bon?.fournisseur_id && suppliers.length > 0) {
+      const supplier = suppliers.find((s: any) => String(s.id) === String(bon.fournisseur_id));
+      if (supplier) {
+        if (supplier.telephone) phoneCandidates.push(String(supplier.telephone));
+        if (supplier.nom_complet) parts.push(String(supplier.nom_complet));
+      }
+    }
+    if (phoneCandidates.length) parts.push(phoneCandidates.join(' '));
+    // Also push normalized phone tokens so different formats match same canonical number
+    const normalizedPhones = phoneCandidates.map(p => normalizePhone(p)).filter(Boolean);
+    if (normalizedPhones.length) parts.push(normalizedPhones.join(' '));
+
+    // Add full-digit tokens and country-code mapped variants (Morocco: country code 212)
+    const countryCode = '212';
+    const fullDigitTokens: string[] = [];
+    for (const raw of phoneCandidates) {
+      const digits = String(raw).replace(/\D+/g, '');
+      if (!digits) continue;
+      fullDigitTokens.push(digits);
+      // if number is national like 06xxxxxxxx, add international form 2126xxxxxxxx
+      if (digits.length >= 9 && digits.startsWith('0')) {
+        const rest = digits.slice(1);
+        fullDigitTokens.push(countryCode + rest);
+      }
+      // if number is international like 2126xxxxxxxx, add national form 06xxxxxxxx
+      if (digits.startsWith(countryCode)) {
+        const rest = digits.slice(countryCode.length);
+        if (rest.length > 0) fullDigitTokens.push('0' + rest);
+      }
+    }
+    if (fullDigitTokens.length) parts.push(fullDigitTokens.join(' '));
+
+    // Recursively collect primitive values from the bon (shallow depth to avoid huge dumps)
+    const collect = (obj: any, depth = 0) => {
+      if (obj == null || depth > 3) return;
+      if (typeof obj === 'string' || typeof obj === 'number' || typeof obj === 'boolean') {
+        parts.push(String(obj));
+        return;
+      }
+      if (Array.isArray(obj)) {
+        for (const it of obj) collect(it, depth + 1);
+        return;
+      }
+      if (typeof obj === 'object') {
+        for (const k of Object.keys(obj)) {
+          const val = obj[k];
+          if (val == null) continue;
+          if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+            parts.push(String(val));
+          } else if (Array.isArray(val)) {
+            for (const it of val) collect(it, depth + 1);
+          } else if (isBufferLike(val)) {
+            parts.push(safeText(val));
+          } else if (typeof val === 'object') {
+            // skip very large nested objects (keep depth small)
+            collect(val, depth + 1);
+          }
+        }
+      }
+    };
+
+    // Ensure items are included
+    const items = parseItemsSafe(bon?.items);
+    if (items && items.length) collect(items, 0);
+
+    // Include other bon fields generically
+    collect(bon, 0);
+
+    return parts.join(' ').toLowerCase();
+  };
+
     // Ensure Devis numbers are displayed with uppercase DEV prefix and Avoirs with AVO prefix
   const getDisplayNumero = (bon: any) => getBonNumeroDisplay({ id: bon?.id, type: bon?.type, numero: bon?.numero });
 
@@ -438,44 +594,23 @@ const BonsPage = () => {
   // On ne filtre plus par bon.type car la requête est déjà segmentée par onglet,
     // et certains endpoints ne renvoyaient pas `type`.
   const sortedBons = useMemo(() => {
-    // First filter
+    // First filter - search across all bon attributes and nested item values
     const filtered = bons.filter(bon => {
       const term = (searchTerm || '').trim().toLowerCase();
-      const contactName = (currentTab === 'Vehicule' ? (bon.vehicule_nom || '') : getContactName(bon)).toLowerCase();
-      
-      // Helper to get phone number from bon or contact
-      const getPhoneNumber = (bon: any): string => {
-        // Check bon.phone first
-        if (bon?.phone) return String(bon.phone).toLowerCase();
-        
-        // Check contact phone based on bon type
-        if (currentTab === 'Vehicule') return ''; // Vehicles don't have contacts
-        
-        // For other types, get contact and check phone
-        const clientId = bon?.client_id ?? bon?.contact_id;
-        const fournisseurId = bon?.fournisseur_id;
-        
-        if (clientId && clients.length > 0) {
-          const client = clients.find((c: any) => String(c.id) === String(clientId));
-          if (client?.telephone) return String(client.telephone).toLowerCase();
-        }
-        
-        if (fournisseurId && suppliers.length > 0) {
-          const supplier = suppliers.find((s: any) => String(s.id) === String(fournisseurId));
-          if (supplier?.telephone) return String(supplier.telephone).toLowerCase();
-        }
-        
-        return '';
+      const searchText = flattenBonForSearch(bon);
+
+      // Also compare normalized phone digits (last 9 digits) so +2126... and 06... match
+      const normalizePhoneLocal = (s: string) => {
+        if (!s) return '';
+        const digits = s.replace(/\D+/g, '');
+        return digits.length > 9 ? digits.slice(-9) : digits;
       };
-      
-      const phoneNumber = getPhoneNumber(bon);
-      
+
+      const termDigits = normalizePhoneLocal(term);
+
       const matchesSearch = !term || (
-        (getDisplayNumero(bon).toLowerCase() || '').includes(term) ||
-        (bon.statut?.toLowerCase() || '').includes(term) ||
-        contactName.includes(term) ||
-        phoneNumber.includes(term) ||
-        String(computeMontantTotal(bon)).includes(term)
+        searchText.includes(term) ||
+        (termDigits && searchText.includes(termDigits))
       );
 
       const matchesStatus = !statusFilter || statusFilter.length === 0 ? true : (bon.statut && statusFilter.includes(String(bon.statut)));
