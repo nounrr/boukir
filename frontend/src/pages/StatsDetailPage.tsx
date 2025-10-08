@@ -191,14 +191,23 @@ const StatsDetailPage: React.FC = () => {
   // Options recherchables (produits & clients)
   const productOptions = useMemo(() => {
     const base = [{ value: "", label: "Tous" }];
-    const ids = Object.keys(productClientStats);
-    const mapped = ids.map((pid) => {
+    // Build a union of product ids from products list and computed stats so we include products with 0 ventes
+    const idSet = new Set<string>();
+    for (const p of products) {
+      if (p && p.id != null) idSet.add(String(p.id));
+    }
+    for (const pid of Object.keys(productClientStats)) idSet.add(String(pid));
+
+    const mapped = Array.from(idSet).map((pid) => {
       const p: any = products.find((x: any) => String(x.id) === String(pid));
       const ref = p?.reference ? String(p.reference).trim() : "";
       const designation = p?.designation ? String(p.designation).trim() : "";
       const label = [ref, designation].filter(Boolean).join(" - ") || `Produit ${pid}`;
       return { value: pid, label };
     });
+
+    // Sort options alphabetically by label (keep "Tous" first)
+    mapped.sort((a, b) => a.label.localeCompare(b.label));
     return base.concat(mapped);
   }, [productClientStats, products]);
 
@@ -368,7 +377,12 @@ const StatsDetailPage: React.FC = () => {
         {detailMatrixMode === "produits" ? (
           <div className="space-y-6">
             {(() => {
-              const entries = Object.entries(productClientStats).map(([pid, data]: any) => ({ productId: pid, ...data }));
+              // Ensure we include all products (even those with zero ventes)
+              const allProductIds = new Set<string>([...Object.keys(productClientStats), ...products.map((p:any) => String(p.id))]);
+              const entries = Array.from(allProductIds).map((pid) => {
+                const data = productClientStats[pid] || { totalVentes: 0, totalQuantite: 0, totalMontant: 0, clients: {} };
+                return { productId: pid, ...data };
+              });
               const filtered = selectedProductId
                 ? entries.filter((e: any) => String(e.productId) === String(selectedProductId))
                 : entries;
@@ -425,7 +439,11 @@ const StatsDetailPage: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {clientRows.map((cr: any) => {
+                          {clientRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-4 py-4 text-center text-sm text-gray-500">Aucune vente pour ce produit</td>
+                            </tr>
+                          ) : clientRows.map((cr: any) => {
                             // Gérer l'affichage du nom client pour les bons Comptant
                             let cname;
                             if (String(cr.clientId).startsWith('comptant_')) {
@@ -516,10 +534,12 @@ const StatsDetailPage: React.FC = () => {
                   cname = c?.nom_complet ?? `Client ${row.clientId}`;
                 }
                 
-                const productRows = Object.entries(row.products)
-                  .map(([pid, stats]: any) => ({ productId: pid, ...stats }))
-                  .sort((a: any, b: any) => b.montant - a.montant)
-                  .slice(0, 10);
+                // Include products with zero sales for this client
+                const prodIdsForClient = new Set<string>([...Object.keys(row.products || {}), ...products.map((p:any) => String(p.id))]);
+                const productRows = Array.from(prodIdsForClient).map((pid) => {
+                  const stats = row.products?.[pid] || { ventes: 0, quantite: 0, montant: 0 };
+                  return { productId: pid, ...stats };
+                }).sort((a: any, b: any) => b.montant - a.montant).slice(0, 10);
 
                 return (
                   <div key={row.clientId} className="border rounded-lg">
