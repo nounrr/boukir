@@ -4,7 +4,10 @@ import type { FormikProps } from 'formik';
 import * as Yup from 'yup';
 import { Plus, Trash2, Search, Printer } from 'lucide-react';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
-import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
+import { sendWhatsApp } from '../utils/notifications';
+// Feature flag: hide WhatsApp prompt popups after save/update
+const SHOW_WHATSAPP_POPUP = false;
+import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetEmployeesQueryServer as useGetEmployeesQueryServer } from '../store/api/employeesApi.server';
 import { useGetProductsQuery } from '../store/api/productsApi';
@@ -21,6 +24,9 @@ import type { Contact } from '../types';
 import ProductFormModal from './ProductFormModal';
 import ContactFormModal from './ContactFormModal';
 import BonPrintModal from './BonPrintModal';
+import BonPrintTemplate from './BonPrintTemplate';
+import { generatePDFBlobFromElement } from '../utils/pdf';
+import { uploadBonPdf } from '../utils/uploads';
 
 /* -------------------------- Select avec recherche -------------------------- */
 interface SearchableSelectProps {
@@ -283,7 +289,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   initialValues,
   onBonAdded,
 }) => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const dispatch = useDispatch();
   const formikRef = useRef<FormikProps<any>>(null);
   // Container ref to detect when Enter is pressed within the products area
@@ -333,6 +339,196 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createContact] = useCreateContactMutation();
   const [isDuplicating, setIsDuplicating] = useState(false);
+  const [isSendingWhatsAppPdf, setIsSendingWhatsAppPdf] = useState(false);
+  const apiBaseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
+  const productMap = useMemo(() => {
+    const map = new Map<string, any>();
+    (products || []).forEach((prod: any) => {
+      if (prod?.id != null) {
+        map.set(String(prod.id), prod);
+      }
+    });
+    return map;
+  }, [products]);
+
+  const sanitizeFileSegment = (value: string | number | null | undefined, fallback = 'bon') => {
+    if (value == null) return fallback;
+    const cleaned = String(value).trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+    return cleaned || fallback;
+  };
+
+  const resolveBonContacts = (bonType: string, formValues: any) => {
+    let clientContact: any;
+    let fournisseurContact: any;
+
+    if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'Devis'].includes(bonType)) {
+      const clientId = formValues?.client_id ?? formValues?.contact_id;
+      if (clientId != null) {
+        const found = clients.find((c: any) => String(c.id) === String(clientId));
+        if (found) {
+          clientContact = {
+            ...found,
+            email: found.email || '',
+            adresse: found.adresse || '',
+            telephone: found.telephone || '',
+          };
+        }
+      }
+      if (!clientContact && formValues?.client_nom) {
+        clientContact = {
+          nom_complet: formValues.client_nom,
+          telephone: formValues.phone || '',
+          email: formValues.client_email || '',
+          adresse: formValues.adresse_livraison || formValues.client_adresse || '',
+          societe: formValues.client_societe || '',
+        };
+      }
+    }
+
+    if (['Commande', 'AvoirFournisseur'].includes(bonType)) {
+      const fournisseurId = formValues?.fournisseur_id ?? formValues?.contact_id;
+      if (fournisseurId != null) {
+        const found = fournisseurs.find((f: any) => String(f.id) === String(fournisseurId));
+        if (found) {
+          fournisseurContact = {
+            ...found,
+            email: found.email || '',
+            adresse: found.adresse || '',
+            telephone: found.telephone || '',
+          };
+        }
+      }
+      if (!fournisseurContact && formValues?.fournisseur_nom) {
+        fournisseurContact = {
+          nom_complet: formValues.fournisseur_nom,
+          telephone: formValues.phone || '',
+          email: formValues.fournisseur_email || '',
+          adresse: formValues.adresse_livraison || formValues.fournisseur_adresse || '',
+          societe: formValues.fournisseur_societe || '',
+        };
+      }
+    }
+
+    return { clientContact, fournisseurContact };
+  };
+
+  const normalizeBonItemsForPdf = (bonType: string, formValues: any) => {
+    const sourceItems = Array.isArray(formValues?.items) ? formValues.items : [];
+    return sourceItems.map((item: any, index: number) => {
+      const productId = item?.product_id ?? item?.id ?? item?.produit_id ?? '';
+      const product = productId ? productMap.get(String(productId)) : undefined;
+      const designation = item?.designation
+        || item?.nom
+        || item?.name
+        || product?.designation
+        || product?.nom
+        || product?.name
+        || `Article ${index + 1}`;
+      const description = item?.description || product?.description || '';
+      const qtyRawValue = item?.quantite ?? item?.qty ?? 0;
+      const qtyNumber = Number(parseFloat(String(qtyRawValue).replace(',', '.')));
+      const quantite = Number.isFinite(qtyNumber) ? qtyNumber : 0;
+      const priceSource = bonType === 'Commande'
+        ? (item?.prix_achat ?? product?.prix_achat ?? item?.prix_unitaire ?? item?.prix ?? 0)
+        : (item?.prix_unitaire ?? item?.prix ?? product?.prix_vente ?? product?.prix ?? 0);
+      const priceNumber = Number(parseFloat(String(priceSource).replace(',', '.')));
+      const prix_unitaire = Number.isFinite(priceNumber) ? priceNumber : 0;
+      return {
+        ...item,
+        product_id: productId,
+        designation,
+        description,
+        quantite,
+        prix_unitaire,
+      };
+    });
+  };
+
+  const sendBonViaWhatsAppWithPdf = async (params: {
+    bonType: string;
+    numero?: string;
+    bonRecord: any;
+    formValues: any;
+    phone: string;
+    bonId?: number;
+    montantTotalValue?: number;
+  }) => {
+    const { bonType, numero, bonRecord, formValues, phone, bonId, montantTotalValue } = params;
+    if (!phone) {
+      throw new Error('Numéro de téléphone introuvable pour ce bon.');
+    }
+    if (isSendingWhatsAppPdf) {
+      throw new Error('Un envoi WhatsApp est déjà en cours.');
+    }
+
+    setIsSendingWhatsAppPdf(true);
+    try {
+      const normalizedItems = normalizeBonItemsForPdf(bonType, formValues);
+      const { clientContact, fournisseurContact } = resolveBonContacts(bonType, formValues);
+      const contactName = clientContact?.nom_complet
+        || fournisseurContact?.nom_complet
+        || formValues?.client_nom
+        || formValues?.fournisseur_nom
+        || '';
+      const montant = Number(
+        Number.isFinite(montantTotalValue) ? montantTotalValue : (formValues?.montant_total ?? bonRecord?.montant_total ?? 0)
+      ).toFixed(2);
+      const dateValue = bonRecord?.date_creation || formValues?.date_creation;
+      const messageLines = [
+        contactName ? `Bonjour ${contactName}` : 'Bonjour',
+        `Type: ${bonType}`,
+        numero ? `Numéro: ${numero}` : '',
+        `Montant: ${montant} DH`,
+        dateValue ? `Date: ${formatDateTimeWithHour(dateValue)}` : '',
+        formValues?.adresse_livraison ? `Adresse: ${formValues.adresse_livraison}` : '',
+        formValues?.lieu_charge ? `Lieu de chargement: ${formValues.lieu_charge}` : (formValues?.lieu_chargement ? `Lieu de chargement: ${formValues.lieu_chargement}` : ''),
+        formValues?.observations ? `Note: ${formValues.observations}` : '',
+        normalizedItems.length
+          ? 'Articles:\n' + normalizedItems.map((it: any) => `  - ${it.designation || ''} x${it.quantite || 0} @ ${it.prix_unitaire || 0} DH`).join('\n')
+          : '',
+        'Merci.'
+      ].filter(Boolean);
+
+      const bonForTemplate = {
+        ...bonRecord,
+        ...formValues,
+        type: bonType,
+        numero: numero || bonRecord?.numero,
+        items: normalizedItems,
+        phone: formValues?.phone || bonRecord?.phone,
+      };
+
+      const pdfElement = (
+        <BonPrintTemplate
+          bon={bonForTemplate}
+          client={clientContact as Contact | undefined}
+          fournisseur={fournisseurContact as Contact | undefined}
+          size="A4"
+        />
+      );
+
+      const pdfBlob = await generatePDFBlobFromElement(pdfElement);
+      const safeNumero = sanitizeFileSegment(numero || bonType);
+      const fileName = `${safeNumero}-${Date.now()}.pdf`;
+
+      const uploadResult = await uploadBonPdf(pdfBlob, fileName, {
+        token: token || undefined,
+        bonId,
+        bonType,
+      });
+
+      const baseForUrl = apiBaseUrl || window.location.origin;
+      const mediaUrl = uploadResult.absoluteUrl
+        || `${baseForUrl.replace(/\/$/, '')}${uploadResult.url.startsWith('/') ? '' : '/'}${uploadResult.url}`;
+
+      const whatsappMessage = messageLines.join('\n');
+      const result = await sendWhatsApp(phone, whatsappMessage, [mediaUrl], token || undefined);
+      showSuccess('Message WhatsApp envoyé avec PDF.');
+      return result;
+    } finally {
+      setIsSendingWhatsAppPdf(false);
+    }
+  };
 
   /* -------------------- Helpers décimaux pour prix_unitaire -------------------- */
   const normalizeDecimal = (s: string) => s.replace(/\s+/g, '').replace(',', '.');
@@ -795,8 +991,45 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     };
 
     if (initialValues) {
-      await updateBonMutation({ id: initialValues.id, type: requestType, ...cleanBonData }).unwrap();
-      showSuccess('Bon mis à jour avec succès');
+      const updated = await updateBonMutation({ id: initialValues.id, type: requestType, ...cleanBonData }).unwrap();
+      // Optionally show WhatsApp prompt on update
+      if (SHOW_WHATSAPP_POPUP) {
+        await (await import('sweetalert2')).default.fire({
+          title: 'Bon mis à jour avec succès',
+          html: '<div style="text-align:left">Voulez-vous envoyer ce bon au client via WhatsApp ?</div>',
+          showCancelButton: true,
+          confirmButtonText: 'Envoyer WhatsApp',
+          cancelButtonText: 'Fermer',
+          reverseButtons: true
+        }).then(async (res) => {
+          if (res.isConfirmed) {
+            try {
+              const clientPhone = values.phone || (clients.find((c: any) => String(c.id) === String(values.client_id))?.telephone);
+              if (!clientPhone) {
+                showError('Numéro de téléphone client introuvable. Renseignez le champ téléphone.');
+              } else {
+                const numero = updated?.numero || initialValues?.numero || '';
+                try {
+                  await sendBonViaWhatsAppWithPdf({
+                    bonType: requestType,
+                    numero,
+                    bonRecord: updated,
+                    formValues: values,
+                    phone: String(clientPhone),
+                    bonId: updated?.id || initialValues?.id,
+                    montantTotalValue: montantTotal,
+                  });
+                } catch (err: any) {
+                  console.error('WhatsApp API error:', err);
+                  showError((err && err.message) ? err.message : 'Échec de l\'envoi WhatsApp');
+                }
+              }
+            } catch (err: any) {
+              showError(err?.message || 'Échec de l\'envoi WhatsApp');
+            }
+          }
+        });
+      }
       if (requestType === 'Commande') {
         // Invalider le cache produits pour refléter nouveaux prix d'achat
         dispatch(api.util.invalidateTags(['Product']));
@@ -929,7 +1162,44 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       }
 
       const created = await createBon({ type: requestType, ...cleanBonData }).unwrap();
-      showSuccess(`${currentTab} créé avec succès`);
+      // Optionally show WhatsApp prompt on create
+      if (SHOW_WHATSAPP_POPUP) {
+        await (await import('sweetalert2')).default.fire({
+          title: `${currentTab} créé avec succès`,
+          html: '<div style="text-align:left">Le bon a été créé. Voulez-vous l\'envoyer au client via WhatsApp ?</div>',
+          showCancelButton: true,
+          confirmButtonText: 'Envoyer WhatsApp',
+          cancelButtonText: 'Fermer',
+          reverseButtons: true
+        }).then(async (res) => {
+          if (res.isConfirmed) {
+            try {
+              const clientPhone = values.phone || (clients.find((c: any) => String(c.id) === String(values.client_id))?.telephone);
+              if (!clientPhone) {
+                showError('Numéro de téléphone client introuvable. Renseignez le champ téléphone.');
+              } else {
+                const numero = created?.numero || '';
+                try {
+                  await sendBonViaWhatsAppWithPdf({
+                    bonType: requestType,
+                    numero,
+                    bonRecord: created,
+                    formValues: values,
+                    phone: String(clientPhone),
+                    bonId: created?.id,
+                    montantTotalValue: montantTotal,
+                  });
+                } catch (err: any) {
+                  console.error('WhatsApp API error:', err);
+                  showError((err && err.message) ? err.message : 'Échec de l\'envoi WhatsApp');
+                }
+              }
+            } catch (err: any) {
+              showError(err?.message || 'Échec de l\'envoi WhatsApp');
+            }
+          }
+        });
+      }
       if (requestType === 'Commande') {
         dispatch(api.util.invalidateTags(['Product']));
       }
@@ -1274,6 +1544,29 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 </div>
 
                 {/* Champ Véhicule (ancien) retiré de l'UI; utiliser la section Livraisons (multi-véhicules) ci-dessous */}
+                {/* Véhicule (affiché uniquement pour les bons de type Véhicule) */}
+                {currentTab === 'Vehicule' && (
+                  <div>
+                    <label htmlFor="vehicule_id" className="block text-sm font-medium text-gray-700 mb-1">
+                      Véhicule
+                    </label>
+                    <select
+                      id="vehicule_id"
+                      name="vehicule_id"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={values.vehicule_id || ''}
+                      onChange={(e) => setFieldValue('vehicule_id', e.target.value)}
+                    >
+                      <option value="">Sélectionner</option>
+                      {(vehicules || []).map((v: any) => (
+                        <option key={v.id} value={String(v.id)}>
+                          {v.nom} - {v.immatriculation}
+                        </option>
+                      ))}
+                    </select>
+                    <ErrorMessage name="vehicule_id" component="div" className="text-red-500 text-sm mt-1" />
+                  </div>
+                )}
 
                 {/* Lieu / Adresse */}
                 <div>
@@ -1304,71 +1597,73 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               </div>
 
               {/* Multi-livraisons (véhicules + chauffeurs) */}
-              <div className="mt-2">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">Livraisons (multi-véhicules)</label>
-                  <button
-                    type="button"
-                    className="px-2 py-1 text-sm bg-blue-600 text-white rounded"
-                    onClick={() => setFieldValue('livraisons', [...(values.livraisons || []), { vehicule_id: '', user_id: '' }])}
-                  >
-                    Ajouter véhicule + chauffeur
-                  </button>
+              {(currentTab !== 'Vehicule' || ((values.livraisons || []).length > 0)) && (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Livraisons (multi-véhicules)</label>
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-sm bg-blue-600 text-white rounded"
+                      onClick={() => setFieldValue('livraisons', [...(values.livraisons || []), { vehicule_id: '', user_id: '' }])}
+                    >
+                      Ajouter véhicule + chauffeur
+                    </button>
+                  </div>
+                  <FieldArray name="livraisons">
+                    {({ remove }) => (
+                      <div className="space-y-2">
+                        {(values.livraisons || []).map((l: any, idx: number) => (
+                          <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end bg-gray-50 p-3 rounded">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Véhicule</label>
+                              <select
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                value={l.vehicule_id || ''}
+                                onChange={(e) => {
+                                  const arr = [...(values.livraisons || [])];
+                                  arr[idx] = { ...arr[idx], vehicule_id: e.target.value };
+                                  setFieldValue('livraisons', arr);
+                                }}
+                              >
+                                <option value="">Sélectionner</option>
+                                {vehicules.map((v: any) => (
+                                  <option key={v.id} value={String(v.id)}>
+                                    {v.nom} - {v.immatriculation}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Chauffeur (optionnel)</label>
+                              <select
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                value={l.user_id || ''}
+                                onChange={(e) => {
+                                  const arr = [...(values.livraisons || [])];
+                                  arr[idx] = { ...arr[idx], user_id: e.target.value };
+                                  setFieldValue('livraisons', arr);
+                                }}
+                              >
+                                <option value="">Aucun</option>
+                                {chauffeurs.map((c: any) => (
+                                  <option key={c.id} value={String(c.id)}>
+                                    {c.nom_complet || c.cin}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button type="button" className="px-2 py-2 bg-red-600 text-white rounded" onClick={() => remove(idx)}>
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </FieldArray>
                 </div>
-                <FieldArray name="livraisons">
-                  {({ remove }) => (
-                    <div className="space-y-2">
-                      {(values.livraisons || []).map((l: any, idx: number) => (
-                        <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end bg-gray-50 p-3 rounded">
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Véhicule</label>
-                            <select
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                              value={l.vehicule_id || ''}
-                              onChange={(e) => {
-                                const arr = [...(values.livraisons || [])];
-                                arr[idx] = { ...arr[idx], vehicule_id: e.target.value };
-                                setFieldValue('livraisons', arr);
-                              }}
-                            >
-                              <option value="">Sélectionner</option>
-                              {vehicules.map((v: any) => (
-                                <option key={v.id} value={String(v.id)}>
-                                  {v.nom} - {v.immatriculation}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Chauffeur (optionnel)</label>
-                            <select
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                              value={l.user_id || ''}
-                              onChange={(e) => {
-                                const arr = [...(values.livraisons || [])];
-                                arr[idx] = { ...arr[idx], user_id: e.target.value };
-                                setFieldValue('livraisons', arr);
-                              }}
-                            >
-                              <option value="">Aucun</option>
-                              {chauffeurs.map((c: any) => (
-                                <option key={c.id} value={String(c.id)}>
-                                  {c.nom_complet || c.cin}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button type="button" className="px-2 py-2 bg-red-600 text-white rounded" onClick={() => remove(idx)}>
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </FieldArray>
-              </div>
+              )}
 
               {/* Client */}
               {(values.type === 'Sortie' || values.type === 'Devis' || values.type === 'Avoir') && (

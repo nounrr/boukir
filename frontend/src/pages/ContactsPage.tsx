@@ -98,6 +98,8 @@ const ContactsPage: React.FC = () => {
 
   // Backend products for enriching product details (remove fake data)
   const { data: products = [] } = useGetProductsQuery();
+  // Allow selecting bons to control print content
+  const [selectedBonIds, setSelectedBonIds] = React.useState<Set<number>>(new Set());
 
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs'>('clients');
   // Forcer les employés à rester sur l'onglet clients uniquement
@@ -681,6 +683,31 @@ const ContactsPage: React.FC = () => {
     return [initRow, ...filteredTransactions];
   }, [searchedProductHistory, selectedContact, allProductHistory]);
 
+  // Bons visibles dans le tableau (IDs uniques) — utile pour la sélection de bons
+  const displayedBonIds = useMemo(() => {
+    const s = new Set<number>();
+    (displayedProductHistory || []).forEach((i: any) => {
+      if (!i.syntheticInitial && i.bon_id) s.add(Number(i.bon_id));
+    });
+    return s;
+  }, [displayedProductHistory]);
+
+  const toggleBonSelection = (bonId: number) => {
+    setSelectedBonIds(prev => {
+      const next = new Set(prev);
+      if (next.has(bonId)) next.delete(bonId); else next.add(bonId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllBons = (checked: boolean) => {
+    if (checked) {
+      setSelectedBonIds(new Set(Array.from(displayedBonIds)));
+    } else {
+      setSelectedBonIds(new Set());
+    }
+  };
+
   // Small helper to produce the CompanyHeader HTML used in bons prints
   const getCompanyHeaderHTML = (companyType: 'DIAMOND' | 'MPC' = 'DIAMOND') => {
     const companyInfo: Record<string, { name: string; subtitle: string; description: string }> = {
@@ -1180,7 +1207,7 @@ const ContactsPage: React.FC = () => {
           </div>
 
           <div class="section">
-            <h3>📋 DÉTAIL DES TRANSACTIONS (${filteredBons.length} documents)</h3>
+            <h3>📋 DÉTAIL DES TRANSACTIONS (${printBons.length} documents)</h3>
             <table style="table-layout: fixed; width: 100%;">
               <tr>
                 <th style="width: 15%;">N° Bon</th>
@@ -1190,7 +1217,7 @@ const ContactsPage: React.FC = () => {
                 <th style="width: 12%;">Statut</th>
                 <th style="width: 10%;">Articles</th>
               </tr>
-              ${filteredBons.map(bon => {
+              ${printBons.map(bon => {
                 const bonItems = Array.isArray(bon.items) ? bon.items : [];
                 return `<tr>
                   <td style="font-size: 6px; word-break: break-all;">${bon.numero}</td>
@@ -1203,14 +1230,14 @@ const ContactsPage: React.FC = () => {
               }).join('')}
               <tr class="total-row">
                 <td colspan="3" class="text-wrap"><strong>TOTAL</strong></td>
-                <td class="numeric-col"><strong>${filteredBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</strong></td>
+                <td class="numeric-col"><strong>${printBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</strong></td>
                 <td colspan="2"></td>
               </tr>
             </table>
           </div>
 
           <div class="section">
-            <h3>🛍️ DÉTAIL DES ACHATS PAR PRODUIT (${filteredProductsForDisplay.length} lignes)</h3>
+            <h3>🛍️ DÉTAIL DES ACHATS PAR PRODUIT (${filteredProductsForDisplay2.length} lignes)</h3>
             ${(dateFrom || dateTo) ? `<p style="margin:5px 0;font-size:11px;color:#666;font-style:italic;">⚠️ Données filtrées par période - Soldes cumulatifs calculés correctement en tenant compte des transactions antérieures</p>` : ''}
             <table style="table-layout: fixed; width: 100%;">
               <tr>
@@ -1222,9 +1249,9 @@ const ContactsPage: React.FC = () => {
                 <th style="width: 6%;">Qté</th>
                 <th style="width: 8%;">Pr U</th>
                 <th style="width: 10%;">Total</th>
-                <th style="width: 12%;">Solde Cumulé</th>
+                ${printHasSelection ? '' : '<th style="width: 12%">Solde Cumulé</th>'}
               </tr>
-              ${filteredProductsForDisplay.map(item =>
+              ${filteredProductsForDisplay2.map(item =>
                 `<tr>
                   <td style="font-size: 6px;">${item.bon_date}</td>
                   <td style="font-size: 6px;">${item.bon_numero}</td>
@@ -1234,15 +1261,15 @@ const ContactsPage: React.FC = () => {
                   <td class="numeric-col">${item.quantite || 0}</td>
                   <td class="numeric-col">${(item.prix_unitaire || 0).toFixed(2)} DH</td>
                   <td class="numeric-col">${(item.total || 0).toFixed(2)} DH</td>
-                  <td class="numeric-col"><strong>${(item.soldeCumulatif || 0).toFixed(2)} DH</strong></td>
+                  ${printHasSelection ? '' : `<td class="numeric-col"><strong>${(item.soldeCumulatif || 0).toFixed(2)} DH</strong></td>`}
                 </tr>`
               ).join('')}
               <tr class="total-row">
                 <td colspan="5" class="text-wrap"><strong>TOTAL (période affichée)</strong></td>
-                <td class="numeric-col"><strong>${filteredProductsForDisplay.reduce((s, p) => s + (p.quantite || 0), 0)}</strong></td>
+                <td class="numeric-col"><strong>${filteredProductsForDisplay2.reduce((s, p) => s + (p.quantite || 0), 0)}</strong></td>
                 <td></td>
-                <td class="numeric-col"><strong>${filteredProductsForDisplay.reduce((s, p) => s + (p.total || 0), 0).toFixed(2)} DH</strong></td>
-                <td class="numeric-col"><strong>${filteredProductsForDisplay.length > 0 ? (filteredProductsForDisplay[filteredProductsForDisplay.length - 1].soldeCumulatif || 0).toFixed(2) : '0.00'} DH</strong></td>
+                <td class="numeric-col"><strong>${filteredProductsForDisplay2.reduce((s, p) => s + (p.total || 0), 0).toFixed(2)} DH</strong></td>
+                ${printHasSelection ? '' : `<td class="numeric-col"><strong>${filteredProductsForDisplay2.length > 0 ? (filteredProductsForDisplay2[filteredProductsForDisplay2.length - 1].soldeCumulatif || 0).toFixed(2) : '0.00'} DH</strong></td>`}
               </tr>
             </table>
           </div>
@@ -1582,7 +1609,13 @@ const ContactsPage: React.FC = () => {
       // Mode complet : utiliser exactement ce qui est affiché dans le tableau
       setPrintProducts(displayedProductHistory);
     }
-    setPrintModal({ open: true, mode: 'products' });
+      // Hide cumulative column when user has active selections (product or bon selection)
+      const hideCumulative = (selectedProductIds && selectedProductIds.size > 0) || (selectedBonIds && selectedBonIds.size > 0);
+      setPrintModal({ open: true, mode: 'products' });
+      // Store hide flag in state by passing via printProducts (we'll set a small global flag since modal receives skipInitialRow only)
+      // Alternative: attach the flag to printProducts metadata; ContactPrintModal supports hideCumulative prop directly when used below.
+      // We'll set a temporary window variable used by modal call site using setTimeout to update printModal open state.
+      (window as any).__contact_print_hideCumulative = hideCumulative;
   };
 
   // Formik (utilisé par ContactFormModal via props.initialValues si besoin)
@@ -2709,6 +2742,13 @@ const ContactsPage: React.FC = () => {
             (printProducts.length > 0 && selectedProductIds.size > 0) || 
             !!(dateFrom || dateTo)
           }
+            hideCumulative={
+              // Hide cumulative column when skipInitialRow is active (compact/select mode)
+              // or when user selected specific bons (selectedBonIds) — preserve existing window flag for compatibility
+              ((printProducts.length > 0 && selectedProductIds.size > 0) || !!(dateFrom || dateTo)) ||
+              (selectedBonIds && selectedBonIds.size > 0) ||
+              !!(window as any).__contact_print_hideCumulative
+            }
         />
       )}
                     </div>
@@ -2773,7 +2813,23 @@ const ContactsPage: React.FC = () => {
                             />
                           </th>
                           <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</th>
-                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Bon N°</th>
+                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                aria-label="Sélectionner les bons visibles"
+                                checked={(() => {
+                                  const nonInitial = Array.from(new Set((displayedProductHistory || []).filter((i:any)=>!i.syntheticInitial && i.bon_id).map((i:any)=>Number(i.bon_id))));
+                                  return nonInitial.length > 0 && nonInitial.every((id)=>selectedBonIds.has(id));
+                                })()}
+                                onChange={(e) => {
+                                  const nonInitial = Array.from(new Set((displayedProductHistory || []).filter((i:any)=>!i.syntheticInitial && i.bon_id).map((i:any)=>Number(i.bon_id))));
+                                  if (e.target.checked) setSelectedBonIds(new Set(nonInitial)); else setSelectedBonIds(new Set());
+                                }}
+                              />
+                              <span>Bon N°</span>
+                            </div>
+                          </th>
                           <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Type</th>
                           <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Référence</th>
                           <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
@@ -2832,7 +2888,18 @@ const ContactsPage: React.FC = () => {
                                 </div>
                               </td>
                               <td className="px-6  whitespace-nowrap">
-                                <div className="text-sm font-medium text-gray-900">{item.bon_numero}</div>
+                                <div className="flex items-center gap-3">
+                                  {item.syntheticInitial ? (
+                                    <span className="w-4 text-xs text-gray-400">—</span>
+                                  ) : (
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedBonIds.has(Number(item.bon_id))}
+                                      onChange={() => item.bon_id && toggleBonSelection(Number(item.bon_id))}
+                                    />
+                                  )}
+                                  <div className="text-sm font-medium text-gray-900">{item.bon_numero}</div>
+                                </div>
                               </td>
                               <td className="px-6  whitespace-nowrap">
                                 <span

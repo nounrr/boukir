@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, MoreHorizontal } from 'lucide-react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, MoreHorizontal, Send } from 'lucide-react';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
@@ -24,6 +24,10 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   } from '../store/api/contactsApi';
   import { useGetProductsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
+  import { sendWhatsApp } from '../utils/notifications';
+  import BonPrintTemplate from '../components/BonPrintTemplate';
+  import { generatePDFBlobFromElement } from '../utils/pdf';
+  import { uploadBonPdf } from '../utils/uploads';
   import { formatDateSpecial, formatDateTimeWithHour } from '../utils/dateUtils';
   import { useSelector } from 'react-redux';
   import type { RootState } from '../store';
@@ -37,6 +41,8 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
 
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
+  // Feature flag: show or hide the WhatsApp send button in list actions
+  const SHOW_WHATSAPP_BUTTON = false;
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule'>('Commande');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -71,6 +77,7 @@ const BonsPage = () => {
 
   // Menu actions state
   const [openMenuBonId, setOpenMenuBonId] = useState<string | null>(null);
+  const [sendingWhatsAppId, setSendingWhatsAppId] = useState<string | null>(null);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -709,6 +716,125 @@ const BonsPage = () => {
   };
   const [auditMeta, setAuditMeta] = useState<Record<string, { created_by_name: string|null; updated_by_name: string|null }>>({});
   const { token } = useAuth();
+  const apiBaseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
+  // Helper: envoyer WhatsApp pour un bon depuis la liste
+  // (imports moved to top of file)
+  const resolveBonPhone = (bon: any): string | null => {
+    // Priorité: bon.phone si présent
+    if (bon?.phone) return String(bon.phone);
+    // Client selon type
+    const type = bon?.type || currentTab;
+    const clientId = bon?.client_id ?? bon?.contact_id;
+    if (['Sortie','Comptant','Avoir','AvoirComptant','Devis'].includes(type)) {
+      if (clientId && clients.length > 0) {
+        const client = clients.find((c: any) => String(c.id) === String(clientId));
+        if (client?.telephone) return String(client.telephone);
+      }
+    }
+    // Fournisseur pour Commande / AvoirFournisseur
+    if (['Commande','AvoirFournisseur'].includes(type)) {
+      const fournisseurId = bon?.fournisseur_id ?? bon?.contact_id;
+      if (fournisseurId && suppliers.length > 0) {
+        const supplier = suppliers.find((s: any) => String(s.id) === String(fournisseurId));
+        if (supplier?.telephone) return String(supplier.telephone);
+      }
+    }
+    return null;
+  };
+  const handleSendWhatsAppFromRow = async (bon: any) => {
+    try {
+  const bonKey = bon?.id != null ? String(bon.id) : '__unknown__';
+  setSendingWhatsAppId(bonKey);
+
+      const toPhone = resolveBonPhone(bon);
+      if (!toPhone) {
+        showError("Numéro de téléphone introuvable pour ce bon.");
+        return;
+      }
+
+      const parseItems = (rawItems: any) => {
+        if (Array.isArray(rawItems)) return rawItems;
+        if (typeof rawItems === 'string') {
+          try {
+            const parsed = JSON.parse(rawItems);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        }
+        return [];
+      };
+
+      const bonItems = parseItems(bon.items);
+      const messageLines = [
+        `Bonjour ${getContactName(bon) || ''}`,
+        `Type: ${bon.type || currentTab}`,
+        `Numéro: ${getDisplayNumero(bon)}`,
+        `Montant: ${computeMontantTotal(bon).toFixed(2)} DH`,
+        bon.date_creation ? `Date: ${formatDateTimeWithHour(bon.date_creation)}` : '',
+        bon.adresse_livraison ? `Adresse: ${bon.adresse_livraison}` : '',
+        bon.lieu_chargement ? `Lieu de chargement: ${bon.lieu_chargement}` : '',
+        bon.observations ? `Note: ${bon.observations}` : '',
+        bonItems.length
+          ? 'Articles:\n' + bonItems.map((it: any) => `  - ${it.nom || it.name || it.designation || ''} x${it.quantite || it.qty || 1} @ ${it.prix_unitaire || it.prix || ''} DH`).join('\n')
+          : '',
+        'Merci.'
+      ].filter(Boolean);
+
+      const type = bon?.type || currentTab;
+      let resolvedClient: any;
+      let resolvedSupplier: any;
+      if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'Devis'].includes(type)) {
+        const clientId = bon?.client_id ?? bon?.contact_id;
+        if (clientId && clients.length > 0) {
+          resolvedClient = clients.find((c: any) => String(c.id) === String(clientId));
+        }
+      }
+      if (['Commande', 'AvoirFournisseur'].includes(type)) {
+        const fournisseurId = bon?.fournisseur_id ?? bon?.contact_id;
+        if (fournisseurId && suppliers.length > 0) {
+          resolvedSupplier = suppliers.find((s: any) => String(s.id) === String(fournisseurId));
+        }
+      }
+
+      const pdfElement = (
+        <BonPrintTemplate
+          bon={bon}
+          client={resolvedClient}
+          fournisseur={resolvedSupplier}
+          size="A4"
+        />
+      );
+
+      const pdfBlob = await generatePDFBlobFromElement(pdfElement);
+      const numero = getDisplayNumero(bon) || `bon-${bon?.id || 'document'}`;
+      const safeNumero = numero.replace(/[^a-zA-Z0-9_-]/g, '_') || `bon_${Date.now()}`;
+      const fileName = `${safeNumero}.pdf`;
+
+      const uploadResult = await uploadBonPdf(pdfBlob, fileName, {
+        token: token || undefined,
+        bonId: bon?.id,
+        bonType: type,
+      });
+
+      const baseForUrl = apiBaseUrl || window.location.origin;
+      const mediaUrl = uploadResult.absoluteUrl || `${baseForUrl.replace(/\/$/, '')}${uploadResult.url.startsWith('/') ? '' : '/'}${uploadResult.url}`;
+      const whatsappMessage = messageLines.join('\n');
+
+  const res = await sendWhatsApp(toPhone, whatsappMessage, [mediaUrl], token || undefined);
+      if (res?.ok) {
+        showSuccess('WhatsApp avec PDF envoyé');
+      } else {
+        const msg = res?.error || "Échec de l'envoi WhatsApp";
+        showError(msg);
+      }
+    } catch (err: any) {
+      const msg = err?.data?.message || err?.message || 'Erreur lors de l\'envoi WhatsApp';
+      showError(msg);
+    } finally {
+      setSendingWhatsAppId(null);
+    }
+  };
   useEffect(() => {
     if (!showAuditCols) { setAuditMeta({}); return; }
     const ids = paginatedBons.map(b => b.id).filter(Boolean);
@@ -1288,7 +1414,29 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-sm">
                         <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.date_creation)}</div>
                       </td>
-                      <td className="px-4 py-2 text-sm">{currentTab === 'Vehicule' ? (bon.vehicule_nom || '-') : getContactName(bon)}</td>
+                      <td className="px-4 py-2 text-sm">
+                        {currentTab === 'Vehicule' ? (
+                          (bon?.livraisons && Array.isArray(bon.livraisons) && bon.livraisons.length > 0) ? (
+                            <div className="space-y-1">
+                              {(bon.livraisons || []).map((l: any, idx: number) => {
+                                const li = l as any;
+                                const bAny = bon as any;
+                                const vehName = li.vehicule_nom || li.vehicule || li.vehicle || bAny.vehicule_nom || '-';
+                                const immat = li.immatriculation || li.immatric || bAny.immatriculation || '';
+                                const chauffeur = li.user_nom || li.chauffeur || li.driver_name || '';
+                                return (
+                                  <div key={idx} className="flex flex-col">
+                                    <div className="text-sm font-medium text-gray-800">{vehName}{immat ? ` • ${immat}` : ''}</div>
+                                    {chauffeur ? <div className="text-xs text-gray-500">Chauffeur: {chauffeur}</div> : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <>{bon.vehicule_nom || '-'}</>
+                          )
+                        ) : getContactName(bon)}
+                      </td>
                       <td className="px-4 py-2 text-sm">{(bon as any).adresse_livraison ?? (bon as any).adresseLivraison ?? '-'}</td>
                       <td className="px-4 py-2">
                         <div className="text-sm font-semibold text-gray-900">{computeMontantTotal(bon).toFixed(2)} DH</div>
@@ -1393,6 +1541,27 @@ const BonsPage = () => {
                           >
                             <Printer size={ACTION_ICON_SIZE} />
                           </button>
+
+                          {/* WhatsApp send (hidden): wrap with feature flag to disable UI without removing logic */}
+                          {SHOW_WHATSAPP_BUTTON && (() => {
+                            const toPhone = resolveBonPhone(bon);
+                            // Afficher pour tous les onglets, si un numéro est résolu
+                            if (!toPhone) return null;
+                            const bonKey = bon?.id != null ? String(bon.id) : '__unknown__';
+                            const isSending = sendingWhatsAppId === bonKey;
+                            return (
+                              <button
+                                onClick={() => handleSendWhatsAppFromRow(bon)}
+                                className={`text-emerald-600 hover:text-emerald-800 ${isSending ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                title={isSending ? 'Envoi en cours...' : 'Envoyer WhatsApp'}
+                                disabled={isSending}
+                                aria-busy={isSending}
+                              >
+                                {/* Utiliser l'icône Send comme proxy WhatsApp */}
+                                <Send size={ACTION_ICON_SIZE} />
+                              </button>
+                            );
+                          })()}
                           
                           {/* Validation icon - visible for authorized users and non-validated bons */}
                           {(() => {
