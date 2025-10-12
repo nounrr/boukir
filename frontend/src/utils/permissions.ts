@@ -32,13 +32,11 @@ export const canDeleteItems = (user: User | null): boolean => {
 
 export const canModifyBons = (user: User | null): boolean => {
   const result = user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus';
-  console.log('canModifyBons:', { userRole: user?.role, result });
   return result; // PDG, Manager et ManagerPlus peuvent modifier les bons
 };
 
 export const canModifyPayments = (user: User | null): boolean => {
   const result = user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus';
-  console.log('canModifyPayments:', { userRole: user?.role, result });
   return result; // PDG, Manager et ManagerPlus peuvent modifier les paiements
 };
 

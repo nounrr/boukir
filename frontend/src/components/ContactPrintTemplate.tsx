@@ -18,6 +18,7 @@ interface ContactPrintTemplateProps {
   size?: 'A4' | 'A5';
   // When true, do not prepend a synthetic initial balance row
   skipInitialRow?: boolean;
+  hideCumulative?: boolean;
 }
 
 const fmt = (n: any) => Number(n || 0).toFixed(2);
@@ -59,7 +60,9 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   priceMode,
   size = 'A4',
   skipInitialRow = false,
+  hideCumulative = false,
 }) => {
+  // hideCumulative: when true, don't render the 'Solde Cumulé' column (for selected/compact prints)
   const showPrices = priceMode === 'WITH_PRICES';
   const initialSolde = Number((contact as any)?.solde ?? 0);
 
@@ -219,7 +222,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                 <th>Numéro</th>
                 <th>Type</th>
                 {showPrices ? <th className="cell-num">Montant (DH)</th> : <th>Statut/Mode</th>}
-                {showPrices && <th className="cell-num">Solde Cumulé</th>}
+                {showPrices && !hideCumulative && <th className="cell-num">Solde Cumulé</th>}
               </tr>
             </thead>
             <tbody>
@@ -253,7 +256,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                             {t.syntheticInitial ? '—' : reduceBalance ? '-' : '+'}
                             {t.syntheticInitial ? '' : fmt(t.montant)}
                           </td>
-                          <td className="cell-num">{fmt(t.soldeCumulatif)}</td>
+                          {!hideCumulative && <td className="cell-num">{fmt(t.soldeCumulatif)}</td>}
                         </>
                       ) : (
                         <td>{t.syntheticInitial ? '-' : t.statut || (isPayment ? 'Paiement' : '-')}</td>
@@ -281,7 +284,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                   <>
                     <th className="cell-num">{isFournisseur ? 'Prix Achat' : 'Prix Unit.'}</th>
                     <th className="cell-num">Total</th>
-                    <th className="cell-num">Solde Cumulé</th>
+                    {!hideCumulative && <th className="cell-num">Solde Cumulé</th>}
                   </>
                 ) : (
                   <th>Statut</th>
@@ -356,7 +359,9 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                           <td className={`cell-num ${it.syntheticInitial ? 'text-gray-500' : reduceBalance ? 'text-green-700' : ''}`}>
                             {it.syntheticInitial ? '—' : fmt(displayTotal)}
                           </td>
-                          <td className="cell-num">{fmt(it.soldeCumulatif)}</td>
+                          {!hideCumulative && (
+                            <td className="cell-num">{fmt(it.soldeCumulatif)}</td>
+                          )}
                         </>
                       ) : (
                         <td>{it.syntheticInitial ? '-' : it.bon_statut || '-'}</td>
@@ -377,7 +382,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                   <td className="cell-num">{totalQtyProducts}</td>
                   <td className="cell-num">—</td>
                   <td className="cell-num">{fmt(totalAmountProducts)}</td>
-                  <td className="cell-num">{fmt(finalSoldeProducts)}</td>
+                  {!hideCumulative && <td className="cell-num">{fmt(finalSoldeProducts)}</td>}
                 </tr>
               </tfoot>
             )}

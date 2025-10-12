@@ -29,3 +29,15 @@ backend/.env.*
 !backend/.env.example
 # Ignore real pool with credentials (use pool.example.js)
 backend/db/pool.js
+backend/.env
+.env
+.env.*
+*.env
+backend/.env.local
+.env
+.env.*
+*.env
+backend/.env
+.env
+.env.*
+*.env
