@@ -16,9 +16,11 @@ interface ContactPrintModalProps {
   dateTo?: string;
   // When true, do not inject the synthetic initial balance row in the template
   skipInitialRow?: boolean;
+  // When true, hide the Solde Cumulé column (compact/selection mode)
+  hideCumulative?: boolean;
 }
 
-const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false }) => {
+const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false }) => {
   const size = 'A4'; // Taille fixe A4
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
@@ -119,6 +121,7 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
                 priceMode={priceMode}
                 size={size}
                 skipInitialRow={skipInitialRow}
+                hideCumulative={hideCumulative}
               />
             </div>
           </div>

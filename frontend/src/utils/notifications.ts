@@ -1,4 +1,18 @@
-import Swal from 'sweetalert2';
+export async function sendWhatsApp(to: string, body: string, mediaUrls?: string[], token?: string) {
+  const res = await fetch('/api/notifications/whatsapp/send', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ to, body, mediaUrls }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Failed to send WhatsApp');
+  }
+  return res.json();
+}import Swal from 'sweetalert2';
 
 // Configuration par défaut pour les toasts (petites notifications)
 const toastConfig = {

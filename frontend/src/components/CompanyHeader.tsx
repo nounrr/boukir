@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import logo from"./logo.png"
-import logo1 from"./logo1.png"
+import logo from "./logo.png";
+import logo1 from "./logo1.png";
+import logoPlaceholder from "./logo-placeholder.svg";
 interface CompanyHeaderProps {
   companyType?: 'DIAMOND' | 'MPC';
 }
@@ -13,22 +14,16 @@ const CompanyHeader: React.FC<CompanyHeaderProps> = ({
 
   // Essayer de charger le logo avec différentes méthodes
   useEffect(() => {
-    // Méthode 1: Chemin public
-    const img = new Image();
-    img.onload = () => setLogoSrc('/logo.png');
+    // Try loading logo, fallback to placeholder
+    const img = new window.Image();
+    img.onload = () => setLogoSrc(companyType === 'MPC' ? logo1 : logo);
     img.onerror = () => {
-      // Méthode 2: Essayer avec un autre chemin
-      const img2 = new Image();
-      img2.onload = () => setLogoSrc('./logo.png');
-      img2.onerror = () => {
-        console.warn('Logo not found, using placeholder');
-        setLogoSrc(null);
-      };
-      img2.src = './logo.png';
+      console.warn('Logo not found, using placeholder');
+      setLogoSrc(logoPlaceholder);
     };
-    img.src = '/logo.png';
-  }, []);
-  const logoCurrent = companyType === 'MPC' ? logo1 : logo;
+    img.src = companyType === 'MPC' ? logo1 : logo;
+  }, [companyType]);
+  const logoCurrent = logoSrc || logoPlaceholder;
   // Définir les informations selon le type de société
   const companyInfo = {
     DIAMOND: {
