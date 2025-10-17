@@ -19,6 +19,10 @@ interface ContactPrintTemplateProps {
   // When true, do not prepend a synthetic initial balance row
   skipInitialRow?: boolean;
   hideCumulative?: boolean;
+  // Pre-calculated totals from the page (to avoid recalculation mismatch)
+  totalQty?: number;
+  totalAmount?: number;
+  finalSolde?: number;
 }
 
 const fmt = (n: any) => Number(n || 0).toFixed(2);
@@ -61,6 +65,9 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   size = 'A4',
   skipInitialRow = false,
   hideCumulative = false,
+  totalQty,
+  totalAmount,
+  finalSolde,
 }) => {
   // hideCumulative: when true, don't render the 'Solde Cumulé' column (for selected/compact prints)
   const showPrices = priceMode === 'WITH_PRICES';
@@ -123,20 +130,20 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     (r) => !r.syntheticInitial && r.product_reference && String(r.product_reference).trim() !== ''
   );
 
-  // Totaux (produits)
+  // Totaux (produits) - use pre-calculated values if provided, otherwise calculate
   const prDataRows: any[] = Array.isArray(prList) ? prList.filter((r: any) => !r?.syntheticInitial) : [];
-  const totalQtyProducts: number = prDataRows.reduce((sum: number, r: any) => {
+  const totalQtyProducts: number = totalQty !== undefined ? totalQty : prDataRows.reduce((sum: number, r: any) => {
     const t = String(r.type || '').toLowerCase();
     const q = Number(r.quantite) || 0;
     if (t === 'produit') return sum + q;
     if (t === 'avoir') return sum - q;
     return sum;
   }, 0);
-  const totalAmountProducts: number = prDataRows
+  const totalAmountProducts: number = totalAmount !== undefined ? totalAmount : prDataRows
     .filter((r: any) => String(r.type || '').toLowerCase() === 'produit')
     .reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0);
-  const finalSoldeProducts: number =
-    prList && prList.length > 0 ? Number(prList[prList.length - 1]?.soldeCumulatif || initialSolde) : initialSolde;
+  const finalSoldeProducts: number = finalSolde !== undefined ? finalSolde :
+    (prList && prList.length > 0 ? Number(prList[prList.length - 1]?.soldeCumulatif || initialSolde) : initialSolde);
 
   // Rendu “Bon N° + Date” (date intégrée dans la même colonne, en dessous)
   const renderBonWithDate = (num: any, dateLike?: string) => {
