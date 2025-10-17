@@ -16,6 +16,7 @@ import { AccessWarningPopup } from './components/AccessWarningPopup';
 // Pages
 import DashboardPage from './pages/DashboardPage';
 import EmployeePage from './pages/EmployeePage';
+import EmployeeSelfPage from './pages/EmployeeSelfPage';
 import EmployeeArchivePage from './pages/EmployeeArchivePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
 import StockPage from './pages/StockPage';
@@ -110,6 +111,17 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/employee/self"
+          element={
+            <ProtectedRoute requiredRoles={['Employé']}>
+              <LayoutWithAccessCheck>
+                <EmployeeSelfPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/employees/archive"
           element={
             <ProtectedRoute requiredRoles={['PDG']}>
@@ -123,7 +135,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees/:id/documents"
           element={
-            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
+            <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <EmployeeDocumentsPage />
               </LayoutWithAccessCheck>
@@ -134,7 +146,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees/:id/salaries"
           element={
-            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
+            <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <EmployeeSalariesPage />
               </LayoutWithAccessCheck>

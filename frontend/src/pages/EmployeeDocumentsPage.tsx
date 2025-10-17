@@ -1,13 +1,24 @@
 import React, { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, Navigate } from 'react-router-dom';
 import { useGetEmployeeDocsQuery, useCreateEmployeeDocMutation, useDeleteEmployeeDocMutation, useGetDocumentTypesQuery, useCreateDocumentTypeMutation } from '../store/api/employeeDocsApi';
 import { toBackendUrl } from '../utils/url';
 import { ArrowLeft, FileText, Plus, Upload, Trash2, File, FolderOpen, FileType } from 'lucide-react';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
+import { useAuth } from '../hooks/redux';
 
 const EmployeeDocumentsPage: React.FC = () => {
+  const { user } = useAuth();
   const params = useParams();
   const employeId = Number(params.id);
+  
+  // Vérifier si l'utilisateur est un employé et s'il essaie d'accéder aux docs d'un autre employé
+  if (user?.role === 'Employé' && user.id !== employeId) {
+    return <Navigate to={`/employees/${user.id}/documents`} replace />;
+  }
+  
+  // Les employés ont accès en lecture seule
+  const isReadOnly = user?.role === 'Employé';
+  
   const { data: docs = [], isLoading } = useGetEmployeeDocsQuery(employeId, { skip: !employeId });
   const { data: types = [] } = useGetDocumentTypesQuery();
   const [createDoc] = useCreateEmployeeDocMutation();
@@ -148,7 +159,8 @@ const EmployeeDocumentsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Formulaire d'ajout de document */}
+        {/* Formulaire d'ajout de document - masqué pour les employés */}
+        {!isReadOnly && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-blue-100 rounded-lg">
@@ -285,6 +297,7 @@ const EmployeeDocumentsPage: React.FC = () => {
             )}
           </div>
         </div>
+        )}
 
         {/* Liste des documents */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -365,6 +378,7 @@ const EmployeeDocumentsPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end">
+                          {!isReadOnly && (
                           <button
                             onClick={() => handleDeleteDoc(doc.id)}
                             className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors"
@@ -372,6 +386,10 @@ const EmployeeDocumentsPage: React.FC = () => {
                             <Trash2 size={14} />
                             Supprimer
                           </button>
+                          )}
+                          {isReadOnly && (
+                            <span className="text-xs text-gray-500">Lecture seule</span>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -18,9 +18,13 @@ interface ContactPrintModalProps {
   skipInitialRow?: boolean;
   // When true, hide the Solde Cumulé column (compact/selection mode)
   hideCumulative?: boolean;
+  // Pre-calculated totals from the page (to avoid recalculation mismatch)
+  totalQty?: number;
+  totalAmount?: number;
+  finalSolde?: number;
 }
 
-const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false }) => {
+const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde }) => {
   const size = 'A4'; // Taille fixe A4
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
@@ -122,6 +126,9 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
                 size={size}
                 skipInitialRow={skipInitialRow}
                 hideCumulative={hideCumulative}
+                totalQty={totalQty}
+                totalAmount={totalAmount}
+                finalSolde={finalSolde}
               />
             </div>
           </div>
