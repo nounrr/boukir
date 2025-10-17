@@ -62,6 +62,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Administration',
       items: [
         { name: 'Employés', href: '/employees', icon: Users, show: canManageEmployees(user) },
+        { name: 'Mes Informations', href: '/employee/self', icon: Users, show: user?.role === 'Employé' },
         { name: 'Horaires d\'Accès', href: '/access-schedules', icon: CalendarClock, show: user?.role === 'PDG' },
       ],
     },

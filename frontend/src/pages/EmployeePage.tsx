@@ -400,6 +400,17 @@ const validationSchemaEdit = Yup.object({
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const EmployeePage: React.FC = () => { // NOSONAR
   const { user } = useAuth();
+  
+  // Rediriger les employés vers leur page personnelle
+  if (user?.role === 'Employé') {
+    window.location.href = '/employee/self';
+    return (
+      <div className="flex justify-center items-center h-64">
+        <p className="text-gray-500">Redirection vers votre page personnelle...</p>
+      </div>
+    );
+  }
+  
   const { data: employees = [], isLoading } = useGetEmployeesQuery();
   const [createEmployee] = useCreateEmployeeMutation();
   const [updateEmployee] = useUpdateEmployeeMutation();

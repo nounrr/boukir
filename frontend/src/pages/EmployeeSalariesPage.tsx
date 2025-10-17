@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, Navigate } from 'react-router-dom';
 import {
   useGetEmployeeQueryServer as useGetEmployeeQuery,
   useGetEmployeeSalaireEntriesQueryServer as useGetEmployeeSalaireEntriesQuery,
@@ -16,6 +16,14 @@ const EmployeeSalariesPage: React.FC = () => {
   const params = useParams();
   const employeId = Number(params.id);
   const { user } = useAuth();
+  
+  // Vérifier si l'utilisateur est un employé et s'il essaie d'accéder aux salaires d'un autre employé
+  if (user?.role === 'Employé' && user.id !== employeId) {
+    return <Navigate to={`/employees/${user.id}/salaries`} replace />;
+  }
+  
+  // Les employés ont accès en lecture seule
+  const isReadOnly = user?.role === 'Employé';
 
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -238,7 +246,8 @@ const EmployeeSalariesPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Formulaire d'ajout */}
+          {/* Formulaire d'ajout - masqué pour les employés */}
+          {!isReadOnly && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-green-100 rounded-lg">
@@ -281,6 +290,7 @@ const EmployeeSalariesPage: React.FC = () => {
               </button>
             </form>
           </div>
+          )}
         </div>
 
         {/* Table des entrées */}
@@ -376,7 +386,7 @@ const EmployeeSalariesPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {editingEntry?.id === e.id ? (
+                          {!isReadOnly && editingEntry?.id === e.id ? (
                             <>
                               <button
                                 onClick={handleSaveEdit}
@@ -393,7 +403,7 @@ const EmployeeSalariesPage: React.FC = () => {
                                 Annuler
                               </button>
                             </>
-                          ) : (
+                          ) : !isReadOnly ? (
                             <>
                               <button
                                 onClick={() => handleEdit(e)}
@@ -410,6 +420,8 @@ const EmployeeSalariesPage: React.FC = () => {
                                 Supprimer
                               </button>
                             </>
+                          ) : (
+                            <span className="text-xs text-gray-500">Lecture seule</span>
                           )}
                         </div>
                       </td>

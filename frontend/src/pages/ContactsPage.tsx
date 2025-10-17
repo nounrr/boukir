@@ -563,6 +563,14 @@ const ContactsPage: React.FC = () => {
     return Number(last.soldeCumulatif ?? selectedContact.solde ?? 0);
   }, [allProductHistory, selectedContact]);
 
+  // Totaux affichés (pour l'impression - doivent correspondre exactement au tableau)
+  const displayedTotals = useMemo(() => {
+    const dataRows = searchedProductHistory.filter((i: any) => i.type === 'produit' && !i.syntheticInitial);
+    const totalQty = dataRows.reduce((sum: number, i: any) => sum + (Number(i.quantite) || 0), 0);
+    const totalAmount = dataRows.reduce((sum: number, i: any) => sum + (Number(i.total) || 0), 0);
+    return { totalQty, totalAmount };
+  }, [searchedProductHistory]);
+
  
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
@@ -695,7 +703,34 @@ const ContactsPage: React.FC = () => {
   const toggleBonSelection = (bonId: number) => {
     setSelectedBonIds(prev => {
       const next = new Set(prev);
-      if (next.has(bonId)) next.delete(bonId); else next.add(bonId);
+      const isSelecting = !next.has(bonId);
+      
+      if (isSelecting) {
+        next.add(bonId);
+        // Sélectionner automatiquement tous les produits de ce bon
+        const productsOfBon = displayedProductHistory
+          .filter((item: any) => !item.syntheticInitial && Number(item.bon_id) === bonId)
+          .map((item: any) => String(item.id));
+        
+        setSelectedProductIds(prevProducts => {
+          const nextProducts = new Set(prevProducts);
+          productsOfBon.forEach(id => nextProducts.add(id));
+          return nextProducts;
+        });
+      } else {
+        next.delete(bonId);
+        // Désélectionner tous les produits de ce bon
+        const productsOfBon = displayedProductHistory
+          .filter((item: any) => !item.syntheticInitial && Number(item.bon_id) === bonId)
+          .map((item: any) => String(item.id));
+        
+        setSelectedProductIds(prevProducts => {
+          const nextProducts = new Set(prevProducts);
+          productsOfBon.forEach(id => nextProducts.delete(id));
+          return nextProducts;
+        });
+      }
+      
       return next;
     });
   };
@@ -1609,13 +1644,7 @@ const ContactsPage: React.FC = () => {
       // Mode complet : utiliser exactement ce qui est affiché dans le tableau
       setPrintProducts(displayedProductHistory);
     }
-      // Hide cumulative column when user has active selections (product or bon selection)
-      const hideCumulative = (selectedProductIds && selectedProductIds.size > 0) || (selectedBonIds && selectedBonIds.size > 0);
-      setPrintModal({ open: true, mode: 'products' });
-      // Store hide flag in state by passing via printProducts (we'll set a small global flag since modal receives skipInitialRow only)
-      // Alternative: attach the flag to printProducts metadata; ContactPrintModal supports hideCumulative prop directly when used below.
-      // We'll set a temporary window variable used by modal call site using setTimeout to update printModal open state.
-      (window as any).__contact_print_hideCumulative = hideCumulative;
+    setPrintModal({ open: true, mode: 'products' });
   };
 
   // Formik (utilisé par ContactFormModal via props.initialValues si besoin)
@@ -2743,12 +2772,16 @@ const ContactsPage: React.FC = () => {
             !!(dateFrom || dateTo)
           }
             hideCumulative={
-              // Hide cumulative column when skipInitialRow is active (compact/select mode)
-              // or when user selected specific bons (selectedBonIds) — preserve existing window flag for compatibility
-              ((printProducts.length > 0 && selectedProductIds.size > 0) || !!(dateFrom || dateTo)) ||
-              (selectedBonIds && selectedBonIds.size > 0) ||
-              !!(window as any).__contact_print_hideCumulative
+              // Hide cumulative column ONLY when:
+              // 1. User selected specific products (selectedProductIds has items)
+              // 2. OR user selected specific bons (selectedBonIds has items)
+              // Do NOT hide when only date filtering is active
+              (printProducts.length > 0 && selectedProductIds.size > 0) ||
+              (selectedBonIds && selectedBonIds.size > 0)
             }
+            totalQty={displayedTotals.totalQty}
+            totalAmount={displayedTotals.totalAmount}
+            finalSolde={finalSoldeNet}
         />
       )}
                     </div>
@@ -2872,8 +2905,36 @@ const ContactsPage: React.FC = () => {
                                     onChange={(e)=>{
                                       const next = new Set<string>(selectedProductIds);
                                       const id = String(item.id);
-                                      if(e.target.checked) next.add(id); else next.delete(id);
+                                      const bonId = Number(item.bon_id);
+                                      
+                                      if(e.target.checked) {
+                                        next.add(id);
+                                      } else {
+                                        next.delete(id);
+                                      }
+                                      
                                       setSelectedProductIds(next);
+                                      
+                                      // Vérifier si tous les produits de ce bon sont maintenant sélectionnés
+                                      if (bonId) {
+                                        const allProductsOfBon = displayedProductHistory
+                                          .filter((p: any) => !p.syntheticInitial && Number(p.bon_id) === bonId)
+                                          .map((p: any) => String(p.id));
+                                        
+                                        const allSelected = allProductsOfBon.every(pId => 
+                                          pId === id ? e.target.checked : next.has(pId)
+                                        );
+                                        
+                                        setSelectedBonIds(prevBons => {
+                                          const nextBons = new Set(prevBons);
+                                          if (allSelected) {
+                                            nextBons.add(bonId);
+                                          } else {
+                                            nextBons.delete(bonId);
+                                          }
+                                          return nextBons;
+                                        });
+                                      }
                                     }}
                                   />
                                 )}

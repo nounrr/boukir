@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { useAppSelector, useAuth } from '../hooks/redux';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
@@ -22,7 +22,8 @@ import {
   X,
   Printer,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  MoreVertical
 } from 'lucide-react';
 import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
@@ -211,8 +212,15 @@ const CaissePage = () => {
     // Personnel / user who recorded payment
     if (payment.personnel) push(payment.personnel);
     if (payment.personnel_id) {
-      const p = personnelNames.find((pn: any) => String(pn.id) === String(payment.personnel_id));
-      if (p) push(p.name || p.nom || p.nom_complet || p);
+      const p: any = personnelNames.find((pn: any) => String(pn.id) === String(payment.personnel_id));
+      if (p) {
+        if (typeof p === 'string') {
+          push(p);
+        } else {
+          const anyP: any = p;
+          push(anyP.name || anyP.nom || anyP.nom_complet || '');
+        }
+      }
     }
 
     // Talon / bon references
@@ -483,6 +491,19 @@ const CaissePage = () => {
       showError(err?.data?.message || err?.message || 'Erreur lors de la mise à jour du statut');
     }
   };
+
+  // Popup menu state for row actions
+  const [openMenuPaymentId, setOpenMenuPaymentId] = useState<number|null>(null);
+  const menuRef = useRef<HTMLDivElement|null>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuPaymentId(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const handleCloseModal = () => {
     setIsCreateModalOpen(false);
@@ -1141,7 +1162,7 @@ const paymentValidationSchema = Yup.object({
             <thead className="bg-gray-50">
               <tr>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('numero')}
                 >
                   <div className="flex items-center gap-1">
@@ -1152,7 +1173,7 @@ const paymentValidationSchema = Yup.object({
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('date')}
                 >
                   <div className="flex items-center gap-1">
@@ -1162,11 +1183,11 @@ const paymentValidationSchema = Yup.object({
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide">
                   Bon associé
                 </th>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('contact')}
                 >
                   <div className="flex items-center gap-1">
@@ -1176,17 +1197,17 @@ const paymentValidationSchema = Yup.object({
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide">
                   Société
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide">
                   Mode de paiement
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide">
                   Règlement
                 </th>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('montant')}
                 >
                   <div className="flex items-center gap-1">
@@ -1197,7 +1218,7 @@ const paymentValidationSchema = Yup.object({
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('echeance')}
                 >
                   <div className="flex items-center gap-1">
@@ -1207,16 +1228,16 @@ const paymentValidationSchema = Yup.object({
                     )}
                   </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide">
                   Statut
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide">
                   Créé par
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide">
                   Dernière modif.
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide">
                   Actions
                 </th>
               </tr>
@@ -1317,102 +1338,100 @@ const paymentValidationSchema = Yup.object({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-3">
-                        {/* Status action buttons (table-only) */}
-                        <div className="flex items-center gap-1">
-                          {/* En attente */}
-                          <button
-                            onClick={() => changePaymentStatus(payment.id, 'En attente')}
-                            title="Mettre en attente"
-                            className={`${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-500 hover:text-yellow-700'} p-1 rounded`}
-                            disabled={payment.statut === 'En attente'}
-                          >
-                            <Clock size={20} />
-                          </button>
-
-                          {/* For employees allow only En attente and Annulé, others see all options */}
-                          { (user?.role === 'Employé') ? (
-                            <>
-                              {/* Annulé */}
-                              <button
-                                onClick={() => changePaymentStatus(payment.id, 'Annulé')}
-                                title="Annuler"
-                                className={`${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-500 hover:text-red-700'} p-1 rounded`}
-                                disabled={payment.statut === 'Annulé'}
-                              >
-                                <XCircle size={20} />
-                              </button>
-                            </>
-                          ) : (user?.role === 'PDG' || user?.role === 'ManagerPlus') ? (
-                            <>
-                              {/* Validé */}
-                              <button
-                                onClick={() => changePaymentStatus(payment.id, 'Validé')}
-                                title="Valider"
-                                className={`${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-500 hover:text-green-600'} p-1 rounded`}
-                                disabled={payment.statut === 'Validé'}
-                              >
-                                <Check size={20} />
-                              </button>
-
-                              {/* Refusé */}
-                              <button
-                                onClick={() => changePaymentStatus(payment.id, 'Refusé')}
-                                title="Refuser"
-                                className={`${payment.statut === 'Refusé' ? 'text-orange-600' : 'text-gray-500 hover:text-orange-600'} p-1 rounded`}
-                                disabled={payment.statut === 'Refusé'}
-                              >
-                                <X size={20} />
-                              </button>
-
-                              {/* Annulé */}
-                              <button
-                                onClick={() => changePaymentStatus(payment.id, 'Annulé')}
-                                title="Annuler"
-                                className={`${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-500 hover:text-red-700'} p-1 rounded`}
-                                disabled={payment.statut === 'Annulé'}
-                              >
-                                <XCircle size={20} />
-                              </button>
-                            </>
-                          ) : (
-                            // Manager (and any other roles not explicitly allowed) only see En attente button (shown above)
-                            null
+                        {/* Primary compact action icons */}
+                        <div className="flex items-center gap-2 relative" ref={openMenuPaymentId === payment.id ? menuRef : null}>
+                          {/* Validate icon always visible for privileged roles */}
+                          {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
+                            <button
+                              onClick={() => changePaymentStatus(payment.id, 'Validé')}
+                              className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-500 hover:text-green-600'}`}
+                              title="Valider"
+                              disabled={payment.statut === 'Validé'}
+                            >
+                              <Check size={18} />
+                            </button>
                           )}
-                        </div>
-
-                        {/* Existing actions: view / edit / delete */}
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleViewPayment(payment)}
-                            className="text-blue-600 hover:text-blue-900"
-                            title="Voir détails"
-                          >
-                            <Eye size={20} />
-                          </button>
+                          {/* Edit icon */}
                           {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
                             <button
                               onClick={() => handleEditPayment(payment)}
-                              className="text-green-600 hover:text-green-900"
+                              className="p-1 rounded text-green-600 hover:text-green-700"
                               title="Modifier"
                             >
-                              <Edit size={20} />
+                              <Edit size={18} />
                             </button>
                           )}
+                          {/* Print icon */}
                           <button
                             onClick={() => handlePrintPayment(payment)}
-                            className="text-purple-600 hover:text-purple-900"
+                            className="p-1 rounded text-purple-600 hover:text-purple-700"
                             title="Imprimer"
                           >
-                            <Printer size={20} />
+                            <Printer size={18} />
                           </button>
-                          {user?.role === 'PDG' && (
-                            <button
-                              onClick={() => handleDelete(payment.id)}
-                              className="text-red-600 hover:text-red-900"
-                              title="Supprimer"
-                            >
-                              <Trash2 size={20} />
-                            </button>
+                          {/* 3-dots menu trigger */}
+                          <button
+                            onClick={() => setOpenMenuPaymentId(openMenuPaymentId === payment.id ? null : payment.id)}
+                            className="p-1 rounded text-gray-500 hover:text-gray-700"
+                            title="Plus"
+                          >
+                            <MoreVertical size={18} />
+                          </button>
+                          {/* Dropdown menu */}
+                          {openMenuPaymentId === payment.id && (
+                            <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-20 animate-fade-in">
+                              <ul className="text-xs py-1">
+                                <li>
+                                  <button
+                                    onClick={() => { handleViewPayment(payment); setOpenMenuPaymentId(null); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-blue-600"
+                                  >
+                                    <Eye size={16} /> Voir
+                                  </button>
+                                </li>
+                                <li>
+                                  <button
+                                    onClick={() => { changePaymentStatus(payment.id, 'En attente'); setOpenMenuPaymentId(null); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-gray-600"
+                                    disabled={payment.statut === 'En attente'}
+                                  >
+                                    <Clock size={16} /> Attente
+                                  </button>
+                                </li>
+                                {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
+                                  <>
+                                    <li>
+                                      <button
+                                        onClick={() => { changePaymentStatus(payment.id, 'Refusé'); setOpenMenuPaymentId(null); }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-orange-600"
+                                        disabled={payment.statut === 'Refusé'}
+                                      >
+                                        <X size={16} /> Refuser
+                                      </button>
+                                    </li>
+                                    <li>
+                                      <button
+                                        onClick={() => { changePaymentStatus(payment.id, 'Annulé'); setOpenMenuPaymentId(null); }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-red-600"
+                                        disabled={payment.statut === 'Annulé'}
+                                      >
+                                        <XCircle size={16} /> Annuler
+                                      </button>
+                                    </li>
+                                  </>
+                                )}
+                                {user?.role === 'PDG' && (
+                                  <li>
+                                    <button
+                                      onClick={() => { handleDelete(payment.id); setOpenMenuPaymentId(null); }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-red-600"
+                                    >
+                                      <Trash2 size={16} /> Supprimer
+                                    </button>
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
                           )}
                         </div>
                       </div>
