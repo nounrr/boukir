@@ -568,9 +568,23 @@ const ContactsPage: React.FC = () => {
     const baseRows = selectedProductIds.size > 0
       ? searchedProductHistory.filter((i: any) => selectedProductIds.has(String(i.id)))
       : searchedProductHistory;
-    const dataRows = baseRows.filter((i: any) => i.type === 'produit' && !i.syntheticInitial);
-    const totalQty = dataRows.reduce((sum: number, i: any) => sum + (Number(i.quantite) || 0), 0);
-    const totalAmount = dataRows.reduce((sum: number, i: any) => sum + (Number(i.total) || 0), 0);
+
+    let totalQty = 0;
+    let totalAmount = 0;
+
+    baseRows.forEach((row: any) => {
+      if (row.syntheticInitial) return;
+
+      const amount = Number(row.total) || 0;
+
+      if (row.type === 'produit') {
+        totalQty += Number(row.quantite) || 0;
+        totalAmount += amount;
+      } else if (row.type === 'paiement' || row.type === 'avoir') {
+        totalAmount -= amount;
+      }
+    });
+
     return { totalQty, totalAmount };
   }, [searchedProductHistory, selectedProductIds]);
 
@@ -1668,8 +1682,6 @@ const ContactsPage: React.FC = () => {
 
   const handleClosePrintModal = React.useCallback(() => {
     setPrintModal({ open: false, mode: null });
-    setSelectedProductIds(new Set());
-    setSelectedBonIds(new Set());
   }, []);
 
   // Formik (utilisé par ContactFormModal via props.initialValues si besoin)
@@ -2474,6 +2486,7 @@ const ContactsPage: React.FC = () => {
                       setIsDetailsModalOpen(false);
                       setSelectedContact(null);
                       setSelectedProductIds(new Set());
+                      setSelectedBonIds(new Set());
                       setPrintProducts([]);
                     }}
                     className="text-white hover:text-gray-200 text-2xl font-bold"
