@@ -565,11 +565,14 @@ const ContactsPage: React.FC = () => {
 
   // Totaux affichés (pour l'impression - doivent correspondre exactement au tableau)
   const displayedTotals = useMemo(() => {
-    const dataRows = searchedProductHistory.filter((i: any) => i.type === 'produit' && !i.syntheticInitial);
+    const baseRows = selectedProductIds.size > 0
+      ? searchedProductHistory.filter((i: any) => selectedProductIds.has(String(i.id)))
+      : searchedProductHistory;
+    const dataRows = baseRows.filter((i: any) => i.type === 'produit' && !i.syntheticInitial);
     const totalQty = dataRows.reduce((sum: number, i: any) => sum + (Number(i.quantite) || 0), 0);
     const totalAmount = dataRows.reduce((sum: number, i: any) => sum + (Number(i.total) || 0), 0);
     return { totalQty, totalAmount };
-  }, [searchedProductHistory]);
+  }, [searchedProductHistory, selectedProductIds]);
 
  
   const displayedProductHistory = useMemo(() => {
@@ -699,6 +702,22 @@ const ContactsPage: React.FC = () => {
     });
     return s;
   }, [displayedProductHistory]);
+
+  const clearBonSelection = React.useCallback(() => {
+    if (selectedBonIds.size === 0) return;
+    const bonsToClear = new Set(selectedBonIds);
+    setSelectedBonIds(new Set());
+    setSelectedProductIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      displayedProductHistory.forEach((item: any) => {
+        if (!item.syntheticInitial && item.bon_id && bonsToClear.has(Number(item.bon_id))) {
+          next.delete(String(item.id));
+        }
+      });
+      return next;
+    });
+  }, [selectedBonIds, displayedProductHistory]);
 
   const toggleBonSelection = (bonId: number) => {
     setSelectedBonIds(prev => {
@@ -1646,6 +1665,12 @@ const ContactsPage: React.FC = () => {
     }
     setPrintModal({ open: true, mode: 'products' });
   };
+
+  const handleClosePrintModal = React.useCallback(() => {
+    setPrintModal({ open: false, mode: null });
+    setSelectedProductIds(new Set());
+    setSelectedBonIds(new Set());
+  }, []);
 
   // Formik (utilisé par ContactFormModal via props.initialValues si besoin)
   const formik = useFormik({
@@ -2727,10 +2752,28 @@ const ContactsPage: React.FC = () => {
                         {displayedProductHistory.length} éléments
                       </span>
                       <span className="text-xs text-gray-500">
-                        {Array.from(selectedProductIds).length > 0 ? `${Array.from(selectedProductIds).length} sélectionné(s)` : 'Aucune sélection'}
+                        {selectedProductIds.size > 0 ? `${selectedProductIds.size} produit(s) sélectionné(s)` : 'Aucun produit sélectionné'}
                       </span>
-                      {Array.from(selectedProductIds).length > 0 && (
-                        <button onClick={() => setSelectedProductIds(new Set())} className="w-full sm:w-auto text-xs px-2 py-1 bg-gray-100 rounded">Effacer sélection</button>
+                      {selectedProductIds.size > 0 && (
+                        <button
+                          onClick={() => setSelectedProductIds(new Set())}
+                          className="w-full sm:w-auto text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+                        >
+                          Désélectionner produits
+                        </button>
+                      )}
+                      {selectedBonIds.size > 0 && (
+                        <span className="text-xs text-blue-600">
+                          {selectedBonIds.size} bon(s) sélectionné(s)
+                        </span>
+                      )}
+                      {selectedBonIds.size > 0 && (
+                        <button
+                          onClick={clearBonSelection}
+                          className="w-full sm:w-auto text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                        >
+                          Désélectionner bons
+                        </button>
                       )}
                       {selectedContact?.type === 'Client' && (
                         <button
@@ -2757,7 +2800,7 @@ const ContactsPage: React.FC = () => {
     {printModal.open && selectedContact && (
         <ContactPrintModal
           isOpen={printModal.open}
-          onClose={() => setPrintModal({ open: false, mode: null })}
+          onClose={handleClosePrintModal}
           contact={selectedContact}
           mode="products"
           transactions={[]}
