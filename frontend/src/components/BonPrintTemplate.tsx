@@ -141,12 +141,15 @@ const formatHeure = (dateStr: string) => {
   const dynamicSpacerHeight = Math.min(maxHeight, Math.max(baseHeight, baseHeight + Math.max(0, itemsCount - 5) * increment));
 
   const contact = client || fournisseur || ((bon?.type === 'Comptant' && bon?.client_nom) ? { nom_complet: bon.client_nom } as any : undefined);
-  const contactLabel = contact ? 'Contact' : '';
   const contactDisplayName = (
     (typeof contact?.societe === 'string' && contact.societe.trim())
       ? contact.societe
       : (contact?.nom_complet || '-')
   );
+  // — Toujours exposer téléphone / adresse livraison si présents, même sans contact —
+  const tel = (bon?.phone ?? bon?.tel ?? bon?.telephone ?? (contact as any)?.telephone ?? (contact as any)?.tel ?? '') as string | undefined;
+  const adrLiv = (bon?.adresse_livraison || bon?.adresseLivraison || '') as string | undefined;
+  const hasContactOrInfo = Boolean(contact || (tel && String(tel).trim()) || (adrLiv && String(adrLiv).trim()));
 
   // Variables de taille adaptées au format
   const isA5 = size === 'A5';
@@ -237,20 +240,30 @@ const formatHeure = (dateStr: string) => {
 
       {/* Infos document */}
       <div className="flex justify-between items-start mb-6 mt-6">
-        {/* Contact */}
+        {/* Contact / Infos (affiche aussi si seulement numéro ou adresse livraison) */}
         <div className="flex-1">
-          <h3 className={`${textSizes.header} font-semibold text-gray-800 ${spacing.margin}`}>{contactLabel} :</h3>
-          {contact && (
-            <div className={`bg-gray-50 ${spacing.padding} rounded border-l-4 border-orange-500`}>
-              <div className={`grid grid-cols-2 ${spacing.gap} ${textSizes.normal}`}>
-                <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
-                {(bon?.phone || (contact as any)?.telephone) && (
-                  <div><span className="font-medium">Téléphone:</span> {bon?.phone || (contact as any)?.telephone}</div>
-                )}
-                <div><span className="font-medium">Email:</span> {contact.email}</div>
-                <div><span className="font-medium">Adresse:</span> {contact.adresse}</div>
+          {hasContactOrInfo && (
+            <>
+              <h3 className={`${textSizes.header} font-semibold text-gray-800 ${spacing.margin}`}>
+                {contact ? 'Contact :' : 'Informations :'}
+              </h3>
+              <div className={`bg-gray-50 ${spacing.padding} rounded border-l-4 border-orange-500`}>
+                <div className={`grid grid-cols-2 ${spacing.gap} ${textSizes.normal}`}>
+                  {contactDisplayName && contactDisplayName !== '-' && (
+                    <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
+                  )}
+                  {tel && String(tel).trim() && (
+                    <div><span className="font-medium">Téléphone:</span> {String(tel).trim()}</div>
+                  )}
+                  {contact?.email && (
+                    <div><span className="font-medium">Email:</span> {contact.email}</div>
+                  )}
+                  {contact?.adresse && (
+                    <div><span className="font-medium">Adresse:</span> {contact.adresse}</div>
+                  )}
+                </div>
               </div>
-            </div>
+            </>
           )}
         </div>
 
@@ -262,8 +275,8 @@ const formatHeure = (dateStr: string) => {
             </h2>
             <div className={`space-y-2 ${textSizes.normal}`}>
               <div><span className="font-medium">Date:</span> {formatHeure(bon.date_creation)}</div>
-              {bon.adresse_livraison && (
-                <div><span className="font-medium">Livraison:</span> {bon.adresse_livraison}</div>
+              {(adrLiv && String(adrLiv).trim()) && (
+                <div><span className="font-medium">Livraison:</span> {String(adrLiv).trim()}</div>
               )}
               {bon.date_echeance && (
                 <div><span className="font-medium">Échéance:</span> {formatDate(bon.date_echeance)}</div>
