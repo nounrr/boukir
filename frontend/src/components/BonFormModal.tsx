@@ -10,7 +10,7 @@ const SHOW_WHATSAPP_POPUP = false;
 import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetEmployeesQueryServer as useGetEmployeesQueryServer } from '../store/api/employeesApi.server';
-import { useGetProductsQuery } from '../store/api/productsApi';
+import { useGetProductsQuery, useUpdateProductMutation } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
@@ -335,6 +335,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Mutations
   const [createBon] = useCreateBonMutation();
   const [updateBonMutation] = useUpdateBonMutation();
+  const [updateProductMutation] = useUpdateProductMutation();
   const [createRemiseItem] = useCreateRemiseItemMutation();
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createContact] = useCreateContactMutation();
@@ -1031,7 +1032,44 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         });
       }
       if (requestType === 'Commande') {
-        // Invalider le cache produits pour refléter nouveaux prix d'achat
+        // Mettre à jour les produits avec les nouveaux prix d'achat et recalculs
+        const processed = new Set<number>();
+        const updates: Promise<any>[] = [];
+        for (const it of cleanBonData.items) {
+          const pid = Number(it.product_id);
+          if (!Number.isFinite(pid) || pid <= 0 || processed.has(pid)) continue;
+          processed.add(pid);
+          const prod = productMap.get(String(pid));
+          const pa = Number(it.prix_achat || 0) || 0;
+          if (!prod || pa <= 0) continue;
+          const crPct = Number(prod.cout_revient_pourcentage ?? 0) / 100;
+          const pgPct = Number(prod.prix_gros_pourcentage ?? 0) / 100;
+          const pvPct = Number(prod.prix_vente_pourcentage ?? 0) / 100;
+          const round2 = (x: number) => Math.round(x * 100) / 100;
+          const cout_revient = round2(pa * (1 + crPct));
+          const prix_gros = round2(cout_revient * (1 + pgPct));
+          const prix_vente = round2(cout_revient * (1 + pvPct));
+          const hasChange = (
+            round2(Number(prod.prix_achat || 0)) !== round2(pa) ||
+            round2(Number(prod.cout_revient || 0)) !== cout_revient ||
+            round2(Number(prod.prix_gros || 0)) !== prix_gros ||
+            round2(Number(prod.prix_vente || 0)) !== prix_vente
+          );
+          if (hasChange) {
+            updates.push(
+              updateProductMutation({
+                id: pid,
+                updated_by: user?.id || 1,
+                prix_achat: pa,
+                cout_revient,
+                prix_gros,
+                prix_vente,
+              }).unwrap().catch(() => null)
+            );
+          }
+        }
+        try { await Promise.all(updates); } catch {}
+        // Invalider le cache produits pour refléter nouveaux prix
         dispatch(api.util.invalidateTags(['Product']));
       }
 
@@ -1201,6 +1239,44 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         });
       }
       if (requestType === 'Commande') {
+        // Mettre à jour les produits avec les nouveaux prix d'achat et recalculs
+        const processed = new Set<number>();
+        const updates: Promise<any>[] = [];
+        for (const it of cleanBonData.items) {
+          const pid = Number(it.product_id);
+          if (!Number.isFinite(pid) || pid <= 0 || processed.has(pid)) continue;
+          processed.add(pid);
+          const prod = productMap.get(String(pid));
+          const pa = Number(it.prix_achat || 0) || 0;
+          if (!prod || pa <= 0) continue;
+          const crPct = Number(prod.cout_revient_pourcentage ?? 0) / 100;
+          const pgPct = Number(prod.prix_gros_pourcentage ?? 0) / 100;
+          const pvPct = Number(prod.prix_vente_pourcentage ?? 0) / 100;
+          const round2 = (x: number) => Math.round(x * 100) / 100;
+          const cout_revient = round2(pa * (1 + crPct));
+          const prix_gros = round2(cout_revient * (1 + pgPct));
+          const prix_vente = round2(cout_revient * (1 + pvPct));
+          const hasChange = (
+            round2(Number(prod.prix_achat || 0)) !== round2(pa) ||
+            round2(Number(prod.cout_revient || 0)) !== cout_revient ||
+            round2(Number(prod.prix_gros || 0)) !== prix_gros ||
+            round2(Number(prod.prix_vente || 0)) !== prix_vente
+          );
+          if (hasChange) {
+            updates.push(
+              updateProductMutation({
+                id: pid,
+                updated_by: user?.id || 1,
+                prix_achat: pa,
+                cout_revient,
+                prix_gros,
+                prix_vente,
+              }).unwrap().catch(() => null)
+            );
+          }
+        }
+        try { await Promise.all(updates); } catch {}
+        // Invalider le cache produits pour refléter nouveaux prix
         dispatch(api.util.invalidateTags(['Product']));
       }
 
