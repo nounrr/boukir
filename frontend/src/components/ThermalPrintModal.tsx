@@ -180,6 +180,25 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return { total };
   }, [parsedItems]);
 
+  // Toujours afficher téléphone/adresse livraison si présents, même sans contact
+  const contactName = useMemo(() => {
+    if (!contact) return '';
+    if (typeof contact.societe === 'string' && contact.societe.trim()) return contact.societe;
+    return contact.nom_complet || contact.nom || contact.name || '';
+  }, [contact]);
+
+  const tel = useMemo(() => {
+    const raw = bon?.phone ?? bon?.tel ?? bon?.telephone ?? contact?.telephone ?? contact?.tel ?? '';
+    return raw ? String(raw).trim() : '';
+  }, [bon, contact]);
+
+  const adrLiv = useMemo(() => {
+    const raw = bon?.adresse_livraison || bon?.adresseLivraison || '';
+    return raw ? String(raw).trim() : '';
+  }, [bon]);
+
+  const hasRightInfo = Boolean((contactName && contactName.trim()) || tel || adrLiv);
+
   const MIN_ROWS = 5;
   const padCount = Math.max(0, MIN_ROWS - parsedItems.length);
   const padKeys = useMemo(
@@ -312,30 +331,25 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                 <div className="thermal-info">{getTypeLabel(type)}</div>
                 <div className="thermal-info"></div>
               </div>
-              {contact ? (
+              {hasRightInfo ? (
                 <div className="thermal-info" style={{ marginTop: '2mm' }}>
-                  Client: {(
-                    (typeof contact.societe === 'string' && contact.societe.trim()) ? contact.societe :
-                    contact.nom_complet || contact.nom || contact.name || '-'
-                  )}
-                  {(() => {
-                    const tel = bon?.phone || contact?.telephone || contact?.tel || '';
-                    return tel && String(tel).trim() ? (
-                      <>
-                        <br />
-                        Téléphone: {tel}
-                      </>
-                    ) : null;
-                  })()}
-                  {(() => {
-                    const adrLiv = bon?.adresse_livraison || bon?.adresseLivraison || '';
-                    return adrLiv && String(adrLiv).trim() ? (
-                      <>
-                        <br />
-                        Adresse livraison: {adrLiv}
-                      </>
-                    ) : null;
-                  })()}
+                  {contactName ? (
+                    <>
+                      Client: {contactName}
+                      <br />
+                    </>
+                  ) : null}
+                  {tel ? (
+                    <>
+                      Téléphone: {tel}
+                      <br />
+                    </>
+                  ) : null}
+                  {adrLiv ? (
+                    <>
+                      Adresse livraison: {adrLiv}
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>
