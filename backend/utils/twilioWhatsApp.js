@@ -17,12 +17,18 @@ const normalizeWhatsAppAddress = (raw) => {
   if (!raw) {
     throw new Error('A recipient phone number is required.');
   }
-  const trimmed = String(raw).trim();
-  if (trimmed.startsWith('whatsapp:')) {
-    return trimmed;
+  // Remove sneaky unicode controls sometimes present when copying numbers
+  const cleaned = String(raw)
+    .replace(/[\u202A\u202C\u200E\u200F]/g, '') // LRE, PDF, LRM, RLM
+    .trim();
+  // Strip optional whatsapp: prefix then normalize digits
+  let phone = cleaned.replace(/^whatsapp:/i, '').trim();
+  // Keep only digits and leading +
+  phone = phone.replace(/(?!^)[^0-9]/g, '');
+  if (!phone.startsWith('+')) {
+    phone = `+${phone}`;
   }
-  const digits = trimmed.startsWith('+') ? trimmed : `+${trimmed.replace(/[^0-9]/g, '')}`;
-  return `whatsapp:${digits}`;
+  return `whatsapp:${phone}`;
 };
 
 export const isTwilioConfigured = () => {
@@ -54,6 +60,42 @@ export const sendWhatsAppMessage = async ({ to, body, mediaUrls, from } = {}) =>
   }
 
   const client = getTwilioClient();
+
+  // Normalize media URLs to be publicly reachable by Twilio
+  const normalizeMedia = (urls) => {
+    if (!Array.isArray(urls)) return [];
+    const base = process.env.PUBLIC_BASE_URL ? String(process.env.PUBLIC_BASE_URL).replace(/\/$/, '') : '';
+    return urls
+      .filter(Boolean)
+      .map((raw) => {
+        try {
+          const s = String(raw);
+          // If relative URL like /uploads/..., prepend base if available
+          if (s.startsWith('/')) {
+            return base ? `${base}${s}` : s;
+          }
+          const u = new URL(s);
+          // If pointing to localhost/127.0.0.1, replace origin with PUBLIC_BASE_URL if set
+          if (base && (u.hostname === 'localhost' || u.hostname === '127.0.0.1')) {
+            const baseUrl = new URL(base);
+            u.protocol = baseUrl.protocol;
+            u.host = baseUrl.host; // includes hostname:port
+            return u.toString();
+          }
+          return u.toString();
+        } catch {
+          // Fallback: if base exists and raw looks like a path without scheme, join
+          if (base) {
+            const joined = `${base}/${String(raw).replace(/^\//, '')}`;
+            return joined;
+          }
+          return String(raw);
+        }
+      });
+  };
+
+  const normalizedMediaUrls = normalizeMedia(mediaUrls);
+
   const messagePayload = {
     to: normalizeWhatsAppAddress(to),
     body,
@@ -66,11 +108,14 @@ export const sendWhatsAppMessage = async ({ to, body, mediaUrls, from } = {}) =>
     messagePayload.from = normalizeWhatsAppAddress(from || TWILIO_WHATSAPP_FROM);
   }
 
-  if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
-    messagePayload.mediaUrl = mediaUrls;
+  if (normalizedMediaUrls.length > 0) {
+    messagePayload.mediaUrl = normalizedMediaUrls;
   }
 
   try {
+    if (messagePayload.mediaUrl) {
+      console.log('[WhatsApp] Sending with mediaUrl:', messagePayload.mediaUrl);
+    }
     const result = await client.messages.create(messagePayload);
     return {
       sid: result.sid,
