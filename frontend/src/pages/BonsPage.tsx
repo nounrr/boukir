@@ -742,9 +742,11 @@ const BonsPage = () => {
     return null;
   };
   const handleSendWhatsAppFromRow = async (bon: any) => {
+    // Debug helper to surface the media URL in case of error (needs outer scope for catch)
+    let debugMediaUrl: string | null = null;
     try {
-  const bonKey = bon?.id != null ? String(bon.id) : '__unknown__';
-  setSendingWhatsAppId(bonKey);
+      const bonKey = bon?.id != null ? String(bon.id) : '__unknown__';
+      setSendingWhatsAppId(bonKey);
 
       const toPhone = resolveBonPhone(bon);
       if (!toPhone) {
@@ -766,7 +768,7 @@ const BonsPage = () => {
       };
 
       const bonItems = parseItems(bon.items);
-      const messageLines = [
+      const defaultLines = [
         `Bonjour ${getContactName(bon) || ''}`,
         `Type: ${bon.type || currentTab}`,
         `Numéro: ${getDisplayNumero(bon)}`,
@@ -780,7 +782,27 @@ const BonsPage = () => {
           : '',
         'Merci.'
       ].filter(Boolean);
+      const initialMessage = defaultLines.join('\n');
 
+      // 1) Popup de prévisualisation/édition du message
+      const Swal = (await import('sweetalert2')).default;
+      const result = await Swal.fire({
+        title: 'Message WhatsApp',
+        html: `<div style="text-align:left;font-size:13px;margin-bottom:6px">Téléphone: <b>${toPhone}</b></div>`,
+        input: 'textarea',
+        inputValue: initialMessage,
+        inputAttributes: { 'aria-label': 'Message WhatsApp' },
+        showCancelButton: true,
+        confirmButtonText: 'Envoyer WhatsApp',
+        cancelButtonText: 'Annuler',
+        heightAuto: false,
+        customClass: { popup: 'swal2-show' },
+        preConfirm: (val) => (typeof val === 'string' ? val : initialMessage)
+      });
+      if (!result.isConfirmed) return; // annulé
+      const editedMessage: string = (result.value as string) || initialMessage;
+
+      // 2) Générer le PDF et envoyer
       const type = bon?.type || currentTab;
       let resolvedClient: any;
       let resolvedSupplier: any;
@@ -819,18 +841,24 @@ const BonsPage = () => {
 
       const baseForUrl = apiBaseUrl || window.location.origin;
       const mediaUrl = uploadResult.absoluteUrl || `${baseForUrl.replace(/\/$/, '')}${uploadResult.url.startsWith('/') ? '' : '/'}${uploadResult.url}`;
-      const whatsappMessage = messageLines.join('\n');
+      // Store for error visibility
+      debugMediaUrl = mediaUrl;
+      console.debug('[WhatsApp] Media URL prepared:', debugMediaUrl, uploadResult);
 
-  const res = await sendWhatsApp(toPhone, whatsappMessage, [mediaUrl], token || undefined);
+      const res = await sendWhatsApp(toPhone, editedMessage, [mediaUrl], token || undefined);
       if (res?.ok) {
         showSuccess('WhatsApp avec PDF envoyé');
       } else {
         const msg = res?.error || "Échec de l'envoi WhatsApp";
-        showError(msg);
+        // Include the media URL in the error to help diagnose "Invalid media URL(s)"
+        showError(`${msg}\nLien média: ${debugMediaUrl || 'N/A'}`);
+        console.warn('[WhatsApp] Envoi échoué. URL envoyée:', debugMediaUrl, 'Erreur:', res);
       }
     } catch (err: any) {
       const msg = err?.data?.message || err?.message || 'Erreur lors de l\'envoi WhatsApp';
-      showError(msg);
+      // Surface the media URL if available
+      showError(`${msg}\nLien média: ${typeof debugMediaUrl === 'string' && debugMediaUrl ? debugMediaUrl : 'N/A'}`);
+      console.error('[WhatsApp] Exception lors de l\'envoi. URL:', debugMediaUrl, err);
     } finally {
       setSendingWhatsAppId(null);
     }
@@ -1542,22 +1570,19 @@ const BonsPage = () => {
                             <Printer size={ACTION_ICON_SIZE} />
                           </button>
 
-                          {/* WhatsApp send (hidden): wrap with feature flag to disable UI without removing logic */}
+                          {/* WhatsApp: bouton visible dans la colonne Actions */}
                           {SHOW_WHATSAPP_BUTTON && (() => {
                             const toPhone = resolveBonPhone(bon);
-                            // Afficher pour tous les onglets, si un numéro est résolu
-                            if (!toPhone) return null;
                             const bonKey = bon?.id != null ? String(bon.id) : '__unknown__';
                             const isSending = sendingWhatsAppId === bonKey;
                             return (
                               <button
-                                onClick={() => handleSendWhatsAppFromRow(bon)}
-                                className={`text-emerald-600 hover:text-emerald-800 ${isSending ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                title={isSending ? 'Envoi en cours...' : 'Envoyer WhatsApp'}
-                                disabled={isSending}
+                                onClick={() => toPhone ? handleSendWhatsAppFromRow(bon) : undefined}
+                                className={`inline-flex items-center text-emerald-600 hover:text-emerald-800 ${isSending ? 'opacity-60 cursor-not-allowed' : ''} ${!toPhone ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                title={!toPhone ? 'Numéro introuvable' : (isSending ? 'Envoi en cours...' : 'Envoyer WhatsApp')}
+                                disabled={isSending || !toPhone}
                                 aria-busy={isSending}
                               >
-                                {/* Utiliser l'icône Send comme proxy WhatsApp */}
                                 <Send size={ACTION_ICON_SIZE} />
                               </button>
                             );

@@ -69,6 +69,8 @@ const PUBLIC_PATHS = new Set([
 
 app.use((req, res, next) => {
   if (PUBLIC_PATHS.has(req.path)) return next();
+  // Autoriser l'accès public aux fichiers statiques uploadés
+  if (req.path.startsWith('/uploads/')) return next();
   // Laisser accès GET lecture publique pour certains (adapter si besoin)
   // if (req.method === 'GET') return next(); // décommenter si lecture publique
   verifyToken(req, res, () => {
