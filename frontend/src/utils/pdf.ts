@@ -35,7 +35,7 @@ export async function generatePDFBlobFromElement(element: React.ReactElement, wi
 
   // Capture canvas
   const canvas = await html2canvas(container, {
-    scale: 2,
+    scale: 1.5, // Réduit de 2 à 1.5 pour fichiers plus légers
     useCORS: true,
     allowTaint: true,
     backgroundColor: '#ffffff'
@@ -48,8 +48,13 @@ export async function generatePDFBlobFromElement(element: React.ReactElement, wi
   root.unmount();
   document.body.removeChild(container);
 
-  // Create PDF
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+  // Create PDF avec compression
+  const pdf = new jsPDF({ 
+    orientation: 'portrait', 
+    unit: 'pt', 
+    format: 'a4',
+    compress: true // Active la compression interne de jsPDF
+  });
   const pdfWidth = pdf.internal.pageSize.getWidth();
   const pdfHeight = pdf.internal.pageSize.getHeight();
   const canvasWidth = canvas.width;
@@ -59,8 +64,10 @@ export async function generatePDFBlobFromElement(element: React.ReactElement, wi
   const imgHeight = canvasHeight * ratio;
   const x = (pdfWidth - imgWidth) / 2;
   const y = (pdfHeight - imgHeight) / 2;
-  const imgData = canvas.toDataURL('image/png');
-  pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+  
+  // Utiliser JPEG avec compression au lieu de PNG
+  const imgData = canvas.toDataURL('image/jpeg', 0.75); // Qualité JPEG 75%
+  pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight, undefined, 'MEDIUM');
   const pdfBlob = pdf.output('blob');
   return pdfBlob;
 }

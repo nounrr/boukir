@@ -42,7 +42,7 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
   // Feature flag: show or hide the WhatsApp send button in list actions
-  const SHOW_WHATSAPP_BUTTON = false;
+  const SHOW_WHATSAPP_BUTTON = true;
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule'>('Commande');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);

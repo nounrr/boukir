@@ -6,7 +6,7 @@ import { Plus, Trash2, Search, Printer } from 'lucide-react';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { sendWhatsApp } from '../utils/notifications';
 // Feature flag: show WhatsApp prompt popups after save/update
-const SHOW_WHATSAPP_POPUP = false;
+const SHOW_WHATSAPP_POPUP = true;
 import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetEmployeesQueryServer as useGetEmployeesQueryServer } from '../store/api/employeesApi.server';

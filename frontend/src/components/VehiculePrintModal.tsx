@@ -46,15 +46,15 @@ const VehiculePrintModal: React.FC<VehiculePrintModalProps> = ({ isOpen, onClose
     if (!printRef.current) return;
     setIsGenerating(true);
     try {
-      const canvas = await html2canvas(printRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true, allowTaint: true });
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: size.toLowerCase() as 'a4' | 'a5' });
+      const canvas = await html2canvas(printRef.current, { scale: 1.5, backgroundColor: '#ffffff', useCORS: true, allowTaint: true });
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: size.toLowerCase() as 'a4' | 'a5', compress: true });
       const pdfW = pdf.internal.pageSize.getWidth();
       const pdfH = pdf.internal.pageSize.getHeight();
       const ratio = Math.min(pdfW / canvas.width, pdfH / canvas.height);
       const imgW = canvas.width * ratio; const imgH = canvas.height * ratio;
       const x = (pdfW - imgW) / 2; const y = (pdfH - imgH) / 2;
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', x, y, imgW, imgH);
+      const imgData = canvas.toDataURL('image/jpeg', 0.75);
+      pdf.addImage(imgData, 'JPEG', x, y, imgW, imgH, undefined, 'MEDIUM');
       const fileName = `Vehicule_${vehicule?.nom || vehicule?.id}_situation_${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);
     } catch (e) {
