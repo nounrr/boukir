@@ -41,19 +41,20 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       previousDisplay = hiddenEls.map(el => el.style.display);
       hiddenEls.forEach(el => { el.style.display = 'none'; });
 
-      // Capture
+      // Capture avec moins de scale pour fichiers plus légers
       const canvas = await html2canvas(printRef.current, {
-        scale: 2,
+        scale: 1.5, // Réduit de 2 à 1.5
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff'
       });
 
-      // Créer le PDF
+      // Créer le PDF avec compression
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'pt',
-        format: size.toLowerCase() as 'a4' | 'a5'
+        format: size.toLowerCase() as 'a4' | 'a5',
+        compress: true // Active la compression
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -71,9 +72,9 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
       const x = (pdfWidth - imgWidth) / 2;
       const y = (pdfHeight - imgHeight) / 2;
 
-      // Ajouter l'image au PDF
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+      // Ajouter l'image au PDF en JPEG compressé au lieu de PNG
+      const imgData = canvas.toDataURL('image/jpeg', 0.75); // JPEG qualité 75%
+      pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight, undefined, 'MEDIUM');
 
       // Télécharger le PDF
   const displayNumero = getBonNumeroDisplay(bon);

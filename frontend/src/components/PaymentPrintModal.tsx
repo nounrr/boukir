@@ -46,7 +46,7 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
       previousDisplay = hiddenEls.map(el => el.style.display);
       hiddenEls.forEach(el => { el.style.display = 'none'; });
       const canvas = await html2canvas(printRef.current, {
-        scale: 2,
+        scale: 1.5, // Réduit pour fichiers plus légers
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
@@ -55,6 +55,7 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
         orientation: 'portrait',
         unit: 'pt',
         format: size.toLowerCase() as 'a4' | 'a5',
+        compress: true // Compression active
       });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
@@ -65,8 +66,8 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
       const imgHeight = canvasHeight * ratio;
       const x = (pdfWidth - imgWidth) / 2;
       const y = (pdfHeight - imgHeight) / 2;
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+      const imgData = canvas.toDataURL('image/jpeg', 0.75); // JPEG compressé
+      pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight, undefined, 'MEDIUM');
       const fileName = `Paiement_${payment.id}_${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);
     } catch (error) {

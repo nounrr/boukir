@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
+import { PDFDocument } from 'pdf-lib';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -78,6 +79,7 @@ const upload = multer({
 });
 
 // POST /api/uploads/pdf - accept multipart PDF upload and return public URL
+// Note: La compression se fait maintenant côté frontend lors de la génération (JPEG + jsPDF compress)
 router.post('/pdf', upload.single('pdf'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Aucun fichier reçu' });
@@ -91,6 +93,10 @@ router.post('/pdf', upload.single('pdf'), (req, res) => {
     : path.posix.join('/uploads/bons_pdf', folderSegment, req.file.filename);
   const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
   const absoluteUrl = `${baseUrl.replace(/\/$/, '')}${relPath.startsWith('/') ? '' : '/'}${relPath}`;
+
+  // Log la taille du fichier
+  const sizeMB = (req.file.size / 1024 / 1024).toFixed(2);
+  console.log(`[PDF Upload] ${req.file.filename}: ${sizeMB}MB`);
 
   return res.json({
     url: relPath,
