@@ -10,10 +10,23 @@ router.post('/whatsapp/send', async (req, res) => {
     if (!isTwilioConfigured()) {
       return res.status(400).json({ ok: false, message: 'Twilio WhatsApp is not configured.' });
     }
-    const { to, body, mediaUrls, templateSid, templateParams } = req.body || {};
+    let { to, body, mediaUrls, templateSid, templateParams } = req.body || {};
     if (!to) {
       return res.status(400).json({ ok: false, message: 'Missing required field: to' });
     }
+    
+    // Si templateSid est un nom de variable d'environnement, le résoudre
+    if (templateSid && templateSid.startsWith('TWILIO_')) {
+      const resolvedSid = process.env[templateSid];
+      if (!resolvedSid) {
+        return res.status(400).json({ 
+          ok: false, 
+          message: `Template environment variable ${templateSid} not found` 
+        });
+      }
+      templateSid = resolvedSid;
+    }
+    
     // Soit body (texte libre), soit templateSid (template approuvé)
     if (!body && !templateSid) {
       return res.status(400).json({ ok: false, message: 'Missing required field: body or templateSid' });

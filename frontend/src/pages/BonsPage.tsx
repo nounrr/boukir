@@ -24,7 +24,7 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   } from '../store/api/contactsApi';
   import { useGetProductsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
-  import { sendWhatsApp } from '../utils/notifications';
+  import { sendWhatsApp, sendWhatsAppTemplate } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
   import { uploadBonPdf } from '../utils/uploads';
@@ -845,14 +845,29 @@ const BonsPage = () => {
       debugMediaUrl = mediaUrl;
       console.debug('[WhatsApp] Media URL prepared:', debugMediaUrl, uploadResult);
 
-      const res = await sendWhatsApp(toPhone, editedMessage, [mediaUrl], token || undefined);
+      // Extraire le chemin relatif du PDF pour le template (ex: "sortie/SOR3168-sortie-3168-1762080962793")
+      // uploadResult.url format: "/uploads/bons_pdf/sortie/SOR3168-sortie-3168-1762080962793.pdf"
+      const pdfRelativePath = uploadResult.url
+        .replace(/^\/uploads\/bons_pdf\//, '') // Enlever le préfixe
+        .replace(/\.pdf$/, ''); // Enlever l'extension
+
+      // Utiliser le template approuvé avec paramètres
+      const templateParams = {
+        "1": getContactName(bon) || "Client", // Nom du contact
+        "2": getDisplayNumero(bon) || "N/A", // Numéro du bon
+        "3": `${computeMontantTotal(bon).toFixed(2)} DH`, // Montant total
+        "4": pdfRelativePath // Chemin relatif du PDF
+      };
+
+      console.debug('[WhatsApp] Sending with template params:', templateParams);
+
+      const res = await sendWhatsAppTemplate(toPhone, templateParams, token || undefined);
       if (res?.ok) {
-        showSuccess('WhatsApp avec PDF envoyé');
+        showSuccess('WhatsApp avec PDF envoyé via template');
       } else {
         const msg = res?.error || "Échec de l'envoi WhatsApp";
-        // Include the media URL in the error to help diagnose "Invalid media URL(s)"
-        showError(`${msg}\nLien média: ${debugMediaUrl || 'N/A'}`);
-        console.warn('[WhatsApp] Envoi échoué. URL envoyée:', debugMediaUrl, 'Erreur:', res);
+        showError(`${msg}\nChemin PDF: ${pdfRelativePath}`);
+        console.warn('[WhatsApp] Envoi échoué. Template params:', templateParams, 'Erreur:', res);
       }
     } catch (err: any) {
       const msg = err?.data?.message || err?.message || 'Erreur lors de l\'envoi WhatsApp';
