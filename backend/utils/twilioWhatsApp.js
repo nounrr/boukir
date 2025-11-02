@@ -41,9 +41,10 @@ export const isTwilioConfigured = () => {
   return Boolean((TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) && (TWILIO_WHATSAPP_FROM || TWILIO_MESSAGING_SERVICE_SID));
 };
 
-export const sendWhatsAppMessage = async ({ to, body, mediaUrls, from } = {}) => {
-  if (!body) {
-    throw new Error('Message body is required.');
+export const sendWhatsAppMessage = async ({ to, body, mediaUrls, from, templateSid, templateParams } = {}) => {
+  // Pour les templates, body n'est pas requis (les params suffisent)
+  if (!templateSid && !body) {
+    throw new Error('Message body or templateSid is required.');
   }
   if (!isTwilioConfigured()) {
     const {
@@ -98,8 +99,22 @@ export const sendWhatsAppMessage = async ({ to, body, mediaUrls, from } = {}) =>
 
   const messagePayload = {
     to: normalizeWhatsAppAddress(to),
-    body,
   };
+
+  // Si on utilise un template approuvé
+  if (templateSid) {
+    messagePayload.contentSid = templateSid;
+    
+    // ContentVariables pour les templates avec paramètres
+    if (templateParams && Object.keys(templateParams).length > 0) {
+      messagePayload.contentVariables = JSON.stringify(templateParams);
+    }
+    
+    console.log('[WhatsApp] Sending with approved template:', templateSid, templateParams);
+  } else {
+    // Message texte libre (sandbox ou session dans les 24h)
+    messagePayload.body = body;
+  }
 
   const { TWILIO_MESSAGING_SERVICE_SID, TWILIO_WHATSAPP_FROM } = process.env;
   if (TWILIO_MESSAGING_SERVICE_SID) {
@@ -108,7 +123,8 @@ export const sendWhatsAppMessage = async ({ to, body, mediaUrls, from } = {}) =>
     messagePayload.from = normalizeWhatsAppAddress(from || TWILIO_WHATSAPP_FROM);
   }
 
-  if (normalizedMediaUrls.length > 0) {
+  // Pour les templates, les mediaUrls sont passées via contentVariables, pas mediaUrl
+  if (!templateSid && normalizedMediaUrls.length > 0) {
     messagePayload.mediaUrl = normalizedMediaUrls;
   }
 
