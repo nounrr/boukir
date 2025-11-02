@@ -41,8 +41,6 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
 
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
-  // Feature flag: show or hide the WhatsApp send button in list actions
-  const SHOW_WHATSAPP_BUTTON = true;
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule'>('Commande');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -94,6 +92,28 @@ const BonsPage = () => {
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
   const isManager = currentUser?.role === 'Manager';
   // ManagerPlus role value (not needed here currently)
+  
+  // Feature flag: show WhatsApp button only for PDG and Manager+
+  const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
+
+  // Auto-send WhatsApp on validation (stored in localStorage)
+  const [autoSendWhatsApp, setAutoSendWhatsApp] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('autoSendWhatsAppOnValidation');
+      return stored === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Save to localStorage when changed
+  useEffect(() => {
+    try {
+      localStorage.setItem('autoSendWhatsAppOnValidation', String(autoSendWhatsApp));
+    } catch (error) {
+      console.warn('Erreur lors de la sauvegarde de autoSendWhatsApp:', error);
+    }
+  }, [autoSendWhatsApp]);
 
   // RTK Query hooks
   // Load bons by type
@@ -274,6 +294,17 @@ const BonsPage = () => {
       showSuccess(`Statut mis à jour: ${statut}`);
       // IMPORTANT: refetch stock/products after status change (validation or cancel)
       refetchProducts();
+
+      // Auto-send WhatsApp if enabled and status is Validé
+      if (autoSendWhatsApp && statut === 'Validé' && SHOW_WHATSAPP_BUTTON) {
+        // Send WhatsApp automatically without popup (skipConfirmation = true)
+        try {
+          await handleSendWhatsAppFromRow(bon, true);
+        } catch (error) {
+          console.error('Erreur lors de l\'envoi automatique WhatsApp:', error);
+          // Don't show error to user - it's automatic
+        }
+      }
     } catch (error: any) {
       console.error('Erreur mise à jour statut:', error);
       const status = error?.status;
@@ -741,7 +772,7 @@ const BonsPage = () => {
     }
     return null;
   };
-  const handleSendWhatsAppFromRow = async (bon: any) => {
+  const handleSendWhatsAppFromRow = async (bon: any, skipConfirmation = false) => {
     // Debug helper to surface the media URL in case of error (needs outer scope for catch)
     let debugMediaUrl: string | null = null;
     try {
@@ -750,7 +781,7 @@ const BonsPage = () => {
 
       const toPhone = resolveBonPhone(bon);
       if (!toPhone) {
-        showError("Numéro de téléphone introuvable pour ce bon.");
+        if (!skipConfirmation) showError("Numéro de téléphone introuvable pour ce bon.");
         return;
       }
 
@@ -784,23 +815,27 @@ const BonsPage = () => {
       ].filter(Boolean);
       const initialMessage = defaultLines.join('\n');
 
-      // 1) Popup de prévisualisation/édition du message
-      const Swal = (await import('sweetalert2')).default;
-      const result = await Swal.fire({
-        title: 'Message WhatsApp',
-        html: `<div style="text-align:left;font-size:13px;margin-bottom:6px">Téléphone: <b>${toPhone}</b></div>`,
-        input: 'textarea',
-        inputValue: initialMessage,
-        inputAttributes: { 'aria-label': 'Message WhatsApp' },
-        showCancelButton: true,
-        confirmButtonText: 'Envoyer WhatsApp',
-        cancelButtonText: 'Annuler',
-        heightAuto: false,
-        customClass: { popup: 'swal2-show' },
-        preConfirm: (val) => (typeof val === 'string' ? val : initialMessage)
-      });
-      if (!result.isConfirmed) return; // annulé
-      const editedMessage: string = (result.value as string) || initialMessage;
+      let editedMessage = initialMessage;
+
+      // 1) Popup de prévisualisation/édition du message (sauf si skipConfirmation)
+      if (!skipConfirmation) {
+        const Swal = (await import('sweetalert2')).default;
+        const result = await Swal.fire({
+          title: 'Message WhatsApp',
+          html: `<div style="text-align:left;font-size:13px;margin-bottom:6px">Téléphone: <b>${toPhone}</b></div>`,
+          input: 'textarea',
+          inputValue: initialMessage,
+          inputAttributes: { 'aria-label': 'Message WhatsApp' },
+          showCancelButton: true,
+          confirmButtonText: 'Envoyer WhatsApp',
+          cancelButtonText: 'Annuler',
+          heightAuto: false,
+          customClass: { popup: 'swal2-show' },
+          preConfirm: (val) => (typeof val === 'string' ? val : initialMessage)
+        });
+        if (!result.isConfirmed) return; // annulé
+        editedMessage = (result.value as string) || initialMessage;
+      }
 
       // 2) Générer le PDF et envoyer
       const type = bon?.type || currentTab;
@@ -851,9 +886,22 @@ const BonsPage = () => {
         .replace(/^\/uploads\/bons_pdf\//, '') // Enlever le préfixe
         .replace(/\.pdf$/, ''); // Enlever l'extension
 
+      // Résoudre le nom de la société ou fallback sur le nom du contact
+      let contactNameOrSociete = "Client";
+      if (resolvedClient) {
+        // Priorité: nom_societe si disponible, sinon nom_complet
+        contactNameOrSociete = resolvedClient.nom_societe || resolvedClient.societe || resolvedClient.nom_complet || "Client";
+      } else if (resolvedSupplier) {
+        // Pour les fournisseurs aussi
+        contactNameOrSociete = resolvedSupplier.nom_societe || resolvedSupplier.societe || resolvedSupplier.nom_complet || "Fournisseur";
+      } else {
+        // Fallback sur getContactName (inclut client_nom pour Comptant/Devis)
+        contactNameOrSociete = getContactName(bon) || "Client";
+      }
+
       // Utiliser le template approuvé avec paramètres
       const templateParams = {
-        "1": getContactName(bon) || "Client", // Nom du contact
+        "1": contactNameOrSociete, // Nom de la société ou nom du contact
         "2": getDisplayNumero(bon) || "N/A", // Numéro du bon
         "3": `${computeMontantTotal(bon).toFixed(2)} DH`, // Montant total
         "4": pdfRelativePath // Chemin relatif du PDF
@@ -863,16 +911,18 @@ const BonsPage = () => {
 
       const res = await sendWhatsAppTemplate(toPhone, templateParams, token || undefined);
       if (res?.ok) {
-        showSuccess('WhatsApp avec PDF envoyé via template');
+        if (!skipConfirmation) showSuccess('WhatsApp avec PDF envoyé via template');
       } else {
         const msg = res?.error || "Échec de l'envoi WhatsApp";
-        showError(`${msg}\nChemin PDF: ${pdfRelativePath}`);
+        if (!skipConfirmation) showError(`${msg}\nChemin PDF: ${pdfRelativePath}`);
         console.warn('[WhatsApp] Envoi échoué. Template params:', templateParams, 'Erreur:', res);
       }
     } catch (err: any) {
       const msg = err?.data?.message || err?.message || 'Erreur lors de l\'envoi WhatsApp';
       // Surface the media URL if available
-      showError(`${msg}\nLien média: ${typeof debugMediaUrl === 'string' && debugMediaUrl ? debugMediaUrl : 'N/A'}`);
+      if (!skipConfirmation) {
+        showError(`${msg}\nLien média: ${typeof debugMediaUrl === 'string' && debugMediaUrl ? debugMediaUrl : 'N/A'}`);
+      }
       console.error('[WhatsApp] Exception lors de l\'envoi. URL:', debugMediaUrl, err);
     } finally {
       setSendingWhatsAppId(null);
@@ -1256,6 +1306,21 @@ const BonsPage = () => {
               <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([])}>Tous</button>
               <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter(['En attente','Validé','Refusé','Annulé'])}>Tout sélectionner</button>
             </div>
+            {/* Checkbox pour envoi automatique WhatsApp - visible uniquement pour PDG et Manager+ */}
+            {SHOW_WHATSAPP_BUTTON && (
+              <div className="ml-4 flex items-center gap-2 p-2 border border-gray-300 rounded-md bg-green-50">
+                <input
+                  type="checkbox"
+                  id="autoSendWhatsApp"
+                  checked={autoSendWhatsApp}
+                  onChange={(e) => setAutoSendWhatsApp(e.target.checked)}
+                  className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                />
+                <label htmlFor="autoSendWhatsApp" className="text-sm text-gray-700 cursor-pointer whitespace-nowrap">
+                  📱 Envoyer WhatsApp automatiquement lors de validation
+                </label>
+              </div>
+            )}
           </div>
         </div>
 
