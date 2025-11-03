@@ -207,8 +207,12 @@ const EmployeeAccordionContent: React.FC<{ employee: Employee; selectedMonth: st
   selectedMonth,
   salaryMap
 }) => {
+  const { user } = useAuth();
   const { data: docs = [] } = useGetEmployeeDocsQuery(employee.id);
   const { data: types = [] } = useGetDocumentTypesQuery();
+  
+  // Manager+ ne peut pas voir le salaire prévu
+  const canSeeSalaire = user?.role === 'PDG';
   
   const currentMonthTotal = React.useMemo(() => {
     // Utiliser les vraies données du salaryMap
@@ -241,22 +245,25 @@ const EmployeeAccordionContent: React.FC<{ employee: Employee; selectedMonth: st
           </Link>
         </div>
         
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className={`grid ${canSeeSalaire ? 'grid-cols-2' : 'grid-cols-1'} gap-4 mb-4`}>
           <div className="bg-emerald-50 rounded-lg p-3">
             <div className="text-xs text-emerald-600 font-medium">Total ce mois</div>
             <div className="text-lg font-bold text-emerald-800">
               {currentMonthTotal.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
             </div>
           </div>
-          <div className="bg-blue-50 rounded-lg p-3">
-            <div className="text-xs text-blue-600 font-medium">Salaire prévu</div>
-            <div className="text-lg font-bold text-blue-800">
-              {employee.salaire != null 
-                ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })
-                : 'Non défini'
-              }
+          {/* Masquer le salaire prévu pour Manager+ - visible uniquement pour PDG */}
+          {canSeeSalaire && (
+            <div className="bg-blue-50 rounded-lg p-3">
+              <div className="text-xs text-blue-600 font-medium">Salaire prévu</div>
+              <div className="text-lg font-bold text-blue-800">
+                {employee.salaire != null 
+                  ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })
+                  : 'Non défini'
+                }
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="text-center">
@@ -671,7 +678,10 @@ const EmployeePage: React.FC = () => { // NOSONAR
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom Complet</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date d'embauche</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salaire</th>
+              {/* Colonne Salaire visible uniquement pour PDG */}
+              {user?.role === 'PDG' && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Salaire</th>
+              )}
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montants en attente</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Documents</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -722,9 +732,12 @@ const EmployeePage: React.FC = () => { // NOSONAR
                       <span className="text-gray-400 text-sm">-</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {employee.salaire != null ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' }) : '-'}
-                  </td>
+                  {/* Colonne Salaire visible uniquement pour PDG */}
+                  {user?.role === 'PDG' && (
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {employee.salaire != null ? employee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' }) : '-'}
+                    </td>
+                  )}
                   <td className="px-6 py-4 text-sm text-gray-900" style={{ minWidth: '200px' }}>
                     <PendingSalaryCell employeeId={employee.id} selectedMonth={selectedMonth} />
                   </td>
@@ -1074,24 +1087,27 @@ const EmployeePage: React.FC = () => { // NOSONAR
             
             {/* Informations sur le salaire actuel */}
             <div className="bg-gray-50 rounded-lg p-3 mb-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className={`grid ${user?.role === 'PDG' ? 'grid-cols-2' : 'grid-cols-1'} gap-4 text-sm`}>
                 <div>
                   <div className="text-gray-600">Total actuel</div>
                   <div className="font-semibold text-gray-900">
                     {(salaryMap.get(salaryModalEmployee.id) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
                   </div>
                 </div>
-                <div>
-                  <div className="text-gray-600">Salaire prévu</div>
-                  <div className="font-semibold text-gray-900">
-                    {salaryModalEmployee.salaire 
-                      ? salaryModalEmployee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })
-                      : 'Non défini'
-                    }
+                {/* Masquer le salaire prévu pour Manager+ */}
+                {user?.role === 'PDG' && (
+                  <div>
+                    <div className="text-gray-600">Salaire prévu</div>
+                    <div className="font-semibold text-gray-900">
+                      {salaryModalEmployee.salaire 
+                        ? salaryModalEmployee.salaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })
+                        : 'Non défini'
+                      }
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
-              {salaryModalEmployee.salaire && (salaryMap.get(salaryModalEmployee.id) || 0) >= salaryModalEmployee.salaire && (
+              {user?.role === 'PDG' && salaryModalEmployee.salaire && (salaryMap.get(salaryModalEmployee.id) || 0) >= salaryModalEmployee.salaire && (
                 <div className="mt-2 text-xs text-red-600 bg-red-50 rounded px-2 py-1">
                   ⚠️ Le salaire prévu est déjà atteint ou dépassé
                 </div>

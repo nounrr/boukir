@@ -17,13 +17,22 @@ const EmployeeSalariesPage: React.FC = () => {
   const employeId = Number(params.id);
   const { user } = useAuth();
   
+  // Vérifier si l'utilisateur a accès aux salaires
+  // Manager n'a pas accès du tout
+  if (user?.role === 'Manager') {
+    return <Navigate to="/employees" replace />;
+  }
+  
   // Vérifier si l'utilisateur est un employé et s'il essaie d'accéder aux salaires d'un autre employé
   if (user?.role === 'Employé' && user.id !== employeId) {
     return <Navigate to={`/employees/${user.id}/salaries`} replace />;
   }
   
-  // Les employés ont accès en lecture seule
-  const isReadOnly = user?.role === 'Employé';
+  // Les employés et Manager+ ont accès en lecture seule
+  const isReadOnly = user?.role === 'Employé' || user?.role === 'ManagerPlus';
+  
+  // Manager+ ne peut pas voir le salaire prévu, seulement les montants payés
+  const canSeeSalaire = user?.role === 'PDG' || (user?.role === 'Employé' && user.id === employeId);
 
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -201,7 +210,8 @@ const EmployeeSalariesPage: React.FC = () => {
                   {totalMonth.toLocaleString('fr-FR', { style: 'currency', currency: 'MAD' })}
                 </div>
               </div>
-              {employee?.salaire != null && (
+              {/* Afficher le salaire prévu uniquement pour PDG et Employé (pour son propre salaire) */}
+              {canSeeSalaire && employee?.salaire != null && (
                 <div>
                   <div className="text-sm text-gray-500">Salaire prévu</div>
                   <div className="text-lg font-semibold text-gray-900">
