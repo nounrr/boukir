@@ -64,7 +64,9 @@ const PUBLIC_PATHS = new Set([
   '/api/db/ping',
   '/api/db/info',
   '/api/auth/login',
-  '/api/auth/register'
+  '/api/auth/register',
+  // Ajout: route de test WhatsApp sans token (peut être retirée en production)
+  '/api/notifications/whatsapp/bon-test'
 ]);
 
 app.use((req, res, next) => {
