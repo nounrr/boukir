@@ -42,6 +42,7 @@ import AccessSchedulePage from './pages/AccessSchedulePage';
 import MultiDayAccessSchedulePage from './pages/MultiDayAccessSchedulePage';
 import ChiffreAffairesPage from './pages/ChiffreAffairesPage';
 import ChiffreAffairesDetailPage from './pages/ChiffreAffairesDetailPage';
+import WhatsAppTestPage from './pages/WhatsAppTestPage';
 
 // Composant Layout avec accès aux fonctions de monitoring
 const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -303,6 +304,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <ChiffreAffairesDetailPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/whatsapp-test"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}> {/* restreint si besoin */}
+              <LayoutWithAccessCheck>
+                <WhatsAppTestPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

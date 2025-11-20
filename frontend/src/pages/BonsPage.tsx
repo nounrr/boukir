@@ -24,7 +24,7 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   } from '../store/api/contactsApi';
   import { useGetProductsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
-  import { sendWhatsApp, sendWhatsAppTemplate } from '../utils/notifications';
+  import { sendWhatsApp } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
   import { uploadBonPdf } from '../utils/uploads';
@@ -96,24 +96,60 @@ const BonsPage = () => {
   // Feature flag: show WhatsApp button only for PDG and Manager+
   const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
 
-  // Auto-send WhatsApp on validation (stored in localStorage)
+  // Helper to build the per-type storage key for auto-send checkbox
+  const getAutoSendKey = (type: string) => `autoSendWhatsAppOnValidation_${type}`;
+
+  // Auto-send WhatsApp on validation (stored per bon type in localStorage)
+  // Legacy migration: if global key exists and per-type key missing for initial tab, migrate value.
   const [autoSendWhatsApp, setAutoSendWhatsApp] = useState<boolean>(() => {
     try {
-      const stored = localStorage.getItem('autoSendWhatsAppOnValidation');
-      return stored === 'true';
+      const initialType = 'Commande'; // corresponds to initial currentTab default
+      const perTypeKey = getAutoSendKey(initialType);
+      const perTypeVal = localStorage.getItem(perTypeKey);
+      if (perTypeVal != null) return perTypeVal === 'true';
+      // Migrate legacy global key
+      const legacy = localStorage.getItem('autoSendWhatsAppOnValidation');
+      if (legacy != null) {
+        localStorage.setItem(perTypeKey, legacy);
+        return legacy === 'true';
+      }
+      return false;
     } catch {
       return false;
     }
   });
 
-  // Save to localStorage when changed
+  // Persist per-type value whenever it changes for the active tab
   useEffect(() => {
     try {
-      localStorage.setItem('autoSendWhatsAppOnValidation', String(autoSendWhatsApp));
+      const key = getAutoSendKey(currentTab);
+      localStorage.setItem(key, String(autoSendWhatsApp));
     } catch (error) {
-      console.warn('Erreur lors de la sauvegarde de autoSendWhatsApp:', error);
+      console.warn('Erreur lors de la sauvegarde de autoSendWhatsApp (per-type):', error);
     }
-  }, [autoSendWhatsApp]);
+  }, [autoSendWhatsApp, currentTab]);
+
+  // Load the per-type value when the tab changes (with legacy fallback)
+  useEffect(() => {
+    try {
+      const key = getAutoSendKey(currentTab);
+      const val = localStorage.getItem(key);
+      if (val != null) {
+        setAutoSendWhatsApp(val === 'true');
+      } else {
+        // Fallback migration from legacy global key if present
+        const legacy = localStorage.getItem('autoSendWhatsAppOnValidation');
+        if (legacy != null) {
+          setAutoSendWhatsApp(legacy === 'true');
+          localStorage.setItem(key, legacy);
+        } else {
+          setAutoSendWhatsApp(false);
+        }
+      }
+    } catch (error) {
+      console.warn('Erreur lors du chargement de autoSendWhatsApp (per-type):', error);
+    }
+  }, [currentTab]);
 
   // RTK Query hooks
   // Load bons by type
@@ -148,7 +184,7 @@ const BonsPage = () => {
   // Column resizing state (persistent during the component lifetime)
   const showAuditCols = currentUser?.role === 'PDG' || currentUser?.role === 'Manager' || currentUser?.role === 'ManagerPlus';
   const defaultColWidths = useMemo(() => {
-    const base = ['120','120','220','220','120','80','120']; // numero,date,contact,adresse,montant,poids,mouvement
+    const base = ['120','120','220','160','220','120','80','120']; // numero,date,contact,téléphone,adresse,montant,poids,mouvement
     if (showAuditCols) {
       base.push('140','140'); // created_by, updated_by
     }
@@ -809,7 +845,10 @@ const BonsPage = () => {
         bon.lieu_chargement ? `Lieu de chargement: ${bon.lieu_chargement}` : '',
         bon.observations ? `Note: ${bon.observations}` : '',
         bonItems.length
-          ? 'Articles:\n' + bonItems.map((it: any) => `  - ${it.nom || it.name || it.designation || ''} x${it.quantite || it.qty || 1} @ ${it.prix_unitaire || it.prix || ''} DH`).join('\n')
+          ? 'Articles:\n' + bonItems.map((it: any) => {
+              const montantLigne = it.total || it.montant_ligne || ((it.quantite || it.qty || 1) * (it.prix_unitaire || it.prix || 0));
+              return `  - ${it.nom || it.name || it.designation || ''} x${it.quantite || it.qty || 1} @ ${Number(montantLigne).toFixed(2)} DH`;
+            }).join('\n')
           : '',
         'Merci.'
       ].filter(Boolean);
@@ -820,6 +859,7 @@ const BonsPage = () => {
       // 1) Popup de prévisualisation/édition du message (sauf si skipConfirmation)
       if (!skipConfirmation) {
         const Swal = (await import('sweetalert2')).default;
+        
         const result = await Swal.fire({
           title: 'Message WhatsApp',
           html: `<div style="text-align:left;font-size:13px;margin-bottom:6px">Téléphone: <b>${toPhone}</b></div>`,
@@ -907,15 +947,48 @@ const BonsPage = () => {
         "4": pdfRelativePath // Chemin relatif du PDF
       };
 
-      console.debug('[WhatsApp] Sending with template params:', templateParams);
-
-      const res = await sendWhatsAppTemplate(toPhone, templateParams, token || undefined);
-      if (res?.ok) {
-        if (!skipConfirmation) showSuccess('WhatsApp avec PDF envoyé via template');
-      } else {
-        const msg = res?.error || "Échec de l'envoi WhatsApp";
-        if (!skipConfirmation) showError(`${msg}\nChemin PDF: ${pdfRelativePath}`);
-        console.warn('[WhatsApp] Envoi échoué. Template params:', templateParams, 'Erreur:', res);
+      // Utiliser la route /whatsapp/bon pour tous les types (envoie le PDF en pièce jointe)
+      const numeroDisplay = getDisplayNumero(bon) || 'N/A';
+      const montantDisplay = computeMontantTotal(bon).toFixed(2);
+      
+      try {
+        const resp = await fetch('/api/notifications/whatsapp/bon', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            to: toPhone,
+            pdfUrl: debugMediaUrl, // URL absolue générée et uploadée
+            numero: numeroDisplay,
+            total: montantDisplay,
+            devise: 'DH'
+          })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.ok) {
+          if (!skipConfirmation) {
+            const Swal = (await import('sweetalert2')).default;
+            const sentMessage = `${editedMessage}\nPDF: ${debugMediaUrl}`;
+            await Swal.fire({
+              title: 'WhatsApp (PDF) envoyé',
+              html: `<div style="text-align:left;font-size:13px;margin-bottom:12px">Message envoyé à: <b>${toPhone}</b></div>
+                     <textarea readonly style="width:100%;min-height:200px;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px;font-family:monospace;resize:vertical">${sentMessage}</textarea>`,
+              icon: 'success',
+              confirmButtonText: 'OK',
+              heightAuto: false,
+              customClass: { popup: 'swal2-show' }
+            });
+          }
+        } else {
+          const msg = data?.message || data?.error || `Échec WhatsApp (${resp.status})`;
+          if (!skipConfirmation) showError(msg);
+          console.warn('[WhatsApp] Envoi PDF échoué', { toPhone, debugMediaUrl, data });
+        }
+      } catch (e: any) {
+        if (!skipConfirmation) showError(e?.message || 'Erreur envoi PDF WhatsApp');
+        console.error('[WhatsApp] Exception envoi PDF', e);
       }
     } catch (err: any) {
       const msg = err?.data?.message || err?.message || 'Erreur lors de l\'envoi WhatsApp';
@@ -1419,11 +1492,21 @@ const BonsPage = () => {
                       title="Glisser pour redimensionner"
                     />
                   </th>
+                  {/* Téléphone (nouvelle colonne) */}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
+                    Téléphone
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, 3)}
+                      title="Glisser pour redimensionner"
+                    />
+                  </th>
+                  {/* Adresse livraison index décalé */}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                     Adresse livraison
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 3)}
+                      onMouseDown={(e) => startResize(e, 4)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -1439,7 +1522,7 @@ const BonsPage = () => {
                     </div>
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 4)}
+                      onMouseDown={(e) => startResize(e, 5)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -1447,7 +1530,7 @@ const BonsPage = () => {
                     Poids (kg)
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 5)}
+                      onMouseDown={(e) => startResize(e, 6)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -1455,7 +1538,7 @@ const BonsPage = () => {
                     Mouvement
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 6)}
+                      onMouseDown={(e) => startResize(e, 7)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -1465,7 +1548,7 @@ const BonsPage = () => {
                         Créé par
                         <span 
                           className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                          onMouseDown={(e) => startResize(e, 7)}
+                          onMouseDown={(e) => startResize(e, 8)}
                           title="Glisser pour redimensionner"
                         />
                       </th>
@@ -1473,7 +1556,7 @@ const BonsPage = () => {
                         Dernier modifié par
                         <span 
                           className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                          onMouseDown={(e) => startResize(e, 8)}
+                          onMouseDown={(e) => startResize(e, 9)}
                           title="Glisser pour redimensionner"
                         />
                       </th>
@@ -1483,7 +1566,7 @@ const BonsPage = () => {
                     Lié
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, showAuditCols ? 9 : 7)}
+                      onMouseDown={(e) => startResize(e, showAuditCols ? 10 : 8)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -1491,7 +1574,7 @@ const BonsPage = () => {
                     Statut
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, showAuditCols ? 10 : 8)}
+                      onMouseDown={(e) => startResize(e, showAuditCols ? 11 : 9)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -1499,7 +1582,7 @@ const BonsPage = () => {
                     Actions
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, showAuditCols ? 11 : 9)}
+                      onMouseDown={(e) => startResize(e, showAuditCols ? 12 : 10)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -1508,7 +1591,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={showAuditCols ? 12 : 10} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={showAuditCols ? 13 : 11} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTab}
                     </td>
                   </tr>
@@ -1544,6 +1627,27 @@ const BonsPage = () => {
                             <>{bon.vehicule_nom || '-'}</>
                           )
                         ) : getContactName(bon)}
+                      </td>
+                      {/* Téléphone cell */}
+                      <td className="px-4 py-2 text-sm">
+                        {(() => {
+                          // Use resolved phone based on type (same logic as resolveBonPhone)
+                          const phone = resolveBonPhone(bon);
+                          return phone ? (
+                            <span className="inline-flex items-center gap-1">
+                              <span>{phone}</span>
+                              {SHOW_WHATSAPP_BUTTON ? (
+                                <button
+                                  onClick={() => handleSendWhatsAppFromRow(bon)}
+                                  className="text-emerald-600 hover:text-emerald-800"
+                                  title="Envoyer WhatsApp"
+                                >
+                                  <Send size={14} />
+                                </button>
+                              ) : null}
+                            </span>
+                          ) : <span className="text-gray-400">-</span>;
+                        })()}
                       </td>
                       <td className="px-4 py-2 text-sm">{(bon as any).adresse_livraison ?? (bon as any).adresseLivraison ?? '-'}</td>
                       <td className="px-4 py-2">
