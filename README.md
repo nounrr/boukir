@@ -160,6 +160,50 @@ npm run build        # Build de production
 npm run preview      # Aperçu du build de production
 ```
 
+## 📲 Envoi WhatsApp (sans Twilio)
+
+L'application envoie les messages WhatsApp via un service local basé sur `whatsapp-web.js` (`whtsp-service/`). Twilio a été retiré.
+
+1) Lancer le service WhatsApp et scanner le QR une fois:
+
+```bash
+cd whtsp-service
+npm install
+npm start
+```
+
+Variables d'environnement du service (fichier `whtsp-service/.env`):
+
+- `WA_API_KEY`: clé API utilisée par le backend (header `x-api-key`)
+- `DEFAULT_CC`: indicatif pays (ex: 212)
+- `HOST`: 127.0.0.1 (par défaut)
+- `PORT`: 3000 (par défaut)
+
+2) Configurer le backend pour appeler le service:
+
+Créer/éditer `backend/.env` et ajouter:
+
+```
+WHTSP_SERVICE_BASE_URL=http://127.0.0.1:3000
+WHTSP_SERVICE_API_KEY=<même clé que WA_API_KEY>
+PUBLIC_BASE_URL=https://votre-domaine-public-ou-tunnel
+```
+
+`PUBLIC_BASE_URL` est utilisé pour construire des liens PDF accessibles depuis le téléphone.
+
+3) Optionnel: Meta (WhatsApp Cloud API)
+
+Si vous souhaitez aussi activer l'envoi via l'API Cloud de Meta (fallback), ajoutez:
+
+```
+FACEBOOK_WHATSAPP_TOKEN=EAA...
+WHATSAPP_PHONE_NUMBER_ID=1234567890
+META_WHATSAPP_TEMPLATE_NAME=nom_du_template
+META_WHATSAPP_TEMPLATE_LANG=fr
+```
+
+Dans ce mode, le backend utilisera prioritairement `whtsp-service`. S'il n'est pas configuré, il tentera Meta.
+
 You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
 ```js

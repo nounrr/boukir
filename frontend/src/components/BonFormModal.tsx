@@ -485,7 +485,10 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         formValues?.lieu_charge ? `Lieu de chargement: ${formValues.lieu_charge}` : (formValues?.lieu_chargement ? `Lieu de chargement: ${formValues.lieu_chargement}` : ''),
         formValues?.observations ? `Note: ${formValues.observations}` : '',
         normalizedItems.length
-          ? 'Articles:\n' + normalizedItems.map((it: any) => `  - ${it.designation || ''} x${it.quantite || 0} @ ${it.prix_unitaire || 0} DH`).join('\n')
+          ? 'Articles:\n' + normalizedItems.map((it: any) => {
+              const montantLigne = it.total || it.montant_ligne || ((it.quantite || 0) * (it.prix_unitaire || 0));
+              return `  - ${it.designation || ''} x${it.quantite || 0} @ ${Number(montantLigne).toFixed(2)} DH`;
+            }).join('\n')
           : '',
         'Merci.'
       ].filter(Boolean);
