@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
 import { getBonNumeroDisplay } from '../utils/numero';
+import boukirCachet from './boukir_cachet.webp';
+import mpcCachet from './mpc_cachet.webp';
 
 interface BonPrintTemplateProps {
   bon: any;
@@ -104,14 +106,14 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
       phones: "GSM: 0650812894 - Tél: 0666216657",
       email: "EMAIL: boukir.diamond23@gmail.com",
       extra: "Service de charge: 06.66.21.66.57",
-      cachetImage: "/boukir_cachet.webp",
+      cachetImage: boukirCachet,
     },
     MPC: {
       address: "ALot Awatif N°179 - TANGER",
       phones: "GSM: 0650812894 - Tél: 0666216657",
       email: "EMAIL: boukir.diamond23@gmail.com",
       extra: "Service de charge: 06.66.21.66.57",
-      cachetImage: "/mpc_boukir.webp",
+      cachetImage: mpcCachet,
     }
   };
   
@@ -270,16 +272,7 @@ const formatHeure = (dateStr: string) => {
                   {contactDisplayName && contactDisplayName !== '-' && (
                     <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
                   )}
-                  {tel && String(tel).trim() && (
-                    <div><span className="font-medium">Téléphone:</span> <strong>{String(tel).trim()}</strong></div>
-                  )}
                   <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
-                  {contact?.email && (
-                    <div><span className="font-medium">Email:</span> {contact.email}</div>
-                  )}
-                  {contact?.adresse && (
-                    <div><span className="font-medium">Adresse:</span> {contact.adresse}</div>
-                  )}
                 </div>
               </div>
             </>
