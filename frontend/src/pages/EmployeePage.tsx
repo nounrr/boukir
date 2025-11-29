@@ -12,10 +12,10 @@ import {
 import { useGetEmployeeDocsQuery, useGetDocumentTypesQuery } from '../store/api/employeeDocsApi';
 import type { Employee } from '../types';
 import { useAuth } from '../hooks/redux';
-import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote, Wallet, ChevronDown, ChevronRight, Check, X, Clock, Users } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Eye, EyeOff, FileText, Banknote, Wallet, ChevronDown, ChevronRight, Check, X, Clock, Users, ArrowLeft } from 'lucide-react';
 // merged imports above
 // imports merged above
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
@@ -406,17 +406,12 @@ const validationSchemaEdit = Yup.object({
 
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const EmployeePage: React.FC = () => { // NOSONAR
+  // TOUS LES HOOKS DOIVENT ÊTRE APPELÉS EN PREMIER (avant toute condition de retour)
   const { user } = useAuth();
-  
-  // Rediriger les employés vers leur page personnelle
-  if (user?.role === 'Employé') {
-    window.location.href = '/employee/self';
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-500">Redirection vers votre page personnelle...</p>
-      </div>
-    );
-  }
+  const navigate = useNavigate();
+  const [isPasswordVerified, setIsPasswordVerified] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPasswordError, setShowPasswordError] = useState(false);
   
   const { data: employees = [], isLoading } = useGetEmployeesQuery();
   const [createEmployee] = useCreateEmployeeMutation();
@@ -428,9 +423,8 @@ const EmployeePage: React.FC = () => { // NOSONAR
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [changePassword, setChangePassword] = useState(false); // only used when editing
+  const [changePassword, setChangePassword] = useState(false);
   const [expandedEmployee, setExpandedEmployee] = useState<number | null>(null);
-  // Salaire modal state
   const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
   const [salaryModalEmployee, setSalaryModalEmployee] = useState<Employee | null>(null);
   const [salaryMontant, setSalaryMontant] = useState('');
@@ -438,7 +432,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     const m = String(d.getMonth() + 1).padStart(2, '0');
-    return `${d.getFullYear()}-${m}`; // YYYY-MM
+    return `${d.getFullYear()}-${m}`;
   });
   const { data: salarySummary = [] } = useGetSalaireMonthlySummaryQueryServer({ month: selectedMonth });
 
@@ -456,7 +450,6 @@ const EmployeePage: React.FC = () => { // NOSONAR
     return total > (emp.salaire || 0);
   };
   
-  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
 
@@ -465,14 +458,13 @@ const EmployeePage: React.FC = () => { // NOSONAR
       cin: '',
       nom_complet: '',
       date_embauche: '',
-      role: 'Employé', // default to Employé to avoid unintended null
+      role: 'Employé',
   salaire: '' as any,
       password: '',
     },
     validationSchema: editingEmployee ? validationSchemaEdit : validationSchemaCreate,
     onSubmit: async (values, { resetForm }) => {
       try {
-        // Normalize optional fields: empty string -> null
         const payload: {
           cin: string;
           nom_complet: string | null;
@@ -513,6 +505,29 @@ const EmployeePage: React.FC = () => { // NOSONAR
     },
   });
 
+  // Calculs dérivés
+  const filteredEmployees = React.useMemo(() => {
+    return employees.filter((employee: Employee) => {
+      const name = (employee.nom_complet || '').toLowerCase();
+      const cin = (employee.cin || '').toLowerCase();
+      const q = searchTerm.toLowerCase();
+      return name.includes(q) || cin.includes(q);
+    });
+  }, [employees, searchTerm]);
+
+  const totalItems = filteredEmployees.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedEmployees = React.useMemo(() => {
+    return filteredEmployees.slice(startIndex, endIndex);
+  }, [filteredEmployees, startIndex, endIndex]);
+
+  // Réinitialiser la page quand on change de recherche
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   const handleEdit = (employee: Employee) => {
     setEditingEmployee(employee);
     formik.setValues({
@@ -547,24 +562,102 @@ const EmployeePage: React.FC = () => { // NOSONAR
     }
   };
 
-  const filteredEmployees = employees.filter((employee: Employee) => {
-    const name = (employee.nom_complet || '').toLowerCase();
-    const cin = (employee.cin || '').toLowerCase();
-    const q = searchTerm.toLowerCase();
-    return name.includes(q) || cin.includes(q);
-  });
+  // Vérification du mot de passe pour accéder à la page
+  const handlePasswordVerification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      // Vérifier le mot de passe avec le backend
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cin: user?.cin,
+          password: passwordInput,
+        }),
+      });
 
-  // Pagination
-  const totalItems = filteredEmployees.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedEmployees = filteredEmployees.slice(startIndex, endIndex);
+      if (response.ok) {
+        setIsPasswordVerified(true);
+        setShowPasswordError(false);
+        setPasswordInput('');
+      } else {
+        setShowPasswordError(true);
+      }
+    } catch (error) {
+      console.error('Erreur de vérification:', error);
+      setShowPasswordError(true);
+    }
+  };
 
-  // Réinitialiser la page quand on change de recherche
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
+  // Rediriger les employés vers leur page personnelle
+  if (user?.role === 'Employé') {
+    window.location.href = '/employee/self';
+    return (
+      <div className="flex justify-center items-center h-64">
+        <p className="text-gray-500">Redirection vers votre page personnelle...</p>
+      </div>
+    );
+  }
+
+  // Afficher la popup de vérification du mot de passe
+  if (!isPasswordVerified) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+          <div className="flex items-center justify-center mb-4">
+            <Users size={48} className="text-blue-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-center mb-2">Page Employés</h2>
+          <p className="text-gray-600 text-center mb-6">
+            Veuillez entrer le mot de passe pour accéder à cette page
+          </p>
+          <form onSubmit={handlePasswordVerification}>
+            <div className="mb-4">
+              <label htmlFor="password-verify" className="block text-sm font-medium text-gray-700 mb-2">
+                Mot de passe
+              </label>
+              <input
+                type="password"
+                id="password-verify"
+                value={passwordInput}
+                onChange={(e) => {
+                  setPasswordInput(e.target.value);
+                  setShowPasswordError(false);
+                }}
+                className={`w-full px-4 py-2 border ${showPasswordError ? 'border-red-500' : 'border-gray-300'} rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
+                placeholder="Entrez le mot de passe"
+                autoFocus
+              />
+              {showPasswordError && (
+                <p className="mt-2 text-sm text-red-600">
+                  Mot de passe incorrect. Veuillez réessayer.
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-200 transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <ArrowLeft size={18} />
+                Retour
+              </button>
+              <button
+                type="submit"
+                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors font-medium"
+              >
+                Accéder
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64">Chargement...</div>;

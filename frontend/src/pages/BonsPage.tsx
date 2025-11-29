@@ -855,6 +855,7 @@ const BonsPage = () => {
       const initialMessage = defaultLines.join('\n');
 
       let editedMessage = initialMessage;
+      let selectedCompany: 'DIAMOND' | 'MPC' = 'DIAMOND';
 
       // 1) Popup de prévisualisation/édition du message (sauf si skipConfirmation)
       if (!skipConfirmation) {
@@ -862,7 +863,18 @@ const BonsPage = () => {
         
         const result = await Swal.fire({
           title: 'Message WhatsApp',
-          html: `<div style="text-align:left;font-size:13px;margin-bottom:6px">Téléphone: <b>${toPhone}</b></div>`,
+          html: `
+            <div style="text-align:left;font-size:13px;margin-bottom:12px">
+              <div style="margin-bottom:6px">Téléphone: <b>${toPhone}</b></div>
+              <div style="margin-bottom:8px">
+                <label style="font-weight:600;display:block;margin-bottom:4px">Choisir l'en-tête:</label>
+                <select id="company-select" class="swal2-input" style="width:100%;padding:8px;font-size:14px">
+                  <option value="DIAMOND">DIAMOND BOUKIR</option>
+                  <option value="MPC">MPC</option>
+                </select>
+              </div>
+            </div>
+          `,
           input: 'textarea',
           inputValue: initialMessage,
           inputAttributes: { 'aria-label': 'Message WhatsApp' },
@@ -871,10 +883,17 @@ const BonsPage = () => {
           cancelButtonText: 'Annuler',
           heightAuto: false,
           customClass: { popup: 'swal2-show' },
-          preConfirm: (val) => (typeof val === 'string' ? val : initialMessage)
+          preConfirm: (val) => {
+            const companySelect = document.getElementById('company-select') as HTMLSelectElement;
+            return {
+              message: typeof val === 'string' ? val : initialMessage,
+              company: (companySelect?.value || 'DIAMOND') as 'DIAMOND' | 'MPC'
+            };
+          }
         });
         if (!result.isConfirmed) return; // annulé
-        editedMessage = (result.value as string) || initialMessage;
+        editedMessage = (result.value as any)?.message || initialMessage;
+        selectedCompany = (result.value as any)?.company || 'DIAMOND';
       }
 
       // 2) Générer le PDF et envoyer
@@ -900,6 +919,7 @@ const BonsPage = () => {
           client={resolvedClient}
           fournisseur={resolvedSupplier}
           size="A4"
+          companyType={selectedCompany}
         />
       );
 
@@ -1048,6 +1068,12 @@ const BonsPage = () => {
   React.useEffect(() => {
     setCurrentPage(1);
   }, [currentTab, searchTerm]);
+
+  // Fonction pour ouvrir le modal de création d'un nouveau bon
+  const handleAddNew = () => {
+    setSelectedBon(null);
+    setIsCreateModalOpen(true);
+  };
 
   const handleDelete = async (bonToDelete: any) => {
       if (isEmployee) {
@@ -1350,38 +1376,53 @@ const BonsPage = () => {
         </div>
         
   {/* Contenu standard */}
-        {/* Search and Filters */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="Rechercher par numéro, statut, client, téléphone ou montant..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          <div className="ml-4 flex items-center gap-3">
-            <label className="text-sm text-gray-600" htmlFor="statusFilter">Statut</label>
-            <select
-              multiple
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(Array.from(e.target.selectedOptions).map(o => o.value))}
-              className="px-2 py-2 border border-gray-300 rounded-md h-28"
-              id="statusFilter"
+        {/* Barre de filtres et actions au-dessus du tableau */}
+        <div className="bg-white rounded-lg shadow mb-4 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Bouton Ajouter */}
+            <button
+              onClick={handleAddNew}
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
             >
-              {['En attente','Validé','Refusé','Annulé'].map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-            <div className="flex flex-col gap-2 ml-2">
-              <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter([])}>Tous</button>
-              <button type="button" className="px-2 py-1 bg-gray-100 rounded" onClick={() => setStatusFilter(['En attente','Validé','Refusé','Annulé'])}>Tout sélectionner</button>
+              <Plus size={18} className="mr-2" />
+              Ajouter {currentTab}
+            </button>
+
+            {/* Recherche */}
+            <div className="relative flex-1 min-w-[300px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Rechercher par numéro, statut, client, téléphone ou montant..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
             </div>
-            {/* Checkbox pour envoi automatique WhatsApp - visible uniquement pour PDG et Manager+ */}
+
+            {/* Filtre Statut */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600 whitespace-nowrap" htmlFor="statusFilter">Statut:</label>
+              <select
+                multiple
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(Array.from(e.target.selectedOptions).map(o => o.value))}
+                className="px-2 py-1 border border-gray-300 rounded-md h-20 text-sm min-w-[120px]"
+                id="statusFilter"
+              >
+                {['En attente','Validé','Refusé','Annulé'].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <div className="flex flex-col gap-1">
+                <button type="button" className="px-2 py-0.5 bg-gray-100 rounded text-xs hover:bg-gray-200" onClick={() => setStatusFilter([])}>Tous</button>
+                <button type="button" className="px-2 py-0.5 bg-gray-100 rounded text-xs hover:bg-gray-200" onClick={() => setStatusFilter(['En attente','Validé','Refusé','Annulé'])}>Tout</button>
+              </div>
+            </div>
+
+            {/* Checkbox WhatsApp automatique */}
             {SHOW_WHATSAPP_BUTTON && (
-              <div className="ml-4 flex items-center gap-2 p-2 border border-gray-300 rounded-md bg-green-50">
+              <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-green-50">
                 <input
                   type="checkbox"
                   id="autoSendWhatsApp"
@@ -1389,31 +1430,24 @@ const BonsPage = () => {
                   onChange={(e) => setAutoSendWhatsApp(e.target.checked)}
                   className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
                 />
-                <label htmlFor="autoSendWhatsApp" className="text-sm text-gray-700 cursor-pointer whitespace-nowrap">
-                  📱 Envoyer WhatsApp automatiquement lors de validation
+                <label htmlFor="autoSendWhatsApp" className="text-xs text-gray-700 cursor-pointer whitespace-nowrap">
+                  📱 WhatsApp auto
                 </label>
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Contrôles de pagination */}
-        <div className="mb-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-700">
-              Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} bons
-            </span>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-700">Bons par page:</span>
+            {/* Pagination compacte */}
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-xs text-gray-600 whitespace-nowrap">
+                {startIndex + 1}-{Math.min(endIndex, totalItems)} / {totalItems}
+              </span>
               <select
                 value={itemsPerPage}
                 onChange={(e) => {
                   setItemsPerPage(Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                className="border border-gray-300 rounded px-2 py-1 text-sm"
+                className="border border-gray-300 rounded px-2 py-1 text-xs"
               >
                 <option value={10}>10</option>
                 <option value={20}>20</option>
