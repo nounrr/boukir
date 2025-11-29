@@ -15,7 +15,7 @@ interface BonPrintTemplateProps {
 // Technique: on insère un "spacer" (réservé) dans le flux avant le footer absolu.
 // Le spacer s'adapte dynamiquement selon le nombre d'articles pour éviter le chevauchement.
 const CompanyFooter: React.FC<{ 
-  data: { address: string; phones: string; email: string; extra?: string };
+  data: { address: string; phones: string; email: string; extra?: string; cachetImage?: string };
   size: 'A4' | 'A5';
 }>
  = ({ data, size }) => {
@@ -45,17 +45,30 @@ const CompanyFooter: React.FC<{
           height: cachetHeight, 
           display: 'flex', 
           justifyContent: 'center',
-          alignItems: 'center'
+          alignItems: 'center',
+          overflow: 'hidden'
         }}>
-          <h6 className={`${fontSize} mt-1 font-bold text-center`}>
-            CACHET / SIGNATURE CLIENT
-          </h6>
+          {data.cachetImage ? (
+            <img 
+              src={data.cachetImage} 
+              alt="Cachet" 
+              style={{ 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'contain' 
+              }} 
+            />
+          ) : (
+            <h6 className={`${fontSize} mt-1 font-bold text-center`}>
+              CACHET / SIGNATURE CLIENT
+            </h6>
+          )}
         </div>
       </div>
       <div className={`border-t border-gray-300 text-center ${isA5 ? 'text-[8px]' : 'text-[10px]'} text-gray-600 pt-2 leading-snug`}>
         <p>{data.address}</p>
-        <p>{data.phones} | {data.email}</p>
-        {data.extra && <p>{data.extra}</p>}
+        <p><strong className="text-[12px]">{data.phones}</strong> | {data.email}</p>
+        {data.extra && <p><strong className="text-[12px]">{data.extra}</strong></p>}
       </div>
     </div>
   );
@@ -84,16 +97,21 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     phones: string;
     email: string;
     extra?: string;
+    cachetImage?: string;
   }> = {
     DIAMOND: {
       address: "IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER",
       phones: "GSM: 0650812894 - Tél: 0666216657",
       email: "EMAIL: boukir.diamond23@gmail.com",
+      extra: "Service de charge: 06.66.21.66.57",
+      cachetImage: "/boukir_cachet.webp",
     },
     MPC: {
       address: "ALot Awatif N°179 - TANGER",
       phones: "GSM: 0650812894 - Tél: 0666216657",
       email: "EMAIL: boukir.diamond23@gmail.com",
+      extra: "Service de charge: 06.66.21.66.57",
+      cachetImage: "/mpc_boukir.webp",
     }
   };
   
@@ -253,8 +271,9 @@ const formatHeure = (dateStr: string) => {
                     <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
                   )}
                   {tel && String(tel).trim() && (
-                    <div><span className="font-medium">Téléphone:</span> {String(tel).trim()}</div>
+                    <div><span className="font-medium">Téléphone:</span> <strong>{String(tel).trim()}</strong></div>
                   )}
+                  <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
                   {contact?.email && (
                     <div><span className="font-medium">Email:</span> {contact.email}</div>
                   )}

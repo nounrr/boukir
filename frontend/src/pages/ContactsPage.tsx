@@ -346,6 +346,7 @@ const ContactsPage: React.FC = () => {
           id: `${b.id}-${it.product_id}-${it.id ?? Math.random()}`,
           bon_id: b.id,
           bon_numero: b.numero,
+          code_reglement: b.code_reglement,
           bon_type: b.type,
           bon_date: bDate,
           bon_date_iso: b.date_creation, // Date ISO pour l'affichage avec heure
@@ -531,7 +532,7 @@ const ContactsPage: React.FC = () => {
   const allProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
-    const ouverture = selectedContact.date_ouverture || selectedContact.created_at || null;
+    const ouverture = (selectedContact as any).date_ouverture || selectedContact.created_at || null;
     
     const initRow = {
       id: 'initial-solde-produit-all',
@@ -593,7 +594,7 @@ const ContactsPage: React.FC = () => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
     // Date d'ouverture du compte (ou date de création du contact)
-    const ouverture = selectedContact.date_ouverture || selectedContact.created_at || null;
+    const ouverture = (selectedContact as any).date_ouverture || selectedContact.created_at || null;
     let showSoldeInitial = true;
     if (dateFrom) {
       // Si la période commence après la date d'ouverture, on ne montre pas le solde initial
@@ -1112,6 +1113,10 @@ const ContactsPage: React.FC = () => {
     const finalCalculatedSolde = finalSoldeNet; // Utiliser le solde calculé correctement
 
     const productStatsArray = Object.values(productStats).sort((a: any, b: any) => b.montant_total - a.montant_total);
+
+    const printBons = filteredBons;
+    const filteredProductsForDisplay2 = filteredProductsForDisplay;
+    const printHasSelection = selectedProductIds.size > 0;
 
     const printContent = `
       <html>
@@ -2923,6 +2928,9 @@ const ContactsPage: React.FC = () => {
                           <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Référence</th>
                           <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
                           <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse Livraison</th>
+                          {selectedContact?.type === 'Fournisseur' && (
+                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Code Règlement</th>
+                          )}
                           {/* Remises séparées par type */}
                           <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Abonné</th>
                           <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Client</th>
@@ -3051,6 +3059,11 @@ const ContactsPage: React.FC = () => {
                                   {item.syntheticInitial || item.type === 'paiement' ? '-' : (item.adresse_livraison || '-')}
                                 </div>
                               </td>
+                              {selectedContact?.type === 'Fournisseur' && (
+                                <td className="px-1 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">{item.syntheticInitial ? '-' : (item.code_reglement || '-')}</div>
+                                </td>
+                              )}
                               {/* Remises séparées par type */}
                               <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
                                 {(() => {
