@@ -205,7 +205,8 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
       <div className="mt-4 mb-6 grid grid-cols-2 gap-4">
         <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
           <div className="text-sm"><span className="font-semibold">Nom:</span> {contactDisplayName}</div>
-          <div className="text-sm"><span className="font-semibold">Téléphone:</span> {contact?.telephone || '-'}</div>
+          <div className="text-sm"><span className="font-semibold">Téléphone:</span> <strong>{contact?.telephone || '-'}</strong></div>
+          <div className="text-sm"><span className="font-semibold">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
           <div className="text-sm"><span className="font-semibold">Email:</span> {contact?.email || '-'}</div>
           <div className="text-sm"><span className="font-semibold">Adresse:</span> {contact?.adresse || '-'}</div>
         </div>

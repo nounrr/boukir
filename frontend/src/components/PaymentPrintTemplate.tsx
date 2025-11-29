@@ -258,7 +258,8 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
             <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
-                <div><span className="font-medium">Téléphone:</span> {contact.telephone}</div>
+                <div><span className="font-medium">Téléphone:</span> <strong>{contact.telephone}</strong></div>
+                <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
                 <div><span className="font-medium">Email:</span> {contact.email}</div>
                 <div><span className="font-medium">Adresse:</span> {contact.adresse}</div>
               </div>

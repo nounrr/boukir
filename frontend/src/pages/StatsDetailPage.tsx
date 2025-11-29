@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Activity, Filter } from "lucide-react";
+import { useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
+import { Activity, Filter, Users, ArrowLeft } from "lucide-react";
 import { useGetProductsQuery } from "../store/api/productsApi";
 import { useGetClientsQuery } from "../store/api/contactsApi";
 import { useGetSortiesQuery } from "../store/api/sortiesApi";
 import { useGetComptantQuery } from "../store/api/comptantApi";
 import SearchableSelect from "../components/SearchableSelect";
+import type { RootState } from "../store";
 
 const toNumber = (value: any): number => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -35,6 +38,12 @@ const convertDisplayToISO = (displayDate: string) => {
 };
 
 const StatsDetailPage: React.FC = () => {
+  const { user } = useSelector((state: RootState) => state.auth);
+  const navigate = useNavigate();
+  const [isPasswordVerified, setIsPasswordVerified] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPasswordError, setShowPasswordError] = useState(false);
+
   const { data: products = [] } = useGetProductsQuery();
   const { data: clients = [] } = useGetClientsQuery();
   const { data: bonsSortie = [] } = useGetSortiesQuery(undefined);
@@ -51,6 +60,7 @@ const StatsDetailPage: React.FC = () => {
   const [includeSortie, setIncludeSortie] = useState<boolean>(true);
   const [includeComptant, setIncludeComptant] = useState<boolean>(true);
 
+  // useEffect doit être avant tout return conditionnel
   useEffect(() => {
     setSelectedProductId("");
     setSelectedClientId("");
@@ -227,6 +237,92 @@ const StatsDetailPage: React.FC = () => {
     });
     return base.concat(mapped);
   }, [clientProductStats, clients]);
+
+  // Vérification du mot de passe pour accéder à la page
+  const handlePasswordVerification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cin: user?.cin,
+          password: passwordInput,
+        }),
+      });
+
+      if (response.ok) {
+        setIsPasswordVerified(true);
+        setShowPasswordError(false);
+        setPasswordInput('');
+      } else {
+        setShowPasswordError(true);
+      }
+    } catch (error) {
+      console.error('Erreur de vérification:', error);
+      setShowPasswordError(true);
+    }
+  };
+
+  // Afficher la popup de mot de passe si pas encore vérifié
+  if (!isPasswordVerified) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
+          <div className="flex items-center justify-center mb-4">
+            <Users size={48} className="text-blue-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-center mb-2">Page Stats Détaillées</h2>
+          <p className="text-gray-600 text-center mb-6">
+            Veuillez entrer le mot de passe pour accéder à cette page
+          </p>
+          <form onSubmit={handlePasswordVerification}>
+            <div className="mb-4">
+              <label htmlFor="password-verify" className="block text-sm font-medium text-gray-700 mb-2">
+                Mot de passe
+              </label>
+              <input
+                type="password"
+                id="password-verify"
+                value={passwordInput}
+                onChange={(e) => {
+                  setPasswordInput(e.target.value);
+                  setShowPasswordError(false);
+                }}
+                className={`w-full px-4 py-2 border ${showPasswordError ? 'border-red-500' : 'border-gray-300'} rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
+                placeholder="Entrez le mot de passe"
+                autoFocus
+              />
+              {showPasswordError && (
+                <p className="mt-2 text-sm text-red-600">
+                  Mot de passe incorrect. Veuillez réessayer.
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard')}
+                className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-200 transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <ArrowLeft size={18} />
+                Retour
+              </button>
+              <button
+                type="submit"
+                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors font-medium"
+              >
+                Accéder
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
