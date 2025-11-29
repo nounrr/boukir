@@ -7,8 +7,8 @@ import {
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import type { Contact } from '../types'; // Contact now includes optional solde_cumule from backend
-import { 
-  useGetClientsQuery, 
+import {
+  useGetClientsQuery,
   useGetFournisseursQuery,
   useCreateContactMutation,
   useUpdateContactMutation,
@@ -53,7 +53,7 @@ const ContactsPage: React.FC = () => {
   const isOverdueContact = (contact: Contact): boolean => {
     const backend = (contact as any).solde_cumule;
     let solde: number;
-    
+
     if (backend != null) {
       solde = Number(backend) || 0;
     } else {
@@ -62,25 +62,25 @@ const ContactsPage: React.FC = () => {
       // Pour simplifier, on prend juste le solde de base ici
       solde = base;
     }
-    
+
     if (solde <= 0) return false;
-    
+
     // Si pas de date de dernière modification, considérer comme en retard
     if (!contact.updated_at) return true;
-    
+
     try {
       const lastUpdate = new Date(contact.updated_at);
       const now = new Date();
-      
+
       // Vérifier que la date est valide
       if (isNaN(lastUpdate.getTime())) {
         console.warn('Date invalide pour contact:', contact.id, contact.updated_at);
         return true; // Considérer comme en retard si date invalide
       }
-      
+
       // Calculer la différence en millisecondes
       const diffMs = now.getTime() - lastUpdate.getTime();
-      
+
       if (overdueUnit === 'days') {
         // Convertir en jours
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -113,7 +113,7 @@ const ContactsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  
+
   // États pour la configuration des périodes
   const [showSettings, setShowSettings] = useState(false);
   const [overdueValue, setOverdueValue] = useState(() => {
@@ -124,7 +124,7 @@ const ContactsPage: React.FC = () => {
     const saved = localStorage.getItem('contacts-overdue-unit');
     return (saved as 'days' | 'months') || 'months';
   });
-  
+
   // Sauvegarder les paramètres dans localStorage
   React.useEffect(() => {
     localStorage.setItem('contacts-overdue-value', overdueValue.toString());
@@ -143,7 +143,7 @@ const ContactsPage: React.FC = () => {
   const [printModal, setPrintModal] = useState<{ open: boolean; mode: 'products' | null }>({ open: false, mode: null });
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [printProducts, setPrintProducts] = useState<any[]>([]);
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
@@ -171,14 +171,14 @@ const ContactsPage: React.FC = () => {
       const val = Number(amount || 0);
       map.set(clientId, (map.get(clientId) || 0) - val);
     };
-    
+
     // Ajouter les ventes (sorties et comptants)
-  sorties.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
-  comptants.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
-    
+    sorties.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
+    comptants.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
+
     // Soustraire les avoirs clients (crédits/remboursements)
-  avoirsClient.forEach((b: any) => { if (isAllowedStatut(b.statut)) subtract(b.client_id, b.montant_total); });
-    
+    avoirsClient.forEach((b: any) => { if (isAllowedStatut(b.statut)) subtract(b.client_id, b.montant_total); });
+
     return map;
   }, [sorties, comptants, avoirsClient]);
 
@@ -208,13 +208,13 @@ const ContactsPage: React.FC = () => {
       const val = Number(amount || 0);
       map.set(fournisseurId, (map.get(fournisseurId) || 0) - val);
     };
-    
+
     // Ajouter les achats (commandes)
-  commandes.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.fournisseur_id, b.montant_total); });
-    
+    commandes.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.fournisseur_id, b.montant_total); });
+
     // Soustraire les avoirs fournisseurs (crédits/remboursements)
-  avoirsFournisseur.forEach((b: any) => { if (isAllowedStatut(b.statut)) subtract(b.fournisseur_id, b.montant_total); });
-    
+    avoirsFournisseur.forEach((b: any) => { if (isAllowedStatut(b.statut)) subtract(b.fournisseur_id, b.montant_total); });
+
     return map;
   }, [commandes, avoirsFournisseur]);
 
@@ -257,7 +257,7 @@ const ContactsPage: React.FC = () => {
     try {
       const raw = String(payment?.numero ?? payment?.id ?? '').trim();
       if (raw === '') return raw;
-      
+
       // remove any leading 'pay', 'pa', 'p-' (case-insensitive) and optional separators
       const suffix = raw.replace(/^(pay|pa|p-?)\s*[-:\s]*/i, '');
       return `PAY${suffix}`;
@@ -266,7 +266,7 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  
+
 
   // Bons du contact sélectionné
   const bonsForContact = useMemo(() => {
@@ -277,17 +277,17 @@ const ContactsPage: React.FC = () => {
 
     // Pour un client: sorties, comptants, avoirs client (EXCLUDING Devis per UI request)
     if (isClient) {
-  for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
+      for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
       // Devis intentionally excluded from detail/transactions per requirement
-  for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
-  for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
+      for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
+      for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
     } else {
       // Fournisseur: commandes, avoirs fournisseur
-  for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
-  for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
+      for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
+      for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
     }
 
-  // Filtre période + tri
+    // Filtre période + tri
     const filtered = list.filter((b) => isWithinDateRange(b.date_creation));
     filtered.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return filtered;
@@ -312,7 +312,7 @@ const ContactsPage: React.FC = () => {
       }
       return 0;
     };
-    
+
     // Ajouter les produits des bons
     for (const b of bonsForContact) {
       const bDate = formatDateDMY(b.date_creation);
@@ -338,7 +338,7 @@ const ContactsPage: React.FC = () => {
         const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0; // per-unit remise as in BonsPage
         const remiseTotale = remiseUnitaire * q;
         // Apply remises only for types that affect mouvement (same list as BonsPage)
-        const applyRemise = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(b.type);
+        const applyRemise = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(b.type);
         const benefice = mouvement - (applyRemise ? remiseTotale : 0);
         // Déterminer le type d'item basé sur le type de bon
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
@@ -379,7 +379,7 @@ const ContactsPage: React.FC = () => {
         id: `payment-${p.id}`,
         bon_numero: getDisplayNumeroPayment(p),
         bon_type: 'Paiement',
-  bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()),
+        bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()),
         bon_date_iso: p.date_paiement, // conserver la date/heure réelle du paiement
         bon_statut: p.statut ? String(p.statut) : 'Paiement',
         product_reference: 'PAIEMENT',
@@ -407,11 +407,11 @@ const ContactsPage: React.FC = () => {
     // Si un filtre de période est actif, il faut d'abord calculer le solde au début de la période
     // en prenant en compte TOUTES les transactions antérieures (même celles filtrées)
     let soldeDebutPeriode = Number(selectedContact?.solde ?? 0);
-    
+
     if (dateFrom || dateTo) {
       // Créer une liste complète de TOUTES les transactions (sans filtre de période)
       const allItems: any[] = [];
-      
+
       // Tous les bons du contact (sans filtre de date)
       const allBonsForContact = (() => {
         if (!selectedContact) return [] as any[];
@@ -430,13 +430,13 @@ const ContactsPage: React.FC = () => {
 
         return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
       })();
-      
+
       // Ajouter tous les produits des bons (sans filtre)
       for (const b of allBonsForContact) {
         const bonItems = Array.isArray(b.items) ? b.items : [];
         for (const it of bonItems) {
-          const total = Number((it as any).total ?? (it as any).montant_ligne) || 
-                       ((Number(it.quantite) || 0) * (Number(it.prix_unitaire ?? it.prix ?? 0) || 0));
+          const total = Number((it as any).total ?? (it as any).montant_ligne) ||
+            ((Number(it.quantite) || 0) * (Number(it.prix_unitaire ?? it.prix ?? 0) || 0));
           const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
           allItems.push({
             bon_date_iso: b.date_creation,
@@ -482,17 +482,17 @@ const ContactsPage: React.FC = () => {
       const dateA = a.bon_date_iso
         ? new Date(a.bon_date_iso).getTime()
         : (() => {
-            const [da, ma, ya] = a.bon_date.split('-');
-            const YA = ya.length === 2 ? `20${ya}` : ya;
-            return new Date(`${YA}-${ma}-${da}`).getTime();
-          })();
+          const [da, ma, ya] = a.bon_date.split('-');
+          const YA = ya.length === 2 ? `20${ya}` : ya;
+          return new Date(`${YA}-${ma}-${da}`).getTime();
+        })();
       const dateB = b.bon_date_iso
         ? new Date(b.bon_date_iso).getTime()
         : (() => {
-            const [db, mb, yb] = b.bon_date.split('-');
-            const YB = yb.length === 2 ? `20${yb}` : yb;
-            return new Date(`${YB}-${mb}-${db}`).getTime();
-          })();
+          const [db, mb, yb] = b.bon_date.split('-');
+          const YB = yb.length === 2 ? `20${yb}` : yb;
+          return new Date(`${YB}-${mb}-${db}`).getTime();
+        })();
       return dateA - dateB;
     });
 
@@ -516,7 +516,7 @@ const ContactsPage: React.FC = () => {
   const [productSearch, setProductSearch] = useState('');
   const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  
+
   const searchedProductHistory = useMemo(() => {
     const term = productSearch.trim().toLowerCase();
     if (!term) return filteredProductHistory;
@@ -533,7 +533,7 @@ const ContactsPage: React.FC = () => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
     const ouverture = (selectedContact as any).date_ouverture || selectedContact.created_at || null;
-    
+
     const initRow = {
       id: 'initial-solde-produit-all',
       bon_numero: '—',
@@ -550,7 +550,7 @@ const ContactsPage: React.FC = () => {
       soldeCumulatif: initialSolde,
       syntheticInitial: true,
     } as any;
-    
+
     // Toujours inclure toutes les transactions pour les calculs complets
     return [initRow, ...filteredProductHistory];
   }, [filteredProductHistory, selectedContact]);
@@ -589,7 +589,7 @@ const ContactsPage: React.FC = () => {
     return { totalQty, totalAmount };
   }, [searchedProductHistory, selectedProductIds]);
 
- 
+
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
@@ -607,19 +607,19 @@ const ContactsPage: React.FC = () => {
         showSoldeInitial = false;
       }
     }
-    
+
     // Créer un map des soldes cumulés à partir de l'historique complet
     const soldesMap = new Map<string, number>();
     allProductHistory.forEach((item) => {
       soldesMap.set(item.id, item.soldeCumulatif);
     });
-    
+
     // Filtrer les transactions par date mais garder les soldes calculés sur l'historique complet
     const filteredTransactions = searchedProductHistory.map(item => ({
       ...item,
       soldeCumulatif: soldesMap.get(item.id) || item.soldeCumulatif
     }));
-    
+
     // Calculer le solde au début de la période filtrée
     let soldeDebutPeriode = initialSolde;
     if (dateFrom && !showSoldeInitial) {
@@ -635,7 +635,7 @@ const ContactsPage: React.FC = () => {
         soldeDebutPeriode = lastBeforePeriod.soldeCumulatif || initialSolde;
       }
     }
-    
+
     const initRow = {
       id: 'initial-solde-produit',
       bon_numero: '—',
@@ -652,7 +652,7 @@ const ContactsPage: React.FC = () => {
       soldeCumulatif: showSoldeInitial ? initialSolde : soldeDebutPeriode,
       syntheticInitial: true,
     } as any;
-    
+
     // Pour l'affichage : montrer ou cacher le solde initial selon le filtre
     if (showSoldeInitial) {
       return [initRow, ...filteredTransactions];
@@ -675,19 +675,19 @@ const ContactsPage: React.FC = () => {
   const displayedProductHistoryWithInitial = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
-    
+
     // Créer un map des soldes cumulés à partir de l'historique complet
     const soldesMap = new Map<string, number>();
     allProductHistory.forEach((item) => {
       soldesMap.set(item.id, item.soldeCumulatif);
     });
-    
+
     // Filtrer les transactions par date mais garder les soldes calculés sur l'historique complet
     const filteredTransactions = searchedProductHistory.map(item => ({
       ...item,
       soldeCumulatif: soldesMap.get(item.id) || item.soldeCumulatif
     }));
-    
+
     const initRow = {
       id: 'initial-solde-produit-calc',
       bon_numero: '—',
@@ -704,7 +704,7 @@ const ContactsPage: React.FC = () => {
       soldeCumulatif: initialSolde,
       syntheticInitial: true,
     } as any;
-    
+
     // Toujours inclure le solde initial pour les calculs corrects
     return [initRow, ...filteredTransactions];
   }, [searchedProductHistory, selectedContact, allProductHistory]);
@@ -738,14 +738,14 @@ const ContactsPage: React.FC = () => {
     setSelectedBonIds(prev => {
       const next = new Set(prev);
       const isSelecting = !next.has(bonId);
-      
+
       if (isSelecting) {
         next.add(bonId);
         // Sélectionner automatiquement tous les produits de ce bon
         const productsOfBon = displayedProductHistory
           .filter((item: any) => !item.syntheticInitial && Number(item.bon_id) === bonId)
           .map((item: any) => String(item.id));
-        
+
         setSelectedProductIds(prevProducts => {
           const nextProducts = new Set(prevProducts);
           productsOfBon.forEach(id => nextProducts.add(id));
@@ -757,14 +757,14 @@ const ContactsPage: React.FC = () => {
         const productsOfBon = displayedProductHistory
           .filter((item: any) => !item.syntheticInitial && Number(item.bon_id) === bonId)
           .map((item: any) => String(item.id));
-        
+
         setSelectedProductIds(prevProducts => {
           const nextProducts = new Set(prevProducts);
           productsOfBon.forEach(id => nextProducts.delete(id));
           return nextProducts;
         });
       }
-      
+
       return next;
     });
   };
@@ -847,63 +847,63 @@ const ContactsPage: React.FC = () => {
   const authToken = useSelector((s: RootState) => (s as any)?.auth?.token);
 
   const loadContactRemises = async () => {
-      if (!selectedContact?.id) {
-        setContactRemises([]);
-        return;
-      }
+    if (!selectedContact?.id) {
+      setContactRemises([]);
+      return;
+    }
 
-      try {
-        // Récupérer toutes les remises liées à ce contact (protégé -> besoin Authorization)
-        const response = await fetch(`/api/remises/clients`, {
-          headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
-        });
-        if (response.ok) {
-          const allRemises = await response.json();
+    try {
+      // Récupérer toutes les remises liées à ce contact (protégé -> besoin Authorization)
+      const response = await fetch(`/api/remises/clients`, {
+        headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+      });
+      if (response.ok) {
+        const allRemises = await response.json();
 
-          const normalize = (s:any) => (s||'').toString().trim().toLowerCase();
-          const contactNameVariants = new Set([
-            normalize(selectedContact.nom_complet),
-            normalize(selectedContact.societe),
-          ]);
+        const normalize = (s: any) => (s || '').toString().trim().toLowerCase();
+        const contactNameVariants = new Set([
+          normalize(selectedContact.nom_complet),
+          normalize(selectedContact.societe),
+        ]);
 
-          // Filtrer les remises pour ce contact (nouveau schéma) OU legacy (contact_id null mais type abonné avec nom identique)
-          const contactRemisesData: any[] = [];
-          for (const remise of allRemises) {
-            const isDirectLink = remise.contact_id === selectedContact.id;
-            const isLegacyAbonne = !remise.contact_id && remise.type === 'client_abonne' && contactNameVariants.has(normalize(remise.nom));
-            if (isDirectLink || isLegacyAbonne) {
-              const itemsResponse = await fetch(`/api/remises/clients/${remise.id}/items`, {
-                headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        // Filtrer les remises pour ce contact (nouveau schéma) OU legacy (contact_id null mais type abonné avec nom identique)
+        const contactRemisesData: any[] = [];
+        for (const remise of allRemises) {
+          const isDirectLink = remise.contact_id === selectedContact.id;
+          const isLegacyAbonne = !remise.contact_id && remise.type === 'client_abonne' && contactNameVariants.has(normalize(remise.nom));
+          if (isDirectLink || isLegacyAbonne) {
+            const itemsResponse = await fetch(`/api/remises/clients/${remise.id}/items`, {
+              headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+            });
+            if (itemsResponse.ok) {
+              const items = await itemsResponse.json();
+              contactRemisesData.push({
+                ...remise,
+                _isLegacy: isLegacyAbonne,
+                items
               });
-              if (itemsResponse.ok) {
-                const items = await itemsResponse.json();
-                contactRemisesData.push({
-                  ...remise,
-                  _isLegacy: isLegacyAbonne,
-                  items
-                });
-              }
             }
           }
-
-            // Log diagnostique
-          const countAbonne = contactRemisesData.filter(r=>r.type==='client_abonne').length;
-          const countClient = contactRemisesData.filter(r=>r.type==='client-remise').length;
-          console.log(`Chargement remises: abonné=${countAbonne} client-remise=${countClient}`, contactRemisesData);
-
-          setContactRemises(contactRemisesData);
-        } else {
-          if (response.status === 401) {
-            console.warn('Non autorisé (401) pour /api/remises/clients — token manquant ou expiré');
-          } else {
-            console.error('Erreur lors du chargement des remises:', response.status);
-          }
         }
-      } catch (error) {
-        console.error('Erreur chargement remises:', error);
-        setContactRemises([]);
+
+        // Log diagnostique
+        const countAbonne = contactRemisesData.filter(r => r.type === 'client_abonne').length;
+        const countClient = contactRemisesData.filter(r => r.type === 'client-remise').length;
+        console.log(`Chargement remises: abonné=${countAbonne} client-remise=${countClient}`, contactRemisesData);
+
+        setContactRemises(contactRemisesData);
+      } else {
+        if (response.status === 401) {
+          console.warn('Non autorisé (401) pour /api/remises/clients — token manquant ou expiré');
+        } else {
+          console.error('Erreur lors du chargement des remises:', response.status);
+        }
       }
-    };
+    } catch (error) {
+      console.error('Erreur chargement remises:', error);
+      setContactRemises([]);
+    }
+  };
 
   // Charger les remises du contact lorsqu'il change
   React.useEffect(() => {
@@ -921,11 +921,11 @@ const ContactsPage: React.FC = () => {
     if (contactRemises.length > 0) {
       console.log('Debug getItemRemises:', {
         item: { bon_id: item.bon_id, product_id: item.product_id, product_reference: item.product_reference },
-        contactRemises: contactRemises.map((r:any) => ({ 
-          id: r.id, 
-          type: r.type, 
+        contactRemises: contactRemises.map((r: any) => ({
+          id: r.id,
+          type: r.type,
           itemsCount: r.items?.length || 0,
-          items: r.items?.map((i:any) => ({ bon_id: i.bon_id, product_id: i.product_id, qte: i.qte, prix_remise: i.prix_remise }))
+          items: r.items?.map((i: any) => ({ bon_id: i.bon_id, product_id: i.product_id, qte: i.qte, prix_remise: i.prix_remise }))
         }))
       });
     }
@@ -945,7 +945,7 @@ const ContactsPage: React.FC = () => {
         // Fallback: si pas de product_id côté remise (ou mismatch) mais même bon et même référence produit si disponible
         if (!match && bonIdItem === bonIdRemise) {
           const refItem = (item.product_reference || '').toString().trim();
-            // Dans items de remise la colonne est 'reference' (jointure SELECT p.id AS reference) selon route
+          // Dans items de remise la colonne est 'reference' (jointure SELECT p.id AS reference) selon route
           const refRemise = (remiseItem.reference || '').toString().trim();
           if (refItem && refRemise && refItem === refRemise) {
             match = true;
@@ -993,7 +993,7 @@ const ContactsPage: React.FC = () => {
 
       // 1. Vérifier si un client_abonné existe déjà pour ce contact
       console.log(`🔍 Recherche d'un client_abonné existant pour contact_id: ${selectedContact.id}`);
-      
+
       try {
         const result = await getClientAbonneByContact(selectedContact.id).unwrap();
         // Client abonné existant trouvé
@@ -1008,7 +1008,7 @@ const ContactsPage: React.FC = () => {
           console.log('⚠️ Erreur lors de la recherche:', error);
           console.log('❌ Création d\'un nouveau client abonné...');
         }
-        
+
         const clientAbonneData = {
           nom: selectedContact.nom_complet,
           phone: selectedContact.telephone || undefined,
@@ -1020,13 +1020,13 @@ const ContactsPage: React.FC = () => {
         console.log('📝 Données client abonné à créer:', clientAbonneData);
 
         const createdClientAbonne: any = await createClientRemise(clientAbonneData).unwrap();
-        
+
         console.log('✅ Nouveau client abonné créé:', createdClientAbonne);
-        
+
         if (!createdClientAbonne?.id) {
           throw new Error('Erreur lors de la création du client abonné');
         }
-        
+
         clientAbonneId = createdClientAbonne.id;
         console.log(`➕ Nouveau client_abonné créé avec ID: ${clientAbonneId}`);
       }
@@ -1037,7 +1037,7 @@ const ContactsPage: React.FC = () => {
       const remisePromises = Array.from(selectedItemsForRemise).map(async (itemId) => {
         const item = filteredProductHistory.find(p => p.id === itemId);
         const prixRemise = remisePrices[itemId] || 0;
-        
+
         if (!item || prixRemise <= 0) return null;
 
         const remiseItemData = {
@@ -1061,18 +1061,18 @@ const ContactsPage: React.FC = () => {
 
       // Attendre que toutes les remises soient créées
       const results = await Promise.all(remisePromises.filter(Boolean));
-      
+
       console.log('Résultats création items:', results);
 
       showSuccess(`${results.length} remise(s) créée(s) avec succès`);
-      
+
       // Réinitialiser l'interface après validation
       setShowRemiseMode(false);
       setRemisePrices({});
       setSelectedItemsForRemise(new Set());
-      
+
       console.log('=== FIN VALIDATION REMISES (SUCCÈS) ===');
-      
+
     } catch (error: any) {
       console.error('=== ERREUR VALIDATION REMISES ===', error);
       showError(error?.data?.message || 'Erreur lors de la création des remises');
@@ -1107,7 +1107,7 @@ const ContactsPage: React.FC = () => {
       acc[key].prix_moyen = acc[key].montant_total / acc[key].quantite_totale;
       return acc;
     }, {});
-    
+
     // Utiliser le solde final de la liste complète (non filtrée par dates)
     // qui tient compte de TOUTES les transactions 
     const finalCalculatedSolde = finalSoldeNet; // Utiliser le solde calculé correctement
@@ -1261,7 +1261,7 @@ const ContactsPage: React.FC = () => {
                 <th style="width: 10%;">Nb Commandes</th>
               </tr>
               ${productStatsArray.map((stat: any) =>
-                `<tr>
+      `<tr>
                   <td style="font-size: 6px; word-break: break-all;">${stat.reference}</td>
                   <td style="font-size: 6px; line-height: 0.9; word-break: break-word; hyphens: auto;">${stat.designation}</td>
                   <td class="numeric-col">${stat.quantite_totale}</td>
@@ -1269,7 +1269,7 @@ const ContactsPage: React.FC = () => {
                   <td class="numeric-col">${stat.prix_moyen.toFixed(2)} DH</td>
                   <td class="numeric-col">${stat.nombre_commandes}</td>
                 </tr>`
-              ).join('')}
+    ).join('')}
               <tr class="total-row">
                 <td colspan="2" class="text-wrap"><strong>TOTAL</strong></td>
                 <td class="numeric-col"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.quantite_totale, 0)}</strong></td>
@@ -1291,19 +1291,19 @@ const ContactsPage: React.FC = () => {
                 <th style="width: 10%;">Articles</th>
               </tr>
               ${printBons.map(bon => {
-                const bonItems = Array.isArray(bon.items) ? bon.items : [];
-                return `<tr>
+      const bonItems = Array.isArray(bon.items) ? bon.items : [];
+      return `<tr>
                   <td style="font-size: 6px; word-break: break-all;">${bon.numero}</td>
                   <td style="font-size: 6px;">${bon.type}</td>
                   <td style="font-size: 6px;">${formatDateTimeWithHour(bon.date_creation)}</td>
-                  <td class="numeric-col">${Number(bon.montant_total||0).toFixed(2)} DH</td>
+                  <td class="numeric-col">${Number(bon.montant_total || 0).toFixed(2)} DH</td>
                   <td style="font-size: 6px;">${bon.statut}</td>
                   <td class="numeric-col">${bonItems.length}</td>
                 </tr>`;
-              }).join('')}
+    }).join('')}
               <tr class="total-row">
                 <td colspan="3" class="text-wrap"><strong>TOTAL</strong></td>
-                <td class="numeric-col"><strong>${printBons.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</strong></td>
+                <td class="numeric-col"><strong>${printBons.reduce((s, b) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH</strong></td>
                 <td colspan="2"></td>
               </tr>
             </table>
@@ -1325,7 +1325,7 @@ const ContactsPage: React.FC = () => {
                 ${printHasSelection ? '' : '<th style="width: 12%">Solde Cumulé</th>'}
               </tr>
               ${filteredProductsForDisplay2.map(item =>
-                `<tr>
+      `<tr>
                   <td style="font-size: 6px;">${item.bon_date}</td>
                   <td style="font-size: 6px;">${item.bon_numero}</td>
                   <td style="font-size: 6px;">${item.bon_type}</td>
@@ -1336,7 +1336,7 @@ const ContactsPage: React.FC = () => {
                   <td class="numeric-col">${(item.total || 0).toFixed(2)} DH</td>
                   ${printHasSelection ? '' : `<td class="numeric-col"><strong>${(item.soldeCumulatif || 0).toFixed(2)} DH</strong></td>`}
                 </tr>`
-              ).join('')}
+    ).join('')}
               <tr class="total-row">
                 <td colspan="5" class="text-wrap"><strong>TOTAL (période affichée)</strong></td>
                 <td class="numeric-col"><strong>${filteredProductsForDisplay2.reduce((s, p) => s + (p.quantite || 0), 0)}</strong></td>
@@ -1359,16 +1359,16 @@ const ContactsPage: React.FC = () => {
               <div class="info-box">
                 <h4>Montants</h4>
                 <p><strong>Chiffre d'affaires total:</strong> ${filteredBons.filter((b: any) => {
-                  const type = String(b.type || '').toLowerCase();
-                  return type !== 'avoir' && type !== 'avoirfournisseur';
-                }).reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</p>
+      const type = String(b.type || '').toLowerCase();
+      return type !== 'avoir' && type !== 'avoirfournisseur';
+    }).reduce((s, b) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH</p>
                 <p><strong>Panier moyen:</strong> ${(() => {
-                  const realBons = filteredBons.filter((b: any) => {
-                    const type = String(b.type || '').toLowerCase();
-                    return type !== 'avoir' && type !== 'avoirfournisseur';
-                  });
-                  return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total||0), 0) / realBons.length).toFixed(2) : '0.00';
-                })()} DH</p>
+        const realBons = filteredBons.filter((b: any) => {
+          const type = String(b.type || '').toLowerCase();
+          return type !== 'avoir' && type !== 'avoirfournisseur';
+        });
+        return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total || 0), 0) / realBons.length).toFixed(2) : '0.00';
+      })()} DH</p>
                 <p><strong>Solde actuel (calculé sur toutes les transactions):</strong> ${finalCalculatedSolde.toFixed(2)} DH</p>
               </div>
             </div>
@@ -1425,7 +1425,7 @@ const ContactsPage: React.FC = () => {
       for (const b of avoirsFournisseur) if (b.fournisseur_id === id) list.push({ ...b, type: 'AvoirFournisseur' });
     }
 
-  // Solde actuel calculé ailleurs dans les sections imprimées si nécessaire
+    // Solde actuel calculé ailleurs dans les sections imprimées si nécessaire
 
     const printContent = `
       <html>
@@ -1465,17 +1465,17 @@ const ContactsPage: React.FC = () => {
                 <th>Statut</th>
               </tr>
               ${list.map(bon =>
-                `<tr>
+      `<tr>
                   <td>${bon.numero}</td>
                   <td>${bon.type}</td>
                   <td>${formatDateTimeWithHour(bon.date_creation)}</td>
-                  <td class="numeric">${Number(bon.montant_total||0).toFixed(2)} DH</td>
+                  <td class="numeric">${Number(bon.montant_total || 0).toFixed(2)} DH</td>
                   <td>${bon.statut}</td>
                 </tr>`
-              ).join('')}
+    ).join('')}
               <tr class="total-row">
                 <td colspan="3"><strong>TOTAL</strong></td>
-                <td class="numeric"><strong>${list.reduce((s, b) => s + Number(b.montant_total||0), 0).toFixed(2)} DH</strong></td>
+                <td class="numeric"><strong>${list.reduce((s, b) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH</strong></td>
                 <td></td>
               </tr>
             </table>
@@ -1521,7 +1521,7 @@ const ContactsPage: React.FC = () => {
       const isClient = contact.type === 'Client';
       const sales = isClient ? (salesByClient.get(contact.id) || 0) : 0;
       const purchases = !isClient ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
-  const paid = paymentsByContact.get(contact.id) || 0;
+      const paid = paymentsByContact.get(contact.id) || 0;
       const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
       return sum + soldeActuel;
     }, 0);
@@ -1585,28 +1585,28 @@ const ContactsPage: React.FC = () => {
               <th class="numeric">Nb Transactions</th>
             </tr>
             ${contactsList.map(contact => {
-              const base = Number(contact.solde) || 0;
-              const isClient = contact.type === 'Client';
-              const id = contact.id;
-              const sales = isClient ? (salesByClient.get(id) || 0) : 0;
-              const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
-              const paid = paymentsByContact.get(id) || 0;
-              const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
+      const base = Number(contact.solde) || 0;
+      const isClient = contact.type === 'Client';
+      const id = contact.id;
+      const sales = isClient ? (salesByClient.get(id) || 0) : 0;
+      const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
+      const paid = paymentsByContact.get(id) || 0;
+      const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
 
-              // Compter les transactions
-              let transactionCount = 0;
-              if (isClient) {
-                transactionCount += sorties.filter((b: any) => b.client_id === id).length;
-                transactionCount += devis.filter((b: any) => b.client_id === id).length;
-                transactionCount += comptants.filter((b: any) => b.client_id === id).length;
-                transactionCount += avoirsClient.filter((b: any) => b.client_id === id).length;
-              } else {
-                transactionCount += commandes.filter((b: any) => b.fournisseur_id === id).length;
-                transactionCount += avoirsFournisseur.filter((b: any) => b.fournisseur_id === id).length;
-              }
+      // Compter les transactions
+      let transactionCount = 0;
+      if (isClient) {
+        transactionCount += sorties.filter((b: any) => b.client_id === id).length;
+        transactionCount += devis.filter((b: any) => b.client_id === id).length;
+        transactionCount += comptants.filter((b: any) => b.client_id === id).length;
+        transactionCount += avoirsClient.filter((b: any) => b.client_id === id).length;
+      } else {
+        transactionCount += commandes.filter((b: any) => b.fournisseur_id === id).length;
+        transactionCount += avoirsFournisseur.filter((b: any) => b.fournisseur_id === id).length;
+      }
 
-              const displayName = (contact.societe && contact.societe.trim()) ? contact.societe : (contact.nom_complet || 'N/A');
-              return `<tr>
+      const displayName = (contact.societe && contact.societe.trim()) ? contact.societe : (contact.nom_complet || 'N/A');
+      return `<tr>
                 <td><strong>${displayName}</strong></td>
                 <td>${contact.societe ? contact.societe : '-'}</td>
                 <td>${contact.telephone || 'N/A'}</td>
@@ -1617,26 +1617,26 @@ const ContactsPage: React.FC = () => {
                 <td class="numeric ${soldeActuel >= 0 ? 'positive' : 'negative'}"><strong>${soldeActuel.toFixed(2)} DH</strong></td>
                 <td class="numeric">${transactionCount}</td>
               </tr>`;
-            }).join('')}
+    }).join('')}
             <tr class="total-row">
               <td colspan="${activeTab === 'clients' ? '6' : '5'}"><strong>TOTAUX</strong></td>
               <td class="numeric"><strong>${contactsList.reduce((s, c) => s + Number(c.solde || 0), 0).toFixed(2)} DH</strong></td>
               <td class="numeric"><strong>${totalSoldes.toFixed(2)} DH</strong></td>
               <td class="numeric"><strong>${contactsList.reduce((sum, contact) => {
-                const isClient = contact.type === 'Client';
-                const id = contact.id;
-                let count = 0;
-                if (isClient) {
-                  count += sorties.filter((b: any) => b.client_id === id).length;
-                  count += devis.filter((b: any) => b.client_id === id).length;
-                  count += comptants.filter((b: any) => b.client_id === id).length;
-                  count += avoirsClient.filter((b: any) => b.client_id === id).length;
-                } else {
-                  count += commandes.filter((b: any) => b.fournisseur_id === id).length;
-                  count += avoirsFournisseur.filter((b: any) => b.fournisseur_id === id).length;
-                }
-                return sum + count;
-              }, 0)}</strong></td>
+      const isClient = contact.type === 'Client';
+      const id = contact.id;
+      let count = 0;
+      if (isClient) {
+        count += sorties.filter((b: any) => b.client_id === id).length;
+        count += devis.filter((b: any) => b.client_id === id).length;
+        count += comptants.filter((b: any) => b.client_id === id).length;
+        count += avoirsClient.filter((b: any) => b.client_id === id).length;
+      } else {
+        count += commandes.filter((b: any) => b.fournisseur_id === id).length;
+        count += avoirsFournisseur.filter((b: any) => b.fournisseur_id === id).length;
+      }
+      return sum + count;
+    }, 0)}</strong></td>
             </tr>
           </table>
 
@@ -1674,7 +1674,7 @@ const ContactsPage: React.FC = () => {
     // Utiliser la même logique que l'affichage du tableau
     if (selectedProductIds && selectedProductIds.size > 0) {
       // Mode sélection : utiliser seulement les produits sélectionnés avec leurs vrais soldes
-      const selectedRows = displayedProductHistoryWithInitial.filter((it: any) => 
+      const selectedRows = displayedProductHistoryWithInitial.filter((it: any) =>
         selectedProductIds.has(String(it.id)) && !it.syntheticInitial
       );
       setPrintProducts(selectedRows);
@@ -1782,11 +1782,11 @@ const ContactsPage: React.FC = () => {
       // 🔥 PRIORITÉ ABSOLUE : Contacts en retard de paiement toujours en premier
       const aOverdue = isOverdueContact(a);
       const bOverdue = isOverdueContact(b);
-      
+
       // Si l'un est en retard et pas l'autre, le contact en retard vient en premier
       if (aOverdue && !bOverdue) return -1;
       if (!aOverdue && bOverdue) return 1;
-      
+
       // Si les deux ont le même statut de retard, appliquer le tri normal
       if (!sortField) {
         // Tri par défaut par nom si aucun champ de tri n'est sélectionné
@@ -1794,10 +1794,10 @@ const ContactsPage: React.FC = () => {
         const bName = b.nom_complet?.toLowerCase() || '';
         return aName.localeCompare(bName);
       }
-      
+
       let aValue: any = '';
       let bValue: any = '';
-      
+
       if (sortField === 'nom') {
         aValue = a.nom_complet?.toLowerCase() || '';
         bValue = b.nom_complet?.toLowerCase() || '';
@@ -1820,12 +1820,12 @@ const ContactsPage: React.FC = () => {
         const computedB = activeTab === 'clients' ? (baseB + salesB - paidB) : (baseB + purchasesB - paidB);
         bValue = (b as any).solde_cumule != null ? Number((b as any).solde_cumule) : computedB;
       }
-      
+
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-    
+
     return sorted;
   }, [filteredContacts, sortField, sortDirection, activeTab, salesByClient, purchasesByFournisseur, paymentsByContact, isOverdueContact, overdueValue, overdueUnit]);
 
@@ -1851,9 +1851,24 @@ const ContactsPage: React.FC = () => {
     setCurrentPage(1);
   }, [activeTab, searchTerm, sortField, sortDirection]);
 
+  // Load payments from Redux (RTK Query) to enrich payment rows
+  const { data: paymentsList } = useGetPaymentsQuery();
+  const paymentsMap = useMemo(() => {
+    const m = new Map<string, any>();
+    (paymentsList || []).forEach((p: any) => {
+      m.set(String(p.id), p);
+      m.set(`payment-${p.id}`, p);
+      if (p.bon_id) m.set(String(p.bon_id), p);
+      if (p.reference) m.set(String(p.reference), p);
+      if (p.bon_numero) m.set(String(p.bon_numero), p);
+      const displayNum = getDisplayNumeroPayment(p);
+      if (displayNum) m.set(displayNum, p);
+    });
+    return m;
+  }, [paymentsList]);
+
   return (
     <div className="p-6">
-      {/* Header + onglets */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Gestion des Contacts</h1>
@@ -1866,7 +1881,7 @@ const ContactsPage: React.FC = () => {
                 <Users size={18} />
                 Clients
               </div>
-            </button>
+            </button >
             {!isEmployee && (
               <button
                 className={`px-6 py-2 font-medium ${activeTab === 'fournisseurs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
@@ -1878,16 +1893,15 @@ const ContactsPage: React.FC = () => {
                 </div>
               </button>
             )}
-          </div>
-        </div>
+          </div >
+        </div >
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
-              showSettings 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${showSettings
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             title="Paramètres de retard de paiement"
           >
             <Settings size={16} />
@@ -1913,88 +1927,90 @@ const ContactsPage: React.FC = () => {
             Nouveau {activeTab === 'clients' ? 'Client' : 'Fournisseur'}
           </button>
         </div>
-      </div>
+      </div >
 
       {/* Section Paramètres */}
-      {showSettings && (
-        <div className="mb-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-800 flex items-center">
-                <Settings className="w-5 h-5 mr-2 text-blue-600" />
-                Paramètres de Retard de Paiement
-              </h2>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <PeriodConfig
-                title="Période de Retard de Paiement"
-                description={`Contacts avec solde ${'>'}  0 non modifiés depuis cette période seront affichés en rouge`}
-                value={overdueValue}
-                unit={overdueUnit}
-                onValueChange={setOverdueValue}
-                onUnitChange={setOverdueUnit}
-                icon={AlertTriangle}
-                colorClass="red"
-              />
-              
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <h3 className="text-sm font-medium text-gray-800 mb-2">Contacts en Retard Détectés</h3>
-                <p className="text-2xl font-bold text-red-600">
-                  {activeTab === 'clients' 
-                    ? clients.filter(c => isOverdueContact(c)).length
-                    : fournisseurs.filter(c => isOverdueContact(c)).length
-                  }
-                </p>
-                <p className="text-xs text-gray-600 mt-1">
-                  Contacts avec retard de paiement selon les paramètres actuels
-                </p>
-                
-                {/* Debug section */}
-                <div className="mt-3 p-2 bg-white border rounded text-xs">
-                  <div className="font-medium mb-1">🔬 Exemple (premiers 2 contacts avec solde {'>'}  0):</div>
-                  {(() => {
-                    const contactsWithPositiveBalance = (activeTab === 'clients' ? clients : fournisseurs)
-                      .filter(c => {
-                        const backend = (c as any).solde_cumule;
-                        const solde = backend != null ? Number(backend) : Number(c.solde || 0);
-                        return solde > 0;
-                      })
-                      .slice(0, 2);
-                      
-                    return contactsWithPositiveBalance.map((contact) => {
-                      const backend = (contact as any).solde_cumule;
-                      const solde = backend != null ? Number(backend) : Number(contact.solde || 0);
-                      const isOverdue = isOverdueContact(contact);
-                      const lastUpdate = contact.updated_at ? new Date(contact.updated_at) : null;
-                      const daysSinceUpdate = lastUpdate ? Math.floor((new Date().getTime() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24)) : null;
-                      
-                      return (
-                        <div key={contact.id} className="mb-1">
-                          <strong>{contact.nom_complet || 'Sans nom'}</strong> - 
-                          Solde: {solde.toFixed(2)} - 
-                          MAJ: {contact.updated_at || 'Jamais'} - 
-                          Il y a: {daysSinceUpdate || 'N/A'} jours - 
-                          En retard: {isOverdue ? '✅' : '❌'}
-                        </div>
-                      );
-                    });
-                  })()}
-                  <p className="text-xs text-gray-500 mt-1">
-                    Seuil: {overdueValue} {overdueUnit === 'days' ? 'jour(s)' : 'mois'}
+      {
+        showSettings && (
+          <div className="mb-6">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                  <Settings className="w-5 h-5 mr-2 text-blue-600" />
+                  Paramètres de Retard de Paiement
+                </h2>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <PeriodConfig
+                  title="Période de Retard de Paiement"
+                  description={`Contacts avec solde ${'>'}  0 non modifiés depuis cette période seront affichés en rouge`}
+                  value={overdueValue}
+                  unit={overdueUnit}
+                  onValueChange={setOverdueValue}
+                  onUnitChange={setOverdueUnit}
+                  icon={AlertTriangle}
+                  colorClass="red"
+                />
+
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-800 mb-2">Contacts en Retard Détectés</h3>
+                  <p className="text-2xl font-bold text-red-600">
+                    {activeTab === 'clients'
+                      ? clients.filter(c => isOverdueContact(c)).length
+                      : fournisseurs.filter(c => isOverdueContact(c)).length
+                    }
                   </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Contacts avec retard de paiement selon les paramètres actuels
+                  </p>
+
+                  {/* Debug section */}
+                  <div className="mt-3 p-2 bg-white border rounded text-xs">
+                    <div className="font-medium mb-1">🔬 Exemple (premiers 2 contacts avec solde {'>'}  0):</div>
+                    {(() => {
+                      const contactsWithPositiveBalance = (activeTab === 'clients' ? clients : fournisseurs)
+                        .filter(c => {
+                          const backend = (c as any).solde_cumule;
+                          const solde = backend != null ? Number(backend) : Number(c.solde || 0);
+                          return solde > 0;
+                        })
+                        .slice(0, 2);
+
+                      return contactsWithPositiveBalance.map((contact) => {
+                        const backend = (contact as any).solde_cumule;
+                        const solde = backend != null ? Number(backend) : Number(contact.solde || 0);
+                        const isOverdue = isOverdueContact(contact);
+                        const lastUpdate = contact.updated_at ? new Date(contact.updated_at) : null;
+                        const daysSinceUpdate = lastUpdate ? Math.floor((new Date().getTime() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+                        return (
+                          <div key={contact.id} className="mb-1">
+                            <strong>{contact.nom_complet || 'Sans nom'}</strong> -
+                            Solde: {solde.toFixed(2)} -
+                            MAJ: {contact.updated_at || 'Jamais'} -
+                            Il y a: {daysSinceUpdate || 'N/A'} jours -
+                            En retard: {isOverdue ? '✅' : '❌'}
+                          </div>
+                        );
+                      });
+                    })()}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Seuil: {overdueValue} {overdueUnit === 'days' ? 'jour(s)' : 'mois'}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Recherche */}
       <div className="mb-6">
@@ -2082,18 +2098,20 @@ const ContactsPage: React.FC = () => {
       </div>
 
       {/* Informations sur le tri */}
-      {(activeTab === 'clients' ? clients : fournisseurs).some(c => isOverdueContact(c)) && (
-        <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
-          <div className="flex items-center">
-            <AlertTriangle className="h-5 w-5 text-red-400 mr-2" />
-            <div className="text-sm">
-              <p className="text-red-800">
-                <strong>Priorité d'affichage :</strong> Les contacts en retard de paiement (solde {'>'}  0 depuis {overdueValue} {overdueUnit === 'days' ? 'jour(s)' : 'mois'}) sont affichés en rouge et en priorité dans la liste.
-              </p>
+      {
+        (activeTab === 'clients' ? clients : fournisseurs).some(c => isOverdueContact(c)) && (
+          <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
+            <div className="flex items-center">
+              <AlertTriangle className="h-5 w-5 text-red-400 mr-2" />
+              <div className="text-sm">
+                <p className="text-red-800">
+                  <strong>Priorité d'affichage :</strong> Les contacts en retard de paiement (solde {'>'}  0 depuis {overdueValue} {overdueUnit === 'days' ? 'jour(s)' : 'mois'}) sont affichés en rouge et en priorité dans la liste.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Liste */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -2103,7 +2121,7 @@ const ContactsPage: React.FC = () => {
             <thead className="bg-gray-50">
               <tr>
                 {/* Solde en premier */}
-                <th 
+                <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('solde')}
                 >
@@ -2114,7 +2132,7 @@ const ContactsPage: React.FC = () => {
                     )}
                   </div>
                 </th>
-                <th 
+                <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('nom')}
                 >
@@ -2125,7 +2143,7 @@ const ContactsPage: React.FC = () => {
                     )}
                   </div>
                 </th>
-                <th 
+                <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('societe')}
                 >
@@ -2164,111 +2182,111 @@ const ContactsPage: React.FC = () => {
                       className={`hover:bg-gray-50 cursor-pointer ${isOverdue ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
                       onClick={() => handleViewDetails(contact)}
                     >
-                    {/* Solde en premier */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {(() => {
-                        const backend = (contact as any).solde_cumule;
-                        let display: number;
-                        if (backend != null) {
-                          display = Number(backend) || 0;
-                        } else {
-                          const base = Number(contact.solde) || 0;
-                          const sales = activeTab === 'clients' ? (salesByClient.get(contact.id) || 0) : 0;
-                          const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
-                          const paid = paymentsByContact.get(contact.id) || 0;
-                          display = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
-                        }
-                        const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
-                        return (
-                          <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                            {display.toFixed(2)} DH
-                            {overPlafond && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{contact.nom_complet}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">{(contact.societe && contact.societe.trim()) ? contact.societe : '-'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <Phone size={16} className="text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">{contact.telephone || '-'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center">
-                        <Mail size={16} className="text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">{contact.email || '-'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center">
-                        <MapPin size={16} className="text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">{contact.adresse || '-'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{contact.ice || '-'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <CreditCard size={16} className="text-gray-400 mr-2" />
-                        <span className="text-sm text-gray-900">
-                          {contact.rib ? `${contact.rib.substring(0, 4)}...` : '-'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
-                    </td>
-                    {activeTab === 'clients' && (
+                      {/* Solde en premier */}
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {contact.plafond ? `${contact.plafond} DH` : '-'}
+                        {(() => {
+                          const backend = (contact as any).solde_cumule;
+                          let display: number;
+                          if (backend != null) {
+                            display = Number(backend) || 0;
+                          } else {
+                            const base = Number(contact.solde) || 0;
+                            const sales = activeTab === 'clients' ? (salesByClient.get(contact.id) || 0) : 0;
+                            const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
+                            const paid = paymentsByContact.get(contact.id) || 0;
+                            display = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
+                          }
+                          const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
+                          return (
+                            <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                              {display.toFixed(2)} DH
+                              {overPlafond && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-gray-900">{contact.nom_complet}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">{(contact.societe && contact.societe.trim()) ? contact.societe : '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <Phone size={16} className="text-gray-400 mr-2" />
+                          <span className="text-sm text-gray-900">{contact.telephone || '-'}</span>
                         </div>
                       </td>
-                    )}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleViewDetails(contact); }}
-                          className="text-indigo-600 hover:text-indigo-900"
-                          title="Voir détails"
-                        >
-                          <Eye size={16} />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleQuickPrint(contact); }}
-                          className="text-green-600 hover:text-green-900"
-                          title="Imprimer fiche"
-                        >
-                          <Printer size={16} />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="Modifier"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        {currentUser?.role === 'PDG' && (
+                      <td className="px-6 py-4">
+                        <div className="flex items-center">
+                          <Mail size={16} className="text-gray-400 mr-2" />
+                          <span className="text-sm text-gray-900">{contact.email || '-'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center">
+                          <MapPin size={16} className="text-gray-400 mr-2" />
+                          <span className="text-sm text-gray-900">{contact.adresse || '-'}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{contact.ice || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <CreditCard size={16} className="text-gray-400 mr-2" />
+                          <span className="text-sm text-gray-900">
+                            {contact.rib ? `${contact.rib.substring(0, 4)}...` : '-'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
+                      </td>
+                      {activeTab === 'clients' && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {contact.plafond ? `${contact.plafond} DH` : '-'}
+                          </div>
+                        </td>
+                      )}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex gap-2">
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
-                            className="text-red-600 hover:text-red-900"
-                            title="Supprimer"
+                            onClick={(e) => { e.stopPropagation(); handleViewDetails(contact); }}
+                            className="text-indigo-600 hover:text-indigo-900"
+                            title="Voir détails"
                           >
-                            <Trash2 size={16} />
+                            <Eye size={16} />
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleQuickPrint(contact); }}
+                            className="text-green-600 hover:text-green-900"
+                            title="Imprimer fiche"
+                          >
+                            <Printer size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Modifier"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          {currentUser?.role === 'PDG' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
+                              className="text-red-600 hover:text-red-900"
+                              title="Supprimer"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
                   );
                 })
               )}
@@ -2406,55 +2424,56 @@ const ContactsPage: React.FC = () => {
       </div>
 
       {/* Navigation de pagination */}
-      {totalPages > 1 && (
-        <div className="mt-4 flex justify-center items-center gap-2">
-          <button
-            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-            disabled={currentPage === 1}
-            className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Précédent
-          </button>
-          
-          {/* Affichage des numéros de page */}
-          <div className="flex gap-1">
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              let pageNum;
-              if (totalPages <= 5) {
-                pageNum = i + 1;
-              } else if (currentPage <= 3) {
-                pageNum = i + 1;
-              } else if (currentPage >= totalPages - 2) {
-                pageNum = totalPages - 4 + i;
-              } else {
-                pageNum = currentPage - 2 + i;
-              }
-              
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => setCurrentPage(pageNum)}
-                  className={`px-3 py-2 border rounded-md ${
-                    currentPage === pageNum
+      {
+        totalPages > 1 && (
+          <div className="mt-4 flex justify-center items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Précédent
+            </button>
+
+            {/* Affichage des numéros de page */}
+            <div className="flex gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-2 border rounded-md ${currentPage === pageNum
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {pageNum}
-                </button>
-              );
-            })}
+                      }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Suivant
+            </button>
           </div>
-          
-          <button
-            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage === totalPages}
-            className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Suivant
-          </button>
-        </div>
-      )}
+        )
+      }
 
       {/* Modal: ajouter / modifier */}
       <ContactFormModal
@@ -2471,99 +2490,100 @@ const ContactsPage: React.FC = () => {
       />
 
       {/* Modal de détails */}
-      {isDetailsModalOpen && selectedContact && (
-        <div className="fixed inset-0 z-50 bg-white">
-          <div className="bg-white w-full h-full overflow-y-auto">
-            <div className={`${selectedContact.type === 'Client' ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4 sticky top-0 z-10 shadow-md`}>
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold text-white">Détails - {selectedContact.nom_complet}</h2>
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={handlePrint}
-                    className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-md transition-colors font-medium border border-white border-opacity-30"
-                    title="Imprimer rapport détaillé avec produits et transactions (selon filtres appliqués)"
-                  >
-                    <FileText size={16} />
-                    Rapport Détaillé
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsDetailsModalOpen(false);
-                      setSelectedContact(null);
-                      setSelectedProductIds(new Set());
-                      setSelectedBonIds(new Set());
-                      setPrintProducts([]);
-                    }}
-                    className="text-white hover:text-gray-200 text-2xl font-bold"
-                  >
-                    ✕
-                  </button>
+      {
+        isDetailsModalOpen && selectedContact && (
+          <div className="fixed inset-0 z-50 bg-white">
+            <div className="bg-white w-full h-full overflow-y-auto">
+              <div className={`${selectedContact.type === 'Client' ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4 sticky top-0 z-10 shadow-md`}>
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-bold text-white">Détails - {selectedContact.nom_complet}</h2>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={handlePrint}
+                      className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-md transition-colors font-medium border border-white border-opacity-30"
+                      title="Imprimer rapport détaillé avec produits et transactions (selon filtres appliqués)"
+                    >
+                      <FileText size={16} />
+                      Rapport Détaillé
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsDetailsModalOpen(false);
+                        setSelectedContact(null);
+                        setSelectedProductIds(new Set());
+                        setSelectedBonIds(new Set());
+                        setPrintProducts([]);
+                      }}
+                      className="text-white hover:text-gray-200 text-2xl font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="h-[calc(100vh-80px)] overflow-y-auto p-6">
-              {/* Infos contact */}
-              <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                <h3 className="font-bold text-lg mb-3">Informations du {selectedContact.type}</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
-                  <div>
-                    <p className="font-semibold text-gray-600">Société:</p>
-                    <p>{(selectedContact.societe && selectedContact.societe.trim()) ? selectedContact.societe : '-'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-600">Téléphone:</p>
-                    <p>{selectedContact.telephone || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-600">Email:</p>
-                    <p>{selectedContact.email || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-600">ICE:</p>
-                    <p>{selectedContact.ice || '-'}</p>
-                  </div>
-                </div>
-                
-                {/* Section Soldes */}
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <DollarSign size={16} />
-                    Situation Financière
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-white rounded-lg p-3 border">
-                      <p className="font-semibold text-gray-600 text-sm">Solde Initial:</p>
-                      <p className={`font-bold text-lg ${(Number(selectedContact.solde) || 0) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                        {(Number(selectedContact.solde) || 0).toFixed(2)} DH
-                      </p>
+              <div className="h-[calc(100vh-80px)] overflow-y-auto p-6">
+                {/* Infos contact */}
+                <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                  <h3 className="font-bold text-lg mb-3">Informations du {selectedContact.type}</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                    <div>
+                      <p className="font-semibold text-gray-600">Société:</p>
+                      <p>{(selectedContact.societe && selectedContact.societe.trim()) ? selectedContact.societe : '-'}</p>
                     </div>
-                    <div className="bg-white rounded-lg p-3 border">
-                      <p className="font-semibold text-gray-600 text-sm">Total des remises</p>
-                      {(() => {
-                        const list = (allProductHistory || []).filter((i:any) => i.type === 'produit' && !i.syntheticInitial);
-                        const sum = list.reduce((s:number, it:any) => {
-                          let r = 0;
-                          if (typeof it.remise_totale === 'number') r = Number(it.remise_totale || 0);
-                          else if (typeof it.remise_montant === 'number') r = Number(it.remise_montant || 0) * (Number(it.quantite) || 0);
-                          else {
-                            try {
-                              const rems = getItemRemises(it);
-                              r = (Number(rems.abonne || 0) + Number(rems.client || 0));
-                            } catch (e) {
-                              r = 0;
+                    <div>
+                      <p className="font-semibold text-gray-600">Téléphone:</p>
+                      <p>{selectedContact.telephone || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-600">Email:</p>
+                      <p>{selectedContact.email || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-600">ICE:</p>
+                      <p>{selectedContact.ice || '-'}</p>
+                    </div>
+                  </div>
+
+                  {/* Section Soldes */}
+                  <div className="border-t pt-4">
+                    <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <DollarSign size={16} />
+                      Situation Financière
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-white rounded-lg p-3 border">
+                        <p className="font-semibold text-gray-600 text-sm">Solde Initial:</p>
+                        <p className={`font-bold text-lg ${(Number(selectedContact.solde) || 0) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                          {(Number(selectedContact.solde) || 0).toFixed(2)} DH
+                        </p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border">
+                        <p className="font-semibold text-gray-600 text-sm">Total des remises</p>
+                        {(() => {
+                          const list = (allProductHistory || []).filter((i: any) => i.type === 'produit' && !i.syntheticInitial);
+                          const sum = list.reduce((s: number, it: any) => {
+                            let r = 0;
+                            if (typeof it.remise_totale === 'number') r = Number(it.remise_totale || 0);
+                            else if (typeof it.remise_montant === 'number') r = Number(it.remise_montant || 0) * (Number(it.quantite) || 0);
+                            else {
+                              try {
+                                const rems = getItemRemises(it);
+                                r = (Number(rems.abonne || 0) + Number(rems.client || 0));
+                              } catch (e) {
+                                r = 0;
+                              }
                             }
-                          }
-                          return s + r;
-                        }, 0);
-                        return (
-                          <div className="space-y-1">
-                            <p className={`font-bold text-lg ${sum >= 0 ? 'text-green-600' : 'text-red-600'}`}>{contactRemises.reduce((sum:number,r:any)=> sum + (r.items||[]).reduce((s:number,i:any)=> s + (Number(i.qte)||0)*(Number(i.prix_remise)||0),0),0).toFixed(2)} DH</p>
-                            <p className="text-xs text-gray-500">Somme des remises applicables aux produits affichés</p>
-                          </div>
-                        );
-                      })()}
-                    </div>
+                            return s + r;
+                          }, 0);
+                          return (
+                            <div className="space-y-1">
+                              <p className={`font-bold text-lg ${sum >= 0 ? 'text-green-600' : 'text-red-600'}`}>{contactRemises.reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH</p>
+                              <p className="text-xs text-gray-500">Somme des remises applicables aux produits affichés</p>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
                     <div className="flex gap-4 items-stretch">
                       <div className="bg-white rounded-lg p-3 border flex-1">
@@ -2594,139 +2614,150 @@ const ContactsPage: React.FC = () => {
                       <div className="bg-white rounded-lg p-3 border flex-1">
                         <p className="font-semibold text-gray-600 text-sm">Bénéfice total</p>
                         <p className={`font-bold text-lg ${(() => {
-                          const sum = (allProductHistory || []).filter((i:any)=>i.type==='produit' && !i.syntheticInitial).reduce((s:number,i:any)=>s + Number(i.benefice || 0), 0);
+                          const sum = (allProductHistory || []).filter((i: any) => i.type === 'produit' && !i.syntheticInitial).reduce((s: number, i: any) => s + Number(i.benefice || 0), 0);
                           return sum >= 0 ? 'text-green-600' : 'text-red-600';
                         })()}`}>
                           {(() => {
-                            const sum = (allProductHistory || []).filter((i:any)=>i.type==='produit' && !i.syntheticInitial).reduce((s:number,i:any)=>s + Number(i.benefice || 0), 0);
+                            const sum = (allProductHistory || []).filter((i: any) => i.type === 'produit' && !i.syntheticInitial).reduce((s: number, i: any) => s + Number(i.benefice || 0), 0);
                             return `${sum.toFixed(2)} DH`;
                           })()}
                         </p>
                       </div>
                     </div>
+                  </div>
                 </div>
-              </div>
 
-              {/* Carte Bénéfice des Produits Sélectionnés */}
-              {selectedProductIds.size > 0 && (
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-bold text-lg mb-3 flex items-center gap-2 text-green-800">
-                    <DollarSign size={20} className="text-green-600" />
-                    Bénéfice des Produits Sélectionnés
-                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                      {selectedProductIds.size} produit{selectedProductIds.size > 1 ? 's' : ''}
-                    </span>
-                  </h3>
-                  <div className="flex justify-center">
-                    <div className="bg-white rounded-lg p-4 border border-green-200 text-center">
-                      <p className="font-semibold text-gray-600 text-sm mb-2">Bénéfice Total des Produits Sélectionnés:</p>
-                      {(() => {
-                        const selectedBenefit = allProductHistory
-                          .filter((item: any) => selectedProductIds.has(String(item.id)) && !item.syntheticInitial)
-                          .reduce((sum: number, item: any) => sum + (Number(item.benefice) || 0), 0);
-                        return (
-                          <p className={`font-bold text-2xl ${selectedBenefit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {selectedBenefit.toFixed(2)} DH
-                          </p>
-                        );
-                      })()}
+                {/* Carte Bénéfice des Produits Sélectionnés */}
+                {selectedProductIds.size > 0 && (
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <h3 className="font-bold text-lg mb-3 flex items-center gap-2 text-green-800">
+                      <DollarSign size={20} className="text-green-600" />
+                      Bénéfice des Produits Sélectionnés
+                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
+                        {selectedProductIds.size} produit{selectedProductIds.size > 1 ? 's' : ''}
+                      </span>
+                    </h3>
+                    <div className="flex justify-center">
+                      <div className="bg-white rounded-lg p-4 border border-green-200 text-center">
+                        <p className="font-semibold text-gray-600 text-sm mb-2">Bénéfice Total des Produits Sélectionnés:</p>
+                        {(() => {
+                          const selectedBenefit = allProductHistory
+                            .filter((item: any) => selectedProductIds.has(String(item.id)) && !item.syntheticInitial)
+                            .reduce((sum: number, item: any) => sum + (Number(item.benefice) || 0), 0);
+                          return (
+                            <p className={`font-bold text-2xl ${selectedBenefit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {selectedBenefit.toFixed(2)} DH
+                            </p>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        onClick={() => setSelectedProductIds(new Set())}
+                        className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+                      >
+                        Effacer la sélection
+                      </button>
                     </div>
                   </div>
-                  <div className="mt-3 flex justify-end">
+                )}
+
+                {/* Filtres de date */}
+                <div className="bg-white border rounded-lg p-4 mb-6">
+                  <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
+                    <Calendar size={20} />
+                    Filtrer par période
+                    {(dateFrom || dateTo) ? (
+                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">Filtre actif</span>
+                    ) : (
+                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">Toutes les transactions</span>
+                    )}
+                  </h3>
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 items-stretch sm:items-end">
+                    <div className="w-full sm:w-auto">
+                      <label htmlFor="contact-date-from" className="block text-sm font-medium text-gray-700 mb-1">Date de début</label>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        id="contact-date-from"
+                        className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="w-full sm:w-auto">
+                      <label htmlFor="contact-date-to" className="block text-sm font-medium text-gray-700 mb-1">Date de fin</label>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        id="contact-date-to"
+                        className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
                     <button
-                      onClick={() => setSelectedProductIds(new Set())}
-                      className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+                      onClick={() => {
+                        const today = new Date();
+                        const thirtyDaysAgo = new Date(today);
+                        thirtyDaysAgo.setDate(today.getDate() - 30);
+                        setDateFrom(thirtyDaysAgo.toISOString().split('T')[0]);
+                        setDateTo(today.toISOString().split('T')[0]);
+                      }}
+                      className="w-full sm:w-auto px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors"
                     >
-                      Effacer la sélection
+                      30 derniers jours
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDateFrom('2024-01-01');
+                        setDateTo('2024-12-31');
+                      }}
+                      className="w-full sm:w-auto px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-md transition-colors"
+                    >
+                      2024
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDateFrom('2025-01-01');
+                        setDateTo('2025-12-31');
+                      }}
+                      className="w-full sm:w-auto px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-md transition-colors"
+                    >
+                      2025
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDateFrom('');
+                        setDateTo('');
+                      }}
+                      className="w-full sm:w-auto px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
+                    >
+                      Toutes les dates
                     </button>
                   </div>
                 </div>
-              )}
 
-              {/* Filtres de date */}
-              <div className="bg-white border rounded-lg p-4 mb-6">
-                <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
-                  <Calendar size={20} />
-                  Filtrer par période
-                  {(dateFrom || dateTo) ? (
-                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">Filtre actif</span>
-                  ) : (
-                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">Toutes les transactions</span>
-                  )}
-                </h3>
-                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 items-stretch sm:items-end">
-                  <div className="w-full sm:w-auto">
-                    <label htmlFor="contact-date-from" className="block text-sm font-medium text-gray-700 mb-1">Date de début</label>
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      id="contact-date-from"
-                      className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  <div className="w-full sm:w-auto">
-                    <label htmlFor="contact-date-to" className="block text-sm font-medium text-gray-700 mb-1">Date de fin</label>
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      id="contact-date-to"
-                      className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  <button
-                    onClick={() => {
-                      const today = new Date();
-                      const thirtyDaysAgo = new Date(today);
-                      thirtyDaysAgo.setDate(today.getDate() - 30);
-                      setDateFrom(thirtyDaysAgo.toISOString().split('T')[0]);
-                      setDateTo(today.toISOString().split('T')[0]);
-                    }}
-                    className="w-full sm:w-auto px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors"
-                  >
-                    30 derniers jours
-                  </button>
-                  <button
-                    onClick={() => {
-                      setDateFrom('2024-01-01');
-                      setDateTo('2024-12-31');
-                    }}
-                    className="w-full sm:w-auto px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-md transition-colors"
-                  >
-                    2024
-                  </button>
-                  <button
-                    onClick={() => {
-                      setDateFrom('2025-01-01');
-                      setDateTo('2025-12-31');
-                    }}
-                    className="w-full sm:w-auto px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-md transition-colors"
-                  >
-                    2025
-                  </button>
-                  <button
-                    onClick={() => {
-                      setDateFrom('');
-                      setDateTo('');
-                    }}
-                    className="w-full sm:w-auto px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors"
-                  >
-                    Toutes les dates
-                  </button>
+                {/* Onglet unique : Détail des Produits */}
+                <div className="border-b border-gray-200 mb-4">
+                  <nav className="flex space-x-8">
+                    <div className="py-2 px-1 font-medium border-b-2 border-blue-600 text-blue-600">
+                      Détail Produits
+                    </div>
+                    <button
+                      type="button"
+                      className="ml-4 px-3 py-1 bg-red-100 text-red-700 rounded text-xs border border-red-300 hover:bg-red-200"
+                      onClick={() => {
+                        const payments = (displayedProductHistory || []).filter((item: any) => item.type === 'paiement');
+                        console.log('Paiements pour le contact:', selectedContact, payments);
+                        alert('Paiements loggés dans la console.');
+                      }}
+                    >
+                      Debug Paiements
+                    </button>
+                  </nav>
                 </div>
-              </div>
 
-              {/* Onglet unique : Détail des Produits */}
-              <div className="border-b border-gray-200 mb-4">
-                <nav className="flex space-x-8">
-                  <div className="py-2 px-1 font-medium border-b-2 border-blue-600 text-blue-600">
-                    Détail Produits
-                  </div>
-                </nav>
-              </div>
 
-              
                 <div className="mb-8">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                     <h3 className="font-bold text-lg flex items-center gap-2">
@@ -2744,13 +2775,13 @@ const ContactsPage: React.FC = () => {
                         <div className="font-semibold">Résumé Remises</div>
                         <div className="flex gap-3 flex-wrap">
                           <span>
-                            Abonné: {contactRemises.filter(r=>r.type==='client_abonne').reduce((sum:number,r:any)=> sum + (r.items||[]).reduce((s:number,i:any)=> s + (Number(i.qte)||0)*(Number(i.prix_remise)||0),0),0).toFixed(2)} DH
+                            Abonné: {contactRemises.filter(r => r.type === 'client_abonne').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH
                           </span>
                           <span>
-                            Client: {contactRemises.filter(r=>r.type==='client-remise').reduce((sum:number,r:any)=> sum + (r.items||[]).reduce((s:number,i:any)=> s + (Number(i.qte)||0)*(Number(i.prix_remise)||0),0),0).toFixed(2)} DH
+                            Client: {contactRemises.filter(r => r.type === 'client-remise').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH
                           </span>
                           <span>
-                            Total: {contactRemises.reduce((sum:number,r:any)=> sum + (r.items||[]).reduce((s:number,i:any)=> s + (Number(i.qte)||0)*(Number(i.prix_remise)||0),0),0).toFixed(2)} DH
+                            Total: {contactRemises.reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH
                           </span>
                         </div>
                       </div>
@@ -2796,11 +2827,10 @@ const ContactsPage: React.FC = () => {
                       {selectedContact?.type === 'Client' && (
                         <button
                           onClick={() => setShowRemiseMode(!showRemiseMode)}
-                          className={`w-full sm:w-auto flex items-center gap-2 px-3 py-1 rounded-md transition-colors text-sm ${
-                            showRemiseMode 
-                              ? 'bg-green-600 text-white hover:bg-green-700' 
-                              : 'bg-orange-600 text-white hover:bg-orange-700'
-                          }`}
+                          className={`w-full sm:w-auto flex items-center gap-2 px-3 py-1 rounded-md transition-colors text-sm ${showRemiseMode
+                            ? 'bg-green-600 text-white hover:bg-green-700'
+                            : 'bg-orange-600 text-white hover:bg-orange-700'
+                            }`}
                         >
                           <Receipt size={14} />
                           {showRemiseMode ? 'Annuler Remises' : 'Appliquer Remise'}
@@ -2814,47 +2844,47 @@ const ContactsPage: React.FC = () => {
                         <Printer size={14} />
                         Imprimer
                       </button>
-      {/* Contact Print Modal (unified for transactions/products) */}
-    {printModal.open && selectedContact && (
-        <ContactPrintModal
-          isOpen={printModal.open}
-          onClose={handleClosePrintModal}
-          contact={selectedContact}
-          mode="products"
-          transactions={[]}
-          productHistory={printProducts.length > 0 ? printProducts : displayedProductHistory}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          skipInitialRow={
-            // Skip initial row if:
-            // 1. Selected products mode (specific selection)
-            // 2. OR date filtering is active (period filtering)
-            (printProducts.length > 0 && selectedProductIds.size > 0) || 
-            !!(dateFrom || dateTo)
-          }
-            hideCumulative={
-              // Hide cumulative column ONLY when:
-              // 1. User selected specific products (selectedProductIds has items)
-              // 2. OR user selected specific bons (selectedBonIds has items)
-              // Do NOT hide when only date filtering is active
-              (printProducts.length > 0 && selectedProductIds.size > 0) ||
-              (selectedBonIds && selectedBonIds.size > 0)
-            }
-            totalQty={displayedTotals.totalQty}
-            totalAmount={displayedTotals.totalAmount}
-            finalSolde={finalSoldeNet}
-        />
-      )}
+                      {/* Contact Print Modal (unified for transactions/products) */}
+                      {printModal.open && selectedContact && (
+                        <ContactPrintModal
+                          isOpen={printModal.open}
+                          onClose={handleClosePrintModal}
+                          contact={selectedContact}
+                          mode="products"
+                          transactions={[]}
+                          productHistory={printProducts.length > 0 ? printProducts : displayedProductHistory}
+                          dateFrom={dateFrom}
+                          dateTo={dateTo}
+                          skipInitialRow={
+                            // Skip initial row if:
+                            // 1. Selected products mode (specific selection)
+                            // 2. OR date filtering is active (period filtering)
+                            (printProducts.length > 0 && selectedProductIds.size > 0) ||
+                            !!(dateFrom || dateTo)
+                          }
+                          hideCumulative={
+                            // Hide cumulative column ONLY when:
+                            // 1. User selected specific products (selectedProductIds has items)
+                            // 2. OR user selected specific bons (selectedBonIds has items)
+                            // Do NOT hide when only date filtering is active
+                            (printProducts.length > 0 && selectedProductIds.size > 0) ||
+                            (selectedBonIds && selectedBonIds.size > 0)
+                          }
+                          totalQty={displayedTotals.totalQty}
+                          totalAmount={displayedTotals.totalAmount}
+                          finalSolde={finalSoldeNet}
+                        />
+                      )}
                     </div>
                   </div>
-{/* Bouton Valider Remises */}
+                  {/* Bouton Valider Remises */}
                   {showRemiseMode && selectedContact?.type === 'Client' && selectedItemsForRemise.size > 0 && (
                     <div className="mb-4 bg-orange-50 rounded-lg p-4 border border-orange-200">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                         <div>
                           <h4 className="font-bold text-orange-800 mb-2">Remises à valider</h4>
                           <p className="text-sm text-orange-700">
-                            {selectedItemsForRemise.size} article{selectedItemsForRemise.size > 1 ? 's' : ''} sélectionné{selectedItemsForRemise.size > 1 ? 's' : ''} • 
+                            {selectedItemsForRemise.size} article{selectedItemsForRemise.size > 1 ? 's' : ''} sélectionné{selectedItemsForRemise.size > 1 ? 's' : ''} •
                             Total remises: {Object.entries(remisePrices)
                               .filter(([id]) => selectedItemsForRemise.has(id))
                               .reduce((sum, [id, price]) => {
@@ -2886,312 +2916,363 @@ const ContactsPage: React.FC = () => {
                   )}
                   <div className="w-full border border-gray-200 rounded-lg relative">
                     <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 0px)', minHeight: '400px' }}>
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50 sticky top-0 z-20">
-                        <tr>
-                          <th className="px-1 ">
-                            <input
-                              type="checkbox"
-                              aria-label="Sélectionner tout"
-                              checked={displayedProductHistory.filter((i:any)=>!i.syntheticInitial).every((i:any)=>selectedProductIds.has(String(i.id))) && displayedProductHistory.filter((i:any)=>!i.syntheticInitial).length>0}
-                              onChange={(e)=>{
-                                const all = new Set<string>(selectedProductIds);
-                                const nonInitial = displayedProductHistory.filter((i:any)=>!i.syntheticInitial);
-                                if(e.target.checked){
-                                  nonInitial.forEach((i:any)=>all.add(String(i.id)));
-                                }else{
-                                  nonInitial.forEach((i:any)=>all.delete(String(i.id)));
-                                }
-                                setSelectedProductIds(all);
-                              }}
-                            />
-                          </th>
-                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</th>
-                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                            <div className="flex items-center gap-2">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50 sticky top-0 z-20">
+                          <tr>
+                            <th className="px-1 ">
                               <input
                                 type="checkbox"
-                                aria-label="Sélectionner les bons visibles"
-                                checked={(() => {
-                                  const nonInitial = Array.from(new Set((displayedProductHistory || []).filter((i:any)=>!i.syntheticInitial && i.bon_id).map((i:any)=>Number(i.bon_id))));
-                                  return nonInitial.length > 0 && nonInitial.every((id)=>selectedBonIds.has(id));
-                                })()}
+                                aria-label="Sélectionner tout"
+                                checked={displayedProductHistory.filter((i: any) => !i.syntheticInitial).every((i: any) => selectedProductIds.has(String(i.id))) && displayedProductHistory.filter((i: any) => !i.syntheticInitial).length > 0}
                                 onChange={(e) => {
-                                  const nonInitial = Array.from(new Set((displayedProductHistory || []).filter((i:any)=>!i.syntheticInitial && i.bon_id).map((i:any)=>Number(i.bon_id))));
-                                  if (e.target.checked) setSelectedBonIds(new Set(nonInitial)); else setSelectedBonIds(new Set());
+                                  const all = new Set<string>(selectedProductIds);
+                                  const nonInitial = displayedProductHistory.filter((i: any) => !i.syntheticInitial);
+                                  if (e.target.checked) {
+                                    nonInitial.forEach((i: any) => all.add(String(i.id)));
+                                  } else {
+                                    nonInitial.forEach((i: any) => all.delete(String(i.id)));
+                                  }
+                                  setSelectedProductIds(all);
                                 }}
                               />
-                              <span>Bon N°</span>
-                            </div>
-                          </th>
-                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Type</th>
-                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Référence</th>
-                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
-                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse Livraison</th>
-                          {selectedContact?.type === 'Fournisseur' && (
-                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Code Règlement</th>
-                          )}
-                          {/* Remises séparées par type */}
-                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Abonné</th>
-                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Client</th>
-                          {showRemiseMode && selectedContact?.type === 'Client' && (
-                            <>
-                              <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Prix Remise</th>
-                              <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total Remise</th>
-                            </>
-                          )}
-                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Quantité</th>
-                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Pr U'}</th>
-                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>
-                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Bénéfice</th>
-                          <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Statut</th>
-                          {/* Solde Cumulé déplacé à la fin */}
-                          <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Solde Cumulé</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {displayedProductHistory.length === 0 ? (
-                          <tr>
-                            <td colSpan={20} className="px-6  text-center text-sm text-gray-500">
-                              Aucun produit trouvé pour cette période
-                            </td>
+                            </th>
+                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</th>
+                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  aria-label="Sélectionner les bons visibles"
+                                  checked={(() => {
+                                    const nonInitial = Array.from(new Set((displayedProductHistory || []).filter((i: any) => !i.syntheticInitial && i.bon_id).map((i: any) => Number(i.bon_id))));
+                                    return nonInitial.length > 0 && nonInitial.every((id) => selectedBonIds.has(id));
+                                  })()}
+                                  onChange={(e) => {
+                                    const nonInitial = Array.from(new Set((displayedProductHistory || []).filter((i: any) => !i.syntheticInitial && i.bon_id).map((i: any) => Number(i.bon_id))));
+                                    if (e.target.checked) setSelectedBonIds(new Set(nonInitial)); else setSelectedBonIds(new Set());
+                                  }}
+                                />
+                                <span>Bon N°</span>
+                              </div>
+                            </th>
+                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Type</th>
+                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Référence</th>
+                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
+                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse Livraison</th>
+                            {selectedContact?.type === 'Fournisseur' && (
+                              <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Règlement</th>
+                            )}
+                            {/* Remises séparées par type */}
+                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Abonné</th>
+                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Client</th>
+                            {showRemiseMode && selectedContact?.type === 'Client' && (
+                              <>
+                                <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Prix Remise</th>
+                                <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total Remise</th>
+                              </>
+                            )}
+                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Quantité</th>
+                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Pr U'}</th>
+                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>
+                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Bénéfice</th>
+                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Statut</th>
+                            {/* Solde Cumulé déplacé à la fin */}
+                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Solde Cumulé</th>
                           </tr>
-                        ) : (
-                          displayedProductHistory.map((item) => (
-                            <tr key={item.id}  className={`hover:bg-gray-50 ${(item.type || '').toLowerCase() === 'paiement' ? 'bg-green-100': (item.type || '').toLowerCase() === 'avoir'? 'bg-orange-100' : ''}`}>
-                              <td className="px-2  whitespace-nowrap">
-                                {item.syntheticInitial ? (
-                                  <span className="text-xs text-gray-400">—</span>
-                                ) : (
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedProductIds.has(String(item.id))}
-                                    onChange={(e)=>{
-                                      const next = new Set<string>(selectedProductIds);
-                                      const id = String(item.id);
-                                      const bonId = Number(item.bon_id);
-                                      
-                                      if(e.target.checked) {
-                                        next.add(id);
-                                      } else {
-                                        next.delete(id);
-                                      }
-                                      
-                                      setSelectedProductIds(next);
-                                      
-                                      // Vérifier si tous les produits de ce bon sont maintenant sélectionnés
-                                      if (bonId) {
-                                        const allProductsOfBon = displayedProductHistory
-                                          .filter((p: any) => !p.syntheticInitial && Number(p.bon_id) === bonId)
-                                          .map((p: any) => String(p.id));
-                                        
-                                        const allSelected = allProductsOfBon.every(pId => 
-                                          pId === id ? e.target.checked : next.has(pId)
-                                        );
-                                        
-                                        setSelectedBonIds(prevBons => {
-                                          const nextBons = new Set(prevBons);
-                                          if (allSelected) {
-                                            nextBons.add(bonId);
-                                          } else {
-                                            nextBons.delete(bonId);
-                                          }
-                                          return nextBons;
-                                        });
-                                      }
-                                    }}
-                                  />
-                                )}
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {displayedProductHistory.length === 0 ? (
+                            <tr>
+                              <td colSpan={20} className="px-6  text-center text-sm text-gray-500">
+                                Aucun produit trouvé pour cette période
                               </td>
-                              <td className="px-6  whitespace-nowrap">
-                                <div className="text-sm text-gray-700">
-                                  {item.syntheticInitial ? '-' : (
-                                    item.bon_date_iso
-                                      ? formatDateTimeWithHour(item.bon_date_iso)
-                                      : item.bon_date
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-6  whitespace-nowrap">
-                                <div className="flex items-center gap-3">
+                            </tr>
+                          ) : (
+                            displayedProductHistory.map((item) => (
+                              <tr key={item.id} className={`hover:bg-gray-50 ${(item.type || '').toLowerCase() === 'paiement' ? 'bg-green-100' : (item.type || '').toLowerCase() === 'avoir' ? 'bg-orange-100' : ''}`}>
+                                <td className="px-2  whitespace-nowrap">
                                   {item.syntheticInitial ? (
-                                    <span className="w-4 text-xs text-gray-400">—</span>
+                                    <span className="text-xs text-gray-400">—</span>
                                   ) : (
                                     <input
                                       type="checkbox"
-                                      checked={selectedBonIds.has(Number(item.bon_id))}
-                                      onChange={() => item.bon_id && toggleBonSelection(Number(item.bon_id))}
+                                      checked={selectedProductIds.has(String(item.id))}
+                                      onChange={(e) => {
+                                        const next = new Set<string>(selectedProductIds);
+                                        const id = String(item.id);
+                                        const bonId = Number(item.bon_id);
+
+                                        if (e.target.checked) {
+                                          next.add(id);
+                                        } else {
+                                          next.delete(id);
+                                        }
+
+                                        setSelectedProductIds(next);
+
+                                        // Vérifier si tous les produits de ce bon sont maintenant sélectionnés
+                                        if (bonId) {
+                                          const allProductsOfBon = displayedProductHistory
+                                            .filter((p: any) => !p.syntheticInitial && Number(p.bon_id) === bonId)
+                                            .map((p: any) => String(p.id));
+
+                                          const allSelected = allProductsOfBon.every(pId =>
+                                            pId === id ? e.target.checked : next.has(pId)
+                                          );
+
+                                          setSelectedBonIds(prevBons => {
+                                            const nextBons = new Set(prevBons);
+                                            if (allSelected) {
+                                              nextBons.add(bonId);
+                                            } else {
+                                              nextBons.delete(bonId);
+                                            }
+                                            return nextBons;
+                                          });
+                                        }
+                                      }}
                                     />
                                   )}
-                                  <div className="text-sm font-medium text-gray-900">{item.bon_numero}</div>
-                                </div>
-                              </td>
-                              <td className="px-6  whitespace-nowrap">
-                                <span
-                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                    item.bon_type === 'Solde initial' ? 'bg-gray-200 text-gray-700' : item.bon_type === 'Paiement'
-                                      ? 'bg-green-200 text-green-700'
-                                      : item.bon_type === 'Commande'
-                                      ? 'bg-blue-200 text-blue-700'
-                                      : item.bon_type === 'Sortie'
-                                      ? 'bg-purple-200 text-purple-700'
-                                      : item.bon_type === 'Devis'
-                                      ? 'bg-yellow-200 text-yellow-700'
-                                      : 'bg-red-200 text-red-700'
-                                  }`}
-                                >
-                                  {item.bon_type}
-                                </span>
-                              </td>
-                              <td className="px-1  whitespace-nowrap">
-                                <div className="text-sm text-gray-900">{item.syntheticInitial ? '—' : item.product_reference}</div>
-                              </td>
-                              <td className="px-1 py-3 max-w-xs">
-                                <div className="text-sm text-gray-900 truncate" title={item.syntheticInitial ? 'Solde initial' : item.product_designation}>
-                                  {item.syntheticInitial ? 'Solde initial' : item.product_designation}
-                                  {item.type === 'paiement' && item.mode && (
-                                    <span className="ml-2 text-xs text-gray-500">({item.mode})</span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-1 py-3 max-w-xs">
-                                <div className="text-sm text-gray-900 truncate" title={item.syntheticInitial || item.type === 'paiement' ? '-' : (item.adresse_livraison || '-')}>
-                                  {item.syntheticInitial || item.type === 'paiement' ? '-' : (item.adresse_livraison || '-')}
-                                </div>
-                              </td>
-                              {selectedContact?.type === 'Fournisseur' && (
-                                <td className="px-1 whitespace-nowrap">
-                                  <div className="text-sm text-gray-900">{item.syntheticInitial ? '-' : (item.code_reglement || '-')}</div>
                                 </td>
-                              )}
-                              {/* Remises séparées par type */}
-                              <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
-                                {(() => {
-                                  if (item.syntheticInitial || item.type === 'paiement') return '-';
-                                  const remises = getItemRemises(item);
-                                  if (remises.abonne > 0) return `${remises.abonne.toFixed(2)} DH`;
-                                  // Montrer 0 si un match a eu lieu mais totalRemise = 0 (rare) -> on ne sait pas ici. Donc on laisse '-'
-                                  return '-';
-                                })()}
-                              </td>
-                              <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
-                                {(() => {
-                                  if (item.syntheticInitial || item.type === 'paiement') return '-';
-                                  const remises = getItemRemises(item);
-                                  const remiseFromBon = typeof item.remise_montant === 'number' && item.remise_montant > 0 ? item.remise_montant : 0;
-                                  // Addition des remises client-remise (items) + remise du bon
-                                  const totalClientRemise = remises.client + remiseFromBon;
-                                  return totalClientRemise > 0 ? `${totalClientRemise.toFixed(2)} DH` : '-';
-                                })()}
-                              </td>
-                              {showRemiseMode && selectedContact?.type === 'Client' && (
-                                <>
-                                  {/* Prix remise input */}
-                                  <td className="px-1  whitespace-nowrap text-sm text-right">
-                                    {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
-                                      <span className="text-gray-400">-</span>
+                                <td className="px-6  whitespace-nowrap">
+                                  <div className="text-sm text-gray-700">
+                                    {item.syntheticInitial ? '-' : (
+                                      item.bon_date_iso
+                                        ? formatDateTimeWithHour(item.bon_date_iso)
+                                        : item.bon_date
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6  whitespace-nowrap">
+                                  <div className="flex items-center gap-3">
+                                    {item.syntheticInitial ? (
+                                      <span className="w-4 text-xs text-gray-400">—</span>
                                     ) : (
                                       <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        placeholder="0.00"
-                                        value={remisePrices[item.id] || ''}
-                                        onChange={(e) => {
-                                          const value = parseFloat(e.target.value) || 0;
-                                          setRemisePrices(prev => ({
-                                            ...prev,
-                                            [item.id]: value
-                                          }));
-                                          if (value > 0) {
-                                            setSelectedItemsForRemise(prev => new Set(prev).add(item.id));
-                                          } else {
-                                            setSelectedItemsForRemise(prev => {
-                                              const newSet = new Set(prev);
-                                              newSet.delete(item.id);
-                                              return newSet;
-                                            });
-                                          }
-                                        }}
-                                        className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-right"
+                                        type="checkbox"
+                                        checked={selectedBonIds.has(Number(item.bon_id))}
+                                        onChange={() => item.bon_id && toggleBonSelection(Number(item.bon_id))}
                                       />
                                     )}
-                                  </td>
-                                  {/* Total remise calculé */}
-                                  <td className="px-1  whitespace-nowrap text-sm text-right">
-                                    {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
-                                      <span className="text-gray-400">-</span>
-                                    ) : (
-                                      <span className="font-medium text-green-600">
-                                        {remisePrices[item.id] ? 
-                                          `${(remisePrices[item.id] * item.quantite).toFixed(2)} DH` : 
-                                          '0.00 DH'
-                                        }
-                                      </span>
-                                    )}
-                                  </td>
-                                </>
-                              )}
-                              <td className="px-6  whitespace-nowrap text-sm text-gray-900 text-right">
-                                {item.syntheticInitial ? '-' : item.type === 'paiement' ? '-' : item.quantite}
-                              </td>
-                              <td className="px-6  whitespace-nowrap text-sm text-gray-900 text-right">
-                                {item.syntheticInitial ? '-' : (() => {
-                                  const v = selectedContact?.type === 'Fournisseur'
-                                    ? (item as any).prix_achat ?? item.prix_unitaire
-                                    : item.prix_unitaire;
-                                  return `${(typeof v === 'number' ? v : parseFloat(v) || 0).toFixed(2)} DH`;
-                                })()}
-                              </td>
-                              <td className="px-6  whitespace-nowrap text-sm text-right">
-                                <div className={`font-semibold ${item.syntheticInitial ? 'text-gray-500' : item.type === 'paiement' ? 'text-green-600' : 'text-blue-600'}`}>
-                                  {item.syntheticInitial ? '—' : item.type === 'paiement' ? '-' : '+'}
-                                  {item.syntheticInitial ? '' : `${item.total.toFixed(2)} DH`}
-                                </div>
-                              </td>
-                              <td className="px-6  whitespace-nowrap text-sm text-right">
-                                {item.syntheticInitial || item.type === 'paiement' ? (
-                                  <span className="text-gray-400">-</span>
-                                ) : (
-                                  <div className={`font-semibold ${Number(item.benefice) > 0 ? 'text-green-600' : Number(item.benefice) < 0 ? 'text-red-600' : 'text-gray-700'}`}>
-                                    {Number(item.benefice ?? 0).toFixed(2)} DH
+                                    <div className="text-sm font-medium text-gray-900">{item.bon_numero}</div>
                                   </div>
+                                </td>
+                                <td className="px-6  whitespace-nowrap">
+                                  <span
+                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${item.bon_type === 'Solde initial' ? 'bg-gray-200 text-gray-700' : item.bon_type === 'Paiement'
+                                      ? 'bg-green-200 text-green-700'
+                                      : item.bon_type === 'Commande'
+                                        ? 'bg-blue-200 text-blue-700'
+                                        : item.bon_type === 'Sortie'
+                                          ? 'bg-purple-200 text-purple-700'
+                                          : item.bon_type === 'Devis'
+                                            ? 'bg-yellow-200 text-yellow-700'
+                                            : 'bg-red-200 text-red-700'
+                                      }`}
+                                  >
+                                    {item.bon_type}
+                                  </span>
+                                </td>
+                                <td className="px-1  whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">{item.syntheticInitial ? '—' : item.product_reference}</div>
+                                </td>
+                                <td className="px-1 py-3 max-w-xs">
+                                  <div className="text-sm text-gray-900 truncate" title={item.syntheticInitial ? 'Solde initial' : item.product_designation}>
+                                    {item.syntheticInitial ? 'Solde initial' : item.product_designation}
+                                    {item.type === 'paiement' && item.mode && (
+                                      <span className="ml-2 text-xs text-gray-500">({item.mode})</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-1 py-3 max-w-xs">
+                                  <div className="text-sm text-gray-900 truncate" title={item.syntheticInitial || item.type === 'paiement' ? '-' : (item.adresse_livraison || '-')}>
+                                    {item.syntheticInitial || item.type === 'paiement' ? '-' : (item.adresse_livraison || '-')}
+                                  </div>
+                                </td>
+                                {selectedContact?.type === 'Fournisseur' && (
+                                  <td className="px-1 whitespace-nowrap">
+                                    <div className="text-sm text-gray-900">
+                                      {(() => {
+                                        if (item.syntheticInitial) return '-';
+
+                                        // Payment rows: prefer explicit fields, then try to infer from designation
+                                        if (item.type === 'paiement') {
+                                          // First try any explicit code_reglement on the item
+                                          if (item.code_reglement) return item.code_reglement;
+
+                                          // Try to find a matching payment from Redux by several keys and prefer code_reglement
+                                          const lookupKeys = [item.id, item.bon_id, item.bon_numero, item.reference].map((k: any) => k != null ? String(k) : '');
+                                          for (const k of lookupKeys) {
+                                            if (!k) continue;
+                                            const p = paymentsMap.get(k);
+                                            if (p) {
+                                              if (p.code_reglement) return p.code_reglement;
+                                              if (p.mode_paiement) return p.mode_paiement;
+                                              if (p.mode) return p.mode;
+                                              const pdp = p.product_designation || p.product?.designation || '';
+                                              if (pdp) {
+                                                const m2 = String(pdp).match(/^Paiement[:\s-]*(.+)$/i);
+                                                if (m2 && m2[1]) return m2[1].trim();
+                                                return String(pdp).trim();
+                                              }
+                                            }
+                                          }
+
+                                          // Then try fields that may exist directly on the item
+                                          if (item.mode_paiement) return item.mode_paiement;
+                                          if (item.mode) return item.mode;
+
+                                          // Fallback to item designation if present
+                                          const pd = (item.product_designation || item.product?.designation || '') + '';
+                                          if (pd) {
+                                            const m = pd.match(/^Paiement[:\s-]*(.+)$/i);
+                                            if (m && m[1]) return m[1].trim();
+                                            return pd.trim();
+                                          }
+
+                                          // Nothing available -> log for debugging and show visible warning
+                                          console.debug('Payment item missing reglement/mode/code_reglement:', item);
+                                          return <span style={{ color: 'red', fontWeight: 'bold' }}>pas trouver non cheque</span>;
+                                        }
+
+                                        // Non-payment rows: try all possible sources for reglement value
+                                        const val = item.code_reglement
+                                          || item.bon_code_reglement
+                                          || item.reglement
+                                          || (item.bon && item.bon.code_reglement)
+                                          || (item.product && item.product.code_reglement)
+                                          || (item.product && item.product.reglement)
+                                          || '-';
+                                        return val;
+                                      })()}
+                                    </div>
+                                  </td>
                                 )}
-                              </td>
-                              <td className="px-6  whitespace-nowrap">
-                                <span
-                                  className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                    item.syntheticInitial ? 'bg-gray-200 text-gray-700' : item.bon_statut === 'Validé' || item.bon_statut === 'Payé'
+                                {/* Remises séparées par type */}
+                                <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
+                                  {(() => {
+                                    if (item.syntheticInitial || item.type === 'paiement') return '-';
+                                    const remises = getItemRemises(item);
+                                    if (remises.abonne > 0) return `${remises.abonne.toFixed(2)} DH`;
+                                    // Montrer 0 si un match a eu lieu mais totalRemise = 0 (rare) -> on ne sait pas ici. Donc on laisse '-'
+                                    return '-';
+                                  })()}
+                                </td>
+                                <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
+                                  {(() => {
+                                    if (item.syntheticInitial || item.type === 'paiement') return '-';
+                                    const remises = getItemRemises(item);
+                                    const remiseFromBon = typeof item.remise_montant === 'number' && item.remise_montant > 0 ? item.remise_montant : 0;
+                                    // Addition des remises client-remise (items) + remise du bon
+                                    const totalClientRemise = remises.client + remiseFromBon;
+                                    return totalClientRemise > 0 ? `${totalClientRemise.toFixed(2)} DH` : '-';
+                                  })()}
+                                </td>
+                                {showRemiseMode && selectedContact?.type === 'Client' && (
+                                  <>
+                                    {/* Prix remise input */}
+                                    <td className="px-1  whitespace-nowrap text-sm text-right">
+                                      {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
+                                        <span className="text-gray-400">-</span>
+                                      ) : (
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          placeholder="0.00"
+                                          value={remisePrices[item.id] || ''}
+                                          onChange={(e) => {
+                                            const value = parseFloat(e.target.value) || 0;
+                                            setRemisePrices(prev => ({
+                                              ...prev,
+                                              [item.id]: value
+                                            }));
+                                            if (value > 0) {
+                                              setSelectedItemsForRemise(prev => new Set(prev).add(item.id));
+                                            } else {
+                                              setSelectedItemsForRemise(prev => {
+                                                const newSet = new Set(prev);
+                                                newSet.delete(item.id);
+                                                return newSet;
+                                              });
+                                            }
+                                          }}
+                                          className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-right"
+                                        />
+                                      )}
+                                    </td>
+                                    {/* Total remise calculé */}
+                                    <td className="px-1  whitespace-nowrap text-sm text-right">
+                                      {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
+                                        <span className="text-gray-400">-</span>
+                                      ) : (
+                                        <span className="font-medium text-green-600">
+                                          {remisePrices[item.id] ?
+                                            `${(remisePrices[item.id] * item.quantite).toFixed(2)} DH` :
+                                            '0.00 DH'
+                                          }
+                                        </span>
+                                      )}
+                                    </td>
+                                  </>
+                                )}
+                                <td className="px-6  whitespace-nowrap text-sm text-gray-900 text-right">
+                                  {item.syntheticInitial ? '-' : item.type === 'paiement' ? '-' : item.quantite}
+                                </td>
+                                <td className="px-6  whitespace-nowrap text-sm text-gray-900 text-right">
+                                  {item.syntheticInitial ? '-' : (() => {
+                                    const v = selectedContact?.type === 'Fournisseur'
+                                      ? (item as any).prix_achat ?? item.prix_unitaire
+                                      : item.prix_unitaire;
+                                    return `${(typeof v === 'number' ? v : parseFloat(v) || 0).toFixed(2)} DH`;
+                                  })()}
+                                </td>
+                                <td className="px-6  whitespace-nowrap text-sm text-right">
+                                  <div className={`font-semibold ${item.syntheticInitial ? 'text-gray-500' : item.type === 'paiement' ? 'text-green-600' : 'text-blue-600'}`}>
+                                    {item.syntheticInitial ? '—' : item.type === 'paiement' ? '-' : '+'}
+                                    {item.syntheticInitial ? '' : `${item.total.toFixed(2)} DH`}
+                                  </div>
+                                </td>
+                                <td className="px-6  whitespace-nowrap text-sm text-right">
+                                  {item.syntheticInitial || item.type === 'paiement' ? (
+                                    <span className="text-gray-400">-</span>
+                                  ) : (
+                                    <div className={`font-semibold ${Number(item.benefice) > 0 ? 'text-green-600' : Number(item.benefice) < 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                                      {Number(item.benefice ?? 0).toFixed(2)} DH
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-6  whitespace-nowrap">
+                                  <span
+                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${item.syntheticInitial ? 'bg-gray-200 text-gray-700' : item.bon_statut === 'Validé' || item.bon_statut === 'Payé'
                                       ? 'bg-green-200 text-green-700'
                                       : item.bon_statut === 'En cours'
-                                      ? 'bg-yellow-200 text-yellow-700'
-                                      : item.bon_statut === 'Livré'
-                                      ? 'bg-blue-200 text-blue-700'
-                                      : 'bg-gray-200 text-gray-700'
-                                  }`}
-                                >
-                                  {item.syntheticInitial ? '-' : item.bon_statut}
-                                </span>
-                              </td>
-                              {/* Solde Cumulé colonne finale */}
-                              <td className="px-6  whitespace-nowrap text-right">
-                                <div
-                                  className={`text-sm font-bold ${
-                                    item.soldeCumulatif > 0
+                                        ? 'bg-yellow-200 text-yellow-700'
+                                        : item.bon_statut === 'Livré'
+                                          ? 'bg-blue-200 text-blue-700'
+                                          : 'bg-gray-200 text-gray-700'
+                                      }`}
+                                  >
+                                    {item.syntheticInitial ? '-' : item.bon_statut}
+                                  </span>
+                                </td>
+                                {/* Solde Cumulé colonne finale */}
+                                <td className="px-6  whitespace-nowrap text-right">
+                                  <div
+                                    className={`text-sm font-bold ${item.soldeCumulatif > 0
                                       ? 'text-green-600'
                                       : item.soldeCumulatif < 0
-                                      ? 'text-red-600'
-                                      : 'text-gray-600'
-                                  }`}
-                                >
-                                  {Number(item.soldeCumulatif ?? 0).toFixed(2)} DH
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                                        ? 'text-red-600'
+                                        : 'text-gray-600'
+                                      }`}
+                                  >
+                                    {Number(item.soldeCumulatif ?? 0).toFixed(2)} DH
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
@@ -3202,8 +3283,8 @@ const ContactsPage: React.FC = () => {
                         <h4 className="font-bold text-lg mb-3">Résumé par Produit</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {Object.entries(
-                searchedProductHistory
-                  .filter((i: any) => i.type === 'produit')
+                            searchedProductHistory
+                              .filter((i: any) => i.type === 'produit')
                               .reduce((acc: any, i: any) => {
                                 if (!acc[i.product_reference]) {
                                   acc[i.product_reference] = { designation: i.product_designation, totalQuantite: 0, totalMontant: 0, nombreBons: 0 };
@@ -3285,15 +3366,16 @@ const ContactsPage: React.FC = () => {
                     </>
                   )}
 
-                  
-                </div>
-              
 
+                </div>
+
+
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };
 

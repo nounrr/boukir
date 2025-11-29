@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import logo from "./logo.png";
 import logo1 from "./logo1.png";
 import logoPlaceholder from "./logo-placeholder.svg";
@@ -10,20 +10,8 @@ interface CompanyHeaderProps {
 const CompanyHeader: React.FC<CompanyHeaderProps> = ({ 
   companyType = 'DIAMOND' 
 }) => {
-  const [logoSrc, setLogoSrc] = useState<string | null>(null);
+  const logoCurrent = companyType === 'MPC' ? logo1 : logo;
 
-  // Essayer de charger le logo avec différentes méthodes
-  useEffect(() => {
-    // Try loading logo, fallback to placeholder
-    const img = new window.Image();
-    img.onload = () => setLogoSrc(companyType === 'MPC' ? logo1 : logo);
-    img.onerror = () => {
-      console.warn('Logo not found, using placeholder');
-      setLogoSrc(logoPlaceholder);
-    };
-    img.src = companyType === 'MPC' ? logo1 : logo;
-  }, [companyType]);
-  const logoCurrent = logoSrc || logoPlaceholder;
   // Définir les informations selon le type de société
   const companyInfo = {
     DIAMOND: {
@@ -36,6 +24,7 @@ const CompanyHeader: React.FC<CompanyHeaderProps> = ({
     },
     MPC: {
       name: 'MPC BOUKIR',
+      subtitle: '',
       description: 'Vente de Matériaux de Construction céramique, et de Marbre',
       phones: "GSM: 0650812894 - Tél: 0666216657",
       adresse: 'ALot Awatif N°179 - TANGER',
@@ -52,6 +41,7 @@ const CompanyHeader: React.FC<CompanyHeaderProps> = ({
             
             <img 
             src={logoCurrent}
+            onError={(e) => { e.currentTarget.src = logoPlaceholder; }}
               alt={`Logo ${currentCompany.name}`} 
               className="logo-large object-contain"
             />
