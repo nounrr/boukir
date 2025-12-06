@@ -23,11 +23,11 @@ const productsApi = api.injectEndpoints({
       invalidatesTags: ['Product'],
     }),
 
-    updateProduct: builder.mutation<Product, Partial<Product> & { id: number; updated_by: number }>({
-      query: ({ id, ...patch }) => ({
+    updateProduct: builder.mutation<Product, { id: number; data: FormData | (Partial<Product> & { updated_by: number }) }>({
+      query: ({ id, data }) => ({
         url: `/products/${id}`,
         method: 'PUT',
-        body: patch,
+        body: data,
       }),
       invalidatesTags: (_result, _error, { id }) => [{ type: 'Product', id }, 'Product'],
     }),
