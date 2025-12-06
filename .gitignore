@@ -41,3 +41,4 @@ backend/.env
 .env
 .env.*
 *.env
+whtsp-service
