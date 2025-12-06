@@ -86,6 +86,7 @@ app.use((req, res, next) => {
 
 app.use(morgan('dev'));
 // Static serving for uploaded files (images, etc.)
+// Serve uploads from backend/uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/api/health', (_req, res) => {

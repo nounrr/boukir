@@ -2268,6 +2268,19 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         setFieldValue(`items.${index}.designation`, product.designation || '');
                                         setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
                                         setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
+                                        // Charger les anciens pourcentages du produit par défaut
+                                        setFieldValue(
+                                          `items.${index}.cout_revient_pourcentage`,
+                                          product.cout_revient_pourcentage ?? 0
+                                        );
+                                        setFieldValue(
+                                          `items.${index}.prix_gros_pourcentage`,
+                                          product.prix_gros_pourcentage ?? 0
+                                        );
+                                        setFieldValue(
+                                          `items.${index}.prix_vente_pourcentage`,
+                                          product.prix_vente_pourcentage ?? 0
+                                        );
                                         const unit = product.prix_vente || 0;
                                         const pa = product.prix_achat || 0;
                                         setFieldValue(`items.${index}.prix_unitaire`, unit);

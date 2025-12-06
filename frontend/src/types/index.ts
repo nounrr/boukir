@@ -98,6 +98,10 @@ export interface Product {
   prix_vente_pourcentage: number;
   prix_vente: number;
   est_service: boolean;
+  image_url?: string | null;
+  ecom_published?: boolean;
+  stock_partage_ecom?: boolean;
+  stock_partage_ecom_qty?: number;
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -114,6 +118,9 @@ export interface CreateProductData {
   prix_gros_pourcentage?: number;
   prix_vente_pourcentage?: number;
   est_service?: boolean;
+  ecom_published?: boolean;
+  stock_partage_ecom?: boolean;
+  stock_partage_ecom_qty?: number;
 }
 
 // Types pour les contacts
