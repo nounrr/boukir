@@ -1,26 +1,91 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const router = Router();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Ensure soft-delete column exists
-let ensuredProductsSoftDelete = false;
-async function ensureProductsSoftDeleteColumn() {
-  if (ensuredProductsSoftDelete) return;
-  const [cols] = await pool.query(
+// Configure Multer for product images
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    console.log('Multer destination called for file:', file.originalname);
+    // Save to backend/uploads/products
+    const dir = path.join(__dirname, '..', 'uploads', 'products');
+    console.log('Target directory:', dir);
+    if (!fs.existsSync(dir)) {
+      console.log('Creating directory...');
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ storage: storage });
+
+// Ensure soft-delete and image_url columns exist
+let ensuredProductsColumns = false;
+async function ensureProductsColumns() {
+  if (ensuredProductsColumns) return;
+  
+  // Check is_deleted
+  const [colsDeleted] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'is_deleted'`
   );
-  if (!cols.length) {
+  if (!colsDeleted.length) {
     await pool.query(`ALTER TABLE products ADD COLUMN is_deleted TINYINT(1) NOT NULL DEFAULT 0 AFTER est_service`);
   }
-  ensuredProductsSoftDelete = true;
+
+  // Check image_url
+  const [colsImage] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'image_url'`
+  );
+  if (!colsImage.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN image_url VARCHAR(255) DEFAULT NULL`);
+  }
+
+  // Check ecom_published
+  const [colsEcomPublished] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'ecom_published'`
+  );
+  if (!colsEcomPublished.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN ecom_published TINYINT(1) NOT NULL DEFAULT 0`);
+  }
+
+  // Check stock_partage_ecom
+  const [colsStockPartage] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'stock_partage_ecom'`
+  );
+  if (!colsStockPartage.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN stock_partage_ecom TINYINT(1) NOT NULL DEFAULT 0`);
+  }
+
+  // Check stock_partage_ecom_qty
+  const [colsStockPartageQty] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'stock_partage_ecom_qty'`
+  );
+  if (!colsStockPartageQty.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN stock_partage_ecom_qty INT NOT NULL DEFAULT 0`);
+  }
+
+  ensuredProductsColumns = true;
 }
-ensureProductsSoftDeleteColumn().catch((e) => console.error('ensureProductsSoftDeleteColumn:', e));
+ensureProductsColumns().catch((e) => console.error('ensureProductsColumns:', e));
 
 router.get('/', async (_req, res, next) => {
   try {
-    await ensureProductsSoftDeleteColumn();
+    await ensureProductsColumns();
     const [rows] = await pool.query(`
       SELECT p.*, c.id as c_id, c.nom as c_nom, c.description as c_description
       FROM products p
@@ -45,6 +110,10 @@ router.get('/', async (_req, res, next) => {
       prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
       prix_vente: Number(r.prix_vente),
       est_service: !!r.est_service,
+      image_url: r.image_url,
+      ecom_published: !!r.ecom_published,
+      stock_partage_ecom: !!r.stock_partage_ecom,
+      stock_partage_ecom_qty: Number(r.stock_partage_ecom_qty ?? 0),
       created_by: r.created_by,
       updated_by: r.updated_by,
       created_at: r.created_at,
@@ -57,7 +126,7 @@ router.get('/', async (_req, res, next) => {
 // List soft-deleted products
 router.get('/archived/list', async (_req, res, next) => {
   try {
-    await ensureProductsSoftDeleteColumn();
+    await ensureProductsColumns();
     const [rows] = await pool.query(
       `SELECT p.*, c.id as c_id, c.nom as c_nom
        FROM products p
@@ -79,7 +148,7 @@ router.get('/archived/list', async (_req, res, next) => {
 // Restore a soft-deleted product
 router.post('/:id/restore', async (req, res, next) => {
   try {
-    await ensureProductsSoftDeleteColumn();
+    await ensureProductsColumns();
     const id = Number(req.params.id);
     const now = new Date();
     const [exists] = await pool.query('SELECT id FROM products WHERE id = ? AND COALESCE(is_deleted,0) = 1', [id]);
@@ -93,7 +162,7 @@ router.post('/:id/restore', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    await ensureProductsSoftDeleteColumn();
+    await ensureProductsColumns();
     const id = Number(req.params.id);
     const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
     const r = rows[0];
@@ -113,6 +182,8 @@ router.get('/:id', async (req, res, next) => {
       prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
       prix_vente: Number(r.prix_vente),
       est_service: !!r.est_service,
+      ecom_published: !!r.ecom_published,
+      stock_partage_ecom: !!r.stock_partage_ecom,
       created_by: r.created_by,
       updated_by: r.updated_by,
       created_at: r.created_at,
@@ -121,9 +192,16 @@ router.get('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', (req, res, next) => {
+  console.log('POST /products hit');
+  console.log('Content-Type:', req.headers['content-type']);
+  next();
+}, upload.single('image'), async (req, res, next) => {
   try {
-  await ensureProductsSoftDeleteColumn();
+    console.log('Inside POST /products handler');
+    console.log('req.file:', req.file);
+    console.log('req.body:', req.body);
+  await ensureProductsColumns();
     const {
       designation,
       categorie_id,
@@ -134,8 +212,13 @@ router.post('/', async (req, res, next) => {
       prix_gros_pourcentage,
       prix_vente_pourcentage,
       est_service,
+      ecom_published,
+      stock_partage_ecom,
       created_by,
     } = req.body;
+
+    const image_url = req.file ? `/uploads/products/${req.file.filename}` : null;
+    console.log('image_url:', image_url);
 
     // Ensure we have a category: use provided one, else first category or create a default
     let catId = Number(categorie_id);
@@ -157,6 +240,11 @@ router.post('/', async (req, res, next) => {
     const crp = Number(cout_revient_pourcentage ?? 0);
     const pgp = Number(prix_gros_pourcentage ?? 0);
     const pvp = Number(prix_vente_pourcentage ?? 0);
+    const totalQuantite = Number(est_service ? 0 : (quantite ?? 0));
+    const shareQty = Number(req.body?.stock_partage_ecom_qty ?? 0);
+    if (shareQty > totalQuantite) {
+      return res.status(400).json({ message: 'La quantité partagée ne peut pas dépasser la quantité totale' });
+    }
 
   // Align with frontend display: prix = prix_achat * (1 + pourcentage/100)
   const cr = pa * (1 + crp / 100);
@@ -166,12 +254,12 @@ router.post('/', async (req, res, next) => {
     const now = new Date();
     const [result] = await pool.query(
   `INSERT INTO products
-   (designation, categorie_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, est_service, created_by, created_at, updated_at)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (designation, categorie_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, est_service, image_url, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         (designation && String(designation).trim()) || 'Sans désignation',
         catId,
-        Number(est_service ? 0 : (quantite ?? 0)),
+        totalQuantite,
         kg !== undefined && kg !== null ? Number(kg) : null,
         pa,
         crp,
@@ -181,6 +269,10 @@ router.post('/', async (req, res, next) => {
         pvp,
         pv,
         est_service ? 1 : 0,
+        image_url,
+        ecom_published ? 1 : 0,
+        stock_partage_ecom ? 1 : 0,
+          Number(req.body?.stock_partage_ecom_qty ?? 0),
         created_by ?? null,
         now,
         now,
@@ -190,12 +282,15 @@ router.post('/', async (req, res, next) => {
     const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
     const r = rows[0];
     res.status(201).json({ ...r, reference: String(r.id) });
-  } catch (err) { next(err); }
+  } catch (err) { 
+    console.error('Error in POST /products:', err);
+    next(err); 
+  }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', upload.single('image'), async (req, res, next) => {
   try {
-  await ensureProductsSoftDeleteColumn();
+  await ensureProductsColumns();
     const id = Number(req.params.id);
     const [exists] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
     if (exists.length === 0) return res.status(404).json({ message: 'Produit introuvable' });
@@ -214,8 +309,25 @@ router.put('/:id', async (req, res, next) => {
       prix_gros_pourcentage,
       prix_vente_pourcentage,
       est_service,
+      ecom_published,
+      stock_partage_ecom,
+      stock_partage_ecom_qty,
       updated_by,
     } = req.body;
+    // Validate shared qty does not exceed total quantity after changes
+    const existing = exists[0];
+    let targetQuantite = quantite !== undefined ? Number(quantite) : Number(existing.quantite);
+    if (est_service !== undefined && (est_service === true || est_service === '1')) {
+      targetQuantite = 0;
+    }
+    if (stock_partage_ecom_qty !== undefined) {
+      const v = Number(stock_partage_ecom_qty) || 0;
+      if (v > targetQuantite) {
+        return res.status(400).json({ message: 'La quantité partagée ne peut pas dépasser la quantité totale' });
+      }
+    }
+
+    const image_url = req.file ? `/uploads/products/${req.file.filename}` : null;
 
     if (designation !== undefined) { fields.push('designation = ?'); values.push(designation ? designation.trim() : null); }
     if (categorie_id !== undefined) { fields.push('categorie_id = ?'); values.push(categorie_id); }
@@ -225,6 +337,10 @@ router.put('/:id', async (req, res, next) => {
     if (cout_revient_pourcentage !== undefined) { fields.push('cout_revient_pourcentage = ?'); values.push(Number(cout_revient_pourcentage)); }
     if (prix_gros_pourcentage !== undefined) { fields.push('prix_gros_pourcentage = ?'); values.push(Number(prix_gros_pourcentage)); }
     if (prix_vente_pourcentage !== undefined) { fields.push('prix_vente_pourcentage = ?'); values.push(Number(prix_vente_pourcentage)); }
+    if (image_url) { fields.push('image_url = ?'); values.push(image_url); }
+    if (ecom_published !== undefined) { fields.push('ecom_published = ?'); values.push(ecom_published === 'true' || ecom_published === true || ecom_published === '1' ? 1 : 0); }
+    if (stock_partage_ecom !== undefined) { fields.push('stock_partage_ecom = ?'); values.push(stock_partage_ecom === 'true' || stock_partage_ecom === true || stock_partage_ecom === '1' ? 1 : 0); }
+    if (stock_partage_ecom_qty !== undefined) { fields.push('stock_partage_ecom_qty = ?'); values.push(Number(stock_partage_ecom_qty) || 0); }
 
     // Recalculate derived prices if inputs provided
     if (prix_achat !== undefined || cout_revient_pourcentage !== undefined) {
@@ -259,7 +375,7 @@ router.put('/:id', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-  await ensureProductsSoftDeleteColumn();
+  await ensureProductsColumns();
   const id = Number(req.params.id);
   const now = new Date();
   await pool.query('UPDATE products SET is_deleted = 1, updated_at = ? WHERE id = ?', [now, id]);
