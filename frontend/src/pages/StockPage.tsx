@@ -223,6 +223,7 @@ const StockPage: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
@@ -238,6 +239,15 @@ const StockPage: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedProducts.map((product: Product) => (
                 <tr key={product.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {product.image_url ? (
+                      <img src={product.image_url} alt={product.designation} className="h-10 w-10 object-cover rounded" />
+                    ) : (
+                      <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
+                        <Package size={20} />
+                      </div>
+                    )}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{product.reference ?? product.id}</div>
                   </td>

@@ -7,6 +7,15 @@ import { useCreateProductMutation, useUpdateProductMutation } from '../store/api
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { showSuccess } from '../utils/notifications';
 
+// Helper to parse numbers with either ',' or '.'
+const toNum = (v: any) => {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const s = String(v).replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+};
+
 // Schema de validation (tous champs optionnels, qte >= 0)
 const validationSchema = Yup.object({
   designation: Yup.string().optional(),
@@ -18,6 +27,22 @@ const validationSchema = Yup.object({
   prix_gros_pourcentage: Yup.number().min(0, 'Le pourcentage ne peut pas être négatif').optional(),
   prix_vente_pourcentage: Yup.number().min(0, 'Le pourcentage ne peut pas être négatif').optional(),
   est_service: Yup.boolean(),
+  ecom_published: Yup.boolean().optional(),
+  stock_partage_ecom: Yup.boolean().optional(),
+  stock_partage_ecom_qty: Yup.number()
+    .optional()
+    .test(
+      'not-greater-than-quantite',
+      'La quantité partagée ne peut pas dépasser la quantité totale',
+      function (value) {
+        const parent: any = this.parent || {};
+        const shouldValidate = !!(parent.stock_partage_ecom || parent.ecom_published);
+        if (!shouldValidate) return true; // only enforce when share/publish active
+        const qte = !!parent.est_service ? 0 : toNum(parent.quantite);
+        const v = Number(value || 0);
+        return v <= qte;
+      }
+    ),
 });
 
 interface ProductFormModalProps {
@@ -38,10 +63,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const { data: categories = [] } = useGetCategoriesQuery();
   const [createProduct] = useCreateProductMutation();
   const [updateProductMutation] = useUpdateProductMutation();
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  // Helper to parse numbers with either ',' or '.'
-  const toNum = (v: any) =>
-    typeof v === 'string' ? (parseFloat(String(v).replace(',', '.')) || 0) : (Number(v) || 0);
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      setSelectedFile(event.target.files[0]);
+    }
+  };
 
   // Helpers spécifiques à la saisie
   const normalizeDecimal = (s: string) => s.replace(/\s+/g, '').replace(',', '.');
@@ -86,6 +114,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     prix_gros_pourcentage: 10,
     prix_vente_pourcentage: 25,
     est_service: false,
+    ecom_published: false,
+    stock_partage_ecom: false,
+    stock_partage_ecom_qty: 0,
     created_by: 1, // À adapter selon le système d'authentification
   };
 
@@ -101,6 +132,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           prix_gros_pourcentage: editingProduct.prix_gros_pourcentage || 10,
           prix_vente_pourcentage: editingProduct.prix_vente_pourcentage || 25,
           est_service: editingProduct.est_service || false,
+          ecom_published: editingProduct.ecom_published || false,
+          stock_partage_ecom: editingProduct.stock_partage_ecom || false,
+          stock_partage_ecom_qty: (editingProduct as any).stock_partage_ecom_qty ?? 0,
         }
       : initialValues,
     enableReinitialize: true,
@@ -108,6 +142,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     onSubmit: async (values) => {
       console.log('ProductFormModal submit handler called', { values });
       console.debug('Current formik errors before submit:', formik.errors);
+      // Hard guard: prevent submission if shared qty exceeds total (even if button is force-enabled)
+      const totalQtyGuard = values.est_service ? 0 : toNum(values.quantite);
+      const shareQtyGuard = toNum(values.stock_partage_ecom_qty);
+      const mustValidateGuard = !!(values.stock_partage_ecom || values.ecom_published);
+      if (mustValidateGuard && shareQtyGuard > totalQtyGuard) {
+        formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
+        return;
+      }
       const prixAchatNum = toNum(values.prix_achat);
       const kgNum = values.kg !== undefined && values.kg !== null ? toNum(values.kg) : null;
       const crPctNum = toNum(values.cout_revient_pourcentage);
@@ -129,33 +171,58 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         prix_vente_pourcentage: pvPctNum,
         quantite: qteNum,
         categorie_id: Number(values.categorie_id || 0),
+        ecom_published: values.ecom_published,
+        stock_partage_ecom: values.stock_partage_ecom,
+        stock_partage_ecom_qty: values.stock_partage_ecom_qty ?? 0,
       };
 
       try {
         if (editingProduct) {
-          const payload = { id: editingProduct.id, updated_by: 1, ...productData } as Partial<Product> & {
-            id: number;
-            updated_by: number;
-          };
-          console.debug('Updating product payload:', payload);
-          const res = await updateProductMutation(payload).unwrap();
+          const formData = new FormData();
+          formData.append('designation', productData.designation || '');
+          formData.append('categorie_id', String(productData.categorie_id || 0));
+          formData.append('quantite', String(qteNum));
+          if (kgNum !== null && kgNum !== undefined) formData.append('kg', String(kgNum));
+          formData.append('prix_achat', String(prixAchatNum));
+          formData.append('cout_revient_pourcentage', String(crPctNum));
+          formData.append('prix_gros_pourcentage', String(pgPctNum));
+          formData.append('prix_vente_pourcentage', String(pvPctNum));
+          formData.append('est_service', productData.est_service ? '1' : '0');
+          formData.append('ecom_published', productData.ecom_published ? '1' : '0');
+          formData.append('stock_partage_ecom', productData.stock_partage_ecom ? '1' : '0');
+          formData.append('stock_partage_ecom_qty', String(productData.stock_partage_ecom_qty ?? 0));
+          formData.append('updated_by', '1');
+          
+          if (selectedFile) {
+            formData.append('image', selectedFile);
+          }
+
+          const res = await updateProductMutation({ id: editingProduct.id, data: formData } as any).unwrap();
+
           showSuccess('Produit mis à jour avec succès !');
           if (onProductUpdated) onProductUpdated(res);
         } else {
-          const payload = {
-            designation: productData.designation || undefined,
-            categorie_id: productData.categorie_id ?? undefined,
-            quantite: productData.quantite ?? undefined,
-            kg: productData.kg ?? undefined,
-            prix_achat: productData.prix_achat ?? undefined,
-            cout_revient_pourcentage: productData.cout_revient_pourcentage ?? undefined,
-            prix_gros_pourcentage: productData.prix_gros_pourcentage ?? undefined,
-            prix_vente_pourcentage: productData.prix_vente_pourcentage ?? undefined,
-            est_service: !!productData.est_service,
-            created_by: 1,
-          } as any;
-          console.debug('Creating product payload:', payload);
-          const res = await createProduct(payload).unwrap();
+          const formData = new FormData();
+          formData.append('designation', productData.designation || '');
+          formData.append('categorie_id', String(productData.categorie_id || 0));
+          formData.append('quantite', String(qteNum));
+          if (kgNum !== null && kgNum !== undefined) formData.append('kg', String(kgNum));
+          formData.append('prix_achat', String(prixAchatNum));
+          formData.append('cout_revient_pourcentage', String(crPctNum));
+          formData.append('prix_gros_pourcentage', String(pgPctNum));
+          formData.append('prix_vente_pourcentage', String(pvPctNum));
+          formData.append('est_service', productData.est_service ? '1' : '0');
+          formData.append('ecom_published', productData.ecom_published ? '1' : '0');
+          formData.append('stock_partage_ecom', productData.stock_partage_ecom ? '1' : '0');
+          formData.append('stock_partage_ecom_qty', String(productData.stock_partage_ecom_qty ?? 0));
+          formData.append('created_by', '1');
+          
+          if (selectedFile) {
+            formData.append('image', selectedFile);
+          }
+
+          console.debug('Creating product payload (FormData)');
+          const res = await createProduct(formData as any).unwrap();
           showSuccess('Produit ajouté avec succès !');
           if (onProductAdded) {
             const created: any = {
@@ -169,6 +236,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               prix_gros: res?.prix_gros ?? computed.prix_gros ?? 0,
               prix_vente: res?.prix_vente ?? computed.prix_vente ?? 0,
               reference: res?.reference ?? String(res?.id ?? ''),
+              ecom_published: res?.ecom_published ?? productData.ecom_published ?? false,
+              stock_partage_ecom: res?.stock_partage_ecom ?? productData.stock_partage_ecom ?? false,
             };
             onProductAdded(created);
           }
@@ -181,6 +250,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
       onClose();
       formik.resetForm();
+      setSelectedFile(null);
     },
   });
 
@@ -279,8 +349,28 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 pattern="[0-9]*[.,]?[0-9]*"
                 name="quantite"
                 value={String(formik.values.quantite ?? '')}
-                onChange={(e) => formik.setFieldValue('quantite', e.target.value)}
-                onBlur={() => formik.setFieldValue('quantite', toNum(formik.values.quantite))}
+                onChange={(e) => {
+                  formik.setFieldValue('quantite', e.target.value);
+                  // Revalider la quantité partagée quand la quantité totale change
+                  const newTotalQty = toNum(e.target.value);
+                  const shareQty = toNum(formik.values.stock_partage_ecom_qty);
+                  if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > newTotalQty) {
+                    formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
+                  } else {
+                    formik.setFieldError('stock_partage_ecom_qty', undefined);
+                  }
+                }}
+                onBlur={() => {
+                  formik.setFieldValue('quantite', toNum(formik.values.quantite));
+                  // Revalider après blur aussi
+                  const totalQty = toNum(formik.values.quantite);
+                  const shareQty = toNum(formik.values.stock_partage_ecom_qty);
+                  if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
+                    formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
+                  } else {
+                    formik.setFieldError('stock_partage_ecom_qty', undefined);
+                  }
+                }}
                 disabled={formik.values.est_service}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
                 placeholder="0"
@@ -319,6 +409,20 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               )}
             </div>
 
+            {/* Image du produit */}
+            <div>
+              <label htmlFor="image" className="block text-sm font-medium text-gray-700 mb-1">
+                Image du produit
+              </label>
+              <input
+                id="image"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
             {/* Prix d'achat (optionnel) */}
             <div className="">
               <label htmlFor="prix_achat" className="block text-sm font-medium text-gray-700 mb-1">
@@ -342,19 +446,110 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </div>
 
             {/* Service Checkbox */}
-            <div className="md:col-span-2">
-              <label className="flex items-center space-x-2">
+            <div className="flex flex-col gap-3 mt-4">
+              <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   name="est_service"
                   checked={formik.values.est_service}
-                  onChange={formik.handleChange}
+                  onChange={(e) => {
+                    formik.handleChange(e);
+                    // Si c'est un service, la quantité devient 0, donc revalider
+                    const isService = e.target.checked;
+                    const shareQty = toNum(formik.values.stock_partage_ecom_qty);
+                    if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && isService && shareQty > 0) {
+                      formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
+                    } else if (!isService) {
+                      // Revalider avec la quantité actuelle si on décoche service
+                      const totalQty = toNum(formik.values.quantite ?? 0);
+                      if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
+                        formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
+                      } else {
+                        formik.setFieldError('stock_partage_ecom_qty', undefined);
+                      }
+                    }
+                  }}
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
                 <span className="text-sm font-medium text-gray-700">
                   Il s'agit d'un service (pas de gestion de stock)
                 </span>
               </label>
+
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="ecom_published"
+                  checked={formik.values.ecom_published}
+                  onChange={(e) => {
+                    const checked = e.currentTarget.checked;
+                    formik.setFieldValue('ecom_published', checked);
+                    // Si publié sur e-com, activer automatiquement le partage et afficher quantité
+                    if (checked) {
+                      formik.setFieldValue('stock_partage_ecom', true);
+                    }
+                  }}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Publié sur E-com
+                </span>
+              </label>
+
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="stock_partage_ecom"
+                  checked={formik.values.stock_partage_ecom}
+                  onChange={formik.handleChange}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">
+                  Stock partagé avec E-com
+                </span>
+              </label>
+              {(formik.values.stock_partage_ecom || formik.values.ecom_published) && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="stock_partage_ecom_qty" className="text-sm text-gray-700">
+                      Quantité partagée
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      id="stock_partage_ecom_qty"
+                      name="stock_partage_ecom_qty"
+                      value={String(formik.values.stock_partage_ecom_qty ?? 0)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!/^\d*$/.test(v)) return;
+                        const newQty = v ? Number(v) : 0;
+                        formik.setFieldValue('stock_partage_ecom_qty', newQty);
+                        formik.setFieldTouched('stock_partage_ecom_qty', true, false);
+                        
+                        // Valider immédiatement et afficher l'erreur
+                        const totalQty = formik.values.est_service ? 0 : toNum(formik.values.quantite ?? 0);
+                        if (newQty > totalQty) {
+                          formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
+                        } else {
+                          formik.setFieldError('stock_partage_ecom_qty', undefined);
+                        }
+                      }}
+                      onBlur={() => formik.setFieldTouched('stock_partage_ecom_qty', true)}
+                      className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-xs text-gray-600">
+                      / {formik.values.est_service ? 0 : toNum(formik.values.quantite)} disponible
+                    </span>
+                  </div>
+                  {formik.errors.stock_partage_ecom_qty && (
+                    <span className="text-xs text-red-600">
+                      {String(formik.errors.stock_partage_ecom_qty)}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -511,7 +706,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              disabled={
+                formik.isSubmitting ||
+                !!formik.errors.stock_partage_ecom_qty
+              }
+              className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
             >
               {editingProduct ? 'Mettre à jour' : 'Ajouter'}
             </button>
