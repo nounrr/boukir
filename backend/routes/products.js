@@ -195,6 +195,12 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', (req, res, next) => {
   console.log('POST /products hit');
   console.log('Content-Type:', req.headers['content-type']);
+  console.log('Raw flags (POST):', {
+    est_service: req.body?.est_service,
+    ecom_published: req.body?.ecom_published,
+    stock_partage_ecom: req.body?.stock_partage_ecom,
+    stock_partage_ecom_qty: req.body?.stock_partage_ecom_qty,
+  });
   next();
 }, upload.single('image'), async (req, res, next) => {
   try {
@@ -240,7 +246,12 @@ router.post('/', (req, res, next) => {
     const crp = Number(cout_revient_pourcentage ?? 0);
     const pgp = Number(prix_gros_pourcentage ?? 0);
     const pvp = Number(prix_vente_pourcentage ?? 0);
-    const totalQuantite = Number(est_service ? 0 : (quantite ?? 0));
+    
+    const isService = est_service === 'true' || est_service === true || est_service === '1' || est_service === 1;
+    const isEcomPublished = ecom_published === 'true' || ecom_published === true || ecom_published === '1' || ecom_published === 1;
+    const isStockPartage = stock_partage_ecom === 'true' || stock_partage_ecom === true || stock_partage_ecom === '1' || stock_partage_ecom === 1;
+
+    const totalQuantite = Number(isService ? 0 : (quantite ?? 0));
     const shareQty = Number(req.body?.stock_partage_ecom_qty ?? 0);
     if (shareQty > totalQuantite) {
       return res.status(400).json({ message: 'La quantité partagée ne peut pas dépasser la quantité totale' });
@@ -268,10 +279,10 @@ router.post('/', (req, res, next) => {
         pg,
         pvp,
         pv,
-        est_service ? 1 : 0,
+        isService ? 1 : 0,
         image_url,
-        ecom_published ? 1 : 0,
-        stock_partage_ecom ? 1 : 0,
+        isEcomPublished ? 1 : 0,
+        isStockPartage ? 1 : 0,
           Number(req.body?.stock_partage_ecom_qty ?? 0),
         created_by ?? null,
         now,
@@ -295,6 +306,13 @@ router.put('/:id', upload.single('image'), async (req, res, next) => {
     const [exists] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
     if (exists.length === 0) return res.status(404).json({ message: 'Produit introuvable' });
 
+    console.log('PUT /products/:id flags:', {
+      est_service: req.body?.est_service,
+      ecom_published: req.body?.ecom_published,
+      stock_partage_ecom: req.body?.stock_partage_ecom,
+      stock_partage_ecom_qty: req.body?.stock_partage_ecom_qty,
+    });
+
     const fields = [];
     const values = [];
     const now = new Date();
@@ -317,7 +335,15 @@ router.put('/:id', upload.single('image'), async (req, res, next) => {
     // Validate shared qty does not exceed total quantity after changes
     const existing = exists[0];
     let targetQuantite = quantite !== undefined ? Number(quantite) : Number(existing.quantite);
-    if (est_service !== undefined && (est_service === true || est_service === '1')) {
+    const isServiceUpdate = (
+      est_service !== undefined && (
+        est_service === true ||
+        est_service === 'true' ||
+        est_service === 1 ||
+        est_service === '1'
+      )
+    );
+    if (isServiceUpdate) {
       targetQuantite = 0;
     }
     if (stock_partage_ecom_qty !== undefined) {
@@ -359,7 +385,16 @@ router.put('/:id', upload.single('image'), async (req, res, next) => {
       fields.push('prix_vente = ?'); values.push(pa * (1 + pvp / 100));
     }
 
-    if (est_service !== undefined) { fields.push('est_service = ?'); values.push(est_service ? 1 : 0); }
+    if (est_service !== undefined) { 
+      const isService = (
+        est_service === true ||
+        est_service === 'true' ||
+        est_service === 1 ||
+        est_service === '1'
+      );
+      fields.push('est_service = ?'); 
+      values.push(isService ? 1 : 0); 
+    }
     if (updated_by !== undefined) { fields.push('updated_by = ?'); values.push(updated_by); }
 
     fields.push('updated_at = ?'); values.push(now);
