@@ -40,6 +40,7 @@ import { randomUUID } from 'crypto';
 import livraisonsRouter from './routes/livraisons.js';
 import notificationsRouter from './routes/notifications.js';
 import uploadsRouter from './routes/uploads.js';
+import usersRouter from './routes/users.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -65,6 +66,11 @@ const PUBLIC_PATHS = new Set([
   '/api/db/info',
   '/api/auth/login',
   '/api/auth/register',
+  // E-commerce users authentication (public)
+  '/api/users/auth/login',
+  '/api/users/auth/register',
+  '/api/users/auth/google',
+  '/api/users/auth/facebook',
   // Ajout: route de test WhatsApp sans token (peut être retirée en production)
   '/api/notifications/whatsapp/bon-test'
 ]);
@@ -127,6 +133,7 @@ app.get('/api/db/info', (_req, res) => {
 
 app.use('/api/employees', employeesRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/users/auth', usersRouter); // E-commerce users authentication
 app.use('/api/categories', categoriesRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/contacts', contactsRouter);
