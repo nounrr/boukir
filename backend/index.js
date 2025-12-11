@@ -26,7 +26,7 @@ import bcrypt from 'bcryptjs';
 import paymentsRouter from './routes/payments.js';
 import uploadRouter from './routes/upload.js';
 import importProuctsRouter from './routes/importProducts.js';
-import importContactsRouter from'./routes/importContacts.js';
+import importContactsRouter from './routes/importContacts.js';
 import remisesRouter from './routes/remises.js';
 import talonsRouter from './routes/talons.js';
 import documentsRouter from './routes/documents.js';
@@ -169,7 +169,7 @@ app.use((req, res) => {
   res.status(404).json({ message: 'Not Found', path: req.path });
 });
 
- 
+
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
   const status = err.status || 500;
