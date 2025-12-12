@@ -41,8 +41,6 @@ import livraisonsRouter from './routes/livraisons.js';
 import notificationsRouter from './routes/notifications.js';
 import uploadsRouter from './routes/uploads.js';
 import usersRouter from './routes/users.js';
-import usersAdminRouter from './routes/users-admin.js';
-import { runMigrations } from './scripts/run-migrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -73,8 +71,6 @@ const PUBLIC_PATHS = new Set([
   '/api/users/auth/register',
   '/api/users/auth/google',
   '/api/users/auth/facebook',
-  // Ajout: route de test WhatsApp sans token (peut être retirée en production)
-  '/api/notifications/whatsapp/bon-test'
 ]);
 
 app.use((req, res, next) => {
@@ -88,7 +84,7 @@ app.use((req, res, next) => {
     if (store && req.user?.id) {
       store.userId = req.user.id;
     }
-    next();
+    next(); 
   });
 });
 
@@ -136,7 +132,6 @@ app.get('/api/db/info', (_req, res) => {
 app.use('/api/employees', employeesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/users/auth', usersRouter); // E-commerce users authentication
-app.use('/api/users/admin', usersAdminRouter); // Admin management of e-commerce users (protected)
 app.use('/api/categories', categoriesRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/contacts', contactsRouter);
@@ -191,13 +186,11 @@ app.use((err, _req, res, _next) => {
 
 // Ensure DB and tables exist at startup
 async function ensureDb() {
-  // Run database migrations automatically
-  console.log('\n🚀 Initializing database...\n');
-  const result = await runMigrations();
-  if (!result.success) {
-    throw new Error('Database migration failed');
-  }
-  return result;
+  // Database connection check
+  console.log('\n🚀 Initializing database connection...\n');
+  const connection = await pool.getConnection();
+  connection.release();
+  console.log('✓ Database connection successful\n');
 }
 
 // Optional: migrate any plaintext passwords to bcrypt at startup (best-effort)
