@@ -88,7 +88,7 @@ router.post('/register', async (req, res, next) => {
 
     // Check if email already exists
     const [existing] = await connection.query(
-      'SELECT id, email, auth_provider FROM users WHERE email = ? AND deleted_at IS NULL',
+      'SELECT id, email, auth_provider FROM contacts WHERE email = ? AND deleted_at IS NULL',
       [email.toLowerCase()]
     );
 
@@ -99,7 +99,7 @@ router.post('/register', async (req, res, next) => {
           message: 'Un compte existe déjà avec cet email',
           field: 'email',
         });
-      } else {
+      } else if (existingUser.auth_provider !== 'none') {
         return res.status(409).json({
           message: `Un compte existe déjà avec cet email via ${existingUser.auth_provider === 'google' ? 'Google' : 'Facebook'}. Veuillez vous connecter avec ${existingUser.auth_provider === 'google' ? 'Google' : 'Facebook'}.`,
           field: 'email',
@@ -111,17 +111,29 @@ router.post('/register', async (req, res, next) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Insert new user
+    // Determine account type and approval status
+    const isArtisanRequest = type_compte === 'Artisan/Promoteur';
+    const effectiveTypeCompte = isArtisanRequest ? 'Client' : (type_compte || 'Client');
+    const demandeArtisan = isArtisanRequest;
+
+    // Create nom_complet for BO compatibility
+    const nomComplet = `${prenom.trim()} ${nom.trim()}`;
+
+    // Insert new contact/user
     const [result] = await connection.query(
-      `INSERT INTO users 
-       (prenom, nom, email, telephone, type_compte, password, auth_provider, email_verified, is_active) 
-       VALUES (?, ?, ?, ?, ?, ?, 'local', FALSE, TRUE)`,
+      `INSERT INTO contacts 
+       (nom_complet, prenom, nom, email, telephone, type, type_compte, 
+        demande_artisan, artisan_approuve, password, auth_provider, 
+        email_verified, is_active) 
+       VALUES (?, ?, ?, ?, ?, 'Client', ?, ?, FALSE, ?, 'local', FALSE, TRUE)`,
       [
+        nomComplet,
         prenom.trim(),
         nom.trim(),
         email.toLowerCase().trim(),
         telephone?.trim() || null,
-        type_compte || 'Client',
+        effectiveTypeCompte,
+        demandeArtisan,
         hashedPassword,
       ]
     );
@@ -131,8 +143,9 @@ router.post('/register', async (req, res, next) => {
     // Fetch created user
     const [users] = await connection.query(
       `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider, 
-              email_verified, avatar_url, locale, is_active, created_at 
-       FROM users WHERE id = ?`,
+              email_verified, avatar_url, locale, is_active, demande_artisan,
+              artisan_approuve, created_at
+       FROM contacts WHERE id = ?`,
       [userId]
     );
 
@@ -141,8 +154,14 @@ router.post('/register', async (req, res, next) => {
     const user = users[0];
     const token = generateToken(user);
 
+    // Prepare response message
+    let message = 'Compte créé avec succès';
+    if (user.demande_artisan && !user.artisan_approuve) {
+      message = 'Compte créé avec succès. Votre demande pour devenir Artisan/Promoteur est en attente d\'approbation par un administrateur.';
+    }
+
     res.status(201).json({
-      message: 'Compte créé avec succès',
+      message,
       user: {
         id: user.id,
         prenom: user.prenom,
@@ -154,6 +173,8 @@ router.post('/register', async (req, res, next) => {
         email_verified: !!user.email_verified,
         avatar_url: user.avatar_url,
         locale: user.locale,
+        demande_artisan: !!user.demande_artisan,
+        artisan_approuve: !!user.artisan_approuve,
       },
       token,
     });
@@ -186,8 +207,8 @@ router.post('/login', async (req, res, next) => {
     const [users] = await connection.query(
       `SELECT id, prenom, nom, email, telephone, type_compte, password, auth_provider, 
               email_verified, avatar_url, locale, is_active, is_blocked, 
-              login_attempts, locked_until, last_login_at 
-       FROM users WHERE email = ? AND deleted_at IS NULL`,
+              login_attempts, locked_until, last_login_at, demande_artisan, artisan_approuve
+       FROM contacts WHERE email = ? AND deleted_at IS NULL AND auth_provider != 'none'`,
       [email.toLowerCase()]
     );
 
@@ -242,7 +263,7 @@ router.post('/login', async (req, res, next) => {
       }
 
       await connection.query(
-        'UPDATE users SET login_attempts = ?, locked_until = ? WHERE id = ?',
+        'UPDATE contacts SET login_attempts = ?, locked_until = ? WHERE id = ?',
         [newAttempts, lockUntil, user.id]
       );
 
@@ -264,7 +285,7 @@ router.post('/login', async (req, res, next) => {
 
     // Reset login attempts and update last login
     await connection.query(
-      `UPDATE users 
+      `UPDATE contacts
        SET login_attempts = 0, locked_until = NULL, 
            last_login_at = NOW(), last_login_ip = ? 
        WHERE id = ?`,
@@ -288,6 +309,8 @@ router.post('/login', async (req, res, next) => {
         email_verified: !!user.email_verified,
         avatar_url: user.avatar_url,
         locale: user.locale,
+        demande_artisan: !!user.demande_artisan,
+        artisan_approuve: !!user.artisan_approuve,
       },
       token,
     });
@@ -346,8 +369,8 @@ router.post('/google', async (req, res, next) => {
     let [users] = await connection.query(
       `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider, 
               email_verified, avatar_url, locale, is_active, is_blocked, 
-              locked_until, google_id 
-       FROM users WHERE google_id = ? AND deleted_at IS NULL`,
+              locked_until, google_id, demande_artisan, artisan_approuve
+       FROM contacts WHERE google_id = ? AND deleted_at IS NULL`,
       [googleId]
     );
 
@@ -372,7 +395,7 @@ router.post('/google', async (req, res, next) => {
 
       // Update user info from Google
       await connection.query(
-        `UPDATE users 
+        `UPDATE contacts
          SET avatar_url = ?, email_verified = TRUE, locale = ?,
              last_login_at = NOW(), last_login_ip = ?,
              provider_access_token = ?, login_attempts = 0, locked_until = NULL
@@ -386,7 +409,7 @@ router.post('/google', async (req, res, next) => {
     } else {
       // Check if email exists with different auth method
       [users] = await connection.query(
-        'SELECT id, auth_provider FROM users WHERE email = ? AND deleted_at IS NULL',
+        'SELECT id, auth_provider FROM contacts WHERE email = ? AND deleted_at IS NULL',
         [email.toLowerCase()]
       );
 
@@ -406,15 +429,20 @@ router.post('/google', async (req, res, next) => {
       }
 
       // Create new user with Google
+      const prenomValue = prenom || 'Utilisateur';
+      const nomValue = nom || 'Google';
+      const nomComplet = `${prenomValue} ${nomValue}`;
+
       const [result] = await connection.query(
-        `INSERT INTO users 
-         (prenom, nom, email, type_compte, auth_provider, google_id, 
+        `INSERT INTO contacts
+         (nom_complet, prenom, nom, email, type, type_compte, auth_provider, google_id,
           avatar_url, email_verified, locale, is_active, last_login_at, last_login_ip,
           provider_access_token) 
-         VALUES (?, ?, ?, 'Client', 'google', ?, ?, TRUE, ?, TRUE, NOW(), ?, ?)`,
+         VALUES (?, ?, ?, ?, 'Client', 'Client', 'google', ?, ?, TRUE, ?, TRUE, NOW(), ?, ?)`,
         [
-          prenom || 'Utilisateur',
-          nom || 'Google',
+          nomComplet,
+          prenomValue,
+          nomValue,
           email.toLowerCase(),
           googleId,
           avatar_url,
@@ -428,8 +456,8 @@ router.post('/google', async (req, res, next) => {
 
       [users] = await connection.query(
         `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider, 
-                email_verified, avatar_url, locale 
-         FROM users WHERE id = ?`,
+                email_verified, avatar_url, locale, demande_artisan, artisan_approuve
+         FROM contacts WHERE id = ?`,
         [userId]
       );
 
@@ -453,6 +481,8 @@ router.post('/google', async (req, res, next) => {
         email_verified: !!user.email_verified,
         avatar_url: user.avatar_url,
         locale: user.locale,
+        demande_artisan: !!user.demande_artisan,
+        artisan_approuve: !!user.artisan_approuve,
       },
       token,
     });
@@ -526,8 +556,8 @@ router.post('/facebook', async (req, res, next) => {
     let [users] = await connection.query(
       `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider, 
               email_verified, avatar_url, locale, is_active, is_blocked, 
-              locked_until, facebook_id 
-       FROM users WHERE facebook_id = ? AND deleted_at IS NULL`,
+              locked_until, facebook_id, demande_artisan, artisan_approuve
+       FROM contacts WHERE facebook_id = ? AND deleted_at IS NULL`,
       [facebookId]
     );
 
@@ -552,7 +582,7 @@ router.post('/facebook', async (req, res, next) => {
 
       // Update user info from Facebook
       await connection.query(
-        `UPDATE users 
+        `UPDATE contacts
          SET avatar_url = ?, email_verified = TRUE,
              last_login_at = NOW(), last_login_ip = ?,
              provider_access_token = ?, login_attempts = 0, locked_until = NULL
@@ -565,7 +595,7 @@ router.post('/facebook', async (req, res, next) => {
     } else {
       // Check if email exists with different auth method
       [users] = await connection.query(
-        'SELECT id, auth_provider FROM users WHERE email = ? AND deleted_at IS NULL',
+        'SELECT id, auth_provider FROM contacts WHERE email = ? AND deleted_at IS NULL',
         [email.toLowerCase()]
       );
 
@@ -585,15 +615,20 @@ router.post('/facebook', async (req, res, next) => {
       }
 
       // Create new user with Facebook
+      const prenomValue = prenom || 'Utilisateur';
+      const nomValue = nom || 'Facebook';
+      const nomComplet = `${prenomValue} ${nomValue}`;
+
       const [result] = await connection.query(
-        `INSERT INTO users 
-         (prenom, nom, email, type_compte, auth_provider, facebook_id, 
+        `INSERT INTO contacts
+         (nom_complet, prenom, nom, email, type, type_compte, auth_provider, facebook_id,
           avatar_url, email_verified, is_active, last_login_at, last_login_ip,
           provider_access_token) 
-         VALUES (?, ?, ?, 'Client', 'facebook', ?, ?, TRUE, TRUE, NOW(), ?, ?)`,
+         VALUES (?, ?, ?, ?, 'Client', 'Client', 'facebook', ?, ?, TRUE, TRUE, NOW(), ?, ?)`,
         [
-          prenom || 'Utilisateur',
-          nom || 'Facebook',
+          nomComplet,
+          prenomValue,
+          nomValue,
           email.toLowerCase(),
           facebookId,
           avatar_url,
@@ -606,8 +641,8 @@ router.post('/facebook', async (req, res, next) => {
 
       [users] = await connection.query(
         `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider, 
-                email_verified, avatar_url, locale 
-         FROM users WHERE id = ?`,
+                email_verified, avatar_url, locale, demande_artisan, artisan_approuve
+         FROM contacts WHERE id = ?`,
         [userId]
       );
 
@@ -631,6 +666,8 @@ router.post('/facebook', async (req, res, next) => {
         email_verified: !!user.email_verified,
         avatar_url: user.avatar_url,
         locale: user.locale,
+        demande_artisan: !!user.demande_artisan,
+        artisan_approuve: !!user.artisan_approuve,
       },
       token,
     });
@@ -663,8 +700,9 @@ router.get('/me', async (req, res, next) => {
 
     const [users] = await pool.query(
       `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider, 
-              email_verified, avatar_url, locale, is_active, last_login_at, created_at 
-       FROM users WHERE id = ? AND deleted_at IS NULL`,
+              email_verified, avatar_url, locale, is_active, last_login_at, created_at,
+              demande_artisan, artisan_approuve
+       FROM contacts WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none'`,
       [decoded.id]
     );
 
@@ -692,6 +730,8 @@ router.get('/me', async (req, res, next) => {
         locale: user.locale,
         last_login_at: user.last_login_at,
         created_at: user.created_at,
+        demande_artisan: !!user.demande_artisan,
+        artisan_approuve: !!user.artisan_approuve,
       },
     });
   } catch (err) {

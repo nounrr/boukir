@@ -41,6 +41,8 @@ import livraisonsRouter from './routes/livraisons.js';
 import notificationsRouter from './routes/notifications.js';
 import uploadsRouter from './routes/uploads.js';
 import usersRouter from './routes/users.js';
+import usersAdminRouter from './routes/users-admin.js';
+import { runMigrations } from './scripts/run-migrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -134,6 +136,7 @@ app.get('/api/db/info', (_req, res) => {
 app.use('/api/employees', employeesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/users/auth', usersRouter); // E-commerce users authentication
+app.use('/api/users/admin', usersAdminRouter); // Admin management of e-commerce users (protected)
 app.use('/api/categories', categoriesRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/contacts', contactsRouter);
@@ -188,8 +191,13 @@ app.use((err, _req, res, _next) => {
 
 // Ensure DB and tables exist at startup
 async function ensureDb() {
-  // Reserved for future DB bootstrap if needed
-  return Promise.resolve();
+  // Run database migrations automatically
+  console.log('\n🚀 Initializing database...\n');
+  const result = await runMigrations();
+  if (!result.success) {
+    throw new Error('Database migration failed');
+  }
+  return result;
 }
 
 // Optional: migrate any plaintext passwords to bcrypt at startup (best-effort)
@@ -215,10 +223,10 @@ ensureDb()
   .then(() => migratePasswords())
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`API listening on http://localhost:${PORT}`);
+      console.log(`\n✅ API listening on http://localhost:${PORT}\n`);
     });
   })
   .catch((err) => {
-    console.error('Failed to initialize database:', err);
+    console.error('\n❌ Failed to initialize database:', err);
     process.exit(1);
   });
