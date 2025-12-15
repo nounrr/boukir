@@ -69,7 +69,10 @@ export interface Category {
   id: number;
   nom: string;
   description?: string;
+<<<<<<< HEAD
   parent_id?: number | null;
+=======
+>>>>>>> e-comm-clean
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -79,6 +82,7 @@ export interface Category {
 export interface CreateCategoryData {
   nom: string;
   description?: string;
+<<<<<<< HEAD
   parent_id?: number | null;
 }
 
@@ -109,6 +113,8 @@ export interface ProductUnit {
   is_default: boolean;
   created_at?: string;
   updated_at?: string;
+=======
+>>>>>>> e-comm-clean
 }
 
 // Types pour les produits (stock)
@@ -130,6 +136,7 @@ export interface Product {
   prix_vente: number;
   est_service: boolean;
   image_url?: string | null;
+<<<<<<< HEAD
   
   // Multi-language fields
   fiche_technique?: string | null;
@@ -154,6 +161,11 @@ export interface Product {
   base_unit?: string;
   variants?: ProductVariant[];
   units?: ProductUnit[];
+=======
+  ecom_published?: boolean;
+  stock_partage_ecom?: boolean;
+  stock_partage_ecom_qty?: number;
+>>>>>>> e-comm-clean
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -170,6 +182,7 @@ export interface CreateProductData {
   prix_gros_pourcentage?: number;
   prix_vente_pourcentage?: number;
   est_service?: boolean;
+<<<<<<< HEAD
   description?: string;
   pourcentage_promo?: number;
   ecom_published?: boolean;
@@ -179,6 +192,11 @@ export interface CreateProductData {
   base_unit?: string;
   variants?: ProductVariant[];
   units?: ProductUnit[];
+=======
+  ecom_published?: boolean;
+  stock_partage_ecom?: boolean;
+  stock_partage_ecom_qty?: number;
+>>>>>>> e-comm-clean
 }
 
 // Types pour les contacts
