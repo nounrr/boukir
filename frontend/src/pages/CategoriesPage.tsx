@@ -29,6 +29,12 @@ const CategoriesPage: React.FC = () => {
 		setIsModalOpen(true);
 	};
 
+	const getParentName = (parentId: number | null | undefined) => {
+		if (!parentId) return '-';
+		const parent = categories.find(c => c.id === parentId);
+		return parent ? parent.nom : 'Inconnu';
+	};
+
 	const handleEdit = (cat: Category) => {
 		setEditingCategory(cat);
 		setIsModalOpen(true);
@@ -84,6 +90,7 @@ const CategoriesPage: React.FC = () => {
 						<thead className="bg-gray-50">
 							<tr>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
+								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parent</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
 							</tr>
@@ -91,12 +98,12 @@ const CategoriesPage: React.FC = () => {
 						<tbody className="bg-white divide-y divide-gray-200">
 											{isLoading && (
 												<tr>
-													<td colSpan={3} className="px-6 py-4 text-center text-sm text-gray-500">Chargement...</td>
+													<td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">Chargement...</td>
 												</tr>
 											)}
 											{!isLoading && filtered.length === 0 && (
 												<tr>
-													<td colSpan={3} className="px-6 py-4 text-center text-sm text-gray-500">Aucune catégorie</td>
+													<td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">Aucune catégorie</td>
 												</tr>
 											)}
 											{!isLoading && filtered.length > 0 && (
@@ -104,6 +111,9 @@ const CategoriesPage: React.FC = () => {
 									<tr key={c.id} className="hover:bg-gray-50">
 										<td className="px-6 py-4 whitespace-nowrap">
 											<div className="text-sm font-medium text-gray-900">{c.nom}</div>
+										</td>
+										<td className="px-6 py-4 whitespace-nowrap">
+											<div className="text-sm text-gray-500">{getParentName(c.parent_id)}</div>
 										</td>
 										<td className="px-6 py-4">
 											<div className="text-sm text-gray-700">{c.description || '-'}</div>

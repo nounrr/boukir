@@ -215,7 +215,9 @@ router.post('/', verifyToken, async (req, res) => {
         prix_unitaire, // pour Commande = prix d'achat saisi
         remise_pourcentage = 0,
         remise_montant = 0,
-        total
+        total,
+        variant_id,
+        unit_id
       } = item || {};
 
       // Validation item
@@ -227,9 +229,9 @@ router.post('/', verifyToken, async (req, res) => {
       await connection.execute(`
         INSERT INTO commande_items (
           bon_commande_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [commandeId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [commandeId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
 
   // (Suppression de la collecte des nouveaux prix d'achat)
     }
@@ -446,7 +448,9 @@ router.put('/:id', verifyToken, async (req, res) => {
         prix_unitaire,
         remise_pourcentage = 0,
         remise_montant = 0,
-        total
+        total,
+        variant_id,
+        unit_id
       } = item || {};
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -457,9 +461,9 @@ router.put('/:id', verifyToken, async (req, res) => {
       await connection.execute(`
         INSERT INTO commande_items (
           bon_commande_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
   // Désactivé: pas de synchronisation automatique des prix d'achat lors d'un PUT.

@@ -1,20 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category } from '../types';
 import { Plus, Edit, Trash2, Search, Package, Settings } from 'lucide-react';
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
-import { useCreateCategoryMutation, useGetCategoriesQuery } from '../store/api/categoriesApi';
+import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { useGetProductsQuery, useDeleteProductMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
-
-const categoryValidationSchema = Yup.object({
-  nom: Yup.string().required('Nom de la catégorie requis'),
-  description: Yup.string(),
-});
+import CategoryFormModal from '../components/CategoryFormModal';
 
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
@@ -27,6 +21,33 @@ const StockPage: React.FC = () => {
   const products = productsApiData ?? productsState;
   const categories = categoriesApiData ?? categoriesState;
 
+  const organizedCategories = useMemo(() => {
+    const roots = categories.filter((c: Category) => !c.parent_id);
+    const childrenMap = new Map<number, Category[]>();
+    categories.forEach((c: Category) => {
+      if (c.parent_id) {
+        const list = childrenMap.get(c.parent_id) || [];
+        list.push(c);
+        childrenMap.set(c.parent_id, list);
+      }
+    });
+
+    const result: { id: number; nom: string; level: number }[] = [];
+    
+    const traverse = (cats: Category[], level: number) => {
+      cats.forEach(c => {
+        result.push({ id: c.id, nom: c.nom, level });
+        const children = childrenMap.get(c.id);
+        if (children) {
+          traverse(children, level + 1);
+        }
+      });
+    };
+
+    traverse(roots, 0);
+    return result;
+  }, [categories]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -38,27 +59,11 @@ const StockPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
 
-  const [createCategory] = useCreateCategoryMutation();
-  const categoryFormik = useFormik({
-    initialValues: {
-      nom: '',
-      description: '',
-    },
-    validationSchema: categoryValidationSchema,
-  onSubmit: async (values, { resetForm }) => {
-      try {
-    await createCategory({ nom: values.nom, description: values.description, created_by: 1 }).unwrap();
-        setIsCategoryModalOpen(false);
-        resetForm();
-    console.log('Catégorie créée via backend');
-      } catch (error) {
-        console.error('Erreur lors de la création de la catégorie:', error);
-      }
-    },
-  });
-
-  const handleEdit = (product: Product) => {
-    setEditingProduct(product);
+  const handleEdit = (product: any) => {
+    const realProduct = product.isVariantRow 
+      ? products.find((p: any) => p.id === product.originalId) 
+      : product;
+    setEditingProduct(realProduct || product);
     setIsModalOpen(true);
   };
 
@@ -82,17 +87,44 @@ const StockPage: React.FC = () => {
     }
   };
 
-  const filteredProducts = products
-    // hide soft-deleted products if backend ever returns them
-    .filter((product: any) => product.is_deleted !== 1)
-    .filter((product: Product) => {
+  const flattenedProducts = useMemo(() => {
+    const rows: any[] = [];
+    const source = products || [];
+    source.forEach((product: any) => {
+      if (product.is_deleted === 1) return;
+
+      // Add main product
+      rows.push(product);
+
+      // Add variants
+      if (product.variants && Array.isArray(product.variants)) {
+        product.variants.forEach((variant: any) => {
+          rows.push({
+            ...product,
+            id: `var-${variant.id}`,
+            originalId: product.id,
+            designation: `${product.designation} - ${variant.variant_name}`,
+            reference: variant.reference || product.reference,
+            prix_achat: variant.prix_achat,
+            prix_vente: variant.prix_vente,
+            quantite: variant.stock_quantity,
+            isVariantRow: true,
+            // Inherit other props
+          });
+        });
+      }
+    });
+    return rows;
+  }, [products]);
+
+  const filteredProducts = flattenedProducts.filter((product: any) => {
     const term = (searchTerm ?? '').toLowerCase();
     const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
     const designation = String(product.designation ?? '').toLowerCase();
     const matchesSearch = designation.includes(term) || refStr.includes(term);
     const matchesCategory = !filterCategory || String(product.categorie_id ?? '') === filterCategory;
     return matchesSearch && matchesCategory;
-    });
+  });
 
   // Pagination
   const totalItems = filteredProducts.length;
@@ -150,8 +182,10 @@ const StockPage: React.FC = () => {
           className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         >
           <option value="">Toutes les catégories</option>
-          {categories.map((category: Category) => (
-            <option key={category.id} value={category.id.toString()}>{category.nom}</option>
+          {organizedCategories.map((category) => (
+            <option key={category.id} value={category.id.toString()}>
+              {'\u00A0'.repeat(category.level * 4)}{category.nom}
+            </option>
           ))}
         </select>
       </div>
@@ -237,22 +271,31 @@ const StockPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedProducts.map((product: Product) => (
-                <tr key={product.id} className="hover:bg-gray-50">
+              {paginatedProducts.map((product: any) => (
+                <tr key={product.id} className={`hover:bg-gray-50 ${product.isVariantRow ? 'bg-blue-50/30' : ''}`}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {product.image_url ? (
-                      <img src={product.image_url} alt={product.designation} className="h-10 w-10 object-cover rounded" />
-                    ) : (
-                      <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
-                        <Package size={20} />
+                    {product.isVariantRow ? (
+                      <div className="flex items-center justify-center h-10 w-10 text-gray-400">
+                        <span className="text-xl">↳</span>
                       </div>
+                    ) : (
+                      product.image_url ? (
+                        <img src={product.image_url} alt={product.designation} className="h-10 w-10 object-cover rounded" />
+                      ) : (
+                        <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
+                          <Package size={20} />
+                        </div>
+                      )
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{product.reference ?? product.id}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">{product.designation}</div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {product.designation}
+                      {product.isVariantRow && <span className="ml-2 text-xs text-blue-600 font-normal">(Variante)</span>}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
@@ -291,15 +334,19 @@ const StockPage: React.FC = () => {
                       <button
                         onClick={() => handleEdit(product)}
                         className="text-blue-600 hover:text-blue-900"
+                        title="Modifier"
                       >
                         <Edit size={16} />
                       </button>
-                      <button
-                        onClick={() => handleDelete(product.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {!product.isVariantRow && (
+                        <button
+                          onClick={() => handleDelete(product.id)}
+                          className="text-red-600 hover:text-red-900"
+                          title="Supprimer"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -378,73 +425,14 @@ const StockPage: React.FC = () => {
       />
 
       {/* Modal Nouvelle Catégorie */}
-      {isCategoryModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
-            <div className="bg-green-600 px-6 py-4 rounded-t-lg">
-              <h2 className="text-xl font-bold text-white">Nouvelle catégorie</h2>
-            </div>
-            
-            <form onSubmit={categoryFormik.handleSubmit} className="p-6">
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="nom" className="block text-sm font-medium text-gray-700 mb-1">
-                    Nom de la catégorie *
-                  </label>
-                  <input
-                    id="nom"
-                    type="text"
-                    name="nom"
-                    value={categoryFormik.values.nom}
-                    onChange={categoryFormik.handleChange}
-                    onBlur={categoryFormik.handleBlur}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    placeholder="Ex: Électronique"
-                  />
-                  {categoryFormik.touched.nom && categoryFormik.errors.nom && (
-                    <p className="text-red-500 text-sm mt-1">{categoryFormik.errors.nom}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    id="description"
-                    name="description"
-                    value={categoryFormik.values.description}
-                    onChange={categoryFormik.handleChange}
-                    onBlur={categoryFormik.handleBlur}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    placeholder="Description de la catégorie..."
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCategoryModalOpen(false);
-                    categoryFormik.resetForm();
-                  }}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
-                >
-                  Créer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CategoryFormModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSaved={() => {
+          setIsCategoryModalOpen(false);
+          showSuccess('Catégorie créée');
+        }}
+      />
     </div>
   );
 };
