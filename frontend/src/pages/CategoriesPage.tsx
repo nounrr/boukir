@@ -29,6 +29,15 @@ const CategoriesPage: React.FC = () => {
 		setIsModalOpen(true);
 	};
 
+<<<<<<< HEAD
+=======
+	const getParentName = (parentId: number | null | undefined) => {
+		if (!parentId) return '-';
+		const parent = categories.find(c => c.id === parentId);
+		return parent ? parent.nom : 'Inconnu';
+	};
+
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 	const handleEdit = (cat: Category) => {
 		setEditingCategory(cat);
 		setIsModalOpen(true);
@@ -84,6 +93,10 @@ const CategoriesPage: React.FC = () => {
 						<thead className="bg-gray-50">
 							<tr>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
+<<<<<<< HEAD
+=======
+								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parent</th>
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
 							</tr>
@@ -91,12 +104,20 @@ const CategoriesPage: React.FC = () => {
 						<tbody className="bg-white divide-y divide-gray-200">
 											{isLoading && (
 												<tr>
+<<<<<<< HEAD
 													<td colSpan={3} className="px-6 py-4 text-center text-sm text-gray-500">Chargement...</td>
+=======
+													<td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">Chargement...</td>
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 												</tr>
 											)}
 											{!isLoading && filtered.length === 0 && (
 												<tr>
+<<<<<<< HEAD
 													<td colSpan={3} className="px-6 py-4 text-center text-sm text-gray-500">Aucune catégorie</td>
+=======
+													<td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">Aucune catégorie</td>
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 												</tr>
 											)}
 											{!isLoading && filtered.length > 0 && (
@@ -105,6 +126,12 @@ const CategoriesPage: React.FC = () => {
 										<td className="px-6 py-4 whitespace-nowrap">
 											<div className="text-sm font-medium text-gray-900">{c.nom}</div>
 										</td>
+<<<<<<< HEAD
+=======
+										<td className="px-6 py-4 whitespace-nowrap">
+											<div className="text-sm text-gray-500">{getParentName(c.parent_id)}</div>
+										</td>
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 										<td className="px-6 py-4">
 											<div className="text-sm text-gray-700">{c.description || '-'}</div>
 										</td>

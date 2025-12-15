@@ -8,10 +8,13 @@
     "server": "node backend/index.js",
     "dev:full": "concurrently \"npm:server\" \"npm:dev\"",
     "db:ping": "node backend/scripts/db-ping.js",
+<<<<<<< HEAD
     "db:migrate": "node backend/scripts/run-migrations.js run",
     "db:migrate:one": "node backend/scripts/run-single-migration.js",
     "db:migrate:list": "node backend/scripts/run-migrations.js list",
     "db:migrate:rollback": "node backend/scripts/run-migrations.js rollback",
+=======
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
     "build": "node --max-old-space-size=4096 node_modules/vite/bin/vite.js build",
     "preview": "vite preview",
     "lint": "eslint ."
@@ -28,7 +31,10 @@
     "@types/react-router-dom": "^5.3.3",
     "@types/yup": "^0.29.14",
     "audit-log": "^0.9.1",
+<<<<<<< HEAD
     "axios": "^1.13.2",
+=======
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -38,7 +44,10 @@
     "express": "^4.19.2",
     "express-requests-logger": "^4.0.3",
     "formik": "^2.4.6",
+<<<<<<< HEAD
     "google-auth-library": "^10.5.0",
+=======
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
     "html2canvas": "^1.4.1",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^3.0.1",
@@ -47,8 +56,13 @@
     "multer": "^2.0.2",
     "mysql2": "^3.11.3",
     "pdf-lib": "^1.17.1",
+<<<<<<< HEAD
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+=======
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.7.1",
     "redux-persist": "^6.0.0",

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category } from '../types';
@@ -15,6 +16,20 @@ const categoryValidationSchema = Yup.object({
   nom: Yup.string().required('Nom de la catégorie requis'),
   description: Yup.string(),
 });
+=======
+import React, { useState, useMemo } from 'react';
+import { useSelector } from 'react-redux';
+import type { Product, Category } from '../types';
+import { Plus, Edit, Trash2, Search, Package, Settings } from 'lucide-react';
+import { selectProducts } from '../store/slices/productsSlice';
+import { selectCategories } from '../store/slices/categoriesSlice';
+import { useGetCategoriesQuery } from '../store/api/categoriesApi';
+import { useGetProductsQuery, useDeleteProductMutation } from '../store/api/productsApi';
+import { showError, showSuccess, showConfirmation } from '../utils/notifications';
+import ProductFormModal from '../components/ProductFormModal';
+import CategoryFormModal from '../components/CategoryFormModal';
+import * as XLSX from 'xlsx';
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
@@ -27,6 +42,36 @@ const StockPage: React.FC = () => {
   const products = productsApiData ?? productsState;
   const categories = categoriesApiData ?? categoriesState;
 
+<<<<<<< HEAD
+=======
+  const organizedCategories = useMemo(() => {
+    const roots = categories.filter((c: Category) => !c.parent_id);
+    const childrenMap = new Map<number, Category[]>();
+    categories.forEach((c: Category) => {
+      if (c.parent_id) {
+        const list = childrenMap.get(c.parent_id) || [];
+        list.push(c);
+        childrenMap.set(c.parent_id, list);
+      }
+    });
+
+    const result: { id: number; nom: string; level: number }[] = [];
+    
+    const traverse = (cats: Category[], level: number) => {
+      cats.forEach(c => {
+        result.push({ id: c.id, nom: c.nom, level });
+        const children = childrenMap.get(c.id);
+        if (children) {
+          traverse(children, level + 1);
+        }
+      });
+    };
+
+    traverse(roots, 0);
+    return result;
+  }, [categories]);
+
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -38,6 +83,7 @@ const StockPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
 
+<<<<<<< HEAD
   const [createCategory] = useCreateCategoryMutation();
   const categoryFormik = useFormik({
     initialValues: {
@@ -59,6 +105,13 @@ const StockPage: React.FC = () => {
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
+=======
+  const handleEdit = (product: any) => {
+    const realProduct = product.isVariantRow 
+      ? products.find((p: any) => p.id === product.originalId) 
+      : product;
+    setEditingProduct(realProduct || product);
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
     setIsModalOpen(true);
   };
 
@@ -82,17 +135,75 @@ const StockPage: React.FC = () => {
     }
   };
 
+<<<<<<< HEAD
   const filteredProducts = products
     // hide soft-deleted products if backend ever returns them
     .filter((product: any) => product.is_deleted !== 1)
     .filter((product: Product) => {
+=======
+  const flattenedProducts = useMemo(() => {
+    const rows: any[] = [];
+    const source = products || [];
+    source.forEach((product: any) => {
+      if (product.is_deleted === 1) return;
+
+      // Add main product
+      rows.push(product);
+
+      // Add variants
+      if (product.variants && Array.isArray(product.variants)) {
+        product.variants.forEach((variant: any) => {
+          rows.push({
+            ...product,
+            id: `var-${variant.id}`,
+            originalId: product.id,
+            designation: `${product.designation} - ${variant.variant_name}`,
+            reference: variant.reference || product.reference,
+            prix_achat: variant.prix_achat,
+            prix_vente: variant.prix_vente,
+            quantite: variant.stock_quantity,
+            isVariantRow: true,
+            // Inherit other props
+          });
+        });
+      }
+    });
+    return rows;
+  }, [products]);
+
+  const filteredProducts = flattenedProducts.filter((product: any) => {
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
     const term = (searchTerm ?? '').toLowerCase();
     const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
     const designation = String(product.designation ?? '').toLowerCase();
     const matchesSearch = designation.includes(term) || refStr.includes(term);
     const matchesCategory = !filterCategory || String(product.categorie_id ?? '') === filterCategory;
     return matchesSearch && matchesCategory;
+<<<<<<< HEAD
     });
+=======
+  });
+
+  const handleExportExcel = () => {
+    try {
+      const rows = filteredProducts.map((p: any) => ({
+        'Ref': p.reference ?? p.id,
+        'Nom du produit': p.designation ?? '',
+        'Quantité système': p.est_service ? '' : (p.quantite ?? ''),
+        'Quantité en magasin': ''
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Ref', 'Nom du produit', 'Quantité système', 'Quantité en magasin'] });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Stock');
+      XLSX.writeFile(wb, `export-stock-${new Date().toISOString().slice(0,10)}.xlsx`);
+      showSuccess('Export Excel généré');
+    } catch (e) {
+      console.error(e);
+      showError('Erreur lors de la génération du fichier Excel');
+    }
+  };
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 
   // Pagination
   const totalItems = filteredProducts.length;
@@ -120,6 +231,15 @@ const StockPage: React.FC = () => {
             Nouvelle Catégorie
           </button>
           <button
+<<<<<<< HEAD
+=======
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition-colors"
+          >
+            Exporter Excel
+          </button>
+          <button
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
             onClick={() => {
               setEditingProduct(null);
               setIsModalOpen(true);
@@ -150,8 +270,15 @@ const StockPage: React.FC = () => {
           className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         >
           <option value="">Toutes les catégories</option>
+<<<<<<< HEAD
           {categories.map((category: Category) => (
             <option key={category.id} value={category.id.toString()}>{category.nom}</option>
+=======
+          {organizedCategories.map((category) => (
+            <option key={category.id} value={category.id.toString()}>
+              {'\u00A0'.repeat(category.level * 4)}{category.nom}
+            </option>
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
           ))}
         </select>
       </div>
@@ -237,6 +364,7 @@ const StockPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
+<<<<<<< HEAD
               {paginatedProducts.map((product: Product) => (
                 <tr key={product.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -246,13 +374,37 @@ const StockPage: React.FC = () => {
                       <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
                         <Package size={20} />
                       </div>
+=======
+              {paginatedProducts.map((product: any) => (
+                <tr key={product.id} className={`hover:bg-gray-50 ${product.isVariantRow ? 'bg-blue-50/30' : ''}`}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {product.isVariantRow ? (
+                      <div className="flex items-center justify-center h-10 w-10 text-gray-400">
+                        <span className="text-xl">↳</span>
+                      </div>
+                    ) : (
+                      product.image_url ? (
+                        <img src={product.image_url} alt={product.designation} className="h-10 w-10 object-cover rounded" />
+                      ) : (
+                        <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
+                          <Package size={20} />
+                        </div>
+                      )
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{product.reference ?? product.id}</div>
                   </td>
                   <td className="px-6 py-4">
+<<<<<<< HEAD
                     <div className="text-sm font-medium text-gray-900">{product.designation}</div>
+=======
+                    <div className="text-sm font-medium text-gray-900">
+                      {product.designation}
+                      {product.isVariantRow && <span className="ml-2 text-xs text-blue-600 font-normal">(Variante)</span>}
+                    </div>
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
@@ -291,6 +443,7 @@ const StockPage: React.FC = () => {
                       <button
                         onClick={() => handleEdit(product)}
                         className="text-blue-600 hover:text-blue-900"
+<<<<<<< HEAD
                       >
                         <Edit size={16} />
                       </button>
@@ -300,6 +453,21 @@ const StockPage: React.FC = () => {
                       >
                         <Trash2 size={16} />
                       </button>
+=======
+                        title="Modifier"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      {!product.isVariantRow && (
+                        <button
+                          onClick={() => handleDelete(product.id)}
+                          className="text-red-600 hover:text-red-900"
+                          title="Supprimer"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
                     </div>
                   </td>
                 </tr>
@@ -378,6 +546,7 @@ const StockPage: React.FC = () => {
       />
 
       {/* Modal Nouvelle Catégorie */}
+<<<<<<< HEAD
       {isCategoryModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-md">
@@ -445,6 +614,16 @@ const StockPage: React.FC = () => {
           </div>
         </div>
       )}
+=======
+      <CategoryFormModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSaved={() => {
+          setIsCategoryModalOpen(false);
+          showSuccess('Catégorie créée');
+        }}
+      />
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
     </div>
   );
 };

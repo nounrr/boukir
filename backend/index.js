@@ -73,6 +73,8 @@ const PUBLIC_PATHS = new Set([
   '/api/users/auth/register',
   '/api/users/auth/google',
   '/api/users/auth/facebook',
+  // Ajout: route de test WhatsApp sans token (peut être retirée en production)
+  '/api/notifications/whatsapp/bon-test'
 ]);
 
 app.use((req, res, next) => {
@@ -86,7 +88,7 @@ app.use((req, res, next) => {
     if (store && req.user?.id) {
       store.userId = req.user.id;
     }
-    next(); 
+    next();
   });
 });
 
@@ -168,7 +170,6 @@ app.use('/api/uploads', uploadsRouter);
 app.use((req, res) => {
   res.status(404).json({ message: 'Not Found', path: req.path });
 });
-
 
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);

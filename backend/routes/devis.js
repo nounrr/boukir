@@ -153,16 +153,16 @@ router.post('/', async (req, res) => {
 
     // items...
     for (const it of items) {
-      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total } = it;
+      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total, variant_id, unit_id } = it;
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
       await connection.execute(`
         INSERT INTO devis_items (
-          devis_id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [devisId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+          devis_id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id, unit_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [devisId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
     await connection.commit();
@@ -222,16 +222,16 @@ router.put('/:id', async (req, res) => {
     await connection.execute('DELETE FROM devis_items WHERE devis_id = ?', [id]);
 
     for (const it of items) {
-      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total } = it;
+      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total, variant_id, unit_id } = it;
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
       await connection.execute(`
         INSERT INTO devis_items (
-          devis_id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+          devis_id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id, unit_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
     await connection.commit();

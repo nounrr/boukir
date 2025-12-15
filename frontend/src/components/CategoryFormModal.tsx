@@ -7,12 +7,20 @@ import type { Category } from '../types';
 import {
 	useCreateCategoryMutation,
 	useUpdateCategoryMutation,
+<<<<<<< HEAD
+=======
+	useGetCategoriesQuery,
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 } from '../store/api/categoriesApi';
 import { showError, showSuccess } from '../utils/notifications';
 
 const schema = Yup.object({
 	nom: Yup.string().required('Nom requis'),
 	description: Yup.string().nullable(),
+<<<<<<< HEAD
+=======
+	parent_id: Yup.number().nullable(),
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 });
 
 interface Props {
@@ -26,16 +34,31 @@ const CategoryFormModal: React.FC<Props> = ({ isOpen, onClose, initialValues, on
 	const { user } = useSelector((s: RootState) => s.auth);
 	const [createCategory] = useCreateCategoryMutation();
 	const [updateCategory] = useUpdateCategoryMutation();
+<<<<<<< HEAD
+=======
+	const { data: categories } = useGetCategoriesQuery();
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 
 	if (!isOpen) return null;
 
 	const defaults = {
 		nom: '',
 		description: '',
+<<<<<<< HEAD
 		...initialValues,
 	} as { nom: string; description?: string };
 
 	const isEdit = Boolean(initialValues?.id);
+=======
+		parent_id: '',
+		...initialValues,
+	} as { nom: string; description?: string; parent_id?: string | number | null };
+
+	const isEdit = Boolean(initialValues?.id);
+	
+	// Filter out self if editing to prevent circular dependency
+	const availableParents = categories?.filter(c => !isEdit || c.id !== initialValues?.id) || [];
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 
 	return (
 		<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -48,11 +71,24 @@ const CategoryFormModal: React.FC<Props> = ({ isOpen, onClose, initialValues, on
 					onSubmit={async (values, { setSubmitting }) => {
 						try {
 							let saved: Category;
+<<<<<<< HEAD
 							if (isEdit && initialValues?.id) {
 								saved = await updateCategory({ id: initialValues.id, updated_by: user?.id || 1, ...values }).unwrap();
 								showSuccess('Catégorie mise à jour');
 							} else {
 								saved = await createCategory({ ...values, created_by: user?.id || 1 }).unwrap();
+=======
+							const payload = {
+								...values,
+								parent_id: values.parent_id ? Number(values.parent_id) : null,
+							};
+
+							if (isEdit && initialValues?.id) {
+								saved = await updateCategory({ id: initialValues.id, updated_by: user?.id || 1, ...payload }).unwrap();
+								showSuccess('Catégorie mise à jour');
+							} else {
+								saved = await createCategory({ ...payload, created_by: user?.id || 1 }).unwrap();
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 								showSuccess('Catégorie créée');
 							}
 							onSaved?.(saved);
@@ -79,6 +115,25 @@ const CategoryFormModal: React.FC<Props> = ({ isOpen, onClose, initialValues, on
 									<p className="text-red-500 text-xs mt-1">{errors.nom}</p>
 								)}
 							</div>
+<<<<<<< HEAD
+=======
+							
+							<div>
+								<label htmlFor="parent_id" className="block text-sm font-medium text-gray-700 mb-1">Catégorie Parente</label>
+								<Field
+									as="select"
+									id="parent_id"
+									name="parent_id"
+									className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+								>
+									<option value="">Aucune (Racine)</option>
+									{availableParents.map(cat => (
+										<option key={cat.id} value={cat.id}>{cat.nom}</option>
+									))}
+								</Field>
+							</div>
+
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 							<div>
 								<label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
 								<Field

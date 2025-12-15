@@ -140,7 +140,13 @@ router.post('/', async (req, res) => {
         prix_unitaire,
         remise_pourcentage = 0,
         remise_montant = 0,
+<<<<<<< HEAD
         total
+=======
+        total,
+        variant_id,
+        unit_id
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
       } = it;
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -151,9 +157,15 @@ router.post('/', async (req, res) => {
       await connection.execute(`
         INSERT INTO avoir_client_items (
           avoir_client_id, product_id, quantite, prix_unitaire,
+<<<<<<< HEAD
           remise_pourcentage, remise_montant, total
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+=======
+          remise_pourcentage, remise_montant, total, variant_id, unit_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
     }
 
   await connection.commit();
@@ -213,7 +225,13 @@ router.put('/:id', async (req, res) => {
         prix_unitaire,
         remise_pourcentage = 0,
         remise_montant = 0,
+<<<<<<< HEAD
         total
+=======
+        total,
+        variant_id,
+        unit_id
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
       } = it;
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -224,9 +242,15 @@ router.put('/:id', async (req, res) => {
       await connection.execute(`
         INSERT INTO avoir_client_items (
           avoir_client_id, product_id, quantite, prix_unitaire,
+<<<<<<< HEAD
           remise_pourcentage, remise_montant, total
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+=======
+          remise_pourcentage, remise_montant, total, variant_id, unit_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
     }
 
     await connection.commit();

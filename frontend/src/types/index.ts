@@ -69,6 +69,10 @@ export interface Category {
   id: number;
   nom: string;
   description?: string;
+<<<<<<< HEAD
+=======
+  parent_id?: number | null;
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -78,6 +82,39 @@ export interface Category {
 export interface CreateCategoryData {
   nom: string;
   description?: string;
+<<<<<<< HEAD
+=======
+  parent_id?: number | null;
+}
+
+export interface ProductVariant {
+  id?: number;
+  product_id?: number;
+  variant_name: string;
+  variant_type?: string;
+  reference?: string;
+  prix_achat: number;
+  cout_revient?: number;
+  cout_revient_pourcentage?: number;
+  prix_gros?: number;
+  prix_gros_pourcentage?: number;
+  prix_vente_pourcentage?: number;
+  prix_vente: number;
+  stock_quantity: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProductUnit {
+  id?: number;
+  product_id?: number;
+  unit_name: string;
+  conversion_factor: number;
+  prix_vente?: number | null;
+  is_default: boolean;
+  created_at?: string;
+  updated_at?: string;
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 }
 
 // Types pour les produits (stock)
@@ -99,9 +136,36 @@ export interface Product {
   prix_vente: number;
   est_service: boolean;
   image_url?: string | null;
+<<<<<<< HEAD
   ecom_published?: boolean;
   stock_partage_ecom?: boolean;
   stock_partage_ecom_qty?: number;
+=======
+  
+  // Multi-language fields
+  fiche_technique?: string | null;
+  fiche_technique_ar?: string | null;
+  fiche_technique_en?: string | null;
+  fiche_technique_zh?: string | null;
+
+  description?: string | null;
+  description_ar?: string | null;
+  description_en?: string | null;
+  description_zh?: string | null;
+
+  designation_ar?: string | null;
+  designation_en?: string | null;
+  designation_zh?: string | null;
+
+  pourcentage_promo?: number;
+  ecom_published?: boolean;
+  stock_partage_ecom?: boolean;
+  stock_partage_ecom_qty?: number;
+  has_variants?: boolean;
+  base_unit?: string;
+  variants?: ProductVariant[];
+  units?: ProductUnit[];
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -118,9 +182,21 @@ export interface CreateProductData {
   prix_gros_pourcentage?: number;
   prix_vente_pourcentage?: number;
   est_service?: boolean;
+<<<<<<< HEAD
   ecom_published?: boolean;
   stock_partage_ecom?: boolean;
   stock_partage_ecom_qty?: number;
+=======
+  description?: string;
+  pourcentage_promo?: number;
+  ecom_published?: boolean;
+  stock_partage_ecom?: boolean;
+  stock_partage_ecom_qty?: number;
+  has_variants?: boolean;
+  base_unit?: string;
+  variants?: ProductVariant[];
+  units?: ProductUnit[];
+>>>>>>> fb6d9e11b478e0add53abfe48811630f2f31df79
 }
 
 // Types pour les contacts
