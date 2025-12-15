@@ -41,4 +41,5 @@ backend/.env
 .env
 .env.*
 *.env
-whtsp-service
+whtsp-servicelocalhost.sql
+localhost.sql

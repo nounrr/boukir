@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { showConfirmation, showSuccess } from '../../utils/notifications';
+import NotificationBell from '../NotificationBell';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -113,6 +114,9 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen, manualAcc
                   {user?.role}
                 </span>
               </div>
+
+              {/* Notification Bell */}
+              <NotificationBell />
 
               {/* Bouton de vérification d'accès manuelle */}
               {manualAccessCheck && (

@@ -23,6 +23,7 @@ import categoriesReducer from './slices/categoriesSlice';
 import contactsReducer from './slices/contactsSlice';
 import bonsReducer from './slices/bonsSlice';
 import paymentsReducer from './slices/paymentsSlice';
+import notificationsReducer from './slices/notificationsSlice';
 
 const persistConfig = {
   key: 'root',
@@ -38,6 +39,7 @@ const rootReducer = combineReducers({
   contacts: contactsReducer,
   bons: bonsReducer,
   payments: paymentsReducer,
+  notifications: notificationsReducer,
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
