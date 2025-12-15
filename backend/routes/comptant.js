@@ -300,7 +300,9 @@ router.put('/:id', async (req, res) => {
         prix_unitaire,
         remise_pourcentage = 0,
         remise_montant = 0,
-        total
+        total,
+        variant_id,
+        unit_id
       } = it || {};
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -311,9 +313,9 @@ router.put('/:id', async (req, res) => {
       await connection.execute(`
         INSERT INTO comptant_items (
           bon_comptant_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
     await connection.commit();
