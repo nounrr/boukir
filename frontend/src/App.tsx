@@ -6,6 +6,7 @@ import { initializeAuth, logout } from './store/slices/authSlice';
 import { useAppDispatch, useAuth } from './hooks/redux';
 import { useValidateTokenQuery } from './store/api/authApi';
 import { useAccessScheduleMonitor } from './hooks/useAccessScheduleMonitor';
+import { useSocketConnection } from './hooks/useSocketConnection';
 
 // Composants
 import LoginPage from './components/auth/LoginPage';
@@ -54,6 +55,9 @@ const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ childr
 const AppContent: React.FC = () => {
   const dispatch = useAppDispatch();
   const { isAuthenticated } = useAuth();
+
+  // Initialize Socket.IO connection for PDG users
+  useSocketConnection();
 
   // Monitoring des horaires d'accès avec popup d'avertissement
   const { 

@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Bell } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
-import { setCount, setRequests, setLoading, removeRequest } from '../store/slices/notificationsSlice';
+import { setRequests, setLoading, removeRequest } from '../store/slices/notificationsSlice';
 import axios from 'axios';
 import ConfirmModal from './ConfirmModal';
 
@@ -38,22 +38,7 @@ const NotificationBell: React.FC = () => {
   // Only show notifications for PDG role
   const isPDG = user?.role === 'PDG';
 
-  const fetchNotificationCount = useCallback(async () => {
-    if (!isPDG || !token) return;
-
-    try {
-      const response = await axios.get(`${API_BASE_URL}/api/notifications/count`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      dispatch(setCount(response.data.pending_artisan_requests || 0));
-    } catch (error) {
-      console.error('Error fetching notification count:', error);
-    }
-  }, [isPDG, token, dispatch]);
-
+  // Fetch requests when dropdown is opened
   const fetchRequests = useCallback(async () => {
     if (!isPDG || !token) return;
 
@@ -72,19 +57,6 @@ const NotificationBell: React.FC = () => {
       dispatch(setLoading(false));
     }
   }, [isPDG, token, dispatch]);
-
-  // Poll for notifications every 30 seconds
-  useEffect(() => {
-    if (!isPDG) return;
-
-    fetchNotificationCount();
-    
-    const interval = setInterval(() => {
-      fetchNotificationCount();
-    }, 30000); // 30 seconds
-
-    return () => clearInterval(interval);
-  }, [isPDG, fetchNotificationCount]);
 
   const handleBellClick = () => {
     if (!showDropdown) {
