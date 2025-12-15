@@ -8,6 +8,24 @@ let socket: Socket | null = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
+// Notification sound
+const notificationSound = new Audio('../../../public/notification01.mp3');
+notificationSound.volume = 0.5; // 50% volume
+
+/**
+ * Play notification sound
+ */
+function playNotificationSound() {
+  try {
+    notificationSound.currentTime = 0; // Reset to start
+    notificationSound.play().catch((error) => {
+      console.warn('⚠️ Could not play notification sound:', error.message);
+    });
+  } catch (error) {
+    console.warn('⚠️ Error playing notification sound:', error);
+  }
+}
+
 /**
  * Initialize socket connection
  */
@@ -66,6 +84,9 @@ export function initializeSocket(token: string, dispatch: AppDispatch) {
     console.log('📢 New artisan request received:', data);
     console.log('  → Refreshing notification count and requests...');
     
+    // Play notification sound
+    playNotificationSound();
+
     // Fetch updated count and requests
     fetchNotificationCount(token, dispatch);
     fetchNotificationRequests(token, dispatch);
