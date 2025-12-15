@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
+import { emitToPDG } from '../socket/socketServer.js';
 
 const router = Router();
 
@@ -153,6 +154,23 @@ router.post('/register', async (req, res, next) => {
 
     const user = users[0];
     const token = generateToken(user);
+
+    // Emit socket event to PDG if artisan request was created
+    if (user.demande_artisan && !user.artisan_approuve) {
+      console.log(`🔔 New artisan request: ${user.prenom} ${user.nom} (ID: ${user.id})`);
+
+      emitToPDG('artisan-request:new', {
+        contact_id: user.id,
+        nom_complet: `${user.prenom} ${user.nom}`,
+        prenom: user.prenom,
+        nom: user.nom,
+        email: user.email,
+        telephone: user.telephone,
+        avatar_url: user.avatar_url,
+        created_at: user.created_at,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     // Prepare response message
     let message = 'Compte créé avec succès';
