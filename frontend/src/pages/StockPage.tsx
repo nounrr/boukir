@@ -9,6 +9,7 @@ import { useGetProductsQuery, useDeleteProductMutation } from '../store/api/prod
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
+import * as XLSX from 'xlsx';
 
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
@@ -126,6 +127,26 @@ const StockPage: React.FC = () => {
     return matchesSearch && matchesCategory;
   });
 
+  const handleExportExcel = () => {
+    try {
+      const rows = filteredProducts.map((p: any) => ({
+        'Ref': p.reference ?? p.id,
+        'Nom du produit': p.designation ?? '',
+        'Quantité système': p.est_service ? '' : (p.quantite ?? ''),
+        'Quantité en magasin': ''
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Ref', 'Nom du produit', 'Quantité système', 'Quantité en magasin'] });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Stock');
+      XLSX.writeFile(wb, `export-stock-${new Date().toISOString().slice(0,10)}.xlsx`);
+      showSuccess('Export Excel généré');
+    } catch (e) {
+      console.error(e);
+      showError('Erreur lors de la génération du fichier Excel');
+    }
+  };
+
   // Pagination
   const totalItems = filteredProducts.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
@@ -150,6 +171,12 @@ const StockPage: React.FC = () => {
           >
             <Settings size={20} />
             Nouvelle Catégorie
+          </button>
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition-colors"
+          >
+            Exporter Excel
           </button>
           <button
             onClick={() => {
