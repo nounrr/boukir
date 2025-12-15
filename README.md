@@ -48,6 +48,28 @@ Une application React.js complète de gestion commerciale avec authentification 
 ### 🧾 Gestion des Bons
 - Types : Commandes, Sorties, Comptant, Avoirs, Devis
 - Gestion des lignes de produits
+- **Nouveau (Dec 2025)** : Support des Variantes (Taille, Couleur...) et Unités Multiples (m3, Sac, Kg...)
+  - Sélection dynamique dans les formulaires de bons.
+  - Ajustement automatique des prix selon la variante ou l'unité choisie.
+  - Stockage des `variant_id` et `unit_id` dans la base de données pour chaque ligne.
+
+## 📦 Structure des Données (Variantes & Unités)
+
+### Base de Données
+Les tables de lignes de documents (`sortie_items`, `commande_items`, etc.) ont été mises à jour avec deux nouvelles colonnes :
+- `variant_id` (INT, Nullable) : Référence vers `product_variants`.
+- `unit_id` (INT, Nullable) : Référence vers `product_units`.
+
+### Flux d'Enregistrement
+1. **Frontend (`BonFormModal`)** :
+   - L'utilisateur sélectionne un produit.
+   - Si le produit a des variantes/unités, des listes déroulantes apparaissent.
+   - Lors de la soumission, l'objet item contient `{ product_id, quantite, ..., variant_id, unit_id }`.
+2. **Backend (API Routes)** :
+   - Les routes (`POST /sorties`, `PUT /commandes`, etc.) extraient ces IDs.
+   - Les requêtes SQL `INSERT` incluent désormais ces champs.
+
+
 - Calcul automatique des montants
 - Statuts de suivi
 

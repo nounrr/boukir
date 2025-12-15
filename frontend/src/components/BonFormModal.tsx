@@ -983,6 +983,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         const prixUnitairePourDB = values.type === 'Commande' ? pa : pu;
         return {
           product_id: parseInt(item.product_id),
+          variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+          unit_id: item.unit_id ? parseInt(item.unit_id) : null,
           quantite: q,
           prix_achat: pa,
           prix_unitaire: prixUnitairePourDB,
@@ -2213,8 +2215,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       <table className="min-w-full divide-y divide-gray-200 table-mobile-compact">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[260px]">
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[200px]">
                               Produit (Réf - Désignation)
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                              Variante
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">
+                              Unité
                             </th>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
                               Qté
@@ -2249,7 +2257,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             values.items.map((row: any, index: number) => (
                               <tr key={row._rowId || `item-${index}`}>
                                 {/* Produit combiné (Réf - Désignation) */}
-                                <td className="px-1 py-2 w-[260px]">
+                                <td className="px-1 py-2 w-[200px]">
                                   <SearchableSelect
                                     options={products.map((p: any) => ({
                                       value: String(p.id),
@@ -2266,6 +2274,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           String(product.reference ?? product.id)
                                         );
                                         setFieldValue(`items.${index}.designation`, product.designation || '');
+                                        
+                                        // Reset variant/unit
+                                        setFieldValue(`items.${index}.variant_id`, '');
+                                        setFieldValue(`items.${index}.unit_id`, '');
+
                                         setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
                                         setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
                                         // Charger les anciens pourcentages du produit par défaut
@@ -2309,6 +2322,99 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       onKeyDown: onCellKeyDown(index, 'product'),
                                     }}
                                   />
+                                </td>
+
+                                {/* Variante */}
+                                <td className="px-1 py-2 w-[100px]">
+                                  {(() => {
+                                    const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
+                                    if (!product || !product.variants || product.variants.length === 0) {
+                                      return <span className="text-xs text-gray-400">-</span>;
+                                    }
+                                    return (
+                                      <select
+                                        className="w-full px-1 py-1 text-sm border rounded"
+                                        value={values.items[index].variant_id || ''}
+                                        onChange={(e) => {
+                                          const vId = e.target.value;
+                                          setFieldValue(`items.${index}.variant_id`, vId);
+                                          if (vId) {
+                                            const variant = product.variants.find((v: any) => String(v.id) === vId);
+                                            if (variant) {
+                                              // Update price based on variant
+                                              const price = values.type === 'Commande' ? variant.prix_achat : variant.prix_vente;
+                                              if (values.type === 'Commande') {
+                                                setFieldValue(`items.${index}.prix_achat`, price);
+                                              } else {
+                                                setFieldValue(`items.${index}.prix_unitaire`, price);
+                                              }
+                                              setUnitPriceRaw((prev) => ({ ...prev, [index]: String(price) }));
+                                              
+                                              // Recalculate total
+                                              const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                              setFieldValue(`items.${index}.total`, q * price);
+                                            }
+                                          }
+                                        }}
+                                      >
+                                        <option value="">--</option>
+                                        {product.variants.map((v: any) => (
+                                          <option key={v.id} value={v.id}>
+                                            {v.variant_name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
+                                </td>
+
+                                {/* Unité */}
+                                <td className="px-1 py-2 w-[100px]">
+                                  {(() => {
+                                    const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
+                                    if (!product || !product.units || product.units.length === 0) {
+                                      return <span className="text-xs text-gray-400">{product?.base_unit || 'u'}</span>;
+                                    }
+                                    return (
+                                      <select
+                                        className="w-full px-1 py-1 text-sm border rounded"
+                                        value={values.items[index].unit_id || ''}
+                                        onChange={(e) => {
+                                          const uId = e.target.value;
+                                          setFieldValue(`items.${index}.unit_id`, uId);
+                                          if (uId) {
+                                            const unit = product.units.find((u: any) => String(u.id) === uId);
+                                            if (unit) {
+                                              // Update price if unit has specific price
+                                              if (unit.prix_vente && values.type !== 'Commande') {
+                                                setFieldValue(`items.${index}.prix_unitaire`, unit.prix_vente);
+                                                setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit.prix_vente) }));
+                                                
+                                                const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                                setFieldValue(`items.${index}.total`, q * unit.prix_vente);
+                                              }
+                                            }
+                                          } else {
+                                            // Revert to base price if deselected
+                                            const price = values.type === 'Commande' ? product.prix_achat : product.prix_vente;
+                                            if (values.type === 'Commande') {
+                                              setFieldValue(`items.${index}.prix_achat`, price);
+                                            } else {
+                                              setFieldValue(`items.${index}.prix_unitaire`, price);
+                                            }
+                                            setUnitPriceRaw((prev) => ({ ...prev, [index]: String(price) }));
+                                          }
+                                        }}
+                                      >
+                                        <option value="">{product.base_unit || 'u'}</option>
+                                        {product.units.map((u: any) => (
+                                          <option key={u.id} value={u.id}>
+                                            {u.unit_name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
                                 </td>
 
 
