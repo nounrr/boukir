@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { emitToPDG } from '../socket/socketServer.js';
 
 const router = express.Router();
 
@@ -85,6 +86,14 @@ router.post('/artisan-requests/:id/approve', async (req, res, next) => {
 
     await connection.commit();
 
+    // Emit socket event to PDG users
+    emitToPDG('artisan-request:approved', {
+      contact_id: parseInt(id),
+      nom_complet: contact.nom_complet,
+      email: contact.email,
+      timestamp: new Date().toISOString()
+    });
+
     res.json({
       message: 'Demande approuvée avec succès',
       contact_id: id
@@ -126,6 +135,12 @@ router.post('/artisan-requests/:id/reject', async (req, res, next) => {
     );
 
     await connection.commit();
+
+    // Emit socket event to PDG users
+    emitToPDG('artisan-request:rejected', {
+      contact_id: parseInt(id),
+      timestamp: new Date().toISOString()
+    });
 
     res.json({
       message: 'Demande rejetée',

@@ -4,6 +4,8 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { createServer } from 'http';
+import { initializeSocketServer } from './socket/socketServer.js';
 import employeesRouter from './routes/employees.js';
 import authRouter from './routes/auth.js';
 import categoriesRouter from './routes/categories.js';
@@ -212,11 +214,19 @@ async function migratePasswords() {
 }
 
 const PORT = process.env.PORT || 3001;
+
+// Create HTTP server (required for Socket.IO)
+const httpServer = createServer(app);
+
+// Initialize Socket.IO
+initializeSocketServer(httpServer);
+
 ensureDb()
   .then(() => migratePasswords())
   .then(() => {
-    app.listen(PORT, () => {
-      console.log(`\n✅ API listening on http://localhost:${PORT}\n`);
+    httpServer.listen(PORT, () => {
+      console.log(`\n✅ API listening on http://localhost:${PORT}`);
+      console.log(`✅ Socket.IO ready on ws://localhost:${PORT}\n`);
     });
   })
   .catch((err) => {
