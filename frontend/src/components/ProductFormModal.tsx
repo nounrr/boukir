@@ -6,7 +6,9 @@ import { Plus, Trash2, Ruler } from 'lucide-react';
 // Switch to backend mutations
 import { useCreateProductMutation, useUpdateProductMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
+import { useGetBrandsQuery } from '../store/api/brandsApi';
 import { showSuccess } from '../utils/notifications';
+import { CategorySelector } from './CategorySelector';
 
 const VARIANT_SUGGESTIONS: Record<string, string[]> = {
   Couleur: ['Rouge', 'Bleu', 'Vert', 'Jaune', 'Noir', 'Blanc', 'Gris', 'Orange', 'Violet', 'Rose', 'Marron', 'Beige', 'Argent', 'Or'],
@@ -29,6 +31,7 @@ const toNum = (v: any) => {
 const validationSchema = Yup.object({
   designation: Yup.string().optional(),
   categorie_id: Yup.number().optional(),
+  brand_id: Yup.number().nullable().optional(),
   quantite: Yup.number().min(0, 'La quantité ne peut pas être négative').optional(),
   kg: Yup.number().min(0, 'Le poids ne peut pas être négatif').optional(),
   prix_achat: Yup.number().min(0, 'Le prix ne peut pas être négatif').optional(),
@@ -93,6 +96,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   editingProduct = null,
 }) => {
   const { data: categories = [] } = useGetCategoriesQuery();
+  const { data: brands = [] } = useGetBrandsQuery();
 
   const organizedCategories = useMemo(() => {
     const roots = categories.filter(c => !c.parent_id);
@@ -187,6 +191,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     designation_en: '',
     designation_zh: '',
     categorie_id: 0,
+    categories: [] as number[],
+    brand_id: undefined as number | undefined,
     quantite: 0,
     kg: undefined as number | undefined,
     prix_achat: 0,
@@ -216,6 +222,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           designation_en: (editingProduct as any).designation_en || '',
           designation_zh: (editingProduct as any).designation_zh || '',
           categorie_id: editingProduct.categorie_id ?? (editingProduct.categorie ? editingProduct.categorie.id : 0),
+          categories: (editingProduct as any).categories && (editingProduct as any).categories.length > 0
+            ? (editingProduct as any).categories.map((c: any) => c.id)
+            : (editingProduct.categorie_id ? [editingProduct.categorie_id] : (editingProduct.categorie ? [editingProduct.categorie.id] : [])),
+          brand_id: editingProduct.brand_id ?? (editingProduct.brand ? editingProduct.brand.id : undefined),
           quantite: editingProduct.quantite || 0,
           kg: (editingProduct as any).kg ?? undefined,
           prix_achat: editingProduct.prix_achat || 0,
@@ -271,6 +281,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         prix_vente_pourcentage: pvPctNum,
         quantite: qteNum,
         categorie_id: Number(values.categorie_id || 0),
+        categories: values.categories as any,
+        brand_id: values.brand_id ? Number(values.brand_id) : null,
         ecom_published: values.ecom_published,
         stock_partage_ecom: values.stock_partage_ecom,
         stock_partage_ecom_qty: values.stock_partage_ecom_qty ?? 0,
@@ -287,6 +299,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('designation_en', productData.designation_en || '');
           formData.append('designation_zh', productData.designation_zh || '');
           formData.append('categorie_id', String(productData.categorie_id || 0));
+          if (productData.categories && productData.categories.length > 0) {
+            formData.append('categories', JSON.stringify(productData.categories));
+          }
+          if (productData.brand_id) formData.append('brand_id', String(productData.brand_id));
           formData.append('quantite', String(qteNum));
           if (kgNum !== null && kgNum !== undefined) formData.append('kg', String(kgNum));
           formData.append('prix_achat', String(prixAchatNum));
@@ -333,6 +349,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('designation_en', productData.designation_en || '');
           formData.append('designation_zh', productData.designation_zh || '');
           formData.append('categorie_id', String(productData.categorie_id || 0));
+          if (productData.categories && productData.categories.length > 0) {
+            formData.append('categories', JSON.stringify(productData.categories));
+          }
+          if (productData.brand_id) formData.append('brand_id', String(productData.brand_id));
           formData.append('quantite', String(qteNum));
           if (kgNum !== null && kgNum !== undefined) formData.append('kg', String(kgNum));
           formData.append('prix_achat', String(prixAchatNum));
@@ -543,29 +563,48 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               )}
             </div>
 
-            {/* Catégorie (optionnelle, défaut backend) */}
+            {/* Catégories (Multi-select avec Drag & Drop) */}
             <div>
-              <label htmlFor="categorie_id" className="block text-sm font-medium text-gray-700 mb-1">
-                Catégorie
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Catégories
               </label>
-              <select
-                id="categorie_id"
-                name="categorie_id"
-                value={String(formik.values.categorie_id ?? 0)}
-                onChange={(e) => formik.setFieldValue('categorie_id', Number(e.target.value))}
-                onBlur={formik.handleBlur}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value={String(0)}>Sélectionner une catégorie</option>
-                {organizedCategories.map((cat) => (
-                  <option key={cat.id} value={String(cat.id)}>
-                    {'\u00A0'.repeat(cat.level * 4)}{cat.nom}
-                  </option>
-                ))}
-              </select>
+              <CategorySelector
+                selectedIds={formik.values.categories || []}
+                categories={organizedCategories}
+                onChange={(newIds) => {
+                  formik.setFieldValue('categories', newIds);
+                  // Also set the primary category to the first selected one for backward compatibility
+                  if (newIds.length > 0) {
+                    formik.setFieldValue('categorie_id', newIds[0]);
+                  } else {
+                    formik.setFieldValue('categorie_id', 0);
+                  }
+                }}
+              />
               {formik.touched.categorie_id && formik.errors.categorie_id && (
                 <p className="text-red-500 text-sm mt-1">{formik.errors.categorie_id}</p>
               )}
+            </div>
+
+            {/* Marque */}
+            <div>
+              <label htmlFor="brand_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Marque
+              </label>
+              <select
+                id="brand_id"
+                name="brand_id"
+                value={String(formik.values.brand_id ?? '')}
+                onChange={(e) => formik.setFieldValue('brand_id', e.target.value ? Number(e.target.value) : undefined)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Sélectionner une marque</option>
+                {brands.map((brand) => (
+                  <option key={brand.id} value={brand.id}>
+                    {brand.nom}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Quantité (peut être 0) */}
