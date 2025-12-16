@@ -246,8 +246,8 @@ router.post('/', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO contacts 
-       (nom_complet, societe, type, telephone, email, adresse, rib, ice, solde, plafond, created_by, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+       (nom_complet, societe, type, telephone, email, adresse, rib, ice, solde, plafond, created_by, source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backoffice', NOW(), NOW())`,
   [(nom_complet ?? ''), (societe ?? null), type, telephone || null, email || null, adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, created_by || null]
     );
 
