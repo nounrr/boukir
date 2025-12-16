@@ -125,8 +125,8 @@ router.post('/register', async (req, res, next) => {
       `INSERT INTO contacts 
        (nom_complet, prenom, nom, email, telephone, type, type_compte, 
         demande_artisan, artisan_approuve, password, auth_provider, 
-        email_verified, is_active) 
-       VALUES (?, ?, ?, ?, ?, 'Client', ?, ?, FALSE, ?, 'local', FALSE, TRUE)`,
+        email_verified, is_active, source)
+       VALUES (?, ?, ?, ?, ?, 'Client', ?, ?, FALSE, ?, 'local', FALSE, TRUE, 'ecommerce')`,
       [
         nomComplet,
         prenom.trim(),
@@ -455,8 +455,8 @@ router.post('/google', async (req, res, next) => {
         `INSERT INTO contacts
          (nom_complet, prenom, nom, email, type, type_compte, auth_provider, google_id,
           avatar_url, email_verified, locale, is_active, last_login_at, last_login_ip,
-          provider_access_token) 
-         VALUES (?, ?, ?, ?, 'Client', 'Client', 'google', ?, ?, TRUE, ?, TRUE, NOW(), ?, ?)`,
+          provider_access_token, source)
+         VALUES (?, ?, ?, ?, 'Client', 'Client', 'google', ?, ?, TRUE, ?, TRUE, NOW(), ?, ?, 'ecommerce')`,
         [
           nomComplet,
           prenomValue,
@@ -641,8 +641,8 @@ router.post('/facebook', async (req, res, next) => {
         `INSERT INTO contacts
          (nom_complet, prenom, nom, email, type, type_compte, auth_provider, facebook_id,
           avatar_url, email_verified, is_active, last_login_at, last_login_ip,
-          provider_access_token) 
-         VALUES (?, ?, ?, ?, 'Client', 'Client', 'facebook', ?, ?, TRUE, TRUE, NOW(), ?, ?)`,
+          provider_access_token, source)
+         VALUES (?, ?, ?, ?, 'Client', 'Client', 'facebook', ?, ?, TRUE, TRUE, NOW(), ?, ?, 'ecommerce')`,
         [
           nomComplet,
           prenomValue,
