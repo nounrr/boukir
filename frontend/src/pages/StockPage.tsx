@@ -123,24 +123,75 @@ const StockPage: React.FC = () => {
     const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
     const designation = String(product.designation ?? '').toLowerCase();
     const matchesSearch = designation.includes(term) || refStr.includes(term);
-    const matchesCategory = !filterCategory || String(product.categorie_id ?? '') === filterCategory;
+    
+    const matchesCategory = !filterCategory || (() => {
+      // Check if the selected filter category exists in the product's categories list
+      if (product.categories && Array.isArray(product.categories) && product.categories.length > 0) {
+        return product.categories.some((c: any) => String(c.id) === filterCategory);
+      }
+      // Fallback to legacy single category check
+      return String(product.categorie_id ?? '') === filterCategory;
+    })();
+
     return matchesSearch && matchesCategory;
   });
 
   const handleExportExcel = () => {
     try {
-      const rows = filteredProducts.map((p: any) => ({
-        'Ref': p.reference ?? p.id,
-        'Nom du produit': p.designation ?? '',
-        'Quantité système': p.est_service ? '' : (p.quantite ?? ''),
-        'Quantité en magasin': ''
-      }));
+      // Filter out services
+      const exportableProducts = filteredProducts.filter((p: any) => !p.est_service);
 
-      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Ref', 'Nom du produit', 'Quantité système', 'Quantité en magasin'] });
+      const rows = exportableProducts.map((p: any, index: number) => {
+        const pa = Number(p.prix_achat) || 0;
+        return {
+          'N°': index + 1,
+          'Référence': p.reference ?? p.id,
+          'Désignation': p.designation ?? '',
+          'Quantité': '', // Laisser vide pour saisie
+          'Prix Achat': pa,
+          'Total Achat': '' // Sera remplacé par une formule
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+
+      // Ajouter les formules pour chaque ligne produit
+      // Les données commencent à la ligne 2 (index 1) car la ligne 1 est l'en-tête
+      exportableProducts.forEach((_, index) => {
+        const rowNum = index + 2; // Excel row number (1-based)
+        const qtyCell = `D${rowNum}`; // Colonne Quantité
+        const priceCell = `E${rowNum}`; // Colonne Prix Achat
+        
+        // Formule: Quantité * Prix Achat
+        const cellRef = XLSX.utils.encode_cell({ r: index + 1, c: 5 }); // Colonne F (index 5)
+        ws[cellRef] = { t: 'n', f: `${qtyCell}*${priceCell}`, v: 0 };
+      });
+
+      // Ajouter la ligne TOTAL
+      const totalRowIndex = rows.length + 1; // 0-based index for the new row
+      const totalRowNum = totalRowIndex + 1; // 1-based Excel row number
+      
+      XLSX.utils.sheet_add_json(ws, [{
+        'N°': 'TOTAL',
+        'Référence': '',
+        'Désignation': '',
+        'Quantité': '',
+        'Prix Achat': '',
+        'Total Achat': ''
+      }], { skipHeader: true, origin: -1 });
+
+      // Formule Somme Prix Achat (Colonne E)
+      const sumPriceRef = XLSX.utils.encode_cell({ r: totalRowIndex, c: 4 });
+      ws[sumPriceRef] = { t: 'n', f: `SUM(E2:E${totalRowNum - 1})` };
+
+      // Formule Somme Total Achat (Colonne F)
+      const sumTotalRef = XLSX.utils.encode_cell({ r: totalRowIndex, c: 5 });
+      ws[sumTotalRef] = { t: 'n', f: `SUM(F2:F${totalRowNum - 1})` };
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Stock');
       XLSX.writeFile(wb, `export-stock-${new Date().toISOString().slice(0,10)}.xlsx`);
-      showSuccess('Export Excel généré');
+      showSuccess('Export Excel généré avec formules');
     } catch (e) {
       console.error(e);
       showError('Erreur lors de la génération du fichier Excel');
