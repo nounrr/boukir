@@ -43,6 +43,125 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE products ADD COLUMN is_deleted TINYINT(1) NOT NULL DEFAULT 0 AFTER est_service`);
   }
 
+  // Check designation multilingual
+  const [colsDesAr] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'designation_ar'`
+  );
+  if (!colsDesAr.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN designation_ar VARCHAR(255) DEFAULT NULL`);
+  }
+  const [colsDesEn] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'designation_en'`
+  );
+  if (!colsDesEn.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN designation_en VARCHAR(255) DEFAULT NULL`);
+  }
+  const [colsDesZh] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'designation_zh'`
+  );
+  if (!colsDesZh.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN designation_zh VARCHAR(255) DEFAULT NULL`);
+  }
+
+  // Check description multilingual
+  const [colsDescAr] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'description_ar'`
+  );
+  if (!colsDescAr.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN description_ar TEXT DEFAULT NULL`);
+  }
+  const [colsDescEn] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'description_en'`
+  );
+  if (!colsDescEn.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN description_en TEXT DEFAULT NULL`);
+  }
+  const [colsDescZh] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'description_zh'`
+  );
+  if (!colsDescZh.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN description_zh TEXT DEFAULT NULL`);
+  }
+
+  // Check kg
+  const [colsKg] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'kg'`
+  );
+  if (!colsKg.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN kg DECIMAL(10,3) DEFAULT NULL`);
+  }
+
+  // Check pricing fields
+  const [colsCout] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'cout_revient'`
+  );
+  if (!colsCout.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN cout_revient DECIMAL(10,2) DEFAULT 0`);
+  }
+  const [colsCoutPct] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'cout_revient_pourcentage'`
+  );
+  if (!colsCoutPct.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN cout_revient_pourcentage DECIMAL(5,2) DEFAULT 0`);
+  }
+  const [colsGros] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'prix_gros'`
+  );
+  if (!colsGros.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN prix_gros DECIMAL(10,2) DEFAULT 0`);
+  }
+  const [colsGrosPct] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'prix_gros_pourcentage'`
+  );
+  if (!colsGrosPct.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN prix_gros_pourcentage DECIMAL(5,2) DEFAULT 0`);
+  }
+  const [colsVentePct] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'prix_vente_pourcentage'`
+  );
+  if (!colsVentePct.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN prix_vente_pourcentage DECIMAL(5,2) DEFAULT 0`);
+  }
+
+  // Check est_service
+  const [colsService] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'est_service'`
+  );
+  if (!colsService.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN est_service TINYINT(1) DEFAULT 0`);
+  }
+
+  // Check created_by
+  const [colsCreatedBy] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'created_by'`
+  );
+  if (!colsCreatedBy.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN created_by INT DEFAULT NULL`);
+  }
+  
+  // Check updated_by
+  const [colsUpdatedBy] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'updated_by'`
+  );
+  if (!colsUpdatedBy.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN updated_by INT DEFAULT NULL`);
+  }
+
   // Check image_url
   const [colsImage] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -156,6 +275,81 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE product_variants ADD COLUMN variant_type VARCHAR(50) DEFAULT 'Autre'`);
   }
 
+  // Ensure brands table exists for FK
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS brands (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      nom VARCHAR(255) NOT NULL,
+      description TEXT,
+      image_url VARCHAR(255),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Check brand_id
+  const [colsBrand] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'brand_id'`
+  );
+  if (!colsBrand.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN brand_id INT DEFAULT NULL`);
+    await pool.query(`ALTER TABLE products ADD CONSTRAINT fk_products_brand FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE SET NULL`);
+  }
+
+  // Ensure product_categories table exists
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS product_categories (
+      product_id INT NOT NULL,
+      category_id INT NOT NULL,
+      PRIMARY KEY (product_id, category_id),
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Check position in product_categories
+  const [colsPos] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_categories' AND COLUMN_NAME = 'position'`
+  );
+  if (!colsPos.length) {
+    await pool.query(`ALTER TABLE product_categories ADD COLUMN position INT DEFAULT 0`);
+  }
+
+  // Convert categorie_id to JSON/TEXT if it is INT
+  const [colCatId] = await pool.query(
+    `SELECT DATA_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'categorie_id'`
+  );
+  if (colCatId.length && (colCatId[0].DATA_TYPE === 'int' || colCatId[0].DATA_TYPE === 'bigint')) {
+    console.log('Converting categorie_id from INT to TEXT...');
+    // Drop FK first
+    try {
+      await pool.query(`ALTER TABLE products DROP FOREIGN KEY fk_products_category`);
+    } catch (e) {
+      // Ignore if FK doesn't exist or has different name (try standard name too)
+      try {
+        await pool.query(`ALTER TABLE products DROP FOREIGN KEY products_categorie_id_foreign`);
+      } catch (e2) {
+        console.log('Could not drop FK on categorie_id (might not exist)');
+      }
+    }
+    // Drop Index if exists (often same name as FK or column name)
+    try {
+      await pool.query(`DROP INDEX fk_products_category ON products`);
+    } catch (e) {}
+    try {
+      await pool.query(`DROP INDEX products_categorie_id_foreign ON products`);
+    } catch (e) {}
+    try {
+      await pool.query(`DROP INDEX categorie_id ON products`);
+    } catch (e) {}
+
+    // Modify column
+    await pool.query(`ALTER TABLE products MODIFY COLUMN categorie_id TEXT`);
+  }
+
   ensuredProductsColumns = true;
 }
 ensureProductsColumns().catch((e) => console.error('ensureProductsColumns:', e));
@@ -164,7 +358,8 @@ router.get('/', async (_req, res, next) => {
   try {
     await ensureProductsColumns();
     const [rows] = await pool.query(`
-      SELECT p.*, c.id as c_id, c.nom as c_nom, c.description as c_description,
+      SELECT p.*,
+      b.id as b_id, b.nom as b_nom, b.image_url as b_image_url,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pv.id, 
         'variant_name', pv.variant_name, 
@@ -185,19 +380,32 @@ router.get('/', async (_req, res, next) => {
         'conversion_factor', pu.conversion_factor, 
         'prix_vente', pu.prix_vente, 
         'is_default', pu.is_default
-      )) FROM product_units pu WHERE pu.product_id = p.id) as units
+      )) FROM product_units pu WHERE pu.product_id = p.id) as units,
+      (SELECT CAST(CONCAT('[', GROUP_CONCAT(
+        JSON_OBJECT('id', c2.id, 'nom', c2.nom)
+        ORDER BY pc.position ASC SEPARATOR ','
+      ), ']') AS JSON)
+      FROM product_categories pc 
+      JOIN categories c2 ON pc.category_id = c2.id 
+      WHERE pc.product_id = p.id
+      ) as categories
       FROM products p
-      LEFT JOIN categories c ON p.categorie_id = c.id
+      LEFT JOIN brands b ON p.brand_id = b.id
       WHERE COALESCE(p.is_deleted, 0) = 0
       ORDER BY p.id DESC
     `);
-    const data = rows.map((r) => ({
+    const data = rows.map((r) => {
+      const cats = typeof r.categories === 'string' ? JSON.parse(r.categories) : (r.categories || []);
+      return {
       id: r.id,
   // reference is now derived from id for compatibility with frontend displays
   reference: String(r.id),
       designation: r.designation,
-      categorie_id: r.categorie_id,
-      categorie: r.c_id ? { id: r.c_id, nom: r.c_nom, description: r.c_description } : undefined,
+      categorie_id: cats.length > 0 ? cats[0].id : 0,
+      categorie: cats.length > 0 ? cats[0] : undefined,
+      categories: cats,
+      brand_id: r.brand_id,
+      brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
       quantite: Number(r.quantite),
     kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
       prix_achat: Number(r.prix_achat),
@@ -226,7 +434,8 @@ router.get('/', async (_req, res, next) => {
       base_unit: r.base_unit,
       variants: typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []),
       units: typeof r.units === 'string' ? JSON.parse(r.units) : (r.units || []),
-    }));
+    };
+  });
     res.json(data);
   } catch (err) { next(err); }
 });
@@ -236,9 +445,8 @@ router.get('/archived/list', async (_req, res, next) => {
   try {
     await ensureProductsColumns();
     const [rows] = await pool.query(
-      `SELECT p.*, c.id as c_id, c.nom as c_nom
+      `SELECT p.*
        FROM products p
-       LEFT JOIN categories c ON p.categorie_id = c.id
        WHERE COALESCE(p.is_deleted, 0) = 1
        ORDER BY p.updated_at DESC`
     );
@@ -246,8 +454,8 @@ router.get('/archived/list', async (_req, res, next) => {
       id: r.id,
       reference: String(r.id),
       designation: r.designation,
-      categorie_id: r.categorie_id,
-      categorie: r.c_id ? { id: r.c_id, nom: r.c_nom } : undefined,
+      categorie_id: 0, // Archived list simplified
+      categorie: undefined,
       updated_at: r.updated_at,
     })));
   } catch (err) { next(err); }
@@ -272,19 +480,49 @@ router.get('/:id', async (req, res, next) => {
   try {
     await ensureProductsColumns();
     const id = Number(req.params.id);
-    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
+    const [rows] = await pool.query(`
+      SELECT p.*, b.id as b_id, b.nom as b_nom, b.image_url as b_image_url 
+      FROM products p 
+      LEFT JOIN brands b ON p.brand_id = b.id
+      WHERE p.id = ?
+    `, [id]);
     const r = rows[0];
     if (!r) return res.status(404).json({ message: 'Produit introuvable' });
 
     // Fetch variants and units
     const [variants] = await pool.query('SELECT * FROM product_variants WHERE product_id = ?', [id]);
     const [units] = await pool.query('SELECT * FROM product_units WHERE product_id = ?', [id]);
+    
+    // Fetch categories from product_categories table (source of truth for details)
+    const [categories] = await pool.query(`
+      SELECT c.id, c.nom 
+      FROM product_categories pc 
+      JOIN categories c ON pc.category_id = c.id 
+      WHERE pc.product_id = ?
+      ORDER BY pc.position ASC
+    `, [id]);
+
+    // Fallback: if product_categories is empty, try parsing categorie_id JSON
+    let finalCategories = categories;
+    if (finalCategories.length === 0 && r.categorie_id) {
+       try {
+         const ids = JSON.parse(r.categorie_id);
+         if (Array.isArray(ids) && ids.length > 0) {
+           const [cats] = await pool.query('SELECT id, nom FROM categories WHERE id IN (?)', [ids]);
+           // Sort by order in ids array
+           finalCategories = ids.map(id => cats.find(c => c.id === id)).filter(c => c);
+         }
+       } catch (e) {}
+    }
 
     res.json({
       id: r.id,
       reference: String(r.id),
       designation: r.designation,
-      categorie_id: r.categorie_id,
+      categorie_id: finalCategories.length > 0 ? finalCategories[0].id : 0,
+      categories: finalCategories,
+      brand_id: r.brand_id,
+      brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
       quantite: Number(r.quantite),
       kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
       prix_achat: Number(r.prix_achat),
@@ -355,6 +593,7 @@ router.post('/', (req, res, next) => {
       designation_en,
       designation_zh,
       categorie_id,
+      brand_id,
       quantite,
       kg,
       prix_achat,
@@ -374,6 +613,7 @@ router.post('/', (req, res, next) => {
       base_unit,
       variants, // JSON string or array
       units, // JSON string or array
+      categories, // JSON string or array
     } = req.body;
 
     const image_url = req.files?.['image']?.[0] ? `/uploads/products/${req.files['image'][0].filename}` : null;
@@ -387,20 +627,9 @@ router.post('/', (req, res, next) => {
 
     // Ensure we have a category: use provided one, else first category or create a default
     let catId = Number(categorie_id);
-    if (!catId) {
-      const [catRows] = await pool.query('SELECT id FROM categories ORDER BY id ASC LIMIT 1');
-      if (catRows.length > 0) {
-        catId = catRows[0].id;
-      } else {
-        const nowCat = new Date();
-        const [insCat] = await pool.query(
-          'INSERT INTO categories (nom, description, created_at, updated_at) VALUES (?, ?, ?, ?)',
-          ['Divers', 'Catégorie par défaut', nowCat, nowCat]
-        );
-        catId = insCat.insertId;
-      }
-    }
-
+    // If categorie_id is now a JSON string, this check might fail or be irrelevant.
+    // We will handle categories array primarily.
+    
     const pa = Number(prix_achat ?? 0);
     const crp = Number(cout_revient_pourcentage ?? 0);
     const pgp = Number(prix_gros_pourcentage ?? 0);
@@ -423,16 +652,32 @@ router.post('/', (req, res, next) => {
   const pv = pa * (1 + pvp / 100);
 
     const now = new Date();
+    
+    // Prepare categories JSON
+    let categoriesJson = '[]';
+    if (categories) {
+      try {
+        const parsed = typeof categories === 'string' ? JSON.parse(categories) : categories;
+        if (Array.isArray(parsed)) {
+          categoriesJson = JSON.stringify(parsed);
+        }
+      } catch (e) { console.error('Error parsing categories for JSON column', e); }
+    } else if (categorie_id) {
+       // Fallback if only categorie_id provided
+       categoriesJson = JSON.stringify([Number(categorie_id)]);
+    }
+
     const [result] = await pool.query(
   `INSERT INTO products
-     (designation, designation_ar, designation_en, designation_zh, categorie_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, est_service, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, base_unit, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (designation, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, est_service, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, base_unit, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         (designation && String(designation).trim()) || 'Sans désignation',
         designation_ar || null,
         designation_en || null,
         designation_zh || null,
-        catId,
+        categoriesJson, // Store JSON array in categorie_id column
+        brand_id || null,
         totalQuantite,
         kg !== undefined && kg !== null ? Number(kg) : null,
         pa,
@@ -518,8 +763,39 @@ router.post('/', (req, res, next) => {
       }
     }
 
-    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
+    // Handle Categories
+    if (categories) {
+      let parsedCategories = [];
+      try {
+        parsedCategories = typeof categories === 'string' ? JSON.parse(categories) : categories;
+      } catch (e) {
+        console.error('Error parsing categories:', e);
+      }
+      if (Array.isArray(parsedCategories)) {
+        let pos = 0;
+        for (const catId of parsedCategories) {
+          await pool.query(
+            `INSERT INTO product_categories (product_id, category_id, position) VALUES (?, ?, ?)`,
+            [id, catId, pos++]
+          );
+        }
+      }
+    }
+
+    const [rows] = await pool.query(`
+      SELECT p.*, 
+      (SELECT CAST(CONCAT('[', GROUP_CONCAT(
+        JSON_OBJECT('id', c2.id, 'nom', c2.nom)
+        ORDER BY pc.position ASC SEPARATOR ','
+      ), ']') AS JSON)
+      FROM product_categories pc 
+      JOIN categories c2 ON pc.category_id = c2.id 
+      WHERE pc.product_id = p.id
+      ) as categories
+      FROM products p WHERE p.id = ?
+    `, [id]);
     const r = rows[0];
+    r.categories = typeof r.categories === 'string' ? JSON.parse(r.categories) : (r.categories || []);
     res.status(201).json({ ...r, reference: String(r.id) });
   } catch (err) { 
     console.error('Error in POST /products:', err);
@@ -553,6 +829,7 @@ router.put('/:id', upload.fields([
       designation_en,
       designation_zh,
       categorie_id,
+      brand_id,
       quantite,
   kg,
       prix_achat,
@@ -573,6 +850,7 @@ router.put('/:id', upload.fields([
       base_unit,
       variants,
       units,
+      categories,
     } = req.body;
     // Validate shared qty does not exceed total quantity after changes
     const existing = exists[0];
@@ -603,7 +881,24 @@ router.put('/:id', upload.fields([
     if (designation_en !== undefined) { fields.push('designation_en = ?'); values.push(designation_en ? designation_en.trim() : null); }
     if (designation_zh !== undefined) { fields.push('designation_zh = ?'); values.push(designation_zh ? designation_zh.trim() : null); }
 
-    if (categorie_id !== undefined) { fields.push('categorie_id = ?'); values.push(categorie_id); }
+    // Handle categories update for JSON column
+    if (categories !== undefined) {
+      let catJson = '[]';
+      try {
+        const parsed = typeof categories === 'string' ? JSON.parse(categories) : categories;
+        if (Array.isArray(parsed)) {
+          catJson = JSON.stringify(parsed);
+        }
+      } catch (e) {}
+      fields.push('categorie_id = ?'); 
+      values.push(catJson);
+    } else if (categorie_id !== undefined) {
+       // If only categorie_id provided (legacy or single select), wrap in array
+       fields.push('categorie_id = ?');
+       values.push(JSON.stringify([Number(categorie_id)]));
+    }
+
+    if (brand_id !== undefined) { fields.push('brand_id = ?'); values.push(brand_id || null); }
     if (quantite !== undefined) { fields.push('quantite = ?'); values.push(Number(quantite)); }
   if (kg !== undefined) { fields.push('kg = ?'); values.push(kg === null ? null : Number(kg)); }
     if (prix_achat !== undefined) { fields.push('prix_achat = ?'); values.push(Number(prix_achat)); }
@@ -759,9 +1054,42 @@ router.put('/:id', upload.fields([
       }
     }
 
-  const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
-  const r = rows[0];
-  res.json({ ...r, reference: String(r.id) });
+    // Update Categories
+    if (categories) {
+      let parsedCategories = [];
+      try {
+        parsedCategories = typeof categories === 'string' ? JSON.parse(categories) : categories;
+      } catch (e) {
+        console.error('Error parsing categories:', e);
+      }
+      if (Array.isArray(parsedCategories)) {
+        // For many-to-many, it's often simpler to delete all and re-insert
+        await pool.query(`DELETE FROM product_categories WHERE product_id = ?`, [id]);
+        let pos = 0;
+        for (const catId of parsedCategories) {
+          await pool.query(
+            `INSERT INTO product_categories (product_id, category_id, position) VALUES (?, ?, ?)`,
+            [id, catId, pos++]
+          );
+        }
+      }
+    }
+
+    const [rows] = await pool.query(`
+      SELECT p.*, 
+      (SELECT CAST(CONCAT('[', GROUP_CONCAT(
+        JSON_OBJECT('id', c2.id, 'nom', c2.nom)
+        ORDER BY pc.position ASC SEPARATOR ','
+      ), ']') AS JSON)
+      FROM product_categories pc 
+      JOIN categories c2 ON pc.category_id = c2.id 
+      WHERE pc.product_id = p.id
+      ) as categories
+      FROM products p WHERE p.id = ?
+    `, [id]);
+    const r = rows[0];
+    r.categories = typeof r.categories === 'string' ? JSON.parse(r.categories) : (r.categories || []);
+    res.json({ ...r, reference: String(r.id) });
   } catch (err) { next(err); }
 });
 
@@ -784,9 +1112,21 @@ router.patch('/:id/stock', async (req, res, next) => {
     if (exists.length === 0) return res.status(404).json({ message: 'Produit introuvable' });
     const now = new Date();
     await pool.query('UPDATE products SET quantite = ?, updated_by = ?, updated_at = ? WHERE id = ?', [Number(quantite), updated_by ?? null, now, id]);
-  const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
-  const r = rows[0];
-  res.json({ ...r, reference: String(r.id) });
+    const [rows] = await pool.query(`
+      SELECT p.*, 
+      (SELECT CAST(CONCAT('[', GROUP_CONCAT(
+        JSON_OBJECT('id', c2.id, 'nom', c2.nom)
+        ORDER BY pc.position ASC SEPARATOR ','
+      ), ']') AS JSON)
+      FROM product_categories pc 
+      JOIN categories c2 ON pc.category_id = c2.id 
+      WHERE pc.product_id = p.id
+      ) as categories
+      FROM products p WHERE p.id = ?
+    `, [id]);
+    const r = rows[0];
+    r.categories = typeof r.categories === 'string' ? JSON.parse(r.categories) : (r.categories || []);
+    res.json({ ...r, reference: String(r.id) });
   } catch (err) { next(err); }
 });
 
