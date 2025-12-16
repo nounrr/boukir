@@ -57,6 +57,7 @@ ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE
     COMMENT 'Account active status' AFTER locale,
 ADD COLUMN is_blocked BOOLEAN NOT NULL DEFAULT FALSE 
     COMMENT 'Admin can block account' AFTER is_active,
+ADD COLUMN source ENUM('backoffice', 'ecommerce') NOT NULL DEFAULT 'backoffice' COMMENT 'User creation source: backoffice or ecommerce' AFTER is_blocked,
 
 -- Security
 ADD COLUMN last_login_at DATETIME NULL 
@@ -90,6 +91,7 @@ ADD INDEX idx_type_compte (type_compte),
 ADD INDEX idx_demande_artisan (demande_artisan),
 ADD INDEX idx_artisan_approuve (artisan_approuve),
 ADD INDEX idx_is_active (is_active),
+ADD INDEX idx_source (source),
 ADD INDEX idx_deleted_at (deleted_at),
 ADD INDEX idx_last_login (last_login_at);
 
