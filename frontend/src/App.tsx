@@ -28,6 +28,7 @@ import VehiculesPage from './pages/VehiculesPage';
 import CaissePage from './pages/CaissePage';
 import ReportsPage from './pages/ReportsPage';
 import CategoriesPage from './pages/CategoriesPage';
+import BrandsPage from './pages/BrandsPage';
 import StatsDetailPage from './pages/StatsDetailPage';
 import ExcelUploadPage from './pages/ImportExcelTabs';
 import ExportProducts from './pages/ExportProducts';
@@ -231,6 +232,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <CategoriesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/brands"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <BrandsPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

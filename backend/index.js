@@ -18,6 +18,7 @@ import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 
 import categoriesRouter from './routes/categories.js';
+import brandsRouter from './routes/brands.js';
 import productsRouter from './routes/products.js';
 import contactsRouter from './routes/contacts.js';
 import vehiculesRouter from './routes/vehicules.js';
@@ -157,6 +158,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/users/auth', usersRouter); // E-commerce users authentication
 
 app.use('/api/categories', categoriesRouter);
+app.use('/api/brands', brandsRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/contacts', contactsRouter);
 app.use('/api/vehicules', vehiculesRouter);

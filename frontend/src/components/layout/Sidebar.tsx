@@ -19,6 +19,7 @@ import {
   Wallet,
   Archive,
   CalendarClock,
+  Award,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -35,7 +36,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       items: [
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: true },
         { name: 'Remises', href: '/remises', icon: Percent, show: true },
-        { name: 'Catégories', href: '/categories', icon: Tags, show: true },
         { name: 'Contacts', href: '/contacts', icon: UserCheck, show: user?.role !== 'Employé' },
         { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: user?.role !== 'Employé' },
       ],
@@ -44,6 +44,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Produits',
       items: [
         { name: 'Stock', href: '/stock', icon: Package, show: true },
+        { name: 'Catégories', href: '/categories', icon: Tags, show: true },
+        { name: 'Marques', href: '/brands', icon: Award, show: true },
         { name: 'Produits archivés', href: '/products/archived', icon: Package, show: user?.role === 'PDG' },
       ],
     },

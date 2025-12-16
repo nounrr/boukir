@@ -117,6 +117,21 @@ export interface ProductUnit {
 >>>>>>> e-comm-clean
 }
 
+export interface Brand {
+  id: number;
+  nom: string;
+  description?: string;
+  image_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateBrandData {
+  nom: string;
+  description?: string;
+  image?: File;
+}
+
 // Types pour les produits (stock)
 export interface Product {
   id: number;
@@ -125,6 +140,9 @@ export interface Product {
   designation: string;
   categorie_id: number;
   categorie?: Category;
+  categories?: Category[];
+  brand_id?: number | null;
+  brand?: Brand;
   quantite: number;
   kg?: number | null;
   prix_achat: number;
