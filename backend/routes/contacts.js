@@ -218,15 +218,33 @@ router.post('/', async (req, res) => {
   try {
     const {
       nom_complet,
+      prenom,
+      nom,
       societe,
       type,
+      type_compte,
       telephone,
       email,
+      password,
       adresse,
       rib,
       ice,
       solde = 0,
       plafond,
+      demande_artisan,
+      artisan_approuve,
+      artisan_approuve_par,
+      artisan_approuve_le,
+      artisan_note_admin,
+      auth_provider,
+      google_id,
+      facebook_id,
+      provider_access_token,
+      provider_refresh_token,
+      provider_token_expires_at,
+      avatar_url,
+      email_verified,
+      source,
       created_by
     } = req.body;
 
@@ -246,9 +264,9 @@ router.post('/', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO contacts 
-       (nom_complet, societe, type, telephone, email, adresse, rib, ice, solde, plafond, created_by, source, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backoffice', NOW(), NOW())`,
-  [(nom_complet ?? ''), (societe ?? null), type, telephone || null, email || null, adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, created_by || null]
+       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+  [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, (demande_artisan ?? 0), (artisan_approuve ?? 0), (artisan_approuve_par ?? null), (artisan_approuve_le ?? null), (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice')]
     );
 
     // Fetch the created contact
@@ -269,15 +287,33 @@ router.put('/:id', async (req, res) => {
   try {
     const {
       nom_complet,
+      prenom,
+      nom,
       societe,
       type,
+      type_compte,
       telephone,
       email,
+      password,
       adresse,
       rib,
       ice,
       solde,
       plafond,
+      demande_artisan,
+      artisan_approuve,
+      artisan_approuve_par,
+      artisan_approuve_le,
+      artisan_note_admin,
+      auth_provider,
+      google_id,
+      facebook_id,
+      provider_access_token,
+      provider_refresh_token,
+      provider_token_expires_at,
+      avatar_url,
+      email_verified,
+      source,
       updated_by
     } = req.body;
 
@@ -296,6 +332,8 @@ router.put('/:id', async (req, res) => {
     const params = [];
 
   if (nom_complet !== undefined) { updates.push('nom_complet = ?'); params.push(nom_complet); }
+  if (prenom !== undefined) { updates.push('prenom = ?'); params.push(prenom); }
+  if (nom !== undefined) { updates.push('nom = ?'); params.push(nom); }
   if (societe !== undefined) { updates.push('societe = ?'); params.push(societe); }
     if (type !== undefined) { 
       if (!['Client', 'Fournisseur'].includes(type)) {
@@ -304,13 +342,29 @@ router.put('/:id', async (req, res) => {
       updates.push('type = ?'); 
       params.push(type); 
     }
+  if (type_compte !== undefined) { updates.push('type_compte = ?'); params.push(type_compte); }
     if (telephone !== undefined) { updates.push('telephone = ?'); params.push(telephone); }
     if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+  if (password !== undefined) { updates.push('password = ?'); params.push(password); }
     if (adresse !== undefined) { updates.push('adresse = ?'); params.push(adresse); }
     if (rib !== undefined) { updates.push('rib = ?'); params.push(rib); }
     if (ice !== undefined) { updates.push('ice = ?'); params.push(ice); }
     if (solde !== undefined) { updates.push('solde = ?'); params.push(Number(solde)); }
     if (plafond !== undefined) { updates.push('plafond = ?'); params.push(plafond ? Number(plafond) : null); }
+  if (demande_artisan !== undefined) { updates.push('demande_artisan = ?'); params.push(demande_artisan); }
+  if (artisan_approuve !== undefined) { updates.push('artisan_approuve = ?'); params.push(artisan_approuve); }
+  if (artisan_approuve_par !== undefined) { updates.push('artisan_approuve_par = ?'); params.push(artisan_approuve_par); }
+  if (artisan_approuve_le !== undefined) { updates.push('artisan_approuve_le = ?'); params.push(artisan_approuve_le); }
+  if (artisan_note_admin !== undefined) { updates.push('artisan_note_admin = ?'); params.push(artisan_note_admin); }
+  if (auth_provider !== undefined) { updates.push('auth_provider = ?'); params.push(auth_provider); }
+  if (google_id !== undefined) { updates.push('google_id = ?'); params.push(google_id); }
+  if (facebook_id !== undefined) { updates.push('facebook_id = ?'); params.push(facebook_id); }
+  if (provider_access_token !== undefined) { updates.push('provider_access_token = ?'); params.push(provider_access_token); }
+  if (provider_refresh_token !== undefined) { updates.push('provider_refresh_token = ?'); params.push(provider_refresh_token); }
+  if (provider_token_expires_at !== undefined) { updates.push('provider_token_expires_at = ?'); params.push(provider_token_expires_at); }
+  if (avatar_url !== undefined) { updates.push('avatar_url = ?'); params.push(avatar_url); }
+  if (email_verified !== undefined) { updates.push('email_verified = ?'); params.push(email_verified); }
+  if (source !== undefined) { updates.push('source = ?'); params.push(source); }
     if (updated_by !== undefined) { updates.push('updated_by = ?'); params.push(updated_by); }
 
     updates.push('updated_at = NOW()');

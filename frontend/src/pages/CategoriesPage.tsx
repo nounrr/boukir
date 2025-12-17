@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Edit, Trash2, Search, Tags } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Tags, FolderTree } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { Category } from '../types';
 import {
 	useGetCategoriesQuery,
@@ -63,12 +64,20 @@ const CategoriesPage: React.FC = () => {
 					<Tags className="text-purple-600" size={28} />
 					<h1 className="text-2xl font-bold text-gray-900">Catégories</h1>
 				</div>
-				<button
-					onClick={handleAdd}
-					className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-				>
-					<Plus size={18} /> Nouvelle catégorie
-				</button>
+				<div className="flex gap-2">
+					<Link
+						to="/category-management"
+						className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md"
+					>
+						<FolderTree size={18} /> Organiser les catégories
+					</Link>
+					<button
+						onClick={handleAdd}
+						className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
+					>
+						<Plus size={18} /> Nouvelle catégorie
+					</button>
+				</div>
 			</div>
 
 			<div className="mb-6">
@@ -84,7 +93,7 @@ const CategoriesPage: React.FC = () => {
 				</div>
 			</div>
 
-			<div className="bg-white rounded-lg shadow overflow-hidden">
+<div className="bg-white rounded-lg shadow overflow-hidden">
 				<div className="overflow-x-auto">
 					<table className="min-w-full divide-y divide-gray-200">
 						<thead className="bg-gray-50">
