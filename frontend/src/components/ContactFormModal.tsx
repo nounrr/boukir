@@ -68,8 +68,13 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   if (!isOpen) return null;
 
   const defaultValues = {
-  societe: '',
+    societe: '',
     nom_complet: '',
+    prenom: '',
+    nom: '',
+    type_compte: '',
+    demande_artisan: false,
+    password: '',
     telephone: '',
     email: '',
     adresse: '',
@@ -106,7 +111,12 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               const contactData = {
                 // Pour Fournisseur, le nom peut être vide; on envoie une chaîne vide pour rester compatible DB
                 nom_complet: (values.nom_complet || '').toString(),
+                prenom: values.prenom || '',
+                nom: values.nom || '',
                 societe: (values as any).societe || '',
+                type_compte: values.type_compte || null,
+                demande_artisan: values.demande_artisan || false,
+                password: values.password || undefined,
                 telephone: values.telephone || '',
                 email: values.email || '',
                 adresse: values.adresse || '',
@@ -168,6 +178,32 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 )}
               </div>
 
+              {/* Prénom et Nom - 2 colonnes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="prenom" className="block text-sm font-medium text-gray-700 mb-1">
+                    Prénom
+                  </label>
+                  <Field
+                    id="prenom"
+                    name="prenom"
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="nom" className="block text-sm font-medium text-gray-700 mb-1">
+                    Nom
+                  </label>
+                  <Field
+                    id="nom"
+                    name="nom"
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
               {/* Société (nom de l'entreprise) */}
               <div>
                 <label htmlFor="societe" className="block text-sm font-medium text-gray-700 mb-1">Société</label>
@@ -179,6 +215,38 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   placeholder="Nom de la société"
                 />
               </div>
+
+              {/* Type Compte et Demande Artisan */}
+              {contactType === 'Client' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="type_compte" className="block text-sm font-medium text-gray-700 mb-1">
+                      Type de compte
+                    </label>
+                    <Field
+                      as="select"
+                      id="type_compte"
+                      name="type_compte"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Sélectionner...</option>
+                      <option value="Client">Client</option>
+                      <option value="Artisan/Promoteur">Artisan/Promoteur</option>
+                    </Field>
+                  </div>
+                  <div className="flex items-center mt-6">
+                    <Field
+                      type="checkbox"
+                      id="demande_artisan"
+                      name="demande_artisan"
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="demande_artisan" className="ml-2 block text-sm text-gray-900">
+                      Demande Artisan/Promoteur
+                    </label>
+                  </div>
+                </div>
+              )}
 
               {/* Téléphone et Email - 2 colonnes */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -212,6 +280,19 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   {errors.email && touched.email && (
                     <p className="text-red-500 text-xs mt-1">{errors.email}</p>
                   )}
+                </div>
+
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                    Mot de passe {initialValues?.id && '(laisser vide pour ne pas changer)'}
+                  </label>
+                  <Field
+                    id="password"
+                    name="password"
+                    type="password"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="********"
+                  />
                 </div>
               </div>
 

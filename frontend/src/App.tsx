@@ -28,6 +28,7 @@ import VehiculesPage from './pages/VehiculesPage';
 import CaissePage from './pages/CaissePage';
 import ReportsPage from './pages/ReportsPage';
 import CategoriesPage from './pages/CategoriesPage';
+import CategoryManagementPage from './pages/CategoryManagementPage';
 import BrandsPage from './pages/BrandsPage';
 import StatsDetailPage from './pages/StatsDetailPage';
 import ExcelUploadPage from './pages/ImportExcelTabs';
@@ -232,6 +233,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <CategoriesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/category-management"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <CategoryManagementPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

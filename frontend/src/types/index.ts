@@ -69,10 +69,7 @@ export interface Category {
   id: number;
   nom: string;
   description?: string;
-<<<<<<< HEAD
   parent_id?: number | null;
-=======
->>>>>>> e-comm-clean
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -82,7 +79,6 @@ export interface Category {
 export interface CreateCategoryData {
   nom: string;
   description?: string;
-<<<<<<< HEAD
   parent_id?: number | null;
 }
 
@@ -100,6 +96,14 @@ export interface ProductVariant {
   prix_vente_pourcentage?: number;
   prix_vente: number;
   stock_quantity: number;
+  image_url?: string | null;
+  gallery?: Array<{
+    id: number;
+    image_url: string;
+    position: number;
+  }>;
+  remise_client?: number;
+  remise_artisan?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -113,8 +117,6 @@ export interface ProductUnit {
   is_default: boolean;
   created_at?: string;
   updated_at?: string;
-=======
->>>>>>> e-comm-clean
 }
 
 export interface Brand {
@@ -154,7 +156,17 @@ export interface Product {
   prix_vente: number;
   est_service: boolean;
   image_url?: string | null;
-<<<<<<< HEAD
+  remise_client?: number;
+  remise_artisan?: number;
+  
+  // Gallery images
+  gallery?: Array<{
+    id: number;
+    image_url: string;
+    position: number;
+  }>;
+  
+  // Multi-language fields
   
   // Multi-language fields
   fiche_technique?: string | null;
@@ -177,13 +189,9 @@ export interface Product {
   stock_partage_ecom_qty?: number;
   has_variants?: boolean;
   base_unit?: string;
+  categorie_base?: 'Professionel' | 'Maison' | null;
   variants?: ProductVariant[];
   units?: ProductUnit[];
-=======
-  ecom_published?: boolean;
-  stock_partage_ecom?: boolean;
-  stock_partage_ecom_qty?: number;
->>>>>>> e-comm-clean
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -200,7 +208,8 @@ export interface CreateProductData {
   prix_gros_pourcentage?: number;
   prix_vente_pourcentage?: number;
   est_service?: boolean;
-<<<<<<< HEAD
+  remise_client?: number;
+  remise_artisan?: number;
   description?: string;
   pourcentage_promo?: number;
   ecom_published?: boolean;
@@ -210,11 +219,6 @@ export interface CreateProductData {
   base_unit?: string;
   variants?: ProductVariant[];
   units?: ProductUnit[];
-=======
-  ecom_published?: boolean;
-  stock_partage_ecom?: boolean;
-  stock_partage_ecom_qty?: number;
->>>>>>> e-comm-clean
 }
 
 // Types pour les contacts
@@ -223,15 +227,33 @@ export interface Contact {
   reference?: string; // Référence auto-générée
   societe?: string | null;
   nom_complet: string;
+  prenom?: string | null;
+  nom?: string | null;
   type: 'Client' | 'Fournisseur';
+  type_compte?: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null;
   telephone?: string;
   email?: string;
+  password?: string;
   adresse?: string;
   rib?: string;
   ice?: string;
   solde: number;
   solde_cumule?: number; // Solde cumulé calculé côté backend
   plafond?: number; // Plafond de crédit (clients)
+  demande_artisan?: boolean;
+  artisan_approuve?: boolean;
+  artisan_approuve_par?: number | null;
+  artisan_approuve_le?: string | null;
+  artisan_note_admin?: string | null;
+  auth_provider?: 'local' | 'google' | 'facebook' | 'none';
+  google_id?: string | null;
+  facebook_id?: string | null;
+  provider_access_token?: string | null;
+  provider_refresh_token?: string | null;
+  provider_token_expires_at?: string | null;
+  avatar_url?: string | null;
+  email_verified?: boolean;
+  source?: 'backoffice' | 'ecommerce';
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -243,14 +265,32 @@ export interface CreateContactData {
   reference?: string;
   societe?: string | null;
   nom_complet: string;
+  prenom?: string | null;
+  nom?: string | null;
   type: 'Client' | 'Fournisseur';
+  type_compte?: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null;
   telephone?: string;
   email?: string;
+  password?: string;
   adresse?: string;
   rib?: string;
   ice?: string;
   solde?: number;
   plafond?: number;
+  demande_artisan?: boolean;
+  artisan_approuve?: boolean;
+  artisan_approuve_par?: number | null;
+  artisan_approuve_le?: string | null;
+  artisan_note_admin?: string | null;
+  auth_provider?: 'local' | 'google' | 'facebook' | 'none';
+  google_id?: string | null;
+  facebook_id?: string | null;
+  provider_access_token?: string | null;
+  provider_refresh_token?: string | null;
+  provider_token_expires_at?: string | null;
+  avatar_url?: string | null;
+  email_verified?: boolean;
+  source?: 'backoffice' | 'ecommerce';
 }
 
 // Types pour les véhicules
