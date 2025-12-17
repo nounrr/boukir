@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../store';
 import type { Product, Category, ProductVariant, ProductUnit } from '../types';
 import { useFormik, FieldArray, FormikProvider } from 'formik';
 import * as Yup from 'yup';
 import { Plus, Trash2, Ruler } from 'lucide-react';
 // Switch to backend mutations
-import { useCreateProductMutation, useUpdateProductMutation } from '../store/api/productsApi';
+import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { useGetBrandsQuery } from '../store/api/brandsApi';
 import { showSuccess } from '../utils/notifications';
-import { CategorySelector } from './CategorySelector';
+import { CategoryTreeSelect } from './CategoryTreeSelect';
 
 const VARIANT_SUGGESTIONS: Record<string, string[]> = {
   Couleur: ['Rouge', 'Bleu', 'Vert', 'Jaune', 'Noir', 'Blanc', 'Gris', 'Orange', 'Violet', 'Rose', 'Marron', 'Beige', 'Argent', 'Or'],
@@ -97,37 +99,21 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 }) => {
   const { data: categories = [] } = useGetCategoriesQuery();
   const { data: brands = [] } = useGetBrandsQuery();
-
-  const organizedCategories = useMemo(() => {
-    const roots = categories.filter(c => !c.parent_id);
-    const childrenMap = new Map<number, Category[]>();
-    categories.forEach(c => {
-      if (c.parent_id) {
-        const list = childrenMap.get(c.parent_id) || [];
-        list.push(c);
-        childrenMap.set(c.parent_id, list);
-      }
-    });
-
-    const result: { id: number; nom: string; level: number }[] = [];
-    
-    const traverse = (cats: Category[], level: number) => {
-      cats.forEach(c => {
-        result.push({ id: c.id, nom: c.nom, level });
-        const children = childrenMap.get(c.id);
-        if (children) {
-          traverse(children, level + 1);
-        }
-      });
-    };
-
-    traverse(roots, 0);
-    return result;
-  }, [categories]);
+  // When editing, fetch full product to include variant galleries
+  const { data: fullProduct } = useGetProductQuery((editingProduct as any)?.id as number, {
+    skip: !editingProduct?.id,
+  });
+  const authToken = useSelector((s: RootState) => (s as any)?.auth?.token);
 
   const [createProduct] = useCreateProductMutation();
   const [updateProductMutation] = useUpdateProductMutation();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [deletedGalleryIds, setDeletedGalleryIds] = useState<number[]>([]);
+  const [variantMainImages, setVariantMainImages] = useState<Record<number, File>>({});
+  const [variantGalleryFilesMap, setVariantGalleryFilesMap] = useState<Record<number, File[]>>({});
+  const [variantDeletedGalleryIdsMap, setVariantDeletedGalleryIdsMap] = useState<Record<number, number[]>>({});
+  const [variantUseProductRemise, setVariantUseProductRemise] = useState<Record<number, boolean>>({});
   
   // Files for technical sheets
   // Long text technical sheets per language (no files)
@@ -144,6 +130,75 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setSelectedFile(event.target.files[0]);
     }
   };
+
+  const handleGalleryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length) {
+      setGalleryFiles((prev) => [...prev, ...files]);
+    }
+  };
+
+  const removeNewGalleryFile = (index: number) => {
+    setGalleryFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const toggleDeleteExistingGallery = (id: number) => {
+    setDeletedGalleryIds((prev) => (
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    ));
+  };
+
+  // Variant media handlers (for existing variants only)
+  const onVariantMainImageChange = (variantId: number | undefined, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!variantId) return;
+    const file = e.target.files?.[0];
+    if (file) setVariantMainImages((prev) => ({ ...prev, [variantId]: file }));
+  };
+  const onVariantGalleryChange = (variantId: number | undefined, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!variantId) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length) setVariantGalleryFilesMap((prev) => ({ ...prev, [variantId]: [...(prev[variantId] || []), ...files] }));
+  };
+  const removeNewVariantGalleryFile = (variantId: number, index: number) => {
+    setVariantGalleryFilesMap((prev) => ({ ...prev, [variantId]: (prev[variantId] || []).filter((_, i) => i !== index) }));
+  };
+  const toggleDeleteExistingVariantGallery = (variantId: number, imageId: number) => {
+    setVariantDeletedGalleryIdsMap((prev) => {
+      const cur = prev[variantId] || [];
+      return { ...prev, [variantId]: cur.includes(imageId) ? cur.filter((x) => x !== imageId) : [...cur, imageId] };
+    });
+  };
+
+  const uploadVariantMedia = async (productId: number, variants: ProductVariant[]) => {
+    for (const v of variants) {
+      if (!v.id) continue;
+      // main image
+      if (variantMainImages[v.id]) {
+        const fd = new FormData();
+        fd.append('image', variantMainImages[v.id]);
+        await fetch(`/api/products/${productId}/variants/${v.id}/image`, {
+          method: 'POST',
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          body: fd,
+        });
+      }
+      // gallery
+      const galleryFiles = variantGalleryFilesMap[v.id] || [];
+      const deletedIds = variantDeletedGalleryIdsMap[v.id] || [];
+      if (galleryFiles.length > 0 || deletedIds.length > 0) {
+        const fdG = new FormData();
+        for (const f of galleryFiles) fdG.append('gallery', f);
+        if (deletedIds.length > 0) fdG.append('deleted_gallery_ids', JSON.stringify(deletedIds));
+        await fetch(`/api/products/${productId}/variants/${v.id}/gallery`, {
+          method: 'PUT',
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          body: fdG,
+        });
+      }
+    }
+  };
+
+  
 
   const handleFicheTextChange = (value: string, lang: 'fr' | 'ar' | 'en' | 'zh' = 'fr') => {
     if (lang === 'fr') setFicheFr(value);
@@ -191,7 +246,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     designation_en: '',
     designation_zh: '',
     categorie_id: 0,
-    categories: [] as number[],
     brand_id: undefined as number | undefined,
     quantite: 0,
     kg: undefined as number | undefined,
@@ -200,6 +254,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     prix_gros_pourcentage: 10,
     prix_vente_pourcentage: 25,
     est_service: false,
+    remise_client: 0,
+    remise_artisan: 0,
     description: '',
     description_ar: '',
     description_en: '',
@@ -211,39 +267,41 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     variants: [] as ProductVariant[],
     units: [] as ProductUnit[],
     base_unit: 'u',
+    categorie_base: 'Maison' as any,
     created_by: 1, // À adapter selon le système d'authentification
   };
 
+  const baseEdit = (fullProduct as any) || editingProduct;
   const formik = useFormik({
-    initialValues: editingProduct
+    initialValues: baseEdit
       ? {
-          ...editingProduct,
-          designation_ar: (editingProduct as any).designation_ar || '',
-          designation_en: (editingProduct as any).designation_en || '',
-          designation_zh: (editingProduct as any).designation_zh || '',
-          categorie_id: editingProduct.categorie_id ?? (editingProduct.categorie ? editingProduct.categorie.id : 0),
-          categories: (editingProduct as any).categories && (editingProduct as any).categories.length > 0
-            ? (editingProduct as any).categories.map((c: any) => c.id)
-            : (editingProduct.categorie_id ? [editingProduct.categorie_id] : (editingProduct.categorie ? [editingProduct.categorie.id] : [])),
-          brand_id: editingProduct.brand_id ?? (editingProduct.brand ? editingProduct.brand.id : undefined),
-          quantite: editingProduct.quantite || 0,
-          kg: (editingProduct as any).kg ?? undefined,
-          prix_achat: editingProduct.prix_achat || 0,
-          cout_revient_pourcentage: editingProduct.cout_revient_pourcentage || 2,
-          prix_gros_pourcentage: editingProduct.prix_gros_pourcentage || 10,
-          prix_vente_pourcentage: editingProduct.prix_vente_pourcentage || 25,
-          est_service: editingProduct.est_service || false,
-          description: editingProduct.description || '',
-          description_ar: (editingProduct as any).description_ar || '',
-          description_en: (editingProduct as any).description_en || '',
-          description_zh: (editingProduct as any).description_zh || '',
-          pourcentage_promo: editingProduct.pourcentage_promo || 0,
-          ecom_published: editingProduct.ecom_published || false,
-          stock_partage_ecom: editingProduct.stock_partage_ecom || false,
-          stock_partage_ecom_qty: (editingProduct as any).stock_partage_ecom_qty ?? 0,
-          variants: editingProduct.variants || [],
-          units: editingProduct.units || [],
-          base_unit: editingProduct.base_unit || 'u',
+          ...baseEdit,
+          designation_ar: (baseEdit as any).designation_ar || '',
+          designation_en: (baseEdit as any).designation_en || '',
+          designation_zh: (baseEdit as any).designation_zh || '',
+          categorie_id: (baseEdit as any).categorie_id ?? ((baseEdit as any).categorie ? (baseEdit as any).categorie.id : 0),
+          brand_id: (baseEdit as any).brand_id ?? ((baseEdit as any).brand ? (baseEdit as any).brand.id : undefined),
+          quantite: (baseEdit as any).quantite || 0,
+          kg: (baseEdit as any).kg ?? undefined,
+          prix_achat: (baseEdit as any).prix_achat || 0,
+          cout_revient_pourcentage: (baseEdit as any).cout_revient_pourcentage || 2,
+          prix_gros_pourcentage: (baseEdit as any).prix_gros_pourcentage || 10,
+          prix_vente_pourcentage: (baseEdit as any).prix_vente_pourcentage || 25,
+          est_service: (baseEdit as any).est_service || false,
+          remise_client: (baseEdit as any).remise_client ?? 0,
+          remise_artisan: (baseEdit as any).remise_artisan ?? 0,
+          description: (baseEdit as any).description || '',
+          description_ar: (baseEdit as any).description_ar || '',
+          description_en: (baseEdit as any).description_en || '',
+          description_zh: (baseEdit as any).description_zh || '',
+          pourcentage_promo: (baseEdit as any).pourcentage_promo || 0,
+          ecom_published: (baseEdit as any).ecom_published || false,
+          stock_partage_ecom: (baseEdit as any).stock_partage_ecom || false,
+          stock_partage_ecom_qty: (baseEdit as any).stock_partage_ecom_qty ?? 0,
+          variants: (baseEdit as any).variants || [],
+          units: (baseEdit as any).units || [],
+          base_unit: (baseEdit as any).base_unit || 'u',
+          categorie_base: (baseEdit as any).categorie_base ?? 'Maison',
         }
       : initialValues,
     enableReinitialize: true,
@@ -281,14 +339,16 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         prix_vente_pourcentage: pvPctNum,
         quantite: qteNum,
         categorie_id: Number(values.categorie_id || 0),
-        categories: values.categories as any,
         brand_id: values.brand_id ? Number(values.brand_id) : null,
         ecom_published: values.ecom_published,
         stock_partage_ecom: values.stock_partage_ecom,
         stock_partage_ecom_qty: values.stock_partage_ecom_qty ?? 0,
+        remise_client: Number((values as any)?.remise_client ?? 0),
+        remise_artisan: Number((values as any)?.remise_artisan ?? 0),
         variants: values.variants,
         units: values.units,
         base_unit: values.base_unit,
+        categorie_base: (values as any).categorie_base,
       };
 
       try {
@@ -299,9 +359,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('designation_en', productData.designation_en || '');
           formData.append('designation_zh', productData.designation_zh || '');
           formData.append('categorie_id', String(productData.categorie_id || 0));
-          if (productData.categories && productData.categories.length > 0) {
-            formData.append('categories', JSON.stringify(productData.categories));
-          }
           if (productData.brand_id) formData.append('brand_id', String(productData.brand_id));
           formData.append('quantite', String(qteNum));
           if (kgNum !== null && kgNum !== undefined) formData.append('kg', String(kgNum));
@@ -310,6 +367,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('prix_gros_pourcentage', String(pgPctNum));
           formData.append('prix_vente_pourcentage', String(pvPctNum));
           formData.append('est_service', productData.est_service ? '1' : '0');
+          formData.append('remise_client', String((productData as any).remise_client ?? 0));
+          formData.append('remise_artisan', String((productData as any).remise_artisan ?? 0));
           formData.append('description', productData.description || '');
           formData.append('description_ar', productData.description_ar || '');
           formData.append('description_en', productData.description_en || '');
@@ -319,18 +378,20 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('stock_partage_ecom', productData.stock_partage_ecom ? '1' : '0');
           formData.append('stock_partage_ecom_qty', String(productData.stock_partage_ecom_qty ?? 0));
           formData.append('updated_by', '1');
+          formData.append('categorie_base', String((productData as any).categorie_base || 'Maison'));
           formData.append('has_variants', String(productData.variants && productData.variants.length > 0));
           formData.append('base_unit', productData.base_unit || 'u');
           
           if (productData.variants && productData.variants.length > 0) {
-            formData.append('variants', JSON.stringify(productData.variants));
-          }
-          if (productData.units && productData.units.length > 0) {
-            formData.append('units', JSON.stringify(productData.units));
-          }
-
-          if (selectedFile) {
             formData.append('image', selectedFile);
+          }
+          // New gallery files
+          if (galleryFiles && galleryFiles.length > 0) {
+            for (const f of galleryFiles) formData.append('gallery', f);
+          }
+          // Mark deletions for existing gallery
+          if (deletedGalleryIds.length > 0) {
+            formData.append('deleted_gallery_ids', JSON.stringify(deletedGalleryIds));
           }
           // Long text fiche fields
           formData.append('fiche_technique', ficheFr || '');
@@ -339,6 +400,16 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('fiche_technique_zh', ficheZh || '');
 
           const res = await updateProductMutation({ id: editingProduct.id, data: formData } as any).unwrap();
+
+          // Upload per-variant media if any
+          if (res && (res as any).id && Array.isArray((res as any).variants)) {
+            try {
+              await uploadVariantMedia((res as any).id, (res as any).variants);
+            } catch (e) {
+              console.warn('Variant media upload failed (update)', e);
+              // Non-bloquant: on poursuit l'enregistrement produit
+            }
+          }
 
           showSuccess('Produit mis à jour avec succès !');
           if (onProductUpdated) onProductUpdated(res);
@@ -349,9 +420,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('designation_en', productData.designation_en || '');
           formData.append('designation_zh', productData.designation_zh || '');
           formData.append('categorie_id', String(productData.categorie_id || 0));
-          if (productData.categories && productData.categories.length > 0) {
-            formData.append('categories', JSON.stringify(productData.categories));
-          }
           if (productData.brand_id) formData.append('brand_id', String(productData.brand_id));
           formData.append('quantite', String(qteNum));
           if (kgNum !== null && kgNum !== undefined) formData.append('kg', String(kgNum));
@@ -360,6 +428,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('prix_gros_pourcentage', String(pgPctNum));
           formData.append('prix_vente_pourcentage', String(pvPctNum));
           formData.append('est_service', productData.est_service ? '1' : '0');
+          formData.append('remise_client', String((productData as any).remise_client ?? 0));
+          formData.append('remise_artisan', String((productData as any).remise_artisan ?? 0));
           formData.append('description', productData.description || '');
           formData.append('description_ar', productData.description_ar || '');
           formData.append('description_en', productData.description_en || '');
@@ -371,6 +441,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('created_by', '1');
           formData.append('has_variants', String(productData.variants && productData.variants.length > 0));
           formData.append('base_unit', productData.base_unit || 'u');
+          formData.append('categorie_base', String((productData as any).categorie_base || 'Maison'));
           
           if (productData.variants && productData.variants.length > 0) {
             formData.append('variants', JSON.stringify(productData.variants));
@@ -382,6 +453,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           if (selectedFile) {
             formData.append('image', selectedFile);
           }
+          // New gallery files
+          if (galleryFiles && galleryFiles.length > 0) {
+            for (const f of galleryFiles) formData.append('gallery', f);
+          }
           formData.append('fiche_technique', ficheFr || '');
           formData.append('fiche_technique_ar', ficheAr || '');
           formData.append('fiche_technique_en', ficheEn || '');
@@ -389,6 +464,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
           console.debug('Creating product payload (FormData)');
           const res = await createProduct(formData as any).unwrap();
+          // After creation, upload variant media if present
+          if (res && (res as any).id && Array.isArray((res as any).variants)) {
+            try {
+              await uploadVariantMedia((res as any).id, (res as any).variants);
+            } catch (e) {
+              console.warn('Variant media upload failed (create)', e);
+            }
+          }
           showSuccess('Produit ajouté avec succès !');
           if (onProductAdded) {
             const created: any = {
@@ -419,12 +502,44 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       onClose();
       formik.resetForm();
       setSelectedFile(null);
+      setGalleryFiles([]);
+      setDeletedGalleryIds([]);
+      setVariantMainImages({});
+      setVariantGalleryFilesMap({});
+      setVariantDeletedGalleryIdsMap({});
       setFicheFr('');
       setFicheAr('');
       setFicheEn('');
       setFicheZh('');
     },
   });
+
+  // When opening in "new" mode, hard-reset all states to ensure empty form
+  useEffect(() => {
+    if (isOpen && !editingProduct) {
+      formik.resetForm({ values: initialValues as any });
+      setSelectedFile(null);
+      setGalleryFiles([]);
+      setDeletedGalleryIds([]);
+      setVariantMainImages({});
+      setVariantGalleryFilesMap({});
+      setVariantDeletedGalleryIdsMap({});
+      setVariantUseProductRemise({});
+      setFicheFr('');
+      setFicheAr('');
+      setFicheEn('');
+      setFicheZh('');
+      setActiveLang('fr');
+      const prices = calculatePrices(
+        toNum(initialValues.prix_achat),
+        toNum(initialValues.cout_revient_pourcentage as any),
+        toNum(initialValues.prix_gros_pourcentage as any),
+        toNum(initialValues.prix_vente_pourcentage as any)
+      );
+      setDynamicPrices(prices);
+      setPriceRaw({ cout_revient: '', prix_gros: '', prix_vente: '' });
+    }
+  }, [isOpen, editingProduct]);
 
   // Recalculer et synchroniser l'affichage dès que les pourcentages ou le prix d'achat changent
   useEffect(() => {
@@ -450,6 +565,27 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       prix_vente: formatNumber(dynamicPrices.prix_vente),
     });
   }, [dynamicPrices.cout_revient, dynamicPrices.prix_gros, dynamicPrices.prix_vente]);
+
+  // Keep variant remises in sync if checkbox enabled (after formik is initialized)
+  useEffect(() => {
+    formik.setValues((prev: any) => {
+      const updated = { ...prev };
+      if (Array.isArray(updated.variants)) {
+        updated.variants = updated.variants.map((v: any, idx: number) => {
+          const key = v.id ?? idx;
+          if (variantUseProductRemise[key]) {
+            return {
+              ...v,
+              remise_client: Number(updated.remise_client ?? 0),
+              remise_artisan: Number(updated.remise_artisan ?? 0),
+            };
+          }
+          return v;
+        });
+      }
+      return updated;
+    });
+  }, [ (formik.values as any)?.remise_client, (formik.values as any)?.remise_artisan, variantUseProductRemise ]);
 
   if (!isOpen) return null;
 
@@ -563,22 +699,18 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               )}
             </div>
 
-            {/* Catégories (Multi-select avec Drag & Drop) */}
+            {/* Catégories (Arbre) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Catégories
+                Catégorie
               </label>
-              <CategorySelector
-                selectedIds={formik.values.categories || []}
-                categories={organizedCategories}
-                onChange={(newIds) => {
-                  formik.setFieldValue('categories', newIds);
-                  // Also set the primary category to the first selected one for backward compatibility
-                  if (newIds.length > 0) {
-                    formik.setFieldValue('categorie_id', newIds[0]);
-                  } else {
-                    formik.setFieldValue('categorie_id', 0);
-                  }
+              <CategoryTreeSelect
+                categories={categories}
+                selectedId={formik.values.categorie_id || null}
+                onChange={(id) => {
+                  formik.setFieldValue('categorie_id', id);
+                  // Clear legacy array if needed, or sync it
+                  formik.setFieldValue('categories', [id]);
                 }}
               />
               {formik.touched.categorie_id && formik.errors.categorie_id && (
@@ -604,6 +736,23 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     {brand.nom}
                   </option>
                 ))}
+              </select>
+            </div>
+
+            {/* Catégorie de base */}
+            <div>
+              <label htmlFor="categorie_base" className="block text-sm font-medium text-gray-700 mb-1">
+                Catégorie de base
+              </label>
+              <select
+                id="categorie_base"
+                name="categorie_base"
+                value={(formik.values as any).categorie_base || 'Maison'}
+                onChange={(e) => formik.setFieldValue('categorie_base', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="Maison">Maison</option>
+                <option value="Professionel">Professionel</option>
               </select>
             </div>
 
@@ -691,6 +840,143 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 onChange={handleFileChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
+              {/* Aperçu image principale (nouvelle sélection ou existante) */}
+              <div className="mt-3">
+                {selectedFile ? (
+                  <div className="inline-block relative border rounded p-1">
+                    <img
+                      src={URL.createObjectURL(selectedFile)}
+                      alt="aperçu principale"
+                      className="w-24 h-24 object-cover rounded"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFile(null)}
+                      className="absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded bg-red-600 text-white"
+                      title="Retirer la nouvelle image"
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                ) : (
+                  editingProduct && (editingProduct as any).image_url ? (
+                    <div className="inline-block border rounded p-1">
+                      <img
+                        src={`http://localhost:3001${(editingProduct as any).image_url}`}
+                        alt="image principale"
+                        className="w-24 h-24 object-cover rounded"
+                      />
+                    </div>
+                  ) : null
+                )}
+              </div>
+            </div>
+
+            {/* Galerie d'images */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Galerie d'images</label>
+              {(
+                (editingProduct && (editingProduct as any).image_url) ||
+                (editingProduct && Array.isArray((editingProduct as any).gallery) && (editingProduct as any).gallery.length > 0)
+              ) && (
+                <div className="mb-3">
+                  <div className="text-xs text-gray-600 mb-1">Images existantes</div>
+                  <div className="flex flex-wrap gap-3">
+                    {editingProduct && (editingProduct as any).image_url && (
+                      <div className="relative border rounded p-1">
+                        <img
+                          src={`http://localhost:3001${(editingProduct as any).image_url}`}
+                          alt="image principale"
+                          className="w-24 h-24 object-cover rounded"
+                        />
+                        <div className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white rounded px-1">Principale</div>
+                      </div>
+                    )}
+                    {Array.isArray((editingProduct as any)?.gallery) && (editingProduct as any).gallery.map((img: any) => {
+                      const isMarked = deletedGalleryIds.includes(img.id);
+                      return (
+                        <div key={img.id} className={`relative border rounded p-1 ${isMarked ? 'opacity-50' : ''}`}>
+                          <img
+                            src={`http://localhost:3001${img.image_url}`}
+                            alt="product"
+                            className="w-24 h-24 object-cover rounded"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => toggleDeleteExistingGallery(img.id)}
+                            className={`absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded ${isMarked ? 'bg-gray-600 text-white' : 'bg-red-600 text-white'}`}
+                            title={isMarked ? 'Annuler la suppression' : 'Supprimer cette image'}
+                          >
+                            {isMarked ? 'Annuler' : 'Suppr'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div className="mb-2">
+                <input
+                  id="gallery"
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleGalleryChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              {galleryFiles.length > 0 && (
+                <div>
+                  <div className="text-xs text-gray-600 mb-1">Nouvelles images sélectionnées</div>
+                  <div className="flex flex-wrap gap-3">
+                    {galleryFiles.map((file, idx) => (
+                      <div key={idx} className="relative border rounded p-1">
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt="new"
+                          className="w-24 h-24 object-cover rounded"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeNewGalleryFile(idx)}
+                          className="absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded bg-red-600 text-white"
+                          title="Retirer cette image"
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Remises produit (montant) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:col-span-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Remise client (montant)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  name="remise_client"
+                  value={(formik.values as any).remise_client as any}
+                  onChange={formik.handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Remise artisan (montant)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  name="remise_artisan"
+                  value={(formik.values as any).remise_artisan as any}
+                  onChange={formik.handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
 
             {/* Fiche technique (Multi-lang, long text) */}
@@ -1425,6 +1711,151 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               </div>
                             </div>
                           </div>
+
+                          {/* Ligne 3: Remises */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                            <div className="col-span-1 md:col-span-3">
+                              <label className="inline-flex items-center gap-2 text-xs text-gray-700">
+                                <input
+                                  type="checkbox"
+                                  checked={variantUseProductRemise[(variant.id as number) ?? index] || false}
+                                  onChange={(e) => {
+                                    const key = (variant.id as number) ?? index;
+                                    setVariantUseProductRemise(prev => ({ ...prev, [key]: e.target.checked }));
+                                    if (e.target.checked) {
+                                      formik.setFieldValue(`variants.${index}.remise_client`, Number((formik.values as any).remise_client ?? 0));
+                                      formik.setFieldValue(`variants.${index}.remise_artisan`, Number((formik.values as any).remise_artisan ?? 0));
+                                    }
+                                  }}
+                                  className="w-3 h-3"
+                                />
+                                Même remises que le produit
+                              </label>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Remise client (montant)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                name={`variants.${index}.remise_client`}
+                                value={(variant as any).remise_client ?? 0}
+                                onChange={formik.handleChange}
+                                className="w-full px-2 py-1 text-sm border rounded"
+                                disabled={variantUseProductRemise[(variant.id as number) ?? index]}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Remise artisan (montant)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                name={`variants.${index}.remise_artisan`}
+                                value={(variant as any).remise_artisan ?? 0}
+                                onChange={formik.handleChange}
+                                className="w-full px-2 py-1 text-sm border rounded"
+                                disabled={variantUseProductRemise[(variant.id as number) ?? index]}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Médias de la variante (non partagés) */}
+                          {variant.id && (
+                            <div className="pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {/* Image principale de la variante */}
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Image de la variante</label>
+                                <div className="flex items-center gap-3">
+                                  {variantMainImages[variant.id as number] ? (
+                                    <div className="relative inline-block">
+                                      <img
+                                        src={URL.createObjectURL(variantMainImages[variant.id as number])}
+                                        alt="aperçu variante"
+                                        className="w-16 h-16 object-cover rounded border"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setVariantMainImages(prev => {
+                                          const copy = { ...prev } as Record<number, File>;
+                                          delete copy[variant.id as number];
+                                          return copy;
+                                        })}
+                                        className="absolute -top-1 -right-1 text-[10px] px-1 py-0.5 rounded bg-red-600 text-white"
+                                      >
+                                        Retirer
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    variant.image_url ? (
+                                      <img
+                                        src={`http://localhost:3001${variant.image_url}`}
+                                        alt="variant"
+                                        className="w-16 h-16 object-cover rounded border"
+                                      />
+                                    ) : null
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => onVariantMainImageChange(variant.id as number, e)}
+                                    className="text-sm"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Galerie de la variante */}
+                              <div>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Galerie de la variante</label>
+                                {(variant.image_url || (Array.isArray((variant as any).gallery) && (variant as any).gallery.length > 0)) && (
+                                  <div className="flex flex-wrap gap-2 mb-2">
+                                    {variant.image_url && (
+                                      <div className="relative border rounded p-1">
+                                        <img src={`http://localhost:3001${variant.image_url}`} alt="v-principale" className="w-16 h-16 object-cover rounded" />
+                                        <div className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white rounded px-1">Principale</div>
+                                      </div>
+                                    )}
+                                    {Array.isArray((variant as any)?.gallery) && (variant as any).gallery.map((img: any) => {
+                                      const marked = (variantDeletedGalleryIdsMap[variant.id as number] || []).includes(img.id);
+                                      return (
+                                        <div key={img.id} className={`relative border rounded p-1 ${marked ? 'opacity-50' : ''}`}>
+                                          <img src={`http://localhost:3001${img.image_url}`} alt="v-img" className="w-16 h-16 object-cover rounded" />
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleDeleteExistingVariantGallery(variant.id as number, img.id)}
+                                            className={`absolute top-1 right-1 text-[10px] px-1 py-0.5 rounded ${marked ? 'bg-gray-600 text-white' : 'bg-red-600 text-white'}`}
+                                          >
+                                            {marked ? 'Annuler' : 'Suppr'}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                <input
+                                  type="file"
+                                  multiple
+                                  accept="image/*"
+                                  onChange={(e) => onVariantGalleryChange(variant.id as number, e)}
+                                  className="text-sm"
+                                />
+                                {(variantGalleryFilesMap[variant.id as number] || []).length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {(variantGalleryFilesMap[variant.id as number] || []).map((f, i) => (
+                                      <div key={i} className="relative border rounded p-1">
+                                        <img src={URL.createObjectURL(f)} alt="new-v" className="w-16 h-16 object-cover rounded" />
+                                        <button
+                                          type="button"
+                                          onClick={() => removeNewVariantGalleryFile(variant.id as number, i)}
+                                          className="absolute top-1 right-1 text-[10px] px-1 py-0.5 rounded bg-red-600 text-white"
+                                        >
+                                          Retirer
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))
                     ) : (
