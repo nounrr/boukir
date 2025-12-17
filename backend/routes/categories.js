@@ -13,6 +13,7 @@ router.get('/', async (_req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
     const [rows] = await pool.query('SELECT id, nom, description, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
     const cat = rows[0];
     if (!cat) return res.status(404).json({ message: 'Catégorie introuvable' });
@@ -24,6 +25,15 @@ router.post('/', async (req, res, next) => {
   try {
     const { nom, description, parent_id, created_by } = req.body;
     if (!nom || !nom.trim()) return res.status(400).json({ message: 'Nom requis' });
+    
+    // Prevent circular references
+    if (parent_id) {
+      const [parentCheck] = await pool.query('SELECT id FROM categories WHERE id = ?', [parent_id]);
+      if (parentCheck.length === 0) {
+        return res.status(400).json({ message: 'Catégorie parente introuvable' });
+      }
+    }
+    
     const now = new Date();
     const [result] = await pool.query(
       'INSERT INTO categories (nom, description, parent_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -38,9 +48,40 @@ router.post('/', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
     const { nom, description, parent_id, updated_by } = req.body;
-    const [exists] = await pool.query('SELECT id FROM categories WHERE id = ?', [id]);
+    const [exists] = await pool.query('SELECT id, parent_id FROM categories WHERE id = ?', [id]);
     if (exists.length === 0) return res.status(404).json({ message: 'Catégorie introuvable' });
+    
+    const currentCategory = exists[0];
+    
+    // Prevent circular references and self-parenting
+    if (parent_id !== undefined && parent_id !== null) {
+      if (parent_id === id) {
+        return res.status(400).json({ message: 'Une catégorie ne peut pas être son propre parent' });
+      }
+      
+      // Check if parent exists
+      const [parentCheck] = await pool.query('SELECT id FROM categories WHERE id = ?', [parent_id]);
+      if (parentCheck.length === 0) {
+        return res.status(400).json({ message: 'Catégorie parente introuvable' });
+      }
+      
+      // Prevent circular reference: check if parent_id is a descendant of id
+      async function isDescendant(ancestorId, potentialDescendantId) {
+        if (ancestorId === potentialDescendantId) return true;
+        const [children] = await pool.query('SELECT id FROM categories WHERE parent_id = ?', [ancestorId]);
+        for (const child of children) {
+          if (await isDescendant(child.id, potentialDescendantId)) return true;
+        }
+        return false;
+      }
+      
+      if (await isDescendant(id, parent_id)) {
+        return res.status(400).json({ message: 'Impossible: cela créerait une référence circulaire' });
+      }
+    }
+    
     const now = new Date();
     const fields = [];
     const values = [];
@@ -57,23 +98,47 @@ router.put('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Check if category is used by products
+router.get('/:id/usage', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
+    const [products] = await pool.query('SELECT COUNT(*) as count FROM products WHERE categorie_id = ?', [id]);
+    const [children] = await pool.query('SELECT COUNT(*) as count FROM categories WHERE parent_id = ?', [id]);
+    res.json({ 
+      productCount: products[0].count,
+      subcategoryCount: children[0].count,
+      canDelete: products[0].count === 0 && children[0].count === 0
+    });
+  } catch (err) { next(err); }
+});
+
 router.delete('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
     if (id === 1) {
       return res.status(400).json({ message: "Impossible de supprimer la catégorie par défaut (UNCATEGORIZED)" });
     }
-    // Ensure fallback category exists
-    const [fallback] = await pool.query('SELECT id FROM categories WHERE id = 1');
-    if (!fallback.length) {
-      const now = new Date();
-      await pool.query(
-        'INSERT INTO categories (id, nom, description, created_at, updated_at) VALUES (1, \'UNCATEGORIZED\', \'Catégorie par défaut\', ?, ?)'
-        , [now, now]
-      );
+    
+    // Check if category has products
+    const [products] = await pool.query('SELECT COUNT(*) as count FROM products WHERE categorie_id = ?', [id]);
+    if (products[0].count > 0) {
+      return res.status(400).json({ 
+        message: `Impossible de supprimer cette catégorie car elle est utilisée par ${products[0].count} produit(s)`,
+        productCount: products[0].count
+      });
     }
-    // Reassign products from this category to 1
-    await pool.query('UPDATE products SET categorie_id = 1 WHERE categorie_id = ?', [id]);
+    
+    // Check if category has subcategories
+    const [children] = await pool.query('SELECT COUNT(*) as count FROM categories WHERE parent_id = ?', [id]);
+    if (children[0].count > 0) {
+      return res.status(400).json({ 
+        message: `Impossible de supprimer cette catégorie car elle contient ${children[0].count} sous-catégorie(s)`,
+        subcategoryCount: children[0].count
+      });
+    }
+    
     // Delete the category
     await pool.query('DELETE FROM categories WHERE id = ?', [id]);
     res.status(204).send();
