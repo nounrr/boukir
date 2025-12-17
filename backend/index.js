@@ -20,6 +20,7 @@ import usersRouter from './routes/users.js';
 import categoriesRouter from './routes/categories.js';
 import brandsRouter from './routes/brands.js';
 import productsRouter from './routes/products.js';
+import ecommerceProductsRouter from './routes/ecommerce/products.js';
 import contactsRouter from './routes/contacts.js';
 import vehiculesRouter from './routes/vehicules.js';
 
@@ -94,11 +95,30 @@ const PUBLIC_PATHS = new Set([
   '/api/notifications/whatsapp/bon-test',
 ]);
 
+// E-commerce public routes (no authentication required)
+const ECOMMERCE_PUBLIC_PREFIXES = [
+  '/api/ecommerce/products',
+];
+
 app.use((req, res, next) => {
+  // Debug logging
+  if (req.path.includes('ecommerce')) {
+    console.log('🔍 Ecommerce request:', {
+      path: req.path,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      prefixes: ECOMMERCE_PUBLIC_PREFIXES,
+      matches: ECOMMERCE_PUBLIC_PREFIXES.some(prefix => req.path.startsWith(prefix))
+    });
+  }
+
   if (PUBLIC_PATHS.has(req.path)) return next();
 
   // Autoriser l'accès public aux fichiers statiques uploadés
   if (req.path.startsWith('/uploads/')) return next();
+
+  // Autoriser l'accès public aux endpoints e-commerce
+  if (ECOMMERCE_PUBLIC_PREFIXES.some(prefix => req.path.startsWith(prefix))) return next();
 
   verifyToken(req, res, () => {
     const store = requestContext.getStore();
@@ -160,6 +180,7 @@ app.use('/api/users/auth', usersRouter); // E-commerce users authentication
 app.use('/api/categories', categoriesRouter);
 app.use('/api/brands', brandsRouter);
 app.use('/api/products', productsRouter);
+app.use('/api/ecommerce/products', ecommerceProductsRouter); // E-commerce public products
 app.use('/api/contacts', contactsRouter);
 app.use('/api/vehicules', vehiculesRouter);
 
