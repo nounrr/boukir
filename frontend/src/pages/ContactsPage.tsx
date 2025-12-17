@@ -2154,6 +2154,7 @@ const ContactsPage: React.FC = () => {
                     )}
                   </div>
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type Compte</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Téléphone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse</th>
@@ -2212,6 +2213,16 @@ const ContactsPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-900">{(contact.societe && contact.societe.trim()) ? contact.societe : '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {contact.type_compte || '-'}
+                          {contact.demande_artisan && !contact.artisan_approuve && (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                              Demande
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -2530,6 +2541,17 @@ const ContactsPage: React.FC = () => {
                     <div>
                       <p className="font-semibold text-gray-600">Société:</p>
                       <p>{(selectedContact.societe && selectedContact.societe.trim()) ? selectedContact.societe : '-'}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-600">Type Compte:</p>
+                      <p>
+                        {selectedContact.type_compte || '-'}
+                        {selectedContact.demande_artisan && !selectedContact.artisan_approuve && (
+                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                            Demande
+                          </span>
+                        )}
+                      </p>
                     </div>
                     <div>
                       <p className="font-semibold text-gray-600">Téléphone:</p>
