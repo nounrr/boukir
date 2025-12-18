@@ -55,6 +55,7 @@ import accessSchedulesDetailedRouter from './routes/accessSchedulesDetailed.js';
 
 import livraisonsRouter from './routes/livraisons.js';
 import notificationsRouter from './routes/notifications.js';
+import aiRouter from './routes/ai.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -99,6 +100,8 @@ app.use((req, res, next) => {
 
   // Autoriser l'accès public aux fichiers statiques uploadés
   if (req.path.startsWith('/uploads/')) return next();
+  // Rendre publiques toutes les routes IA
+  if (req.path.startsWith('/api/ai')) return next();
 
   verifyToken(req, res, () => {
     const store = requestContext.getStore();
@@ -119,6 +122,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'bpukir-backend', ts: new Date().toISOString() });
 });
+app.use('/api/ai', aiRouter);
 
 // DB connectivity check
 app.get('/api/db/ping', async (_req, res) => {
