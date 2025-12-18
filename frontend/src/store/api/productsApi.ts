@@ -61,6 +61,18 @@ const productsApi = api.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { id }) => [{ type: 'Product', id }, 'Product'],
     }),
+
+    translateProducts: builder.mutation<
+      { ok: boolean; results: any[] },
+      { ids: number[]; commit?: boolean; force?: boolean; models?: { clean?: string; translate?: string } }
+    >({
+      query: (body) => ({
+        url: '/ai/products/translate',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Product'],
+    }),
   }),
 });
 
@@ -73,4 +85,5 @@ export const {
   useUpdateStockMutation,
   useGetArchivedProductsQuery,
   useRestoreProductMutation,
+  useTranslateProductsMutation,
 } = productsApi;

@@ -75,6 +75,9 @@
 /* Prevent iOS Safari text auto-resize glitches inside scroll containers */
 html { -webkit-text-size-adjust: 100%; }
 
+/* Prevent global horizontal scroll; content scrolls inside its containers */
+html, body { overflow-x: hidden; }
+
 /* Horizontal scroll gradient indicator (optional) */
 .responsive-table-container.gradient-mask {
   position: relative;
