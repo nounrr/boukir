@@ -273,3 +273,52 @@ npm run dev:full
 
 En mode dev, le front appelle `/api/*` et Vite proxie vers `http://localhost:3001` (configuré dans `vite.config.ts`).
 
+## Intégration ChatGPT (OpenAI)
+
+### Configuration
+- Ajoutez `OPENAI_API_KEY` dans `backend/.env`.
+
+Exemple:
+
+```
+OPENAI_API_KEY=sk_...votre_clef...
+```
+
+### Installation SDK
+
+```
+npm install openai
+```
+
+### Endpoint backend
+- `POST /api/ai/chat`
+- Body: `{ prompt: string }` ou `{ messages: { role, content }[] }`
+- Options: `model` (par défaut `gpt-4o-mini`), `temperature`
+
+Exemple cURL:
+
+```
+curl -X POST http://localhost:3001/api/ai/chat \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{ "prompt": "Explique la TVA au Maroc en 2 phrases" }'
+```
+
+### Service frontend
+`frontend/src/services/ai.ts` expose `chat()`:
+
+```
+import { chat } from './services/ai';
+
+async function demo() {
+  const res = await chat('Bonjour, donne une blague courte.');
+  console.log(res.content);
+}
+```
+
+### Lancement
+- Dev complet: `npm run dev:full`
+- Backend seul: `npm run server`
+
+Si 500 avec message clé manquante, vérifiez `OPENAI_API_KEY`.
+

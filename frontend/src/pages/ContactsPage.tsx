@@ -19,6 +19,7 @@ import { showError, showSuccess, showConfirmation } from '../utils/notifications
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
+import { useGetArtisanRequestsQuery, useApproveArtisanRequestMutation, useRejectArtisanRequestMutation } from '../store/api/notificationsApi';
 import ContactPrintModal from '../components/ContactPrintModal';
 import PeriodConfig from '../components/PeriodConfig';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
@@ -102,6 +103,7 @@ const ContactsPage: React.FC = () => {
   const [selectedBonIds, setSelectedBonIds] = React.useState<Set<number>>(new Set());
 
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs'>('clients');
+  const [clientSubTab, setClientSubTab] = useState<'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'>('all');
   // Forcer les employés à rester sur l'onglet clients uniquement
   React.useEffect(() => {
     if (isEmployee && activeTab !== 'clients') setActiveTab('clients');
@@ -1769,8 +1771,16 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  // Filtrage par recherche et tri
-  const filteredContacts = (activeTab === 'clients' ? clients : fournisseurs).filter((contact) =>
+  // Filtrage par source (clients) puis recherche
+  const baseContacts = (activeTab === 'clients' ? clients : fournisseurs);
+  const filteredBySource = activeTab === 'clients'
+    ? baseContacts.filter(c => (
+        clientSubTab === 'backoffice' ? c.source === 'backoffice' :
+        clientSubTab === 'ecommerce' ? (c.source === 'ecommerce' && (!c.demande_artisan || !!c.artisan_approuve)) :
+        true
+      ))
+    : baseContacts;
+  const filteredContacts = filteredBySource.filter((contact) =>
     (contact.nom_complet?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (contact.societe?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (contact.telephone?.includes(searchTerm))
@@ -1849,7 +1859,7 @@ const ContactsPage: React.FC = () => {
   // Réinitialiser la page quand on change d'onglet ou de recherche
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchTerm, sortField, sortDirection]);
+  }, [activeTab, clientSubTab, searchTerm, sortField, sortDirection]);
 
   // Load payments from Redux (RTK Query) to enrich payment rows
   const { data: paymentsList } = useGetPaymentsQuery();
@@ -1894,6 +1904,36 @@ const ContactsPage: React.FC = () => {
               </button>
             )}
           </div >
+          {activeTab === 'clients' && (
+            <div className="flex mt-2 gap-2">
+              <button
+                className={`px-3 py-1 text-sm rounded ${clientSubTab === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                onClick={() => setClientSubTab('all')}
+              >
+                Tous
+              </button>
+              <button
+                className={`px-3 py-1 text-sm rounded ${clientSubTab === 'backoffice' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                onClick={() => setClientSubTab('backoffice')}
+              >
+                Backoffice
+              </button>
+              <button
+                className={`px-3 py-1 text-sm rounded ${clientSubTab === 'ecommerce' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                onClick={() => setClientSubTab('ecommerce')}
+              >
+                Ecommerce
+              </button>
+              {currentUser?.role === 'PDG' && (
+                <button
+                  className={`px-3 py-1 text-sm rounded ${clientSubTab === 'artisan-requests' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                  onClick={() => setClientSubTab('artisan-requests')}
+                >
+                  Demandes Artisan
+                </button>
+              )}
+            </div>
+          )}
         </div >
         <div className="flex items-center gap-3">
           <button
@@ -2114,6 +2154,9 @@ const ContactsPage: React.FC = () => {
       }
 
       {/* Liste */}
+      {activeTab === 'clients' && clientSubTab === 'artisan-requests' ? (
+        <ArtisanRequestsSection onView={handleViewDetails} />
+      ) : (
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {/* Desktop/tablet: table view */}
         <div className="overflow-x-auto hidden sm:block">
@@ -2433,6 +2476,7 @@ const ContactsPage: React.FC = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* Navigation de pagination */}
       {
@@ -3402,3 +3446,70 @@ const ContactsPage: React.FC = () => {
 };
 
 export default ContactsPage;
+
+// Section Demandes Artisan
+const ArtisanRequestsSection: React.FC<{ onView: (c: Contact) => void }> = ({ onView }) => {
+  const { data: requests = [], refetch } = useGetArtisanRequestsQuery({ limit: 50 });
+  const [approve] = useApproveArtisanRequestMutation();
+  const [reject] = useRejectArtisanRequestMutation();
+
+  return (
+    <div className="bg-white rounded-lg shadow p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-800">Demandes Artisan/Promoteur en attente</h2>
+        <button className="text-sm text-blue-600 hover:underline" onClick={() => refetch()}>Rafraîchir</button>
+      </div>
+      {requests.length === 0 ? (
+        <p className="text-sm text-gray-500">Aucune demande en attente.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {requests.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-4 py-2">{r.nom_complet || '-'}</td>
+                  <td className="px-4 py-2">{r.email || '-'}</td>
+                  <td className="px-4 py-2">{r.telephone || '-'}</td>
+                  <td className="px-4 py-2">{r.created_at?.slice(0, 10) || '-'}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex gap-2">
+                      <button
+                        className="px-3 py-1 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 flex items-center gap-1"
+                        onClick={() => onView(r)}
+                        title="Voir détails"
+                      >
+                        <Eye size={16} />
+                        Voir
+                      </button>
+                      <button
+                        className="px-3 py-1 rounded bg-green-600 text-white text-sm hover:bg-green-700"
+                        onClick={async () => { await approve({ id: r.id }).unwrap(); refetch(); }}
+                      >
+                        Approuver
+                      </button>
+                      <button
+                        className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700"
+                        onClick={async () => { await reject({ id: r.id }).unwrap(); refetch(); }}
+                      >
+                        Rejeter
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};

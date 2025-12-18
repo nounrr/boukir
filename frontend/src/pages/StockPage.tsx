@@ -5,7 +5,7 @@ import { Plus, Edit, Trash2, Search, Package, Settings } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
-import { useGetProductsQuery, useDeleteProductMutation } from '../store/api/productsApi';
+import { useGetProductsQuery, useDeleteProductMutation, useTranslateProductsMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
@@ -14,7 +14,7 @@ import * as XLSX from 'xlsx';
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
   // Load from backend
-  const { data: productsApiData } = useGetProductsQuery();
+  const { data: productsApiData, refetch: refetchProducts } = useGetProductsQuery();
   const { data: categoriesApiData } = useGetCategoriesQuery();
   // Keep legacy selectors as fallback during transition
   const productsState = useSelector(selectProducts);
@@ -55,6 +55,10 @@ const StockPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [deleteProductMutation] = useDeleteProductMutation();
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isTranslating, setIsTranslating] = useState(false);
+  // translation mutation
+  const [translateProducts] = useTranslateProductsMutation();
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -216,6 +220,40 @@ const StockPage: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Gestion du Stock</h1>
         <div className="flex gap-3">
+          {/* Traduire button */}
+          <button
+            onClick={async () => {
+              if (selectedIds.size === 0) return;
+              setIsTranslating(true);
+              try {
+                const ids = Array.from(selectedIds);
+                const res = await translateProducts({
+                  ids,
+                  commit: true,
+                  force: true,
+                  models: { clean: 'gpt-4o-mini', translate: 'gpt-4o-mini' },
+                }).unwrap();
+
+                // Summarize results
+                const ok = res?.results?.filter((r: any) => r.status === 'ok').length ?? 0;
+                const errs = res?.results?.filter((r: any) => r.status === 'error').length ?? 0;
+                const skipped = res?.results?.filter((r: any) => r.status === 'skipped').length ?? 0;
+                showSuccess(`Traduction: ${ok} ok, ${skipped} ignoré(s), ${errs} erreur(s)`);
+                setSelectedIds(new Set());
+                refetchProducts?.();
+              } catch (e) {
+                console.error(e);
+                showError('Erreur lors de la traduction');
+              } finally {
+                setIsTranslating(false);
+              }
+            }}
+            disabled={selectedIds.size === 0 || isTranslating}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            title="Traduire les désignations sélectionnées"
+          >
+            {isTranslating ? 'Traduction...' : 'Traduire'}
+          </button>
           <button
             onClick={() => setIsCategoryModalOpen(true)}
             className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors"
@@ -335,6 +373,26 @@ const StockPage: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3">
+                  {/* Select all on current page (main products only) */}
+                  <input
+                    type="checkbox"
+                    checked={paginatedProducts.every((p: any) => p.isVariantRow ? true : selectedIds.has(p.id)) && paginatedProducts.some((p: any) => !p.isVariantRow)}
+                    onChange={(e) => {
+                      const next = new Set(selectedIds);
+                      if (e.target.checked) {
+                        paginatedProducts.forEach((p: any) => {
+                          if (!p.isVariantRow) next.add(p.id);
+                        });
+                      } else {
+                        paginatedProducts.forEach((p: any) => {
+                          if (!p.isVariantRow) next.delete(p.id);
+                        });
+                      }
+                      setSelectedIds(next);
+                    }}
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
@@ -351,6 +409,20 @@ const StockPage: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedProducts.map((product: any) => (
                 <tr key={product.id} className={`hover:bg-gray-50 ${product.isVariantRow ? 'bg-blue-50/30' : ''}`}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {!product.isVariantRow && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(product.id)}
+                        onChange={(e) => {
+                          const next = new Set(selectedIds);
+                          if (e.target.checked) next.add(product.id);
+                          else next.delete(product.id);
+                          setSelectedIds(next);
+                        }}
+                      />
+                    )}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {product.isVariantRow ? (
                       <div className="flex items-center justify-center h-10 w-10 text-gray-400">

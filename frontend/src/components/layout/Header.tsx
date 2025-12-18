@@ -39,7 +39,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, sidebarOpen, manualAcc
   };
 
   return (
-    <header className="navbar px-3 md:px-4 py-3 bg-white shadow-sm border-b">
+    <header className="navbar fixed top-0 left-0 right-0 z-40 px-3 md:px-4 py-3 bg-white shadow-sm border-b">
       <div className="flex items-center justify-between w-full">
         {/* Bouton toggle sidebar + titre */}
         <div className="flex items-center space-x-2 md:space-x-4">

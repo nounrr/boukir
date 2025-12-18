@@ -20,7 +20,7 @@ const clientSchema = Yup.object({
     .required('Solde requis'), // négatif autorisé désormais
   plafond: Yup.number()
     .nullable()
-    .transform((value, originalValue) => {
+    .transform((_unused, originalValue) => {
       // Si la valeur originale est une chaîne vide, retourner null
       if (originalValue === '' || originalValue === null || originalValue === undefined) {
         return null;
@@ -73,7 +73,6 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     prenom: '',
     nom: '',
     type_compte: '',
-    demande_artisan: false,
     password: '',
     telephone: '',
     email: '',
@@ -108,14 +107,17 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               }
 
               // Préparer les données du contact
+              const typeCompte: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null =
+                values.type_compte === 'Client' || values.type_compte === 'Artisan/Promoteur' || values.type_compte === 'Fournisseur'
+                  ? (values.type_compte as 'Client' | 'Artisan/Promoteur' | 'Fournisseur')
+                  : null;
               const contactData = {
                 // Pour Fournisseur, le nom peut être vide; on envoie une chaîne vide pour rester compatible DB
                 nom_complet: (values.nom_complet || '').toString(),
                 prenom: values.prenom || '',
                 nom: values.nom || '',
                 societe: (values as any).societe || '',
-                type_compte: values.type_compte || null,
-                demande_artisan: values.demande_artisan || false,
+                type_compte: typeCompte as Contact['type_compte'],
                 password: values.password || undefined,
                 telephone: values.telephone || '',
                 email: values.email || '',
@@ -125,9 +127,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 type: contactType,
                 solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
                 ...(contactType === 'Client' && { 
-                  plafond: values.plafond !== null && values.plafond !== undefined && values.plafond !== '' 
-                    ? Number(values.plafond) 
-                    : undefined 
+                  plafond: values.plafond != null ? Number(values.plafond as any) : undefined 
                 })
               };
 
@@ -218,33 +218,20 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
 
               {/* Type Compte et Demande Artisan */}
               {contactType === 'Client' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="type_compte" className="block text-sm font-medium text-gray-700 mb-1">
-                      Type de compte
-                    </label>
-                    <Field
-                      as="select"
-                      id="type_compte"
-                      name="type_compte"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Sélectionner...</option>
-                      <option value="Client">Client</option>
-                      <option value="Artisan/Promoteur">Artisan/Promoteur</option>
-                    </Field>
-                  </div>
-                  <div className="flex items-center mt-6">
-                    <Field
-                      type="checkbox"
-                      id="demande_artisan"
-                      name="demande_artisan"
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="demande_artisan" className="ml-2 block text-sm text-gray-900">
-                      Demande Artisan/Promoteur
-                    </label>
-                  </div>
+                <div>
+                  <label htmlFor="type_compte" className="block text-sm font-medium text-gray-700 mb-1">
+                    Type de compte
+                  </label>
+                  <Field
+                    as="select"
+                    id="type_compte"
+                    name="type_compte"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Sélectionner...</option>
+                    <option value="Client">Client</option>
+                    <option value="Artisan/Promoteur">Artisan/Promoteur</option>
+                  </Field>
                 </div>
               )}
 
