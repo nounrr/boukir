@@ -21,6 +21,8 @@ import categoriesRouter from './routes/categories.js';
 import brandsRouter from './routes/brands.js';
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
+import ecommerceCartRouter from './routes/ecommerce/cart.js';
+import ecommerceOrdersRouter from './routes/ecommerce/orders.js';
 import contactsRouter from './routes/contacts.js';
 import vehiculesRouter from './routes/vehicules.js';
 
@@ -181,6 +183,8 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/brands', brandsRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/ecommerce/products', ecommerceProductsRouter); // E-commerce public products
+app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
+app.use('/api/ecommerce/orders', ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
 app.use('/api/contacts', contactsRouter);
 app.use('/api/vehicules', vehiculesRouter);
 
