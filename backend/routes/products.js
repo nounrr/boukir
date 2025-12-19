@@ -535,6 +535,40 @@ router.post('/:id/restore', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Soft-delete a product
+// DELETE /api/products/:id
+router.delete('/:id', async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+    const id = Number(req.params.id);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'ID invalide' });
+    }
+
+    const [exists] = await pool.query(
+      'SELECT id FROM products WHERE id = ? AND COALESCE(is_deleted,0) = 0',
+      [id]
+    );
+    if (!exists.length) {
+      return res.status(404).json({ message: 'Produit introuvable' });
+    }
+
+    const now = new Date();
+    const updatedBy = req.user?.id || null;
+
+    // updated_by column is ensured in ensureProductsColumns()
+    await pool.query(
+      'UPDATE products SET is_deleted = 1, updated_at = ?, updated_by = ? WHERE id = ?',
+      [now, updatedBy, id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     await ensureProductsColumns();
