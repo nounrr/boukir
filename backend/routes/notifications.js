@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { emitToPDG } from '../socket/socketServer.js';
+import { getWhtspStatus, isWhtspServiceConfigured, sendWhtspMedia, sendWhtspText } from '../utils/whtspService.js';
 
 const router = express.Router();
 
@@ -152,6 +153,94 @@ router.post('/artisan-requests/:id/reject', async (req, res, next) => {
     next(err);
   } finally {
     connection.release();
+  }
+});
+
+// ----------------------------
+// WhatsApp notifications
+// ----------------------------
+
+// GET /api/notifications/whatsapp/bon-test (public; allowlisted in index.js)
+router.get('/whatsapp/bon-test', async (_req, res) => {
+  try {
+    const configured = isWhtspServiceConfigured();
+    const status = configured ? await getWhtspStatus().catch((e) => ({ ok: false, error: e?.message || 'status_failed' })) : null;
+    res.json({
+      ok: true,
+      whtspConfigured: configured,
+      whtspStatus: status,
+      publicBaseUrl: process.env.PUBLIC_BASE_URL || null,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Erreur test WhatsApp' });
+  }
+});
+
+// POST /api/notifications/whatsapp/bon
+// Body (minimal): { to: string, pdfUrl?: string, message?: string, numero?: string, total?: string|number, devise?: string }
+// Optional: { mediaUrls?: string[], templateSid?: string, templateParams?: Record<string,string> }
+router.post('/whatsapp/bon', async (req, res) => {
+  try {
+    const {
+      to,
+      pdfUrl,
+      mediaUrls,
+      message,
+      numero,
+      total,
+      devise,
+    } = req.body || {};
+
+    if (!to) {
+      return res.status(400).json({ ok: false, message: 'Champ "to" requis (numéro destinataire).' });
+    }
+
+    if (!isWhtspServiceConfigured()) {
+      return res.status(500).json({
+        ok: false,
+        message: 'WhatsApp service non configuré (WHTSP_SERVICE_BASE_URL / WHTSP_SERVICE_API_KEY).',
+      });
+    }
+
+    const finalMediaUrls = Array.isArray(mediaUrls) && mediaUrls.length
+      ? mediaUrls
+      : (pdfUrl ? [pdfUrl] : []);
+
+    const safeNumero = String(numero || '').trim();
+    const safeDevise = String(devise || 'DH').trim() || 'DH';
+    const safeTotal = total != null && String(total).trim() !== '' ? String(total).trim() : null;
+
+    const defaultBody = [
+      'Bonjour,',
+      safeNumero ? `Veuillez trouver ci-joint votre bon ${safeNumero}.` : 'Veuillez trouver ci-joint votre document.',
+      safeTotal ? `Total: ${safeTotal} ${safeDevise}` : null,
+      'Merci.'
+    ].filter(Boolean).join('\n');
+
+    const caption = typeof message === 'string' && message.trim() ? message.trim() : defaultBody;
+
+    // If we have a pdf/media URL, send as media with caption; else send plain text.
+    let result;
+    if (finalMediaUrls.length > 0) {
+      // Prefer first URL (the frontend uploads exactly one PDF)
+      result = await sendWhtspMedia({
+        phone: to,
+        caption,
+        mediaUrl: String(finalMediaUrls[0]),
+      });
+    } else {
+      result = await sendWhtspText({ phone: to, text: caption });
+    }
+
+    return res.json({ ok: true, provider: 'whtsp-service', result });
+  } catch (err) {
+    console.error('[WhatsApp] /api/notifications/whatsapp/bon error:', err);
+    const status = err?.status && Number.isFinite(err.status) ? err.status : 500;
+    return res.status(status).json({
+      ok: false,
+      message: err?.message || 'Erreur serveur WhatsApp',
+      details: err?.payload,
+    });
   }
 });
 
