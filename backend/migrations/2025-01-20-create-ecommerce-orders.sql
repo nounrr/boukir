@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS ecommerce_orders (
   delivered_at TIMESTAMP DEFAULT NULL,
   cancelled_at TIMESTAMP DEFAULT NULL,
   
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+FOREIGN KEY (user_id) REFERENCES contacts (id) ON DELETE SET NULL,
   INDEX idx_order_number (order_number),
   INDEX idx_user_id (user_id),
   INDEX idx_customer_email (customer_email),

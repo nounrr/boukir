@@ -1,7 +1,7 @@
 -- Cart Items Table
 -- Created: 2025-01-20
 -- Purpose: Store shopping cart items for authenticated users
--- Dependencies: Requires users, products, product_variants, product_units tables
+-- Dependencies: Requires contacts, products, product_variants, product_units tables
 
 CREATE TABLE IF NOT EXISTS cart_items (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS cart_items (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+FOREIGN KEY (user_id) REFERENCES contacts (id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
   FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE CASCADE,
   FOREIGN KEY (unit_id) REFERENCES product_units(id) ON DELETE SET NULL,
