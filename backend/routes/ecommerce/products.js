@@ -201,6 +201,26 @@ router.get('/', async (req, res, next) => {
     params.push(itemsPerPage, offset);
     const [rows] = await pool.query(query, params);
 
+    // Get wishlist status for authenticated users
+    const userId = req.user?.id;
+    let wishlistProductIds = new Set();
+
+    if (userId) {
+      const productIds = rows.map(r => r.id);
+      if (productIds.length > 0) {
+        const [wishlistItems] = await pool.query(`
+          SELECT product_id, variant_id
+          FROM wishlist_items
+          WHERE user_id = ? AND product_id IN (${productIds.map(() => '?').join(',')})
+        `, [userId, ...productIds]);
+
+        // Store product_id for quick lookup (variant_id not checked here for simplicity)
+        wishlistItems.forEach(item => {
+          wishlistProductIds.add(item.product_id);
+        });
+      }
+    }
+
     // Fetch additional data for each product (images, variants preview, units)
     const products = await Promise.all(rows.map(async (r) => {
       // Calculate promo price
@@ -344,7 +364,10 @@ router.get('/', async (req, res, next) => {
         categorie: r.categorie_id ? {
           id: r.categorie_id,
           nom: r.categorie_nom
-        } : null
+        } : null,
+
+        // Wishlist status (only if user is authenticated)
+        is_wishlisted: userId ? wishlistProductIds.has(r.id) : null
       };
     }));
 
@@ -499,6 +522,20 @@ router.get('/:id', async (req, res, next) => {
 
     const r = rows[0];
 
+    // Check if product is wishlisted for authenticated users
+    const userId = req.user?.id;
+    let isWishlisted = null;
+
+    if (userId) {
+      const [wishlistItems] = await pool.query(`
+        SELECT id
+        FROM wishlist_items
+        WHERE user_id = ? AND product_id = ? AND variant_id IS NULL
+      `, [userId, id]);
+
+      isWishlisted = wishlistItems.length > 0;
+    }
+
     // Get product gallery images
     const [gallery] = await pool.query(`
       SELECT id, image_url, position
@@ -616,6 +653,21 @@ router.get('/:id', async (req, res, next) => {
         LIMIT 8
       `, [r.categorie_id, id]);
 
+      // Get wishlist status for similar products
+      let similarWishlistIds = new Set();
+      if (userId && similarRows.length > 0) {
+        const similarProductIds = similarRows.map(sp => sp.id);
+        const [similarWishlistItems] = await pool.query(`
+          SELECT product_id
+          FROM wishlist_items
+          WHERE user_id = ? AND product_id IN (${similarProductIds.map(() => '?').join(',')})
+        `, [userId, ...similarProductIds]);
+
+        similarWishlistItems.forEach(item => {
+          similarWishlistIds.add(item.product_id);
+        });
+      }
+
       similarProducts = similarRows.map(sp => {
         const spPromoPercentage = Number(sp.pourcentage_promo || 0);
         const spOriginalPrice = Number(sp.prix_vente);
@@ -636,7 +688,8 @@ router.get('/:id', async (req, res, next) => {
           remise_artisan: Number(sp.remise_artisan || 0),
           has_promo: spPromoPercentage > 0,
           image_url: sp.image_url,
-          quantite_disponible: Number(sp.stock_partage_ecom_qty)
+          quantite_disponible: Number(sp.stock_partage_ecom_qty),
+          is_wishlisted: userId ? similarWishlistIds.has(sp.id) : null
         };
       });
     }
@@ -710,6 +763,9 @@ router.get('/:id', async (req, res, next) => {
       // Similar products
       similar_products: similarProducts,
       
+      // Wishlist status (only if user is authenticated)
+      is_wishlisted: isWishlisted,
+
       // Metadata
       created_at: r.created_at,
       updated_at: r.updated_at
@@ -752,6 +808,23 @@ router.get('/featured/promo', async (req, res, next) => {
       LIMIT ?
     `, [Number(limit)]);
 
+    // Get wishlist status for authenticated users
+    const userId = req.user?.id;
+    let wishlistProductIds = new Set();
+
+    if (userId && rows.length > 0) {
+      const productIds = rows.map(r => r.id);
+      const [wishlistItems] = await pool.query(`
+        SELECT product_id
+        FROM wishlist_items
+        WHERE user_id = ? AND product_id IN (${productIds.map(() => '?').join(',')})
+      `, [userId, ...productIds]);
+
+      wishlistItems.forEach(item => {
+        wishlistProductIds.add(item.product_id);
+      });
+    }
+
     const products = await Promise.all(rows.map(async (r) => {
       const originalPrice = Number(r.prix_vente);
       const promoPercentage = Number(r.pourcentage_promo);
@@ -785,7 +858,8 @@ router.get('/featured/promo', async (req, res, next) => {
         })),
         quantite_disponible: Number(r.quantite_disponible),
         has_variants: !!r.has_variants,
-        brand_nom: r.brand_nom
+        brand_nom: r.brand_nom,
+        is_wishlisted: userId ? wishlistProductIds.has(r.id) : null
       };
     }));
 
@@ -825,6 +899,23 @@ router.get('/featured/new', async (req, res, next) => {
       LIMIT ?
     `, [Number(limit)]);
 
+    // Get wishlist status for authenticated users
+    const userId = req.user?.id;
+    let wishlistProductIds = new Set();
+
+    if (userId && rows.length > 0) {
+      const productIds = rows.map(r => r.id);
+      const [wishlistItems] = await pool.query(`
+        SELECT product_id
+        FROM wishlist_items
+        WHERE user_id = ? AND product_id IN (${productIds.map(() => '?').join(',')})
+      `, [userId, ...productIds]);
+
+      wishlistItems.forEach(item => {
+        wishlistProductIds.add(item.product_id);
+      });
+    }
+
     const products = await Promise.all(rows.map(async (r) => {
       const originalPrice = Number(r.prix_vente);
       const promoPercentage = Number(r.pourcentage_promo || 0);
@@ -861,7 +952,8 @@ router.get('/featured/new', async (req, res, next) => {
         })),
         quantite_disponible: Number(r.quantite_disponible),
         has_variants: !!r.has_variants,
-        brand_nom: r.brand_nom
+        brand_nom: r.brand_nom,
+        is_wishlisted: userId ? wishlistProductIds.has(r.id) : null
       };
     }));
 
