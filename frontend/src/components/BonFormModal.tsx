@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Formik, Form, Field, FieldArray, ErrorMessage } from 'formik';
+import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
 import type { FormikProps } from 'formik';
 import * as Yup from 'yup';
 import { Plus, Trash2, Search, Printer } from 'lucide-react';
@@ -272,6 +272,48 @@ const bonValidationSchema = Yup.object({
 
 /* ------------------------------- Utilitaires ------------------------------- */
 const makeRowId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeHumanName = (value: unknown) => {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const isKhezinAwatifName = (name: unknown) => {
+  const n = normalizeHumanName(name);
+  if (!n) return false;
+  return ['khezin', 'awatif'].every((t) => n.includes(t));
+};
+
+const AutoCheckNonCalculatedForAwatif: React.FC<{ isOpen: boolean; clients: any[] }> = ({
+  isOpen,
+  clients,
+}) => {
+  const { values, setFieldValue } = useFormikContext<any>();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (values?.isNotCalculated) return;
+
+    let contactName = '';
+    if (values?.client_id) {
+      const c = (clients || []).find((x: any) => String(x?.id) === String(values.client_id));
+      contactName = String(c?.nom_complet || c?.nom || c?.name || '');
+    }
+    if (!contactName) {
+      contactName = String(values?.client_nom || '');
+    }
+
+    if (isKhezinAwatifName(contactName)) {
+      setFieldValue('isNotCalculated', true, false);
+    }
+  }, [isOpen, clients, values?.client_id, values?.client_nom, values?.isNotCalculated, setFieldValue]);
+
+  return null;
+};
 
 /* --------------------------------- Composant -------------------------------- */
 interface BonFormModalProps {
@@ -1064,11 +1106,13 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
             updates.push(
               updateProductMutation({
                 id: pid,
-                updated_by: user?.id || 1,
-                prix_achat: pa,
-                cout_revient,
-                prix_gros,
-                prix_vente,
+                data: ({
+                  updated_by: user?.id || 1,
+                  prix_achat: pa,
+                  cout_revient,
+                  prix_gros,
+                  prix_vente,
+                } as any),
               }).unwrap().catch(() => null)
             );
           }
@@ -1271,11 +1315,13 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
             updates.push(
               updateProductMutation({
                 id: pid,
-                updated_by: user?.id || 1,
-                prix_achat: pa,
-                cout_revient,
-                prix_gros,
-                prix_vente,
+                data: ({
+                  updated_by: user?.id || 1,
+                  prix_achat: pa,
+                  cout_revient,
+                  prix_gros,
+                  prix_vente,
+                } as any),
               }).unwrap().catch(() => null)
             );
           }
@@ -1584,8 +1630,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className="bg-white rounded-lg w-full max-w-5xl max-h-[92vh] flex flex-col shadow-lg">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-1 sm:p-2">
+      <div className="bg-white rounded-lg w-[98vw] max-w-7xl max-h-[96vh] flex flex-col shadow-lg">
         {/* Header */}
         <div className="bg-blue-600 px-4 sm:px-6 py-3 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
           <h2 className="text-base sm:text-lg font-semibold text-white truncate">
@@ -1613,6 +1659,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               className="space-y-4"
               onKeyDown={(e) => handleFormKeyDown(e)}
             >
+              <AutoCheckNonCalculatedForAwatif isOpen={isOpen} clients={clients as any[]} />
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
 
                 {/* Date */}
@@ -2328,7 +2375,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 <td className="px-1 py-2 w-[100px]">
                                   {(() => {
                                     const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
-                                    if (!product || !product.variants || product.variants.length === 0) {
+                                    const variants = product?.variants ?? [];
+                                    if (!product || variants.length === 0) {
                                       return <span className="text-xs text-gray-400">-</span>;
                                     }
                                     return (
@@ -2339,7 +2387,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const vId = e.target.value;
                                           setFieldValue(`items.${index}.variant_id`, vId);
                                           if (vId) {
-                                            const variant = product.variants.find((v: any) => String(v.id) === vId);
+                                            const variant = variants.find((v: any) => String(v.id) === vId);
                                             if (variant) {
                                               // Update price based on variant
                                               const price = values.type === 'Commande' ? variant.prix_achat : variant.prix_vente;
@@ -2358,7 +2406,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         }}
                                       >
                                         <option value="">--</option>
-                                        {product.variants.map((v: any) => (
+                                        {variants.map((v: any) => (
                                           <option key={v.id} value={v.id}>
                                             {v.variant_name}
                                           </option>
@@ -2372,8 +2420,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 <td className="px-1 py-2 w-[100px]">
                                   {(() => {
                                     const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
-                                    if (!product || !product.units || product.units.length === 0) {
-                                      return <span className="text-xs text-gray-400">{product?.base_unit || 'u'}</span>;
+                                    const units = product?.units ?? [];
+                                    const baseUnit = product?.base_unit || 'u';
+                                    const basePriceAchat = product?.prix_achat;
+                                    const basePriceVente = product?.prix_vente;
+                                    if (!product || units.length === 0) {
+                                      return <span className="text-xs text-gray-400">{baseUnit}</span>;
                                     }
                                     return (
                                       <select
@@ -2383,7 +2435,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const uId = e.target.value;
                                           setFieldValue(`items.${index}.unit_id`, uId);
                                           if (uId) {
-                                            const unit = product.units.find((u: any) => String(u.id) === uId);
+                                            const unit = units.find((u: any) => String(u.id) === uId);
                                             if (unit) {
                                               // Update price if unit has specific price
                                               if (unit.prix_vente && values.type !== 'Commande') {
@@ -2396,7 +2448,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             }
                                           } else {
                                             // Revert to base price if deselected
-                                            const price = values.type === 'Commande' ? product.prix_achat : product.prix_vente;
+                                            const price = values.type === 'Commande' ? basePriceAchat : basePriceVente;
                                             if (values.type === 'Commande') {
                                               setFieldValue(`items.${index}.prix_achat`, price);
                                             } else {
@@ -2406,8 +2458,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           }
                                         }}
                                       >
-                                        <option value="">{product.base_unit || 'u'}</option>
-                                        {product.units.map((u: any) => (
+                                        <option value="">{baseUnit}</option>
+                                        {units.map((u: any) => (
                                           <option key={u.id} value={u.id}>
                                             {u.unit_name}
                                           </option>
@@ -2812,6 +2864,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                           adresse_livraison: values.adresse_livraison || '',
                           montant_total: montantTotal,
                           statut: 'En attente',
+                          isNotCalculated: true,
                           created_by: user?.id || 1,
                           items,
                         }).unwrap();

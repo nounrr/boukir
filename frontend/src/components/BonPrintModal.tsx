@@ -12,6 +12,7 @@ interface BonPrintModalProps {
   bon: any;
   client?: Contact;
   fournisseur?: Contact;
+  products?: any[];
 }
 
 const BonPrintModal: React.FC<BonPrintModalProps> = ({
@@ -19,7 +20,8 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   onClose,
   bon,
   client,
-  fournisseur
+  fournisseur,
+  products
 }) => {
   // Taille fixée à A4 par défaut
   const size = 'A4' as const;
@@ -207,6 +209,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 bon={bon}
                 client={client}
                 fournisseur={fournisseur}
+                products={products}
                 size={size}
               />
             </div>
