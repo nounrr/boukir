@@ -22,8 +22,7 @@ const StockPage: React.FC = () => {
   const products = productsApiData ?? productsState;
   const categories = categoriesApiData ?? categoriesState;
 
-  const organizedCategories = useMemo(() => {
-    const roots = categories.filter((c: Category) => !c.parent_id);
+  const categoryChildrenMap = useMemo(() => {
     const childrenMap = new Map<number, Category[]>();
     categories.forEach((c: Category) => {
       if (c.parent_id) {
@@ -32,13 +31,17 @@ const StockPage: React.FC = () => {
         childrenMap.set(c.parent_id, list);
       }
     });
+    return childrenMap;
+  }, [categories]);
 
+  const organizedCategories = useMemo(() => {
+    const roots = categories.filter((c: Category) => !c.parent_id);
     const result: { id: number; nom: string; level: number }[] = [];
     
     const traverse = (cats: Category[], level: number) => {
       cats.forEach(c => {
         result.push({ id: c.id, nom: c.nom, level });
-        const children = childrenMap.get(c.id);
+        const children = categoryChildrenMap.get(c.id);
         if (children) {
           traverse(children, level + 1);
         }
@@ -47,13 +50,14 @@ const StockPage: React.FC = () => {
 
     traverse(roots, 0);
     return result;
-  }, [categories]);
+  }, [categories, categoryChildrenMap]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [activeTab, setActiveTab] = useState<'Produits' | 'Services'>('Produits');
   const [deleteProductMutation] = useDeleteProductMutation();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isTranslating, setIsTranslating] = useState(false);
@@ -63,6 +67,21 @@ const StockPage: React.FC = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
+
+  const categoryFilterIds = useMemo(() => {
+    if (!filterCategory) return null;
+    const rootId = Number(filterCategory);
+    if (!Number.isFinite(rootId)) return null;
+
+    const ids = new Set<number>();
+    const walk = (id: number) => {
+      ids.add(id);
+      const children = categoryChildrenMap.get(id) || [];
+      children.forEach((c) => walk(c.id));
+    };
+    walk(rootId);
+    return ids;
+  }, [filterCategory, categoryChildrenMap]);
 
   const handleEdit = (product: any) => {
     const realProduct = product.isVariantRow 
@@ -123,18 +142,27 @@ const StockPage: React.FC = () => {
   }, [products]);
 
   const filteredProducts = flattenedProducts.filter((product: any) => {
+    // Tab filter first
+    if (activeTab === 'Produits' && product.est_service) return false;
+    if (activeTab === 'Services' && !product.est_service) return false;
+
     const term = (searchTerm ?? '').toLowerCase();
     const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
     const designation = String(product.designation ?? '').toLowerCase();
     const matchesSearch = designation.includes(term) || refStr.includes(term);
     
     const matchesCategory = !filterCategory || (() => {
-      // Check if the selected filter category exists in the product's categories list
+      const ids = categoryFilterIds;
+      if (!ids) return true;
+
+      // New: product.categories array
       if (product.categories && Array.isArray(product.categories) && product.categories.length > 0) {
-        return product.categories.some((c: any) => String(c.id) === filterCategory);
+        return product.categories.some((c: any) => ids.has(Number(c.id)));
       }
-      // Fallback to legacy single category check
-      return String(product.categorie_id ?? '') === filterCategory;
+
+      // Fallback: legacy single category id
+      const cid = Number(product.categorie_id);
+      return Number.isFinite(cid) ? ids.has(cid) : false;
     })();
 
     return matchesSearch && matchesCategory;
@@ -142,8 +170,8 @@ const StockPage: React.FC = () => {
 
   const handleExportExcel = () => {
     try {
-      // Filter out services
-      const exportableProducts = filteredProducts.filter((p: any) => !p.est_service);
+      // Export depends on active tab (Produits vs Services)
+      const exportableProducts = filteredProducts;
 
       const rows = exportableProducts.map((p: any, index: number) => {
         const pa = Number(p.prix_achat) || 0;
@@ -194,7 +222,8 @@ const StockPage: React.FC = () => {
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Stock');
-      XLSX.writeFile(wb, `export-stock-${new Date().toISOString().slice(0,10)}.xlsx`);
+      const suffix = activeTab === 'Services' ? 'services' : 'produits';
+      XLSX.writeFile(wb, `export-${suffix}-${new Date().toISOString().slice(0,10)}.xlsx`);
       showSuccess('Export Excel généré avec formules');
     } catch (e) {
       console.error(e);
@@ -212,13 +241,45 @@ const StockPage: React.FC = () => {
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterCategory]);
+  }, [searchTerm, filterCategory, activeTab]);
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Gestion du Stock</h1>
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold text-gray-900">Gestion du Stock</h1>
+          <div className="inline-flex rounded-md border border-gray-300 bg-white overflow-hidden w-fit">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('Produits');
+                setSelectedIds(new Set());
+              }}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'Produits'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Produits
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('Services');
+                setSelectedIds(new Set());
+              }}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'Services'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Services
+            </button>
+          </div>
+        </div>
         <div className="flex gap-3">
           {/* Traduire button */}
           <button
@@ -254,6 +315,50 @@ const StockPage: React.FC = () => {
           >
             {isTranslating ? 'Traduction...' : 'Traduire'}
           </button>
+
+          <button
+            onClick={async () => {
+              if (selectedIds.size === 0) return;
+              const ids = Array.from(selectedIds);
+              const label = activeTab === 'Services' ? 'service(s)' : 'produit(s)';
+              const result = await showConfirmation(
+                'Cette action est irréversible.',
+                `Supprimer ${ids.length} ${label} sélectionné(s) ?`,
+                'Oui, supprimer',
+                'Annuler'
+              );
+
+              if (!result.isConfirmed) return;
+
+              let ok = 0;
+              let err = 0;
+              for (const id of ids) {
+                try {
+                  await deleteProductMutation({ id }).unwrap();
+                  ok += 1;
+                } catch (e) {
+                  console.error('Erreur suppression produit:', id, e);
+                  err += 1;
+                }
+              }
+
+              if (ok > 0) {
+                showSuccess(`Suppression: ${ok} OK${err ? `, ${err} erreur(s)` : ''}`);
+              }
+              if (err > 0 && ok === 0) {
+                showError('Erreur lors de la suppression des éléments sélectionnés');
+              }
+
+              setSelectedIds(new Set());
+              refetchProducts?.();
+            }}
+            disabled={selectedIds.size === 0}
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            title="Supprimer les éléments sélectionnés"
+          >
+            Supprimer sélection
+          </button>
+
           <button
             onClick={() => setIsCategoryModalOpen(true)}
             className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors"

@@ -11,6 +11,7 @@ interface ThermalPrintModalProps {
   type: 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'AvoirClient' | 'AvoirFournisseur' | 'Avoir' | 'Vehicule';
   contact?: any;
   items?: any[];
+  products?: any[];
 }
 
 const normalizeDateInput = (raw: string) => {
@@ -77,6 +78,18 @@ const formatNumber = (n: number) => {
   return formatted;
 };
 
+const formatPromoPct = (pct: number) => {
+  const p = Number(pct);
+  if (!Number.isFinite(p) || p <= 0) return '0%';
+  // Règle demandée:
+  // - si la partie décimale > 0.5 => +1
+  // - si = 0.5 => supprimer la virgule (donc garder l'entier inférieur)
+  const base = Math.floor(p);
+  const frac = p - base;
+  const value = frac > 0.500000001 ? base + 1 : base;
+  return `${value}%`;
+};
+
 // --- AJOUT: helpers pour convertir images en base64 et injecter dans la fenêtre d'impression ---
 async function toDataUrl(src: string): Promise<string> {
   // Fonction robuste pour bundles (vite/webpack)
@@ -129,8 +142,9 @@ const getPrintCss = () => `
   .thermal-table tbody tr {font-size:14px; font-weight: bold; border-bottom: 1px solid #000; left; height:8mm }
   /* Ajustement des largeurs pour s'assurer que les nombres sont toujours visibles */
   .col-code { font-weight: bold; width: 14%; min-width: 14%; white-space: nowrap; font-size: 12px; }
-  .col-designation { font-weight: bold; width: auto; max-width: 36%; white-space: normal; word-break: break-word; text-align: left; overflow: hidden; }
+  .col-designation { font-weight: bold; width: auto; max-width: 26%; white-space: normal; word-break: break-word; text-align: left; overflow: hidden; }
   .col-qte { font-weight: bold; width: 10%; min-width: 10%; white-space: nowrap; text-align: right; overflow: visible; font-size: 11px; padding-right: 2px; }
+  .col-promo { font-weight: bold; width: 10%; min-width: 10%; white-space: nowrap; text-align: center; overflow: visible; font-size: 12px; border-left: 1px solid #000; }
   .col-unit { font-weight: bold; width: 20%; min-width: 20%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px solid #000; font-size: 14px; padding-right: 2px; }
   .col-total { font-weight: bold; width: 20%; min-width: 20%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px solid #000; font-size: 14px; padding-right: 2px; }
   .thermal-table.no-prices .col-code { font-weight: bold; width: 20%; min-width: 20%; }
@@ -151,12 +165,31 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
   type,
   contact,
   items = [],
+  products = [],
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
   const [companyType, setCompanyType] = useState<'DIAMOND' | 'MPC'>('DIAMOND');
   const [priceMode, setPriceMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES'>('WITH_PRICES');
 
   const logoCurrent = companyType === 'MPC' ? logo1 : logo;
+
+  const findProductById = (id: any) => {
+    if (!id) return undefined;
+    const sid = String(id);
+    return (products || []).find((p: any) => String(p?.id) === sid);
+  };
+
+  const getOriginalSalePrice = (it: any) => {
+    const direct = it?.prix_vente ?? it?.prixVente ?? it?.prix_original ?? it?.prixOriginal;
+    const directNum = Number(direct);
+    if (Number.isFinite(directNum) && directNum > 0) return directNum;
+
+    const pid = it?.product_id ?? it?.produit_id ?? it?.id;
+    const product = findProductById(pid);
+    const p = product?.prix_vente ?? product?.prixVente ?? product?.price ?? product?.prix;
+    const pn = Number(p);
+    return Number.isFinite(pn) && pn > 0 ? pn : 0;
+  };
 
   // --- AJOUT: pré-conversion du logo courant en base64 pour fiabiliser l'impression ---
   const [logoBase64, setLogoBase64] = useState<string>('');
@@ -384,6 +417,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   <th className="col-qte">Qté</th>
                   {priceMode === 'WITH_PRICES' ? (
                     <>
+                      <th className="col-promo">%</th>
                       <th className="col-unit">{type === 'Commande' ? 'P.A' : 'P.U'}</th>
                       <th className="col-total">Total</th>
                     </>
@@ -395,6 +429,12 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   const q = parseFloat(it.quantite ?? it.qty ?? 0) || 0;
                   const pu = parseFloat(it.prix_unitaire ?? it.prix ?? it.price ?? 0) || 0;
                   const lineTotal = q * pu;
+
+                  const original = type === 'Commande' ? 0 : getOriginalSalePrice(it);
+                  const hasPromo = original > 0 && pu > 0 && original > pu;
+                  const promoPct = hasPromo ? ((original - pu) / original) * 100 : 0;
+                  const puDisplay = hasPromo ? original : pu;
+
                   return (
                     <tr key={getItemKey(it)}>
                       <td className="col-code">{it.product_id}</td>
@@ -402,7 +442,8 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                       <td className="col-qte">{q}</td>
                       {priceMode === 'WITH_PRICES' ? (
                         <>
-                          <td className="col-unit">{formatNumber(pu)}</td>
+                          <td className="col-promo">{hasPromo ? formatPromoPct(promoPct) : ''}</td>
+                          <td className="col-unit">{formatNumber(puDisplay)}</td>
                           <td className="col-total">{formatNumber(lineTotal)}</td>
                         </>
                       ) : null}
@@ -416,6 +457,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                     <td className="col-qte">&nbsp;</td>
                     {priceMode === 'WITH_PRICES' ? (
                       <>
+                        <td className="col-promo">&nbsp;</td>
                         <td className="col-unit">&nbsp;</td>
                         <td className="col-total">&nbsp;</td>
                       </>

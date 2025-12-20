@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type React from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, MoreHorizontal, Send } from 'lucide-react';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
@@ -10,8 +11,6 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   import ThermalPrintModal from '../components/ThermalPrintModal';
   import BonPrintModal from '../components/BonPrintModal';
   import SearchableSelect from '../components/SearchableSelect';
-  // Centralize action/status icon size for easier adjustment
-  const ACTION_ICON_SIZE = 24; // increased from 20 per user request
   import { 
     useGetBonsByTypeQuery, 
     useDeleteBonMutation, 
@@ -24,7 +23,6 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   } from '../store/api/contactsApi';
   import { useGetProductsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
-  import { sendWhatsApp } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
   import { uploadBonPdf } from '../utils/uploads';
@@ -38,6 +36,24 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   import { useNavigate } from 'react-router-dom';
   
   
+
+// Centralize action/status icon size for easier adjustment
+const ACTION_ICON_SIZE = 24; // increased from 20 per user request
+
+const normalizeHumanName = (value: unknown) => {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const isKhezinAwatifName = (name: unknown) => {
+  const n = normalizeHumanName(name);
+  if (!n) return false;
+  return ['khezin', 'awatif'].every((t) => n.includes(t));
+};
 
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
@@ -940,33 +956,6 @@ const BonsPage = () => {
       debugMediaUrl = mediaUrl;
       console.debug('[WhatsApp] Media URL prepared:', debugMediaUrl, uploadResult);
 
-      // Extraire le chemin relatif du PDF pour le template (ex: "sortie/SOR3168-sortie-3168-1762080962793")
-      // uploadResult.url format: "/uploads/bons_pdf/sortie/SOR3168-sortie-3168-1762080962793.pdf"
-      const pdfRelativePath = uploadResult.url
-        .replace(/^\/uploads\/bons_pdf\//, '') // Enlever le préfixe
-        .replace(/\.pdf$/, ''); // Enlever l'extension
-
-      // Résoudre le nom de la société ou fallback sur le nom du contact
-      let contactNameOrSociete = "Client";
-      if (resolvedClient) {
-        // Priorité: nom_societe si disponible, sinon nom_complet
-        contactNameOrSociete = resolvedClient.nom_societe || resolvedClient.societe || resolvedClient.nom_complet || "Client";
-      } else if (resolvedSupplier) {
-        // Pour les fournisseurs aussi
-        contactNameOrSociete = resolvedSupplier.nom_societe || resolvedSupplier.societe || resolvedSupplier.nom_complet || "Fournisseur";
-      } else {
-        // Fallback sur getContactName (inclut client_nom pour Comptant/Devis)
-        contactNameOrSociete = getContactName(bon) || "Client";
-      }
-
-      // Utiliser le template approuvé avec paramètres
-      const templateParams = {
-        "1": contactNameOrSociete, // Nom de la société ou nom du contact
-        "2": getDisplayNumero(bon) || "N/A", // Numéro du bon
-        "3": `${computeMontantTotal(bon).toFixed(2)} DH`, // Montant total
-        "4": pdfRelativePath // Chemin relatif du PDF
-      };
-
       // Utiliser la route /whatsapp/bon pour tous les types (envoie le PDF en pièce jointe)
       const numeroDisplay = getDisplayNumero(bon) || 'N/A';
       const montantDisplay = computeMontantTotal(bon).toFixed(2);
@@ -1065,7 +1054,7 @@ const BonsPage = () => {
   }, [onMouseMove, onMouseDown]);
 
   // Réinitialiser la page quand on change d'onglet ou de recherche
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentPage(1);
   }, [currentTab, searchTerm]);
 
@@ -1148,6 +1137,20 @@ const BonsPage = () => {
           created_by: currentUser?.id || 1,
           items: selectedBonForDuplicate.items || []
         };
+
+        const shouldMarkNotCalculated = (() => {
+          if (duplicateType === 'comptant' || duplicateType === 'avoirComptant') {
+            return isKhezinAwatifName(comptantClientName);
+          }
+          // client/fournisseur selection by id
+          if (selectedContactForDuplicate) {
+            const list = duplicateType === 'fournisseur' || duplicateType === 'avoirFournisseur' ? suppliers : clients;
+            const match = (list as any[]).find((c: any) => String(c?.id) === String(selectedContactForDuplicate));
+            const name = match?.nom_complet || match?.nom || match?.name;
+            return isKhezinAwatifName(name);
+          }
+          return false;
+        })();
 
         // Traiter les articles selon le type de duplication
         const sourceItems = parseItemsSafe(selectedBonForDuplicate.items);
@@ -1251,6 +1254,10 @@ const BonsPage = () => {
             }, 0);
             newBonData.montant_total = newTotal;
           }
+        }
+
+        if (shouldMarkNotCalculated) {
+          newBonData.isNotCalculated = true;
         }
         
         // Créer le bon directement via l'API
@@ -2477,6 +2484,7 @@ const BonsPage = () => {
           }}
           bon={selectedBonForPrint}
           type={(currentTab === 'Avoir' || currentTab === 'AvoirComptant') ? 'AvoirClient' : currentTab}
+          products={products}
           contact={(() => {
             const b = selectedBonForPrint;
             if (!b) return null;
@@ -2540,6 +2548,7 @@ const BonsPage = () => {
             setSelectedBonForPDFPrint(null);
           }}
           bon={selectedBonForPDFPrint}
+          products={products}
           client={(() => {
             if (!selectedBonForPDFPrint) return undefined;
             const bon = selectedBonForPDFPrint;
