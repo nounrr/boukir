@@ -12,6 +12,7 @@ import { initializeSocketServer } from './socket/socketServer.js';
 
 import pool, { requestContext } from './db/pool.js';
 import { verifyToken } from './middleware/auth.js';
+import jwt from 'jsonwebtoken';
 
 import employeesRouter from './routes/employees.js';
 import authRouter from './routes/auth.js';
@@ -22,6 +23,7 @@ import brandsRouter from './routes/brands.js';
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
 import ecommerceCartRouter from './routes/ecommerce/cart.js';
+import ecommerceWishlistRouter from './routes/ecommerce/wishlist.js';
 import ecommerceOrdersRouter from './routes/ecommerce/orders.js';
 import contactsRouter from './routes/contacts.js';
 import vehiculesRouter from './routes/vehicules.js';
@@ -78,6 +80,32 @@ app.use((req, _res, next) => {
     () => next()
   );
 });
+
+// Optional authentication middleware (for public routes that benefit from auth data)
+const optionalAuth = (req, res, next) => {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return next(); // No token, continue without user
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    req.user = decoded;
+
+    // Update context if available
+    const store = requestContext.getStore();
+    if (store && decoded?.id) {
+      store.userId = decoded.id;
+    }
+  } catch (err) {
+    // Invalid token, but don't fail - just continue without user
+    console.log('Optional auth: Invalid token, continuing without user');
+  }
+
+  next();
+};
 
 // Auth global (sauf endpoints publics) + sync userId après vérification
 const PUBLIC_PATHS = new Set([
@@ -182,8 +210,9 @@ app.use('/api/users/auth', usersRouter); // E-commerce users authentication
 app.use('/api/categories', categoriesRouter);
 app.use('/api/brands', brandsRouter);
 app.use('/api/products', productsRouter);
-app.use('/api/ecommerce/products', ecommerceProductsRouter); // E-commerce public products
+app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
+app.use('/api/ecommerce/wishlist', ecommerceWishlistRouter); // E-commerce wishlist (requires auth)
 app.use('/api/ecommerce/orders', ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
 app.use('/api/contacts', contactsRouter);
 app.use('/api/vehicules', vehiculesRouter);

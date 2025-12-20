@@ -205,6 +205,12 @@ router.get('/', async (req, res, next) => {
     const userId = req.user?.id;
     let wishlistProductIds = new Set();
 
+    console.log('🔍 Products GET / - Auth check:', {
+      hasReqUser: !!req.user,
+      userId: userId,
+      authHeader: req.headers['authorization'] ? 'Present' : 'Missing'
+    });
+
     if (userId) {
       const productIds = rows.map(r => r.id);
       if (productIds.length > 0) {
@@ -214,10 +220,19 @@ router.get('/', async (req, res, next) => {
           WHERE user_id = ? AND product_id IN (${productIds.map(() => '?').join(',')})
         `, [userId, ...productIds]);
 
+        console.log('📋 Wishlist items found:', {
+          userId: userId,
+          productIdsChecked: productIds,
+          wishlistItemsCount: wishlistItems.length,
+          wishlistItems: wishlistItems
+        });
+
         // Store product_id for quick lookup (variant_id not checked here for simplicity)
         wishlistItems.forEach(item => {
           wishlistProductIds.add(item.product_id);
         });
+
+        console.log('✅ Wishlisted product IDs:', Array.from(wishlistProductIds));
       }
     }
 

@@ -3,6 +3,40 @@ import pool from '../../db/pool.js';
 
 const router = Router();
 
+// ==================== DEBUG: CHECK USER ====================
+// GET /api/ecommerce/cart/debug/user - Check current authenticated user
+router.get('/debug/user', async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.user_id || req.user?.userId;
+
+    res.json({
+      authenticated: !!req.user,
+      jwtPayload: req.user,
+      extractedUserId: userId,
+      userExists: null
+    });
+
+    if (userId) {
+      const [userRows] = await pool.query(`
+        SELECT id, nom, prenom, email, role FROM contacts WHERE id = ?
+      `, [userId]);
+
+      return res.json({
+        authenticated: true,
+        jwtPayload: req.user,
+        extractedUserId: userId,
+        userExists: userRows.length > 0,
+        userData: userRows.length > 0 ? userRows[0] : null,
+        hint: userRows.length === 0
+          ? 'User ID from JWT does not exist in contacts table'
+          : 'User found successfully'
+      });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ==================== GET USER CART ====================
 // GET /api/ecommerce/cart - Get current user's cart with all items
 router.get('/', async (req, res, next) => {
@@ -23,19 +57,13 @@ router.get('/', async (req, res, next) => {
         ci.created_at,
         ci.updated_at,
         p.designation,
-        p.designation_ar,
-        p.designation_en,
-        p.designation_zh,
         p.prix_vente as base_price,
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
         p.image_url,
         p.stock_partage_ecom_qty,
-        p.has_variants,
-        p.base_unit,
         pv.variant_name,
-        pv.variant_type,
         pv.prix_vente as variant_price,
         pv.stock_quantity as variant_stock,
         pv.image_url as variant_image_url,
@@ -94,6 +122,9 @@ router.get('/', async (req, res, next) => {
       const quantity = Number(item.quantity);
       const subtotal = priceAfterPromo * quantity;
 
+      // Determine primary image
+      const primaryImage = item.variant_image_url || item.image_url;
+
       return {
         id: item.id,
         product_id: item.product_id,
@@ -102,17 +133,11 @@ router.get('/', async (req, res, next) => {
         quantity: quantity,
         product: {
           designation: item.designation,
-          designation_ar: item.designation_ar,
-          designation_en: item.designation_en,
-          designation_zh: item.designation_zh,
-          image_url: item.variant_image_url || item.image_url,
-          has_variants: !!item.has_variants,
-          base_unit: item.base_unit
+          image_url: primaryImage
         },
         variant: item.variant_id ? {
           id: item.variant_id,
           name: item.variant_name,
-          type: item.variant_type,
           image_url: item.variant_image_url
         } : null,
         unit: item.unit_id ? {
@@ -196,9 +221,32 @@ router.get('/summary', async (req, res, next) => {
 // POST /api/ecommerce/cart/items - Add item to cart or update quantity
 router.post('/items', async (req, res, next) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id || req.user?.user_id || req.user?.userId;
+
     if (!userId) {
-      return res.status(401).json({ message: 'Authentification requise' });
+      return res.status(401).json({
+        message: 'Authentification requise',
+        debug: {
+          userObject: req.user,
+          hint: 'JWT token ne contient pas d\'ID utilisateur'
+        }
+      });
+    }
+
+    // Verify user exists in database (contacts table)
+    const [userRows] = await pool.query(`
+      SELECT id, nom, email FROM contacts WHERE id = ?
+    `, [userId]);
+
+    if (!userRows.length) {
+      return res.status(401).json({
+        message: 'Session invalide. Veuillez vous reconnecter.',
+        code: 'USER_NOT_FOUND',
+        debug: {
+          userId: userId,
+          hint: 'Cet utilisateur n\'existe pas dans la table contacts. Vérifiez que l\'utilisateur a été créé correctement.'
+        }
+      });
     }
 
     const { product_id, variant_id = null, unit_id = null, quantity = 1 } = req.body;
@@ -349,6 +397,34 @@ router.put('/items/:id', async (req, res, next) => {
 
     const qty = Number(quantity);
 
+    // First check if cart item exists at all
+    const [allItems] = await pool.query(`
+      SELECT id, user_id FROM cart_items WHERE id = ?
+    `, [cartItemId]);
+
+    if (!allItems.length) {
+      return res.status(404).json({
+        message: 'Article non trouvé dans le panier',
+        debug: {
+          cart_item_id: cartItemId,
+          reason: 'Item does not exist in database'
+        }
+      });
+    }
+
+    // Check if item belongs to current user
+    if (allItems[0].user_id !== userId) {
+      return res.status(403).json({
+        message: 'Cet article ne vous appartient pas',
+        debug: {
+          cart_item_id: cartItemId,
+          item_user_id: allItems[0].user_id,
+          current_user_id: userId,
+          reason: 'Item belongs to different user'
+        }
+      });
+    }
+
     // Get cart item with product/variant info
     const [cartItems] = await pool.query(`
       SELECT 
@@ -365,7 +441,14 @@ router.put('/items/:id', async (req, res, next) => {
     `, [cartItemId, userId]);
 
     if (!cartItems.length) {
-      return res.status(404).json({ message: 'Article non trouvé dans le panier' });
+      return res.status(404).json({
+        message: 'Article non trouvé dans le panier',
+        debug: {
+          cart_item_id: cartItemId,
+          user_id: userId,
+          reason: 'Item or product not found'
+        }
+      });
     }
 
     const cartItem = cartItems[0];
