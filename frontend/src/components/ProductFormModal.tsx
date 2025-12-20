@@ -4,7 +4,7 @@ import type { RootState } from '../store';
 import type { Product, Category, ProductVariant, ProductUnit } from '../types';
 import { useFormik, FieldArray, FormikProvider } from 'formik';
 import * as Yup from 'yup';
-import { Plus, Trash2, Ruler } from 'lucide-react';
+import { Plus, Trash2, Ruler, X } from 'lucide-react';
 // Switch to backend mutations
 import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -592,10 +592,19 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-y-auto">
-        <div className="bg-blue-600 px-6 py-4 rounded-t-lg">
+        <div className="sticky top-0 z-20 bg-blue-600 px-6 py-4 rounded-t-lg flex items-center justify-between gap-4">
           <h2 className="text-xl font-bold text-white">
             {editingProduct ? 'Modifier le produit' : 'Nouveau produit'}
           </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-white/90 hover:text-white p-1 rounded focus:outline-none focus:ring-2 focus:ring-white/60"
+            aria-label="Fermer"
+            title="Fermer"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <form onSubmit={formik.handleSubmit} className="p-6">
