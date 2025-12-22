@@ -388,13 +388,13 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               const total = quantite * prixUnitaire;
 
               const original = bon?.type === 'Commande' ? 0 : getOriginalSalePrice(item);
-              const originalToShow = original > 0 ? original : prixUnitaire;
 
               // Compare using cents (rounded to 2 decimals) to avoid false promos from floating/format artifacts.
-              const originalCents = toCents(originalToShow);
+              const originalCents = toCents(original);
               const puCents = toCents(prixUnitaire);
               const hasPromo = bon?.type !== 'Commande' && originalCents > 0 && puCents > 0 && originalCents > puCents;
               const promoPct = hasPromo ? ((originalCents - puCents) / originalCents) * 100 : 0;
+              const priceToShowCents = hasPromo ? originalCents : puCents;
 
               const productId = item.product_id ?? item.produit_id ?? item.id ?? '';
               const rowKey = productId || `${item.designation}-${index}`;
@@ -419,7 +419,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                         </>
                       ) : (
                         <>
-                          <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right ${textSizes.tableCell}`}>{(originalCents / 100).toFixed(2)}</td>
+                          <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right ${textSizes.tableCell}`}>{(priceToShowCents / 100).toFixed(2)}</td>
                           <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center ${textSizes.tableCell} whitespace-nowrap w-[1%]`}>{hasPromo ? formatPromoPct(promoPct) : ''}</td>
                           <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-medium ${textSizes.tableCell}`}>{total.toFixed(2)}</td>
                         </>
