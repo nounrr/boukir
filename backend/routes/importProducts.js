@@ -40,10 +40,35 @@ router.post("/", upload.single("file"), async (req, res) => {
     }
 
     // Helpers
-    const num = (v) =>
-      v === undefined || v === null || v === "" || Number.isNaN(Number(v))
-        ? null
-        : Number(v);
+    const normalizeKey = (k) =>
+      String(k ?? '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .replace(/[^a-z0-9]+/g, '');
+
+    const pick = (row, keys) => {
+      if (!row || typeof row !== 'object') return null;
+      const map = new Map();
+      for (const [k, v] of Object.entries(row)) map.set(normalizeKey(k), v);
+      for (const key of keys) {
+        const nk = normalizeKey(key);
+        if (map.has(nk)) return map.get(nk);
+      }
+      return null;
+    };
+
+    const num = (v) => {
+      if (v === undefined || v === null) return null;
+      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+      const str = String(v).trim();
+      if (!str) return null;
+      // Support decimals with comma: "12,50" -> 12.50
+      const normalized = str.replace(/\s+/g, '').replace(',', '.');
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : null;
+    };
     const intOrNull = (v) => {
       const n = num(v);
       return Number.isFinite(n) ? Math.trunc(n) : null;
@@ -55,54 +80,28 @@ router.post("/", upload.single("file"), async (req, res) => {
     const s = (v) =>
       v === undefined || v === null ? null : String(v).trim() || null;
 
-  // Map + calculs si manquants (basés sur prix_achat + pourcentage)
+    // Map (support headers in French/Arabic/English)
     const values = rows.map((r) => {
-      const id = intOrNull(r.id ?? r["ID"]);
-      const designation = s(r.designation ?? r["Designation"] ?? r["désignation"]);
-      const quantite = intOrNull(r.quantite);
-      const prix_achat = decOrNull(r.prix_achat);
+      const id = intOrNull(pick(r, ['id', 'ID']));
+      const designation = s(pick(r, ['designation', 'désignation', 'Designation', 'Désignation', 'des']));
+      const quantite = intOrNull(pick(r, ['quantite', 'quantité', 'Quantite', 'Quantité', 'qte', 'qty', 'quantity']));
+      const prix_achat = decOrNull(pick(r, ['prix_achat', 'prix achat', 'Prix Achat', 'prixachat', 'purchaseprice', 'buyprice']));
 
-      const crp = decOrNull(r.cout_revient_pourcentage);
-      const pgp = decOrNull(r.prix_gros_pourcentage);
-      const pvp = decOrNull(r.prix_vente_pourcentage);
-
-      const cout_revient =
-        decOrNull(r.cout_revient) ??
-        (prix_achat != null && crp != null ? +(prix_achat * (1 + crp / 100)).toFixed(2) : null);
-
-      const prix_gros =
-        decOrNull(r.prix_gros) ??
-        (prix_achat != null && pgp != null ? +(prix_achat * (1 + pgp / 100)).toFixed(2) : null);
-
-      const prix_vente =
-        decOrNull(r.prix_vente) ??
-        (prix_achat != null && pvp != null ? +(prix_achat * (1 + pvp / 100)).toFixed(2) : null);
-
-      // optional kg column (accept different header names)
-      const kg = decOrNull(r.kg ?? r["KG"] ?? r["Poids"] ?? r["poids"] ?? r["Poids (kg)"]);
-
-      // Order of columns must match the INSERT column list below
+      // Minimal import: keep existing values if missing; new inserts default category to 1.
       return [
-        id, // may be null => insert new id (AUTO_INCREMENT)
+        id,
         designation,
         quantite,
         prix_achat,
-        crp,
-        cout_revient,
-        kg,
-        pgp,
-        prix_gros,
-        pvp,
-  prix_vente,
-  1, // categorie_id par défaut
+        1, // categorie_id par défaut (insert only)
       ];
     });
 
-    // Filtre les lignes vides (aucune désignation et aucun prix)
+    // Filtre les lignes vides
     const cleaned = values.filter((v) => {
       const hasId = v[0] !== null; // id
       const hasAnyField = v.slice(1).some((x) => x !== null);
-      const hasInsertKey = v[1] !== null || v[3] !== null || v[10] !== null; // designation or prix_achat or prix_vente
+      const hasInsertKey = v[1] !== null || v[2] !== null || v[3] !== null; // designation or quantite or prix_achat
       return (hasId && hasAnyField) || (!hasId && hasInsertKey);
     });
     if (cleaned.length === 0) {
@@ -115,31 +114,35 @@ router.post("/", upload.single("file"), async (req, res) => {
       await conn.beginTransaction();
 
       // Upsert par clé primaire id: si id fourni => update, sinon => insert
-  const sql = `
+      const idsProvided = cleaned.map((v) => v[0]).filter((id) => id !== null);
+      const existingIds = new Set();
+      for (let i = 0; i < idsProvided.length; i += 500) {
+        const chunk = idsProvided.slice(i, i + 500);
+        if (chunk.length === 0) continue;
+        const placeholders = chunk.map(() => '?').join(',');
+        const [found] = await conn.query(
+          `SELECT id FROM products WHERE id IN (${placeholders})`,
+          chunk
+        );
+        for (const row of found) existingIds.add(row.id);
+      }
+
+      const inserted = cleaned.filter((v) => v[0] === null || !existingIds.has(v[0])).length;
+      const updated = cleaned.filter((v) => v[0] !== null && existingIds.has(v[0])).length;
+
+      const sql = `
         INSERT INTO products
-        (id, designation, quantite, prix_achat,
-         cout_revient_pourcentage, cout_revient,
-             kg,
-         prix_gros_pourcentage, prix_gros,
-     prix_vente_pourcentage, prix_vente,
-     categorie_id)
+          (id, designation, quantite, prix_achat, categorie_id)
         VALUES ?
         ON DUPLICATE KEY UPDATE
           designation = COALESCE(VALUES(designation), designation),
           quantite = COALESCE(VALUES(quantite), quantite),
-          prix_achat = COALESCE(VALUES(prix_achat), prix_achat),
-          cout_revient_pourcentage = COALESCE(VALUES(cout_revient_pourcentage), cout_revient_pourcentage),
-          cout_revient = COALESCE(VALUES(cout_revient), cout_revient),
-          kg = COALESCE(VALUES(kg), kg),
-          prix_gros_pourcentage = COALESCE(VALUES(prix_gros_pourcentage), prix_gros_pourcentage),
-          prix_gros = COALESCE(VALUES(prix_gros), prix_gros),
-          prix_vente_pourcentage = COALESCE(VALUES(prix_vente_pourcentage), prix_vente_pourcentage),
-      prix_vente = COALESCE(VALUES(prix_vente), prix_vente)
+          prix_achat = COALESCE(VALUES(prix_achat), prix_achat)
       `;
       await conn.query(sql, [cleaned]);
 
       await conn.commit();
-      res.json({ ok: true, inserted: cleaned.length });
+      res.json({ ok: true, total: cleaned.length, inserted, updated });
     } catch (e) {
       await conn.rollback();
       console.error(e);
