@@ -545,6 +545,254 @@ router.delete('/', async (req, res, next) => {
   }
 });
 
+// ==================== GET CART SUGGESTIONS ====================
+// GET /api/ecommerce/cart/suggestions - Get personalized product suggestions based on cart
+router.get('/suggestions', async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Authentification requise' });
+    }
+
+    const limit = Math.min(Number(req.query.limit) || 4, 12); // Max 12 suggestions
+
+    // Get user's cart items
+    const [cartItems] = await pool.query(`
+      SELECT ci.product_id
+      FROM cart_items ci
+      INNER JOIN products p ON ci.product_id = p.id
+      WHERE ci.user_id = ?
+        AND p.ecom_published = 1
+        AND COALESCE(p.is_deleted, 0) = 0
+    `, [userId]);
+
+    const cartProductIds = cartItems.map(item => item.product_id);
+    let suggestions = [];
+
+    if (cartItems.length > 0) {
+      // ===== PERSONALIZED SUGGESTIONS BASED ON CART =====
+
+      // Analyze cart patterns - top categories
+      const [categoryAnalysis] = await pool.query(`
+        SELECT 
+          p.categorie_id,
+          COUNT(*) as count
+        FROM cart_items ci
+        INNER JOIN products p ON ci.product_id = p.id
+        WHERE ci.user_id = ? AND p.categorie_id IS NOT NULL
+        GROUP BY p.categorie_id
+        ORDER BY count DESC
+        LIMIT 3
+      `, [userId]);
+
+      // Analyze cart patterns - top brands
+      const [brandAnalysis] = await pool.query(`
+        SELECT 
+          p.brand_id,
+          COUNT(*) as count
+        FROM cart_items ci
+        INNER JOIN products p ON ci.product_id = p.id
+        WHERE ci.user_id = ? AND p.brand_id IS NOT NULL
+        GROUP BY p.brand_id
+        ORDER BY count DESC
+        LIMIT 3
+      `, [userId]);
+
+      const topCategoryIds = categoryAnalysis.map(c => c.categorie_id);
+      const topBrandIds = brandAnalysis.map(b => b.brand_id);
+
+      // Build smart suggestions query with scoring
+      const categoryPlaceholders = topCategoryIds.length > 0 ? topCategoryIds.map(() => '?').join(',') : 'NULL';
+      const brandPlaceholders = topBrandIds.length > 0 ? topBrandIds.map(() => '?').join(',') : 'NULL';
+      const cartPlaceholders = cartProductIds.length > 0 ? cartProductIds.map(() => '?').join(',') : 'NULL';
+
+      const suggestionsQuery = `
+        SELECT 
+          p.id,
+          p.designation,
+          p.designation_ar,
+          p.designation_en,
+          p.designation_zh,
+          p.prix_vente,
+          p.pourcentage_promo,
+          p.remise_client,
+          p.remise_artisan,
+          p.image_url,
+          p.stock_partage_ecom_qty,
+          p.has_variants,
+          p.categorie_id,
+          p.brand_id,
+          b.nom as brand_nom,
+          c.nom as categorie_nom,
+          (
+            CASE WHEN p.categorie_id IN (${categoryPlaceholders}) THEN 10 ELSE 0 END +
+            CASE WHEN p.brand_id IN (${brandPlaceholders}) THEN 5 ELSE 0 END +
+            CASE WHEN p.pourcentage_promo > 0 THEN 3 ELSE 0 END
+          ) as relevance_score
+        FROM products p
+        LEFT JOIN brands b ON p.brand_id = b.id
+        LEFT JOIN categories c ON p.categorie_id = c.id
+        WHERE p.ecom_published = 1
+          AND COALESCE(p.is_deleted, 0) = 0
+          AND p.stock_partage_ecom_qty > 0
+          ${cartProductIds.length > 0 ? `AND p.id NOT IN (${cartPlaceholders})` : ''}
+        ORDER BY relevance_score DESC, p.created_at DESC
+        LIMIT ?
+      `;
+
+      const queryParams = [
+        ...topCategoryIds,
+        ...topBrandIds,
+        ...(cartProductIds.length > 0 ? cartProductIds : []),
+        limit
+      ];
+
+      const [suggestedProducts] = await pool.query(suggestionsQuery, queryParams);
+
+      suggestions = await Promise.all(suggestedProducts.map(async (p) => {
+        const originalPrice = Number(p.prix_vente);
+        const promoPercentage = Number(p.pourcentage_promo || 0);
+        const promoPrice = promoPercentage > 0
+          ? originalPrice * (1 - promoPercentage / 100)
+          : null;
+
+        // Get first gallery image
+        const [galleryImages] = await pool.query(`
+          SELECT id, image_url, position
+          FROM product_images
+          WHERE product_id = ?
+          ORDER BY position ASC
+          LIMIT 1
+        `, [p.id]);
+
+        return {
+          id: p.id,
+          designation: p.designation,
+          designation_ar: p.designation_ar,
+          designation_en: p.designation_en,
+          designation_zh: p.designation_zh,
+          prix_vente: originalPrice,
+          prix_promo: promoPrice,
+          pourcentage_promo: promoPercentage,
+          remise_client: Number(p.remise_client || 0),
+          remise_artisan: Number(p.remise_artisan || 0),
+          has_promo: promoPercentage > 0,
+          image_url: p.image_url,
+          gallery: galleryImages.map(img => ({
+            id: img.id,
+            image_url: img.image_url,
+            position: img.position
+          })),
+          quantite_disponible: Number(p.stock_partage_ecom_qty),
+          has_variants: !!p.has_variants,
+          brand: p.brand_id ? {
+            id: p.brand_id,
+            nom: p.brand_nom
+          } : null,
+          categorie: p.categorie_id ? {
+            id: p.categorie_id,
+            nom: p.categorie_nom
+          } : null,
+          relevance_score: Number(p.relevance_score),
+          suggestion_reason: p.relevance_score >= 15 ? 'same_category_and_brand' :
+            p.relevance_score >= 10 ? 'same_category' :
+              p.relevance_score >= 5 ? 'same_brand' :
+                p.relevance_score >= 3 ? 'on_promotion' : 'popular'
+        };
+      }));
+    } else {
+      // ===== GENERAL SUGGESTIONS (EMPTY CART) =====
+
+      const [popularProducts] = await pool.query(`
+        SELECT 
+          p.id,
+          p.designation,
+          p.designation_ar,
+          p.designation_en,
+          p.designation_zh,
+          p.prix_vente,
+          p.pourcentage_promo,
+          p.remise_client,
+          p.remise_artisan,
+          p.image_url,
+          p.stock_partage_ecom_qty,
+          p.has_variants,
+          b.id as brand_id,
+          b.nom as brand_nom,
+          c.id as categorie_id,
+          c.nom as categorie_nom
+        FROM products p
+        LEFT JOIN brands b ON p.brand_id = b.id
+        LEFT JOIN categories c ON p.categorie_id = c.id
+        WHERE p.ecom_published = 1
+          AND COALESCE(p.is_deleted, 0) = 0
+          AND p.stock_partage_ecom_qty > 0
+        ORDER BY 
+          CASE WHEN p.pourcentage_promo > 0 THEN 1 ELSE 2 END,
+          p.pourcentage_promo DESC,
+          p.created_at DESC
+        LIMIT ?
+      `, [limit]);
+
+      suggestions = await Promise.all(popularProducts.map(async (p) => {
+        const originalPrice = Number(p.prix_vente);
+        const promoPercentage = Number(p.pourcentage_promo || 0);
+        const promoPrice = promoPercentage > 0
+          ? originalPrice * (1 - promoPercentage / 100)
+          : null;
+
+        const [galleryImages] = await pool.query(`
+          SELECT id, image_url, position
+          FROM product_images
+          WHERE product_id = ?
+          ORDER BY position ASC
+          LIMIT 1
+        `, [p.id]);
+
+        return {
+          id: p.id,
+          designation: p.designation,
+          designation_ar: p.designation_ar,
+          designation_en: p.designation_en,
+          designation_zh: p.designation_zh,
+          prix_vente: originalPrice,
+          prix_promo: promoPrice,
+          pourcentage_promo: promoPercentage,
+          remise_client: Number(p.remise_client || 0),
+          remise_artisan: Number(p.remise_artisan || 0),
+          has_promo: promoPercentage > 0,
+          image_url: p.image_url,
+          gallery: galleryImages.map(img => ({
+            id: img.id,
+            image_url: img.image_url,
+            position: img.position
+          })),
+          quantite_disponible: Number(p.stock_partage_ecom_qty),
+          has_variants: !!p.has_variants,
+          brand: p.brand_id ? {
+            id: p.brand_id,
+            nom: p.brand_nom
+          } : null,
+          categorie: p.categorie_id ? {
+            id: p.categorie_id,
+            nom: p.categorie_nom
+          } : null,
+          suggestion_reason: promoPercentage > 0 ? 'on_promotion' : 'popular'
+        };
+      }));
+    }
+
+    res.json({
+      suggestions,
+      suggestion_type: cartItems.length > 0 ? 'personalized' : 'popular',
+      based_on_cart_items: cartItems.length,
+      total_suggestions: suggestions.length
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ==================== VALIDATE CART ====================
 // POST /api/ecommerce/cart/validate - Validate cart before checkout
 router.post('/validate', async (req, res, next) => {
