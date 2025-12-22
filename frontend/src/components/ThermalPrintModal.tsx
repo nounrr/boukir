@@ -179,15 +179,28 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return (products || []).find((p: any) => String(p?.id) === sid);
   };
 
+  const parseMoney = (value: any): number => {
+    if (value == null) return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const normalized = String(value).trim().replace(',', '.');
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const toCents = (value: any): number => {
+    const n = parseMoney(value);
+    return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  };
+
   const getOriginalSalePrice = (it: any) => {
     const direct = it?.prix_vente ?? it?.prixVente ?? it?.prix_original ?? it?.prixOriginal;
-    const directNum = Number(direct);
+    const directNum = parseMoney(direct);
     if (Number.isFinite(directNum) && directNum > 0) return directNum;
 
     const pid = it?.product_id ?? it?.produit_id ?? it?.id;
     const product = findProductById(pid);
     const p = product?.prix_vente ?? product?.prixVente ?? product?.price ?? product?.prix;
-    const pn = Number(p);
+    const pn = parseMoney(p);
     return Number.isFinite(pn) && pn > 0 ? pn : 0;
   };
 
@@ -426,14 +439,16 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
               </thead>
               <tbody>
                 {parsedItems.map((it: any) => {
-                  const q = parseFloat(it.quantite ?? it.qty ?? 0) || 0;
-                  const pu = parseFloat(it.prix_unitaire ?? it.prix ?? it.price ?? 0) || 0;
+                  const q = parseMoney(it.quantite ?? it.qty ?? 0) || 0;
+                  const pu = parseMoney(it.prix_unitaire ?? it.prix ?? it.price ?? 0) || 0;
                   const lineTotal = q * pu;
 
                   const original = type === 'Commande' ? 0 : getOriginalSalePrice(it);
-                  const hasPromo = original > 0 && pu > 0 && original > pu;
-                  const promoPct = hasPromo ? ((original - pu) / original) * 100 : 0;
-                  const puDisplay = hasPromo ? original : pu;
+                  const originalCents = toCents(original);
+                  const puCents = toCents(pu);
+                  const hasPromo = originalCents > 0 && puCents > 0 && originalCents > puCents;
+                  const promoPct = hasPromo ? ((originalCents - puCents) / originalCents) * 100 : 0;
+                  const puDisplay = hasPromo ? (originalCents / 100) : (puCents / 100);
 
                   return (
                     <tr key={getItemKey(it)}>
