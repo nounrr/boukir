@@ -159,15 +159,28 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     return (products || []).find((p: any) => String(p?.id) === sid);
   };
 
+  const parseMoney = (value: any): number => {
+    if (value == null) return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const normalized = String(value).trim().replace(',', '.');
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const toCents = (value: any): number => {
+    const n = parseMoney(value);
+    return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  };
+
   const getOriginalSalePrice = (item: any) => {
     const direct = item?.prix_vente ?? item?.prixVente ?? item?.prix_original ?? item?.prixOriginal;
-    const directNum = Number(direct);
+    const directNum = parseMoney(direct);
     if (Number.isFinite(directNum) && directNum > 0) return directNum;
 
     const pid = item?.product_id ?? item?.produit_id ?? item?.id;
     const product = findProductById(pid);
     const p = product?.prix_vente ?? product?.prixVente ?? product?.price ?? product?.prix;
-    const pn = Number(p);
+    const pn = parseMoney(p);
     return Number.isFinite(pn) && pn > 0 ? pn : 0;
   };
 
@@ -370,14 +383,18 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
           </thead>
           <tbody>
             {items.map((item: any, index: number) => {
-              const quantite = parseFloat(item.quantite || 0);
-              const prixUnitaire = parseFloat(item.prix_unitaire || 0);
+              const quantite = parseMoney(item.quantite || 0);
+              const prixUnitaire = parseMoney(item.prix_unitaire || 0);
               const total = quantite * prixUnitaire;
 
               const original = bon?.type === 'Commande' ? 0 : getOriginalSalePrice(item);
               const originalToShow = original > 0 ? original : prixUnitaire;
-              const hasPromo = bon?.type !== 'Commande' && originalToShow > 0 && prixUnitaire > 0 && originalToShow > prixUnitaire;
-              const promoPct = hasPromo ? ((originalToShow - prixUnitaire) / originalToShow) * 100 : 0;
+
+              // Compare using cents (rounded to 2 decimals) to avoid false promos from floating/format artifacts.
+              const originalCents = toCents(originalToShow);
+              const puCents = toCents(prixUnitaire);
+              const hasPromo = bon?.type !== 'Commande' && originalCents > 0 && puCents > 0 && originalCents > puCents;
+              const promoPct = hasPromo ? ((originalCents - puCents) / originalCents) * 100 : 0;
 
               const productId = item.product_id ?? item.produit_id ?? item.id ?? '';
               const rowKey = productId || `${item.designation}-${index}`;
@@ -402,7 +419,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                         </>
                       ) : (
                         <>
-                          <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right ${textSizes.tableCell}`}>{originalToShow.toFixed(2)}</td>
+                          <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right ${textSizes.tableCell}`}>{(originalCents / 100).toFixed(2)}</td>
                           <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center ${textSizes.tableCell} whitespace-nowrap w-[1%]`}>{hasPromo ? formatPromoPct(promoPct) : ''}</td>
                           <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-medium ${textSizes.tableCell}`}>{total.toFixed(2)}</td>
                         </>
