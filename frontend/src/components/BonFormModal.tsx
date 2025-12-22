@@ -1454,6 +1454,44 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     return bestPrice;
   };
 
+  const getLastQuantityForClientProduct = (
+    clientId: string | number | undefined,
+    productId: string | number | undefined
+  ): number | null => {
+    if (!clientId || !productId) return null;
+    const cid = String(clientId);
+    const pid = String(productId);
+
+    type HistItem = { quantite?: number };
+    let bestQty: number | null = null;
+    let bestTime = -1;
+
+    const scan = (bon: any, itemsField: any) => {
+      // Ne considérer que les bons VALIDÉS
+      const statut = String(bon.statut || '').toLowerCase();
+      if (statut !== 'validé' && statut !== 'valide' && statut !== 'validée') return;
+      const items = parseItems(itemsField);
+      const bonClientId = String(bon.client_id ?? bon.contact_id ?? '');
+      if (bonClientId !== cid) return;
+      const bonTime = toTime(bon.date_creation || bon.date);
+
+      for (const it of items as HistItem[]) {
+        const itPid = String((it as any).product_id ?? (it as any).id ?? '');
+        if (itPid !== pid) continue;
+        const qty = Number((it as any).quantite ?? (it as any).qte ?? 0);
+        if (!Number.isFinite(qty) || qty <= 0) continue;
+        if (bonTime > bestTime) {
+          bestTime = bonTime;
+          bestQty = qty;
+        }
+      }
+    };
+
+    for (const b of sortiesHistory as any[]) scan(b, (b as any).items);
+    for (const b of comptantHistory as any[]) scan(b, (b as any).items);
+    return bestQty;
+  };
+
   // Dernier prix pour Comptant/AvoirComptant par produit (ignore le client),
   // accepte les statuts "Validé" et "En attente". N'affecte pas la logique Sortie.
   const getLastUnitPriceForComptantProduct = (
@@ -2603,6 +2641,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     );
     return last && Number.isFinite(last) ? (
       <div className="text-xs text-gray-500 mt-1">Dernier (Validé): {formatFull(Number(last))} DH</div>
+    ) : null;
+  })()}
+  {values.client_id && values.items[index].product_id && (() => {
+    const lastQty = getLastQuantityForClientProduct(
+      values.client_id,
+      values.items[index].product_id
+    );
+    return lastQty && Number.isFinite(lastQty) ? (
+      <div className="text-xs text-gray-500">Dernier stock acheté (Validé): {formatFull(Number(lastQty))}</div>
     ) : null;
   })()}
   {/* Dernier prix pour Comptant/AvoirComptant (ignore le client, accepte Validé/En attente) */}
