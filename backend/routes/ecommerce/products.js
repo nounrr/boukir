@@ -642,10 +642,18 @@ router.get('/:id', async (req, res, next) => {
       ? originalPrice * (1 - promoPercentage / 100) 
       : null;
 
-    // Get similar products based on category
-    let similarProducts = [];
-    if (r.categorie_id) {
-      const [similarRows] = await pool.query(`
+    // Get smart product suggestions based on category, brand, and promotions
+    let suggestions = [];
+
+    // Build smart suggestions with scoring algorithm
+    const categoryId = r.categorie_id;
+    const brandId = r.brand_id;
+
+    if (categoryId || brandId) {
+      const categoryPlaceholder = categoryId ? '?' : 'NULL';
+      const brandPlaceholder = brandId ? '?' : 'NULL';
+
+      const suggestionsQuery = `
         SELECT 
           p.id,
           p.designation,
@@ -657,38 +665,65 @@ router.get('/:id', async (req, res, next) => {
           p.remise_client,
           p.remise_artisan,
           p.image_url,
-          p.stock_partage_ecom_qty
+          p.stock_partage_ecom_qty,
+          p.has_variants,
+          p.categorie_id,
+          p.brand_id,
+          b.nom as brand_nom,
+          c.nom as categorie_nom,
+          (
+            CASE WHEN p.categorie_id = ${categoryPlaceholder} THEN 10 ELSE 0 END +
+            CASE WHEN p.brand_id = ${brandPlaceholder} THEN 5 ELSE 0 END +
+            CASE WHEN p.pourcentage_promo > 0 THEN 3 ELSE 0 END
+          ) as relevance_score
         FROM products p
-        WHERE p.categorie_id = ?
-          AND p.id != ?
-          AND p.ecom_published = 1
+        LEFT JOIN brands b ON p.brand_id = b.id
+        LEFT JOIN categories c ON p.categorie_id = c.id
+        WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
           AND p.stock_partage_ecom_qty > 0
-        ORDER BY p.created_at DESC
+          AND p.id != ?
+        ORDER BY relevance_score DESC, p.created_at DESC
         LIMIT 8
-      `, [r.categorie_id, id]);
+      `;
 
-      // Get wishlist status for similar products
-      let similarWishlistIds = new Set();
-      if (userId && similarRows.length > 0) {
-        const similarProductIds = similarRows.map(sp => sp.id);
-        const [similarWishlistItems] = await pool.query(`
+      const queryParams = [];
+      if (categoryId) queryParams.push(categoryId);
+      if (brandId) queryParams.push(brandId);
+      queryParams.push(id); // Exclude current product
+
+      const [suggestedProducts] = await pool.query(suggestionsQuery, queryParams);
+
+      // Get wishlist status for suggestions
+      let suggestionsWishlistIds = new Set();
+      if (userId && suggestedProducts.length > 0) {
+        const suggestionProductIds = suggestedProducts.map(sp => sp.id);
+        const [suggestionsWishlistItems] = await pool.query(`
           SELECT product_id
           FROM wishlist_items
-          WHERE user_id = ? AND product_id IN (${similarProductIds.map(() => '?').join(',')})
-        `, [userId, ...similarProductIds]);
+          WHERE user_id = ? AND product_id IN (${suggestionProductIds.map(() => '?').join(',')})
+        `, [userId, ...suggestionProductIds]);
 
-        similarWishlistItems.forEach(item => {
-          similarWishlistIds.add(item.product_id);
+        suggestionsWishlistItems.forEach(item => {
+          suggestionsWishlistIds.add(item.product_id);
         });
       }
 
-      similarProducts = similarRows.map(sp => {
+      suggestions = await Promise.all(suggestedProducts.map(async (sp) => {
         const spPromoPercentage = Number(sp.pourcentage_promo || 0);
         const spOriginalPrice = Number(sp.prix_vente);
         const spPromoPrice = spPromoPercentage > 0 
           ? spOriginalPrice * (1 - spPromoPercentage / 100) 
           : null;
+
+        // Get first gallery image
+        const [galleryImages] = await pool.query(`
+          SELECT id, image_url, position
+          FROM product_images
+          WHERE product_id = ?
+          ORDER BY position ASC
+          LIMIT 1
+        `, [sp.id]);
 
         return {
           id: sp.id,
@@ -703,10 +738,29 @@ router.get('/:id', async (req, res, next) => {
           remise_artisan: Number(sp.remise_artisan || 0),
           has_promo: spPromoPercentage > 0,
           image_url: sp.image_url,
+          gallery: galleryImages.map(img => ({
+            id: img.id,
+            image_url: img.image_url,
+            position: img.position
+          })),
           quantite_disponible: Number(sp.stock_partage_ecom_qty),
-          is_wishlisted: userId ? similarWishlistIds.has(sp.id) : null
+          has_variants: !!sp.has_variants,
+          brand: sp.brand_id ? {
+            id: sp.brand_id,
+            nom: sp.brand_nom
+          } : null,
+          categorie: sp.categorie_id ? {
+            id: sp.categorie_id,
+            nom: sp.categorie_nom
+          } : null,
+          relevance_score: Number(sp.relevance_score),
+          suggestion_reason: sp.relevance_score >= 15 ? 'same_category_and_brand' :
+            sp.relevance_score >= 10 ? 'same_category' :
+              sp.relevance_score >= 5 ? 'same_brand' :
+                sp.relevance_score >= 3 ? 'on_promotion' : 'popular',
+          is_wishlisted: userId ? suggestionsWishlistIds.has(sp.id) : null
         };
-      });
+      }));
     }
 
     // Build complete product response
@@ -775,8 +829,8 @@ router.get('/:id', async (req, res, next) => {
       variants,
       units: productUnits,
       
-      // Similar products
-      similar_products: similarProducts,
+      // Product suggestions (smart recommendations based on category, brand, and promotions)
+      suggestions: suggestions,
       
       // Wishlist status (only if user is authenticated)
       is_wishlisted: isWishlisted,
