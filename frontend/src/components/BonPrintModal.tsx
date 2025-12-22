@@ -117,10 +117,13 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
             }
             @page { 
               size: ${size}; 
-              margin: 0.5cm;
+              /* IMPORTANT: keep 0 margin to avoid forcing extra pages.
+                 Some browsers ignore @page rules placed inside the body (e.g. inside BonPrintTemplate).
+                 Defining it here ensures the printed area matches the template dimensions. */
+              margin: 0;
             }
             @media print {
-              body { margin: 0; }
+              html, body { margin: 0 !important; padding: 0 !important; }
               .print-hidden { display: none !important; }
             }
             ${Array.from(document.styleSheets).map(styleSheet => {
