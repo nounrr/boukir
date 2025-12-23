@@ -125,6 +125,19 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   // Active language tab
   const [activeLang, setActiveLang] = useState<'fr' | 'ar' | 'en' | 'zh'>('fr');
 
+  // Désactiver le scroll de la souris sur les inputs number
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'number') {
+        e.preventDefault();
+      }
+    };
+    
+    document.addEventListener('wheel', handleWheel, { passive: false });
+    return () => document.removeEventListener('wheel', handleWheel);
+  }, []);
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       setSelectedFile(event.target.files[0]);
@@ -381,8 +394,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('categorie_base', String((productData as any).categorie_base || 'Maison'));
           formData.append('has_variants', String(productData.variants && productData.variants.length > 0));
           formData.append('base_unit', productData.base_unit || 'u');
-          
+
           if (productData.variants && productData.variants.length > 0) {
+            formData.append('variants', JSON.stringify(productData.variants));
+          }
+          if (productData.units && productData.units.length > 0) {
+            formData.append('units', JSON.stringify(productData.units));
+          }
+
+          if (selectedFile) {
             formData.append('image', selectedFile);
           }
           // New gallery files
@@ -1410,7 +1430,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     {formik.values.units && formik.values.units.length > 0 ? (
                       formik.values.units.map((unit, index) => (
                         <div key={index} className="flex gap-4 items-start bg-white p-4 rounded border border-gray-200">
-                          <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
+                          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Nom (ex: Sac 25kg)</label>
                               <input
@@ -1429,34 +1449,31 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 type="number"
                                 name={`units.${index}.conversion_factor`}
                                 value={unit.conversion_factor}
-                                onChange={formik.handleChange}
+                                onChange={(e) => {
+                                  formik.handleChange(e);
+                                  // Auto-calculate prix_vente based on conversion factor
+                                  const factor = Number(e.target.value) || 1;
+                                  const basePrix = dynamicPrices.prix_vente || 0;
+                                  const calculatedPrix = Number((factor * basePrix).toFixed(2));
+                                  formik.setFieldValue(`units.${index}.prix_vente`, calculatedPrix);
+                                }}
                                 className="w-full px-2 py-1 text-sm border rounded"
                                 placeholder="1.0"
                                 step="0.0001"
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Prix Vente (Optionnel)</label>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Prix Vente (modifiable)
+                              </label>
                               <input
                                 type="number"
                                 name={`units.${index}.prix_vente`}
                                 value={unit.prix_vente || ''}
                                 onChange={formik.handleChange}
                                 className="w-full px-2 py-1 text-sm border rounded"
-                                placeholder="Calculé auto si vide"
+                                placeholder="0.00"
                               />
-                            </div>
-                            <div className="flex items-center pt-6">
-                              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  name={`units.${index}.is_default`}
-                                  checked={unit.is_default}
-                                  onChange={formik.handleChange}
-                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                Par défaut
-                              </label>
                             </div>
                           </div>
                           <button
@@ -1474,12 +1491,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     
                     <button
                       type="button"
-                      onClick={() => arrayHelpers.push({
-                        unit_name: '',
-                        conversion_factor: 1,
-                        prix_vente: null,
-                        is_default: false
-                      })}
+                      onClick={() => {
+                        const basePrix = dynamicPrices.prix_vente || 0;
+                        arrayHelpers.push({
+                          unit_name: '',
+                          conversion_factor: 1,
+                          prix_vente: Number((1 * basePrix).toFixed(2)),
+                          is_default: false
+                        });
+                      }}
                       className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium mt-2"
                     >
                       <Plus size={16} /> Ajouter une unité
@@ -1704,16 +1724,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   type="number"
                                   name={`variants.${index}.prix_vente`}
                                   value={variant.prix_vente}
-                                  onChange={(e) => {
-                                    formik.handleChange(e);
-                                    // Optional: Reverse calculate percentage if price is edited directly
-                                    const pv = Number(e.target.value);
-                                    const pa = Number(variant.prix_achat || 0);
-                                    if (pa > 0) {
-                                      const pct = ((pv - pa) / pa) * 100;
-                                      formik.setFieldValue(`variants.${index}.prix_vente_pourcentage`, Number(pct.toFixed(2)));
-                                    }
-                                  }}
+                                  onChange={formik.handleChange}
                                   className="w-full px-2 py-1 text-sm border rounded"
                                   placeholder="0.00"
                                 />
@@ -1910,10 +1921,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={
-                formik.isSubmitting ||
-                !!formik.errors.stock_partage_ecom_qty
-              }
+              disabled={formik.isSubmitting}
               className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
             >
               {editingProduct ? 'Mettre à jour' : 'Ajouter'}

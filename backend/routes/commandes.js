@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken } from '../middleware/auth.js';
 import { canManageBon, canValidate } from '../utils/permissions.js';
+import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 
 const router = express.Router();
 
@@ -36,6 +37,8 @@ router.get('/', async (_req, res) => {
       arr.push({
         id: it.id,
         product_id: it.product_id,
+        variant_id: it.variant_id,
+        unit_id: it.unit_id,
         designation: it.designation,
         quantite: it.quantite,
         prix_unitaire: it.prix_unitaire,
@@ -236,6 +239,13 @@ router.post('/', verifyToken, async (req, res) => {
   // (Suppression de la collecte des nouveaux prix d'achat)
     }
 
+    // Stock (nouvelle règle): Commande => ajoute au stock dès la création (même "En attente")
+    // Sauf si créé directement en "Annulé".
+    if (st !== 'Annulé') {
+      const deltas = buildStockDeltaMaps(items, +1);
+      await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+    }
+
   // Désactivé: on ne met plus à jour automatiquement le prix_achat produit (conservation des anciens prix)
 
   await connection.commit();
@@ -296,6 +306,18 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 
     // Mettre à jour le statut
     await connection.execute(`UPDATE bons_commande SET statut = ?, updated_at = NOW() WHERE id = ?`, [statut, id]);
+
+    // Stock: si on passe en Annulé => on retire du stock; si on sort de Annulé => on remet.
+    const enteringCancelled = oldStatut !== 'Annulé' && statut === 'Annulé';
+    const leavingCancelled = oldStatut === 'Annulé' && statut !== 'Annulé';
+    if (enteringCancelled || leavingCancelled) {
+      const [itemsStock] = await connection.execute(
+        'SELECT product_id, variant_id, quantite FROM commande_items WHERE bon_commande_id = ?',
+        [id]
+      );
+      const deltas = buildStockDeltaMaps(itemsStock, enteringCancelled ? -1 : +1);
+      await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+    }
 
     const enteringValidation = oldStatut !== 'Validé' && statut === 'Validé';
     const leavingValidation = oldStatut === 'Validé' && statut !== 'Validé';
@@ -403,6 +425,23 @@ router.put('/:id', verifyToken, async (req, res) => {
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
+    // Verrouiller la commande et récupérer l'ancien statut (pour stock)
+    const [oldBonRows] = await connection.execute(
+      'SELECT statut FROM bons_commande WHERE id = ? FOR UPDATE',
+      [id]
+    );
+    if (!Array.isArray(oldBonRows) || oldBonRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Commande non trouvée' });
+    }
+    const oldStatut = oldBonRows[0].statut;
+
+    // Capturer les anciens items (pour ajuster le stock en cas de modification)
+    const [oldItemsStock] = await connection.execute(
+      'SELECT product_id, variant_id, quantite FROM commande_items WHERE bon_commande_id = ?',
+      [id]
+    );
+
     // validations minimales (détaillées)
     const missingPut = [];
     if (!date_creation) missingPut.push('date_creation');
@@ -466,6 +505,17 @@ router.put('/:id', verifyToken, async (req, res) => {
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
+    // Stock: on annule l'effet des anciens items (si pas Annulé), puis on applique les nouveaux (si pas Annulé)
+    // Commande => effet = +quantite au stock
+    const deltas = buildStockDeltaMaps([], 1);
+    if (oldStatut !== 'Annulé') {
+      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(oldItemsStock, -1));
+    }
+    if (st !== 'Annulé') {
+      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(items, +1));
+    }
+    await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+
   // Désactivé: pas de synchronisation automatique des prix d'achat lors d'un PUT.
 
     await connection.commit();
@@ -482,22 +532,50 @@ router.put('/:id', verifyToken, async (req, res) => {
 
 // DELETE /commandes/:id - Supprimer un bon de commande
 router.delete('/:id', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
     const { id } = req.params;
+
     if (!canManageBon('Commande', req.user?.role)) {
+      await connection.rollback();
       return res.status(403).json({ message: 'Accès refusé' });
     }
-    
-    const [result] = await pool.execute('DELETE FROM bons_commande WHERE id = ?', [id]);
-    
-    if (result.affectedRows === 0) {
+
+    const [bonRows] = await connection.execute(
+      'SELECT statut FROM bons_commande WHERE id = ? FOR UPDATE',
+      [id]
+    );
+    if (!Array.isArray(bonRows) || bonRows.length === 0) {
+      await connection.rollback();
       return res.status(404).json({ message: 'Commande non trouvée' });
     }
-    
+
+    const statut = bonRows[0].statut;
+    if (statut !== 'Annulé') {
+      const [itemsStock] = await connection.execute(
+        'SELECT product_id, variant_id, quantite FROM commande_items WHERE bon_commande_id = ?',
+        [id]
+      );
+      const deltas = buildStockDeltaMaps(itemsStock, -1);
+      await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+    }
+
+    await connection.execute('DELETE FROM livraisons WHERE bon_type = "Commande" AND bon_id = ?', [id]);
+    const [result] = await connection.execute('DELETE FROM bons_commande WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Commande non trouvée' });
+    }
+
+    await connection.commit();
     res.json({ message: 'Bon de commande supprimé avec succès' });
   } catch (error) {
+    await connection.rollback();
     console.error('Erreur lors de la suppression du bon de commande:', error);
-    res.status(500).json({ message: 'Erreur du serveur' });
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  } finally {
+    connection.release();
   }
 });
 
