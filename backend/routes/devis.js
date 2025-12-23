@@ -16,6 +16,8 @@ router.get('/', async (_req, res) => {
             JSON_OBJECT(
               'id', di.id,
               'product_id', di.product_id,
+              'variant_id', di.variant_id,
+              'unit_id', di.unit_id,
               'designation', p.designation,
               'quantite', di.quantite,
               'prix_unitaire', di.prix_unitaire,

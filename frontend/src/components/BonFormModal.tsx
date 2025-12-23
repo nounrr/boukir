@@ -598,6 +598,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [unitPriceRaw, setUnitPriceRaw] = useState<Record<number, string>>({});
 // 🆕 Saisie brute par ligne pour "quantite"
 const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
+// 🆕 Erreurs de stock par ligne
+const [stockErrors, setStockErrors] = useState<Record<number, string>>({});
   /* ----------------------- Initialisation des valeurs ----------------------- */
   const getInitialValues = () => {
   if (initialValues) {
@@ -616,6 +618,20 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         : [];
 
       const normalizedItems = (rawItems || []).map((it: any) => {
+        const toIdString = (v: any): string => {
+          if (v == null || v === '') return '';
+          // Handle mysql Buffer-like values defensively
+          if (typeof v === 'object' && v?.type === 'Buffer' && Array.isArray(v?.data)) {
+            try {
+              const asText = new TextDecoder().decode(Uint8Array.from(v.data.map((n: any) => Number(n) || 0)));
+              return asText || '';
+            } catch {
+              return '';
+            }
+          }
+          return String(v);
+        };
+
         const findProductInCatalog = () => {
           try {
             if (!products || !Array.isArray(products)) return undefined;
@@ -697,10 +713,16 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         const quantite = Number(it.quantite ?? it.qty ?? 0) || 0;
         const total = Number(it.total ?? it.montant_ligne ?? quantite * prix_unitaire) || quantite * prix_unitaire;
 
+        // Preserve variant/unit selection in edit mode
+        const variant_id = toIdString(it.variant_id ?? it.variantId ?? it.variant?.id);
+        const unit_id = toIdString(it.unit_id ?? it.unitId ?? it.unit?.id);
+
         return {
           _rowId: it._rowId || makeRowId(), // id stable
           ...it,
           product_id: it.product_id ?? it.produit_id ?? it.productId ?? it.product?.id ?? it.produit?.id,
+          variant_id,
+          unit_id,
           product_reference:
             it.product_reference ??
             it.reference ??
@@ -953,6 +975,13 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ------------------------------ Soumission ------------------------------ */
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
   try {
+    // Vérifier les erreurs de stock avant de soumettre
+    if (Object.keys(stockErrors).length > 0) {
+      showError('Certains produits ont une quantité supérieure au stock disponible');
+      setSubmitting(false);
+      return;
+    }
+    
     const montantTotal = values.items.reduce((sum: number, item: any, idx: number) => {
       const q =
         parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
@@ -1040,6 +1069,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     if (initialValues) {
       const updated = await updateBonMutation({ id: initialValues.id, type: requestType, ...cleanBonData }).unwrap();
+      // Rafraîchir les stocks produits immédiatement après mise à jour du bon
+      try { dispatch(api.util.invalidateTags(['Product'])); } catch {}
       // Optionally show WhatsApp prompt on update
       if (SHOW_WHATSAPP_POPUP) {
         await (await import('sweetalert2')).default.fire({
@@ -1078,49 +1109,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           }
         });
       }
-      if (requestType === 'Commande') {
-        // Mettre à jour les produits avec les nouveaux prix d'achat et recalculs
-        const processed = new Set<number>();
-        const updates: Promise<any>[] = [];
-        for (const it of cleanBonData.items) {
-          const pid = Number(it.product_id);
-          if (!Number.isFinite(pid) || pid <= 0 || processed.has(pid)) continue;
-          processed.add(pid);
-          const prod = productMap.get(String(pid));
-          const pa = Number(it.prix_achat || 0) || 0;
-          if (!prod || pa <= 0) continue;
-          const crPct = Number(prod.cout_revient_pourcentage ?? 0) / 100;
-          const pgPct = Number(prod.prix_gros_pourcentage ?? 0) / 100;
-          const pvPct = Number(prod.prix_vente_pourcentage ?? 0) / 100;
-          const round2 = (x: number) => Math.round(x * 100) / 100;
-          const cout_revient = round2(pa * (1 + crPct));
-          const prix_gros = round2(cout_revient * (1 + pgPct));
-          const prix_vente = round2(cout_revient * (1 + pvPct));
-          const hasChange = (
-            round2(Number(prod.prix_achat || 0)) !== round2(pa) ||
-            round2(Number(prod.cout_revient || 0)) !== cout_revient ||
-            round2(Number(prod.prix_gros || 0)) !== prix_gros ||
-            round2(Number(prod.prix_vente || 0)) !== prix_vente
-          );
-          if (hasChange) {
-            updates.push(
-              updateProductMutation({
-                id: pid,
-                data: ({
-                  updated_by: user?.id || 1,
-                  prix_achat: pa,
-                  cout_revient,
-                  prix_gros,
-                  prix_vente,
-                } as any),
-              }).unwrap().catch(() => null)
-            );
-          }
-        }
-        try { await Promise.all(updates); } catch {}
-        // Invalider le cache produits pour refléter nouveaux prix
-        dispatch(api.util.invalidateTags(['Product']));
-      }
+      // Note: La mise à jour des prix des produits pour les bons Commande
+      // est maintenant gérée par le backend lors du changement de statut vers "Validé"
+      // (voir backend/routes/commandes.js PATCH /:id/statut)
 
       // Enregistrer/ajouter les remises pour un bon existant si un client remise est choisi
       if ((values.type === 'Sortie' || values.type === 'Comptant') && typeof selectedRemiseId === 'number') {
@@ -1249,6 +1240,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       }
 
       const created = await createBon({ type: requestType, ...cleanBonData }).unwrap();
+      // Rafraîchir les stocks produits immédiatement après création du bon
+      try { dispatch(api.util.invalidateTags(['Product'])); } catch {}
       // Optionally show WhatsApp prompt on create
       if (SHOW_WHATSAPP_POPUP) {
         await (await import('sweetalert2')).default.fire({
@@ -1287,49 +1280,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           }
         });
       }
-      if (requestType === 'Commande') {
-        // Mettre à jour les produits avec les nouveaux prix d'achat et recalculs
-        const processed = new Set<number>();
-        const updates: Promise<any>[] = [];
-        for (const it of cleanBonData.items) {
-          const pid = Number(it.product_id);
-          if (!Number.isFinite(pid) || pid <= 0 || processed.has(pid)) continue;
-          processed.add(pid);
-          const prod = productMap.get(String(pid));
-          const pa = Number(it.prix_achat || 0) || 0;
-          if (!prod || pa <= 0) continue;
-          const crPct = Number(prod.cout_revient_pourcentage ?? 0) / 100;
-          const pgPct = Number(prod.prix_gros_pourcentage ?? 0) / 100;
-          const pvPct = Number(prod.prix_vente_pourcentage ?? 0) / 100;
-          const round2 = (x: number) => Math.round(x * 100) / 100;
-          const cout_revient = round2(pa * (1 + crPct));
-          const prix_gros = round2(cout_revient * (1 + pgPct));
-          const prix_vente = round2(cout_revient * (1 + pvPct));
-          const hasChange = (
-            round2(Number(prod.prix_achat || 0)) !== round2(pa) ||
-            round2(Number(prod.cout_revient || 0)) !== cout_revient ||
-            round2(Number(prod.prix_gros || 0)) !== prix_gros ||
-            round2(Number(prod.prix_vente || 0)) !== prix_vente
-          );
-          if (hasChange) {
-            updates.push(
-              updateProductMutation({
-                id: pid,
-                data: ({
-                  updated_by: user?.id || 1,
-                  prix_achat: pa,
-                  cout_revient,
-                  prix_gros,
-                  prix_vente,
-                } as any),
-              }).unwrap().catch(() => null)
-            );
-          }
-        }
-        try { await Promise.all(updates); } catch {}
-        // Invalider le cache produits pour refléter nouveaux prix
-        dispatch(api.util.invalidateTags(['Product']));
-      }
+      // Note: La mise à jour des prix des produits pour les bons Commande
+      // est maintenant gérée par le backend lors du changement de statut vers "Validé"
+      // (voir backend/routes/commandes.js PATCH /:id/statut)
 
       // Enregistrer les remises appliquées dans item_remises si un client remise est sélectionné
       if ((values.type === 'Sortie' || values.type === 'Comptant') && typeof selectedRemiseId === 'number') {
@@ -2460,8 +2413,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
                                     const units = product?.units ?? [];
                                     const baseUnit = product?.base_unit || 'u';
-                                    const basePriceAchat = product?.prix_achat;
-                                    const basePriceVente = product?.prix_vente;
+                                    const basePriceAchat = Number(product?.prix_achat ?? 0) || 0;
+                                    const basePriceVente = Number(product?.prix_vente ?? 0) || 0;
                                     if (!product || units.length === 0) {
                                       return <span className="text-xs text-gray-400">{baseUnit}</span>;
                                     }
@@ -2472,27 +2425,37 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         onChange={(e) => {
                                           const uId = e.target.value;
                                           setFieldValue(`items.${index}.unit_id`, uId);
+                                          
+                                          let newPrice = 0;
+                                          const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                          
                                           if (uId) {
+                                            // Unit selected - use unit's price
                                             const unit = units.find((u: any) => String(u.id) === uId);
                                             if (unit) {
-                                              // Update price if unit has specific price
-                                              if (unit.prix_vente && values.type !== 'Commande') {
-                                                setFieldValue(`items.${index}.prix_unitaire`, unit.prix_vente);
-                                                setUnitPriceRaw((prev) => ({ ...prev, [index]: String(unit.prix_vente) }));
-                                                
-                                                const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
-                                                setFieldValue(`items.${index}.total`, q * unit.prix_vente);
+                                              if (values.type === 'Commande') {
+                                                // For Commande: use prix_achat from unit if available
+                                                newPrice = Number(unit.prix_achat ?? basePriceAchat) || basePriceAchat;
+                                                setFieldValue(`items.${index}.prix_achat`, newPrice);
+                                              } else {
+                                                // For other types: use prix_vente from unit if available
+                                                newPrice = Number(unit.prix_vente ?? basePriceVente) || basePriceVente;
+                                                setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                               }
+                                              setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
+                                              setFieldValue(`items.${index}.total`, q * newPrice);
                                             }
                                           } else {
-                                            // Revert to base price if deselected
-                                            const price = values.type === 'Commande' ? basePriceAchat : basePriceVente;
+                                            // Unit deselected - revert to base product price
                                             if (values.type === 'Commande') {
-                                              setFieldValue(`items.${index}.prix_achat`, price);
+                                              newPrice = basePriceAchat;
+                                              setFieldValue(`items.${index}.prix_achat`, newPrice);
                                             } else {
-                                              setFieldValue(`items.${index}.prix_unitaire`, price);
+                                              newPrice = basePriceVente;
+                                              setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                             }
-                                            setUnitPriceRaw((prev) => ({ ...prev, [index]: String(price) }));
+                                            setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
+                                            setFieldValue(`items.${index}.total`, q * newPrice);
                                           }
                                         }}
                                       >
@@ -2515,16 +2478,40 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     inputMode="decimal"
     pattern="[0-9]*[.,]?[0-9]*"
     name={`items.${index}.quantite`}
-    className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+    className={`w-full px-2 py-1 border rounded-md text-sm ${stockErrors[index] ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
     value={qtyRaw[index] ?? ''}
     onChange={(e) => {
       const raw = e.target.value;
-      if (!isDecimalLike(raw)) return;                 // réutilise ta fn existante
+      if (!isDecimalLike(raw)) return;
       setQtyRaw((prev) => ({ ...prev, [index]: raw }));
 
-      const q = parseFloat(normalizeDecimal(raw)) || 0; // réutilise normalizeDecimal
+      const q = parseFloat(normalizeDecimal(raw)) || 0;
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       setFieldValue(`items.${index}.total`, q * u);
+      
+      // Vérifier le stock pour Comptant et Sortie
+      if (values.type === 'Comptant' || values.type === 'Sortie') {
+        const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
+        const variantId = values.items[index].variant_id;
+        
+        let availableStock = 0;
+        if (variantId && product?.variants) {
+          const variant = product.variants.find((v: any) => String(v.id) === String(variantId));
+          availableStock = Number(variant?.stock_quantity || 0);
+        } else if (product) {
+          availableStock = Number(product.quantite || 0);
+        }
+        
+        if (q > availableStock) {
+          setStockErrors((prev) => ({ ...prev, [index]: `Max: ${availableStock}` }));
+        } else {
+          setStockErrors((prev) => {
+            const newErrors = { ...prev };
+            delete newErrors[index];
+            return newErrors;
+          });
+        }
+      }
     }}
     onFocus={(e) => {
       // Sélection rapide (sécurisé)
@@ -2566,6 +2553,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   data-col="qty"
   onKeyDown={onCellKeyDown(index, 'qty')}
   />
+  {stockErrors[index] && (
+    <div className="text-[10px] text-red-600 mt-0.5">{stockErrors[index]}</div>
+  )}
 </td>
 
 
@@ -2931,7 +2921,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || Object.keys(stockErrors).length > 0}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
                   >
                     {(() => {
