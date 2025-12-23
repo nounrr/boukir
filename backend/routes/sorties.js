@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken } from '../middleware/auth.js';
+import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 
 const router = express.Router();
 
@@ -19,6 +20,8 @@ router.get('/', async (_req, res) => {
             JSON_OBJECT(
               'id', si.id,
               'product_id', si.product_id,
+              'variant_id', si.variant_id,
+              'unit_id', si.unit_id,
               'designation', p.designation,
               'quantite', si.quantite,
               'prix_unitaire', si.prix_unitaire,
@@ -215,6 +218,13 @@ router.post('/', async (req, res) => {
       `, [sortieId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
+    // Stock: Sortie => retire du stock dès la création (même "En attente")
+    // Sauf si statut = "Annulé".
+    if (st !== 'Annulé') {
+      const deltas = buildStockDeltaMaps(items, -1);
+      await applyStockDeltas(connection, deltas, req.user?.id ?? created_by ?? null);
+    }
+
   await connection.commit();
   const numero = `SOR${String(sortieId).padStart(2, '0')}`;
   res.status(201).json({ message: 'Bon de sortie créé avec succès', id: sortieId, numero });
@@ -250,11 +260,17 @@ router.put('/:id', async (req, res) => {
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
-    const [exists] = await connection.execute('SELECT id FROM bons_sortie WHERE id = ?', [id]);
-    if (exists.length === 0) {
+    const [exists] = await connection.execute('SELECT statut FROM bons_sortie WHERE id = ? FOR UPDATE', [id]);
+    if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon de sortie non trouvé' });
     }
+    const oldStatut = exists[0].statut;
+
+    const [oldItemsStock] = await connection.execute(
+      'SELECT product_id, variant_id, quantite FROM sortie_items WHERE bon_sortie_id = ?',
+      [id]
+    );
 
     const cId  = client_id ?? null;
     const vId  = vehicule_id ?? null;
@@ -307,6 +323,17 @@ router.put('/:id', async (req, res) => {
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
+    // Stock: Sortie => effet = -quantite au stock
+    // On annule l'effet des anciens items (si pas Annulé), puis on applique les nouveaux (si pas Annulé)
+    const deltas = buildStockDeltaMaps([], 1);
+    if (oldStatut !== 'Annulé') {
+      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(oldItemsStock, +1));
+    }
+    if (st !== 'Annulé') {
+      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(items, -1));
+    }
+    await applyStockDeltas(connection, deltas, req.user?.id ?? created_by ?? null);
+
     await connection.commit();
     res.json({ message: 'Bon de sortie mis à jour avec succès' });
   } catch (error) {
@@ -323,31 +350,67 @@ router.put('/:id', async (req, res) => {
    ========================= */
 // PATCH /sorties/:id/statut
 router.patch('/:id/statut', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
     const { id } = req.params;
     const { statut } = req.body;
 
-    if (!statut) return res.status(400).json({ message: 'Statut requis' });
+    if (!statut) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Statut requis' });
+    }
 
     // Seul le role PDG et ManagerPlus peut mettre un bon en 'Validé'
     const userRole = req.user?.role;
     const lower = String(statut).toLowerCase();
     if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
+      await connection.rollback();
       return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
     }
 
     const valides = ['Brouillon', 'En attente', 'Validé', 'Livré', 'Annulé'];
     if (!valides.includes(statut)) {
+      await connection.rollback();
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    const [result] = await pool.execute(
+    const [oldRows] = await connection.execute(
+      'SELECT statut FROM bons_sortie WHERE id = ? FOR UPDATE',
+      [id]
+    );
+    if (!Array.isArray(oldRows) || oldRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon de sortie non trouvé' });
+    }
+    const oldStatut = oldRows[0].statut;
+    if (oldStatut === statut) {
+      await connection.rollback();
+      return res.status(200).json({ success: true, message: 'Aucun changement de statut', data: { id: Number(id), statut } });
+    }
+
+    const [result] = await connection.execute(
       'UPDATE bons_sortie SET statut = ?, updated_at = NOW() WHERE id = ?',
       [statut, id]
     );
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Bon de sortie non trouvé' });
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon de sortie non trouvé' });
+    }
 
-    const [rows] = await pool.execute(`
+    // Stock: Sortie => effet = -quantite quand pas Annulé
+    const enteringCancelled = oldStatut !== 'Annulé' && statut === 'Annulé';
+    const leavingCancelled = oldStatut === 'Annulé' && statut !== 'Annulé';
+    if (enteringCancelled || leavingCancelled) {
+      const [itemsStock] = await connection.execute(
+        'SELECT product_id, variant_id, quantite FROM sortie_items WHERE bon_sortie_id = ?',
+        [id]
+      );
+      const deltas = buildStockDeltaMaps(itemsStock, enteringCancelled ? +1 : -1);
+      await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+    }
+
+    const [rows] = await connection.execute(`
       SELECT bs.*, c.nom_complet AS client_nom, v.nom AS vehicule_nom
       FROM bons_sortie bs
       LEFT JOIN contacts c ON c.id = bs.client_id
@@ -355,10 +418,14 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       WHERE bs.id = ?
     `, [id]);
 
+    await connection.commit();
     res.json({ success: true, message: `Statut mis à jour: ${statut}`, data: rows[0] });
   } catch (error) {
+    await connection.rollback();
     console.error('PATCH /sorties/:id/statut', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  } finally {
+    connection.release();
   }
 });
 
@@ -373,12 +440,24 @@ router.delete('/:id', async (req, res) => {
 
     const { id } = req.params;
 
-    const [exists] = await connection.execute('SELECT id FROM bons_sortie WHERE id = ?', [id]);
-    if (exists.length === 0) {
+    const [exists] = await connection.execute('SELECT statut FROM bons_sortie WHERE id = ? FOR UPDATE', [id]);
+    if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon de sortie non trouvé' });
     }
 
+    const oldStatut = exists[0].statut;
+    if (oldStatut !== 'Annulé') {
+      const [itemsStock] = await connection.execute(
+        'SELECT product_id, variant_id, quantite FROM sortie_items WHERE bon_sortie_id = ?',
+        [id]
+      );
+      // Delete should restore stock
+      const deltas = buildStockDeltaMaps(itemsStock, +1);
+      await applyStockDeltas(connection, deltas, null);
+    }
+
+    await connection.execute('DELETE FROM livraisons WHERE bon_type = "Sortie" AND bon_id = ?', [id]);
     await connection.execute('DELETE FROM sortie_items WHERE bon_sortie_id = ?', [id]);
     await connection.execute('DELETE FROM bons_sortie WHERE id = ?', [id]);
 
@@ -472,8 +551,8 @@ router.post('/:id/mark-avoir', async (req, res) => {
       await connection.execute(
         `INSERT INTO avoir_client_items (
            avoir_client_id, product_id, quantite, prix_unitaire,
-           remise_pourcentage, remise_montant, total
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           remise_pourcentage, remise_montant, total, variant_id, unit_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           avoirId,
           it.product_id,
@@ -482,9 +561,15 @@ router.post('/:id/mark-avoir', async (req, res) => {
           it.remise_pourcentage || 0,
           it.remise_montant || 0,
           it.total,
+          it.variant_id || null,
+          it.unit_id || null,
         ]
       );
     }
+
+    // Stock: création d'un avoir (client) depuis sortie => on remet le stock (+)
+    const deltas = buildStockDeltaMaps(items, +1);
+    await applyStockDeltas(connection, deltas, created_by ?? null);
 
     // Marquer le bon de sortie comme "Avoir"
     await connection.execute(

@@ -1080,6 +1080,8 @@ const BonsPage = () => {
         try {
       await deleteBonMutation({ id: bonToDelete.id, type: bonToDelete.type || currentTab }).unwrap();
           showSuccess('Bon supprimé avec succès');
+          // Rafraîchir les produits pour mettre à jour les quantités immédiatement
+          try { refetchProducts(); } catch {}
         } catch (error: any) {
           console.error('Erreur lors de la suppression:', error);
           showError(`Erreur lors de la suppression: ${error.message || 'Erreur inconnue'}`);

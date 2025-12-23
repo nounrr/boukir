@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken } from '../middleware/auth.js';
 import { canManageBon, canValidate } from '../utils/permissions.js';
+import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 
 const router = express.Router();
 
@@ -17,6 +18,8 @@ router.get('/', async (_req, res) => {
             JSON_OBJECT(
               'id', i.id,
               'product_id', i.product_id,
+              'variant_id', i.variant_id,
+              'unit_id', i.unit_id,
               'designation', p.designation,
               'quantite', i.quantite,
               'prix_unitaire', i.prix_unitaire,
@@ -97,10 +100,9 @@ router.get('/:id', async (req, res) => {
 
 /* ===== POST / (création) ===== */
 router.post('/', verifyToken, async (req, res) => {
-    if (!canManageBon('AvoirFournisseur', req.user?.role)) {
-      await connection.rollback();
-      return res.status(403).json({ message: 'Accès refusé' });
-    }
+  if (!canManageBon('AvoirFournisseur', req.user?.role)) {
+    return res.status(403).json({ message: 'Accès refusé' });
+  }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -177,6 +179,13 @@ router.post('/', verifyToken, async (req, res) => {
       `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
+    // Stock (nouvelle règle): AvoirFournisseur => retire du stock dès la création (inverse de commande)
+    // Sauf si créé directement en "Annulé".
+    if (st !== 'Annulé') {
+      const deltas = buildStockDeltaMaps(items, -1);
+      await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+    }
+
   await connection.commit();
   res.status(201).json({ message: 'Avoir fournisseur créé avec succès', id: avoirId, numero: finalNumero });
   } catch (error) {
@@ -190,10 +199,9 @@ router.post('/', verifyToken, async (req, res) => {
 
 /* ==== PUT /:id (mise à jour) ==== */
 router.put('/:id', verifyToken, async (req, res) => {
-    if (!canManageBon('AvoirFournisseur', req.user?.role)) {
-      await connection.rollback();
-      return res.status(403).json({ message: 'Accès refusé' });
-    }
+  if (!canManageBon('AvoirFournisseur', req.user?.role)) {
+    return res.status(403).json({ message: 'Accès refusé' });
+  }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -213,11 +221,17 @@ router.put('/:id', verifyToken, async (req, res) => {
   const phone = req.body?.phone ?? null;
   const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
-    const [exists] = await connection.execute('SELECT id FROM avoirs_fournisseur WHERE id = ?', [id]);
-    if (exists.length === 0) {
+    const [exists] = await connection.execute('SELECT statut FROM avoirs_fournisseur WHERE id = ? FOR UPDATE', [id]);
+    if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Avoir fournisseur non trouvé' });
     }
+    const oldStatut = exists[0].statut;
+
+    const [oldItemsStock] = await connection.execute(
+      'SELECT product_id, variant_id, quantite FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?',
+      [id]
+    );
 
     const fId  = fournisseur_id ?? null;
     const st   = statut ?? null;
@@ -268,6 +282,19 @@ router.put('/:id', verifyToken, async (req, res) => {
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
     }
 
+    // Stock: annuler l'effet des anciens items (si pas Annulé), puis appliquer les nouveaux (si pas Annulé)
+    // AvoirFournisseur => effet = -quantite au stock
+    const deltas = buildStockDeltaMaps([], 1);
+    if (oldStatut !== 'Annulé') {
+      // On remet le stock (inverse de l'effet appliqué)
+      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(oldItemsStock, +1));
+    }
+    if (st !== 'Annulé') {
+      // On retire le stock selon les nouveaux items
+      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(items, -1));
+    }
+    await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+
     await connection.commit();
     res.json({ message: 'Avoir fournisseur mis à jour avec succès' });
   } catch (error) {
@@ -281,62 +308,111 @@ router.put('/:id', verifyToken, async (req, res) => {
 
 /* == PATCH /:id/statut (changer) == */
 router.patch('/:id/statut', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
+
     const { id } = req.params;
     const { statut } = req.body;
 
-    if (!statut) return res.status(400).json({ message: 'Statut requis' });
+    if (!statut) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Statut requis' });
+    }
 
     const valides = ['En attente', 'Validé', 'Appliqué', 'Annulé'];
     if (!valides.includes(statut)) {
+      await connection.rollback();
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
     const userRole = req.user?.role;
     const lower = String(statut).toLowerCase();
     if ((lower === 'validé' || lower === 'valid') && !canValidate('AvoirFournisseur', userRole)) {
+      await connection.rollback();
       return res.status(403).json({ message: 'Rôle Manager ou PDG requis pour valider' });
     }
     if (!canManageBon('AvoirFournisseur', userRole)) {
+      await connection.rollback();
       return res.status(403).json({ message: 'Accès refusé' });
     }
 
-    const [result] = await pool.execute(
+    const [oldRows] = await connection.execute(
+      'SELECT statut FROM avoirs_fournisseur WHERE id = ? FOR UPDATE',
+      [id]
+    );
+    if (!Array.isArray(oldRows) || oldRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Avoir fournisseur non trouvé' });
+    }
+    const oldStatut = oldRows[0].statut;
+    if (oldStatut === statut) {
+      await connection.rollback();
+      return res.status(200).json({ success: true, message: 'Aucun changement de statut', data: { id: Number(id), statut } });
+    }
+
+    await connection.execute(
       'UPDATE avoirs_fournisseur SET statut = ?, updated_at = NOW() WHERE id = ?',
       [statut, id]
     );
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Avoir fournisseur non trouvé' });
 
-    const [rows] = await pool.execute(`
+    // Stock: AvoirFournisseur => appliqué quand statut != Annulé (effet = -quantite)
+    // En Annulé => on restaure (+quantite)
+    const enteringCancelled = oldStatut !== 'Annulé' && statut === 'Annulé';
+    const leavingCancelled = oldStatut === 'Annulé' && statut !== 'Annulé';
+    if (enteringCancelled || leavingCancelled) {
+      const [itemsStock] = await connection.execute(
+        'SELECT product_id, variant_id, quantite FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?',
+        [id]
+      );
+      const deltas = buildStockDeltaMaps(itemsStock, enteringCancelled ? +1 : -1);
+      await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+    }
+
+    const [rows] = await connection.execute(`
       SELECT af.*, f.nom_complet AS fournisseur_nom
       FROM avoirs_fournisseur af
       LEFT JOIN contacts f ON f.id = af.fournisseur_id
       WHERE af.id = ?
     `, [id]);
 
+    await connection.commit();
     res.json({ success: true, message: `Statut mis à jour: ${statut}`, data: rows[0] });
   } catch (error) {
+    await connection.rollback();
     console.error('PATCH /avoirs_fournisseur/:id/statut:', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  } finally {
+    connection.release();
   }
 });
 
 /* ====== DELETE /:id ====== */
 router.delete('/:id', verifyToken, async (req, res) => {
-    if (!canManageBon('AvoirFournisseur', req.user?.role)) {
-      await connection.rollback();
-      return res.status(403).json({ message: 'Accès refusé' });
-    }
+  if (!canManageBon('AvoirFournisseur', req.user?.role)) {
+    return res.status(403).json({ message: 'Accès refusé' });
+  }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
     const { id } = req.params;
 
-    const [exists] = await connection.execute('SELECT id FROM avoirs_fournisseur WHERE id = ?', [id]);
-    if (exists.length === 0) {
+    const [exists] = await connection.execute('SELECT statut FROM avoirs_fournisseur WHERE id = ? FOR UPDATE', [id]);
+    if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Avoir fournisseur non trouvé' });
+    }
+
+    const oldStatut = exists[0].statut;
+    if (oldStatut !== 'Annulé') {
+      const [itemsStock] = await connection.execute(
+        'SELECT product_id, variant_id, quantite FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?',
+        [id]
+      );
+      // Reverse: avoir creation removed stock, so delete must add it back
+      const deltas = buildStockDeltaMaps(itemsStock, +1);
+      await applyStockDeltas(connection, deltas, req.user?.id ?? null);
     }
 
     await connection.execute('DELETE FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?', [id]);
