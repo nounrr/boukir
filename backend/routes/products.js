@@ -932,7 +932,7 @@ router.post('/', upload.fields([
   } catch (err) { next(err); }
 });
 
-// Update a product (basic fields + optional image/gallery). Variants/units not edited here.
+// Update a product (basic fields + optional image/gallery). Variants/units are synced if provided.
 router.put('/:id', upload.fields([
   { name: 'image', maxCount: 1 },
   { name: 'gallery', maxCount: 10 }
@@ -980,6 +980,8 @@ router.put('/:id', upload.fields([
       fiche_technique_ar,
       fiche_technique_en,
       fiche_technique_zh,
+      variants: variantsJson,
+      units: unitsJson,
     } = req.body;
 
     const now = new Date();
@@ -1083,6 +1085,150 @@ router.put('/:id', upload.fields([
     const values = fields.map(f => payload[f]);
     values.push(id);
     await pool.query(`UPDATE products SET ${setClause} WHERE id = ?`, values);
+
+    // Variants + Units (optional sync) 
+    // If the client sends these fields, treat them as the desired state and sync DB accordingly.
+    if (variantsJson !== undefined) {
+      let parsed = [];
+      try { parsed = typeof variantsJson === 'string' ? JSON.parse(variantsJson) : variantsJson; } catch {}
+      if (Array.isArray(parsed)) {
+        const desiredIds = parsed
+          .map(v => Number(v?.id ?? 0))
+          .filter(n => Number.isFinite(n) && n > 0);
+
+        if (parsed.length === 0) {
+          await pool.query('DELETE FROM product_variants WHERE product_id = ?', [id]);
+        } else {
+          if (desiredIds.length > 0) {
+            await pool.query(
+              'DELETE FROM product_variants WHERE product_id = ? AND id NOT IN (?)',
+              [id, desiredIds]
+            );
+          } else {
+            // All variants are new (no IDs) => replace any existing variants.
+            await pool.query('DELETE FROM product_variants WHERE product_id = ?', [id]);
+          }
+
+          for (const v of parsed) {
+            const variantId = Number(v?.id ?? 0);
+            const payloadVals = [
+              v?.variant_name,
+              v?.variant_type || 'Autre',
+              v?.reference,
+              Number(v?.prix_achat ?? 0),
+              Number(v?.cout_revient ?? 0),
+              Number(v?.cout_revient_pourcentage ?? 0),
+              Number(v?.prix_gros ?? 0),
+              Number(v?.prix_gros_pourcentage ?? 0),
+              Number(v?.prix_vente_pourcentage ?? 0),
+              Number(v?.prix_vente ?? 0),
+              Number(v?.remise_client ?? 0),
+              Number(v?.remise_artisan ?? 0),
+              Number(v?.stock_quantity ?? 0),
+            ];
+
+            if (variantId && Number.isFinite(variantId)) {
+              const [updated] = await pool.query(
+                `UPDATE product_variants
+                 SET variant_name = ?, variant_type = ?, reference = ?,
+                     prix_achat = ?, cout_revient = ?, cout_revient_pourcentage = ?,
+                     prix_gros = ?, prix_gros_pourcentage = ?,
+                     prix_vente_pourcentage = ?, prix_vente = ?,
+                     remise_client = ?, remise_artisan = ?, stock_quantity = ?,
+                     updated_at = ?
+                 WHERE id = ? AND product_id = ?`,
+                [...payloadVals, now, variantId, id]
+              );
+
+              // If the provided ID doesn't belong to this product, fall back to insert.
+              if (!(updated && updated.affectedRows > 0)) {
+                await pool.query(
+                  `INSERT INTO product_variants (
+                    product_id, variant_name, variant_type, reference,
+                    prix_achat, cout_revient, cout_revient_pourcentage,
+                    prix_gros, prix_gros_pourcentage,
+                    prix_vente_pourcentage, prix_vente,
+                    remise_client, remise_artisan, stock_quantity,
+                    created_at, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [id, ...payloadVals, now, now]
+                );
+              }
+            } else {
+              await pool.query(
+                `INSERT INTO product_variants (
+                  product_id, variant_name, variant_type, reference,
+                  prix_achat, cout_revient, cout_revient_pourcentage,
+                  prix_gros, prix_gros_pourcentage,
+                  prix_vente_pourcentage, prix_vente,
+                  remise_client, remise_artisan, stock_quantity,
+                  created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [id, ...payloadVals, now, now]
+              );
+            }
+          }
+        }
+      }
+    }
+
+    if (unitsJson !== undefined) {
+      let parsed = [];
+      try { parsed = typeof unitsJson === 'string' ? JSON.parse(unitsJson) : unitsJson; } catch {}
+      if (Array.isArray(parsed)) {
+        const desiredIds = parsed
+          .map(u => Number(u?.id ?? 0))
+          .filter(n => Number.isFinite(n) && n > 0);
+
+        if (parsed.length === 0) {
+          await pool.query('DELETE FROM product_units WHERE product_id = ?', [id]);
+        } else {
+          if (desiredIds.length > 0) {
+            await pool.query(
+              'DELETE FROM product_units WHERE product_id = ? AND id NOT IN (?)',
+              [id, desiredIds]
+            );
+          } else {
+            await pool.query('DELETE FROM product_units WHERE product_id = ?', [id]);
+          }
+
+          for (const u of parsed) {
+            const unitId = Number(u?.id ?? 0);
+            const unitPrix = (u?.prix_vente !== null && u?.prix_vente !== undefined && u?.prix_vente !== '')
+              ? Number(u?.prix_vente)
+              : null;
+            const unitVals = [
+              u?.unit_name,
+              Number(u?.conversion_factor ?? 0),
+              unitPrix,
+              u?.is_default ? 1 : 0,
+            ];
+
+            if (unitId && Number.isFinite(unitId)) {
+              const [updated] = await pool.query(
+                `UPDATE product_units
+                 SET unit_name = ?, conversion_factor = ?, prix_vente = ?, is_default = ?, updated_at = ?
+                 WHERE id = ? AND product_id = ?`,
+                [...unitVals, now, unitId, id]
+              );
+              if (!(updated && updated.affectedRows > 0)) {
+                await pool.query(
+                  `INSERT INTO product_units (product_id, unit_name, conversion_factor, prix_vente, is_default, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                  [id, ...unitVals, now, now]
+                );
+              }
+            } else {
+              await pool.query(
+                `INSERT INTO product_units (product_id, unit_name, conversion_factor, prix_vente, is_default, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [id, ...unitVals, now, now]
+              );
+            }
+          }
+        }
+      }
+    }
 
     // Append any new gallery images with incremental positions
     const newGallery = req.files?.['gallery'] || [];
