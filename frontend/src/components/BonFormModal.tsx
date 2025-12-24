@@ -598,8 +598,6 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [unitPriceRaw, setUnitPriceRaw] = useState<Record<number, string>>({});
 // 🆕 Saisie brute par ligne pour "quantite"
 const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
-// 🆕 Erreurs de stock par ligne
-const [stockErrors, setStockErrors] = useState<Record<number, string>>({});
   /* ----------------------- Initialisation des valeurs ----------------------- */
   const getInitialValues = () => {
   if (initialValues) {
@@ -975,12 +973,7 @@ const [stockErrors, setStockErrors] = useState<Record<number, string>>({});
   /* ------------------------------ Soumission ------------------------------ */
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
   try {
-    // Vérifier les erreurs de stock avant de soumettre
-    if (Object.keys(stockErrors).length > 0) {
-      showError('Certains produits ont une quantité supérieure au stock disponible');
-      setSubmitting(false);
-      return;
-    }
+    // Suppression du blocage lié au stock: permettre la soumission même si la quantité dépasse le stock
     
     const montantTotal = values.items.reduce((sum: number, item: any, idx: number) => {
       const q =
@@ -2478,7 +2471,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     inputMode="decimal"
     pattern="[0-9]*[.,]?[0-9]*"
     name={`items.${index}.quantite`}
-    className={`w-full px-2 py-1 border rounded-md text-sm ${stockErrors[index] ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+    className={"w-full px-2 py-1 border rounded-md text-sm border-gray-300"}
     value={qtyRaw[index] ?? ''}
     onChange={(e) => {
       const raw = e.target.value;
@@ -2489,29 +2482,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       setFieldValue(`items.${index}.total`, q * u);
       
-      // Vérifier le stock pour Comptant et Sortie
-      if (values.type === 'Comptant' || values.type === 'Sortie') {
-        const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
-        const variantId = values.items[index].variant_id;
-        
-        let availableStock = 0;
-        if (variantId && product?.variants) {
-          const variant = product.variants.find((v: any) => String(v.id) === String(variantId));
-          availableStock = Number(variant?.stock_quantity || 0);
-        } else if (product) {
-          availableStock = Number(product.quantite || 0);
-        }
-        
-        if (q > availableStock) {
-          setStockErrors((prev) => ({ ...prev, [index]: `Max: ${availableStock}` }));
-        } else {
-          setStockErrors((prev) => {
-            const newErrors = { ...prev };
-            delete newErrors[index];
-            return newErrors;
-          });
-        }
-      }
+      // Ne plus restreindre la quantité par le stock disponible (demande utilisateur)
     }}
     onFocus={(e) => {
       // Sélection rapide (sécurisé)
@@ -2553,9 +2524,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   data-col="qty"
   onKeyDown={onCellKeyDown(index, 'qty')}
   />
-  {stockErrors[index] && (
-    <div className="text-[10px] text-red-600 mt-0.5">{stockErrors[index]}</div>
-  )}
+  {/* Stock error display removed: allow quantities beyond available stock */}
 </td>
 
 
@@ -2921,7 +2890,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting || Object.keys(stockErrors).length > 0}
+                    disabled={isSubmitting}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
                   >
                     {(() => {
