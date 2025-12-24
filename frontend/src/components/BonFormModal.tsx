@@ -2524,7 +2524,38 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   data-col="qty"
   onKeyDown={onCellKeyDown(index, 'qty')}
   />
-  {/* Stock error display removed: allow quantities beyond available stock */}
+  {(() => {
+    // Afficher la quantité prédite après création de ce bon
+    const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
+    if (!product) return null;
+    const variantId = values.items[index].variant_id;
+    let availableStock = 0;
+    if (variantId && Array.isArray(product.variants)) {
+      const variant = product.variants.find((v: any) => String(v.id) === String(variantId));
+      availableStock = Number(variant?.stock_quantity || 0);
+    } else {
+      availableStock = Number(product.quantite || 0);
+    }
+
+    const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+    let multiplier = 0;
+    switch (values.type) {
+      case 'Commande':
+      case 'Avoir':
+      case 'AvoirComptant':
+        multiplier = +1; break;
+      case 'Sortie':
+      case 'Comptant':
+      case 'AvoirFournisseur':
+        multiplier = -1; break;
+      default:
+        multiplier = 0; // Devis, Vehicule : pas d'effet stock
+    }
+    const predicted = availableStock + multiplier * q;
+    return (
+      <div className="text-[10px] text-gray-600 mt-0.5">Stock après création: {formatFull(Number(predicted))}</div>
+    );
+  })()}
 </td>
 
 
