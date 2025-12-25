@@ -170,6 +170,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
   const printRef = useRef<HTMLDivElement>(null);
   const [companyType, setCompanyType] = useState<'DIAMOND' | 'MPC'>('DIAMOND');
   const [priceMode, setPriceMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES'>('WITH_PRICES');
+  const [usePromo, setUsePromo] = useState<boolean>(false);
 
   const logoCurrent = companyType === 'MPC' ? logo1 : logo;
 
@@ -357,6 +358,16 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                 <option value="WITHOUT_PRICES">Sans prix</option>
               </select>
             </div>
+            {priceMode === 'WITH_PRICES' && (
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={usePromo}
+                  onChange={(e) => setUsePromo(e.target.checked)}
+                />
+                Utiliser promo
+              </label>
+            )}
             <p className="text-xs text-gray-500 ml-auto">Aperçu (largeur 80mm)</p>
           </div>
 
@@ -430,7 +441,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   <th className="col-qte">Qté</th>
                   {priceMode === 'WITH_PRICES' ? (
                     <>
-                      <th className="col-promo">%</th>
+                      {usePromo && type !== 'Commande' && (<th className="col-promo">%</th>)}
                       <th className="col-unit">{type === 'Commande' ? 'P.A' : 'P.U'}</th>
                       <th className="col-total">Total</th>
                     </>
@@ -446,7 +457,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   const original = type === 'Commande' ? 0 : getOriginalSalePrice(it);
                   const originalCents = toCents(original);
                   const puCents = toCents(pu);
-                  const hasPromo = originalCents > 0 && puCents > 0 && originalCents > puCents;
+                  const hasPromo = usePromo && type !== 'Commande' && originalCents > 0 && puCents > 0 && originalCents > puCents;
                   const promoPct = hasPromo ? ((originalCents - puCents) / originalCents) * 100 : 0;
                   const puDisplay = hasPromo ? (originalCents / 100) : (puCents / 100);
 
@@ -457,7 +468,9 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                       <td className="col-qte">{q}</td>
                       {priceMode === 'WITH_PRICES' ? (
                         <>
-                          <td className="col-promo">{hasPromo ? formatPromoPct(promoPct) : ''}</td>
+                          {usePromo && type !== 'Commande' && (
+                            <td className="col-promo">{hasPromo ? formatPromoPct(promoPct) : ''}</td>
+                          )}
                           <td className="col-unit">{formatNumber(puDisplay)}</td>
                           <td className="col-total">{formatNumber(lineTotal)}</td>
                         </>
@@ -472,7 +485,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                     <td className="col-qte">&nbsp;</td>
                     {priceMode === 'WITH_PRICES' ? (
                       <>
-                        <td className="col-promo">&nbsp;</td>
+                        {usePromo && type !== 'Commande' && (<td className="col-promo">&nbsp;</td>)}
                         <td className="col-unit">&nbsp;</td>
                         <td className="col-total">&nbsp;</td>
                       </>
