@@ -27,6 +27,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   const size = 'A4' as const;
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  const [usePromo, setUsePromo] = useState(false);
 
   if (!isOpen) return null;
 
@@ -165,6 +166,14 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
             {/* Format fixé à A4 */}
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-600">Format: A4 (210x297mm)</span>
+              <label className="ml-4 flex items-center space-x-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={usePromo}
+                  onChange={(e) => setUsePromo(e.target.checked)}
+                />
+                <span>Utiliser promo</span>
+              </label>
             </div>
           </div>
 
@@ -214,6 +223,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 fournisseur={fournisseur}
                 products={products}
                 size={size}
+                usePromo={usePromo}
               />
             </div>
           </div>

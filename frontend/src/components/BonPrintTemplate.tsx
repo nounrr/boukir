@@ -12,6 +12,7 @@ interface BonPrintTemplateProps {
   products?: any[];
   size?: 'A4' | 'A5';
   companyType?: 'DIAMOND' | 'MPC';
+  usePromo?: boolean; // afficher prix original et colonne promo si applicable
 }
 
 // Pied de page adaptatif selon le nombre d'articles et le format A4/A5
@@ -83,7 +84,8 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   fournisseur, 
   products = [],
   size = 'A4',
-  companyType = 'DIAMOND'
+  companyType = 'DIAMOND',
+  usePromo = false
 }) => {
   const [selectedCompany, setSelectedCompany] = useState<'DIAMOND' | 'MPC'>(companyType);
   const [printMode, setPrintMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES' | 'PRODUCTS_ONLY'>('WITH_PRICES');
@@ -373,7 +375,9 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                   ) : (
                     <>
                       <th className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>Prix (DH)</th>
-                      <th className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center font-semibold ${textSizes.tableHeader} whitespace-nowrap w-[1%]`}>Promo</th>
+                      {usePromo && (
+                        <th className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center font-semibold ${textSizes.tableHeader} whitespace-nowrap w-[1%]`}>Promo</th>
+                      )}
                       <th className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>Total (DH)</th>
                     </>
                   )}
@@ -392,7 +396,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               // Compare using cents (rounded to 2 decimals) to avoid false promos from floating/format artifacts.
               const originalCents = toCents(original);
               const puCents = toCents(prixUnitaire);
-              const hasPromo = bon?.type !== 'Commande' && originalCents > 0 && puCents > 0 && originalCents > puCents;
+              const hasPromo = usePromo && bon?.type !== 'Commande' && originalCents > 0 && puCents > 0 && originalCents > puCents;
               const promoPct = hasPromo ? ((originalCents - puCents) / originalCents) * 100 : 0;
               const priceToShowCents = hasPromo ? originalCents : puCents;
 
@@ -420,7 +424,9 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                       ) : (
                         <>
                           <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right ${textSizes.tableCell}`}>{(priceToShowCents / 100).toFixed(2)}</td>
-                          <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center ${textSizes.tableCell} whitespace-nowrap w-[1%]`}>{hasPromo ? formatPromoPct(promoPct) : ''}</td>
+                          {usePromo && (
+                            <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center ${textSizes.tableCell} whitespace-nowrap w-[1%]`}>{hasPromo ? formatPromoPct(promoPct) : ''}</td>
+                          )}
                           <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-medium ${textSizes.tableCell}`}>{total.toFixed(2)}</td>
                         </>
                       )}
