@@ -10,7 +10,7 @@ const SHOW_WHATSAPP_POPUP = false;
 import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetEmployeesQueryServer as useGetEmployeesQueryServer } from '../store/api/employeesApi.server';
-import { useGetProductsQuery, useUpdateProductMutation } from '../store/api/productsApi';
+import { useGetProductsQuery } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
@@ -377,7 +377,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Mutations
   const [createBon] = useCreateBonMutation();
   const [updateBonMutation] = useUpdateBonMutation();
-  const [updateProductMutation] = useUpdateProductMutation();
+  // Removed unused hook to avoid TS noUnusedLocals error
   const [createRemiseItem] = useCreateRemiseItemMutation();
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createContact] = useCreateContactMutation();
@@ -528,8 +528,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         formValues?.observations ? `Note: ${formValues.observations}` : '',
         normalizedItems.length
           ? 'Articles:\n' + normalizedItems.map((it: any) => {
-              const montantLigne = it.total || it.montant_ligne || ((it.quantite || 0) * (it.prix_unitaire || 0));
-              return `  - ${it.designation || ''} x${it.quantite || 0} @ ${Number(montantLigne).toFixed(2)} DH`;
+              const unit = it.prix_unitaire || it.prix || 0;
+              return `  - ${it.designation || ''} x${it.quantite || 0} @ ${Number(unit).toFixed(2)} DH`;
             }).join('\n')
           : '',
         'Merci.'
@@ -1471,6 +1471,66 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     for (const b of comptantHistory as any[]) scan(b);
     return bestPrice;
+  };
+
+  // Prix fréquemment utilisé pour ce produit (global), sélectionne le dernier prix
+  // qui a été répété au moins minCount fois (statut Validé uniquement).
+  const getFrequentUnitPriceForProduct = (
+    productId: string | number | undefined,
+    minCount: number = 5
+  ): { price: number; count: number } | null => {
+    if (!productId) return null;
+    const pid = String(productId);
+
+    const normalizeMoneyKey = (value: any): number | null => {
+      if (value == null) return null;
+      const n = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
+      if (!Number.isFinite(n) || n <= 0) return null;
+      return Math.round(n * 100); // cents key
+    };
+
+    type Stat = { count: number; lastTime: number; price: number };
+    const map = new Map<number, Stat>();
+
+    const accepted = new Set(['validé', 'valide', 'validée', 'en attente']);
+    const scan = (bon: any) => {
+      const statut = String(bon.statut || '').toLowerCase();
+      if (!accepted.has(statut)) return;
+      const items = parseItems(bon.items);
+      const bonTime = toTime(bon.date_creation || bon.date);
+      for (const it of items as any[]) {
+        const itPid = String((it as any).product_id ?? (it as any).id ?? '');
+        if (itPid !== pid) continue;
+        const priceRaw = (it as any).prix_unitaire ?? (it as any).prix ?? (it as any).price ?? 0;
+        const key = normalizeMoneyKey(priceRaw);
+        if (key == null) continue;
+        const price = Number(typeof priceRaw === 'number' ? priceRaw : String(priceRaw).replace(',', '.')) || 0;
+        const prev = map.get(key);
+        if (prev) {
+          const newCount = prev.count + 1;
+          const newLast = Math.max(prev.lastTime, bonTime);
+          map.set(key, { count: newCount, lastTime: newLast, price });
+        } else {
+          map.set(key, { count: 1, lastTime: bonTime, price });
+        }
+      }
+    };
+
+    for (const b of sortiesHistory as any[]) scan(b);
+    for (const b of comptantHistory as any[]) scan(b);
+
+    let best: Stat | null = null;
+    for (const stat of map.values()) {
+      if (stat.count >= minCount) {
+        if (!best || stat.lastTime > best.lastTime) best = stat;
+      }
+    }
+    return best ? { price: statNumber(best.price), count: best.count } : null;
+  };
+
+  const statNumber = (n: any): number => {
+    const v = typeof n === 'number' ? n : Number(String(n).replace(',', '.'));
+    return Number.isFinite(v) ? v : 0;
   };
 
     // (Removed local cumulative balance calculations; using backend provided solde_cumule)
@@ -2428,11 +2488,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             if (unit) {
                                               if (values.type === 'Commande') {
                                                 // For Commande: use prix_achat from unit if available
-                                                newPrice = Number(unit.prix_achat ?? basePriceAchat) || basePriceAchat;
+                                                  newPrice = Number((unit as any).prix_achat ?? basePriceAchat) || basePriceAchat;
                                                 setFieldValue(`items.${index}.prix_achat`, newPrice);
                                               } else {
                                                 // For other types: use prix_vente from unit if available
-                                                newPrice = Number(unit.prix_vente ?? basePriceVente) || basePriceVente;
+                                                  newPrice = Number((unit as any).prix_vente ?? basePriceVente) || basePriceVente;
                                                 setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                               }
                                               setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
@@ -2632,6 +2692,30 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     return last && Number.isFinite(last) ? (
       <div className="text-xs text-gray-500 mt-1">Dernier (Validé): {formatFull(Number(last))} DH</div>
     ) : null;
+  })()}
+  {/* Prix fréquemment utilisé (>=6) pour ce produit, option d'application */}
+  {values.type !== 'Commande' && values.items[index].product_id && (() => {
+    const freq = getFrequentUnitPriceForProduct(values.items[index].product_id, 6);
+    if (!freq || !Number.isFinite(freq.price)) return null;
+    const suggested = Number(freq.price);
+    return (
+      <label className="mt-1 flex items-center gap-2 text-[11px] text-gray-700">
+        <input
+          type="checkbox"
+          onChange={(e) => {
+            if (!e.target.checked) return;
+            const p = suggested;
+            setUnitPriceRaw((prev) => ({ ...prev, [index]: formatFull(p) }));
+            setFieldValue(`items.${index}.prix_unitaire`, p);
+            const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+            setFieldValue(`items.${index}.total`, q * p);
+          }}
+        />
+        <span>
+          Utiliser ce prix: <span className="font-semibold">{formatFull(suggested)} DH</span> (×{freq.count})
+        </span>
+      </label>
+    );
   })()}
   {values.client_id && values.items[index].product_id && (() => {
     const lastQty = getLastQuantityForClientProduct(

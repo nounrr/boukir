@@ -862,8 +862,8 @@ const BonsPage = () => {
         bon.observations ? `Note: ${bon.observations}` : '',
         bonItems.length
           ? 'Articles:\n' + bonItems.map((it: any) => {
-              const montantLigne = it.total || it.montant_ligne || ((it.quantite || it.qty || 1) * (it.prix_unitaire || it.prix || 0));
-              return `  - ${it.nom || it.name || it.designation || ''} x${it.quantite || it.qty || 1} @ ${Number(montantLigne).toFixed(2)} DH`;
+              const unit = it.prix_unitaire || it.prix || 0;
+              return `  - ${it.nom || it.name || it.designation || ''} x${it.quantite || it.qty || 1} @ ${Number(unit).toFixed(2)} DH`;
             }).join('\n')
           : '',
         'Merci.'
@@ -872,6 +872,7 @@ const BonsPage = () => {
 
       let editedMessage = initialMessage;
       let selectedCompany: 'DIAMOND' | 'MPC' = 'DIAMOND';
+      let selectedUsePromo: boolean = false;
 
       // 1) Popup de prévisualisation/édition du message (sauf si skipConfirmation)
       if (!skipConfirmation) {
@@ -889,6 +890,10 @@ const BonsPage = () => {
                   <option value="MPC">MPC</option>
                 </select>
               </div>
+              <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="use-promo-checkbox" />
+                <label for="use-promo-checkbox" style="cursor:pointer">Utiliser promo (afficher prix original et %)</label>
+              </div>
             </div>
           `,
           input: 'textarea',
@@ -901,15 +906,18 @@ const BonsPage = () => {
           customClass: { popup: 'swal2-show' },
           preConfirm: (val) => {
             const companySelect = document.getElementById('company-select') as HTMLSelectElement;
+            const usePromoCheckbox = document.getElementById('use-promo-checkbox') as HTMLInputElement;
             return {
               message: typeof val === 'string' ? val : initialMessage,
-              company: (companySelect?.value || 'DIAMOND') as 'DIAMOND' | 'MPC'
+              company: (companySelect?.value || 'DIAMOND') as 'DIAMOND' | 'MPC',
+              usePromo: !!usePromoCheckbox?.checked
             };
           }
         });
         if (!result.isConfirmed) return; // annulé
         editedMessage = (result.value as any)?.message || initialMessage;
         selectedCompany = (result.value as any)?.company || 'DIAMOND';
+        selectedUsePromo = (result.value as any)?.usePromo === true;
       }
 
       // 2) Générer le PDF et envoyer
@@ -936,6 +944,7 @@ const BonsPage = () => {
           fournisseur={resolvedSupplier}
           size="A4"
           companyType={selectedCompany}
+          usePromo={selectedUsePromo}
         />
       );
 
