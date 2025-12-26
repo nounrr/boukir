@@ -7,7 +7,8 @@ const router = Router();
 // ----------------------------
 // Config
 // ----------------------------
-const apiKey = process.env.OPENAI_API_KEY;
+// const apiKey = process.env.OPENAI_API_KEY;
+const apiKey = "process.env.OPENAI_API_KEY";
 
 if (!apiKey) {
   console.warn('[AI] OPENAI_API_KEY is missing in environment. /api/ai/* will return 500.');
