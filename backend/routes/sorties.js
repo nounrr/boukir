@@ -25,6 +25,8 @@ router.get('/', async (_req, res) => {
               'designation', p.designation,
               'quantite', si.quantite,
               'prix_unitaire', si.prix_unitaire,
+              'prix_achat', p.prix_achat,
+              'cout_revient', p.cout_revient,
               'remise_pourcentage', si.remise_pourcentage,
               'remise_montant', si.remise_montant,
               'total', si.total,
@@ -59,13 +61,36 @@ router.get('/', async (_req, res) => {
         return acc;
       }, new Map());
     }
-    const data = rows.map(r => ({
+    let data = rows.map(r => ({
       ...r,
       type: 'Sortie',
       numero: `SOR${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
       livraisons: byBonId.get(r.id) || []
     }));
+
+    // Optionnel: inclure calcul serveur (profit/mouvement) si demandé
+    const includeCalc = String((_req.query?.includeCalc ?? '')).toLowerCase();
+    if (includeCalc === '1' || includeCalc === 'true') {
+      data = data.map(b => {
+        let profit = 0;
+        let totalRemise = 0;
+        let costBase = 0;
+        const items = (b.items || []).map(it => {
+          const q = Number(it?.quantite || 0);
+          const pv = Number(it?.prix_unitaire || 0);
+          const cost = (it?.cout_revient ?? it?.prix_achat ?? 0);
+          const remise = Number(it?.remise_montant || 0) * q;
+          profit += (pv - Number(cost || 0)) * q;
+          totalRemise += remise;
+          costBase += Number(cost || 0) * q;
+          return { ...it, profit: (pv - Number(cost || 0)) * q };
+        });
+        const totalBon = Number(b?.montant_total || 0);
+        const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
+        return { ...b, items, calc: { profitBon: profit, totalRemiseBon: totalRemise, netTotalBon: totalBon - totalRemise, marginPct } };
+      });
+    }
 
     res.json(data);
   } catch (error) {

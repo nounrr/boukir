@@ -21,9 +21,9 @@ export const bonsApi = api.injectEndpoints({
           case 'Commande':
             return '/commandes';
           case 'Sortie':
-            return '/sorties';
+            return '/sorties?includeCalc=1';
           case 'Comptant':
-            return '/comptant';
+            return '/comptant?includeCalc=1';
           case 'Devis':
             return '/devis';
           case 'Avoir':
