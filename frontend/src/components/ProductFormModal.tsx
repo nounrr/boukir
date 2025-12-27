@@ -76,7 +76,6 @@ const validationSchema = Yup.object({
     Yup.object({
       unit_name: Yup.string().required('Nom requis'),
       conversion_factor: Yup.number().min(0.0001, 'Facteur > 0').required('Facteur requis'),
-      prix_vente: Yup.number().nullable().optional(),
       is_default: Yup.boolean().optional(),
     })
   ).optional(),
@@ -585,6 +584,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       prix_vente: formatNumber(dynamicPrices.prix_vente),
     });
   }, [dynamicPrices.cout_revient, dynamicPrices.prix_gros, dynamicPrices.prix_vente]);
+
+  // (Retiré) Le prix de vente par unité n'est plus stocké; affichage calculé côté liste
 
   // Keep variant remises in sync if checkbox enabled (after formik is initialized)
   useEffect(() => {
@@ -1449,32 +1450,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 type="number"
                                 name={`units.${index}.conversion_factor`}
                                 value={unit.conversion_factor}
-                                onChange={(e) => {
-                                  formik.handleChange(e);
-                                  // Auto-calculate prix_vente based on conversion factor
-                                  const factor = Number(e.target.value) || 1;
-                                  const basePrix = dynamicPrices.prix_vente || 0;
-                                  const calculatedPrix = Number((factor * basePrix).toFixed(2));
-                                  formik.setFieldValue(`units.${index}.prix_vente`, calculatedPrix);
-                                }}
+                                onChange={formik.handleChange}
                                 className="w-full px-2 py-1 text-sm border rounded"
                                 placeholder="1.0"
                                 step="0.0001"
                               />
                             </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
-                                Prix Vente (modifiable)
-                              </label>
-                              <input
-                                type="number"
-                                name={`units.${index}.prix_vente`}
-                                value={unit.prix_vente || ''}
-                                onChange={formik.handleChange}
-                                className="w-full px-2 py-1 text-sm border rounded"
-                                placeholder="0.00"
-                              />
-                            </div>
+                            
                           </div>
                           <button
                             type="button"
@@ -1492,11 +1474,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        const basePrix = dynamicPrices.prix_vente || 0;
                         arrayHelpers.push({
                           unit_name: '',
                           conversion_factor: 1,
-                          prix_vente: Number((1 * basePrix).toFixed(2)),
                           is_default: false
                         });
                       }}

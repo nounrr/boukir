@@ -67,6 +67,45 @@ const StockPage: React.FC = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
+  // Unit display selection per product (keyed by product id or originalId for variants)
+  const [unitSelection, setUnitSelection] = useState<Record<string, string>>({});
+
+  const formatNum = (n: number) => String(parseFloat((Number(n || 0)).toFixed(2)));
+
+  const unitOptionsForProduct = (prod: any) => {
+    const base = prod.base_unit || 'u';
+    const opts: Array<{ key: string; label: string; factor: number }> = [
+      { key: 'base', label: base, factor: 1 }
+    ];
+    if (Array.isArray(prod.units)) {
+      prod.units.forEach((u: any) => {
+        if (!u) return;
+        const f = Number(u.conversion_factor) || 1;
+        const name = String(u.unit_name || `${f} ${base}`);
+        opts.push({ key: `name:${name}`, label: name, factor: f });
+      });
+    }
+    return opts;
+  };
+
+  const getSelectedUnitKey = (prod: any) => {
+    const keyBase = prod.isVariantRow ? String(prod.originalId) : String(prod.id);
+    return unitSelection[keyBase] || 'base';
+  };
+
+  const getSelectedUnitFactor = (prod: any) => {
+    const key = getSelectedUnitKey(prod);
+    const opts = unitOptionsForProduct(prod);
+    const found = opts.find(o => o.key === key);
+    return found ? Number(found.factor) || 1 : 1;
+  };
+
+  const getSelectedUnitLabel = (prod: any) => {
+    const key = getSelectedUnitKey(prod);
+    const opts = unitOptionsForProduct(prod);
+    const found = opts.find(o => o.key === key);
+    return found ? found.label : (prod.base_unit || 'u');
+  };
 
   const categoryFilterIds = useMemo(() => {
     if (!filterCategory) return null;
@@ -503,6 +542,7 @@ const StockPage: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unité</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix d'achat</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coût de revient</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix gros</th>
@@ -558,7 +598,26 @@ const StockPage: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.est_service ? '-' : product.quantite}
+                    {product.est_service ? '-' : (
+                      formatNum((Number(product.quantite || 0)) / getSelectedUnitFactor(product))
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {!product.est_service && (
+                      <select
+                        value={getSelectedUnitKey(product)}
+                        onChange={(e) => {
+                          const mapKey = product.isVariantRow ? String(product.originalId) : String(product.id);
+                          setUnitSelection(prev => ({ ...prev, [mapKey]: e.target.value }));
+                        }}
+                        className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                        title="Choisir l'unité d'affichage"
+                      >
+                        {unitOptionsForProduct(product).map((opt) => (
+                          <option key={opt.key} value={opt.key}>{opt.label}</option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {product.prix_achat} DH
@@ -572,8 +631,18 @@ const StockPage: React.FC = () => {
                     <span className="text-xs text-gray-500 ml-1">({product.prix_gros_pourcentage}%)</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.prix_vente} DH
-                    <span className="text-xs text-gray-500 ml-1">({product.prix_vente_pourcentage}%)</span>
+                    {(() => {
+                      const basePv = Number(product.prix_vente || 0);
+                      const factor = getSelectedUnitFactor(product);
+                      const converted = basePv * factor;
+                      return (
+                        <>
+                          {formatNum(converted)} DH
+                          <span className="text-[10px] text-gray-500 ml-1">/ {getSelectedUnitLabel(product)}</span>
+                          <span className="text-xs text-gray-500 ml-1">({product.prix_vente_pourcentage}%)</span>
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${

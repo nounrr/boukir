@@ -942,6 +942,7 @@ const BonsPage = () => {
           bon={bon}
           client={resolvedClient}
           fournisseur={resolvedSupplier}
+          products={products as any}
           size="A4"
           companyType={selectedCompany}
           usePromo={selectedUsePromo}
