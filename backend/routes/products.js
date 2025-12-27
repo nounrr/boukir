@@ -440,7 +440,6 @@ router.get('/', async (req, res, next) => {
         'id', pu.id, 
         'unit_name', pu.unit_name, 
         'conversion_factor', pu.conversion_factor, 
-        'prix_vente', pu.prix_vente, 
         'is_default', pu.is_default
       )) FROM product_units pu WHERE pu.product_id = p.id) as units,
       c.nom as categorie_nom
@@ -668,7 +667,6 @@ router.get('/:id', async (req, res, next) => {
       units: units.map(u => ({
         ...u,
         conversion_factor: Number(u.conversion_factor),
-        prix_vente: u.prix_vente ? Number(u.prix_vente) : null,
         is_default: !!u.is_default
       }))
     });
@@ -850,9 +848,9 @@ router.post('/', upload.fields([
       if (Array.isArray(parsed)) {
         for (const u of parsed) {
           await pool.query(
-            `INSERT INTO product_units (product_id, unit_name, conversion_factor, prix_vente, is_default, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [id, u.unit_name, Number(u.conversion_factor), u.prix_vente !== null && u.prix_vente !== undefined ? Number(u.prix_vente) : null, u.is_default ? 1 : 0, now, now]
+            `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_default, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [id, u.unit_name, Number(u.conversion_factor), u.is_default ? 1 : 0, now, now]
           );
         }
       }
@@ -925,7 +923,6 @@ router.post('/', upload.fields([
       units: unts.map(u => ({
         ...u,
         conversion_factor: Number(u.conversion_factor),
-        prix_vente: u.prix_vente !== null && u.prix_vente !== undefined ? Number(u.prix_vente) : null,
         is_default: !!u.is_default,
       })),
     });
@@ -1194,34 +1191,30 @@ router.put('/:id', upload.fields([
 
           for (const u of parsed) {
             const unitId = Number(u?.id ?? 0);
-            const unitPrix = (u?.prix_vente !== null && u?.prix_vente !== undefined && u?.prix_vente !== '')
-              ? Number(u?.prix_vente)
-              : null;
             const unitVals = [
               u?.unit_name,
               Number(u?.conversion_factor ?? 0),
-              unitPrix,
               u?.is_default ? 1 : 0,
             ];
 
             if (unitId && Number.isFinite(unitId)) {
               const [updated] = await pool.query(
                 `UPDATE product_units
-                 SET unit_name = ?, conversion_factor = ?, prix_vente = ?, is_default = ?, updated_at = ?
+                 SET unit_name = ?, conversion_factor = ?, is_default = ?, updated_at = ?
                  WHERE id = ? AND product_id = ?`,
                 [...unitVals, now, unitId, id]
               );
               if (!(updated && updated.affectedRows > 0)) {
                 await pool.query(
-                  `INSERT INTO product_units (product_id, unit_name, conversion_factor, prix_vente, is_default, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                  `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_default, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)`,
                   [id, ...unitVals, now, now]
                 );
               }
             } else {
               await pool.query(
-                `INSERT INTO product_units (product_id, unit_name, conversion_factor, prix_vente, is_default, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_default, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
                 [id, ...unitVals, now, now]
               );
             }

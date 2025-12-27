@@ -174,16 +174,35 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     return Number.isFinite(n) ? Math.round(n * 100) : 0;
   };
 
+  // Compute the baseline "original" sale price considering variant and unit factor
   const getOriginalSalePrice = (item: any) => {
-    const direct = item?.prix_vente ?? item?.prixVente ?? item?.prix_original ?? item?.prixOriginal;
-    const directNum = parseMoney(direct);
-    if (Number.isFinite(directNum) && directNum > 0) return directNum;
-
+    // Only relevant for sales-type documents; callers guard for Commande already
     const pid = item?.product_id ?? item?.produit_id ?? item?.id;
     const product = findProductById(pid);
-    const p = product?.prix_vente ?? product?.prixVente ?? product?.price ?? product?.prix;
-    const pn = parseMoney(p);
-    return Number.isFinite(pn) && pn > 0 ? pn : 0;
+    if (!product) return 0;
+
+    // Prefer variant sale price if a variant is selected
+    const variantId = item?.variant_id ?? item?.variantId;
+    let baseSale = 0;
+    if (variantId && Array.isArray(product.variants)) {
+      const v = product.variants.find((vv: any) => String(vv.id) === String(variantId));
+      baseSale = parseMoney(v?.prix_vente);
+    }
+    if (!Number.isFinite(baseSale) || baseSale <= 0) {
+      // Fallback to product sale price
+      const p = product?.prix_vente ?? product?.prixVente ?? product?.price ?? product?.prix;
+      baseSale = parseMoney(p);
+    }
+    if (!Number.isFinite(baseSale) || baseSale <= 0) return 0;
+
+    // Apply unit conversion factor if a unit is selected
+    const unitId = item?.unit_id ?? item?.unite_id ?? item?.uniteId;
+    if (unitId && Array.isArray(product.units)) {
+      const u = product.units.find((uu: any) => String(uu.id) === String(unitId));
+      const factor = Number(u?.conversion_factor || 1) || 1;
+      return Number((baseSale * factor).toFixed(2));
+    }
+    return baseSale;
   };
 
   const formatPromoPct = (pct: number) => {
@@ -402,11 +421,21 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
 
               const productId = item.product_id ?? item.produit_id ?? item.id ?? '';
               const rowKey = productId || `${item.designation}-${index}`;
+              // Build designation with variant name if available
+              let variantName: string | undefined = (item.variant_name || item.variant || item.variantLabel) as string | undefined;
+              const vIdRaw = item.variant_id ?? item.variantId;
+              if (!variantName && vIdRaw && products && products.length) {
+                const product = findProductById(productId);
+                const variants = product?.variants || [];
+                const vFound = variants.find((v: any) => String(v.id) === String(vIdRaw));
+                if (vFound && vFound.variant_name) variantName = String(vFound.variant_name);
+              }
+              const designationText = variantName ? `${item.designation || ''} - ${variantName}` : (item.designation || '');
               return (
                 <tr key={rowKey} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                   <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} ${textSizes.tableCell} text-gray-700`}>{productId}</td>
                   <td className={`product-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'}`}>
-                    <div className={`font-medium ${textSizes.tableCell}`}>{item.designation}</div>
+                    <div className={`font-medium ${textSizes.tableCell}`}>{designationText}</div>
                     {item.description && (
                       <div className={`${textSizes.small} text-gray-600 italic`}>{item.description}</div>
                     )}
