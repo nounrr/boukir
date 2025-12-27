@@ -549,6 +549,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
           bon={bonForTemplate}
           client={clientContact as Contact | undefined}
           fournisseur={fournisseurContact as Contact | undefined}
+          products={products as any}
           size="A4"
         />
       );
@@ -2434,17 +2435,26 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             const variant = variants.find((v: any) => String(v.id) === vId);
                                             if (variant) {
                                               // Update price based on variant
-                                              const price = values.type === 'Commande' ? variant.prix_achat : variant.prix_vente;
-                                              if (values.type === 'Commande') {
-                                                setFieldValue(`items.${index}.prix_achat`, price);
-                                              } else {
-                                                setFieldValue(`items.${index}.prix_unitaire`, price);
+                                              const variantBasePrice = values.type === 'Commande' ? Number(variant.prix_achat || 0) : Number(variant.prix_vente || 0);
+                                              // If a unit is already selected, apply its conversion factor to the variant price
+                                              const unitIdSel = values.items[index].unit_id;
+                                              const unitsForProduct = product?.units ?? [];
+                                              let effectivePrice = variantBasePrice;
+                                              if (unitIdSel) {
+                                                const unitSel = unitsForProduct.find((u: any) => String(u.id) === String(unitIdSel));
+                                                const factorSel = Number(unitSel?.conversion_factor || 1) || 1;
+                                                effectivePrice = Number((variantBasePrice * factorSel).toFixed(2));
                                               }
-                                              setUnitPriceRaw((prev) => ({ ...prev, [index]: String(price) }));
+                                              if (values.type === 'Commande') {
+                                                setFieldValue(`items.${index}.prix_achat`, effectivePrice);
+                                              } else {
+                                                setFieldValue(`items.${index}.prix_unitaire`, effectivePrice);
+                                              }
+                                              setUnitPriceRaw((prev) => ({ ...prev, [index]: String(effectivePrice) }));
                                               
                                               // Recalculate total
                                               const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
-                                              setFieldValue(`items.${index}.total`, q * price);
+                                              setFieldValue(`items.${index}.total`, q * effectivePrice);
                                             }
                                           }
                                         }}
@@ -2486,13 +2496,24 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             // Unit selected - use unit's price
                                             const unit = units.find((u: any) => String(u.id) === uId);
                                             if (unit) {
+                                              const factor = Number(unit.conversion_factor || 1) || 1;
+                                              // If a variant is selected, use its base price instead of product's
+                                              const selectedVariantId = values.items[index].variant_id;
+                                              const variantsForProduct = product?.variants ?? [];
+                                              let baseA = basePriceAchat;
+                                              let baseV = basePriceVente;
+                                              if (selectedVariantId) {
+                                                const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
+                                                if (v) {
+                                                  baseA = Number(v.prix_achat ?? basePriceAchat) || 0;
+                                                  baseV = Number(v.prix_vente ?? basePriceVente) || 0;
+                                                }
+                                              }
                                               if (values.type === 'Commande') {
-                                                // For Commande: use prix_achat from unit if available
-                                                  newPrice = Number((unit as any).prix_achat ?? basePriceAchat) || basePriceAchat;
+                                                newPrice = Number((baseA * factor).toFixed(2));
                                                 setFieldValue(`items.${index}.prix_achat`, newPrice);
                                               } else {
-                                                // For other types: use prix_vente from unit if available
-                                                  newPrice = Number((unit as any).prix_vente ?? basePriceVente) || basePriceVente;
+                                                newPrice = Number((baseV * factor).toFixed(2));
                                                 setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                               }
                                               setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
@@ -2500,11 +2521,23 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             }
                                           } else {
                                             // Unit deselected - revert to base product price
+                                            // If a variant is selected, revert to variant's base price; else product's base price
+                                            const selectedVariantId = values.items[index].variant_id;
+                                            const variantsForProduct = product?.variants ?? [];
+                                            let baseA = basePriceAchat;
+                                            let baseV = basePriceVente;
+                                            if (selectedVariantId) {
+                                              const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
+                                              if (v) {
+                                                baseA = Number(v.prix_achat ?? basePriceAchat) || 0;
+                                                baseV = Number(v.prix_vente ?? basePriceVente) || 0;
+                                              }
+                                            }
                                             if (values.type === 'Commande') {
-                                              newPrice = basePriceAchat;
+                                              newPrice = baseA;
                                               setFieldValue(`items.${index}.prix_achat`, newPrice);
                                             } else {
-                                              newPrice = basePriceVente;
+                                              newPrice = baseV;
                                               setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                             }
                                             setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
@@ -2574,6 +2607,38 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         setQtyRaw((prev) => ({ ...prev, [index]: String(values.items[index].quantite || 0) }));
         return;
       }
+
+      // Vérifier le stock disponible en tenant compte du facteur de conversion (pour Sortie/Comptant)
+      try {
+        if (values.type === 'Sortie' || values.type === 'Comptant') {
+          const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
+          if (product && !product.est_service) {
+            const units = product.units || [];
+            const baseUnit = product.base_unit || 'u';
+            const selectedUnitId = values.items[index].unit_id;
+            const factor = selectedUnitId ? (Number((units.find((u: any) => String(u.id) === String(selectedUnitId)) || {}).conversion_factor) || 1) : 1;
+            const variantId = values.items[index].variant_id;
+            let availableStock = 0;
+            if (variantId && Array.isArray(product.variants)) {
+              const variant = product.variants.find((v: any) => String(v.id) === String(variantId));
+              availableStock = Number(variant?.stock_quantity || 0);
+            } else {
+              availableStock = Number(product.quantite || 0);
+            }
+            const baseEquivalent = q * factor;
+            if (baseEquivalent > availableStock + 1e-9) {
+              // Clamp la quantité à la valeur max autorisée
+              const maxQ = factor > 0 ? Math.max(0, Math.floor((availableStock / factor) * 100) / 100) : 0;
+              showError(`Stock insuffisant: dispo ${formatFull(availableStock)} ${baseUnit}, équiv. demandé ${formatFull(baseEquivalent)} ${baseUnit}. Quantité ajustée à ${formatFull(maxQ)}.`);
+              setFieldValue(`items.${index}.quantite`, maxQ);
+              setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(maxQ) }));
+              const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+              setFieldValue(`items.${index}.total`, maxQ * u);
+              return;
+            }
+          }
+        }
+      } catch (_) {}
       
       setFieldValue(`items.${index}.quantite`, q);
       setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) }));
@@ -2598,6 +2663,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     }
 
     const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+    const units = product.units || [];
+    const baseUnit = product.base_unit || 'u';
+    const selectedUnitId = values.items[index].unit_id;
+    const factor = selectedUnitId ? (Number((units.find((u: any) => String(u.id) === String(selectedUnitId)) || {}).conversion_factor) || 1) : 1;
     let multiplier = 0;
     switch (values.type) {
       case 'Commande':
@@ -2611,9 +2680,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       default:
         multiplier = 0; // Devis, Vehicule : pas d'effet stock
     }
-    const predicted = availableStock + multiplier * q;
+    const predicted = availableStock + multiplier * (q * factor);
     return (
-      <div className="text-[10px] text-gray-600 mt-0.5">Stock après création: {formatFull(Number(predicted))}</div>
+      <div className="text-[10px] text-gray-600 mt-0.5">Stock après création: {formatFull(Number(predicted))} {baseUnit}</div>
     );
   })()}
 </td>

@@ -233,15 +233,14 @@ const ChiffreAffairesDetailPage: React.FC = () => {
     return 0;
   };
 
-  // Use the same calculation logic as ChiffreAffairesPage
+  // Align movement/profit calculation with BonsPage (no remise subtracted from profit)
   const computeMouvementDetail = (bon: any) => {
     const items = parseItemsSafe(bon.items);
-    let profitNet = 0; // après remises
-    let profitBrut = 0; // avant remises
+    let profit = 0; // Mouvement: Σ((PV - coût) × Qté)
     let costBase = 0;
     let totalRemise = 0;
     const itemsDetail = [];
-    
+
     for (const it of items) {
       const q = Number(it.quantite || 0);
       if (!q) continue;
@@ -250,12 +249,12 @@ const ChiffreAffairesDetailPage: React.FC = () => {
       if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
       else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
       else cost = resolveCost(it);
+
       const remiseLigne = Number(it.remise_montant || it.remise_valeur || 0) || 0;
       const remiseTotale = remiseLigne * q;
       const montant_ligne = prixVente * q;
-      
-      profitBrut += (prixVente - cost) * q;
-      profitNet += (prixVente - cost) * q - remiseTotale;
+
+      profit += (prixVente - cost) * q;
       totalRemise += remiseTotale;
       costBase += cost * q;
 
@@ -266,35 +265,34 @@ const ChiffreAffairesDetailPage: React.FC = () => {
         cout_revient: it.cout_revient,
         prix_achat: it.prix_achat,
         montant_ligne,
-        profit: (prixVente - cost) * q - remiseTotale,
-        profitBrut: (prixVente - cost) * q,
+        profit: (prixVente - cost) * q, // profit sans remise
+        profitBrut: (prixVente - cost) * q, // identique ici
         remise_unitaire: remiseLigne,
         remise_total: remiseTotale
       });
     }
-    
-    const marginPct = costBase > 0 ? (profitNet / costBase) * 100 : null;
-    return { 
-      profitNet, 
-      profitBrut, 
-      costBase, 
-      marginPct, 
+
+    const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
+    return {
+      profit,
+      costBase,
+      marginPct,
       totalRemise,
       items: itemsDetail,
-      totalBon: Number(bon.montant_total || 0) // Use the montant_total from bon
+      totalBon: Number(bon.montant_total || 0)
     };
   };
 
   const computeBonDetail = (bon: any) => {
     const detail = computeMouvementDetail(bon);
-    
+
     return {
       bonId: bon.id,
       bonNumero: bon.numero || `#${bon.id}`,
       bonType: bon.type,
       items: detail.items,
       totalBon: detail.totalBon,
-      profitBon: detail.profitNet, // Use profitNet from the same calculation as ChiffreAffairesPage
+      profitBon: detail.profit, // profit/mouvement sans remise
       totalRemiseBon: detail.totalRemise,
       netTotalBon: detail.totalBon - detail.totalRemise
     };
@@ -611,7 +609,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                         <div className="text-sm text-gray-500 mt-2">
                           * Calcul: Profits (Ventes) - Profits (Avoirs Client) - Profits (Avoirs Comptant) - Montant Total (Bons Véhicule)
                           <br />
-                          * Profit ligne = ((PV - Coût) × Qté) - (Remise unitaire × Qté)
+                          * Profit ligne = ((PV - Coût) × Qté)
+                          <br />
+                          * Les remises n'affectent pas le profit, elles n'affectent que le total net d'un bon.
                           <br />
                           * Les bons véhicule sont déduits en montant total (pas en profit)
                         </div>
