@@ -113,7 +113,6 @@ export interface ProductUnit {
   product_id?: number;
   unit_name: string;
   conversion_factor: number;
-  prix_vente?: number | null;
   is_default: boolean;
   created_at?: string;
   updated_at?: string;
