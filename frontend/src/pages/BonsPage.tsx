@@ -391,6 +391,26 @@ const BonsPage = () => {
     return 'Non défini';
   };
 
+  // Safely render any text value (handles Buffer-like {type:'Buffer', data:[..]})
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isBufferLike = (o: any): o is { type: 'Buffer'; data: number[] } => {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    return !!o && typeof o === 'object' && (o as any).type === 'Buffer' && Array.isArray((o as any).data);
+  };
+  const safeText = (v: any): string => {
+    if (v == null) return '-';
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (isBufferLike(v)) {
+      try {
+        const arr = Uint8Array.from(v.data.map((n) => Number(n) || 0));
+        return new TextDecoder().decode(arr) || '-';
+      } catch {
+        return '[binaire]';
+      }
+    }
+    return String(v);
+  };
+
   // Flatten a bon into a single searchable string containing most fields and nested item values
   const flattenBonForSearch = (bon: any): string => {
     const parts: string[] = [];
@@ -762,26 +782,6 @@ const BonsPage = () => {
   }, [currentTab, startIndex, endIndex, sortedBons.length]);
 
   // showAuditCols already declared earlier; reuse it
-
-  // Safely render any text value (handles Buffer-like {type:'Buffer', data:[..]})
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const isBufferLike = (o: any): o is { type: 'Buffer'; data: number[] } => {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-    return !!o && typeof o === 'object' && (o as any).type === 'Buffer' && Array.isArray((o as any).data);
-  };
-  const safeText = (v: any): string => {
-    if (v == null) return '-';
-    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
-    if (isBufferLike(v)) {
-      try {
-        const arr = Uint8Array.from(v.data.map((n) => Number(n) || 0));
-        return new TextDecoder().decode(arr) || '-';
-      } catch {
-        return '[binaire]';
-      }
-    }
-    return String(v);
-  };
 
   // Audit meta: created_by_name and updated_by_name per bon id, by type->table mapping
   const tableForType = (t: string) => {
