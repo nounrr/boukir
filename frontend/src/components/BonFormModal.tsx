@@ -2607,38 +2607,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         setQtyRaw((prev) => ({ ...prev, [index]: String(values.items[index].quantite || 0) }));
         return;
       }
-
-      // Vérifier le stock disponible en tenant compte du facteur de conversion (pour Sortie/Comptant)
-      try {
-        if (values.type === 'Sortie' || values.type === 'Comptant') {
-          const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
-          if (product && !product.est_service) {
-            const units = product.units || [];
-            const baseUnit = product.base_unit || 'u';
-            const selectedUnitId = values.items[index].unit_id;
-            const factor = selectedUnitId ? (Number((units.find((u: any) => String(u.id) === String(selectedUnitId)) || {}).conversion_factor) || 1) : 1;
-            const variantId = values.items[index].variant_id;
-            let availableStock = 0;
-            if (variantId && Array.isArray(product.variants)) {
-              const variant = product.variants.find((v: any) => String(v.id) === String(variantId));
-              availableStock = Number(variant?.stock_quantity || 0);
-            } else {
-              availableStock = Number(product.quantite || 0);
-            }
-            const baseEquivalent = q * factor;
-            if (baseEquivalent > availableStock + 1e-9) {
-              // Clamp la quantité à la valeur max autorisée
-              const maxQ = factor > 0 ? Math.max(0, Math.floor((availableStock / factor) * 100) / 100) : 0;
-              showError(`Stock insuffisant: dispo ${formatFull(availableStock)} ${baseUnit}, équiv. demandé ${formatFull(baseEquivalent)} ${baseUnit}. Quantité ajustée à ${formatFull(maxQ)}.`);
-              setFieldValue(`items.${index}.quantite`, maxQ);
-              setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(maxQ) }));
-              const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-              setFieldValue(`items.${index}.total`, maxQ * u);
-              return;
-            }
-          }
-        }
-      } catch (_) {}
       
       setFieldValue(`items.${index}.quantite`, q);
       setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) }));
