@@ -4,7 +4,7 @@ import type { RootState } from '../store';
 import type { Product, Category, ProductVariant, ProductUnit } from '../types';
 import { useFormik, FieldArray, FormikProvider } from 'formik';
 import * as Yup from 'yup';
-import { Plus, Trash2, Ruler } from 'lucide-react';
+import { Plus, Trash2, Ruler, X } from 'lucide-react';
 // Switch to backend mutations
 import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -76,7 +76,6 @@ const validationSchema = Yup.object({
     Yup.object({
       unit_name: Yup.string().required('Nom requis'),
       conversion_factor: Yup.number().min(0.0001, 'Facteur > 0').required('Facteur requis'),
-      prix_vente: Yup.number().nullable().optional(),
       is_default: Yup.boolean().optional(),
     })
   ).optional(),
@@ -124,6 +123,19 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   // Active language tab
   const [activeLang, setActiveLang] = useState<'fr' | 'ar' | 'en' | 'zh'>('fr');
+
+  // Désactiver le scroll de la souris sur les inputs number
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'number') {
+        e.preventDefault();
+      }
+    };
+    
+    document.addEventListener('wheel', handleWheel, { passive: false });
+    return () => document.removeEventListener('wheel', handleWheel);
+  }, []);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
@@ -271,36 +283,36 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     created_by: 1, // À adapter selon le système d'authentification
   };
 
-  const baseEdit = (fullProduct as any) || editingProduct;
+  const baseEdit = editingProduct ? { ...(editingProduct as any), ...((fullProduct as any) || {}) } : null;
   const formik = useFormik({
     initialValues: baseEdit
       ? {
           ...baseEdit,
-          designation_ar: (baseEdit as any).designation_ar || '',
-          designation_en: (baseEdit as any).designation_en || '',
-          designation_zh: (baseEdit as any).designation_zh || '',
+          designation_ar: (baseEdit as any).designation_ar ?? '',
+          designation_en: (baseEdit as any).designation_en ?? '',
+          designation_zh: (baseEdit as any).designation_zh ?? '',
           categorie_id: (baseEdit as any).categorie_id ?? ((baseEdit as any).categorie ? (baseEdit as any).categorie.id : 0),
           brand_id: (baseEdit as any).brand_id ?? ((baseEdit as any).brand ? (baseEdit as any).brand.id : undefined),
-          quantite: (baseEdit as any).quantite || 0,
+          quantite: (baseEdit as any).quantite ?? 0,
           kg: (baseEdit as any).kg ?? undefined,
-          prix_achat: (baseEdit as any).prix_achat || 0,
-          cout_revient_pourcentage: (baseEdit as any).cout_revient_pourcentage || 2,
-          prix_gros_pourcentage: (baseEdit as any).prix_gros_pourcentage || 10,
-          prix_vente_pourcentage: (baseEdit as any).prix_vente_pourcentage || 25,
-          est_service: (baseEdit as any).est_service || false,
+          prix_achat: (baseEdit as any).prix_achat ?? 0,
+          cout_revient_pourcentage: (baseEdit as any).cout_revient_pourcentage ?? 2,
+          prix_gros_pourcentage: (baseEdit as any).prix_gros_pourcentage ?? 10,
+          prix_vente_pourcentage: (baseEdit as any).prix_vente_pourcentage ?? 25,
+          est_service: (baseEdit as any).est_service ?? false,
           remise_client: (baseEdit as any).remise_client ?? 0,
           remise_artisan: (baseEdit as any).remise_artisan ?? 0,
-          description: (baseEdit as any).description || '',
-          description_ar: (baseEdit as any).description_ar || '',
-          description_en: (baseEdit as any).description_en || '',
-          description_zh: (baseEdit as any).description_zh || '',
-          pourcentage_promo: (baseEdit as any).pourcentage_promo || 0,
-          ecom_published: (baseEdit as any).ecom_published || false,
-          stock_partage_ecom: (baseEdit as any).stock_partage_ecom || false,
+          description: (baseEdit as any).description ?? '',
+          description_ar: (baseEdit as any).description_ar ?? '',
+          description_en: (baseEdit as any).description_en ?? '',
+          description_zh: (baseEdit as any).description_zh ?? '',
+          pourcentage_promo: (baseEdit as any).pourcentage_promo ?? 0,
+          ecom_published: (baseEdit as any).ecom_published ?? false,
+          stock_partage_ecom: (baseEdit as any).stock_partage_ecom ?? false,
           stock_partage_ecom_qty: (baseEdit as any).stock_partage_ecom_qty ?? 0,
-          variants: (baseEdit as any).variants || [],
-          units: (baseEdit as any).units || [],
-          base_unit: (baseEdit as any).base_unit || 'u',
+          variants: (baseEdit as any).variants ?? [],
+          units: (baseEdit as any).units ?? [],
+          base_unit: (baseEdit as any).base_unit ?? 'u',
           categorie_base: (baseEdit as any).categorie_base ?? 'Maison',
         }
       : initialValues,
@@ -381,8 +393,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('categorie_base', String((productData as any).categorie_base || 'Maison'));
           formData.append('has_variants', String(productData.variants && productData.variants.length > 0));
           formData.append('base_unit', productData.base_unit || 'u');
-          
+
           if (productData.variants && productData.variants.length > 0) {
+            formData.append('variants', JSON.stringify(productData.variants));
+          }
+          if (productData.units && productData.units.length > 0) {
+            formData.append('units', JSON.stringify(productData.units));
+          }
+
+          if (selectedFile) {
             formData.append('image', selectedFile);
           }
           // New gallery files
@@ -566,6 +585,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     });
   }, [dynamicPrices.cout_revient, dynamicPrices.prix_gros, dynamicPrices.prix_vente]);
 
+  // (Retiré) Le prix de vente par unité n'est plus stocké; affichage calculé côté liste
+
   // Keep variant remises in sync if checkbox enabled (after formik is initialized)
   useEffect(() => {
     formik.setValues((prev: any) => {
@@ -592,10 +613,19 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-y-auto">
-        <div className="bg-blue-600 px-6 py-4 rounded-t-lg">
+        <div className="sticky top-0 z-20 bg-blue-600 px-6 py-4 rounded-t-lg flex items-center justify-between gap-4">
           <h2 className="text-xl font-bold text-white">
             {editingProduct ? 'Modifier le produit' : 'Nouveau produit'}
           </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-white/90 hover:text-white p-1 rounded focus:outline-none focus:ring-2 focus:ring-white/60"
+            aria-label="Fermer"
+            title="Fermer"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <form onSubmit={formik.handleSubmit} className="p-6">
@@ -1401,7 +1431,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     {formik.values.units && formik.values.units.length > 0 ? (
                       formik.values.units.map((unit, index) => (
                         <div key={index} className="flex gap-4 items-start bg-white p-4 rounded border border-gray-200">
-                          <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
+                          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Nom (ex: Sac 25kg)</label>
                               <input
@@ -1426,29 +1456,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 step="0.0001"
                               />
                             </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Prix Vente (Optionnel)</label>
-                              <input
-                                type="number"
-                                name={`units.${index}.prix_vente`}
-                                value={unit.prix_vente || ''}
-                                onChange={formik.handleChange}
-                                className="w-full px-2 py-1 text-sm border rounded"
-                                placeholder="Calculé auto si vide"
-                              />
-                            </div>
-                            <div className="flex items-center pt-6">
-                              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  name={`units.${index}.is_default`}
-                                  checked={unit.is_default}
-                                  onChange={formik.handleChange}
-                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                Par défaut
-                              </label>
-                            </div>
+                            
                           </div>
                           <button
                             type="button"
@@ -1465,12 +1473,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     
                     <button
                       type="button"
-                      onClick={() => arrayHelpers.push({
-                        unit_name: '',
-                        conversion_factor: 1,
-                        prix_vente: null,
-                        is_default: false
-                      })}
+                      onClick={() => {
+                        arrayHelpers.push({
+                          unit_name: '',
+                          conversion_factor: 1,
+                          is_default: false
+                        });
+                      }}
                       className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium mt-2"
                     >
                       <Plus size={16} /> Ajouter une unité
@@ -1695,16 +1704,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   type="number"
                                   name={`variants.${index}.prix_vente`}
                                   value={variant.prix_vente}
-                                  onChange={(e) => {
-                                    formik.handleChange(e);
-                                    // Optional: Reverse calculate percentage if price is edited directly
-                                    const pv = Number(e.target.value);
-                                    const pa = Number(variant.prix_achat || 0);
-                                    if (pa > 0) {
-                                      const pct = ((pv - pa) / pa) * 100;
-                                      formik.setFieldValue(`variants.${index}.prix_vente_pourcentage`, Number(pct.toFixed(2)));
-                                    }
-                                  }}
+                                  onChange={formik.handleChange}
                                   className="w-full px-2 py-1 text-sm border rounded"
                                   placeholder="0.00"
                                 />
@@ -1901,10 +1901,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={
-                formik.isSubmitting ||
-                !!formik.errors.stock_partage_ecom_qty
-              }
+              disabled={formik.isSubmitting}
               className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
             >
               {editingProduct ? 'Mettre à jour' : 'Ajouter'}

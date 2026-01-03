@@ -21,9 +21,9 @@ export const bonsApi = api.injectEndpoints({
           case 'Commande':
             return '/commandes';
           case 'Sortie':
-            return '/sorties';
+            return '/sorties?includeCalc=1';
           case 'Comptant':
-            return '/comptant';
+            return '/comptant?includeCalc=1';
           case 'Devis':
             return '/devis';
           case 'Avoir':
@@ -102,26 +102,36 @@ export const bonsApi = api.injectEndpoints({
       },
       invalidatesTags: (_result, _error, bonData: any) => {
         const type = bonData.type as AnyBonType;
+        const tags: any[] = [{ type: 'Product', id: 'LIST' }]; // Invalider les produits pour mettre à jour le stock
+        
         switch (type) {
           case 'Commande':
-            return [{ type: 'Commande', id: 'LIST' }];
+            tags.push({ type: 'Commande', id: 'LIST' });
+            break;
           case 'Sortie':
-            return [{ type: 'Sortie', id: 'LIST' }];
+            tags.push({ type: 'Sortie', id: 'LIST' });
+            break;
           case 'Comptant':
-            return [{ type: 'Comptant', id: 'LIST' }];
+            tags.push({ type: 'Comptant', id: 'LIST' });
+            break;
           case 'Devis':
-            return [{ type: 'Devis', id: 'LIST' }];
+            tags.push({ type: 'Devis', id: 'LIST' });
+            break;
           case 'Avoir':
-            return [{ type: 'AvoirClient', id: 'LIST' }];
+            tags.push({ type: 'AvoirClient', id: 'LIST' });
+            break;
           case 'AvoirFournisseur':
-            return [{ type: 'AvoirFournisseur', id: 'LIST' }];
+            tags.push({ type: 'AvoirFournisseur', id: 'LIST' });
+            break;
           case 'AvoirComptant':
-            return [{ type: 'AvoirComptant', id: 'LIST' }];
+            tags.push({ type: 'AvoirComptant', id: 'LIST' });
+            break;
           case 'Vehicule':
-            return [{ type: 'Vehicule', id: 'LIST' }];
-          default:
-            return [];
+            tags.push({ type: 'Vehicule', id: 'LIST' });
+            break;
         }
+        
+        return tags;
       }
     }),
     
@@ -170,7 +180,8 @@ export const bonsApi = api.injectEndpoints({
           { type: actualTagType, id },
           { type: actualTagType, id: 'LIST' },
           { type: 'Bon', id },
-          { type: 'Bon', id: 'LIST' }
+          { type: 'Bon', id: 'LIST' },
+          { type: 'Product', id: 'LIST' } // Invalider les produits pour mettre à jour le stock
         ];
       },
     }),
@@ -214,7 +225,8 @@ export const bonsApi = api.injectEndpoints({
         else if ((type as any) === 'AvoirComptant') tagType = 'AvoirComptant';
         return [
           { type: tagType, id },
-          { type: tagType, id: 'LIST' }
+          { type: tagType, id: 'LIST' },
+          { type: 'Product', id: 'LIST' } // Invalider les produits pour mettre à jour le stock
         ];
       },
     }),
@@ -265,7 +277,8 @@ export const bonsApi = api.injectEndpoints({
           { type: actualTagType, id },
           { type: actualTagType, id: 'LIST' },
           { type: 'Bon', id },
-          { type: 'Bon', id: 'LIST' }
+          { type: 'Bon', id: 'LIST' },
+          { type: 'Product', id: 'LIST' } // Invalider les produits pour mettre à jour le stock et prix
         ];
       },
     }),

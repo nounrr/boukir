@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Plus, Edit, Trash2, Search, Users, Truck, Phone, Mail, MapPin,
   CreditCard, Building2, DollarSign, Eye, Printer, Calendar, FileText,
-  ChevronUp, ChevronDown, Receipt, AlertTriangle, Settings
+  ChevronUp, ChevronDown, Receipt, AlertTriangle, Settings, Send
 } from 'lucide-react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -19,13 +19,17 @@ import { showError, showSuccess, showConfirmation } from '../utils/notifications
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetPaymentsQuery } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
+import { useGetArtisanRequestsQuery, useApproveArtisanRequestMutation, useRejectArtisanRequestMutation } from '../store/api/notificationsApi';
 import ContactPrintModal from '../components/ContactPrintModal';
+import ContactPrintTemplate from '../components/ContactPrintTemplate';
 import PeriodConfig from '../components/PeriodConfig';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 import logo from '../components/logo.png';
+import { generatePDFBlobFromElement } from '../utils/pdf';
+import { uploadBonPdf } from '../utils/uploads';
 // Validation du formulaire de contact
 const contactValidationSchema = Yup.object({
   nom_complet: Yup.string().nullable(),
@@ -41,6 +45,8 @@ const contactValidationSchema = Yup.object({
 const ContactsPage: React.FC = () => {
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isEmployee = (currentUser?.role === 'Employé');
+  const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const { data: clients = [] } = useGetClientsQuery();
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
   const [createContact] = useCreateContactMutation();
@@ -102,6 +108,7 @@ const ContactsPage: React.FC = () => {
   const [selectedBonIds, setSelectedBonIds] = React.useState<Set<number>>(new Set());
 
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs'>('clients');
+  const [clientSubTab, setClientSubTab] = useState<'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'>('all');
   // Forcer les employés à rester sur l'onglet clients uniquement
   React.useEffect(() => {
     if (isEmployee && activeTab !== 'clients') setActiveTab('clients');
@@ -845,6 +852,279 @@ const ContactsPage: React.FC = () => {
   const [contactRemises, setContactRemises] = useState<any[]>([]);
   // Token auth pour appels directs fetch
   const authToken = useSelector((s: RootState) => (s as any)?.auth?.token);
+
+  const handleSendWhatsAppContactProducts = async () => {
+    if (!selectedContact) return;
+
+    const toPhone = (selectedContact as any)?.telephone || (selectedContact as any)?.phone || null;
+    if (!toPhone) {
+      showError('Numéro de téléphone introuvable pour ce contact.');
+      return;
+    }
+
+    try {
+      setSendingWhatsApp(true);
+
+      const Swal = (await import('sweetalert2')).default;
+      const choice = await Swal.fire({
+        title: 'Envoyer WhatsApp',
+        text: 'Envoyer le rapport Détail Produits avec filtres ou sans filtres ?',
+        icon: 'question',
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: 'Avec filtres',
+        denyButtonText: 'Sans filtres',
+        cancelButtonText: 'Annuler',
+        heightAuto: false,
+        customClass: { popup: 'swal2-show' },
+      });
+
+      if (choice.isDismissed) return;
+      const useFilters = choice.isConfirmed;
+
+      // Build report rows
+      let reportRows: any[] = [];
+      let skipInitialRow = false;
+      let hideCumulative = false;
+      let reportTotals: { totalQty?: number; totalAmount?: number; finalSolde?: number } = {};
+
+      const computeTotalsFromRows = (rows: any[]) => {
+        let totalQty = 0;
+        let totalAmount = 0;
+        let finalSolde = Number((selectedContact as any)?.solde ?? 0) || 0;
+
+        for (const r of rows) {
+          if (r?.syntheticInitial) continue;
+          const amount = Number(r.total) || 0;
+          if (String(r.type || '').toLowerCase() === 'produit') {
+            totalQty += Number(r.quantite) || 0;
+            totalAmount += amount;
+          } else if (String(r.type || '').toLowerCase() === 'paiement' || String(r.type || '').toLowerCase().includes('avoir')) {
+            totalAmount -= amount;
+          }
+          if (r?.soldeCumulatif != null) finalSolde = Number(r.soldeCumulatif) || finalSolde;
+        }
+        // If soldeCumulatif exists on the last row, prefer it
+        const last = rows && rows.length ? rows[rows.length - 1] : null;
+        if (last?.soldeCumulatif != null) finalSolde = Number(last.soldeCumulatif) || finalSolde;
+
+        return { totalQty, totalAmount, finalSolde };
+      };
+
+      const buildProductHistoryNoFilters = () => {
+        if (!selectedContact) return [] as any[];
+        const isClient = selectedContact.type === 'Client';
+        const id = selectedContact.id;
+
+        const list: any[] = [];
+        if (isClient) {
+          for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
+          for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
+          for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
+        } else {
+          for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
+          for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
+        }
+
+        list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
+
+        const resolveCost = (it: any) => {
+          if (it == null) return 0;
+          if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
+          if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
+          const pid = it.product_id || it.produit_id;
+          if (pid) {
+            const prod = (products as any[]).find(p => String(p.id) === String(pid));
+            if (prod) {
+              if (prod.cout_revient !== undefined && prod.cout_revient !== null) return Number(prod.cout_revient) || 0;
+              if (prod.prix_achat !== undefined && prod.prix_achat !== null) return Number(prod.prix_achat) || 0;
+            }
+          }
+          return 0;
+        };
+
+        const items: any[] = [];
+        for (const b of list) {
+          const bDate = formatDateDMY(b.date_creation);
+          const bonItems = Array.isArray(b.items) ? b.items : [];
+          for (const it of bonItems) {
+            const prod = products.find((p) => p.id === it.product_id);
+            const ref = prod ? String(prod.reference ?? prod.id) : String(it.product_id);
+            const des = prod ? prod.designation : (it.designation || '');
+            const prixUnit = Number(it.prix_unitaire ?? it.prix ?? 0) || 0;
+
+            const remise_pourcentage = parseFloat(String(it.remise_pourcentage ?? it.remise_pct ?? 0)) || 0;
+            const remise_montant = parseFloat(String(it.remise_montant ?? it.remise_valeur ?? 0)) || 0;
+            let total = Number((it as any).total ?? (it as any).montant_ligne);
+            if (!Number.isFinite(total) || total === 0) {
+              total = (Number(it.quantite) || 0) * prixUnit;
+              if (remise_pourcentage > 0) total = total * (1 - remise_pourcentage / 100);
+              if (remise_montant > 0) total = total - remise_montant;
+            }
+
+            const q = Number(it.quantite) || 0;
+            const cost = resolveCost(it);
+            const mouvement = (prixUnit - cost) * q;
+            const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0;
+            const remiseTotale = remiseUnitaire * q;
+            const applyRemise = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(b.type);
+            const benefice = mouvement - (applyRemise ? remiseTotale : 0);
+
+            const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
+            items.push({
+              id: `${b.id}-${it.product_id}-${it.id ?? `${items.length}`}`,
+              bon_id: b.id,
+              bon_numero: b.numero,
+              code_reglement: b.code_reglement,
+              bon_type: b.type,
+              bon_date: bDate,
+              bon_date_iso: b.date_creation,
+              bon_statut: b.statut,
+              product_id: it.product_id,
+              product_reference: ref,
+              product_designation: des,
+              quantite: q,
+              prix_unitaire: prixUnit,
+              total,
+              mouvement,
+              remise_unitaire: remiseUnitaire,
+              remise_totale: remiseTotale,
+              benefice,
+              type: itemType,
+              created_at: b.created_at,
+              remise_pourcentage,
+              remise_montant,
+              adresse_livraison: b.adresse_livraison || '',
+            });
+          }
+        }
+
+        const paymentsForContact = payments.filter(
+          (p: any) => String(p.contact_id) === String(selectedContact.id) && isAllowedStatut(p.statut)
+        );
+        for (const p of paymentsForContact) {
+          items.push({
+            id: `payment-${p.id}`,
+            bon_numero: getDisplayNumeroPayment(p),
+            bon_type: 'Paiement',
+            bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()),
+            bon_date_iso: p.date_paiement,
+            bon_statut: p.statut ? String(p.statut) : 'Paiement',
+            product_reference: 'PAIEMENT',
+            product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,
+            quantite: 1,
+            prix_unitaire: Number(p.montant ?? p.montant_total ?? 0) || 0,
+            total: Number(p.montant ?? p.montant_total ?? 0) || 0,
+            type: 'paiement',
+            created_at: p.created_at,
+          });
+        }
+
+        // Tri + solde cumulatif (sans filtre)
+        items.sort((a, b) => new Date(a.bon_date_iso || a.bon_date).getTime() - new Date(b.bon_date_iso || b.bon_date).getTime());
+        let soldeCumulatif = Number((selectedContact as any)?.solde ?? 0) || 0;
+        return items.map((item) => {
+          const montant = Number(item.total) || 0;
+          if (item.type === 'produit') soldeCumulatif += montant;
+          else if (item.type === 'paiement' || String(item.type || '').toLowerCase().includes('avoir')) soldeCumulatif -= montant;
+          return { ...item, soldeCumulatif };
+        });
+      };
+
+      if (useFilters) {
+        if (selectedProductIds && selectedProductIds.size > 0) {
+          reportRows = displayedProductHistoryWithInitial.filter((it: any) =>
+            selectedProductIds.has(String(it.id)) && !it.syntheticInitial
+          );
+        } else {
+          reportRows = displayedProductHistory;
+        }
+
+        skipInitialRow = (selectedProductIds && selectedProductIds.size > 0) || !!(dateFrom || dateTo);
+        hideCumulative = (selectedProductIds && selectedProductIds.size > 0) || (selectedBonIds && selectedBonIds.size > 0);
+        reportTotals = {
+          totalQty: displayedTotals.totalQty,
+          totalAmount: displayedTotals.totalAmount,
+          finalSolde: finalSoldeNet,
+        };
+      } else {
+        reportRows = buildProductHistoryNoFilters();
+        skipInitialRow = false;
+        hideCumulative = false;
+        reportTotals = computeTotalsFromRows(reportRows);
+      }
+
+      const pdfElement = (
+        <ContactPrintTemplate
+          contact={selectedContact}
+          mode="products"
+          transactions={[]}
+          productHistory={reportRows}
+          dateFrom={useFilters ? dateFrom : undefined}
+          dateTo={useFilters ? dateTo : undefined}
+          companyType="DIAMOND"
+          priceMode="WITH_PRICES"
+          size="A4"
+          skipInitialRow={skipInitialRow}
+          hideCumulative={hideCumulative}
+          totalQty={reportTotals.totalQty}
+          totalAmount={reportTotals.totalAmount}
+          finalSolde={reportTotals.finalSolde}
+        />
+      );
+
+      const pdfBlob = await generatePDFBlobFromElement(pdfElement);
+      const safeName = String(selectedContact.nom_complet || selectedContact.id || 'contact').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const suffix = useFilters ? 'produits_filtres' : 'produits_complet';
+      const fileName = `Rapport_${safeName}_${suffix}_${new Date().toISOString().slice(0, 10)}.pdf`;
+
+      const uploadResult = await uploadBonPdf(pdfBlob, fileName, {
+        token: authToken || undefined,
+        bonId: selectedContact.id,
+        bonType: 'CONTACT_PRODUCTS',
+      });
+
+      const baseForUrl = window.location.origin;
+      const mediaUrl = uploadResult.absoluteUrl || `${baseForUrl.replace(/\/$/, '')}${uploadResult.url.startsWith('/') ? '' : '/'}${uploadResult.url}`;
+
+      const periodLine = useFilters && (dateFrom || dateTo)
+        ? `Période: ${dateFrom || '...'} → ${dateTo || '...'}`
+        : null;
+      const caption = [
+        'Bonjour,',
+        'Veuillez trouver ci-joint le rapport détaillé des produits.',
+        periodLine,
+        'Merci.'
+      ].filter(Boolean).join('\n');
+
+      const resp = await fetch('/api/notifications/whatsapp/bon', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          to: String(toPhone),
+          pdfUrl: mediaUrl,
+          message: caption,
+          numero: 'Rapport Produits',
+          total: (reportTotals.totalAmount != null ? Number(reportTotals.totalAmount).toFixed(2) : ''),
+          devise: 'DH',
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && data.ok) {
+        showSuccess('Rapport envoyé sur WhatsApp.');
+      } else {
+        const msg = data?.message || data?.error || `Échec WhatsApp (${resp.status})`;
+        showError(msg);
+      }
+    } catch (e: any) {
+      showError(e?.message || 'Erreur lors de l\'envoi WhatsApp');
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  };
 
   const loadContactRemises = async () => {
     if (!selectedContact?.id) {
@@ -1769,8 +2049,16 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  // Filtrage par recherche et tri
-  const filteredContacts = (activeTab === 'clients' ? clients : fournisseurs).filter((contact) =>
+  // Filtrage par source (clients) puis recherche
+  const baseContacts = (activeTab === 'clients' ? clients : fournisseurs);
+  const filteredBySource = activeTab === 'clients'
+    ? baseContacts.filter(c => (
+        clientSubTab === 'backoffice' ? c.source === 'backoffice' :
+        clientSubTab === 'ecommerce' ? (c.source === 'ecommerce' && (!c.demande_artisan || !!c.artisan_approuve)) :
+        true
+      ))
+    : baseContacts;
+  const filteredContacts = filteredBySource.filter((contact) =>
     (contact.nom_complet?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (contact.societe?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
     (contact.telephone?.includes(searchTerm))
@@ -1849,7 +2137,7 @@ const ContactsPage: React.FC = () => {
   // Réinitialiser la page quand on change d'onglet ou de recherche
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchTerm, sortField, sortDirection]);
+  }, [activeTab, clientSubTab, searchTerm, sortField, sortDirection]);
 
   // Load payments from Redux (RTK Query) to enrich payment rows
   const { data: paymentsList } = useGetPaymentsQuery();
@@ -1894,6 +2182,36 @@ const ContactsPage: React.FC = () => {
               </button>
             )}
           </div >
+          {activeTab === 'clients' && (
+            <div className="flex mt-2 gap-2">
+              <button
+                className={`px-3 py-1 text-sm rounded ${clientSubTab === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                onClick={() => setClientSubTab('all')}
+              >
+                Tous
+              </button>
+              <button
+                className={`px-3 py-1 text-sm rounded ${clientSubTab === 'backoffice' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                onClick={() => setClientSubTab('backoffice')}
+              >
+                Backoffice
+              </button>
+              <button
+                className={`px-3 py-1 text-sm rounded ${clientSubTab === 'ecommerce' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                onClick={() => setClientSubTab('ecommerce')}
+              >
+                Ecommerce
+              </button>
+              {currentUser?.role === 'PDG' && (
+                <button
+                  className={`px-3 py-1 text-sm rounded ${clientSubTab === 'artisan-requests' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                  onClick={() => setClientSubTab('artisan-requests')}
+                >
+                  Demandes Artisan
+                </button>
+              )}
+            </div>
+          )}
         </div >
         <div className="flex items-center gap-3">
           <button
@@ -2114,6 +2432,9 @@ const ContactsPage: React.FC = () => {
       }
 
       {/* Liste */}
+      {activeTab === 'clients' && clientSubTab === 'artisan-requests' ? (
+        <ArtisanRequestsSection onView={handleViewDetails} />
+      ) : (
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {/* Desktop/tablet: table view */}
         <div className="overflow-x-auto hidden sm:block">
@@ -2433,6 +2754,7 @@ const ContactsPage: React.FC = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* Navigation de pagination */}
       {
@@ -2517,6 +2839,17 @@ const ContactsPage: React.FC = () => {
                       <FileText size={16} />
                       Rapport Détaillé
                     </button>
+                    {SHOW_WHATSAPP_BUTTON && (
+                      <button
+                        onClick={handleSendWhatsAppContactProducts}
+                        disabled={sendingWhatsApp}
+                        className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-md transition-colors font-medium border border-white border-opacity-30 disabled:opacity-60 disabled:cursor-not-allowed"
+                        title="Envoyer le rapport Détail Produits par WhatsApp (avec filtres ou sans filtres)"
+                      >
+                        <Send size={16} />
+                        {sendingWhatsApp ? 'Envoi...' : 'WhatsApp Produits'}
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         setIsDetailsModalOpen(false);
@@ -3402,3 +3735,70 @@ const ContactsPage: React.FC = () => {
 };
 
 export default ContactsPage;
+
+// Section Demandes Artisan
+const ArtisanRequestsSection: React.FC<{ onView: (c: Contact) => void }> = ({ onView }) => {
+  const { data: requests = [], refetch } = useGetArtisanRequestsQuery({ limit: 50 });
+  const [approve] = useApproveArtisanRequestMutation();
+  const [reject] = useRejectArtisanRequestMutation();
+
+  return (
+    <div className="bg-white rounded-lg shadow p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-800">Demandes Artisan/Promoteur en attente</h2>
+        <button className="text-sm text-blue-600 hover:underline" onClick={() => refetch()}>Rafraîchir</button>
+      </div>
+      {requests.length === 0 ? (
+        <p className="text-sm text-gray-500">Aucune demande en attente.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Créé le</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {requests.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-4 py-2">{r.nom_complet || '-'}</td>
+                  <td className="px-4 py-2">{r.email || '-'}</td>
+                  <td className="px-4 py-2">{r.telephone || '-'}</td>
+                  <td className="px-4 py-2">{r.created_at?.slice(0, 10) || '-'}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex gap-2">
+                      <button
+                        className="px-3 py-1 rounded bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 flex items-center gap-1"
+                        onClick={() => onView(r)}
+                        title="Voir détails"
+                      >
+                        <Eye size={16} />
+                        Voir
+                      </button>
+                      <button
+                        className="px-3 py-1 rounded bg-green-600 text-white text-sm hover:bg-green-700"
+                        onClick={async () => { await approve({ id: r.id }).unwrap(); refetch(); }}
+                      >
+                        Approuver
+                      </button>
+                      <button
+                        className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700"
+                        onClick={async () => { await reject({ id: r.id }).unwrap(); refetch(); }}
+                      >
+                        Rejeter
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};

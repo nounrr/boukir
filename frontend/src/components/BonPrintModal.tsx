@@ -12,6 +12,7 @@ interface BonPrintModalProps {
   bon: any;
   client?: Contact;
   fournisseur?: Contact;
+  products?: any[];
 }
 
 const BonPrintModal: React.FC<BonPrintModalProps> = ({
@@ -19,12 +20,14 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   onClose,
   bon,
   client,
-  fournisseur
+  fournisseur,
+  products
 }) => {
   // Taille fixée à A4 par défaut
   const size = 'A4' as const;
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+  const [usePromo, setUsePromo] = useState(false);
 
   if (!isOpen) return null;
 
@@ -115,10 +118,13 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
             }
             @page { 
               size: ${size}; 
-              margin: 0.5cm;
+              /* IMPORTANT: keep 0 margin to avoid forcing extra pages.
+                 Some browsers ignore @page rules placed inside the body (e.g. inside BonPrintTemplate).
+                 Defining it here ensures the printed area matches the template dimensions. */
+              margin: 0;
             }
             @media print {
-              body { margin: 0; }
+              html, body { margin: 0 !important; padding: 0 !important; }
               .print-hidden { display: none !important; }
             }
             ${Array.from(document.styleSheets).map(styleSheet => {
@@ -160,6 +166,14 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
             {/* Format fixé à A4 */}
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-600">Format: A4 (210x297mm)</span>
+              <label className="ml-4 flex items-center space-x-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={usePromo}
+                  onChange={(e) => setUsePromo(e.target.checked)}
+                />
+                <span>Utiliser promo</span>
+              </label>
             </div>
           </div>
 
@@ -207,7 +221,9 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 bon={bon}
                 client={client}
                 fournisseur={fournisseur}
+                products={products}
                 size={size}
+                usePromo={usePromo}
               />
             </div>
           </div>

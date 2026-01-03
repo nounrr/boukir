@@ -5,7 +5,7 @@ import { Plus, Edit, Trash2, Search, Package, Settings } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
-import { useGetProductsQuery, useDeleteProductMutation } from '../store/api/productsApi';
+import { useGetProductsQuery, useDeleteProductMutation, useTranslateProductsMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
@@ -14,7 +14,7 @@ import * as XLSX from 'xlsx';
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
   // Load from backend
-  const { data: productsApiData } = useGetProductsQuery();
+  const { data: productsApiData, refetch: refetchProducts } = useGetProductsQuery();
   const { data: categoriesApiData } = useGetCategoriesQuery();
   // Keep legacy selectors as fallback during transition
   const productsState = useSelector(selectProducts);
@@ -22,8 +22,7 @@ const StockPage: React.FC = () => {
   const products = productsApiData ?? productsState;
   const categories = categoriesApiData ?? categoriesState;
 
-  const organizedCategories = useMemo(() => {
-    const roots = categories.filter((c: Category) => !c.parent_id);
+  const categoryChildrenMap = useMemo(() => {
     const childrenMap = new Map<number, Category[]>();
     categories.forEach((c: Category) => {
       if (c.parent_id) {
@@ -32,13 +31,17 @@ const StockPage: React.FC = () => {
         childrenMap.set(c.parent_id, list);
       }
     });
+    return childrenMap;
+  }, [categories]);
 
+  const organizedCategories = useMemo(() => {
+    const roots = categories.filter((c: Category) => !c.parent_id);
     const result: { id: number; nom: string; level: number }[] = [];
     
     const traverse = (cats: Category[], level: number) => {
       cats.forEach(c => {
         result.push({ id: c.id, nom: c.nom, level });
-        const children = childrenMap.get(c.id);
+        const children = categoryChildrenMap.get(c.id);
         if (children) {
           traverse(children, level + 1);
         }
@@ -47,18 +50,77 @@ const StockPage: React.FC = () => {
 
     traverse(roots, 0);
     return result;
-  }, [categories]);
+  }, [categories, categoryChildrenMap]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [activeTab, setActiveTab] = useState<'Produits' | 'Services'>('Produits');
   const [deleteProductMutation] = useDeleteProductMutation();
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isTranslating, setIsTranslating] = useState(false);
+  // translation mutation
+  const [translateProducts] = useTranslateProductsMutation();
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
+  // Unit display selection per product (keyed by product id or originalId for variants)
+  const [unitSelection, setUnitSelection] = useState<Record<string, string>>({});
+
+  const formatNum = (n: number) => String(parseFloat((Number(n || 0)).toFixed(2)));
+
+  const unitOptionsForProduct = (prod: any) => {
+    const base = prod.base_unit || 'u';
+    const opts: Array<{ key: string; label: string; factor: number }> = [
+      { key: 'base', label: base, factor: 1 }
+    ];
+    if (Array.isArray(prod.units)) {
+      prod.units.forEach((u: any) => {
+        if (!u) return;
+        const f = Number(u.conversion_factor) || 1;
+        const name = String(u.unit_name || `${f} ${base}`);
+        opts.push({ key: `name:${name}`, label: name, factor: f });
+      });
+    }
+    return opts;
+  };
+
+  const getSelectedUnitKey = (prod: any) => {
+    const keyBase = prod.isVariantRow ? String(prod.originalId) : String(prod.id);
+    return unitSelection[keyBase] || 'base';
+  };
+
+  const getSelectedUnitFactor = (prod: any) => {
+    const key = getSelectedUnitKey(prod);
+    const opts = unitOptionsForProduct(prod);
+    const found = opts.find(o => o.key === key);
+    return found ? Number(found.factor) || 1 : 1;
+  };
+
+  const getSelectedUnitLabel = (prod: any) => {
+    const key = getSelectedUnitKey(prod);
+    const opts = unitOptionsForProduct(prod);
+    const found = opts.find(o => o.key === key);
+    return found ? found.label : (prod.base_unit || 'u');
+  };
+
+  const categoryFilterIds = useMemo(() => {
+    if (!filterCategory) return null;
+    const rootId = Number(filterCategory);
+    if (!Number.isFinite(rootId)) return null;
+
+    const ids = new Set<number>();
+    const walk = (id: number) => {
+      ids.add(id);
+      const children = categoryChildrenMap.get(id) || [];
+      children.forEach((c) => walk(c.id));
+    };
+    walk(rootId);
+    return ids;
+  }, [filterCategory, categoryChildrenMap]);
 
   const handleEdit = (product: any) => {
     const realProduct = product.isVariantRow 
@@ -119,18 +181,27 @@ const StockPage: React.FC = () => {
   }, [products]);
 
   const filteredProducts = flattenedProducts.filter((product: any) => {
+    // Tab filter first
+    if (activeTab === 'Produits' && product.est_service) return false;
+    if (activeTab === 'Services' && !product.est_service) return false;
+
     const term = (searchTerm ?? '').toLowerCase();
     const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
     const designation = String(product.designation ?? '').toLowerCase();
     const matchesSearch = designation.includes(term) || refStr.includes(term);
     
     const matchesCategory = !filterCategory || (() => {
-      // Check if the selected filter category exists in the product's categories list
+      const ids = categoryFilterIds;
+      if (!ids) return true;
+
+      // New: product.categories array
       if (product.categories && Array.isArray(product.categories) && product.categories.length > 0) {
-        return product.categories.some((c: any) => String(c.id) === filterCategory);
+        return product.categories.some((c: any) => ids.has(Number(c.id)));
       }
-      // Fallback to legacy single category check
-      return String(product.categorie_id ?? '') === filterCategory;
+
+      // Fallback: legacy single category id
+      const cid = Number(product.categorie_id);
+      return Number.isFinite(cid) ? ids.has(cid) : false;
     })();
 
     return matchesSearch && matchesCategory;
@@ -138,8 +209,8 @@ const StockPage: React.FC = () => {
 
   const handleExportExcel = () => {
     try {
-      // Filter out services
-      const exportableProducts = filteredProducts.filter((p: any) => !p.est_service);
+      // Export depends on active tab (Produits vs Services)
+      const exportableProducts = filteredProducts;
 
       const rows = exportableProducts.map((p: any, index: number) => {
         const pa = Number(p.prix_achat) || 0;
@@ -190,7 +261,8 @@ const StockPage: React.FC = () => {
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Stock');
-      XLSX.writeFile(wb, `export-stock-${new Date().toISOString().slice(0,10)}.xlsx`);
+      const suffix = activeTab === 'Services' ? 'services' : 'produits';
+      XLSX.writeFile(wb, `export-${suffix}-${new Date().toISOString().slice(0,10)}.xlsx`);
       showSuccess('Export Excel généré avec formules');
     } catch (e) {
       console.error(e);
@@ -208,14 +280,124 @@ const StockPage: React.FC = () => {
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterCategory]);
+  }, [searchTerm, filterCategory, activeTab]);
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Gestion du Stock</h1>
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold text-gray-900">Gestion du Stock</h1>
+          <div className="inline-flex rounded-md border border-gray-300 bg-white overflow-hidden w-fit">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('Produits');
+                setSelectedIds(new Set());
+              }}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'Produits'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Produits
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('Services');
+                setSelectedIds(new Set());
+              }}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'Services'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Services
+            </button>
+          </div>
+        </div>
         <div className="flex gap-3">
+          {/* Traduire button */}
+          <button
+            onClick={async () => {
+              if (selectedIds.size === 0) return;
+              setIsTranslating(true);
+              try {
+                const ids = Array.from(selectedIds);
+                const res = await translateProducts({
+                  ids,
+                  commit: true,
+                  force: true,
+                  models: { clean: 'gpt-4o-mini', translate: 'gpt-4o-mini' },
+                }).unwrap();
+
+                // Summarize results
+                const ok = res?.results?.filter((r: any) => r.status === 'ok').length ?? 0;
+                const errs = res?.results?.filter((r: any) => r.status === 'error').length ?? 0;
+                const skipped = res?.results?.filter((r: any) => r.status === 'skipped').length ?? 0;
+                showSuccess(`Traduction: ${ok} ok, ${skipped} ignoré(s), ${errs} erreur(s)`);
+                setSelectedIds(new Set());
+                refetchProducts?.();
+              } catch (e) {
+                console.error(e);
+                showError('Erreur lors de la traduction');
+              } finally {
+                setIsTranslating(false);
+              }
+            }}
+            disabled={selectedIds.size === 0 || isTranslating}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            title="Traduire les désignations sélectionnées"
+          >
+            {isTranslating ? 'Traduction...' : 'Traduire'}
+          </button>
+
+          <button
+            onClick={async () => {
+              if (selectedIds.size === 0) return;
+              const ids = Array.from(selectedIds);
+              const label = activeTab === 'Services' ? 'service(s)' : 'produit(s)';
+              const result = await showConfirmation(
+                'Cette action est irréversible.',
+                `Supprimer ${ids.length} ${label} sélectionné(s) ?`,
+                'Oui, supprimer',
+                'Annuler'
+              );
+
+              if (!result.isConfirmed) return;
+
+              let ok = 0;
+              let err = 0;
+              for (const id of ids) {
+                try {
+                  await deleteProductMutation({ id }).unwrap();
+                  ok += 1;
+                } catch (e) {
+                  console.error('Erreur suppression produit:', id, e);
+                  err += 1;
+                }
+              }
+
+              if (ok > 0) {
+                showSuccess(`Suppression: ${ok} OK${err ? `, ${err} erreur(s)` : ''}`);
+              }
+              if (err > 0 && ok === 0) {
+                showError('Erreur lors de la suppression des éléments sélectionnés');
+              }
+
+              setSelectedIds(new Set());
+              refetchProducts?.();
+            }}
+            disabled={selectedIds.size === 0}
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            title="Supprimer les éléments sélectionnés"
+          >
+            Supprimer sélection
+          </button>
+
           <button
             onClick={() => setIsCategoryModalOpen(true)}
             className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors"
@@ -335,11 +517,32 @@ const StockPage: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3">
+                  {/* Select all on current page (main products only) */}
+                  <input
+                    type="checkbox"
+                    checked={paginatedProducts.every((p: any) => p.isVariantRow ? true : selectedIds.has(p.id)) && paginatedProducts.some((p: any) => !p.isVariantRow)}
+                    onChange={(e) => {
+                      const next = new Set(selectedIds);
+                      if (e.target.checked) {
+                        paginatedProducts.forEach((p: any) => {
+                          if (!p.isVariantRow) next.add(p.id);
+                        });
+                      } else {
+                        paginatedProducts.forEach((p: any) => {
+                          if (!p.isVariantRow) next.delete(p.id);
+                        });
+                      }
+                      setSelectedIds(next);
+                    }}
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unité</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix d'achat</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coût de revient</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix gros</th>
@@ -351,6 +554,20 @@ const StockPage: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedProducts.map((product: any) => (
                 <tr key={product.id} className={`hover:bg-gray-50 ${product.isVariantRow ? 'bg-blue-50/30' : ''}`}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {!product.isVariantRow && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(product.id)}
+                        onChange={(e) => {
+                          const next = new Set(selectedIds);
+                          if (e.target.checked) next.add(product.id);
+                          else next.delete(product.id);
+                          setSelectedIds(next);
+                        }}
+                      />
+                    )}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {product.isVariantRow ? (
                       <div className="flex items-center justify-center h-10 w-10 text-gray-400">
@@ -381,7 +598,26 @@ const StockPage: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.est_service ? '-' : product.quantite}
+                    {product.est_service ? '-' : (
+                      formatNum((Number(product.quantite || 0)) / getSelectedUnitFactor(product))
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {!product.est_service && (
+                      <select
+                        value={getSelectedUnitKey(product)}
+                        onChange={(e) => {
+                          const mapKey = product.isVariantRow ? String(product.originalId) : String(product.id);
+                          setUnitSelection(prev => ({ ...prev, [mapKey]: e.target.value }));
+                        }}
+                        className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                        title="Choisir l'unité d'affichage"
+                      >
+                        {unitOptionsForProduct(product).map((opt) => (
+                          <option key={opt.key} value={opt.key}>{opt.label}</option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {product.prix_achat} DH
@@ -395,8 +631,18 @@ const StockPage: React.FC = () => {
                     <span className="text-xs text-gray-500 ml-1">({product.prix_gros_pourcentage}%)</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.prix_vente} DH
-                    <span className="text-xs text-gray-500 ml-1">({product.prix_vente_pourcentage}%)</span>
+                    {(() => {
+                      const basePv = Number(product.prix_vente || 0);
+                      const factor = getSelectedUnitFactor(product);
+                      const converted = basePv * factor;
+                      return (
+                        <>
+                          {formatNum(converted)} DH
+                          <span className="text-[10px] text-gray-500 ml-1">/ {getSelectedUnitLabel(product)}</span>
+                          <span className="text-xs text-gray-500 ml-1">({product.prix_vente_pourcentage}%)</span>
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${

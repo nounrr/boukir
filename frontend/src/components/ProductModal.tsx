@@ -7,6 +7,7 @@ import type { Product, Category } from '../types';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { addProduct, updateProduct } from '../store/slices/productsSlice';
 import { showError, showSuccess } from '../utils/notifications';
+import { VARIANT_TYPE_OPTIONS, getVariantValues, hasPredefinedValues, variantTypes } from '../constants/variantOptions';
 
 const validationSchema = Yup.object({
   designation: Yup.string().optional(),
@@ -64,6 +65,19 @@ const ProductModal: React.FC<ProductModalProps> = ({
       prix_vente: editingProduct?.prix_vente || 0,
       prix_vente_pourcentage: editingProduct?.prix_vente_pourcentage || 0,
       est_service: editingProduct?.est_service || false,
+      // Variants are supported on creation. Editing route doesn't update variants.
+      variants: Array.isArray((editingProduct as any)?.variants)
+        ? (editingProduct as any).variants.map((v: any) => ({
+            type: v.variant_type || 'Autre',
+            name: v.variant_name || '',
+            reference: v.reference || '',
+            prix_achat: v.prix_achat ?? 0,
+            cout_revient_pourcentage: v.cout_revient_pourcentage ?? 0,
+            prix_gros_pourcentage: v.prix_gros_pourcentage ?? 0,
+            prix_vente_pourcentage: v.prix_vente_pourcentage ?? 0,
+            stock_quantity: v.stock_quantity ?? 0,
+          }))
+        : [],
     },
     validationSchema,
     onSubmit: async (values) => {
@@ -78,6 +92,32 @@ const ProductModal: React.FC<ProductModalProps> = ({
 
         const prices = calculatePrices(prixAchatNum, crPctNum, grosPctNum, ventePctNum);
 
+        // Prepare variants payload (creation only)
+        const variantsPayload = (values as any).variants?.map((v: any) => {
+          const vPrixAchat = toNum(v.prix_achat);
+          const vCrPct = toNum(v.cout_revient_pourcentage);
+          const vGrosPct = toNum(v.prix_gros_pourcentage);
+          const vVentePct = toNum(v.prix_vente_pourcentage);
+          const vPrices = calculatePrices(vPrixAchat, vCrPct, vGrosPct, vVentePct);
+          // Map UI type (label or key) to a readable label
+          const typeLabel = variantTypes as any;
+          const vt = (v.type || 'autre').toLowerCase();
+          const mappedType = typeLabel[vt]?.label || v.type || 'Autre';
+          return {
+            variant_name: String(v.name || ''),
+            variant_type: mappedType,
+            reference: v.reference || '',
+            prix_achat: vPrixAchat,
+            cout_revient_pourcentage: vCrPct,
+            cout_revient: vPrices.cout_revient,
+            prix_gros_pourcentage: vGrosPct,
+            prix_gros: vPrices.prix_gros,
+            prix_vente_pourcentage: vVentePct,
+            prix_vente: vPrices.prix_vente,
+            stock_quantity: toNum(v.stock_quantity),
+          };
+        }) || [];
+
         const productData = {
           ...values,
           categorie_id: Number(values.categorie_id), // Conversion en nombre
@@ -89,6 +129,8 @@ const ProductModal: React.FC<ProductModalProps> = ({
           cout_revient: prices.cout_revient,
           prix_gros: prices.prix_gros,
           prix_vente: prices.prix_vente,
+          // Attach variants for creation
+          variants: variantsPayload,
           created_at: editingProduct ? editingProduct.created_at : new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
@@ -390,6 +432,250 @@ const ProductModal: React.FC<ProductModalProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Variantes */}
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Variantes</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = [
+                    ...((formik.values as any).variants || []),
+                    {
+                      type: 'couleur',
+                      name: '',
+                      reference: '',
+                      prix_achat: 0,
+                      cout_revient_pourcentage: 0,
+                      prix_gros_pourcentage: 0,
+                      prix_vente_pourcentage: 0,
+                      stock_quantity: 0,
+                    },
+                  ];
+                  formik.setFieldValue('variants', next);
+                }}
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Ajouter une variante
+              </button>
+            </div>
+
+            {Array.isArray((formik.values as any).variants) && (formik.values as any).variants.length > 0 && (
+              <div className="space-y-4">
+                {((formik.values as any).variants as any[]).map((v: any, idx: number) => {
+                  const typeKey = String(v.type || 'autre');
+                  const suggested = getVariantValues(typeKey as any);
+                  const showSelect = hasPredefinedValues(typeKey as any);
+                  return (
+                    <div key={idx} className="border rounded-lg p-4">
+                      <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+                        {/* Type */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                          <select
+                            value={typeKey}
+                            onChange={(e) => {
+                              const key = e.target.value;
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], type: key, name: '' };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            {VARIANT_TYPE_OPTIONS.map((opt) => (
+                              <option key={opt.key} value={opt.key}>{opt.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Nom (valeur) */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nom de variante</label>
+                          {showSelect ? (
+                            <select
+                              value={String(v.name || '')}
+                              onChange={(e) => {
+                                const next = [...((formik.values as any).variants || [])];
+                                next[idx] = { ...next[idx], name: e.target.value };
+                                formik.setFieldValue('variants', next);
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value="">Sélectionner</option>
+                              {suggested.map((val) => (
+                                <option key={val} value={val}>{val}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={String(v.name || '')}
+                              onChange={(e) => {
+                                const next = [...((formik.values as any).variants || [])];
+                                next[idx] = { ...next[idx], name: e.target.value };
+                                formik.setFieldValue('variants', next);
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="Valeur (ex: 10mm, 5L)"
+                            />
+                          )}
+                        </div>
+
+                        {/* Référence */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Référence</label>
+                          <input
+                            type="text"
+                            value={String(v.reference || '')}
+                            onChange={(e) => {
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], reference: e.target.value };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Réf. interne"
+                          />
+                        </div>
+
+                        {/* Prix d'achat (variant) */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Prix d'achat (DH)</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            value={String(v.prix_achat ?? '')}
+                            onChange={(e) => {
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], prix_achat: e.target.value };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            onBlur={() => {
+                              const raw = v.prix_achat;
+                              const num = typeof raw === 'string' ? (parseFloat(String(raw).replace(',', '.')) || 0) : (Number(raw) || 0);
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], prix_achat: num };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+
+                        {/* Stock */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Stock</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            value={String(v.stock_quantity ?? '')}
+                            onChange={(e) => {
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], stock_quantity: e.target.value };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            onBlur={() => {
+                              const raw = v.stock_quantity;
+                              const num = typeof raw === 'string' ? (parseFloat(String(raw).replace(',', '.')) || 0) : (Number(raw) || 0);
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], stock_quantity: num };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Pourcentages pour calculs variant */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Coût de revient %</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            value={String(v.cout_revient_pourcentage ?? '')}
+                            onChange={(e) => {
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], cout_revient_pourcentage: e.target.value };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            onBlur={() => {
+                              const raw = v.cout_revient_pourcentage;
+                              const num = typeof raw === 'string' ? (parseFloat(String(raw).replace(',', '.')) || 0) : (Number(raw) || 0);
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], cout_revient_pourcentage: num };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Prix de gros %</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            value={String(v.prix_gros_pourcentage ?? '')}
+                            onChange={(e) => {
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], prix_gros_pourcentage: e.target.value };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            onBlur={() => {
+                              const raw = v.prix_gros_pourcentage;
+                              const num = typeof raw === 'string' ? (parseFloat(String(raw).replace(',', '.')) || 0) : (Number(raw) || 0);
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], prix_gros_pourcentage: num };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Prix de vente %</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            value={String(v.prix_vente_pourcentage ?? '')}
+                            onChange={(e) => {
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], prix_vente_pourcentage: e.target.value };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            onBlur={() => {
+                              const raw = v.prix_vente_pourcentage;
+                              const num = typeof raw === 'string' ? (parseFloat(String(raw).replace(',', '.')) || 0) : (Number(raw) || 0);
+                              const next = [...((formik.values as any).variants || [])];
+                              next[idx] = { ...next[idx], prix_vente_pourcentage: num };
+                              formik.setFieldValue('variants', next);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end mt-4">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = [...((formik.values as any).variants || [])];
+                            next.splice(idx, 1);
+                            formik.setFieldValue('variants', next);
+                          }}
+                          className="px-3 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Boutons */}

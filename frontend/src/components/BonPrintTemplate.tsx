@@ -9,8 +9,10 @@ interface BonPrintTemplateProps {
   bon: any;
   client?: Contact;
   fournisseur?: Contact;
+  products?: any[];
   size?: 'A4' | 'A5';
   companyType?: 'DIAMOND' | 'MPC';
+  usePromo?: boolean; // afficher prix original et colonne promo si applicable
 }
 
 // Pied de page adaptatif selon le nombre d'articles et le format A4/A5
@@ -80,8 +82,10 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   bon, 
   client, 
   fournisseur, 
+  products = [],
   size = 'A4',
-  companyType = 'DIAMOND'
+  companyType = 'DIAMOND',
+  usePromo = false
 }) => {
   const [selectedCompany, setSelectedCompany] = useState<'DIAMOND' | 'MPC'>(companyType);
   const [printMode, setPrintMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES' | 'PRODUCTS_ONLY'>('WITH_PRICES');
@@ -118,27 +122,25 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   };
   
   // (Titre helper supprimé, non utilisé)
-const formatHeure = (dateStr: string) => {
-  if (!dateStr) return "";
-  const date = new Date(dateStr);
-  return (
-    date.toLocaleDateString("fr-FR") +
-    " " +
-    date.toLocaleTimeString("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  );
-};
-
-// Utilisation
+  const formatHeure = (dateStr: string) => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    return (
+      date.toLocaleDateString("fr-FR") +
+      " " +
+      date.toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    );
+  };
 
   // Items & totaux
-  const parseItemsArray = (items: any): any[] => {
-    if (Array.isArray(items)) return items;
-    if (typeof items === 'string') {
+  const parseItemsArray = (rawItems: any): any[] => {
+    if (Array.isArray(rawItems)) return rawItems;
+    if (typeof rawItems === 'string') {
       try {
-        const parsed = JSON.parse(items || '[]');
+        const parsed = JSON.parse(rawItems || '[]');
         return Array.isArray(parsed) ? parsed : [];
       } catch {
         return [];
@@ -148,8 +150,72 @@ const formatHeure = (dateStr: string) => {
   };
 
   const items = parseItemsArray(bon.items);
-  const sousTotal = items.reduce((sum: number, item: any) => 
-    sum + (parseFloat(item.quantite || 0) * parseFloat(item.prix_unitaire || 0)), 0);
+  const sousTotal = items.reduce(
+    (sum: number, item: any) => sum + (parseFloat(item.quantite || 0) * parseFloat(item.prix_unitaire || 0)),
+    0
+  );
+
+  const findProductById = (id: any) => {
+    if (!id) return undefined;
+    const sid = String(id);
+    return (products || []).find((p: any) => String(p?.id) === sid);
+  };
+
+  const parseMoney = (value: any): number => {
+    if (value == null) return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const normalized = String(value).trim().replace(',', '.');
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const toCents = (value: any): number => {
+    const n = parseMoney(value);
+    return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  };
+
+  // Compute the baseline "original" sale price considering variant and unit factor
+  const getOriginalSalePrice = (item: any) => {
+    // Only relevant for sales-type documents; callers guard for Commande already
+    const pid = item?.product_id ?? item?.produit_id ?? item?.id;
+    const product = findProductById(pid);
+    if (!product) return 0;
+
+    // Prefer variant sale price if a variant is selected
+    const variantId = item?.variant_id ?? item?.variantId;
+    let baseSale = 0;
+    if (variantId && Array.isArray(product.variants)) {
+      const v = product.variants.find((vv: any) => String(vv.id) === String(variantId));
+      baseSale = parseMoney(v?.prix_vente);
+    }
+    if (!Number.isFinite(baseSale) || baseSale <= 0) {
+      // Fallback to product sale price
+      const p = product?.prix_vente ?? product?.prixVente ?? product?.price ?? product?.prix;
+      baseSale = parseMoney(p);
+    }
+    if (!Number.isFinite(baseSale) || baseSale <= 0) return 0;
+
+    // Apply unit conversion factor if a unit is selected
+    const unitId = item?.unit_id ?? item?.unite_id ?? item?.uniteId;
+    if (unitId && Array.isArray(product.units)) {
+      const u = product.units.find((uu: any) => String(uu.id) === String(unitId));
+      const factor = Number(u?.conversion_factor || 1) || 1;
+      return Number((baseSale * factor).toFixed(2));
+    }
+    return baseSale;
+  };
+
+  const formatPromoPct = (pct: number) => {
+    const p = Number(pct);
+    if (!Number.isFinite(p) || p <= 0) return '0%';
+    // Règle demandée:
+    // - si la partie décimale > 0.5 => +1
+    // - si = 0.5 => supprimer la virgule (donc garder l'entier inférieur)
+    const base = Math.floor(p);
+    const frac = p - base;
+    const value = frac > 0.500000001 ? base + 1 : base;
+    return `${value}%`;
+  };
 
   // Calculer la hauteur dynamique du spacer selon le nombre d'articles et le format
   // Base différente selon format: A5 (40mm) vs A4 (48mm) + ajustement par article
@@ -182,27 +248,35 @@ const formatHeure = (dateStr: string) => {
     tableCell: isA5 ? 'text-[9px]' : 'text-xs'
   };
   const spacing = {
-    padding: isA5 ? 'p-3' : 'p-4',
+    padding: isA5 ? 'p-3' : 'p-3',
     margin: isA5 ? 'mb-2' : 'mb-3',
     gap: isA5 ? 'gap-1' : 'gap-2'
   };
 
   return (
     <div 
-      className={`print-root bg-white ${size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'} mx-auto ${spacing.padding} font-sans ${textSizes.normal} print:shadow-none`}
-      style={{ fontFamily: 'sans-serif', position: 'relative' }}
+      className={`print-root box-border bg-white ${size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'} mx-auto ${spacing.padding} font-sans ${textSizes.normal} print:shadow-none`}
+      style={{ fontFamily: 'sans-serif', position: 'relative', boxSizing: 'border-box' }}
     >
     {/* Styles spécifiques impression pour assurer largeur totale du tableau */}
       <style>
         {`@media print {
-      .print-root { position: relative; }
+      @page { size: ${size}; margin: 0; }
+      html, body { width: 100%; margin: 0 !important; padding: 0 !important; }
+      .print-root { position: relative; box-sizing: border-box; width: auto !important; max-width: 100% !important; overflow: visible !important; }
+      .print-root *, .print-root *::before, .print-root *::after { box-sizing: inherit; }
       .print-footer-spacer { height: ${dynamicSpacerHeight}mm; }
       /* Le spacer adapte sa hauteur selon le nombre d'articles pour éviter le chevauchement avec le cachet */
       /* Pour les très gros bons, forcer une nouvelle page pour le cachet (seuil adapté au format) */
       ${itemsCount > (size === 'A5' ? 20 : 25) ? `.print-footer-spacer { page-break-before: always; height: ${size === 'A5' ? '50mm' : '60mm'}; }` : ''}
       .company-footer { page-break-inside: avoid; break-inside: avoid; }
-      .print-table-full { width:100% !important; border-collapse: collapse !important; }
+      .print-table-full { width: 100% !important; border-collapse: collapse !important; table-layout: auto !important; }
+      /* Réduire un peu les paddings en impression pour éviter la coupe du dernier col */
+      .print-table-full th, .print-table-full td { padding-left: 4px !important; padding-right: 4px !important; }
+      /* Allow product names to wrap; keep numbers/codes fully visible */
       .print-table-full th, .print-table-full td { word-break: break-word; }
+      .print-table-full .product-cell { white-space: normal !important; word-break: break-word !important; }
+      .print-table-full .num-cell { white-space: nowrap !important; word-break: normal !important; }
       .totals-section, .client-stamp { page-break-inside: avoid; break-inside: avoid; }
       /* Empêcher un saut de page juste avant le spacer si il reste assez d'espace */
       .print-footer-spacer { page-break-inside: avoid; break-inside: avoid; }
@@ -210,6 +284,8 @@ const formatHeure = (dateStr: string) => {
       }
       /* Indicateur visuel à l'écran pour voir l'espace réservé */
       @media screen {
+        .print-root { box-sizing: border-box; }
+        .print-root *, .print-root *::before, .print-root *::after { box-sizing: inherit; }
         .print-footer-spacer { 
           height: ${Math.max(20, Math.min(dynamicSpacerHeight, 60))}px; 
           background: linear-gradient(to bottom, transparent 0%, rgba(59, 130, 246, 0.1) 50%, rgba(59, 130, 246, 0.2) 100%);
@@ -303,42 +379,86 @@ const formatHeure = (dateStr: string) => {
         <table style={{width:'100%'}} className="no-mobile-scroll print-table-full w-full border-collapse border border-gray-300">
           <thead>
             <tr className="bg-orange-500 text-white">
-              <th className={`border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-left font-semibold ${isA5 ? 'w-12' : 'w-16'} ${textSizes.tableHeader}`}>CODE</th>
-              <th className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-left font-semibold ${textSizes.tableHeader}`}>Article</th>
+              <th className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-left font-semibold ${textSizes.tableHeader} whitespace-nowrap w-[1%]`}>CODE</th>
+              <th className={`product-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-left font-semibold ${textSizes.tableHeader}`}>Article</th>
               {printMode !== 'PRODUCTS_ONLY' && (
-                <th className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center font-semibold ${textSizes.tableHeader}`}>Qté</th>
+                <th className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center font-semibold ${textSizes.tableHeader}`}>Qté</th>
               )}
               {printMode === 'WITH_PRICES' && (
                 <>
-                  <th className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>{bon?.type === 'Commande' ? 'P.A (DH)' : 'P.U. (DH)'}</th>
-                  <th className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>Total (DH)</th>
+                  {bon?.type === 'Commande' ? (
+                    <>
+                      <th className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>P.A (DH)</th>
+                      <th className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>Total (DH)</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>Prix (DH)</th>
+                      {usePromo && (
+                        <th className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center font-semibold ${textSizes.tableHeader} whitespace-nowrap w-[1%]`}>Promo</th>
+                      )}
+                      <th className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-semibold ${textSizes.tableHeader}`}>Total (DH)</th>
+                    </>
+                  )}
                 </>
               )}
             </tr>
           </thead>
           <tbody>
             {items.map((item: any, index: number) => {
-              const quantite = parseFloat(item.quantite || 0);
-              const prixUnitaire = parseFloat(item.prix_unitaire || 0);
+              const quantite = parseMoney(item.quantite || 0);
+              const prixUnitaire = parseMoney(item.prix_unitaire || 0);
               const total = quantite * prixUnitaire;
+
+              const original = bon?.type === 'Commande' ? 0 : getOriginalSalePrice(item);
+
+              // Compare using cents (rounded to 2 decimals) to avoid false promos from floating/format artifacts.
+              const originalCents = toCents(original);
+              const puCents = toCents(prixUnitaire);
+              const hasPromo = usePromo && bon?.type !== 'Commande' && originalCents > 0 && puCents > 0 && originalCents > puCents;
+              const promoPct = hasPromo ? ((originalCents - puCents) / originalCents) * 100 : 0;
+              const priceToShowCents = hasPromo ? originalCents : puCents;
+
               const productId = item.product_id ?? item.produit_id ?? item.id ?? '';
               const rowKey = productId || `${item.designation}-${index}`;
+              // Build designation with variant name if available
+              let variantName: string | undefined = (item.variant_name || item.variant || item.variantLabel) as string | undefined;
+              const vIdRaw = item.variant_id ?? item.variantId;
+              if (!variantName && vIdRaw && products && products.length) {
+                const product = findProductById(productId);
+                const variants = product?.variants || [];
+                const vFound = variants.find((v: any) => String(v.id) === String(vIdRaw));
+                if (vFound && vFound.variant_name) variantName = String(vFound.variant_name);
+              }
+              const designationText = variantName ? `${item.designation || ''} - ${variantName}` : (item.designation || '');
               return (
                 <tr key={rowKey} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className={`border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} ${textSizes.tableCell} text-gray-700`}>{productId}</td>
-                  <td className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'}`}>
-                    <div className={`font-medium ${textSizes.tableCell}`}>{item.designation}</div>
+                  <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} ${textSizes.tableCell} text-gray-700`}>{productId}</td>
+                  <td className={`product-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'}`}>
+                    <div className={`font-medium ${textSizes.tableCell}`}>{designationText}</div>
                     {item.description && (
                       <div className={`${textSizes.small} text-gray-600 italic`}>{item.description}</div>
                     )}
                   </td>
                   {printMode !== 'PRODUCTS_ONLY' && (
-                    <td className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center ${textSizes.tableCell}`}>{quantite}</td>
+                    <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center ${textSizes.tableCell}`}>{quantite}</td>
                   )}
                   {printMode === 'WITH_PRICES' && (
                     <>
-                      <td className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right ${textSizes.tableCell}`}>{prixUnitaire.toFixed(2)}</td>
-                      <td className={`border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-medium ${textSizes.tableCell}`}>{total.toFixed(2)}</td>
+                      {bon?.type === 'Commande' ? (
+                        <>
+                          <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right ${textSizes.tableCell}`}>{prixUnitaire.toFixed(2)}</td>
+                          <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-medium ${textSizes.tableCell}`}>{total.toFixed(2)}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right ${textSizes.tableCell}`}>{(priceToShowCents / 100).toFixed(2)}</td>
+                          {usePromo && (
+                            <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center ${textSizes.tableCell} whitespace-nowrap w-[1%]`}>{hasPromo ? formatPromoPct(promoPct) : ''}</td>
+                          )}
+                          <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-right font-medium ${textSizes.tableCell}`}>{total.toFixed(2)}</td>
+                        </>
+                      )}
                     </>
                   )}
                 </tr>

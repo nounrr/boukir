@@ -4,8 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Activity, Filter, Users, ArrowLeft } from "lucide-react";
 import { useGetProductsQuery } from "../store/api/productsApi";
 import { useGetClientsQuery } from "../store/api/contactsApi";
-import { useGetSortiesQuery } from "../store/api/sortiesApi";
-import { useGetComptantQuery } from "../store/api/comptantApi";
+import { useGetBonsByTypeQuery } from "../store/api/bonsApi";
 import SearchableSelect from "../components/SearchableSelect";
 import type { RootState } from "../store";
 
@@ -37,6 +36,45 @@ const convertDisplayToISO = (displayDate: string) => {
   return `${fullYear.padStart(4, "0")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 };
 
+const getBonSign = (bonType: string): number => {
+  // Logique comptable demandée:
+  // - Sortie/Comptant: le client paie => +
+  // - Commande: je paie le fournisseur => -
+  // - Avoir client/comptant: le client retourne => -
+  // - Avoir fournisseur: je retourne au fournisseur (annule une dépense) => +
+  switch (bonType) {
+    case 'Sortie':
+    case 'Comptant':
+      return 1;
+    case 'Commande':
+      return -1;
+    case 'Avoir':
+    case 'AvoirComptant':
+      return -1;
+    case 'AvoirFournisseur':
+      return 1;
+    default:
+      return 1;
+  }
+};
+
+const getBonRowBg = (bonType: string): string => {
+  switch (bonType) {
+    case 'Sortie':
+    case 'Comptant':
+      return 'bg-green-50';
+    case 'Commande':
+      return 'bg-amber-50';
+    case 'Avoir':
+    case 'AvoirComptant':
+      return 'bg-red-50';
+    case 'AvoirFournisseur':
+      return 'bg-blue-50';
+    default:
+      return '';
+  }
+};
+
 const StatsDetailPage: React.FC = () => {
   const { user } = useSelector((state: RootState) => state.auth);
   const navigate = useNavigate();
@@ -46,8 +84,12 @@ const StatsDetailPage: React.FC = () => {
 
   const { data: products = [] } = useGetProductsQuery();
   const { data: clients = [] } = useGetClientsQuery();
-  const { data: bonsSortie = [] } = useGetSortiesQuery(undefined);
-  const { data: bonsComptant = [] } = useGetComptantQuery(undefined);
+  const { data: bonsSortie = [] } = useGetBonsByTypeQuery('Sortie');
+  const { data: bonsComptant = [] } = useGetBonsByTypeQuery('Comptant');
+  const { data: bonsCommandes = [] } = useGetBonsByTypeQuery('Commande');
+  const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsFournisseur = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
+  const { data: avoirsComptant = [] } = useGetBonsByTypeQuery('AvoirComptant');
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -56,9 +98,13 @@ const StatsDetailPage: React.FC = () => {
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   // Etat d'expansion des clients par produit (productId -> clientId -> boolean)
   const [expandedClients, setExpandedClients] = useState<Record<string, Record<string, boolean>>>({});
-  // Filtres de type de bons
-  const [includeSortie, setIncludeSortie] = useState<boolean>(true);
-  const [includeComptant, setIncludeComptant] = useState<boolean>(true);
+  // Filtres de type de bons (3 checkbox demandées)
+  const [includeVentes, setIncludeVentes] = useState<boolean>(true); // Sortie + Comptant
+  const [includeCommandes, setIncludeCommandes] = useState<boolean>(true);
+  const [includeAvoirs, setIncludeAvoirs] = useState<boolean>(true);
+
+  // Option: afficher sans condition de client (mode actuel = groupé par client)
+  const [useClientCondition, setUseClientCondition] = useState<boolean>(false);
 
   // useEffect doit être avant tout return conditionnel
   useEffect(() => {
@@ -78,40 +124,62 @@ const StatsDetailPage: React.FC = () => {
   };
 
   const clientBonsForItems = useMemo(() => {
-    // Inclure bons selon cases cochées (Sortie / Comptant) + mêmes statuts
-    const all = [...bonsSortie, ...bonsComptant];
+    // Construire une liste unifiée selon les 3 checkbox: Ventes, Commandes, Avoirs
+    const ventes = includeVentes
+      ? [
+          ...bonsSortie.map((b: any) => ({ ...b, __kind: 'Sortie' })),
+          ...bonsComptant.map((b: any) => ({ ...b, __kind: 'Comptant' })),
+        ]
+      : [];
+
+    const commandes = includeCommandes
+      ? bonsCommandes.map((b: any) => ({ ...b, __kind: 'Commande' }))
+      : [];
+
+    const avoirs = includeAvoirs
+      ? [
+          ...avoirsClient.map((b: any) => ({ ...b, __kind: 'Avoir' })),
+          ...avoirsFournisseur.map((b: any) => ({ ...b, __kind: 'AvoirFournisseur' })),
+          ...avoirsComptant.map((b: any) => ({ ...b, __kind: 'AvoirComptant' })),
+        ]
+      : [];
+
+    const all = [...ventes, ...commandes, ...avoirs];
+
     return all.filter((b: any) => {
       // Exclure les bons avec isNotCalculated = true
       if (b.isNotCalculated) return false;
-      
-      // Déterminer le type du bon (forcer 'Comptant' pour les bons venant de bonsComptant)
-      let bonType = b.type;
-      if (!bonType) {
-        // Si pas de type défini, déduire selon la source
-        bonType = bonsComptant.includes(b) ? 'Comptant' : 'Sortie';
-      }
-      
-      if (bonType === 'Sortie' && !includeSortie) return false;
-      if (bonType === 'Comptant' && !includeComptant) return false;
-      if (bonType !== 'Sortie' && bonType !== 'Comptant') return false;
-      
+
+      const bonType = String(b.__kind || b.type || '');
       const inRange = inDateRange(toDisplayDate(b.date || b.date_creation));
-      
-      // Logique de statut inspirée de BonsPage - plus permissive pour Comptant
+
+      // Filtrage statuts: garder large (objectif: afficher tous),
+      // mais exclure les états clairement invalides.
       const statut = b.statut;
-      let validStatus = false;
-      
-      if (bonType === 'Sortie') {
-        // Pour Sortie: En attente, Validé, Livré
-        validStatus = ['En attente', 'Validé', 'Livré'].includes(statut);
-      } else if (bonType === 'Comptant') {
-        // Pour Comptant: tous sauf Annulé et Avoir (inclut Brouillon)
-        validStatus = statut && !['Annulé', 'Avoir'].includes(statut);
+      let validStatus = true;
+
+      if (bonType === 'Comptant') {
+        // Pour Comptant: exclure Annulé + les lignes déjà converties en Avoir
+        validStatus = statut ? !['Annulé', 'Avoir'].includes(statut) : true;
+      } else {
+        validStatus = statut ? !['Annulé', 'Refusé', 'Expiré'].includes(statut) : true;
       }
-      
+
       return inRange && validStatus;
     });
-  }, [bonsSortie, bonsComptant, dateFrom, dateTo, includeSortie, includeComptant]);
+  }, [
+    bonsSortie,
+    bonsComptant,
+    bonsCommandes,
+    avoirsClient,
+    avoirsFournisseur,
+    avoirsComptant,
+    dateFrom,
+    dateTo,
+    includeVentes,
+    includeCommandes,
+    includeAvoirs,
+  ]);
 
   // clientBonsForItems contient déjà les bons filtrés par statut et date
   // On peut l'utiliser pour les deux vues (produits et contacts)
@@ -127,16 +195,29 @@ const StatsDetailPage: React.FC = () => {
 
     // Pour les produits : utiliser seulement les bons "En attente" et "Validé"
     for (const bon of clientBonsForItems) {
-      // Pour les bons Comptant, utiliser client_nom si client_id est absent
-      let clientId = String(bon.client_id ?? bon.contact_id ?? "");
-      
-      // Si pas de client_id et que c'est un bon Comptant
-      if (!clientId && (bon.type === 'Comptant' || bonsComptant.includes(bon))) {
-        // Utiliser client_nom s'il existe, sinon "Sans nom"
-        const clientNom = bon.client_nom || 'Sans nom';
-        clientId = `comptant_${clientNom}`; // Créer un ID fictif basé sur le nom
+      const bonType = String((bon as any).__kind || bon.type || '');
+      const sign = getBonSign(bonType);
+
+      // Résoudre l'identifiant "contact" selon le type
+      let clientId = '';
+
+      if (bonType === 'Commande' || bonType === 'AvoirFournisseur') {
+        clientId = String(bon.fournisseur_id ?? bon.contact_id ?? bon.client_id ?? '');
+      } else {
+        clientId = String(bon.client_id ?? bon.contact_id ?? '');
       }
-      
+
+      // Comptant / AvoirComptant: si pas d'ID, utiliser client_nom
+      if (!clientId && (bonType === 'Comptant' || bonType === 'AvoirComptant')) {
+        const clientNom = bon.client_nom || 'Sans nom';
+        clientId = `comptant_${clientNom}`;
+      }
+
+      // Si on désactive la condition client, on regroupe tout sous un seul "client".
+      if (!useClientCondition) {
+        clientId = '__all__';
+      }
+
       if (!clientId) continue;
 
       let items: any[] = [];
@@ -151,21 +232,46 @@ const StatsDetailPage: React.FC = () => {
       for (const it of items) {
         const productId = String(it.product_id ?? it.id ?? "");
         if (!productId) continue;
-        const qty = toNumber(it.quantite ?? it.qty ?? 0);
-  // Prix unitaire (Sortie & Comptant) : priorité prix_unitaire puis prix / prix_vente / price / prix_achat
-  const rawUnit = it.prix_unitaire ?? it.prix ?? it.prix_vente ?? it.price ?? it.prix_achat;
+        const rawQty = it.quantite ?? it.qty ?? 0;
+        const qtySource = it.quantite != null ? 'item.quantite' : (it.qty != null ? 'item.qty' : '0');
+        const qty = toNumber(rawQty);
+
+        // Prix unitaire : priorité prix_unitaire puis prix / prix_vente / price / prix_achat
+        const rawUnit = it.prix_unitaire ?? it.prix ?? it.prix_vente ?? it.price ?? it.prix_achat;
+        const unitSource =
+          it.prix_unitaire != null
+            ? 'item.prix_unitaire'
+            : it.prix != null
+              ? 'item.prix'
+              : it.prix_vente != null
+                ? 'item.prix_vente'
+                : it.price != null
+                  ? 'item.price'
+                  : it.prix_achat != null
+                    ? 'item.prix_achat'
+                    : '0';
         const unit = toNumber(rawUnit);
         const total = toNumber(it.total ?? it.montant ?? unit * qty);
+        const signedQty = qty * sign;
+        const signedTotal = total * sign;
+
+        const totalSource =
+          it.total != null
+            ? 'item.total'
+            : it.montant != null
+              ? 'item.montant'
+              : 'prix_unitaire×quantite';
+        const baseBeforeSign = total;
 
         if (!pcs[productId]) pcs[productId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, clients: {} };
         const pcEntry = pcs[productId];
         if (!pcEntry.clients[clientId]) pcEntry.clients[clientId] = { ventes: 0, quantite: 0, montant: 0, details: [] };
         pcEntry.clients[clientId].ventes += 1;
-        pcEntry.clients[clientId].quantite += qty;
-        pcEntry.clients[clientId].montant += total;
+        pcEntry.clients[clientId].quantite += signedQty;
+        pcEntry.clients[clientId].montant += signedTotal;
         pcEntry.totalVentes += 1;
-        pcEntry.totalQuantite += qty;
-        pcEntry.totalMontant += total;
+        pcEntry.totalQuantite += signedQty;
+        pcEntry.totalMontant += signedTotal;
 
         // Détails par bon pour l'accordéon (vue produits)
         pcEntry.clients[clientId].details.push({
@@ -173,11 +279,17 @@ const StatsDetailPage: React.FC = () => {
           bonNumero: bon.numero || bon.numero_bon || bon.code || `#${bon.id}`,
           date: toDisplayDate(bon.date || bon.date_creation),
             // conserver valeurs brutes aussi
-          quantite: qty,
+          quantite: signedQty,
+          rawQuantite: qty,
+          qtySource,
           prix_unitaire: unit,
-          total,
+          unitSource,
+          total: signedTotal,
+          totalSource,
+          baseBeforeSign,
+          sign,
           statut: bon.statut,
-          type: bon.type || (bonsComptant.includes(bon) ? 'Comptant' : 'Sortie'),
+          type: bonType,
         });
 
         // Pour les produits : calculer les statistiques des clients
@@ -185,18 +297,18 @@ const StatsDetailPage: React.FC = () => {
         const cpEntry = cps[clientId];
         if (!cpEntry.products[productId]) cpEntry.products[productId] = { ventes: 0, quantite: 0, montant: 0 };
         cpEntry.products[productId].ventes += 1;
-        cpEntry.products[productId].quantite += qty;
-        cpEntry.products[productId].montant += total;
+        cpEntry.products[productId].quantite += signedQty;
+        cpEntry.products[productId].montant += signedTotal;
         cpEntry.totalVentes += 1;
-        cpEntry.totalQuantite += qty;
-        cpEntry.totalMontant += total;
+        cpEntry.totalQuantite += signedQty;
+        cpEntry.totalMontant += signedTotal;
       }
     }
 
     // Les statistiques des contacts sont déjà calculées dans la boucle ci-dessus
     // puisque clientBonsForItems contient les bons filtrés par statut
     return { productClientStats: pcs, clientProductStats: cps };
-  }, [clientBonsForItems]);
+  }, [clientBonsForItems, useClientCondition]);
 
   // Options recherchables (produits & clients)
   const productOptions = useMemo(() => {
@@ -225,6 +337,9 @@ const StatsDetailPage: React.FC = () => {
     const base = [{ value: "", label: "Tous" }];
     const ids = Object.keys(clientProductStats);
     const mapped = ids.map((cid) => {
+      if (cid === '__all__') {
+        return { value: cid, label: 'Tous (sans condition client)' };
+      }
       // Gérer les clients fictifs pour Comptant
       if (cid.startsWith('comptant_')) {
         const clientNom = cid.replace('comptant_', '');
@@ -333,6 +448,23 @@ const StatsDetailPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Clés de couleur (légende) */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-gray-600 font-medium mr-1">Clés de couleur :</span>
+        <span className="inline-flex items-center px-2 py-1 rounded border border-green-200 bg-green-50 text-green-800">
+          Sortie / Comptant
+        </span>
+        <span className="inline-flex items-center px-2 py-1 rounded border border-amber-200 bg-amber-50 text-amber-800">
+          Commande
+        </span>
+        <span className="inline-flex items-center px-2 py-1 rounded border border-red-200 bg-red-50 text-red-800">
+          Avoir (client / comptant)
+        </span>
+        <span className="inline-flex items-center px-2 py-1 rounded border border-blue-200 bg-blue-50 text-blue-800">
+          Avoir fournisseur
+        </span>
+      </div>
+
       {/* Filtres */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
@@ -343,27 +475,23 @@ const StatsDetailPage: React.FC = () => {
         {/* Indicateur de filtrage par statut */}
         <div className="mb-4">
           {(() => {
-            const totalSortie = bonsSortie.length;
-            const totalComptant = bonsComptant.length;
-            const filteredSortie = clientBonsForItems.filter((b:any)=> {
-              const type = b.type || (bonsComptant.includes(b) ? 'Comptant' : 'Sortie');
-              return type === 'Sortie';
-            }).length;
-            const filteredComptant = clientBonsForItems.filter((b:any)=> {
-              const type = b.type || (bonsComptant.includes(b) ? 'Comptant' : 'Sortie');
-              return type === 'Comptant';
-            }).length;
-            const typesLabel = includeSortie && includeComptant
-              ? 'Bons Sortie & Comptant'
-              : includeSortie
-                ? 'Bons Sortie'
-                : includeComptant
-                  ? 'Bons Comptant'
-                  : 'Aucun type sélectionné';
+            const totalVentes = bonsSortie.length + bonsComptant.length;
+            const totalCommandes = bonsCommandes.length;
+            const totalAvoirs = avoirsClient.length + avoirsFournisseur.length + avoirsComptant.length;
+
+            const filteredVentes = clientBonsForItems.filter((b: any) => ['Sortie', 'Comptant'].includes(String(b.__kind || b.type))).length;
+            const filteredCommandes = clientBonsForItems.filter((b: any) => String(b.__kind || b.type) === 'Commande').length;
+            const filteredAvoirs = clientBonsForItems.filter((b: any) => ['Avoir', 'AvoirFournisseur', 'AvoirComptant'].includes(String(b.__kind || b.type))).length;
+
+            const labels: string[] = [];
+            if (includeVentes) labels.push('Ventes');
+            if (includeCommandes) labels.push('Commandes');
+            if (includeAvoirs) labels.push('Avoirs');
+            const typesLabel = labels.length ? labels.join(' + ') : 'Aucun type sélectionné';
             return (
               <div className="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200">
                 <Filter className="w-3 h-3 mr-2" />
-                Affichage : {typesLabel} (statuts filtrés) | Sortie {filteredSortie}/{totalSortie} - Comptant {filteredComptant}/{totalComptant}
+                Affichage : {typesLabel} (statuts filtrés) | Ventes {filteredVentes}/{totalVentes} - Commandes {filteredCommandes}/{totalCommandes} - Avoirs {filteredAvoirs}/{totalAvoirs}
               </div>
             );
           })()}
@@ -440,30 +568,77 @@ const StatsDetailPage: React.FC = () => {
           )}
         </div>
 
-        {/* Cases à cocher pour filtrer les types de bons */}
+        {/* Cases à cocher pour filtrer les types de bons (3 checkbox) */}
         <div className="mt-4 flex flex-wrap gap-6 items-center">
           <div className="flex items-center gap-2">
             <input
-              id="chkSortie"
+              id="chkVentes"
               type="checkbox"
-              checked={includeSortie}
-              onChange={() => setIncludeSortie(prev => (prev && !includeComptant ? prev : !prev))}
+              checked={includeVentes}
+              onChange={() =>
+                setIncludeVentes((prev) => {
+                  const next = !prev;
+                  if (!next && !includeCommandes && !includeAvoirs) return prev;
+                  return next;
+                })
+              }
               className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
             />
-            <label htmlFor="chkSortie" className="text-sm text-gray-700">Inclure Sortie</label>
+            <label htmlFor="chkVentes" className="text-sm text-gray-700">Inclure Ventes (Sortie + Comptant)</label>
           </div>
           <div className="flex items-center gap-2">
             <input
-              id="chkComptant"
+              id="chkCommandes"
               type="checkbox"
-              checked={includeComptant}
-              onChange={() => setIncludeComptant(prev => (prev && !includeSortie ? prev : !prev))}
+              checked={includeCommandes}
+              onChange={() =>
+                setIncludeCommandes((prev) => {
+                  const next = !prev;
+                  if (!next && !includeVentes && !includeAvoirs) return prev;
+                  return next;
+                })
+              }
               className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
             />
-            <label htmlFor="chkComptant" className="text-sm text-gray-700">Inclure Comptant</label>
+            <label htmlFor="chkCommandes" className="text-sm text-gray-700">Inclure Commandes</label>
           </div>
-          {(!includeSortie && !includeComptant) && (
+          <div className="flex items-center gap-2">
+            <input
+              id="chkAvoirs"
+              type="checkbox"
+              checked={includeAvoirs}
+              onChange={() =>
+                setIncludeAvoirs((prev) => {
+                  const next = !prev;
+                  if (!next && !includeVentes && !includeCommandes) return prev;
+                  return next;
+                })
+              }
+              className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+            />
+            <label htmlFor="chkAvoirs" className="text-sm text-gray-700">Inclure Avoirs (client + fournisseur + comptant)</label>
+          </div>
+          {(!includeVentes && !includeCommandes && !includeAvoirs) && (
             <p className="text-xs text-red-600 font-medium">Sélectionnez au moins un type de bon.</p>
+          )}
+        </div>
+
+        {/* Option: condition client */}
+        <div className="mt-3 flex flex-wrap gap-6 items-center">
+          <div className="flex items-center gap-2">
+            <input
+              id="chkClientCondition"
+              type="checkbox"
+              checked={useClientCondition}
+              onChange={() => setUseClientCondition((v) => !v)}
+              className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+            />
+            <label htmlFor="chkClientCondition" className="text-sm text-gray-700">
+              Condition client (mode actuel)
+            </label>
+          </div>
+          {!useClientCondition && (
+            <p className="text-xs text-gray-500">Tous les bons seront regroupés dans “Tous”, même sans client.</p>
           )}
         </div>
       </div>
@@ -524,8 +699,8 @@ const StatsDetailPage: React.FC = () => {
                         <p className="text-xs text-gray-500">{toNumber(row.totalMontant).toFixed(2)} DH</p>
                       </div>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
+                    <div className="overflow-x-auto w-full">
+                      <table className="w-full divide-y divide-gray-200">
                         <thead className="bg-white">
                           <tr>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
@@ -542,7 +717,9 @@ const StatsDetailPage: React.FC = () => {
                           ) : clientRows.map((cr: any) => {
                             // Gérer l'affichage du nom client pour les bons Comptant
                             let cname;
-                            if (String(cr.clientId).startsWith('comptant_')) {
+                            if (String(cr.clientId) === '__all__') {
+                              cname = 'Tous (sans condition client)';
+                            } else if (String(cr.clientId).startsWith('comptant_')) {
                               cname = String(cr.clientId).replace('comptant_', '') + ' (Comptant)';
                             } else {
                               const c = clients.find((x: any) => String(x.id) === String(cr.clientId));
@@ -569,29 +746,64 @@ const StatsDetailPage: React.FC = () => {
                                 {isOpen && cr.details && cr.details.length > 0 && (
                                   <tr className="bg-gray-50/60">
                                     <td colSpan={4} className="px-4 pb-4 pt-0">
-                                      <div className="mt-2 border border-gray-200 rounded-md bg-white">
-                                        <table className="min-w-full text-xs">
+                                      <div className="mt-2 border border-gray-200 rounded-md bg-white w-full overflow-x-auto">
+                                        <table className="w-full text-xs">
                                           <thead className="bg-gray-100">
                                             <tr>
                                               <th className="px-2 py-1 text-left font-medium text-gray-600">Bon</th>
+                                              <th className="px-2 py-1 text-left font-medium text-gray-600">Type</th>
                                               <th className="px-2 py-1 text-left font-medium text-gray-600">Date</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">Qté</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">P.Unit</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">Total</th>
+                                              <th className="px-2 py-1 text-right font-medium text-gray-600">Solde</th>
                                               <th className="px-2 py-1 text-left font-medium text-gray-600">Statut</th>
                                             </tr>
                                           </thead>
                                           <tbody>
-                                            {cr.details.map((d: any, idx: number) => (
-                                              <tr key={idx} className="border-t last:border-b-0">
-                                                <td className="px-2 py-1">{d.bonNumero}</td>
-                                                <td className="px-2 py-1">{d.date}</td>
-                                                <td className="px-2 py-1 text-right">{toNumber(d.quantite)}</td>
-                                                <td className="px-2 py-1 text-right">{toNumber(d.prix_unitaire).toFixed(2)} DH</td>
-                                                <td className="px-2 py-1 text-right font-medium">{toNumber(d.total).toFixed(2)} DH</td>
-                                                <td className="px-2 py-1">{d.statut}</td>
-                                              </tr>
-                                            ))}
+                                            {(() => {
+                                              const detailsSorted = [...(cr.details || [])].sort((a: any, b: any) => {
+                                                const da = String(a.date || '');
+                                                const db = String(b.date || '');
+                                                if (da !== db) return da.localeCompare(db);
+                                                const na = String(a.bonNumero || '');
+                                                const nb = String(b.bonNumero || '');
+                                                if (na !== nb) return na.localeCompare(nb);
+                                                return toNumber(a.bonId) - toNumber(b.bonId);
+                                              });
+
+                                              let solde = 0;
+                                              const rows = detailsSorted.map((d: any, idx: number) => {
+                                                solde += toNumber(d.total);
+                                                const rowSolde = solde;
+                                                return (
+                                                  <tr key={idx} className={`border-t last:border-b-0 ${getBonRowBg(String(d.type || ''))}`}>
+                                                    <td className="px-2 py-1">{d.bonNumero}</td>
+                                                    <td className="px-2 py-1">{d.type}</td>
+                                                    <td className="px-2 py-1">{d.date}</td>
+                                                    <td className="px-2 py-1 text-right">{toNumber(d.quantite)}</td>
+                                                    <td className="px-2 py-1 text-right">{toNumber(d.prix_unitaire).toFixed(2)} DH</td>
+                                                    <td className="px-2 py-1 text-right font-medium">{toNumber(d.total).toFixed(2)} DH</td>
+                                                    <td className="px-2 py-1 text-right font-semibold text-gray-900">{toNumber(rowSolde).toFixed(2)} DH</td>
+                                                    <td className="px-2 py-1">{d.statut}</td>
+                                                  </tr>
+                                                );
+                                              });
+
+                                              const soldeFinal = solde;
+                                              rows.push(
+                                                <tr key="__solde_final__" className="border-t bg-gray-100">
+                                                  <td className="px-2 py-1 font-semibold text-gray-900" colSpan={5}>Solde final</td>
+                                                  <td className="px-2 py-1 text-right font-semibold text-gray-900">{toNumber(soldeFinal).toFixed(2)} DH</td>
+                                                  <td className="px-2 py-1 text-right font-semibold text-gray-900">{toNumber(soldeFinal).toFixed(2)} DH</td>
+                                                  <td className="px-2 py-1 text-gray-700">
+                                                    <span className="text-[11px]">Montant client: {toNumber(cr.montant).toFixed(2)} DH</span>
+                                                  </td>
+                                                </tr>
+                                              );
+
+                                              return rows;
+                                            })()}
                                           </tbody>
                                         </table>
                                       </div>
@@ -623,7 +835,9 @@ const StatsDetailPage: React.FC = () => {
               return top.map((row: any) => {
                 // Gérer l'affichage du nom client pour les bons Comptant  
                 let cname;
-                if (String(row.clientId).startsWith('comptant_')) {
+                if (String(row.clientId) === '__all__') {
+                  cname = 'Tous (sans condition client)';
+                } else if (String(row.clientId).startsWith('comptant_')) {
                   cname = String(row.clientId).replace('comptant_', '') + ' (Comptant)';
                 } else {
                   const c = clients.find((x: any) => String(x.id) === String(row.clientId));
@@ -653,8 +867,8 @@ const StatsDetailPage: React.FC = () => {
                         <p className="text-xs text-gray-500">{toNumber(row.totalMontant).toFixed(2)} DH</p>
                       </div>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
+                    <div className="overflow-x-auto w-full">
+                      <table className="w-full divide-y divide-gray-200">
                         <thead className="bg-white">
                           <tr>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Produit</th>

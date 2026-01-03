@@ -262,11 +262,18 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'type must be either Client or Fournisseur' });
     }
 
+    // Auto-approve if type_compte is Artisan/Promoteur (backoffice creation)
+    const isArtisan = type_compte === 'Artisan/Promoteur';
+    const effectiveDemandeArtisan = isArtisan ? 0 : (demande_artisan ?? 0);
+    const effectiveArtisanApprouve = isArtisan ? 1 : (artisan_approuve ?? 0);
+    const effectiveArtisanApprouvePar = isArtisan ? (created_by || null) : (artisan_approuve_par ?? null);
+    const effectiveArtisanApprouveLe = isArtisan ? new Date() : (artisan_approuve_le ?? null);
+
     const [result] = await pool.execute(
       `INSERT INTO contacts 
        (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-  [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, (demande_artisan ?? 0), (artisan_approuve ?? 0), (artisan_approuve_par ?? null), (artisan_approuve_le ?? null), (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice')]
+  [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice')]
     );
 
     // Fetch the created contact
@@ -342,7 +349,17 @@ router.put('/:id', async (req, res) => {
       updates.push('type = ?'); 
       params.push(type); 
     }
-  if (type_compte !== undefined) { updates.push('type_compte = ?'); params.push(type_compte); }
+  if (type_compte !== undefined) { 
+    updates.push('type_compte = ?'); 
+    params.push(type_compte); 
+    if (type_compte === 'Artisan/Promoteur') {
+      updates.push('artisan_approuve = TRUE');
+      updates.push('demande_artisan = FALSE');
+      updates.push('artisan_approuve_le = NOW()');
+      updates.push('artisan_approuve_par = ?');
+      params.push(updated_by ?? null);
+    }
+  }
     if (telephone !== undefined) { updates.push('telephone = ?'); params.push(telephone); }
     if (email !== undefined) { updates.push('email = ?'); params.push(email); }
   if (password !== undefined) { updates.push('password = ?'); params.push(password); }

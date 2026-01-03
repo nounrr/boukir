@@ -440,7 +440,6 @@ router.get('/', async (req, res, next) => {
         'id', pu.id, 
         'unit_name', pu.unit_name, 
         'conversion_factor', pu.conversion_factor, 
-        'prix_vente', pu.prix_vente, 
         'is_default', pu.is_default
       )) FROM product_units pu WHERE pu.product_id = p.id) as units,
       c.nom as categorie_nom
@@ -535,6 +534,40 @@ router.post('/:id/restore', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Soft-delete a product
+// DELETE /api/products/:id
+router.delete('/:id', async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+    const id = Number(req.params.id);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'ID invalide' });
+    }
+
+    const [exists] = await pool.query(
+      'SELECT id FROM products WHERE id = ? AND COALESCE(is_deleted,0) = 0',
+      [id]
+    );
+    if (!exists.length) {
+      return res.status(404).json({ message: 'Produit introuvable' });
+    }
+
+    const now = new Date();
+    const updatedBy = req.user?.id || null;
+
+    // updated_by column is ensured in ensureProductsColumns()
+    await pool.query(
+      'UPDATE products SET is_deleted = 1, updated_at = ?, updated_by = ? WHERE id = ?',
+      [now, updatedBy, id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     await ensureProductsColumns();
@@ -578,8 +611,17 @@ router.get('/:id', async (req, res, next) => {
       id: r.id,
       reference: String(r.id),
       designation: r.designation,
+      designation_ar: r.designation_ar,
+      designation_en: r.designation_en,
+      designation_zh: r.designation_zh,
       categorie_id: r.categorie_id || 0,
       categorie: r.c_id ? { id: r.c_id, nom: r.c_nom } : undefined,
+      categories: finalCategories,
+      brand_id: r.brand_id ?? null,
+      brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
+      quantite: Number(r.quantite),
+      kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
+      prix_achat: Number(r.prix_achat),
       cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
       cout_revient: Number(r.cout_revient),
       prix_gros_pourcentage: Number(r.prix_gros_pourcentage),
@@ -599,6 +641,7 @@ router.get('/:id', async (req, res, next) => {
       pourcentage_promo: Number(r.pourcentage_promo ?? 0),
       ecom_published: !!r.ecom_published,
       stock_partage_ecom: !!r.stock_partage_ecom,
+      stock_partage_ecom_qty: Number(r.stock_partage_ecom_qty ?? 0),
       created_by: r.created_by,
       updated_by: r.updated_by,
       created_at: r.created_at,
@@ -624,7 +667,6 @@ router.get('/:id', async (req, res, next) => {
       units: units.map(u => ({
         ...u,
         conversion_factor: Number(u.conversion_factor),
-        prix_vente: u.prix_vente ? Number(u.prix_vente) : null,
         is_default: !!u.is_default
       }))
     });
@@ -806,9 +848,9 @@ router.post('/', upload.fields([
       if (Array.isArray(parsed)) {
         for (const u of parsed) {
           await pool.query(
-            `INSERT INTO product_units (product_id, unit_name, conversion_factor, prix_vente, is_default, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [id, u.unit_name, Number(u.conversion_factor), u.prix_vente !== null && u.prix_vente !== undefined ? Number(u.prix_vente) : null, u.is_default ? 1 : 0, now, now]
+            `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_default, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [id, u.unit_name, Number(u.conversion_factor), u.is_default ? 1 : 0, now, now]
           );
         }
       }
@@ -881,14 +923,13 @@ router.post('/', upload.fields([
       units: unts.map(u => ({
         ...u,
         conversion_factor: Number(u.conversion_factor),
-        prix_vente: u.prix_vente !== null && u.prix_vente !== undefined ? Number(u.prix_vente) : null,
         is_default: !!u.is_default,
       })),
     });
   } catch (err) { next(err); }
 });
 
-// Update a product (basic fields + optional image/gallery). Variants/units not edited here.
+// Update a product (basic fields + optional image/gallery). Variants/units are synced if provided.
 router.put('/:id', upload.fields([
   { name: 'image', maxCount: 1 },
   { name: 'gallery', maxCount: 10 }
@@ -936,6 +977,8 @@ router.put('/:id', upload.fields([
       fiche_technique_ar,
       fiche_technique_en,
       fiche_technique_zh,
+      variants: variantsJson,
+      units: unitsJson,
     } = req.body;
 
     const now = new Date();
@@ -1039,6 +1082,146 @@ router.put('/:id', upload.fields([
     const values = fields.map(f => payload[f]);
     values.push(id);
     await pool.query(`UPDATE products SET ${setClause} WHERE id = ?`, values);
+
+    // Variants + Units (optional sync) 
+    // If the client sends these fields, treat them as the desired state and sync DB accordingly.
+    if (variantsJson !== undefined) {
+      let parsed = [];
+      try { parsed = typeof variantsJson === 'string' ? JSON.parse(variantsJson) : variantsJson; } catch {}
+      if (Array.isArray(parsed)) {
+        const desiredIds = parsed
+          .map(v => Number(v?.id ?? 0))
+          .filter(n => Number.isFinite(n) && n > 0);
+
+        if (parsed.length === 0) {
+          await pool.query('DELETE FROM product_variants WHERE product_id = ?', [id]);
+        } else {
+          if (desiredIds.length > 0) {
+            await pool.query(
+              'DELETE FROM product_variants WHERE product_id = ? AND id NOT IN (?)',
+              [id, desiredIds]
+            );
+          } else {
+            // All variants are new (no IDs) => replace any existing variants.
+            await pool.query('DELETE FROM product_variants WHERE product_id = ?', [id]);
+          }
+
+          for (const v of parsed) {
+            const variantId = Number(v?.id ?? 0);
+            const payloadVals = [
+              v?.variant_name,
+              v?.variant_type || 'Autre',
+              v?.reference,
+              Number(v?.prix_achat ?? 0),
+              Number(v?.cout_revient ?? 0),
+              Number(v?.cout_revient_pourcentage ?? 0),
+              Number(v?.prix_gros ?? 0),
+              Number(v?.prix_gros_pourcentage ?? 0),
+              Number(v?.prix_vente_pourcentage ?? 0),
+              Number(v?.prix_vente ?? 0),
+              Number(v?.remise_client ?? 0),
+              Number(v?.remise_artisan ?? 0),
+              Number(v?.stock_quantity ?? 0),
+            ];
+
+            if (variantId && Number.isFinite(variantId)) {
+              const [updated] = await pool.query(
+                `UPDATE product_variants
+                 SET variant_name = ?, variant_type = ?, reference = ?,
+                     prix_achat = ?, cout_revient = ?, cout_revient_pourcentage = ?,
+                     prix_gros = ?, prix_gros_pourcentage = ?,
+                     prix_vente_pourcentage = ?, prix_vente = ?,
+                     remise_client = ?, remise_artisan = ?, stock_quantity = ?,
+                     updated_at = ?
+                 WHERE id = ? AND product_id = ?`,
+                [...payloadVals, now, variantId, id]
+              );
+
+              // If the provided ID doesn't belong to this product, fall back to insert.
+              if (!(updated && updated.affectedRows > 0)) {
+                await pool.query(
+                  `INSERT INTO product_variants (
+                    product_id, variant_name, variant_type, reference,
+                    prix_achat, cout_revient, cout_revient_pourcentage,
+                    prix_gros, prix_gros_pourcentage,
+                    prix_vente_pourcentage, prix_vente,
+                    remise_client, remise_artisan, stock_quantity,
+                    created_at, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [id, ...payloadVals, now, now]
+                );
+              }
+            } else {
+              await pool.query(
+                `INSERT INTO product_variants (
+                  product_id, variant_name, variant_type, reference,
+                  prix_achat, cout_revient, cout_revient_pourcentage,
+                  prix_gros, prix_gros_pourcentage,
+                  prix_vente_pourcentage, prix_vente,
+                  remise_client, remise_artisan, stock_quantity,
+                  created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [id, ...payloadVals, now, now]
+              );
+            }
+          }
+        }
+      }
+    }
+
+    if (unitsJson !== undefined) {
+      let parsed = [];
+      try { parsed = typeof unitsJson === 'string' ? JSON.parse(unitsJson) : unitsJson; } catch {}
+      if (Array.isArray(parsed)) {
+        const desiredIds = parsed
+          .map(u => Number(u?.id ?? 0))
+          .filter(n => Number.isFinite(n) && n > 0);
+
+        if (parsed.length === 0) {
+          await pool.query('DELETE FROM product_units WHERE product_id = ?', [id]);
+        } else {
+          if (desiredIds.length > 0) {
+            await pool.query(
+              'DELETE FROM product_units WHERE product_id = ? AND id NOT IN (?)',
+              [id, desiredIds]
+            );
+          } else {
+            await pool.query('DELETE FROM product_units WHERE product_id = ?', [id]);
+          }
+
+          for (const u of parsed) {
+            const unitId = Number(u?.id ?? 0);
+            const unitVals = [
+              u?.unit_name,
+              Number(u?.conversion_factor ?? 0),
+              u?.is_default ? 1 : 0,
+            ];
+
+            if (unitId && Number.isFinite(unitId)) {
+              const [updated] = await pool.query(
+                `UPDATE product_units
+                 SET unit_name = ?, conversion_factor = ?, is_default = ?, updated_at = ?
+                 WHERE id = ? AND product_id = ?`,
+                [...unitVals, now, unitId, id]
+              );
+              if (!(updated && updated.affectedRows > 0)) {
+                await pool.query(
+                  `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_default, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)`,
+                  [id, ...unitVals, now, now]
+                );
+              }
+            } else {
+              await pool.query(
+                `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_default, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [id, ...unitVals, now, now]
+              );
+            }
+          }
+        }
+      }
+    }
 
     // Append any new gallery images with incremental positions
     const newGallery = req.files?.['gallery'] || [];

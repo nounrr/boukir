@@ -133,11 +133,14 @@ export default function ImportExcel() {
       setStatus("Envoi du fichier…");
       setProgress(10);
 
+      const token = localStorage.getItem('token');
+
       const fd = new FormData();
       fd.append("file", file);
 
       const res = await fetch("/api/import/products-excel", {
         method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: fd, // ne pas mettre de Content-Type manuel
       });
 
@@ -146,7 +149,12 @@ export default function ImportExcel() {
         throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
       }
 
-      setStatus(`Import OK (${data?.inserted ?? "?"} lignes) ✅`);
+      const inserted = data?.inserted;
+      const updated = data?.updated;
+      const total = data?.total;
+      setStatus(
+        `Import OK (total: ${total ?? "?"}, ajoutés: ${inserted ?? "?"}, modifiés: ${updated ?? "?"}) ✅`
+      );
       setProgress(100);
       alert("Import terminé ✅");
     } catch (e: any) {
