@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type React from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, MoreHorizontal, Send } from 'lucide-react';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
@@ -10,8 +11,6 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   import ThermalPrintModal from '../components/ThermalPrintModal';
   import BonPrintModal from '../components/BonPrintModal';
   import SearchableSelect from '../components/SearchableSelect';
-  // Centralize action/status icon size for easier adjustment
-  const ACTION_ICON_SIZE = 24; // increased from 20 per user request
   import { 
     useGetBonsByTypeQuery, 
     useDeleteBonMutation, 
@@ -24,7 +23,6 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   } from '../store/api/contactsApi';
   import { useGetProductsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
-  import { sendWhatsApp } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
   import { uploadBonPdf } from '../utils/uploads';
@@ -38,6 +36,24 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   import { useNavigate } from 'react-router-dom';
   
   
+
+// Centralize action/status icon size for easier adjustment
+const ACTION_ICON_SIZE = 24; // increased from 20 per user request
+
+const normalizeHumanName = (value: unknown) => {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const isKhezinAwatifName = (name: unknown) => {
+  const n = normalizeHumanName(name);
+  if (!n) return false;
+  return ['khezin', 'awatif'].every((t) => n.includes(t));
+};
 
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
@@ -373,6 +389,26 @@ const BonsPage = () => {
       return supplier ? supplier.nom_complet : 'Fournisseur supprimé';
     }
     return 'Non défini';
+  };
+
+  // Safely render any text value (handles Buffer-like {type:'Buffer', data:[..]})
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isBufferLike = (o: any): o is { type: 'Buffer'; data: number[] } => {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    return !!o && typeof o === 'object' && (o as any).type === 'Buffer' && Array.isArray((o as any).data);
+  };
+  const safeText = (v: any): string => {
+    if (v == null) return '-';
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (isBufferLike(v)) {
+      try {
+        const arr = Uint8Array.from(v.data.map((n) => Number(n) || 0));
+        return new TextDecoder().decode(arr) || '-';
+      } catch {
+        return '[binaire]';
+      }
+    }
+    return String(v);
   };
 
   // Flatten a bon into a single searchable string containing most fields and nested item values
@@ -747,26 +783,6 @@ const BonsPage = () => {
 
   // showAuditCols already declared earlier; reuse it
 
-  // Safely render any text value (handles Buffer-like {type:'Buffer', data:[..]})
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const isBufferLike = (o: any): o is { type: 'Buffer'; data: number[] } => {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-    return !!o && typeof o === 'object' && (o as any).type === 'Buffer' && Array.isArray((o as any).data);
-  };
-  const safeText = (v: any): string => {
-    if (v == null) return '-';
-    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
-    if (isBufferLike(v)) {
-      try {
-        const arr = Uint8Array.from(v.data.map((n) => Number(n) || 0));
-        return new TextDecoder().decode(arr) || '-';
-      } catch {
-        return '[binaire]';
-      }
-    }
-    return String(v);
-  };
-
   // Audit meta: created_by_name and updated_by_name per bon id, by type->table mapping
   const tableForType = (t: string) => {
     switch (t) {
@@ -846,8 +862,8 @@ const BonsPage = () => {
         bon.observations ? `Note: ${bon.observations}` : '',
         bonItems.length
           ? 'Articles:\n' + bonItems.map((it: any) => {
-              const montantLigne = it.total || it.montant_ligne || ((it.quantite || it.qty || 1) * (it.prix_unitaire || it.prix || 0));
-              return `  - ${it.nom || it.name || it.designation || ''} x${it.quantite || it.qty || 1} @ ${Number(montantLigne).toFixed(2)} DH`;
+              const unit = it.prix_unitaire || it.prix || 0;
+              return `  - ${it.nom || it.name || it.designation || ''} x${it.quantite || it.qty || 1} @ ${Number(unit).toFixed(2)} DH`;
             }).join('\n')
           : '',
         'Merci.'
@@ -856,6 +872,7 @@ const BonsPage = () => {
 
       let editedMessage = initialMessage;
       let selectedCompany: 'DIAMOND' | 'MPC' = 'DIAMOND';
+      let selectedUsePromo: boolean = false;
 
       // 1) Popup de prévisualisation/édition du message (sauf si skipConfirmation)
       if (!skipConfirmation) {
@@ -873,6 +890,10 @@ const BonsPage = () => {
                   <option value="MPC">MPC</option>
                 </select>
               </div>
+              <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="use-promo-checkbox" />
+                <label for="use-promo-checkbox" style="cursor:pointer">Utiliser promo (afficher prix original et %)</label>
+              </div>
             </div>
           `,
           input: 'textarea',
@@ -885,15 +906,18 @@ const BonsPage = () => {
           customClass: { popup: 'swal2-show' },
           preConfirm: (val) => {
             const companySelect = document.getElementById('company-select') as HTMLSelectElement;
+            const usePromoCheckbox = document.getElementById('use-promo-checkbox') as HTMLInputElement;
             return {
               message: typeof val === 'string' ? val : initialMessage,
-              company: (companySelect?.value || 'DIAMOND') as 'DIAMOND' | 'MPC'
+              company: (companySelect?.value || 'DIAMOND') as 'DIAMOND' | 'MPC',
+              usePromo: !!usePromoCheckbox?.checked
             };
           }
         });
         if (!result.isConfirmed) return; // annulé
         editedMessage = (result.value as any)?.message || initialMessage;
         selectedCompany = (result.value as any)?.company || 'DIAMOND';
+        selectedUsePromo = (result.value as any)?.usePromo === true;
       }
 
       // 2) Générer le PDF et envoyer
@@ -918,8 +942,10 @@ const BonsPage = () => {
           bon={bon}
           client={resolvedClient}
           fournisseur={resolvedSupplier}
+          products={products as any}
           size="A4"
           companyType={selectedCompany}
+          usePromo={selectedUsePromo}
         />
       );
 
@@ -939,33 +965,6 @@ const BonsPage = () => {
       // Store for error visibility
       debugMediaUrl = mediaUrl;
       console.debug('[WhatsApp] Media URL prepared:', debugMediaUrl, uploadResult);
-
-      // Extraire le chemin relatif du PDF pour le template (ex: "sortie/SOR3168-sortie-3168-1762080962793")
-      // uploadResult.url format: "/uploads/bons_pdf/sortie/SOR3168-sortie-3168-1762080962793.pdf"
-      const pdfRelativePath = uploadResult.url
-        .replace(/^\/uploads\/bons_pdf\//, '') // Enlever le préfixe
-        .replace(/\.pdf$/, ''); // Enlever l'extension
-
-      // Résoudre le nom de la société ou fallback sur le nom du contact
-      let contactNameOrSociete = "Client";
-      if (resolvedClient) {
-        // Priorité: nom_societe si disponible, sinon nom_complet
-        contactNameOrSociete = resolvedClient.nom_societe || resolvedClient.societe || resolvedClient.nom_complet || "Client";
-      } else if (resolvedSupplier) {
-        // Pour les fournisseurs aussi
-        contactNameOrSociete = resolvedSupplier.nom_societe || resolvedSupplier.societe || resolvedSupplier.nom_complet || "Fournisseur";
-      } else {
-        // Fallback sur getContactName (inclut client_nom pour Comptant/Devis)
-        contactNameOrSociete = getContactName(bon) || "Client";
-      }
-
-      // Utiliser le template approuvé avec paramètres
-      const templateParams = {
-        "1": contactNameOrSociete, // Nom de la société ou nom du contact
-        "2": getDisplayNumero(bon) || "N/A", // Numéro du bon
-        "3": `${computeMontantTotal(bon).toFixed(2)} DH`, // Montant total
-        "4": pdfRelativePath // Chemin relatif du PDF
-      };
 
       // Utiliser la route /whatsapp/bon pour tous les types (envoie le PDF en pièce jointe)
       const numeroDisplay = getDisplayNumero(bon) || 'N/A';
@@ -1065,7 +1064,7 @@ const BonsPage = () => {
   }, [onMouseMove, onMouseDown]);
 
   // Réinitialiser la page quand on change d'onglet ou de recherche
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentPage(1);
   }, [currentTab, searchTerm]);
 
@@ -1091,6 +1090,8 @@ const BonsPage = () => {
         try {
       await deleteBonMutation({ id: bonToDelete.id, type: bonToDelete.type || currentTab }).unwrap();
           showSuccess('Bon supprimé avec succès');
+          // Rafraîchir les produits pour mettre à jour les quantités immédiatement
+          try { refetchProducts(); } catch {}
         } catch (error: any) {
           console.error('Erreur lors de la suppression:', error);
           showError(`Erreur lors de la suppression: ${error.message || 'Erreur inconnue'}`);
@@ -1148,6 +1149,20 @@ const BonsPage = () => {
           created_by: currentUser?.id || 1,
           items: selectedBonForDuplicate.items || []
         };
+
+        const shouldMarkNotCalculated = (() => {
+          if (duplicateType === 'comptant' || duplicateType === 'avoirComptant') {
+            return isKhezinAwatifName(comptantClientName);
+          }
+          // client/fournisseur selection by id
+          if (selectedContactForDuplicate) {
+            const list = duplicateType === 'fournisseur' || duplicateType === 'avoirFournisseur' ? suppliers : clients;
+            const match = (list as any[]).find((c: any) => String(c?.id) === String(selectedContactForDuplicate));
+            const name = match?.nom_complet || match?.nom || match?.name;
+            return isKhezinAwatifName(name);
+          }
+          return false;
+        })();
 
         // Traiter les articles selon le type de duplication
         const sourceItems = parseItemsSafe(selectedBonForDuplicate.items);
@@ -1251,6 +1266,10 @@ const BonsPage = () => {
             }, 0);
             newBonData.montant_total = newTotal;
           }
+        }
+
+        if (shouldMarkNotCalculated) {
+          newBonData.isNotCalculated = true;
         }
         
         // Créer le bon directement via l'API
@@ -2477,6 +2496,7 @@ const BonsPage = () => {
           }}
           bon={selectedBonForPrint}
           type={(currentTab === 'Avoir' || currentTab === 'AvoirComptant') ? 'AvoirClient' : currentTab}
+          products={products}
           contact={(() => {
             const b = selectedBonForPrint;
             if (!b) return null;
@@ -2540,6 +2560,7 @@ const BonsPage = () => {
             setSelectedBonForPDFPrint(null);
           }}
           bon={selectedBonForPDFPrint}
+          products={products}
           client={(() => {
             if (!selectedBonForPDFPrint) return undefined;
             const bon = selectedBonForPDFPrint;

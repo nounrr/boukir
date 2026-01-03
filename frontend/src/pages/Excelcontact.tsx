@@ -113,11 +113,14 @@ export default function ImportContacts() {
       setStatus("Envoi du fichier…");
       setProgress(30);
 
+      const token = localStorage.getItem('token');
+
       const fd = new FormData();
       fd.append("file", file);
 
       const res = await fetch("/api/import/contacts-excel", {
         method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: fd, // ne pas définir Content-Type manuellement
       });
 

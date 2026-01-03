@@ -226,36 +226,75 @@ const ChiffreAffairesDetailPage: React.FC = () => {
     return [];
   };
 
+  // Robust number parser: handles strings, commas, and mixed characters
+  const toNumber = (v: any): number => {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    if (v == null) return 0;
+    const s = String(v).trim();
+    if (!s) return 0;
+    // Replace comma with dot, strip non-numeric except dot and minus
+    const cleaned = s.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  };
+
   const resolveCost = (item: any): number => {
-    const product = products.find((p: any) => p.id === item.product_id);
-    if (product?.prix_achat) return Number(product.prix_achat);
-    if (product?.cout_revient) return Number(product.cout_revient);
+    // Prefer item-provided costs if present
+    if (item?.cout_revient !== undefined && item?.cout_revient !== null) {
+      const v = toNumber(item.cout_revient);
+      if (!Number.isNaN(v)) return v;
+    }
+    if (item?.prix_achat !== undefined && item?.prix_achat !== null) {
+      const v = toNumber(item.prix_achat);
+      if (!Number.isNaN(v)) return v;
+    }
+    // Try various product id fields
+    const pid = item?.product_id ?? item?.produit_id ?? item?.product?.id ?? item?.produit?.id;
+    if (pid != null) {
+      const product = products.find((p: any) => String(p.id) === String(pid));
+      if (product) {
+        const pa = product.prix_achat;
+        const cr = product.cout_revient;
+        if (pa !== undefined && pa !== null) {
+          const v = toNumber(pa);
+          if (!Number.isNaN(v)) return v;
+        }
+        if (cr !== undefined && cr !== null) {
+          const v = toNumber(cr);
+          if (!Number.isNaN(v)) return v;
+        }
+      }
+    }
     return 0;
   };
 
-  // Use the same calculation logic as ChiffreAffairesPage
+  // Align movement/profit calculation with BonsPage (no remise subtracted from profit)
   const computeMouvementDetail = (bon: any) => {
     const items = parseItemsSafe(bon.items);
-    let profitNet = 0; // après remises
-    let profitBrut = 0; // avant remises
+    let profit = 0; // Mouvement: Σ((PV - coût) × Qté)
     let costBase = 0;
     let totalRemise = 0;
     const itemsDetail = [];
-    
+
     for (const it of items) {
-      const q = Number(it.quantite || 0);
+      // Quantity fallbacks
+      const q = toNumber(it.quantite ?? it.qte ?? it.qty ?? it.quantity ?? 0);
       if (!q) continue;
-      const prixVente = Number(it.prix_unitaire || 0);
+      // Robust price resolution (align closer to BonsPage)
+      const prixVente = toNumber(
+        it.prix_unitaire ?? it.prix_vente ?? it.pu ?? it.price ?? it.prix ?? 0
+      );
       let cost = 0;
-      if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
-      else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
+      if (it.cout_revient !== undefined && it.cout_revient !== null) cost = toNumber(it.cout_revient) || 0;
+      else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = toNumber(it.prix_achat) || 0;
       else cost = resolveCost(it);
+
       const remiseLigne = Number(it.remise_montant || it.remise_valeur || 0) || 0;
-      const remiseTotale = remiseLigne * q;
+      const remiseTotale = toNumber(remiseLigne) * q;
       const montant_ligne = prixVente * q;
-      
-      profitBrut += (prixVente - cost) * q;
-      profitNet += (prixVente - cost) * q - remiseTotale;
+
+      profit += (prixVente - cost) * q;
       totalRemise += remiseTotale;
       costBase += cost * q;
 
@@ -266,37 +305,37 @@ const ChiffreAffairesDetailPage: React.FC = () => {
         cout_revient: it.cout_revient,
         prix_achat: it.prix_achat,
         montant_ligne,
-        profit: (prixVente - cost) * q - remiseTotale,
-        profitBrut: (prixVente - cost) * q,
+        profit: (prixVente - cost) * q, // profit sans remise
+        profitBrut: (prixVente - cost) * q, // identique ici
         remise_unitaire: remiseLigne,
         remise_total: remiseTotale
       });
     }
-    
-    const marginPct = costBase > 0 ? (profitNet / costBase) * 100 : null;
-    return { 
-      profitNet, 
-      profitBrut, 
-      costBase, 
-      marginPct, 
+
+    const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
+    return {
+      profit,
+      costBase,
+      marginPct,
       totalRemise,
       items: itemsDetail,
-      totalBon: Number(bon.montant_total || 0) // Use the montant_total from bon
+      totalBon: Number(bon.montant_total || 0)
     };
   };
 
   const computeBonDetail = (bon: any) => {
-    const detail = computeMouvementDetail(bon);
-    
+    const clientDetail = computeMouvementDetail(bon);
+    const calc = bon?.calc;
+    const totalBon = clientDetail.totalBon;
     return {
       bonId: bon.id,
       bonNumero: bon.numero || `#${bon.id}`,
       bonType: bon.type,
-      items: detail.items,
-      totalBon: detail.totalBon,
-      profitBon: detail.profitNet, // Use profitNet from the same calculation as ChiffreAffairesPage
-      totalRemiseBon: detail.totalRemise,
-      netTotalBon: detail.totalBon - detail.totalRemise
+      items: Array.isArray(calc?.items) ? calc.items : clientDetail.items,
+      totalBon,
+      profitBon: typeof calc?.profitBon === 'number' ? calc.profitBon : clientDetail.profit,
+      totalRemiseBon: typeof calc?.totalRemiseBon === 'number' ? calc.totalRemiseBon : clientDetail.totalRemise,
+      netTotalBon: typeof calc?.netTotalBon === 'number' ? calc.netTotalBon : (totalBon - clientDetail.totalRemise)
     };
   };
 
@@ -611,7 +650,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                         <div className="text-sm text-gray-500 mt-2">
                           * Calcul: Profits (Ventes) - Profits (Avoirs Client) - Profits (Avoirs Comptant) - Montant Total (Bons Véhicule)
                           <br />
-                          * Profit ligne = ((PV - Coût) × Qté) - (Remise unitaire × Qté)
+                          * Profit ligne = ((PV - Coût) × Qté)
+                          <br />
+                          * Les remises n'affectent pas le profit, elles n'affectent que le total net d'un bon.
                           <br />
                           * Les bons véhicule sont déduits en montant total (pas en profit)
                         </div>
