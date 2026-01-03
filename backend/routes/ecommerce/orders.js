@@ -35,6 +35,8 @@ router.post('/', async (req, res, next) => {
       // Order details
       payment_method = 'cash_on_delivery', // 'cash_on_delivery', 'card', 'bank_transfer'
       customer_notes,
+      // Optional promo code
+      promo_code,
       
       // Items can come from cart or be provided directly
       use_cart = true, // If true, use user's cart; if false, use items array
@@ -204,8 +206,73 @@ router.post('/', async (req, res, next) => {
     // Calculate totals (you can add tax/shipping calculation here)
     const taxAmount = 0; // TODO: Calculate tax if needed
     const shippingCost = 0; // TODO: Calculate shipping if needed
-    const discountAmount = validatedItems.reduce((sum, item) => sum + item.discount_amount, 0);
-    const totalAmount = subtotal + taxAmount + shippingCost;
+    let discountAmount = validatedItems.reduce((sum, item) => sum + item.discount_amount, 0);
+
+    // Promo code validation (if provided)
+    let promoDiscountAmount = 0;
+    let promoCodeId = null;
+    if (promo_code) {
+      const [promoRows] = await connection.query(`
+        SELECT id, code, type, value, max_discount_amount, min_order_amount, max_redemptions, redeemed_count, active,
+               start_date, end_date
+        FROM ecommerce_promo_codes
+        WHERE code = ? AND active = 1
+        LIMIT 1
+      `, [promo_code]);
+
+      if (promoRows.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Code promo invalide ou inactif' });
+      }
+
+      const promo = promoRows[0];
+
+      // Date window checks
+      const now = new Date();
+      if (promo.start_date && now < new Date(promo.start_date)) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Code promo pas encore actif' });
+      }
+      if (promo.end_date && now > new Date(promo.end_date)) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Code promo expiré' });
+      }
+
+      // Redemption limit
+      if (promo.max_redemptions !== null && promo.max_redemptions > 0 && promo.redeemed_count >= promo.max_redemptions) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Code promo a atteint sa limite d\'utilisation' });
+      }
+
+      // Minimum order amount
+      if (promo.min_order_amount && subtotal < Number(promo.min_order_amount)) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Montant minimum non atteint pour le code promo' });
+      }
+
+      // Compute discount
+      if (promo.type === 'percentage') {
+        promoDiscountAmount = (Number(promo.value) / 100) * subtotal;
+      } else {
+        promoDiscountAmount = Number(promo.value);
+      }
+
+      // Cap discount
+      if (promo.max_discount_amount) {
+        promoDiscountAmount = Math.min(promoDiscountAmount, Number(promo.max_discount_amount));
+      }
+
+      // Ensure non-negative and not exceeding subtotal
+      promoDiscountAmount = Math.max(0, Math.min(promoDiscountAmount, subtotal));
+
+      // Track promo id to update redemption after order creation
+      promoCodeId = promo.id;
+
+      // Accumulate into global discount
+      discountAmount += promoDiscountAmount;
+    }
+
+    const totalAmount = subtotal + taxAmount + shippingCost - promoDiscountAmount;
 
     // Create order
     const orderNumber = generateOrderNumber();
@@ -227,13 +294,15 @@ router.post('/', async (req, res, next) => {
         tax_amount,
         shipping_cost,
         discount_amount,
+        promo_code,
+        promo_discount_amount,
         total_amount,
         status,
         payment_status,
         payment_method,
         customer_notes,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', ?, ?, NOW())
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `, [
       orderNumber,
       userId,
@@ -250,7 +319,11 @@ router.post('/', async (req, res, next) => {
       taxAmount,
       shippingCost,
       discountAmount,
+      promo_code || null,
+      promoDiscountAmount,
       totalAmount,
+      'pending', // status
+      'pending', // payment_status
       payment_method,
       customer_notes || null
     ]);
@@ -323,6 +396,16 @@ router.post('/', async (req, res, next) => {
       ) VALUES (?, NULL, 'pending', 'customer', 'Order created')
     `, [orderId]);
 
+    // Increase promo code redemption counter if used
+    if (promoCodeId) {
+      await connection.query(`
+        UPDATE ecommerce_promo_codes
+        SET redeemed_count = redeemed_count + 1,
+            updated_at = NOW()
+        WHERE id = ?
+      `, [promoCodeId]);
+    }
+
     // Clear user's cart if order was from cart
     if (use_cart && userId) {
       await connection.query(`
@@ -366,12 +449,14 @@ router.get('/', async (req, res, next) => {
       });
     }
 
-    let query = `
+    // Fetch orders with shipping details
+    const [orders] = await pool.query(`
       SELECT 
         o.id,
         o.order_number,
         o.customer_name,
         o.customer_email,
+        o.customer_phone,
         o.total_amount,
         o.status,
         o.payment_status,
@@ -380,15 +465,68 @@ router.get('/', async (req, res, next) => {
         o.confirmed_at,
         o.shipped_at,
         o.delivered_at,
-        COUNT(oi.id) as items_count
+        o.shipping_address_line1,
+        o.shipping_address_line2,
+        o.shipping_city,
+        o.shipping_state,
+        o.shipping_postal_code,
+        o.shipping_country
       FROM ecommerce_orders o
-      LEFT JOIN ecommerce_order_items oi ON o.id = oi.order_id
       WHERE ${userId ? 'o.user_id = ?' : 'o.customer_email = ?'}
-      GROUP BY o.id
       ORDER BY o.created_at DESC
-    `;
+    `, [userId || email]);
 
-    const [orders] = await pool.query(query, [userId || email]);
+    const orderIds = orders.map(o => o.id);
+
+    let itemsByOrder = new Map();
+    if (orderIds.length > 0) {
+      // Fetch items for all orders, with image URLs
+      const [items] = await pool.query(`
+        SELECT 
+          oi.order_id,
+          oi.id,
+          oi.product_id,
+          oi.variant_id,
+          oi.unit_id,
+          oi.product_name,
+          oi.product_name_ar,
+          oi.variant_name,
+          oi.variant_type,
+          oi.unit_name,
+          oi.unit_price,
+          oi.quantity,
+          oi.subtotal,
+          oi.discount_percentage,
+          oi.discount_amount,
+          COALESCE(pv.image_url, p.image_url) AS image_url
+        FROM ecommerce_order_items oi
+        LEFT JOIN products p ON oi.product_id = p.id
+        LEFT JOIN product_variants pv ON oi.variant_id = pv.id
+        WHERE oi.order_id IN (${orderIds.map(() => '?').join(',')})
+        ORDER BY oi.order_id, oi.id
+      `, orderIds);
+
+      for (const it of items) {
+        if (!itemsByOrder.has(it.order_id)) itemsByOrder.set(it.order_id, []);
+        itemsByOrder.get(it.order_id).push({
+          id: it.id,
+          product_id: it.product_id,
+          variant_id: it.variant_id,
+          unit_id: it.unit_id,
+          product_name: it.product_name,
+          product_name_ar: it.product_name_ar,
+          variant_name: it.variant_name,
+          variant_type: it.variant_type,
+          unit_name: it.unit_name,
+          unit_price: Number(it.unit_price),
+          quantity: Number(it.quantity),
+          subtotal: Number(it.subtotal),
+          discount_percentage: Number(it.discount_percentage),
+          discount_amount: Number(it.discount_amount),
+          image_url: it.image_url || null,
+        });
+      }
+    }
 
     res.json({
       orders: orders.map(order => ({
@@ -396,15 +534,25 @@ router.get('/', async (req, res, next) => {
         order_number: order.order_number,
         customer_name: order.customer_name,
         customer_email: order.customer_email,
+        customer_phone: order.customer_phone,
         total_amount: Number(order.total_amount),
         status: order.status,
         payment_status: order.payment_status,
         payment_method: order.payment_method,
-        items_count: Number(order.items_count),
         created_at: order.created_at,
         confirmed_at: order.confirmed_at,
         shipped_at: order.shipped_at,
-        delivered_at: order.delivered_at
+        delivered_at: order.delivered_at,
+        shipping_address: {
+          line1: order.shipping_address_line1,
+          line2: order.shipping_address_line2,
+          city: order.shipping_city,
+          state: order.shipping_state,
+          postal_code: order.shipping_postal_code,
+          country: order.shipping_country,
+        },
+        items: itemsByOrder.get(order.id) || [],
+        items_count: (itemsByOrder.get(order.id) || []).length,
       })),
       total: orders.length
     });
@@ -729,6 +877,22 @@ router.post('/:id/cancel', async (req, res, next) => {
       SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
       WHERE id = ?
     `, [orderId]);
+
+    // If a promo code was used on this order, decrement redemption counter
+    const [promoInfoRows] = await connection.query(`
+      SELECT promo_code, promo_discount_amount
+      FROM ecommerce_orders
+      WHERE id = ?
+    `, [orderId]);
+    const promoUsed = promoInfoRows[0]?.promo_code;
+    if (promoUsed) {
+      await connection.query(`
+        UPDATE ecommerce_promo_codes
+        SET redeemed_count = CASE WHEN redeemed_count > 0 THEN redeemed_count - 1 ELSE 0 END,
+            updated_at = NOW()
+        WHERE code = ?
+      `, [promoUsed]);
+    }
 
     // Log cancellation
     await connection.query(`
