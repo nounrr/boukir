@@ -12,6 +12,7 @@ import { initializeSocketServer } from './socket/socketServer.js';
 
 import pool, { requestContext } from './db/pool.js';
 import { verifyToken } from './middleware/auth.js';
+import jwt from 'jsonwebtoken';
 
 import employeesRouter from './routes/employees.js';
 import authRouter from './routes/auth.js';
@@ -20,6 +21,12 @@ import usersRouter from './routes/users.js';
 import categoriesRouter from './routes/categories.js';
 import brandsRouter from './routes/brands.js';
 import productsRouter from './routes/products.js';
+import ecommerceProductsRouter from './routes/ecommerce/products.js';
+import ecommerceCartRouter from './routes/ecommerce/cart.js';
+import ecommerceWishlistRouter from './routes/ecommerce/wishlist.js';
+import ecommerceOrdersRouter from './routes/ecommerce/orders.js';
+import ecommercePromoRouter from './routes/ecommerce/promo.js';
+import promoCodesRouter from './routes/promoCodes.js';
 import contactsRouter from './routes/contacts.js';
 import vehiculesRouter from './routes/vehicules.js';
 
@@ -77,6 +84,32 @@ app.use((req, _res, next) => {
   );
 });
 
+// Optional authentication middleware (for public routes that benefit from auth data)
+const optionalAuth = (req, res, next) => {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return next(); // No token, continue without user
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    req.user = decoded;
+
+    // Update context if available
+    const store = requestContext.getStore();
+    if (store && decoded?.id) {
+      store.userId = decoded.id;
+    }
+  } catch (err) {
+    // Invalid token, but don't fail - just continue without user
+    console.log('Optional auth: Invalid token, continuing without user');
+  }
+
+  next();
+};
+
 // Auth global (sauf endpoints publics) + sync userId après vérification
 const PUBLIC_PATHS = new Set([
   '/api/health',
@@ -95,13 +128,33 @@ const PUBLIC_PATHS = new Set([
   '/api/notifications/whatsapp/bon-test',
 ]);
 
+// E-commerce public routes (no authentication required)
+const ECOMMERCE_PUBLIC_PREFIXES = [
+  '/api/ecommerce/products',
+  '/api/ecommerce/promo',
+];
+
 app.use((req, res, next) => {
+  // Debug logging
+  if (req.path.includes('ecommerce')) {
+    console.log('🔍 Ecommerce request:', {
+      path: req.path,
+      url: req.url,
+      originalUrl: req.originalUrl,
+      prefixes: ECOMMERCE_PUBLIC_PREFIXES,
+      matches: ECOMMERCE_PUBLIC_PREFIXES.some(prefix => req.path.startsWith(prefix))
+    });
+  }
+
   if (PUBLIC_PATHS.has(req.path)) return next();
 
   // Autoriser l'accès public aux fichiers statiques uploadés
   if (req.path.startsWith('/uploads/')) return next();
   // Rendre publiques toutes les routes IA
   if (req.path.startsWith('/api/ai')) return next();
+
+  // Autoriser l'accès public aux endpoints e-commerce
+  if (ECOMMERCE_PUBLIC_PREFIXES.some(prefix => req.path.startsWith(prefix))) return next();
 
   verifyToken(req, res, () => {
     const store = requestContext.getStore();
@@ -164,6 +217,13 @@ app.use('/api/users/auth', usersRouter); // E-commerce users authentication
 app.use('/api/categories', categoriesRouter);
 app.use('/api/brands', brandsRouter);
 app.use('/api/products', productsRouter);
+app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
+app.use('/api/ecommerce/promo', optionalAuth, ecommercePromoRouter); // E-commerce promo validation (public)
+app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
+app.use('/api/ecommerce/wishlist', ecommerceWishlistRouter); // E-commerce wishlist (requires auth)
+app.use('/api/ecommerce/orders', ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
+// Backoffice promo codes management (protected, non-ecommerce namespace)
+app.use('/api/promo-codes', promoCodesRouter);
 app.use('/api/contacts', contactsRouter);
 app.use('/api/vehicules', vehiculesRouter);
 

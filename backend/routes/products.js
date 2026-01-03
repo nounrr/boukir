@@ -309,6 +309,43 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE product_variants ADD COLUMN image_url VARCHAR(255) NULL`);
   }
 
+  // Check pricing fields in product_variants
+  const [colsVarCout] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'cout_revient'`
+  );
+  if (!colsVarCout.length) {
+    await pool.query(`ALTER TABLE product_variants ADD COLUMN cout_revient DECIMAL(10,2) DEFAULT 0`);
+  }
+  const [colsVarCoutPct] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'cout_revient_pourcentage'`
+  );
+  if (!colsVarCoutPct.length) {
+    await pool.query(`ALTER TABLE product_variants ADD COLUMN cout_revient_pourcentage DECIMAL(5,2) DEFAULT 0`);
+  }
+  const [colsVarGros] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'prix_gros'`
+  );
+  if (!colsVarGros.length) {
+    await pool.query(`ALTER TABLE product_variants ADD COLUMN prix_gros DECIMAL(10,2) DEFAULT 0`);
+  }
+  const [colsVarGrosPct] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'prix_gros_pourcentage'`
+  );
+  if (!colsVarGrosPct.length) {
+    await pool.query(`ALTER TABLE product_variants ADD COLUMN prix_gros_pourcentage DECIMAL(5,2) DEFAULT 0`);
+  }
+  const [colsVarVentePct] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'prix_vente_pourcentage'`
+  );
+  if (!colsVarVentePct.length) {
+    await pool.query(`ALTER TABLE product_variants ADD COLUMN prix_vente_pourcentage DECIMAL(5,2) DEFAULT 0`);
+  }
+
   // Check remises in product_variants
   const [colsRemiseClientVar] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS 

@@ -24,22 +24,13 @@ dist-ssr
 *.sw?
 
 # Backend secrets & config
-backend/.env
-backend/.env.*
-!backend/.env.example
-# Ignore real pool with credentials (use pool.example.js)
 backend/db/pool.js
 backend/.env
+backend/.env.*
 .env
 .env.*
 *.env
-backend/.env.local
-.env
-.env.*
-*.env
-backend/.env
-.env
-.env.*
-*.env
+# Allow example env file (must be last to override ignores)
+!backend/.env.example
 whtsp-servicelocalhost.sql
 localhost.sql
