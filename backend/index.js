@@ -25,6 +25,8 @@ import ecommerceProductsRouter from './routes/ecommerce/products.js';
 import ecommerceCartRouter from './routes/ecommerce/cart.js';
 import ecommerceWishlistRouter from './routes/ecommerce/wishlist.js';
 import ecommerceOrdersRouter from './routes/ecommerce/orders.js';
+import ecommercePromoRouter from './routes/ecommerce/promo.js';
+import promoCodesRouter from './routes/promoCodes.js';
 import contactsRouter from './routes/contacts.js';
 import vehiculesRouter from './routes/vehicules.js';
 
@@ -128,6 +130,7 @@ const PUBLIC_PATHS = new Set([
 // E-commerce public routes (no authentication required)
 const ECOMMERCE_PUBLIC_PREFIXES = [
   '/api/ecommerce/products',
+  '/api/ecommerce/promo',
 ];
 
 app.use((req, res, next) => {
@@ -211,9 +214,12 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/brands', brandsRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
+app.use('/api/ecommerce/promo', optionalAuth, ecommercePromoRouter); // E-commerce promo validation (public)
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
 app.use('/api/ecommerce/wishlist', ecommerceWishlistRouter); // E-commerce wishlist (requires auth)
 app.use('/api/ecommerce/orders', ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
+// Backoffice promo codes management (protected, non-ecommerce namespace)
+app.use('/api/promo-codes', promoCodesRouter);
 app.use('/api/contacts', contactsRouter);
 app.use('/api/vehicules', vehiculesRouter);
 
