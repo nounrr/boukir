@@ -69,7 +69,14 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 
-app.use(cors());
+// Allow all CORS origins (reflect origin to support credentials)
+const corsOptions = {
+  origin: true,
+  credentials: true,
+};
+app.use(cors(corsOptions));
+// Handle preflight requests for all routes
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
