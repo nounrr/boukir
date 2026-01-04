@@ -322,7 +322,6 @@ router.get('/', async (req, res, next) => {
           id,
           unit_name,
           conversion_factor,
-          prix_vente,
           is_default
         FROM product_units
         WHERE product_id = ?
@@ -333,7 +332,7 @@ router.get('/', async (req, res, next) => {
         id: u.id,
         name: u.unit_name,
         conversion_factor: Number(u.conversion_factor),
-        prix_vente: u.prix_vente ? Number(u.prix_vente) : null,
+        prix_vente: originalPrice * Number(u.conversion_factor || 1),
         is_default: !!u.is_default
       }));
 
@@ -614,13 +613,19 @@ router.get('/:id', async (req, res, next) => {
       }
     }
 
+    // Calculate promo price
+    const originalPrice = Number(r.prix_vente);
+    const promoPercentage = Number(r.pourcentage_promo || 0);
+    const promoPrice = promoPercentage > 0 
+      ? originalPrice * (1 - promoPercentage / 100) 
+      : null;
+
     // Get product units
     const [units] = await pool.query(`
       SELECT 
         id,
         unit_name,
         conversion_factor,
-        prix_vente,
         is_default
       FROM product_units
       WHERE product_id = ?
@@ -631,16 +636,9 @@ router.get('/:id', async (req, res, next) => {
       id: u.id,
       unit_name: u.unit_name,
       conversion_factor: Number(u.conversion_factor),
-      prix_vente: u.prix_vente ? Number(u.prix_vente) : null,
+      prix_vente: originalPrice * Number(u.conversion_factor || 1),
       is_default: !!u.is_default
     }));
-
-    // Calculate promo price
-    const originalPrice = Number(r.prix_vente);
-    const promoPercentage = Number(r.pourcentage_promo || 0);
-    const promoPrice = promoPercentage > 0 
-      ? originalPrice * (1 - promoPercentage / 100) 
-      : null;
 
     // Get smart product suggestions based on category, brand, and promotions
     let suggestions = [];
