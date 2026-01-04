@@ -145,6 +145,15 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   const finalSoldeProducts: number = finalSolde !== undefined ? finalSolde :
     (prList && prList.length > 0 ? Number(prList[prList.length - 1]?.soldeCumulatif || initialSolde) : initialSolde);
 
+  const finalSoldeTransactions: number =
+    finalSolde !== undefined
+      ? finalSolde
+      : (txList && txList.length > 0
+          ? Number(txList[txList.length - 1]?.soldeCumulatif ?? initialSolde)
+          : initialSolde);
+
+  const finalSoldeToShow: number = mode === 'products' ? finalSoldeProducts : finalSoldeTransactions;
+
   // Rendu “Bon N° + Date” (date intégrée dans la même colonne, en dessous)
   const renderBonWithDate = (num: any, dateLike?: string) => {
     const dateTxt = fmtDateTime(dateLike);
@@ -392,6 +401,15 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
               </tfoot>
             )}
           </table>
+        </div>
+      )}
+
+      {showPrices && (
+        <div className="mt-4 flex justify-end">
+          <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
+            <span>Solde final :</span>
+            <span className="font-mono">{fmt(finalSoldeToShow)} DH</span>
+          </div>
         </div>
       )}
     </div>
