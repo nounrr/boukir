@@ -145,6 +145,9 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   const finalSoldeProducts: number = finalSolde !== undefined ? finalSolde :
     (prList && prList.length > 0 ? Number(prList[prList.length - 1]?.soldeCumulatif || initialSolde) : initialSolde);
 
+  const finalSoldeTransactions: number = finalSolde !== undefined ? finalSolde :
+    (txList && txList.length > 0 ? Number(txList[txList.length - 1]?.soldeCumulatif || initialSolde) : initialSolde);
+
   // Rendu “Bon N° + Date” (date intégrée dans la même colonne, en dessous)
   const renderBonWithDate = (num: any, dateLike?: string) => {
     const dateTxt = fmtDateTime(dateLike);
@@ -204,8 +207,14 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
       {/* Bloc contact + période */}
       <div className="mt-4 mb-6 grid grid-cols-2 gap-4">
         <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
-          <div className="text-sm"><span className="font-semibold">Nom:</span> {contactDisplayName}</div>
-          <div className="text-sm"><span className="font-semibold">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
+          <div className="text-sm flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span>
+              <span className="font-semibold">Nom:</span> {contactDisplayName}
+            </span>
+            <span>
+              <span className="font-semibold">Service de charge:</span> <strong>06.66.21.66.57</strong>
+            </span>
+          </div>
         </div>
         {(dateFrom || dateTo) && (
           <div className="text-right text-sm self-start">
@@ -272,6 +281,13 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
               )}
             </tbody>
           </table>
+
+          <div className="mt-3 flex justify-end">
+            <div className="border border-gray-300 bg-gray-50 px-3 py-2 rounded">
+              <div className="text-xs font-semibold text-gray-700">Solde final</div>
+              <div className="text-base font-bold text-gray-900">{fmt(finalSoldeTransactions)} DH</div>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="print-compact">
@@ -392,6 +408,13 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
               </tfoot>
             )}
           </table>
+
+          <div className="mt-3 flex justify-end">
+            <div className="border border-gray-300 bg-gray-50 px-3 py-2 rounded">
+              <div className="text-xs font-semibold text-gray-700">Solde final</div>
+              <div className="text-base font-bold text-gray-900">{fmt(finalSoldeProducts)} DH</div>
+            </div>
+          </div>
         </div>
       )}
     </div>
