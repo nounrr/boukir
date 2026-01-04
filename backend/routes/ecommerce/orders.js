@@ -77,7 +77,7 @@ router.post('/', async (req, res, next) => {
           pv.prix_vente as variant_price,
           pv.stock_quantity as variant_stock,
           pu.unit_name,
-          pu.prix_vente as unit_price
+          pu.conversion_factor
         FROM cart_items ci
         INNER JOIN products p ON ci.product_id = p.id
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
@@ -115,7 +115,7 @@ router.post('/', async (req, res, next) => {
             pv.prix_vente as variant_price,
             pv.stock_quantity as variant_stock,
             pu.unit_name,
-            pu.prix_vente as unit_price
+            pu.conversion_factor
           FROM products p
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
           LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
@@ -155,8 +155,11 @@ router.post('/', async (req, res, next) => {
       let unitPrice = Number(item.base_price);
       if (item.variant_id && item.variant_price !== null) {
         unitPrice = Number(item.variant_price);
-      } else if (item.unit_id && item.unit_price !== null) {
-        unitPrice = Number(item.unit_price);
+      }
+
+      // If unit is selected, adjust by conversion factor
+      if (item.unit_id && item.conversion_factor !== null && item.conversion_factor !== undefined) {
+        unitPrice = unitPrice * Number(item.conversion_factor || 1);
       }
 
       // Apply promo

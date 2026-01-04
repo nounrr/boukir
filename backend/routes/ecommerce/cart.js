@@ -70,8 +70,7 @@ router.get('/', async (req, res, next) => {
         pv.remise_client as variant_remise_client,
         pv.remise_artisan as variant_remise_artisan,
         pu.unit_name,
-        pu.conversion_factor,
-        pu.prix_vente as unit_price
+        pu.conversion_factor
       FROM cart_items ci
       INNER JOIN products p ON ci.product_id = p.id
       LEFT JOIN product_variants pv ON ci.variant_id = pv.id
@@ -95,9 +94,10 @@ router.get('/', async (req, res, next) => {
         effectiveRemiseClient = Number(item.variant_remise_client || 0);
         effectiveRemiseArtisan = Number(item.variant_remise_artisan || 0);
       }
-      // If unit is selected and has custom price, use unit price
-      else if (item.unit_id && item.unit_price !== null) {
-        effectivePrice = Number(item.unit_price);
+
+      // If unit is selected, adjust price by conversion factor
+      if (item.unit_id && item.conversion_factor !== null && item.conversion_factor !== undefined) {
+        effectivePrice = effectivePrice * Number(item.conversion_factor || 1);
       }
 
       // Apply promo
