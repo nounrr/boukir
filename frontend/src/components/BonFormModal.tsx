@@ -267,7 +267,19 @@ const bonValidationSchema = Yup.object({
     if (type === 'Commande' || type === 'AvoirFournisseur') return schema.required('Fournisseur requis');
     return schema.nullable();
   }),
-  items: Yup.array().min(1, 'Au moins un produit requis'),
+  items: Yup.array()
+    .of(
+      Yup.object({
+        product_id: Yup.mixed().test('product-required', 'Produit requis', (v) => {
+          const s = String(v ?? '').trim();
+          return s.length > 0;
+        }),
+        quantite: Yup.number()
+          .typeError('Quantité invalide')
+          .moreThan(0, 'Quantité doit être > 0'),
+      })
+    )
+    .min(1, 'Au moins un produit requis'),
 });
 
 /* ------------------------------- Utilitaires ------------------------------- */
@@ -975,6 +987,22 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
   try {
     // Suppression du blocage lié au stock: permettre la soumission même si la quantité dépasse le stock
+
+    // Quantité: doit être strictement > 0 (basée sur la valeur tapée dans l'input)
+    const invalidQtyRows: number[] = (values.items || [])
+      .map((item: any, idx: number) => {
+        const hasProduct = String(item?.product_id ?? '').trim().length > 0;
+        if (!hasProduct) return null;
+        const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+        return q > 0 ? null : idx;
+      })
+      .filter((x: number | null): x is number => x !== null);
+
+    if (invalidQtyRows.length > 0) {
+      setFieldError?.('items', 'Quantité doit être > 0 pour chaque produit');
+      showError(`Quantité doit être > 0 (ligne(s): ${invalidQtyRows.map((i) => i + 1).join(', ')})`);
+      return;
+    }
     
     const montantTotal = values.items.reduce((sum: number, item: any, idx: number) => {
       const q =
@@ -2572,6 +2600,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       setQtyRaw((prev) => ({ ...prev, [index]: raw }));
 
       const q = parseFloat(normalizeDecimal(raw)) || 0;
+      // Garder Formik synchronisé pour la validation (quantité > 0)
+      setFieldValue(`items.${index}.quantite`, q, false);
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       setFieldValue(`items.${index}.total`, q * u);
       
