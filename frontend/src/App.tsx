@@ -47,6 +47,7 @@ import MultiDayAccessSchedulePage from './pages/MultiDayAccessSchedulePage';
 import ChiffreAffairesPage from './pages/ChiffreAffairesPage';
 import ChiffreAffairesDetailPage from './pages/ChiffreAffairesDetailPage';
 import WhatsAppTestPage from './pages/WhatsAppTestPage';
+import InventoryPage from './pages/InventoryPage';
 
 // Composant Layout avec accès aux fonctions de monitoring
 const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -333,6 +334,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <ChiffreAffairesDetailPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/inventaire"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <InventoryPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
