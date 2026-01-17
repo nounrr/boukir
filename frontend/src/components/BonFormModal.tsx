@@ -974,6 +974,25 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ------------------------------ Soumission ------------------------------ */
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
   try {
+    // Validation stricte: chaque ligne produit doit avoir une quantité > 0
+    const invalidQtyRows: number[] = Array.isArray(values.items)
+      ? values.items
+          .map((item: any, idx: number) => {
+            const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item?.quantite ?? '')));
+            return !Number.isFinite(q) || q <= 0 ? idx : -1;
+          })
+          .filter((i: number) => i >= 0)
+      : [];
+    if (invalidQtyRows.length > 0) {
+      const humanRows = invalidQtyRows.map((i) => i + 1).join(', ');
+      const msg = `Chaque produit doit avoir une quantité strictement supérieure à 0. Lignes concernées: ${humanRows}.`;
+      setFieldError?.('items', msg);
+      showError(msg);
+      // Focaliser la première ligne invalide sur la cellule quantité
+      try { setTimeout(() => focusCell(invalidQtyRows[0], 'qty'), 0); } catch {}
+      setSubmitting(false);
+      return;
+    }
     // Suppression du blocage lié au stock: permettre la soumission même si la quantité dépasse le stock
     
     const montantTotal = values.items.reduce((sum: number, item: any, idx: number) => {

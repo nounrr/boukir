@@ -1068,6 +1068,18 @@ const BonsPage = () => {
     setCurrentPage(1);
   }, [currentTab, searchTerm]);
 
+  // Tabs configuration
+  const tabs = useMemo(() => ([
+    { key: 'Commande', label: 'Bon de Commande' },
+    { key: 'Sortie', label: 'Bon de Sortie' },
+    { key: 'Comptant', label: 'Bon Comptant' },
+    { key: 'Vehicule', label: 'Bon Véhicule' },
+    { key: 'Avoir', label: 'Avoir Client' },
+    { key: 'AvoirComptant', label: 'Avoir Comptant' },
+    { key: 'AvoirFournisseur', label: 'Avoir Fournisseur' },
+    { key: 'Devis', label: 'Devis' }
+  ]), []);
+
   // Fonction pour ouvrir le modal de création d'un nouveau bon
   const handleAddNew = () => {
     setSelectedBon(null);
@@ -1352,33 +1364,34 @@ const BonsPage = () => {
               </span>
             </div>
           </div>
-          <button
-            onClick={() => {
-              setSelectedBon(null);
-              // Incrémenter la clé pour forcer un remontage du composant modal (nettoyage complet de l'état interne)
-              setBonFormKey(k => k + 1);
-              setIsCreateModalOpen(true);
-            }}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-          >
-            <Plus size={20} />
-            Nouveau {currentTab}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setSelectedBon(null);
+                // Incrémenter la clé pour forcer un remontage du composant modal (nettoyage complet de l'état interne)
+                setBonFormKey(k => k + 1);
+                setIsCreateModalOpen(true);
+              }}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+            >
+              <Plus size={20} />
+              Nouveau {currentTab}
+            </button>
+            <button
+              onClick={() => navigate('/inventaire')}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
+              title="Enregistrer un inventaire (ne modifie pas le stock)"
+            >
+              <Plus size={20} />
+              Enregistrer inventaire
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
         <div className="border-b border-gray-200 mb-6">
           <nav className="-mb-px flex space-x-8">
-            {[
-              { key: 'Commande', label: 'Bon de Commande' },
-              { key: 'Sortie', label: 'Bon de Sortie' },
-              { key: 'Comptant', label: 'Bon Comptant' },
-              { key: 'Vehicule', label: 'Bon Véhicule' },
-              { key: 'Avoir', label: 'Avoir Client' },
-              { key: 'AvoirComptant', label: 'Avoir Comptant' },
-              { key: 'AvoirFournisseur', label: 'Avoir Fournisseur' },
-              { key: 'Devis', label: 'Devis' }
-            ].map((tab) => (
+            {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setCurrentTab(tab.key as any)}
@@ -1862,15 +1875,23 @@ const BonsPage = () => {
                           
                           {/* Edit icon - visible for authorized users and editable bons */}
                           {(() => {
-                            // Don't show edit icon for validated bons (employees can't edit validated bons)
-                            if (isEmployee && bon.statut === 'Validé') return null;
+                            // Block editing for validated bons (all users)
+                            if (bon.statut === 'Validé') return null;
                             
                             // Don't show edit for cancelled bons
                             if (bon.statut === 'Annulé') return null;
                             
                             return canModifyBons(currentUser) ? (
                               <button
-                                onClick={() => { setSelectedBon(bon); setIsCreateModalOpen(true); }}
+                                onClick={() => {
+                                  // Double-check validation status before opening modal
+                                  if (bon.statut === 'Validé') {
+                                    showError('Impossible de modifier un bon validé.');
+                                    return;
+                                  }
+                                  setSelectedBon(bon);
+                                  setIsCreateModalOpen(true);
+                                }}
                                 className="text-blue-600 hover:text-blue-800"
                                 title="Modifier"
                               >

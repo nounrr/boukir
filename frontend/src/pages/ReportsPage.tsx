@@ -117,6 +117,7 @@ const ReportsPage: React.FC = () => {
   const [dateTo, setDateTo] = useState("");
   const [contactType, setContactType] = useState<"all" | "clients" | "fournisseurs">("all");
   const [reportType, setReportType] = useState<"overview" | "sales" | "payments" | "products">("overview");
+  const [topProductsLimit, setTopProductsLimit] = useState<number>(5);
   const [selectedDetailModal, setSelectedDetailModal] = useState<
     "bons" | "payments" | "clients" | "benefice" | "fournisseurs" | null
   >(null);
@@ -493,8 +494,9 @@ const ReportsPage: React.FC = () => {
       };
     });
   const rowsSorted = [...rows].sort((a: any, b: any) => b.chiffreAffaires - a.chiffreAffaires);
-  return rowsSorted.slice(0, 5);
-  }, [products, productMetrics]);
+  const safeLimit = Math.max(1, Math.min(100, Number(topProductsLimit) || 5));
+  return rowsSorted.slice(0, safeLimit);
+  }, [products, productMetrics, topProductsLimit]);
 
   // Vérification du mot de passe pour accéder à la page
   const handlePasswordVerification = async (e: React.FormEvent) => {
@@ -1591,9 +1593,31 @@ const ReportsPage: React.FC = () => {
       {/* Top produits */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
             <Activity size={20} className="text-gray-500" />
-            <h3 className="text-lg font-semibold text-gray-900">Top 5 Produits</h3>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Top {Math.max(1, Math.min(100, Number(topProductsLimit) || 5))} Produits
+              </h3>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="top-products-limit" className="text-sm text-gray-600">
+                Nombre:
+              </label>
+              <input
+                id="top-products-limit"
+                type="number"
+                min={1}
+                max={100}
+                value={topProductsLimit}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setTopProductsLimit(Number.isFinite(n) ? n : 5);
+                }}
+                className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+              />
+            </div>
           </div>
         </div>
         <div className="overflow-x-auto">

@@ -45,6 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Produits',
       items: [
         { name: 'Stock', href: '/stock', icon: Package, show: true },
+        { name: 'Inventaire', href: '/inventaire', icon: ClipboardList, show: user?.role !== undefined },
         { name: 'Catégories', href: '/categories', icon: Tags, show: true },
         { name: 'Marques', href: '/brands', icon: Award, show: true },
         { name: 'Produits archivés', href: '/products/archived', icon: Package, show: user?.role === 'PDG' },

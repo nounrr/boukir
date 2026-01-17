@@ -63,6 +63,7 @@ import accessSchedulesDetailedRouter from './routes/accessSchedulesDetailed.js';
 import livraisonsRouter from './routes/livraisons.js';
 import notificationsRouter from './routes/notifications.js';
 import aiRouter from './routes/ai.js';
+import inventoryRouter from './routes/inventory.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -267,6 +268,7 @@ app.use('/api/access-schedules', accessSchedulesDetailedRouter);
 
 app.use('/api/livraisons', livraisonsRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/inventory', inventoryRouter);
 
 // 404
 app.use((req, res) => {
