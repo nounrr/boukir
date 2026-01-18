@@ -386,8 +386,8 @@ const ContactsPage: React.FC = () => {
         id: `payment-${p.id}`,
         bon_numero: getDisplayNumeroPayment(p),
         bon_type: 'Paiement',
-        bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()),
-        bon_date_iso: p.date_paiement, // conserver la date/heure réelle du paiement
+        bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()), // AFFICHER la vraie date du paiement
+        bon_date_iso: p.created_at, // TRIER par date du bon (created_at = date bon + 5s)
         bon_statut: p.statut ? String(p.statut) : 'Paiement',
         product_reference: 'PAIEMENT',
         product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,
@@ -396,6 +396,7 @@ const ContactsPage: React.FC = () => {
         total: Number(p.montant ?? p.montant_total ?? 0) || 0,
         type: 'paiement',
         created_at: p.created_at,
+        date_paiement_affichage: p.date_paiement, // Garder pour référence
       });
     }
 

@@ -41,6 +41,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
 import PaymentPrintModal from '../components/PaymentPrintModal';
 import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
+import { calculateContactSoldeHistory } from '../utils/soldeCalculator';
 
 const CaissePage = () => {
   const dispatch = useDispatch();
@@ -62,6 +63,10 @@ const CaissePage = () => {
   // Sorting
   const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | 'echeance' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
 
   // Redux data
   const user = useAppSelector(state => state.auth.user);
@@ -106,14 +111,17 @@ const CaissePage = () => {
   const { data: sorties = [], isLoading: sortiesLoading } = useGetBonsByTypeQuery('Sortie');
   const { data: comptantsRaw = [], isLoading: comptantsLoading } = useGetBonsByTypeQuery('Comptant');
   const { data: commandes = [], isLoading: commandesLoading } = useGetBonsByTypeQuery('Commande');
-  // Avoirs pour le calcul du solde cumulé (comme BonFormModal)
-  // Removed unused avoirs queries (kept fetching later only if needed)
+  // Charger les avoirs pour les afficher dans l'historique du solde cumulé
+  const { data: avoirsClient = [], isLoading: avoirsClientLoading } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsFournisseur = [], isLoading: avoirsFournisseurLoading } = useGetBonsByTypeQuery('AvoirFournisseur');
   
-  const bonsLoading = sortiesLoading || comptantsLoading || commandesLoading;
+  const bonsLoading = sortiesLoading || comptantsLoading || commandesLoading || avoirsClientLoading || avoirsFournisseurLoading;
   const bons: Bon[] = [
     ...(Array.isArray(sorties) ? sorties : []),
     ...(Array.isArray(comptantsRaw) ? comptantsRaw.filter((b: any) => !!b.client_id) : []),
     ...(Array.isArray(commandes) ? commandes : []),
+    ...(Array.isArray(avoirsClient) ? avoirsClient : []),
+    ...(Array.isArray(avoirsFournisseur) ? avoirsFournisseur : []),
   ];
 
   // Backend now provides payments; no mock seeding
@@ -425,6 +433,19 @@ const CaissePage = () => {
       .finally(() => {});
     return () => ctrl.abort();
   }, [sortedPayments, token]);
+
+  // Pagination des paiements
+  const totalPages = Math.ceil(sortedPayments.length / itemsPerPage);
+  const paginatedPayments = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return sortedPayments.slice(startIndex, endIndex);
+  }, [sortedPayments, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, dateFilter, statusFilter, modeFilter]);
 
   // Calculs statistiques
   const amountOf = (p: Payment) => Number(p.montant ?? p.montant_total ?? 0);
@@ -1243,14 +1264,14 @@ const paymentValidationSchema = Yup.object({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {sortedPayments.length === 0 ? (
+              {paginatedPayments.length === 0 ? (
                 <tr>
                   <td colSpan={13} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun paiement trouvé
                   </td>
                 </tr>
               ) : (
-                sortedPayments.map((payment: Payment) => (
+                paginatedPayments.map((payment: Payment) => (
                   <tr
                     key={payment.id}
                     className={`hover:bg-gray-50 transition-colors ${payment.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70 shadow-[inset_0_0_0_9999px_rgba(34,197,94,0.06)]' : ''}`}
@@ -1442,6 +1463,90 @@ const paymentValidationSchema = Yup.object({
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {sortedPayments.length > 0 && (
+          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-gray-50">
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-600">
+                Affichage {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, sortedPayments.length)} sur {sortedPayments.length} paiements
+              </div>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value={10}>10 par page</option>
+                <option value={20}>20 par page</option>
+                <option value={50}>50 par page</option>
+                <option value={100}>100 par page</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Premier
+              </button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Précédent
+              </button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`px-3 py-1 text-sm font-medium rounded-md ${
+                        currentPage === pageNum
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Suivant
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Dernier
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Contrôles de tri mobile */}
@@ -1481,10 +1586,10 @@ const paymentValidationSchema = Yup.object({
 
       {/* Liste mobile des paiements */}
       <div className="md:hidden space-y-2 mb-6">
-        {sortedPayments.length === 0 ? (
+        {paginatedPayments.length === 0 ? (
           <div className="text-center text-sm text-gray-500 bg-white rounded-lg p-3 shadow">Aucun paiement trouvé</div>
         ) : (
-          sortedPayments.map((payment: Payment) => {
+          paginatedPayments.map((payment: Payment) => {
             const contactName = payment.type_paiement === 'Fournisseur'
               ? (fournisseurs.find(f => f.id === payment.contact_id)?.nom_complet || '-')
               : (clients.find(c => c.id === payment.contact_id)?.nom_complet || '-');
@@ -1582,6 +1687,55 @@ const paymentValidationSchema = Yup.object({
           })
         )}
       </div>
+
+      {/* Pagination Mobile */}
+      {sortedPayments.length > 0 && (
+        <div className="md:hidden mb-4 bg-white rounded-lg shadow p-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between text-sm text-gray-600">
+              <span>
+                {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, sortedPayments.length)} sur {sortedPayments.length}
+              </span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="px-2 py-1 border border-gray-300 rounded text-sm"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ← Préc
+              </button>
+              
+              <div className="flex items-center gap-1 text-sm">
+                <span className="font-medium">{currentPage}</span>
+                <span className="text-gray-500">/ {totalPages}</span>
+              </div>
+              
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Suiv →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de création/édition */}
       {isCreateModalOpen && (
@@ -1809,32 +1963,67 @@ const paymentValidationSchema = Yup.object({
                         className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         onChange={(e: any) => onBonChange(e, setFieldValue, (values.type_paiement as 'Client'|'Fournisseur'))}
                       >
-                        <option value="" disabled={bonsLoading}>
-                          {bonsLoading ? 'Chargement des bons…' : 'Paiement libre'}
-                        </option>
-            {bons
-              .filter((bon: Bon) => {
-                if (bon.type === 'Avoir' || bon.type === 'AvoirFournisseur') return false;
-                // If a contact is selected, only show bons associated with that contact
-                if (values.contact_id) {
-                  return values.type_paiement === 'Fournisseur'
-                    ? String(bon.fournisseur_id) === String(values.contact_id)
-                    : String(bon.client_id) === String(values.contact_id);
-                }
-                return values.type_paiement === 'Fournisseur'
-                  ? bon.type === 'Commande'
-                  : bon.type === 'Sortie' || bon.type === 'Comptant';
-              })
-              .map((bon: Bon) => {
-                const display = displayBonNumero(bon);
-                return (
-                  <option key={bon.id} value={bon.id}>
-                    {display} - {Number(bon.montant_total ?? 0)} DH
-                  </option>
-                );
-              })}
-                        
+                        <option value="">💰 Paiement libre (sans bon associé)</option>
+                        {(() => {
+                          if (!values.contact_id || bonsLoading) {
+                            return <option disabled>{bonsLoading ? 'Chargement...' : 'Sélectionnez un contact d\'abord'}</option>;
+                          }
+
+                          // Récupérer le contact
+                          const contact = (isFournisseurPayment ? fournisseurs : clients).find((c: Contact) => String(c.id) === String(values.contact_id));
+                          
+                          // Utiliser la même fonction que ContactsPage pour calculer l'historique
+                          const history = calculateContactSoldeHistory(
+                            contact,
+                            bons,
+                            paymentsApi, // Tous les paiements du backend
+                            values.type_paiement as 'Client' | 'Fournisseur'
+                          );
+
+                          if (history.length === 0 || (history.length === 1 && history[0].type === 'initial')) {
+                            return <option disabled>Aucune transaction pour ce contact</option>;
+                          }
+
+                          const options = [];
+
+                          // Générer les options du select
+                          history.forEach((item, idx) => {
+                            if (item.type === 'initial') {
+                              // Option pour le solde initial
+                              options.push(
+                                <option key="initial" disabled>
+                                  --- Solde Initial: {item.soldeCumule.toFixed(2)} DH ---
+                                </option>
+                              );
+                            } else if (item.type === 'bon') {
+                              const dateStr = new Date(item.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                              const isAvoir = item.typeLabel === 'Avoir' || item.typeLabel === 'AvoirFournisseur';
+                              const montant = item.debit || item.credit;
+                              options.push(
+                                <option key={item.id} value={item.id}>
+                                  {dateStr} | {item.numero} | {isAvoir ? 'Avoir' : 'Bon'} {montant.toFixed(2)} DH | Solde: {item.soldeCumule.toFixed(2)} DH
+                                </option>
+                              );
+                            } else if (item.type === 'paiement') {
+                              // Afficher les paiements comme séparateurs (disabled)
+                              const dateStr = new Date(item.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                              options.push(
+                                <option key={`paiement-${item.id}`} disabled>
+                                  {dateStr} | ✓ Paiement {item.credit.toFixed(2)} DH | Solde: {item.soldeCumule.toFixed(2)} DH
+                                </option>
+                              );
+                            }
+                          });
+
+                          return options;
+                        })()}
                       </Field>
+                      {/* Affichage du solde cumulé total */}
+                      {values.contact_id && (
+                        <div className="mt-1 text-xs font-semibold text-blue-700">
+                          💰 Solde cumulé {isFournisseurPayment ? 'du fournisseur' : 'du client'}: {getContactSolde(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client').toFixed(2)} DH
+                        </div>
+                      )}
                     </div>
 
                     <div>
