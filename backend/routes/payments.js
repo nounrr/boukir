@@ -121,6 +121,7 @@ const toPayment = (r) => ({
   updated_by: r.updated_by ?? null,
   created_at: r.created_at,
   updated_at: r.updated_at,
+  date_ajout_reelle: r.date_ajout_reelle || null,
 });
 
 // normalize statut to canonical French labels
@@ -219,6 +220,10 @@ router.post('/', verifyToken, async (req, res) => {
       created_by = null,
   } = req.body;
 
+    // Récupérer la vraie date d'ajout (maintenant)
+    const dateAjoutReelle = new Date();
+    const dateAjoutReelleStr = dateAjoutReelle.toISOString().slice(0, 19).replace('T', ' ');
+
     // normalize statut to canonical French labels and default to 'En attente'
     const rawStatut = req.body && Object.hasOwn(req.body, 'statut') ? req.body.statut : undefined;
     const mapToCanonical = (s) => {
@@ -267,16 +272,82 @@ router.post('/', verifyToken, async (req, res) => {
       return res.status(403).json({ message: 'Statut non autorisé pour votre rôle' });
     }
 
+    // Si un bon est associé, récupérer sa date pour l'ordre chronologique
+    let createdAtValue = dateAjoutReelleStr; // Par défaut, la date actuelle
+    if (cleanBonId) {
+      try {
+        console.log('🔍 Recherche bon ID:', cleanBonId, '| Type:', type_paiement, '| Contact:', cleanContactId);
+        
+        // Déterminer les tables à rechercher en fonction du type de paiement
+        let bonTables = [];
+        if (type_paiement === 'Client') {
+          // Pour les clients: chercher d'abord dans bons sortie/comptant, puis avoirs client
+          bonTables = [
+            { table: 'bons_sortie', dateField: 'date_creation' },
+            { table: 'bons_comptant', dateField: 'date_creation' },
+            { table: 'avoirs_client', dateField: 'date_creation' }
+          ];
+        } else if (type_paiement === 'Fournisseur') {
+          // Pour les fournisseurs: chercher dans bons commande puis avoirs fournisseur
+          bonTables = [
+            { table: 'bons_commande', dateField: 'date_creation' },
+            { table: 'avoirs_fournisseur', dateField: 'date_creation' }
+          ];
+        }
+        
+        let bonDate = null;
+        
+        for (const { table, dateField } of bonTables) {
+          try {
+            const [bonRows] = await pool.query(`SELECT ${dateField} as date_doc, created_at FROM ${table} WHERE id = ?`, [cleanBonId]);
+            if (bonRows.length > 0) {
+              // Prendre la date la plus récente entre date_creation et created_at
+              const dateDoc = new Date(bonRows[0].date_doc);
+              const dateCreated = new Date(bonRows[0].created_at);
+              bonDate = dateDoc > dateCreated ? dateDoc : dateCreated;
+              console.log(`✅ Bon trouvé dans ${table} - Date doc: ${bonRows[0].date_doc} | Created: ${bonRows[0].created_at}`);
+              console.log(`   Date retenue (la plus récente): ${bonDate.toISOString()}`);
+              break;
+            }
+          } catch (e) {
+            console.log(`⚠️ Erreur recherche dans ${table}:`, e.message);
+            // Continue avec la table suivante
+          }
+        }
+        
+        if (bonDate) {
+          // Ajouter 1 heure à la date du bon pour garantir que le paiement apparaît toujours après
+          const paymentDate = new Date(bonDate.getTime() + (60 * 60 * 1000)); // +1 heure en millisecondes
+          createdAtValue = paymentDate.toISOString().slice(0, 19).replace('T', ' ');
+          console.log('📅 Date bon:', bonDate.toISOString());
+          console.log('📅 Date paiement (+1h):', paymentDate.toISOString());
+          console.log('📅 created_at MySQL:', createdAtValue);
+        }
+      } catch (err) {
+        console.log('Erreur lors de la récupération de la date du bon:', err);
+        // Continuer avec la date actuelle en cas d'erreur
+      }
+    }
+
+    console.log('💾 Insertion paiement - created_at:', createdAtValue, '| date_ajout_reelle:', dateAjoutReelleStr);
+    console.log('💾 Bon associé ID:', cleanBonId);
+
     const [result] = await pool.query(
       `INSERT INTO payments
         (numero, type_paiement, contact_id, bon_id, montant_total, mode_paiement, date_paiement, designation,
-         date_echeance, banque, personnel, code_reglement, image_url, talon_id, statut, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         date_echeance, banque, personnel, code_reglement, image_url, talon_id, statut, created_by, created_at, date_ajout_reelle)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ['', type_paiement, cleanContactId, cleanBonId, montant_total, mode_paiement, cleanDatePaiement, designation,
-        cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanTalonId, statut, created_by]
+        cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanTalonId, statut, created_by, createdAtValue, dateAjoutReelleStr]
     );
     await pool.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
     const [rows] = await pool.query('SELECT * FROM payments WHERE id = ?', [result.insertId]);
+    
+    // DEBUG: Afficher ce qui a été vraiment enregistré
+    console.log('✅ Paiement créé ID:', result.insertId);
+    console.log('📊 created_at enregistré:', rows[0].created_at);
+    console.log('📊 date_ajout_reelle enregistré:', rows[0].date_ajout_reelle);
+    
   res.status(201).json(toPayment(rows[0]));
   } catch (err) {
     console.error('POST /payments error:', err);
