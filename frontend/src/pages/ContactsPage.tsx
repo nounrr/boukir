@@ -55,8 +55,14 @@ const ContactsPage: React.FC = () => {
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createRemiseItem] = useCreateRemiseItemMutation();
 
-  // Fonction pour détecter les contacts en retard de paiement (solde > 0 fixe depuis la période configurée)
-  const isOverdueContact = (contact: Contact): boolean => {
+  // Fonction pour détecter les contacts en retard de paiement (solde > 0 et pas de paiement depuis la période configurée)
+  const isOverdueContact = (contact: Contact, allPayments: any[]): boolean => {
+    // 0. Ignorer les contacts archivés/supprimés (si le champ existe)
+    if ((contact as any).deleted_at || (contact as any).archived || (contact as any).is_active === false) {
+      return false;
+    }
+
+    // 1. Vérifier que le solde cumulé est > 0
     const backend = (contact as any).solde_cumule;
     let solde: number;
 
@@ -71,21 +77,34 @@ const ContactsPage: React.FC = () => {
 
     if (solde <= 0) return false;
 
-    // Si pas de date de dernière modification, considérer comme en retard
-    if (!contact.updated_at) return true;
+    // 2. Trouver le dernier paiement du contact (avec statut validé/en attente)
+    const contactPayments = allPayments.filter((p: any) => 
+      p.contact_id === contact.id && isAllowedStatut(p.statut)
+    );
+
+    // Si aucun paiement, considérer comme en retard
+    if (contactPayments.length === 0) return true;
 
     try {
-      const lastUpdate = new Date(contact.updated_at);
+      // Trier par date de création (plus récent en premier)
+      const sortedPayments = [...contactPayments].sort((a: any, b: any) => {
+        const dateA = new Date(a.date_creation || a.created_at);
+        const dateB = new Date(b.date_creation || b.created_at);
+        return dateB.getTime() - dateA.getTime();
+      });
+
+      const lastPayment = sortedPayments[0];
+      const lastPaymentDate = new Date(lastPayment.date_creation || lastPayment.created_at);
       const now = new Date();
 
       // Vérifier que la date est valide
-      if (isNaN(lastUpdate.getTime())) {
-        console.warn('Date invalide pour contact:', contact.id, contact.updated_at);
+      if (isNaN(lastPaymentDate.getTime())) {
+        console.warn('Date de paiement invalide pour contact:', contact.id, lastPayment);
         return true; // Considérer comme en retard si date invalide
       }
 
-      // Calculer la différence en millisecondes
-      const diffMs = now.getTime() - lastUpdate.getTime();
+      // 3. Calculer la différence en millisecondes depuis le dernier paiement
+      const diffMs = now.getTime() - lastPaymentDate.getTime();
 
       if (overdueUnit === 'days') {
         // Convertir en jours
@@ -97,7 +116,7 @@ const ContactsPage: React.FC = () => {
         return diffMonths >= overdueValue;
       }
     } catch (error) {
-      console.error('Erreur calcul date pour contact:', contact.id, error);
+      console.error('Erreur calcul date dernier paiement pour contact:', contact.id, error);
       return true; // En cas d'erreur, considérer comme en retard
     }
   };
@@ -2069,8 +2088,8 @@ const ContactsPage: React.FC = () => {
   const sortedContacts = useMemo(() => {
     const sorted = [...filteredContacts].sort((a, b) => {
       // 🔥 PRIORITÉ ABSOLUE : Contacts en retard de paiement toujours en premier
-      const aOverdue = isOverdueContact(a);
-      const bOverdue = isOverdueContact(b);
+      const aOverdue = isOverdueContact(a, payments);
+      const bOverdue = isOverdueContact(b, payments);
 
       // Si l'un est en retard et pas l'autre, le contact en retard vient en premier
       if (aOverdue && !bOverdue) return -1;
@@ -2116,7 +2135,7 @@ const ContactsPage: React.FC = () => {
     });
 
     return sorted;
-  }, [filteredContacts, sortField, sortDirection, activeTab, salesByClient, purchasesByFournisseur, paymentsByContact, isOverdueContact, overdueValue, overdueUnit]);
+  }, [filteredContacts, sortField, sortDirection, activeTab, salesByClient, purchasesByFournisseur, paymentsByContact, payments, overdueValue, overdueUnit]);
 
   // Fonction pour gérer le tri
   const handleSort = (field: 'nom' | 'societe' | 'solde') => {
@@ -2282,8 +2301,8 @@ const ContactsPage: React.FC = () => {
                   <h3 className="text-sm font-medium text-gray-800 mb-2">Contacts en Retard Détectés</h3>
                   <p className="text-2xl font-bold text-red-600">
                     {activeTab === 'clients'
-                      ? clients.filter(c => isOverdueContact(c)).length
-                      : fournisseurs.filter(c => isOverdueContact(c)).length
+                      ? clients.filter(c => isOverdueContact(c, payments)).length
+                      : fournisseurs.filter(c => isOverdueContact(c, payments)).length
                     }
                   </p>
                   <p className="text-xs text-gray-600 mt-1">
@@ -2305,7 +2324,7 @@ const ContactsPage: React.FC = () => {
                       return contactsWithPositiveBalance.map((contact) => {
                         const backend = (contact as any).solde_cumule;
                         const solde = backend != null ? Number(backend) : Number(contact.solde || 0);
-                        const isOverdue = isOverdueContact(contact);
+                        const isOverdue = isOverdueContact(contact, payments);
                         const lastUpdate = contact.updated_at ? new Date(contact.updated_at) : null;
                         const daysSinceUpdate = lastUpdate ? Math.floor((new Date().getTime() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24)) : null;
 
@@ -2418,7 +2437,7 @@ const ContactsPage: React.FC = () => {
 
       {/* Informations sur le tri */}
       {
-        (activeTab === 'clients' ? clients : fournisseurs).some(c => isOverdueContact(c)) && (
+        (activeTab === 'clients' ? clients : fournisseurs).some(c => isOverdueContact(c, payments)) && (
           <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
             <div className="flex items-center">
               <AlertTriangle className="h-5 w-5 text-red-400 mr-2" />
@@ -2498,7 +2517,7 @@ const ContactsPage: React.FC = () => {
                 </tr>
               ) : (
                 paginatedContacts.map((contact) => {
-                  const isOverdue = isOverdueContact(contact);
+                  const isOverdue = isOverdueContact(contact, payments);
                   return (
                     <tr
                       key={contact.id}
