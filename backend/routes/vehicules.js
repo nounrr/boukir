@@ -3,13 +3,38 @@ import pool from '../db/pool.js';
 
 const router = express.Router();
 
+async function hasColumn(tableName, columnName) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS c
+       FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = ?`,
+    [tableName, columnName]
+  );
+  return Number(rows?.[0]?.c || 0) > 0;
+}
+
+async function tableExists(tableName) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS c
+       FROM INFORMATION_SCHEMA.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?`,
+    [tableName]
+  );
+  return Number(rows?.[0]?.c || 0) > 0;
+}
+
 // GET /vehicules - Obtenir tous les véhicules
 router.get('/', async (req, res) => {
   try {
-    const [rows] = await pool.execute(`
-      SELECT * FROM vehicules 
-      ORDER BY nom ASC
-    `);
+    const supportsSoftDelete = await hasColumn('vehicules', 'deleted_at');
+    const [rows] = await pool.execute(
+      supportsSoftDelete
+        ? `SELECT * FROM vehicules WHERE deleted_at IS NULL ORDER BY nom ASC`
+        : `SELECT * FROM vehicules ORDER BY nom ASC`
+    );
     res.json(rows);
   } catch (error) {
     console.error('Erreur lors de la récupération des véhicules:', error);
@@ -20,11 +45,12 @@ router.get('/', async (req, res) => {
 // GET /vehicules/disponibles - Obtenir tous les véhicules disponibles
 router.get('/disponibles', async (req, res) => {
   try {
-    const [rows] = await pool.execute(`
-      SELECT * FROM vehicules 
-      WHERE statut = 'Disponible'
-      ORDER BY nom ASC
-    `);
+    const supportsSoftDelete = await hasColumn('vehicules', 'deleted_at');
+    const [rows] = await pool.execute(
+      supportsSoftDelete
+        ? `SELECT * FROM vehicules WHERE statut = 'Disponible' AND deleted_at IS NULL ORDER BY nom ASC`
+        : `SELECT * FROM vehicules WHERE statut = 'Disponible' ORDER BY nom ASC`
+    );
     res.json(rows);
   } catch (error) {
     console.error('Erreur lors de la récupération des véhicules disponibles:', error);
@@ -36,7 +62,13 @@ router.get('/disponibles', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await pool.execute('SELECT * FROM vehicules WHERE id = ?', [id]);
+    const supportsSoftDelete = await hasColumn('vehicules', 'deleted_at');
+    const [rows] = await pool.execute(
+      supportsSoftDelete
+        ? 'SELECT * FROM vehicules WHERE id = ? AND deleted_at IS NULL'
+        : 'SELECT * FROM vehicules WHERE id = ?',
+      [id]
+    );
     
     if (rows.length === 0) {
       return res.status(404).json({ message: 'Véhicule non trouvé' });
@@ -180,13 +212,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Vérifier si le véhicule est utilisé dans des bons
-    const [usedInBons] = await pool.execute('SELECT COUNT(*) as count FROM bons WHERE vehicule_id = ?', [id]);
-    if (usedInBons[0].count > 0) {
-      return res.status(409).json({ 
-        message: 'Impossible de supprimer ce véhicule car il est utilisé dans des bons' 
-      });
-    }
+    const supportsSoftDelete = await hasColumn('vehicules', 'deleted_at');
 
     // Vérifier si le véhicule existe
     const [existingVehicule] = await pool.execute('SELECT * FROM vehicules WHERE id = ?', [id]);
@@ -194,9 +220,50 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Véhicule non trouvé' });
     }
 
-    // Supprimer le véhicule
+    // If already soft-deleted, consider it gone
+    if (supportsSoftDelete && existingVehicule[0]?.deleted_at) {
+      return res.json({ success: true, id: parseInt(id) });
+    }
+
+    // Check if vehicule is referenced in any existing tables (legacy + new schema)
+    const refTables = [
+      { table: 'bons', label: 'bons' },
+      { table: 'bons_commande', label: 'bons_commande' },
+      { table: 'bons_comptant', label: 'bons_comptant' },
+      { table: 'bons_sortie', label: 'bons_sortie' },
+      { table: 'bons_vehicule', label: 'bons_vehicule' },
+      { table: 'devis', label: 'devis' },
+      { table: 'livraisons', label: 'livraisons' },
+    ];
+
+    let usageCount = 0;
+    for (const { table } of refTables) {
+      if (!(await tableExists(table))) continue;
+      if (!(await hasColumn(table, 'vehicule_id'))) continue;
+      const [rows] = await pool.execute(`SELECT COUNT(*) AS c FROM ${table} WHERE vehicule_id = ?`, [id]);
+      usageCount += Number(rows?.[0]?.c || 0);
+    }
+
+    // If referenced anywhere, do soft delete (prevents FK errors and keeps history)
+    if (usageCount > 0) {
+      if (!supportsSoftDelete) {
+        return res.status(409).json({
+          message: "Ce véhicule est utilisé dans des bons. Pour le supprimer, activez le soft delete (colonne 'deleted_at' manquante).",
+        });
+      }
+
+      await pool.execute('UPDATE vehicules SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL', [id]);
+      return res.json({ success: true, id: parseInt(id), softDeleted: true });
+    }
+
+    // Not referenced: soft delete if supported, else hard delete
+    if (supportsSoftDelete) {
+      await pool.execute('UPDATE vehicules SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL', [id]);
+      return res.json({ success: true, id: parseInt(id), softDeleted: true });
+    }
+
     await pool.execute('DELETE FROM vehicules WHERE id = ?', [id]);
-    res.json({ success: true, id: parseInt(id) });
+    return res.json({ success: true, id: parseInt(id) });
   } catch (error) {
     console.error('Erreur lors de la suppression du véhicule:', error);
     res.status(500).json({ message: 'Erreur du serveur' });
