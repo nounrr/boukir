@@ -559,7 +559,6 @@ const ContactsPage: React.FC = () => {
   const allProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
-    const ouverture = (selectedContact as any).date_ouverture || selectedContact.created_at || null;
 
     const initRow = {
       id: 'initial-solde-produit-all',
@@ -615,6 +614,26 @@ const ContactsPage: React.FC = () => {
 
     return { totalQty, totalAmount };
   }, [searchedProductHistory, selectedProductIds]);
+
+  const computeTotalsForRows = React.useCallback((rows: any[]) => {
+    let totalQty = 0;
+    let totalAmount = 0;
+
+    for (const row of rows || []) {
+      if (!row || row.syntheticInitial) continue;
+      const amount = Number(row.total) || 0;
+      const t = String(row.type || '').toLowerCase();
+
+      if (t === 'produit') {
+        totalQty += Number(row.quantite) || 0;
+        totalAmount += amount;
+      } else if (t === 'paiement' || t.includes('avoir')) {
+        totalAmount -= amount;
+      }
+    }
+
+    return { totalQty, totalAmount };
+  }, []);
 
 
   const displayedProductHistory = useMemo(() => {
@@ -794,14 +813,6 @@ const ContactsPage: React.FC = () => {
 
       return next;
     });
-  };
-
-  const toggleSelectAllBons = (checked: boolean) => {
-    if (checked) {
-      setSelectedBonIds(new Set(Array.from(displayedBonIds)));
-    } else {
-      setSelectedBonIds(new Set());
-    }
   };
 
   // Small helper to produce the CompanyHeader HTML used in bons prints
@@ -3245,9 +3256,24 @@ const ContactsPage: React.FC = () => {
                             (printProducts.length > 0 && selectedProductIds.size > 0) ||
                             (selectedBonIds && selectedBonIds.size > 0)
                           }
-                          totalQty={displayedTotals.totalQty}
-                          totalAmount={displayedTotals.totalAmount}
-                          finalSolde={finalSoldeNet}
+                          totalQty={(() => {
+                            const rows = (printProducts.length > 0 ? printProducts : displayedProductHistory) as any[];
+                            const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
+                            return hasSelection ? computeTotalsForRows(rows).totalQty : displayedTotals.totalQty;
+                          })()}
+                          totalAmount={(() => {
+                            const rows = (printProducts.length > 0 ? printProducts : displayedProductHistory) as any[];
+                            const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
+                            return hasSelection ? computeTotalsForRows(rows).totalAmount : displayedTotals.totalAmount;
+                          })()}
+                          finalSolde={(() => {
+                            const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
+                            if (!hasSelection) return finalSoldeNet;
+                            const rows = (printProducts.length > 0 ? printProducts : displayedProductHistory) as any[];
+                            const { totalAmount } = computeTotalsForRows(rows);
+                            const initialSolde = Number((selectedContact as any)?.solde ?? 0) || 0;
+                            return initialSolde + totalAmount;
+                          })()}
                         />
                       )}
                     </div>
@@ -3322,8 +3348,21 @@ const ContactsPage: React.FC = () => {
                                     return nonInitial.length > 0 && nonInitial.every((id) => selectedBonIds.has(id));
                                   })()}
                                   onChange={(e) => {
-                                    const nonInitial = Array.from(new Set((displayedProductHistory || []).filter((i: any) => !i.syntheticInitial && i.bon_id).map((i: any) => Number(i.bon_id))));
-                                    if (e.target.checked) setSelectedBonIds(new Set(nonInitial)); else setSelectedBonIds(new Set());
+                                    if (e.target.checked) {
+                                      const nextBons = new Set(Array.from(displayedBonIds));
+                                      setSelectedBonIds(nextBons);
+                                      setSelectedProductIds((prevProducts) => {
+                                        const nextProducts = new Set(prevProducts);
+                                        (displayedProductHistory || []).forEach((item: any) => {
+                                          if (!item.syntheticInitial && item.bon_id && nextBons.has(Number(item.bon_id))) {
+                                            nextProducts.add(String(item.id));
+                                          }
+                                        });
+                                        return nextProducts;
+                                      });
+                                    } else {
+                                      clearBonSelection();
+                                    }
                                   }}
                                 />
                                 <span>Bon N°</span>
