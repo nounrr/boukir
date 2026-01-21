@@ -26,6 +26,13 @@ interface ContactPrintTemplateProps {
 }
 
 const fmt = (n: any) => Number(n || 0).toFixed(2);
+const fmtNoDecimalsIfInt = (n: any) => {
+  const v = Number(n || 0);
+  if (!isFinite(v)) return '0';
+  // If value is an integer (e.g., 123.00), display without decimals
+  if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
+  return v.toFixed(2);
+};
 const fmtDate = (d?: string) => {
   if (!d) return '';
   try {
@@ -130,6 +137,17 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
     (r) => !r.syntheticInitial && r.product_reference && String(r.product_reference).trim() !== ''
   );
 
+  const showReferenceCol = hasAnyReference;
+  const showAddressCol = hasAnyAddress;
+
+  const productsColSpan =
+    1 + // Bon
+    (showReferenceCol ? 1 : 0) +
+    1 + // Désignation
+    (showAddressCol ? 1 : 0) +
+    1 + // Qté
+    (showPrices ? (2 + (!hideCumulative ? 1 : 0)) : 1);
+
   // Totaux (produits) - use pre-calculated values if provided, otherwise calculate
   const prDataRows: any[] = Array.isArray(prList) ? prList.filter((r: any) => !r?.syntheticInitial) : [];
   const totalQtyProducts: number = totalQty !== undefined ? totalQty : prDataRows.reduce((sum: number, r: any) => {
@@ -161,13 +179,28 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
 
   return (
     <div
-      className={`bg-white ${
+      className={`contact-print-page bg-white ${
         size === 'A5' ? 'w-[148mm] min-h-[210mm]' : 'w-[210mm] min-h-[297mm]'
       } mx-auto p-4 font-sans text-sm`}
       style={{ position: 'relative' }}
     >
       {/* Styles impression compacts (sans width:100% ni table-layout:fixed) */}
       <style>{`
+        /* Avoid clipping: keep page width stable even with padding */
+        .contact-print-page { box-sizing: border-box; }
+
+        /* Some printers/browsers ignore margins; don't force a top margin via @page.
+           Instead, keep a small right gutter while preserving the fixed mm width. */
+        @media print {
+          @page { margin: 0; }
+          html, body { margin: 0 !important; padding: 0 !important; }
+          .contact-print-page {
+            /* Extra right padding as a safety gutter (doesn't increase width thanks to border-box) */
+            padding-right: 12mm !important;
+            padding-left: 6mm !important;
+          }
+        }
+
         ${size === 'A5'
           ? `.print-compact { font-size:11px; } .print-compact h2 { font-size:12px; } @media print { .print-compact { font-size:9px; } }`
           : `.print-compact { font-size:12px; } .print-compact h2 { font-size:14px; } @media print { .print-compact { font-size:15px; } }`
@@ -218,8 +251,12 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
         </div>
         {(dateFrom || dateTo) && (
           <div className="text-right text-sm self-start">
-            <div className="inline-block bg-orange-100 text-orange-800 px-3 py-1 rounded-full">
-              Période: {dateFrom || '...'} → {dateTo || '...'}
+            <div className="inline-block bg-orange-100 text-orange-800 px-3 py-2 rounded-lg max-w-full">
+              <div className="font-semibold">Période</div>
+              <div className="leading-tight whitespace-normal break-words">
+                <div>{dateFrom || '...'}</div>
+                <div>→ {dateTo || '...'}</div>
+              </div>
             </div>
           </div>
         )}
@@ -270,7 +307,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                             {t.syntheticInitial ? '—' : reduceBalance ? '-' : '+'}
                             {t.syntheticInitial ? '' : fmt(t.montant)}
                           </td>
-                          {!hideCumulative && <td className="cell-num">{fmt(t.soldeCumulatif)}</td>}
+                          {!hideCumulative && <td className="cell-num">{fmtNoDecimalsIfInt(t.soldeCumulatif)}</td>}
                         </>
                       ) : (
                         <td>{t.syntheticInitial ? '-' : t.statut || (isPayment ? 'Paiement' : '-')}</td>
@@ -285,7 +322,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
           <div className="mt-3 flex justify-end">
             <div className="border border-gray-300 bg-gray-50 px-3 py-2 rounded">
               <div className="text-xs font-semibold text-gray-700">Solde final</div>
-              <div className="text-base font-bold text-gray-900">{fmt(finalSoldeTransactions)} DH</div>
+              <div className="text-base font-bold text-gray-900">{fmtNoDecimalsIfInt(finalSoldeTransactions)} DH</div>
             </div>
           </div>
         </div>
@@ -297,9 +334,9 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
               <tr className="header-row">
                 {/* Bon N° avec Date intégrée sous le numéro */}
                 <th>Bon N° / Date</th>
-                <th>{hasAnyReference ? 'Référence' : 'Réf.'}</th>
+                {showReferenceCol && <th>Référence</th>}
                 <th className="col-designation">Désignation</th>
-                <th className="col-address">{hasAnyAddress ? 'Adresse Livraison' : 'Adr.'}</th>
+                {showAddressCol && <th className="col-address">Adresse Livraison</th>}
                 <th className="cell-num">Qté</th>
                 {showPrices ? (
                   <>
@@ -315,7 +352,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
             <tbody>
               {prList.length === 0 ? (
                 <tr>
-                  <td colSpan={showPrices ? 8 : 6} className="text-center text-gray-500 py-3">
+                  <td colSpan={productsColSpan} className="text-center text-gray-500 py-3">
                     Aucune donnée
                   </td>
                 </tr>
@@ -350,11 +387,11 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                       </td>
 
                       {/* Référence (wrap autorisé, libellé court si vide globalement) */}
-                      <td className="cell-wrap">
-                        {it.syntheticInitial
-                          ? '—'
-                          : it.product_reference || (!hasAnyReference ? '' : '—')}
-                      </td>
+                      {showReferenceCol && (
+                        <td className="cell-wrap">
+                          {it.syntheticInitial ? '—' : it.product_reference || '—'}
+                        </td>
+                      )}
 
                       {/* Désignation (wrap libre) */}
                       <td className="cell-wrap col-designation">
@@ -362,9 +399,11 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                       </td>
 
                       {/* Adresse (wrap libre) */}
-                      <td className="cell-wrap col-address">
-                        {it.syntheticInitial ? '-' : it.adresse_livraison || (!hasAnyAddress ? '' : '-')}
-                      </td>
+                      {showAddressCol && (
+                        <td className="cell-wrap col-address">
+                          {it.syntheticInitial ? '-' : it.adresse_livraison || '-'}
+                        </td>
+                      )}
 
                       {/* Quantité */}
                       <td className="cell-num">{it.syntheticInitial ? '—' : it.quantite}</td>
@@ -381,7 +420,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                             {it.syntheticInitial ? '—' : fmt(displayTotal)}
                           </td>
                           {!hideCumulative && (
-                            <td className="cell-num">{fmt(it.soldeCumulatif)}</td>
+                            <td className="cell-num">{fmtNoDecimalsIfInt(it.soldeCumulatif)}</td>
                           )}
                         </>
                       ) : (
@@ -397,13 +436,13 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
               <tfoot>
                 <tr>
                   <td>—</td>
-                  <td>{hasAnyReference ? '—' : ''}</td>
+                  {showReferenceCol && <td>—</td>}
                   <td className="cell-wrap">TOTAL</td>
-                  <td>{hasAnyAddress ? '—' : ''}</td>
+                  {showAddressCol && <td>—</td>}
                   <td className="cell-num">{totalQtyProducts}</td>
                   <td className="cell-num">—</td>
                   <td className="cell-num">{fmt(totalAmountProducts)}</td>
-                  {!hideCumulative && <td className="cell-num">{fmt(finalSoldeProducts)}</td>}
+                  {!hideCumulative && <td className="cell-num">{fmtNoDecimalsIfInt(finalSoldeProducts)}</td>}
                 </tr>
               </tfoot>
             )}
@@ -412,7 +451,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
           <div className="mt-3 flex justify-end">
             <div className="border border-gray-300 bg-gray-50 px-3 py-2 rounded">
               <div className="text-xs font-semibold text-gray-700">Solde final</div>
-              <div className="text-base font-bold text-gray-900">{fmt(finalSoldeProducts)} DH</div>
+              <div className="text-base font-bold text-gray-900">{fmtNoDecimalsIfInt(finalSoldeProducts)} DH</div>
             </div>
           </div>
         </div>
