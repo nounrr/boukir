@@ -26,6 +26,7 @@ import ecommerceCartRouter from './routes/ecommerce/cart.js';
 import ecommerceWishlistRouter from './routes/ecommerce/wishlist.js';
 import ecommerceOrdersRouter from './routes/ecommerce/orders.js';
 import ecommercePromoRouter from './routes/ecommerce/promo.js';
+import ecommercePickupLocationsRouter from './routes/ecommerce/pickupLocations.js';
 import promoCodesRouter from './routes/promoCodes.js';
 import contactsRouter from './routes/contacts.js';
 import vehiculesRouter from './routes/vehicules.js';
@@ -65,8 +66,27 @@ import notificationsRouter from './routes/notifications.js';
 import aiRouter from './routes/ai.js';
 import inventoryRouter from './routes/inventory.js';
 
+import {
+  ensureContactsRemiseBalance,
+  ensureEcommerceOrderItemsRemiseColumns,
+  ensureEcommerceOrdersRemiseColumns,
+  ensureProductRemiseColumns,
+} from './utils/ensureRemiseSchema.js';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
+
+// Ensure remise schema exists (safe to call on every boot)
+(async () => {
+  try {
+    await ensureProductRemiseColumns();
+    await ensureContactsRemiseBalance();
+    await ensureEcommerceOrdersRemiseColumns();
+    await ensureEcommerceOrderItemsRemiseColumns();
+  } catch (e) {
+    console.error('ensureRemiseSchema@boot:', e);
+  }
+})();
 
 const app = express();
 
@@ -140,6 +160,7 @@ const PUBLIC_PATHS = new Set([
 const ECOMMERCE_PUBLIC_PREFIXES = [
   '/api/ecommerce/products',
   '/api/ecommerce/promo',
+  '/api/ecommerce/pickup-locations',
 ];
 
 app.use((req, res, next) => {
@@ -227,6 +248,7 @@ app.use('/api/brands', brandsRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
 app.use('/api/ecommerce/promo', optionalAuth, ecommercePromoRouter); // E-commerce promo validation (public)
+app.use('/api/ecommerce/pickup-locations', optionalAuth, ecommercePickupLocationsRouter); // E-commerce pickup locations (public)
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
 app.use('/api/ecommerce/wishlist', ecommerceWishlistRouter); // E-commerce wishlist (requires auth)
 app.use('/api/ecommerce/orders', ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)

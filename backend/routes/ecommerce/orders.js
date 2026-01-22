@@ -1,7 +1,45 @@
 import { Router } from 'express';
 import pool from '../../db/pool.js';
+import {
+  computeOrderEarnedRemiseAmount,
+  computeOrderItemRemiseBreakdown,
+  ensureContactsCheckoutColumns,
+  ensureContactsRemiseBalance,
+  ensureEcommerceOrderItemsRemiseColumns,
+  ensureEcommerceOrdersRemiseColumns,
+  ensureProductRemiseColumns,
+} from '../../utils/ensureRemiseSchema.js';
+
+async function ensureRemiseSchema() {
+  try {
+    await ensureProductRemiseColumns(pool);
+    await ensureContactsRemiseBalance(pool);
+    await ensureContactsCheckoutColumns(pool);
+    await ensureEcommerceOrdersRemiseColumns(pool);
+    await ensureEcommerceOrderItemsRemiseColumns(pool);
+  } catch (e) {
+    console.error('ensureRemiseSchema:', e);
+  }
+}
+ensureRemiseSchema();
 
 const router = Router();
+
+function splitFullName(fullName) {
+  const name = String(fullName || '').trim().replace(/\s+/g, ' ');
+  if (!name) return { prenom: null, nom: null, nom_complet: null };
+  const parts = name.split(' ');
+  const prenom = parts[0] || null;
+  const nom = parts.length > 1 ? parts.slice(1).join(' ') : null;
+  return { prenom, nom, nom_complet: name };
+}
+
+function formatContactAdresse({ shipping_address_line1, shipping_address_line2 }) {
+  return [shipping_address_line1, shipping_address_line2]
+    .filter((v) => v != null && String(v).trim() !== '')
+    .map((v) => String(v).trim())
+    .join('\n');
+}
 
 // Generate unique order number
 function generateOrderNumber() {
@@ -17,7 +55,33 @@ router.post('/', async (req, res, next) => {
   
   try {
     await connection.beginTransaction();
-    
+
+    // Safety: never accept raw card details in this API.
+    // If you integrate card payments, only send a provider token/intent id.
+    const forbiddenCardKeys = [
+      'card_number',
+      'cardNumber',
+      'card_cvc',
+      'cvc',
+      'cvv',
+      'exp_month',
+      'expMonth',
+      'exp_year',
+      'expYear',
+      'expiry',
+      'expiration',
+      'cardholder_name',
+      'cardholderName',
+    ];
+    const receivedForbidden = forbiddenCardKeys.filter((k) => req.body?.[k] != null && String(req.body[k]).trim() !== '');
+    if (receivedForbidden.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Ne jamais envoyer les données de carte bancaire (numéro/CVV/expiration).',
+        forbidden_fields: receivedForbidden,
+      });
+    }
+
     const {
       // Customer info (required for both guest and authenticated)
       customer_name,
@@ -31,29 +95,182 @@ router.post('/', async (req, res, next) => {
       shipping_state,
       shipping_postal_code,
       shipping_country = 'Morocco',
-      
+
+      // Delivery method
+      delivery_method = 'delivery', // 'delivery' | 'pickup'
+      pickup_location_id,
+
       // Order details
-      payment_method = 'cash_on_delivery', // 'cash_on_delivery', 'card', 'bank_transfer'
+      payment_method = 'cash_on_delivery', // 'cash_on_delivery', 'card', 'solde', 'pay_in_store'
       customer_notes,
       // Optional promo code
       promo_code,
       
+      // Remise (loyalty balance) usage
+      remise_to_use,
+      use_remise_balance,
+
       // Items can come from cart or be provided directly
       use_cart = true, // If true, use user's cart; if false, use items array
       items = [] // For guest checkout or direct order: [{product_id, variant_id?, unit_id?, quantity}]
     } = req.body;
 
-    // Validate required fields
-    if (!customer_name || !customer_email || !shipping_address_line1 || !shipping_city) {
+    const userId = req.user?.id || null; // NULL for guest orders
+
+    // Validate delivery method early.
+    const normalizedDeliveryMethod = String(delivery_method || 'delivery').trim();
+    const allowedDeliveryMethods = new Set(['delivery', 'pickup']);
+    if (!allowedDeliveryMethods.has(normalizedDeliveryMethod)) {
       await connection.rollback();
-      return res.status(400).json({ 
-        message: 'Informations requises manquantes',
-        required: ['customer_name', 'customer_email', 'shipping_address_line1', 'shipping_city']
+      return res.status(400).json({
+        message: 'Mode de livraison invalide',
+        field: 'delivery_method',
+        allowed: Array.from(allowedDeliveryMethods),
       });
     }
 
-    const userId = req.user?.id || null; // NULL for guest orders
+    // Validate payment method early.
+    const normalizedPaymentMethod = String(payment_method || 'cash_on_delivery').trim();
+    const allowedPaymentMethods = new Set(['cash_on_delivery', 'card', 'solde', 'pay_in_store']);
+    if (!allowedPaymentMethods.has(normalizedPaymentMethod)) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Méthode de paiement invalide',
+        field: 'payment_method',
+        allowed: Array.from(allowedPaymentMethods),
+      });
+    }
+
+    // Basic combination rules (keep it simple): COD doesn't make sense for pickup.
+    if (normalizedDeliveryMethod === 'pickup' && normalizedPaymentMethod === 'cash_on_delivery') {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Méthode de paiement incompatible avec le retrait en boutique',
+        error_type: 'PAYMENT_METHOD_NOT_ALLOWED_FOR_PICKUP',
+      });
+    }
+
+    // Solde is only allowed for authenticated users explicitly enabled by backoffice.
+    if (normalizedPaymentMethod === 'solde') {
+      if (!userId) {
+        await connection.rollback();
+        return res.status(401).json({
+          message: 'Authentification requise pour payer en solde',
+          error_type: 'SOLDE_AUTH_REQUIRED',
+        });
+      }
+      const [soldeRows] = await connection.query(
+        'SELECT is_solde FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+        [userId]
+      );
+      const isSolde = Number(soldeRows?.[0]?.is_solde || 0) === 1;
+      if (!isSolde) {
+        await connection.rollback();
+        return res.status(403).json({
+          message: 'Votre compte n\'est pas autorisé à payer en solde',
+          error_type: 'SOLDE_NOT_ALLOWED',
+        });
+      }
+    }
+
+    // For pickup orders, shipping address is automatically set from pickup location.
+    // For delivery orders, shipping address is required.
+    let effectiveShippingLine1 = shipping_address_line1;
+    let effectiveShippingLine2 = shipping_address_line2;
+    let effectiveShippingCity = shipping_city;
+    let effectiveShippingState = shipping_state;
+    let effectiveShippingPostalCode = shipping_postal_code;
+    let effectiveShippingCountry = shipping_country;
+    let effectivePickupLocationId = pickup_location_id != null ? Number(pickup_location_id) : null;
+
+    if (normalizedDeliveryMethod === 'pickup') {
+      if (!Number.isFinite(effectivePickupLocationId) || effectivePickupLocationId <= 0) {
+        // Minimal setup: default to the first seeded pickup location.
+        effectivePickupLocationId = 1;
+      }
+
+      const [locRows] = await connection.query(
+        `SELECT id, name, address_line1, address_line2, city, state, postal_code, country
+         FROM ecommerce_pickup_locations
+         WHERE id = ? AND is_active = 1
+         LIMIT 1`,
+        [effectivePickupLocationId]
+      );
+
+      if (locRows.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          message: 'Point de retrait introuvable',
+          field: 'pickup_location_id',
+          error_type: 'PICKUP_LOCATION_NOT_FOUND',
+        });
+      }
+
+      const loc = locRows[0];
+      effectiveShippingLine1 = loc.address_line1 || loc.name;
+      effectiveShippingLine2 = loc.address_line2 || null;
+      effectiveShippingCity = loc.city || 'Casablanca';
+      effectiveShippingState = loc.state || null;
+      effectiveShippingPostalCode = loc.postal_code || null;
+      effectiveShippingCountry = loc.country || 'Morocco';
+    }
+
+    // Validate required fields
+    if (!customer_name || !customer_email || !effectiveShippingLine1 || !effectiveShippingCity) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Informations requises manquantes',
+        required: ['customer_name', 'customer_email', 'shipping_address_line1', 'shipping_city'],
+      });
+    }
+
     let orderItems = [];
+
+    // If authenticated user: persist checkout info into contacts so /api/users/auth/me can prefill next time.
+    if (userId) {
+      try {
+        await ensureContactsCheckoutColumns(connection);
+        const nameParts = splitFullName(customer_name);
+        const adresse = formatContactAdresse({ shipping_address_line1, shipping_address_line2 });
+
+        await connection.query(
+          `
+          UPDATE contacts
+          SET
+            nom_complet = COALESCE(NULLIF(?, ''), nom_complet),
+            prenom = COALESCE(NULLIF(?, ''), prenom),
+            nom = COALESCE(NULLIF(?, ''), nom),
+            telephone = COALESCE(NULLIF(?, ''), telephone),
+            adresse = COALESCE(NULLIF(?, ''), adresse),
+            shipping_address_line1 = COALESCE(NULLIF(?, ''), shipping_address_line1),
+            shipping_address_line2 = COALESCE(NULLIF(?, ''), shipping_address_line2),
+            shipping_city = COALESCE(NULLIF(?, ''), shipping_city),
+            shipping_state = COALESCE(NULLIF(?, ''), shipping_state),
+            shipping_postal_code = COALESCE(NULLIF(?, ''), shipping_postal_code),
+            shipping_country = COALESCE(NULLIF(?, ''), shipping_country),
+            updated_at = NOW()
+          WHERE id = ? AND deleted_at IS NULL
+          `,
+          [
+            nameParts.nom_complet,
+            nameParts.prenom,
+            nameParts.nom,
+            customer_phone?.trim() || null,
+            adresse || null,
+            String(effectiveShippingLine1 || '').trim() || null,
+            effectiveShippingLine2 != null ? String(effectiveShippingLine2).trim() : null,
+            String(effectiveShippingCity || '').trim() || null,
+            effectiveShippingState != null ? String(effectiveShippingState).trim() : null,
+            effectiveShippingPostalCode != null ? String(effectiveShippingPostalCode).trim() : null,
+            String(effectiveShippingCountry || '').trim() || null,
+            userId,
+          ]
+        );
+      } catch (e) {
+        // Do not block checkout if profile update fails
+        console.error('Checkout profile sync (contacts) failed:', e);
+      }
+    }
 
     // Get items from cart (authenticated users) or from request body (guest)
     if (use_cart && userId) {
@@ -275,7 +492,66 @@ router.post('/', async (req, res, next) => {
       discountAmount += promoDiscountAmount;
     }
 
-    const totalAmount = subtotal + taxAmount + shippingCost - promoDiscountAmount;
+    const totalAmount = Math.max(0, subtotal + taxAmount + shippingCost - promoDiscountAmount);
+
+    // Apply optional remise_balance payment for authenticated users.
+    // We only "spend" remise inside the same transaction and cap it to
+    // both the current balance and the order total.
+    let remiseUsedAmount = 0;
+
+    if (userId) {
+      const rawRequestedRemise = Number(remise_to_use ?? 0);
+      const wantsUseRemise =
+        use_remise_balance === true ||
+        rawRequestedRemise > 0 ||
+        String(use_remise_balance ?? '').toLowerCase() === 'true';
+
+      if (wantsUseRemise && totalAmount > 0) {
+        const [balanceRows] = await connection.query(
+          'SELECT remise_balance FROM contacts WHERE id = ? FOR UPDATE',
+          [userId]
+        );
+
+        const currentBalance = Number(balanceRows?.[0]?.remise_balance || 0);
+
+        if (currentBalance > 0) {
+          const requested = Number.isFinite(rawRequestedRemise) && rawRequestedRemise > 0
+            ? rawRequestedRemise
+            : currentBalance;
+
+          const maxUsable = Math.min(currentBalance, totalAmount);
+          remiseUsedAmount = Math.min(requested, maxUsable);
+
+          // Round down to 2 decimals to avoid floating issues.
+          remiseUsedAmount = Math.floor(remiseUsedAmount * 100) / 100;
+
+          if (remiseUsedAmount > 0) {
+            const [updateRes] = await connection.query(
+              `UPDATE contacts
+               SET remise_balance = remise_balance - ?
+               WHERE id = ? AND remise_balance >= ?`,
+              [remiseUsedAmount, userId, remiseUsedAmount]
+            );
+
+            if (updateRes.affectedRows !== 1) {
+              await connection.rollback();
+              return res.status(409).json({
+                message: 'Solde de remise insuffisant ou mis à jour, veuillez réessayer.',
+                error_type: 'REMISE_BALANCE_CHANGED',
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Determine initial payment status:
+    // - If the full total is covered by remise (no remaining amount),
+    //   we consider the payment collected immediately.
+    // - Otherwise, payment will be collected later via the chosen method.
+    const remainingToPay = Math.max(0, totalAmount - remiseUsedAmount);
+    const isFullyPaidByRemise = remainingToPay <= 0.000001;
+    const initialPaymentStatus = isFullyPaidByRemise ? 'paid' : 'pending';
 
     // Create order
     const orderNumber = generateOrderNumber();
@@ -300,24 +576,27 @@ router.post('/', async (req, res, next) => {
         promo_code,
         promo_discount_amount,
         total_amount,
+        remise_used_amount,
         status,
         payment_status,
         payment_method,
+        delivery_method,
+        pickup_location_id,
         customer_notes,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `, [
       orderNumber,
       userId,
       customer_email,
       customer_phone,
       customer_name,
-      shipping_address_line1,
-      shipping_address_line2 || null,
-      shipping_city,
-      shipping_state || null,
-      shipping_postal_code || null,
-      shipping_country,
+      effectiveShippingLine1,
+      effectiveShippingLine2 || null,
+      effectiveShippingCity,
+      effectiveShippingState || null,
+      effectiveShippingPostalCode || null,
+      effectiveShippingCountry,
       subtotal,
       taxAmount,
       shippingCost,
@@ -325,9 +604,12 @@ router.post('/', async (req, res, next) => {
       promo_code || null,
       promoDiscountAmount,
       totalAmount,
+      remiseUsedAmount,
       'pending', // status
-      'pending', // payment_status
-      payment_method,
+      initialPaymentStatus, // payment_status
+      normalizedPaymentMethod,
+      normalizedDeliveryMethod,
+      normalizedDeliveryMethod === 'pickup' ? effectivePickupLocationId : null,
       customer_notes || null
     ]);
 
@@ -424,9 +706,12 @@ router.post('/', async (req, res, next) => {
         id: orderId,
         order_number: orderNumber,
         total_amount: totalAmount,
+        remise_used_amount: remiseUsedAmount,
         status: 'pending',
-        payment_status: 'pending',
-        payment_method: payment_method,
+        payment_status: initialPaymentStatus,
+        payment_method: normalizedPaymentMethod,
+        delivery_method: normalizedDeliveryMethod,
+        pickup_location_id: normalizedDeliveryMethod === 'pickup' ? effectivePickupLocationId : null,
         items_count: validatedItems.length
       }
     });
@@ -461,11 +746,16 @@ router.get('/', async (req, res, next) => {
         o.customer_email,
         o.customer_phone,
         o.total_amount,
+        o.remise_used_amount,
         o.status,
         o.payment_status,
         o.payment_method,
+        o.delivery_method,
+        o.pickup_location_id,
         o.created_at,
         o.confirmed_at,
+        o.remise_earned_at,
+        o.remise_earned_amount,
         o.shipped_at,
         o.delivered_at,
         o.shipping_address_line1,
@@ -501,6 +791,8 @@ router.get('/', async (req, res, next) => {
           oi.subtotal,
           oi.discount_percentage,
           oi.discount_amount,
+          oi.remise_percent_applied,
+          oi.remise_amount,
           COALESCE(pv.image_url, p.image_url) AS image_url
         FROM ecommerce_order_items oi
         LEFT JOIN products p ON oi.product_id = p.id
@@ -526,6 +818,8 @@ router.get('/', async (req, res, next) => {
           subtotal: Number(it.subtotal),
           discount_percentage: Number(it.discount_percentage),
           discount_amount: Number(it.discount_amount),
+          remise_percent_applied: Number(it.remise_percent_applied || 0),
+          remise_amount: Number(it.remise_amount || 0),
           image_url: it.image_url || null,
         });
       }
@@ -539,11 +833,16 @@ router.get('/', async (req, res, next) => {
         customer_email: order.customer_email,
         customer_phone: order.customer_phone,
         total_amount: Number(order.total_amount),
+        remise_used_amount: Number(order.remise_used_amount || 0),
         status: order.status,
         payment_status: order.payment_status,
         payment_method: order.payment_method,
+        delivery_method: order.delivery_method || 'delivery',
+        pickup_location_id: order.pickup_location_id || null,
         created_at: order.created_at,
         confirmed_at: order.confirmed_at,
+        remise_applied: !!order.remise_earned_at,
+        remise_earned_amount: Number(order.remise_earned_amount || 0),
         shipped_at: order.shipped_at,
         delivered_at: order.delivered_at,
         shipping_address: {
@@ -572,11 +871,21 @@ router.get('/:id', async (req, res, next) => {
     const userId = req.user?.id;
     const { email } = req.query; // Allow guest to fetch by email
 
-    // Get order
+    // Get order (+ pickup location if any)
     const [orders] = await pool.query(`
-      SELECT *
-      FROM ecommerce_orders
-      WHERE id = ?
+      SELECT
+        o.*,
+        pl.name AS pickup_location_name,
+        pl.address_line1 AS pickup_address_line1,
+        pl.address_line2 AS pickup_address_line2,
+        pl.city AS pickup_city,
+        pl.state AS pickup_state,
+        pl.postal_code AS pickup_postal_code,
+        pl.country AS pickup_country
+      FROM ecommerce_orders o
+      LEFT JOIN ecommerce_pickup_locations pl ON o.pickup_location_id = pl.id
+      WHERE o.id = ?
+      LIMIT 1
     `, [orderId]);
 
     if (orders.length === 0) {
@@ -612,7 +921,9 @@ router.get('/:id', async (req, res, next) => {
         quantity,
         subtotal,
         discount_percentage,
-        discount_amount
+        discount_amount,
+        remise_percent_applied,
+        remise_amount
       FROM ecommerce_order_items
       WHERE order_id = ?
       ORDER BY id
@@ -630,6 +941,17 @@ router.get('/:id', async (req, res, next) => {
       WHERE order_id = ?
       ORDER BY created_at ASC
     `, [orderId]);
+
+    const pickupLocation = (order.delivery_method === 'pickup' && order.pickup_location_id) ? {
+      id: order.pickup_location_id,
+      name: order.pickup_location_name,
+      address_line1: order.pickup_address_line1,
+      address_line2: order.pickup_address_line2,
+      city: order.pickup_city,
+      state: order.pickup_state,
+      postal_code: order.pickup_postal_code,
+      country: order.pickup_country,
+    } : null;
 
     res.json({
       order: {
@@ -650,6 +972,11 @@ router.get('/:id', async (req, res, next) => {
           postal_code: order.shipping_postal_code,
           country: order.shipping_country
         },
+
+        // Delivery / pickup
+        delivery_method: order.delivery_method || 'delivery',
+        pickup_location_id: order.pickup_location_id || null,
+        pickup_location: pickupLocation,
         
         // Totals
         subtotal: Number(order.subtotal),
@@ -657,12 +984,17 @@ router.get('/:id', async (req, res, next) => {
         shipping_cost: Number(order.shipping_cost),
         discount_amount: Number(order.discount_amount),
         total_amount: Number(order.total_amount),
+        remise_used_amount: Number(order.remise_used_amount || 0),
         
         // Status
         status: order.status,
         payment_status: order.payment_status,
         payment_method: order.payment_method,
-        
+
+        // Remise (earned/applied)
+        remise_applied: !!order.remise_earned_at,
+        remise_earned_amount: Number(order.remise_earned_amount || 0),
+
         // Notes
         customer_notes: order.customer_notes,
         admin_notes: order.admin_notes,
@@ -690,7 +1022,9 @@ router.get('/:id', async (req, res, next) => {
           quantity: Number(item.quantity),
           subtotal: Number(item.subtotal),
           discount_percentage: Number(item.discount_percentage),
-          discount_amount: Number(item.discount_amount)
+          discount_amount: Number(item.discount_amount),
+          remise_percent_applied: Number(item.remise_percent_applied || 0),
+          remise_amount: Number(item.remise_amount || 0)
         })),
         
         // Status history
@@ -714,18 +1048,38 @@ router.put('/:id/status', async (req, res, next) => {
   const connection = await pool.getConnection();
   
   try {
-    await connection.beginTransaction();
-    
     const orderId = Number(req.params.id);
     const { status, payment_status, admin_notes } = req.body;
     const userId = req.user?.id; // Admin/employee ID
 
-    // Get current order
-    const [orders] = await connection.query(`
-      SELECT status, payment_status
+    // Ensure schema for remise
+    await ensureProductRemiseColumns(connection);
+    await ensureContactsRemiseBalance(connection);
+    await ensureEcommerceOrdersRemiseColumns(connection);
+    await ensureEcommerceOrderItemsRemiseColumns(connection);
+
+    await connection.beginTransaction();
+
+    // Get current order (lock row)
+    const [orders] = await connection.query(
+      `
+      SELECT
+        id,
+        user_id,
+        status,
+        payment_status,
+        payment_method,
+        confirmed_at,
+        total_amount,
+        remise_used_amount,
+        remise_earned_at,
+        remise_earned_amount
       FROM ecommerce_orders
       WHERE id = ?
-    `, [orderId]);
+      FOR UPDATE
+      `,
+      [orderId]
+    );
 
     if (orders.length === 0) {
       await connection.rollback();
@@ -735,6 +1089,19 @@ router.put('/:id/status', async (req, res, next) => {
     const currentOrder = orders[0];
     const updates = [];
     const params = [];
+
+    // For COD (cash_on_delivery): when delivered, payment is considered collected.
+    // If caller didn't specify payment_status, we auto-mark it paid on delivery.
+    const normalizedRequestedStatus = status ? String(status) : null;
+    let effectivePaymentStatus = payment_status ? String(payment_status) : null;
+    const shouldAutoMarkCodPaid =
+      normalizedRequestedStatus === 'delivered' &&
+      currentOrder.payment_method === 'cash_on_delivery' &&
+      !effectivePaymentStatus &&
+      currentOrder.payment_status !== 'paid';
+    if (shouldAutoMarkCodPaid) {
+      effectivePaymentStatus = 'paid';
+    }
 
     // Update status if provided
     if (status && status !== currentOrder.status) {
@@ -765,9 +1132,28 @@ router.put('/:id/status', async (req, res, next) => {
     }
 
     // Update payment status if provided
-    if (payment_status && payment_status !== currentOrder.payment_status) {
+    if (effectivePaymentStatus && effectivePaymentStatus !== currentOrder.payment_status) {
       updates.push('payment_status = ?');
-      params.push(payment_status);
+      params.push(effectivePaymentStatus);
+
+      // Log payment status change (stored in same history table as an event row)
+      await connection.query(
+        `
+        INSERT INTO ecommerce_order_status_history (
+          order_id,
+          old_status,
+          new_status,
+          changed_by_type,
+          notes
+        ) VALUES (?, ?, ?, 'system', ?)
+        `,
+        [
+          orderId,
+          `payment:${currentOrder.payment_status}`,
+          `payment:${effectivePaymentStatus}`,
+          admin_notes || `Payment status changed to ${effectivePaymentStatus}`,
+        ]
+      );
     }
 
     // Update admin notes if provided
@@ -789,13 +1175,110 @@ router.put('/:id/status', async (req, res, next) => {
       WHERE id = ?
     `, params);
 
+    // Award remise balance when order is confirmed + paid (authenticated users only)
+    // Idempotent by setting ecommerce_orders.remise_earned_at once.
+    const [updatedRows] = await connection.query(
+      `
+      SELECT
+        id,
+        user_id,
+        status,
+        payment_status,
+        payment_method,
+        confirmed_at,
+        total_amount,
+        remise_used_amount,
+        remise_earned_at
+      FROM ecommerce_orders
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [orderId]
+    );
+
+    const updatedOrder = updatedRows[0];
+    let earned_remise_amount = 0;
+
+    // Solde: when an admin confirms a solde order, book the debt once in the ledger.
+    // We only create the debit after confirmation to avoid booking debt for orders that were never approved.
+    if (updatedOrder?.user_id && updatedOrder.payment_method === 'solde' && updatedOrder.confirmed_at !== null) {
+      const totalAmount = Number(updatedOrder.total_amount || 0);
+      const remiseUsed = Number(updatedOrder.remise_used_amount || 0);
+      const soldeAmount = Math.max(0, Math.round((totalAmount - remiseUsed) * 100) / 100);
+
+      if (soldeAmount > 0) {
+        const [existingDebit] = await connection.query(
+          `SELECT 1
+           FROM contact_solde_ledger
+           WHERE contact_id = ? AND order_id = ? AND entry_type = 'debit'
+           LIMIT 1`,
+          [updatedOrder.user_id, orderId]
+        );
+
+        if (existingDebit.length === 0) {
+          await connection.query(
+            `
+            INSERT INTO contact_solde_ledger
+              (contact_id, order_id, entry_type, amount, description, created_by_employee_id)
+            VALUES
+              (?, ?, 'debit', ?, 'Solde order confirmed', ?)
+            `,
+            [updatedOrder.user_id, orderId, soldeAmount, userId || null]
+          );
+        }
+      }
+    }
+
+    if (updatedOrder?.user_id && updatedOrder.payment_status === 'paid' && updatedOrder.confirmed_at !== null && !updatedOrder.remise_earned_at) {
+      const [urows] = await connection.query(
+        `SELECT type_compte FROM contacts WHERE id = ? LIMIT 1`,
+        [updatedOrder.user_id]
+      );
+      const typeCompte = urows?.[0]?.type_compte || 'Client';
+
+      // Compute per-item remise breakdown (snapshot on order items)
+      const breakdown = await computeOrderItemRemiseBreakdown(connection, orderId, typeCompte);
+      earned_remise_amount = Number(breakdown.total || 0);
+
+      // Try to mark order as awarded (idempotent)
+      const [awardRes] = await connection.query(
+        `UPDATE ecommerce_orders
+         SET remise_earned_amount = ?, remise_earned_at = NOW(), updated_at = NOW()
+         WHERE id = ? AND remise_earned_at IS NULL`,
+        [earned_remise_amount, orderId]
+      );
+
+      if (awardRes.affectedRows === 1) {
+        // Persist per-item details
+        for (const it of breakdown.items) {
+          await connection.query(
+            `UPDATE ecommerce_order_items
+             SET remise_percent_applied = ?, remise_amount = ?
+             WHERE id = ? AND order_id = ?`,
+            [it.remise_percent_applied, it.remise_amount, it.order_item_id, orderId]
+          );
+        }
+
+        // Credit contact balance (only when > 0)
+        if (earned_remise_amount > 0) {
+          await connection.query(
+            `UPDATE contacts
+             SET remise_balance = remise_balance + ?
+             WHERE id = ?`,
+            [earned_remise_amount, updatedOrder.user_id]
+          );
+        }
+      }
+    }
+
     await connection.commit();
 
     res.json({
       message: 'Commande mise à jour avec succès',
       order_id: orderId,
       status: status || currentOrder.status,
-      payment_status: payment_status || currentOrder.payment_status
+      payment_status: payment_status || currentOrder.payment_status,
+      earned_remise_amount
     });
 
   } catch (err) {
@@ -883,7 +1366,7 @@ router.post('/:id/cancel', async (req, res, next) => {
 
     // If a promo code was used on this order, decrement redemption counter
     const [promoInfoRows] = await connection.query(`
-      SELECT promo_code, promo_discount_amount
+      SELECT promo_code, promo_discount_amount, remise_used_amount, user_id
       FROM ecommerce_orders
       WHERE id = ?
     `, [orderId]);
@@ -895,6 +1378,50 @@ router.post('/:id/cancel', async (req, res, next) => {
             updated_at = NOW()
         WHERE code = ?
       `, [promoUsed]);
+    }
+
+    // If remise balance was used to pay part of this order,
+    // refund that amount back to the user's remise_balance.
+    const remiseUsedOnOrder = Number(promoInfoRows[0]?.remise_used_amount || 0);
+    const promoUserId = promoInfoRows[0]?.user_id || null;
+    if (promoUserId && remiseUsedOnOrder > 0) {
+      await connection.query(
+        `UPDATE contacts
+         SET remise_balance = remise_balance + ?
+         WHERE id = ?`,
+        [remiseUsedOnOrder, promoUserId]
+      );
+    }
+
+    // Solde: if the order was already confirmed and a debit was booked,
+    // cancel should reverse any remaining debt for that order.
+    if (order.payment_method === 'solde' && order.user_id) {
+      const [sumRows] = await connection.query(
+        `
+        SELECT
+          COALESCE(SUM(CASE WHEN entry_type = 'debit' THEN amount ELSE 0 END), 0) AS debits,
+          COALESCE(SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE 0 END), 0) AS credits
+        FROM contact_solde_ledger
+        WHERE contact_id = ? AND order_id = ?
+        `,
+        [order.user_id, orderId]
+      );
+
+      const debits = Number(sumRows?.[0]?.debits || 0);
+      const credits = Number(sumRows?.[0]?.credits || 0);
+      const remaining = Math.round((debits - credits) * 100) / 100;
+
+      if (remaining > 0) {
+        await connection.query(
+          `
+          INSERT INTO contact_solde_ledger
+            (contact_id, order_id, entry_type, amount, description, created_by_employee_id)
+          VALUES
+            (?, ?, 'credit', ?, 'Solde order cancelled (reversal)', NULL)
+          `,
+          [order.user_id, orderId, remaining]
+        );
+      }
     }
 
     // Log cancellation
