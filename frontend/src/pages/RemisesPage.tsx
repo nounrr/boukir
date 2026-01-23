@@ -1,11 +1,58 @@
 import React, { useMemo, useState } from 'react';
 import { Search, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Plus, X, User, TrendingUp } from 'lucide-react';
 import SearchableSelect from '../components/SearchableSelect';
+import BonFormModal from '../components/BonFormModal';
 import { getBonNumeroDisplay } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useCreateClientRemiseMutation, useUpdateClientRemiseMutation, useDeleteClientRemiseMutation, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useUpdateRemiseItemMutation, useDeleteRemiseItemMutation } from '../store/api/remisesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
+import { useGetClientsQuery } from '../store/api/contactsApi';
 import { useAuth } from '../hooks/redux';
+
+const parseItems = (items: any): any[] => {
+  if (Array.isArray(items)) return items;
+  if (typeof items === 'string') {
+    try {
+      const parsed = JSON.parse(items);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const computeItemDiscount = (it: any): number => {
+  const q = Number(it?.quantite ?? it?.qte ?? 0) || 0;
+  if (!q) return 0;
+  const unit = Number(it?.prix_unitaire ?? it?.prix ?? it?.price ?? 0) || 0;
+  const montant = Number(it?.remise_montant ?? 0) || 0;
+  const pct = Number(it?.remise_pourcentage ?? 0) || 0;
+  // Rule: if remise_montant is set (can be negative), prefer it; otherwise use percentage.
+  const perUnit = montant !== 0 ? montant : (pct !== 0 ? (unit * pct) / 100 : 0);
+  return q * perUnit;
+};
+
+const computeBonDiscount = (bon: any): number => {
+  const items = parseItems(bon?.items);
+  return items.reduce((sum: number, it: any) => sum + computeItemDiscount(it), 0);
+};
+
+const getBonRemiseTarget = (bon: any) => {
+  const isClientRaw = bon?.remise_is_client ?? bon?.remiseIsClient ?? bon?.remise_isClient;
+  const idRaw = bon?.remise_id ?? bon?.remiseId;
+  const remise_is_client = Number(isClientRaw ?? 1) === 1 ? 1 : 0;
+  const remise_id = idRaw == null || idRaw === '' ? null : Number(idRaw);
+  return { remise_is_client, remise_id: Number.isFinite(remise_id as any) ? (remise_id as any) : null };
+};
+
+const getBonDirectClientId = (bon: any): number | null => {
+  const { remise_is_client, remise_id } = getBonRemiseTarget(bon);
+  if (remise_is_client !== 1) return null;
+  const fallback = bon?.client_id ?? bon?.clientId;
+  const id = remise_id ?? (fallback == null || fallback === '' ? null : Number(fallback));
+  return id != null && Number.isFinite(Number(id)) ? Number(id) : null;
+};
 
 const RemisesPage: React.FC = () => {
   const { user } = useAuth();
@@ -14,11 +61,19 @@ const RemisesPage: React.FC = () => {
   const [updateClient] = useUpdateClientRemiseMutation();
   const [deleteClient] = useDeleteClientRemiseMutation();
 
+  // Direct clients (Contacts) for the “bons → client” remises view
+  const { data: directClients = [] } = useGetClientsQuery();
+
+  // New system: remises are stored per item on Sortie/Comptant, and beneficiary is stored on bon header
+  const { data: sortiesAll = [] } = useGetBonsByTypeQuery('Sortie');
+  const { data: comptantsAll = [] } = useGetBonsByTypeQuery('Comptant');
+
   useGetProductsQuery();
 
   type ClientRemise = { id: number; nom?: string; phone?: string; cin?: string } | null;
   const [selected, setSelected] = useState<ClientRemise>(null);
   const [search, setSearch] = useState('');
+  const [directSearch, setDirectSearch] = useState('');
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return clients;
@@ -29,25 +84,150 @@ const RemisesPage: React.FC = () => {
     );
   }, [clients, search]);
 
+  const directNewByClientId = useMemo(() => {
+    const totalById = new Map<number, number>();
+    const countById = new Map<number, number>();
+    const all = [...(sortiesAll as any[]), ...(comptantsAll as any[])];
+
+    for (const b of all) {
+      const clientId = getBonDirectClientId(b);
+      if (!clientId) continue;
+      const disc = computeBonDiscount(b);
+      if (!disc) continue;
+      totalById.set(clientId, (totalById.get(clientId) || 0) + disc);
+      countById.set(clientId, (countById.get(clientId) || 0) + 1);
+    }
+
+    return { totalById, countById };
+  }, [sortiesAll, comptantsAll]);
+
+  const filteredDirectClients = useMemo(() => {
+    const term = directSearch.trim().toLowerCase();
+    const list = (directClients || []).filter((c: any) => {
+      const id = Number(c?.id);
+      if (!Number.isFinite(id)) return false;
+      const total = directNewByClientId.totalById.get(id) || 0;
+      if (!total) return false;
+
+      if (!term) return true;
+      return (
+        String(c.nom_complet || '').toLowerCase().includes(term) ||
+        String(c.societe || '').toLowerCase().includes(term) ||
+        String(c.telephone || '').toLowerCase().includes(term)
+      );
+    });
+    // biggest first
+    list.sort((a: any, b: any) => {
+      const ta = directNewByClientId.totalById.get(Number(a?.id)) || 0;
+      const tb = directNewByClientId.totalById.get(Number(b?.id)) || 0;
+      return tb - ta;
+    });
+    return list;
+  }, [directClients, directSearch, directNewByClientId]);
+
   const [form, setForm] = useState({ nom: '', phone: '', cin: '' });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'direct-clients' | 'client-remises'>('client-remises');
 
+  const [selectedDirectClient, setSelectedDirectClient] = useState<any>(null);
+  const [isDirectDetailsOpen, setIsDirectDetailsOpen] = useState(false);
+  const [editingBon, setEditingBon] = useState<any>(null);
+  const [isBonEditOpen, setIsBonEditOpen] = useState(false);
+
+  const openEditBon = (bon: any) => {
+    if (!bon) return;
+    setEditingBon(bon);
+    setIsBonEditOpen(true);
+  };
+
+
+  const oldTotalByClientId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const c of clients as any[]) {
+      const id = Number(c?.id);
+      if (!Number.isFinite(id)) continue;
+      const oldTotal = Array.isArray(c.items)
+        ? c.items
+            .filter((it: any) => it.statut !== 'Annulé')
+            .reduce((itemSum: number, it: any) => itemSum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0)
+        : Number(c.total_remise ?? 0);
+      map.set(id, Number(oldTotal || 0));
+    }
+    return map;
+  }, [clients]);
+
+  const newTotalByClientId = useMemo(() => {
+    const map = new Map<number, number>();
+    const all = [...(sortiesAll as any[]), ...(comptantsAll as any[])];
+    for (const b of all) {
+      const { remise_is_client, remise_id } = getBonRemiseTarget(b);
+      if (remise_is_client !== 0 || !remise_id) continue; // only client_remises beneficiaries
+      const disc = computeBonDiscount(b);
+      map.set(remise_id, (map.get(remise_id) || 0) + disc);
+    }
+    return map;
+  }, [sortiesAll, comptantsAll]);
+
+  const totalRemisesOld = useMemo(() => {
+    let sum = 0;
+    for (const v of oldTotalByClientId.values()) sum += Number(v || 0);
+    return sum;
+  }, [oldTotalByClientId]);
+
+  const totalRemisesNew = useMemo(() => {
+    let sum = 0;
+    for (const v of newTotalByClientId.values()) sum += Number(v || 0);
+    return sum;
+  }, [newTotalByClientId]);
+
+  const totalRemisesNewDirectClients = useMemo(() => {
+    let sum = 0;
+    for (const v of directNewByClientId.totalById.values()) sum += Number(v || 0);
+    return sum;
+  }, [directNewByClientId]);
+
+  const totalRemisesGlobal = totalRemisesOld + totalRemisesNew;
 
   // Calculer les statistiques
   const totalClients = clients.length;
   const clientsActifs = clients.filter((c: any) => 
     Array.isArray(c.items) ? c.items.some((it: any) => it.statut === 'Validé') : false
   ).length;
-  const totalRemises = clients.reduce((sum: number, c: any) => {
-    if (Array.isArray(c.items)) {
-      return sum + c.items.filter((it: any) => it.statut !== 'Annulé').reduce((itemSum: number, it: any) => 
-        itemSum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0
-      );
-    }
-    return sum + Number(c.total_remise ?? 0);
-  }, 0);
+  const totalRemises = totalRemisesGlobal;
+
+  const directClientBons = useMemo(() => {
+    const id = Number(selectedDirectClient?.id);
+    if (!Number.isFinite(id)) return [] as any[];
+    const hasRemise = (n: any) => Math.abs(Number(n || 0)) > 0.000001;
+    const list = [...(sortiesAll as any[]), ...(comptantsAll as any[])]
+      .filter((b: any) => getBonDirectClientId(b) === id)
+      .map((b: any) => {
+        const items = parseItems(b?.items);
+        const itemsWithRemise = items.filter((it: any) => {
+          const d = computeItemDiscount(it);
+          return Number(d || 0) !== 0;
+        });
+        const totalRemise = computeBonDiscount(b);
+        return {
+          ...b,
+          _new_total_remise: totalRemise,
+          _items_with_remise: itemsWithRemise,
+        };
+      })
+      .filter((b: any) => hasRemise(b?._new_total_remise) && Array.isArray(b?._items_with_remise) && b._items_with_remise.length > 0)
+      .sort((a: any, b: any) => {
+        const ta = new Date(a?.date_creation || a?.date || 0).getTime() || 0;
+        const tb = new Date(b?.date_creation || b?.date || 0).getTime() || 0;
+        return tb - ta;
+      });
+    return list;
+  }, [selectedDirectClient?.id, sortiesAll, comptantsAll]);
+
+  const directClientTotalRemise = useMemo(() => {
+    return (directClientBons || []).reduce((sum: number, b: any) => sum + Number(b?._new_total_remise || 0), 0);
+  }, [directClientBons]);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -61,6 +241,8 @@ const RemisesPage: React.FC = () => {
             setForm({ nom: '', phone: '', cin: '' });
             setIsFormModalOpen(true);
           }}
+          disabled={activeTab === 'direct-clients'}
+          title={activeTab === 'direct-clients' ? 'Disponible dans l\'onglet client_remises' : 'Nouveau client remise'}
         >
           <Plus size={18} />
           Nouveau client remise
@@ -68,7 +250,7 @@ const RemisesPage: React.FC = () => {
       </div>
 
       {/* Cartes statistiques */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-blue-500">
           <div className="flex items-center justify-between">
             <div>
@@ -96,14 +278,56 @@ const RemisesPage: React.FC = () => {
         <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-purple-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Remises</p>
-              <p className="text-3xl font-bold text-gray-900">{totalRemises} DH</p>
+              <p className="text-sm font-medium text-gray-600">Total Remises (Ancien)</p>
+              <p className="text-3xl font-bold text-gray-900">{Number(totalRemisesOld).toFixed(2)} DH</p>
             </div>
             <div className="bg-purple-100 p-3 rounded-full">
               <TrendingUp className="h-8 w-8 text-purple-600" />
             </div>
           </div>
         </div>
+
+        <div className="bg-white rounded-xl p-6 shadow-lg border-l-4 border-amber-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Remises (Nouveau)</p>
+              <p className="text-3xl font-bold text-gray-900">{Number(totalRemisesNew).toFixed(2)} DH</p>
+              <p className="text-xs text-gray-500 mt-1">Direct clients: {Number(totalRemisesNewDirectClients).toFixed(2)} DH</p>
+              <p className="text-xs text-gray-500">Global: {Number(totalRemises).toFixed(2)} DH</p>
+            </div>
+            <div className="bg-amber-100 p-3 rounded-full">
+              <TrendingUp className="h-8 w-8 text-amber-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200 mb-4">
+        <nav className="flex gap-6">
+          <button
+            type="button"
+            onClick={() => setActiveTab('direct-clients')}
+            className={`py-2 px-1 font-medium border-b-2 transition-colors ${
+              activeTab === 'direct-clients'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Clients (bons)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('client-remises')}
+            className={`py-2 px-1 font-medium border-b-2 transition-colors ${
+              activeTab === 'client-remises'
+                ? 'border-purple-600 text-purple-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            client_remises
+          </button>
+        </nav>
       </div>
 
       {/* Barre de recherche */}
@@ -112,9 +336,9 @@ const RemisesPage: React.FC = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input 
             className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-            placeholder="Rechercher par nom, téléphone ou CIN..." 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)} 
+            placeholder={activeTab === 'direct-clients' ? 'Rechercher client (nom, société, téléphone)...' : 'Rechercher par nom, téléphone ou CIN...'}
+            value={activeTab === 'direct-clients' ? directSearch : search}
+            onChange={(e) => (activeTab === 'direct-clients' ? setDirectSearch(e.target.value) : setSearch(e.target.value))}
           />
         </div>
       </div>
@@ -122,75 +346,150 @@ const RemisesPage: React.FC = () => {
       {/* Tableau des clients avec style amélioré */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Liste des Clients Remises</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            {activeTab === 'direct-clients'
+              ? 'Remises directes (Clients des bons)'
+              : 'Remises via table client_remises (Ancien + Nouveau)'}
+          </h3>
+          {activeTab === 'direct-clients' ? (
+            <p className="text-xs text-gray-500 mt-1">Nouveau système: remises des items Sortie/Comptant attribuées au client du bon</p>
+          ) : (
+            <p className="text-xs text-gray-500 mt-1">Ancien système + nouveau système (bons attribués à client_remises)</p>
+          )}
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gradient-to-r from-purple-50 to-blue-50">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Nom</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Téléphone</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">CIN</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Créer le</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">Total Remises</th>
-                <th className="px-6 py-4 text-center text-xs font-semibold text-purple-700 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
-              {filtered.map((c: any) => (
-                <tr key={c.id} className="hover:bg-gradient-to-r hover:from-purple-25 hover:to-blue-25 transition-all duration-200">
-                  <td className="px-6 py-4 font-medium text-gray-900">{c.nom}</td>
-                  <td className="px-6 py-4 text-gray-600">{c.phone || '-'}</td>
-                  <td className="px-6 py-4 text-gray-600">{c.cin || '-'}</td>
-                  <td className="px-6 py-4 text-gray-600">{c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '-'}</td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-lg font-bold text-purple-600">
-                      {Array.isArray(c.items)
-                        ? c.items.filter((it: any) => it.statut !== 'Annulé').reduce((sum: number, it: any) => sum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0)
-                        : Number(c.total_remise ?? 0)
-                      } DH
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
-                        title="Détails"
-                        onClick={() => { setSelected(c); setIsDetailsModalOpen(true); }}
-                      >
-                        <Eye size={18} />
-                      </button>
-                      <button
-                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors duration-200"
-                        title="Modifier"
-                        onClick={() => {
-                          setEditingId(c.id);
-                          setForm({ nom: c.nom || '', phone: c.phone || '', cin: c.cin || '' });
-                          setIsFormModalOpen(true);
-                        }}
-                      >
-                        <Edit size={18} />
-                      </button>
-                      {user?.role === 'PDG' && (
+          {activeTab === 'direct-clients' ? (
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gradient-to-r from-blue-50 to-cyan-50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Client</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Société</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Téléphone</th>
+                  <th className="px-6 py-4 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider">Bons</th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Remise (Nouveau)</th>
+                  <th className="px-6 py-4 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {filteredDirectClients.map((c: any) => {
+                  const id = Number(c?.id);
+                  const total = directNewByClientId.totalById.get(id) || 0;
+                  const count = directNewByClientId.countById.get(id) || 0;
+                  return (
+                    <tr key={id} className="hover:bg-gradient-to-r hover:from-blue-25 hover:to-cyan-25 transition-all duration-200">
+                      <td className="px-6 py-4 font-medium text-gray-900">{c.nom_complet || c.nom || `#${id}`}</td>
+                      <td className="px-6 py-4 text-gray-600">{c.societe || '-'}</td>
+                      <td className="px-6 py-4 text-gray-600">{c.telephone || '-'}</td>
+                      <td className="px-6 py-4 text-center text-gray-700">{count}</td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="text-lg font-bold text-blue-600">{Number(total).toFixed(2)} DH</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
+                            title="Détails"
+                            onClick={() => {
+                              setSelectedDirectClient(c);
+                              setIsDirectDetailsOpen(true);
+                            }}
+                          >
+                            <Eye size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredDirectClients.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
+                      Aucun client avec remise (nouveau système) trouvé.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          ) : (
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gradient-to-r from-purple-50 to-blue-50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Nom</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Téléphone</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">CIN</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Créer le</th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">Ancien</th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">Nouveau</th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">Global</th>
+                  <th className="px-6 py-4 text-center text-xs font-semibold text-purple-700 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {filtered.map((c: any) => (
+                  <tr key={c.id} className="hover:bg-gradient-to-r hover:from-purple-25 hover:to-blue-25 transition-all duration-200">
+                    <td className="px-6 py-4 font-medium text-gray-900">{c.nom}</td>
+                    <td className="px-6 py-4 text-gray-600">{c.phone || '-'}</td>
+                    <td className="px-6 py-4 text-gray-600">{c.cin || '-'}</td>
+                    <td className="px-6 py-4 text-gray-600">{c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '-'}</td>
+                    {(() => {
+                      const oldT = oldTotalByClientId.get(Number(c.id)) || 0;
+                      const newT = newTotalByClientId.get(Number(c.id)) || 0;
+                      const glob = oldT + newT;
+                      return (
+                        <>
+                          <td className="px-6 py-4 text-right">
+                            <span className="text-lg font-bold text-purple-600">{Number(oldT).toFixed(2)} DH</span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <span className="text-lg font-bold text-amber-600">{Number(newT).toFixed(2)} DH</span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <span className="text-lg font-bold text-gray-900">{Number(glob).toFixed(2)} DH</span>
+                          </td>
+                        </>
+                      );
+                    })()}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2">
                         <button
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
-                          title="Supprimer"
-                          onClick={async () => {
-                            if (confirm('Supprimer ce client de remise ?')) {
-                              await deleteClient(c.id).unwrap();
-                              refetch();
-                            }
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
+                          title="Détails"
+                          onClick={() => { setSelected(c); setIsDetailsModalOpen(true); }}
+                        >
+                          <Eye size={18} />
+                        </button>
+                        <button
+                          className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors duration-200"
+                          title="Modifier"
+                          onClick={() => {
+                            setEditingId(c.id);
+                            setForm({ nom: c.nom || '', phone: c.phone || '', cin: c.cin || '' });
+                            setIsFormModalOpen(true);
                           }}
                         >
-                          <Trash2 size={18} />
+                          <Edit size={18} />
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        {user?.role === 'PDG' && (
+                          <button
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                            title="Supprimer"
+                            onClick={async () => {
+                              if (confirm('Supprimer ce client de remise ?')) {
+                                await deleteClient(c.id).unwrap();
+                                refetch();
+                              }
+                            }}
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -320,6 +619,125 @@ const RemisesPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal Détails: Client direct (bons) */}
+      {isDirectDetailsOpen && selectedDirectClient && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <button
+            type="button"
+            className="absolute inset-0"
+            aria-label="Fermer le modal"
+            onClick={() => { setIsDirectDetailsOpen(false); setSelectedDirectClient(null); }}
+          />
+          <div className="relative bg-white rounded-lg w-full max-w-8xl max-h-[95vh] overflow-y-auto">
+            <div className="bg-blue-600 px-6 py-4 rounded-t-lg">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-white">Remises (bons) - {selectedDirectClient?.nom_complet || selectedDirectClient?.nom || '-'}</h2>
+                <button
+                  onClick={() => { setIsDirectDetailsOpen(false); setSelectedDirectClient(null); }}
+                  className="text-white hover:text-gray-200"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 w-full space-y-4">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-bold text-lg mb-2">Informations Client</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <p className="font-semibold text-gray-600">Société:</p>
+                    <p>{selectedDirectClient?.societe || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-600">Téléphone:</p>
+                    <p>{selectedDirectClient?.telephone || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-600">ID:</p>
+                    <p>{selectedDirectClient?.id ?? '-'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-600">Total remise (nouveau):</p>
+                    <p className="font-bold text-blue-700">{Number(directClientTotalRemise || 0).toFixed(2)} DH</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+                  <h3 className="text-lg font-semibold text-gray-900">Bons liés + remises</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gradient-to-r from-blue-50 to-cyan-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Bon</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Date</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Statut</th>
+                        <th className="px-6 py-4 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider">Lignes remisées</th>
+                        <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Remise (Nouveau)</th>
+                        <th className="px-6 py-4 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
+                      {directClientBons.map((b: any) => {
+                        const numero = getBonNumeroDisplay({ id: b?.id, type: b?.type, numero: b?.numero });
+                        const d = b?.date_creation ? new Date(b.date_creation).toLocaleDateString('fr-FR') : '-';
+                        const lines = Array.isArray(b?._items_with_remise) ? b._items_with_remise.length : 0;
+                        const r = Number(b?._new_total_remise || 0);
+                        return (
+                          <tr key={`${b?.type}-${b?.id}`} className="hover:bg-gradient-to-r hover:from-blue-25 hover:to-cyan-25 transition-all duration-200">
+                            <td className="px-6 py-4 font-medium text-gray-900">{numero || `${b?.type} #${b?.id}`}</td>
+                            <td className="px-6 py-4 text-gray-600">{d}</td>
+                            <td className="px-6 py-4 text-gray-600">{b?.statut || '-'}</td>
+                            <td className="px-6 py-4 text-center text-gray-700">{lines}</td>
+                            <td className="px-6 py-4 text-right"><span className="text-lg font-bold text-blue-600">{r.toFixed(2)} DH</span></td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors duration-200"
+                                  title="Modifier bon"
+                                  onClick={() => {
+                                    setIsDirectDetailsOpen(false);
+                                    setSelectedDirectClient(null);
+                                    openEditBon(b);
+                                  }}
+                                >
+                                  <Edit size={18} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {directClientBons.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">Aucun bon trouvé pour ce client.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal d'édition Bon (depuis Remises) */}
+      <BonFormModal
+        key={editingBon ? `${editingBon?.type || 'bon'}-${editingBon?.id}` : 'bon-edit'}
+        isOpen={isBonEditOpen}
+        onClose={() => { setIsBonEditOpen(false); setEditingBon(null); }}
+        currentTab={editingBon?.type || 'Sortie'}
+        initialValues={editingBon || undefined}
+        onBonAdded={() => {
+          setIsBonEditOpen(false);
+          setEditingBon(null);
+        }}
+      />
     </div>
   );
 };
@@ -334,6 +752,30 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
   const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
   const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
   const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
+
+  const newSystemBons = useMemo(() => {
+    const id = Number(clientRemise?.id);
+    if (!Number.isFinite(id)) return [] as any[];
+    const list = [...(sorties || []), ...(comptants || [])]
+      .filter((b: any) => {
+        const { remise_is_client, remise_id } = getBonRemiseTarget(b);
+        return remise_is_client === 0 && remise_id === id;
+      })
+      .map((b: any) => {
+        const totalRemise = computeBonDiscount(b);
+        return { ...b, _new_total_remise: totalRemise };
+      })
+      .sort((a: any, b: any) => {
+        const ta = new Date(a?.date_creation || a?.date || 0).getTime() || 0;
+        const tb = new Date(b?.date_creation || b?.date || 0).getTime() || 0;
+        return tb - ta;
+      });
+    return list;
+  }, [clientRemise?.id, sorties, comptants]);
+
+  const newSystemTotal = useMemo(() => {
+    return (newSystemBons || []).reduce((sum: number, b: any) => sum + Number(b?._new_total_remise || 0), 0);
+  }, [newSystemBons]);
 
   const productOptions = useMemo(() => (products || []).map((p: any) => ({
     value: String(p.id),
@@ -396,9 +838,53 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
           </div>
           <div>
             <p className="font-semibold text-gray-600">Total Remises:</p>
-            <p className="font-medium">{total} DH</p>
+            <p className="font-medium">Ancien: {Number(total).toFixed(2)} DH</p>
+            <p className="font-medium">Nouveau: {Number(newSystemTotal).toFixed(2)} DH</p>
+            <p className="font-semibold">Global: {Number(total + newSystemTotal).toFixed(2)} DH</p>
           </div>
         </div>
+      </div>
+
+      {/* Nouveau système: remises calculées depuis bons Sortie/Comptant (remise_montant/remise_pourcentage) */}
+      <div className="bg-white rounded shadow p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold">Nouveau système (bons)</h3>
+          <div className="text-sm text-gray-700">
+            Total nouveau: <span className="font-bold text-amber-700">{Number(newSystemTotal).toFixed(2)} DH</span>
+          </div>
+        </div>
+
+        {newSystemBons.length === 0 ? (
+          <div className="text-sm text-gray-500">Aucun bon lié à ce client remise (nouveau système).</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bon</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Montant</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Remise (calc.)</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {newSystemBons.map((b: any) => {
+                  const type = String(b?.type || b?.bon_type || '');
+                  const numero = getBonNumeroDisplay({ id: b?.id, type, numero: b?.numero });
+                  const dateStr = b?.date_creation ? new Date(b.date_creation).toLocaleDateString('fr-FR') : (b?.date ? new Date(b.date).toLocaleDateString('fr-FR') : '-');
+                  return (
+                    <tr key={`${type}:${b.id}`}>
+                      <td className="px-4 py-2">{numero}</td>
+                      <td className="px-4 py-2">{dateStr}</td>
+                      <td className="px-4 py-2 text-right">{Number(b?.montant_total ?? 0).toFixed(2)} DH</td>
+                      <td className="px-4 py-2 text-right font-semibold text-amber-700">{Number(b?._new_total_remise ?? 0).toFixed(2)} DH</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6">

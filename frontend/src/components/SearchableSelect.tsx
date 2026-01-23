@@ -12,6 +12,9 @@ interface SearchableSelectProps {
   maxDisplayItems?: number;
   id?: string;
   autoOpenOnFocus?: boolean;
+  allowCreate?: boolean;
+  onCreate?: (label: string) => void;
+  createText?: string;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -24,6 +27,9 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   maxDisplayItems = 100,
   id,
   autoOpenOnFocus = false,
+  allowCreate = false,
+  onCreate,
+  createText = 'Créer',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -44,6 +50,12 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const filteredOptions = allMatches.slice(0, displayCount);
   const hasMoreItems = allMatches.length > displayCount;
   const selectedOption = options.find(o => o.value === value);
+  const canCreate = Boolean(
+    allowCreate &&
+      typeof onCreate === 'function' &&
+      searchTerm.trim().length >= 2 &&
+      allMatches.length === 0
+  );
 
   // Focus search input when opening
   useEffect(() => {
@@ -160,7 +172,29 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
               </div>
             )}
             {searchTerm.trim().length >= 2 && filteredOptions.length === 0 && (
-              <div className="p-2 text-sm text-gray-500">Aucun résultat trouvé</div>
+              <div className="p-2 text-sm text-gray-500">
+                <div className="mb-2">Aucun résultat trouvé</div>
+                {canCreate && (
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left bg-green-50 hover:bg-green-100 text-green-800 text-sm rounded border border-green-200"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      const label = searchTerm.trim();
+                      if (!label) return;
+                      try {
+                        onCreate(label);
+                      } finally {
+                        setIsOpen(false);
+                        setSearchTerm('');
+                        setHighlightIndex(-1);
+                      }
+                    }}
+                  >
+                    {createText} "{searchTerm.trim()}"
+                  </button>
+                )}
+              </div>
             )}
             {searchTerm.trim().length >= 2 && filteredOptions.length > 0 && (
               <>

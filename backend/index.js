@@ -68,6 +68,7 @@ import inventoryRouter from './routes/inventory.js';
 
 import {
   ensureContactsRemiseBalance,
+  ensureBonsRemiseTargetColumns,
   ensureEcommerceOrderItemsRemiseColumns,
   ensureEcommerceOrdersRemiseColumns,
   ensureProductRemiseColumns,
@@ -81,6 +82,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
   try {
     await ensureProductRemiseColumns();
     await ensureContactsRemiseBalance();
+    await ensureBonsRemiseTargetColumns();
     await ensureEcommerceOrdersRemiseColumns();
     await ensureEcommerceOrderItemsRemiseColumns();
   } catch (e) {

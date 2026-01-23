@@ -1,3 +1,0 @@
-ALTER TABLE products ADD COLUMN fiche_technique VARCHAR(255) DEFAULT NULL;
-ALTER TABLE products ADD COLUMN description TEXT DEFAULT NULL;
-ALTER TABLE products ADD COLUMN pourcentage_promo DECIMAL(5,2) DEFAULT 0;

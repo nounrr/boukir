@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken } from '../middleware/auth.js';
+import { resolveRemiseTarget } from '../utils/remiseTarget.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 
 const router = express.Router();
@@ -184,6 +185,10 @@ router.post('/', async (req, res) => {
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
     const phone = req.body?.phone ?? null;
 
+    const remise_is_client = req.body?.remise_is_client;
+    const remise_id = req.body?.remise_id;
+    const remise_client_nom = req.body?.remise_client_nom;
+
   // Validation champs requis (détaillée)
   const missing = [];
   if (!date_creation) missing.push('date_creation');
@@ -199,12 +204,39 @@ router.post('/', async (req, res) => {
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? 'Brouillon';
 
+    const resolved = await resolveRemiseTarget({
+      db: connection,
+      clientId: cId,
+      remiseIsClient: remise_is_client,
+      remiseId: remise_id,
+      remiseClientNom: remise_client_nom,
+    });
+    if (resolved?.error) {
+      await connection.rollback();
+      return res.status(400).json({ message: resolved.error });
+    }
+
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
         date_creation, client_id, client_nom, phone, vehicule_id,
-        lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, cId, client_nom ?? null, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by, isNotCalculated]);
+        lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated,
+        remise_is_client, remise_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      date_creation,
+      cId,
+      client_nom ?? null,
+      phone,
+      vId,
+      lieu,
+      adresse_livraison ?? null,
+      montant_total,
+      st,
+      created_by,
+      isNotCalculated,
+      resolved.remise_is_client,
+      resolved.remise_id,
+    ]);
 
     const comptantId = comptantResult.insertId;
 
@@ -288,6 +320,10 @@ router.put('/:id', async (req, res) => {
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
+    const remise_is_client = req.body?.remise_is_client;
+    const remise_id = req.body?.remise_id;
+    const remise_client_nom = req.body?.remise_client_nom;
+
     const [exists] = await connection.execute('SELECT statut FROM bons_comptant WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
@@ -315,12 +351,39 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ message: 'Champs requis manquants', missing: missingPut });
     }
 
+    const resolved = await resolveRemiseTarget({
+      db: connection,
+      clientId: cId,
+      remiseIsClient: remise_is_client,
+      remiseId: remise_id,
+      remiseClientNom: remise_client_nom,
+    });
+    if (resolved?.error) {
+      await connection.rollback();
+      return res.status(400).json({ message: resolved.error });
+    }
+
     await connection.execute(`
       UPDATE bons_comptant SET
         date_creation = ?, client_id = ?, client_nom = ?, phone = ?,
-        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?
+        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?,
+        remise_is_client = ?, remise_id = ?
       WHERE id = ?
-    `, [date_creation, cId, client_nom ?? null, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, isNotCalculated, id]);
+    `, [
+      date_creation,
+      cId,
+      client_nom ?? null,
+      phone,
+      vId,
+      lieu,
+      adresse_livraison ?? null,
+      montant_total,
+      st,
+      isNotCalculated,
+      resolved.remise_is_client,
+      resolved.remise_id,
+      id,
+    ]);
 
     await connection.execute('DELETE FROM comptant_items WHERE bon_comptant_id = ?', [id]);
     if (Array.isArray(livraisons)) {
