@@ -167,6 +167,36 @@ export async function ensureEcommerceOrderItemsRemiseColumns(db = pool) {
   });
 }
 
+export async function ensureBonsRemiseTargetColumns(db = pool) {
+  await withSchemaLock(db, async () => {
+    // bons_sortie
+    if (await columnExists(db, 'bons_sortie', 'id')) {
+      if (!(await columnExists(db, 'bons_sortie', 'remise_is_client'))) {
+        await execDdlWithRetry(
+          db,
+          `ALTER TABLE bons_sortie ADD COLUMN remise_is_client TINYINT(1) NOT NULL DEFAULT 1`
+        );
+      }
+      if (!(await columnExists(db, 'bons_sortie', 'remise_id'))) {
+        await execDdlWithRetry(db, `ALTER TABLE bons_sortie ADD COLUMN remise_id INT NULL`);
+      }
+    }
+
+    // bons_comptant
+    if (await columnExists(db, 'bons_comptant', 'id')) {
+      if (!(await columnExists(db, 'bons_comptant', 'remise_is_client'))) {
+        await execDdlWithRetry(
+          db,
+          `ALTER TABLE bons_comptant ADD COLUMN remise_is_client TINYINT(1) NOT NULL DEFAULT 1`
+        );
+      }
+      if (!(await columnExists(db, 'bons_comptant', 'remise_id'))) {
+        await execDdlWithRetry(db, `ALTER TABLE bons_comptant ADD COLUMN remise_id INT NULL`);
+      }
+    }
+  });
+}
+
 function roundMoney(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
