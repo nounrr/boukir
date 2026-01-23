@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS ecommerce_orders (
   total_amount DECIMAL(10, 2) NOT NULL,
   
   -- Order status
-  status ENUM('pending', '`confirmed`', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded') DEFAULT 'pending',
+  status ENUM('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded') DEFAULT 'pending',
   payment_status ENUM('pending', 'paid', 'failed', 'refunded') DEFAULT 'pending',
   payment_method VARCHAR(50) DEFAULT NULL, -- 'cash_on_delivery', 'card', 'bank_transfer', etc.
   

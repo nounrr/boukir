@@ -55,6 +55,21 @@ const ContactsPage: React.FC = () => {
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createRemiseItem] = useCreateRemiseItemMutation();
 
+  const isActiveBonStatut = (s: any) => {
+    if (!s) return false;
+    const norm = String(s).toLowerCase();
+    // On ignore les bons non confirmés / annulés
+    return !(
+      norm === 'annulé' ||
+      norm === 'annule' ||
+      norm === 'brouillon' ||
+      norm === 'refusé' ||
+      norm === 'refuse' ||
+      norm === 'expiré' ||
+      norm === 'expire'
+    );
+  };
+
   // Fonction pour détecter les contacts en retard de paiement (solde > 0 et pas de paiement depuis la période configurée)
   const isOverdueContact = (contact: Contact, allPayments: any[]): boolean => {
     // 0. Ignorer les contacts archivés/supprimés (si le champ existe)
@@ -77,48 +92,77 @@ const ContactsPage: React.FC = () => {
 
     if (solde <= 0) return false;
 
-    // 2. Trouver le dernier paiement du contact (avec statut validé/en attente)
-    const contactPayments = allPayments.filter((p: any) => 
+    // 2. Dernière activité = max(dernier paiement, dernier bon)
+    // - Paiements: seulement Validé/En attente
+    // - Bons: dernier bon créé (Sortie/Comptant pour client, Commande pour fournisseur)
+    const contactPayments = allPayments.filter((p: any) =>
       p.contact_id === contact.id && isAllowedStatut(p.statut)
     );
 
-    // Si aucun paiement, considérer comme en retard
-    if (contactPayments.length === 0) return true;
-
-    try {
-      // Trier par date de création (plus récent en premier)
+    let lastPaymentDate: Date | null = null;
+    if (contactPayments.length > 0) {
       const sortedPayments = [...contactPayments].sort((a: any, b: any) => {
         const dateA = new Date(a.date_creation || a.created_at);
         const dateB = new Date(b.date_creation || b.created_at);
         return dateB.getTime() - dateA.getTime();
       });
-
       const lastPayment = sortedPayments[0];
-      const lastPaymentDate = new Date(lastPayment.date_creation || lastPayment.created_at);
-      const now = new Date();
+      const d = new Date(lastPayment?.date_creation || lastPayment?.created_at);
+      if (!isNaN(d.getTime())) lastPaymentDate = d;
+    }
 
-      // Vérifier que la date est valide
-      if (isNaN(lastPaymentDate.getTime())) {
-        console.warn('Date de paiement invalide pour contact:', contact.id, lastPayment);
-        return true; // Considérer comme en retard si date invalide
-      }
+    let lastBonDate: Date | null = null;
+    try {
+      // NOTE: on s'appuie sur les listes globales (sorties/comptants/commandes) déjà chargées dans la page.
+      const relevantBons: any[] = contact.type === 'Client'
+        ? [...(sorties as any[]), ...(comptants as any[])]
+        : [...(commandes as any[])];
 
-      // 3. Calculer la différence en millisecondes depuis le dernier paiement
-      const diffMs = now.getTime() - lastPaymentDate.getTime();
+      const contactBons = relevantBons.filter((b: any) => {
+        const match = contact.type === 'Client'
+          ? b.client_id === contact.id
+          : b.fournisseur_id === contact.id;
+        return match && isActiveBonStatut(b.statut);
+      });
 
-      if (overdueUnit === 'days') {
-        // Convertir en jours
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        return diffDays >= overdueValue;
-      } else {
-        // Convertir en mois (approximatif: 30 jours par mois)
-        const diffMonths = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30));
-        return diffMonths >= overdueValue;
+      if (contactBons.length > 0) {
+        const sortedBons = [...contactBons].sort((a: any, b: any) => {
+          const dateA = new Date(a.date_creation || a.created_at);
+          const dateB = new Date(b.date_creation || b.created_at);
+          return dateB.getTime() - dateA.getTime();
+        });
+        const lastBon = sortedBons[0];
+        const d = new Date(lastBon?.date_creation || lastBon?.created_at);
+        if (!isNaN(d.getTime())) lastBonDate = d;
       }
     } catch (error) {
-      console.error('Erreur calcul date dernier paiement pour contact:', contact.id, error);
-      return true; // En cas d'erreur, considérer comme en retard
+      console.error('Erreur calcul date dernier bon pour contact:', contact.id, error);
+      // Ne pas considérer automatiquement en retard: on continue avec lastPaymentDate si dispo
     }
+
+    // Si aucun paiement ET aucun bon => en retard (solde>0)
+    if (!lastPaymentDate && !lastBonDate) return true;
+
+    const now = new Date();
+    const lastActivityTime = Math.max(
+      lastPaymentDate ? lastPaymentDate.getTime() : 0,
+      lastBonDate ? lastBonDate.getTime() : 0
+    );
+    const lastActivityDate = new Date(lastActivityTime);
+
+    // Date invalide => considérer en retard (cas très rare)
+    if (isNaN(lastActivityDate.getTime())) return true;
+
+    const diffMs = now.getTime() - lastActivityDate.getTime();
+    if (diffMs < 0) return false;
+
+    if (overdueUnit === 'days') {
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      return diffDays >= overdueValue;
+    }
+
+    const diffMonths = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30));
+    return diffMonths >= overdueValue;
   };
 
   // Backend products for enriching product details (remove fake data)
@@ -401,12 +445,35 @@ const ContactsPage: React.FC = () => {
       (p: any) => String(p.contact_id) === String(selectedContact.id) && isAllowedStatut(p.statut)
     );
     for (const p of paymentsForContact) {
+      const paymentDateIso = p.date_paiement || (p as any).date_creation || p.created_at;
+
+      // Si le paiement est lié à un bon, on le place chronologiquement au niveau du bon
+      // (utile quand on modifie le bon associé d'un paiement existant).
+      let associatedBonDateIso: string | undefined;
+      try {
+        const bonId = p.bon_id != null ? Number(p.bon_id) : NaN;
+        if (Number.isFinite(bonId)) {
+          const allBons: any[] = [
+            ...(sorties as any[]),
+            ...(comptants as any[]),
+            ...(avoirsClient as any[]),
+            ...(commandes as any[]),
+            ...(avoirsFournisseur as any[]),
+          ];
+          const linked = allBons.find((b: any) => Number(b?.id) === bonId);
+          const d = linked?.date_creation || linked?.created_at;
+          if (d) associatedBonDateIso = String(d);
+        }
+      } catch {}
+
+      const paymentSortDateIso = associatedBonDateIso || paymentDateIso;
       items.push({
         id: `payment-${p.id}`,
         bon_numero: getDisplayNumeroPayment(p),
         bon_type: 'Paiement',
-        bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()), // AFFICHER la vraie date du paiement
-        bon_date_iso: p.created_at, // TRIER par date du bon (created_at = date bon + 5s)
+        bon_id: p.bon_id,
+        bon_date: formatDateDMY(paymentDateIso || new Date().toISOString()), // AFFICHER la vraie date du paiement (ou fallback)
+        bon_date_iso: paymentSortDateIso, // TRIER/filtrer: date du bon si associé, sinon date paiement
         bon_statut: p.statut ? String(p.statut) : 'Paiement',
         product_reference: 'PAIEMENT',
         product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { useDispatch } from 'react-redux';
 import { useAppSelector, useAuth } from '../hooks/redux';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
@@ -45,6 +46,16 @@ import { calculateContactSoldeHistory } from '../utils/soldeCalculator';
 
 const CaissePage = () => {
   const dispatch = useDispatch();
+
+  function normalizePaymentStatut(s: any): 'En attente' | 'Validé' | 'Refusé' | 'Annulé' | string {
+    if (!s) return '';
+    const norm = String(s).toLowerCase().trim();
+    if (norm === 'en attente' || norm === 'attente') return 'En attente';
+    if (norm === 'validé' || norm === 'valide') return 'Validé';
+    if (norm === 'refusé' || norm === 'refuse') return 'Refusé';
+    if (norm === 'annulé' || norm === 'annule') return 'Annulé';
+    return String(s);
+  }
   
   // État local
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -70,6 +81,7 @@ const CaissePage = () => {
 
   // Redux data
   const user = useAppSelector(state => state.auth.user);
+  const isPdgOrManagerPlus = user?.role === 'PDG' || user?.role === 'ManagerPlus';
   const { data: clients = [] } = useGetClientsQuery();
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
   const { data: talons = [] } = useGetTalonsQuery(undefined);
@@ -488,6 +500,13 @@ const CaissePage = () => {
   };
 
   const handleEditPayment = (payment: Payment) => {
+    // Règle: un paiement Validé ne doit pas être modifié directement.
+    // Il faut d'abord le remettre en attente (PDG / ManagerPlus).
+    if (normalizePaymentStatut((payment as any)?.statut) === 'Validé') {
+      showError("Paiement déjà validé. Pour le modifier, remettez d'abord son statut à 'En attente' (PDG/ManagerPlus). ");
+      return;
+    }
+
     setSelectedPayment(payment);
     // Réinitialiser l'état de l'image
     setSelectedImage(null);
@@ -505,6 +524,14 @@ const CaissePage = () => {
   // Change payment statut helper (only change statut via table actions)
   const changePaymentStatus = async (paymentId: number, newStatut: 'En attente'|'Validé'|'Refusé'|'Annulé') => {
     try {
+      // Autoriser le "déverrouillage" (Validé -> En attente) uniquement pour PDG/ManagerPlus
+      const current = (payments || []).find((p: any) => Number(p?.id) === Number(paymentId));
+      const currentStatut = normalizePaymentStatut(current?.statut);
+      if (currentStatut === 'Validé' && newStatut === 'En attente' && !isPdgOrManagerPlus) {
+        showError("Seuls PDG/ManagerPlus peuvent remettre un paiement Validé en 'En attente'.");
+        return;
+      }
+
       await changePaymentStatusApi({ id: paymentId, statut: newStatut }).unwrap();
       showSuccess(`Statut mis à jour: ${newStatut}`);
     } catch (err: any) {
@@ -1362,7 +1389,7 @@ const paymentValidationSchema = Yup.object({
                         {/* Primary compact action icons */}
                         <div className="flex items-center gap-2 relative" ref={openMenuPaymentId === payment.id ? menuRef : null}>
                           {/* Validate icon always visible for privileged roles */}
-                          {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
+                          {isPdgOrManagerPlus && (
                             <button
                               onClick={() => changePaymentStatus(payment.id, 'Validé')}
                               className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-500 hover:text-green-600'}`}
@@ -1373,11 +1400,12 @@ const paymentValidationSchema = Yup.object({
                             </button>
                           )}
                           {/* Edit icon */}
-                          {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
+                          {isPdgOrManagerPlus && (
                             <button
                               onClick={() => handleEditPayment(payment)}
-                              className="p-1 rounded text-green-600 hover:text-green-700"
-                              title="Modifier"
+                              className={`p-1 rounded ${normalizePaymentStatut(payment.statut) === 'Validé' ? 'text-gray-300 cursor-not-allowed' : 'text-green-600 hover:text-green-700'}`}
+                              title={normalizePaymentStatut(payment.statut) === 'Validé' ? "Paiement validé: remettre en attente pour modifier" : 'Modifier'}
+                              disabled={normalizePaymentStatut(payment.statut) === 'Validé'}
                             >
                               <Edit size={18} />
                             </button>
@@ -1411,13 +1439,15 @@ const paymentValidationSchema = Yup.object({
                                   </button>
                                 </li>
                                 <li>
-                                  <button
-                                    onClick={() => { changePaymentStatus(payment.id, 'En attente'); setOpenMenuPaymentId(null); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-gray-600"
-                                    disabled={payment.statut === 'En attente'}
-                                  >
-                                    <Clock size={16} /> Attente
-                                  </button>
+                                  {isPdgOrManagerPlus ? (
+                                    <button
+                                      onClick={() => { changePaymentStatus(payment.id, 'En attente'); setOpenMenuPaymentId(null); }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-gray-600"
+                                      disabled={payment.statut === 'En attente'}
+                                    >
+                                      <Clock size={16} /> Attente
+                                    </button>
+                                  ) : null}
                                 </li>
                                 {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
                                   <>
@@ -1642,8 +1672,13 @@ const paymentValidationSchema = Yup.object({
                   <button onClick={() => handleViewPayment(payment)} className="flex items-center gap-1 text-blue-600 text-xs font-medium px-2 py-1 bg-blue-50 rounded">
                     <Eye size={18} /> Voir
                   </button>
-                  {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
-                    <button onClick={() => handleEditPayment(payment)} className="flex items-center gap-1 text-green-600 text-xs font-medium px-2 py-1 bg-green-50 rounded">
+                  {isPdgOrManagerPlus && (
+                    <button
+                      onClick={() => handleEditPayment(payment)}
+                      disabled={normalizePaymentStatut(payment.statut) === 'Validé'}
+                      className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded ${normalizePaymentStatut(payment.statut) === 'Validé' ? 'text-gray-300 bg-gray-50 cursor-not-allowed' : 'text-green-600 bg-green-50'}`}
+                      title={normalizePaymentStatut(payment.statut) === 'Validé' ? "Paiement validé: remettre en attente pour modifier" : 'Modifier'}
+                    >
                       <Edit size={18} /> Edit
                     </button>
                   )}
@@ -1657,14 +1692,16 @@ const paymentValidationSchema = Yup.object({
                   )}
                   {/* Changement de statut condensé */}
                   <div className="flex items-center gap-1 ml-auto">
-                    <button onClick={() => changePaymentStatus(payment.id, 'En attente')} className={`p-1 rounded ${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-400'}`} title="En attente">
-                      <Clock size={18} />
-                    </button>
+                    {isPdgOrManagerPlus && (
+                      <button onClick={() => changePaymentStatus(payment.id, 'En attente')} className={`p-1 rounded ${payment.statut === 'En attente' ? 'text-yellow-700' : 'text-gray-400'}`} title="En attente">
+                        <Clock size={18} />
+                      </button>
+                    )}
                     {user?.role === 'Employé' ? (
                       <button onClick={() => changePaymentStatus(payment.id, 'Annulé')} className={`p-1 rounded ${payment.statut === 'Annulé' ? 'text-red-700' : 'text-gray-400'}`} title="Annuler">
                         <XCircle size={18} />
                       </button>
-                    ) : user?.role === 'PDG' || user?.role === 'ManagerPlus' ? (
+                    ) : isPdgOrManagerPlus ? (
                       <>
                         <button onClick={() => changePaymentStatus(payment.id, 'Validé')} className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-400'}`} title="Valider">
                           <Check size={18} />
@@ -1984,10 +2021,10 @@ const paymentValidationSchema = Yup.object({
                             return <option disabled>Aucune transaction pour ce contact</option>;
                           }
 
-                          const options = [];
+                          const options: ReactNode[] = [];
 
                           // Générer les options du select
-                          history.forEach((item, idx) => {
+                          history.forEach((item) => {
                             if (item.type === 'initial') {
                               // Option pour le solde initial
                               options.push(
@@ -2348,7 +2385,9 @@ const paymentValidationSchema = Yup.object({
                     setIsViewModalOpen(false);
                     handleEditPayment(selectedPayment);
                   }}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                  disabled={normalizePaymentStatut((selectedPayment as any)?.statut) === 'Validé'}
+                  className={`px-4 py-2 rounded-md ${normalizePaymentStatut((selectedPayment as any)?.statut) === 'Validé' ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                  title={normalizePaymentStatut((selectedPayment as any)?.statut) === 'Validé' ? "Paiement validé: remettre en attente pour modifier" : 'Modifier'}
                 >
                   Modifier
                 </button>
