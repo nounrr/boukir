@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import pool from '../../db/pool.js';
+import { ensureProductRemiseColumns } from '../../utils/ensureRemiseSchema.js';
 
 const router = Router();
+
+// Make sure remise fields exist so ecommerce endpoints can always return them.
+ensureProductRemiseColumns().catch(e => console.error('ensureProductRemiseColumns:', e));
 
 // ==================== GET ALL PUBLISHED PRODUCTS (WITH FILTERS DATA) ====================
 // GET /api/ecommerce/products - List all published products with images, variants preview, and filter metadata
