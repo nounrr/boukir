@@ -5,6 +5,7 @@ This document consolidates **orders**, **remise (loyalty)**, and **contact solde
 - [docs/ecommerce-remise-workflow.md](docs/ecommerce-remise-workflow.md)
 - [docs/ecommerce-checkout-payments-solde-pickup.md](docs/ecommerce-checkout-payments-solde-pickup.md)
 - [docs/ecommerce-delivery-method.md](docs/ecommerce-delivery-method.md)
+- [docs/ecommerce-solde-order-fields.md](docs/ecommerce-solde-order-fields.md)
 
 ---
 
@@ -31,6 +32,12 @@ This document consolidates **orders**, **remise (loyalty)**, and **contact solde
 - Orders using `payment_method = solde` create **debt** in `contact_solde_ledger` **only after confirmation**
 - Ledger entries track `debit` and `credit`
 
+Also for legacy/backoffice reporting, solde orders store:
+- `ecommerce_orders.is_solde` (0/1)
+- `ecommerce_orders.solde_amount` (remaining amount after remise)
+
+These fields are computed server-side; frontend should just read them from the API responses.
+
 ---
 
 ## 2) Frontend Checkout Flow (E-commerce)
@@ -56,13 +63,14 @@ Optional:
 
 Rules:
 - `pickup + cash_on_delivery` is **not allowed**
-- `payment_method = solde` requires authenticated user with `is_solde = 1`
+- `payment_method = solde` requires authenticated user with `is_solde = 1` (only when there is remaining amount to pay after remise)
 
 Order result (important fields):
 - `status: pending`
 - `payment_status: pending`
 - `delivery_method`
 - `pickup_location_id`
+- If `payment_method=solde`: `is_solde`, `solde_amount`
 
 ---
 

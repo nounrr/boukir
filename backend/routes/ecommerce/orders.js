@@ -150,28 +150,8 @@ router.post('/', async (req, res, next) => {
       });
     }
 
-    // Solde is only allowed for authenticated users explicitly enabled by backoffice.
-    if (normalizedPaymentMethod === 'solde') {
-      if (!userId) {
-        await connection.rollback();
-        return res.status(401).json({
-          message: 'Authentification requise pour payer en solde',
-          error_type: 'SOLDE_AUTH_REQUIRED',
-        });
-      }
-      const [soldeRows] = await connection.query(
-        'SELECT is_solde FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1',
-        [userId]
-      );
-      const isSolde = Number(soldeRows?.[0]?.is_solde || 0) === 1;
-      if (!isSolde) {
-        await connection.rollback();
-        return res.status(403).json({
-          message: 'Votre compte n\'est pas autorisé à payer en solde',
-          error_type: 'SOLDE_NOT_ALLOWED',
-        });
-      }
-    }
+    // Solde authorization is intentionally checked later (after totals/remise are computed),
+    // so we only enforce it when there is an actual remaining amount to pay via solde.
 
     // For pickup orders, shipping address is automatically set from pickup location.
     // For delivery orders, shipping address is required.
@@ -552,6 +532,36 @@ router.post('/', async (req, res, next) => {
     const remainingToPay = Math.max(0, totalAmount - remiseUsedAmount);
     const isFullyPaidByRemise = remainingToPay <= 0.000001;
     const initialPaymentStatus = isFullyPaidByRemise ? 'paid' : 'pending';
+    const isSoldeOrder = normalizedPaymentMethod === 'solde';
+    const soldeAmount = isSoldeOrder
+      ? Math.max(0, Math.round((totalAmount - remiseUsedAmount) * 100) / 100)
+      : 0;
+    const computedIsSolde = isSoldeOrder && soldeAmount > 0 ? 1 : 0;
+
+    // Solde is only allowed for authenticated users explicitly enabled by backoffice,
+    // but only when there is actually something to pay via solde.
+    if (isSoldeOrder && soldeAmount > 0) {
+      if (!userId) {
+        await connection.rollback();
+        return res.status(401).json({
+          message: 'Authentification requise pour payer en solde',
+          error_type: 'SOLDE_AUTH_REQUIRED',
+        });
+      }
+
+      const [soldeRows] = await connection.query(
+        'SELECT is_solde FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+        [userId]
+      );
+      const isSoldeEnabled = Number(soldeRows?.[0]?.is_solde || 0) === 1;
+      if (!isSoldeEnabled) {
+        await connection.rollback();
+        return res.status(403).json({
+          message: 'Votre compte n\'est pas autorisé à payer en solde',
+          error_type: 'SOLDE_NOT_ALLOWED',
+        });
+      }
+    }
 
     // Create order
     const orderNumber = generateOrderNumber();
@@ -580,11 +590,13 @@ router.post('/', async (req, res, next) => {
         status,
         payment_status,
         payment_method,
+        is_solde,
+        solde_amount,
         delivery_method,
         pickup_location_id,
         customer_notes,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `, [
       orderNumber,
       userId,
@@ -608,12 +620,23 @@ router.post('/', async (req, res, next) => {
       'pending', // status
       initialPaymentStatus, // payment_status
       normalizedPaymentMethod,
+      computedIsSolde,
+      soldeAmount,
       normalizedDeliveryMethod,
       normalizedDeliveryMethod === 'pickup' ? effectivePickupLocationId : null,
       customer_notes || null
     ]);
 
     const orderId = orderResult.insertId;
+
+    // Safety net: always persist computed solde flags/amount server-side.
+    // This also helps when older running code created orders with defaults.
+    await connection.query(
+      `UPDATE ecommerce_orders
+       SET is_solde = ?, solde_amount = ?
+       WHERE id = ?`,
+      [computedIsSolde, isSoldeOrder ? soldeAmount : 0, orderId]
+    );
 
     // Insert order items and reduce stock
     for (const item of validatedItems) {
@@ -710,6 +733,8 @@ router.post('/', async (req, res, next) => {
         status: 'pending',
         payment_status: initialPaymentStatus,
         payment_method: normalizedPaymentMethod,
+        is_solde: computedIsSolde,
+        solde_amount: soldeAmount,
         delivery_method: normalizedDeliveryMethod,
         pickup_location_id: normalizedDeliveryMethod === 'pickup' ? effectivePickupLocationId : null,
         items_count: validatedItems.length
@@ -731,11 +756,158 @@ router.get('/', async (req, res, next) => {
     const userId = req.user?.id;
     const { email } = req.query; // Allow guest to fetch by email
 
+    // Pagination + date filters
+    const rawPage = req.query?.page;
+    const rawLimit = req.query?.limit;
+    const period = req.query?.period != null ? String(req.query.period).trim() : null; // this_week | this_month
+    const startDate = req.query?.start_date != null ? String(req.query.start_date).trim() : null; // YYYY-MM-DD
+    const endDate = req.query?.end_date != null ? String(req.query.end_date).trim() : null; // YYYY-MM-DD
+
+    // Other filters
+    const rawStatus = req.query?.status != null ? String(req.query.status).trim() : null; // can be CSV
+    const rawPaymentStatus = req.query?.payment_status != null ? String(req.query.payment_status).trim() : null; // can be CSV
+    const rawPaymentMethod = req.query?.payment_method != null ? String(req.query.payment_method).trim() : null;
+    const rawDeliveryMethod = req.query?.delivery_method != null ? String(req.query.delivery_method).trim() : null;
+
+    const page = Math.max(1, Number.parseInt(rawPage ?? '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(rawLimit ?? '20', 10) || 20));
+    const offset = (page - 1) * limit;
+
     if (!userId && !email) {
       return res.status(401).json({ 
         message: 'Authentification requise ou email nécessaire' 
       });
     }
+
+    // Build WHERE clause
+    const whereParts = [];
+    const whereParams = [];
+
+    whereParts.push(userId ? 'o.user_id = ?' : 'o.customer_email = ?');
+    whereParams.push(userId || email);
+
+    const isValidDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+    const parseCsv = (v) =>
+      String(v)
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0);
+
+    const addInFilter = (fieldSql, values) => {
+      if (!values || values.length === 0) return;
+      whereParts.push(`${fieldSql} IN (${values.map(() => '?').join(',')})`);
+      whereParams.push(...values);
+    };
+
+    if (period) {
+      const p = period.toLowerCase();
+      if (p === 'this_week') {
+        // ISO week (mode 1): week starts Monday
+        whereParts.push('YEARWEEK(o.created_at, 1) = YEARWEEK(CURDATE(), 1)');
+      } else if (p === 'this_month') {
+        whereParts.push('YEAR(o.created_at) = YEAR(CURDATE()) AND MONTH(o.created_at) = MONTH(CURDATE())');
+      } else {
+        return res.status(400).json({
+          message: 'Filtre de période invalide',
+          field: 'period',
+          allowed: ['this_week', 'this_month'],
+        });
+      }
+    }
+
+    if (startDate || endDate) {
+      if (startDate && !isValidDate(startDate)) {
+        return res.status(400).json({
+          message: 'Format de date invalide (YYYY-MM-DD)',
+          field: 'start_date',
+        });
+      }
+      if (endDate && !isValidDate(endDate)) {
+        return res.status(400).json({
+          message: 'Format de date invalide (YYYY-MM-DD)',
+          field: 'end_date',
+        });
+      }
+
+      if (startDate) {
+        whereParts.push('o.created_at >= ?');
+        whereParams.push(`${startDate} 00:00:00`);
+      }
+      if (endDate) {
+        // inclusive end date by using an exclusive upper bound (endDate + 1 day)
+        whereParts.push('o.created_at < DATE_ADD(?, INTERVAL 1 DAY)');
+        whereParams.push(`${endDate} 00:00:00`);
+      }
+    }
+
+    // Status filters
+    const allowedStatuses = new Set(['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']);
+    const allowedPaymentStatuses = new Set(['pending', 'paid', 'failed', 'refunded']);
+    const allowedPaymentMethods = new Set(['cash_on_delivery', 'card', 'solde', 'pay_in_store']);
+    const allowedDeliveryMethods = new Set(['delivery', 'pickup']);
+
+    if (rawStatus) {
+      const statuses = parseCsv(rawStatus);
+      const invalid = statuses.filter((s) => !allowedStatuses.has(s));
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          message: 'Statut de commande invalide',
+          field: 'status',
+          invalid,
+          allowed: Array.from(allowedStatuses),
+        });
+      }
+      addInFilter('o.status', statuses);
+    }
+
+    if (rawPaymentStatus) {
+      const paymentStatuses = parseCsv(rawPaymentStatus);
+      const invalid = paymentStatuses.filter((s) => !allowedPaymentStatuses.has(s));
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          message: 'Statut de paiement invalide',
+          field: 'payment_status',
+          invalid,
+          allowed: Array.from(allowedPaymentStatuses),
+        });
+      }
+      addInFilter('o.payment_status', paymentStatuses);
+    }
+
+    if (rawPaymentMethod) {
+      const paymentMethod = rawPaymentMethod;
+      if (!allowedPaymentMethods.has(paymentMethod)) {
+        return res.status(400).json({
+          message: 'Méthode de paiement invalide',
+          field: 'payment_method',
+          allowed: Array.from(allowedPaymentMethods),
+        });
+      }
+      whereParts.push('o.payment_method = ?');
+      whereParams.push(paymentMethod);
+    }
+
+    if (rawDeliveryMethod) {
+      const deliveryMethod = rawDeliveryMethod;
+      if (!allowedDeliveryMethods.has(deliveryMethod)) {
+        return res.status(400).json({
+          message: 'Mode de livraison invalide',
+          field: 'delivery_method',
+          allowed: Array.from(allowedDeliveryMethods),
+        });
+      }
+      whereParts.push('o.delivery_method = ?');
+      whereParams.push(deliveryMethod);
+    }
+
+    const whereSql = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+
+    // Total count (for pagination)
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS total FROM ecommerce_orders o ${whereSql}`,
+      whereParams
+    );
+    const total = Number(countRows?.[0]?.total || 0);
 
     // Fetch orders with shipping details
     const [orders] = await pool.query(`
@@ -750,6 +922,8 @@ router.get('/', async (req, res, next) => {
         o.status,
         o.payment_status,
         o.payment_method,
+        o.is_solde,
+        o.solde_amount,
         o.delivery_method,
         o.pickup_location_id,
         o.created_at,
@@ -765,9 +939,10 @@ router.get('/', async (req, res, next) => {
         o.shipping_postal_code,
         o.shipping_country
       FROM ecommerce_orders o
-      WHERE ${userId ? 'o.user_id = ?' : 'o.customer_email = ?'}
+      ${whereSql}
       ORDER BY o.created_at DESC
-    `, [userId || email]);
+      LIMIT ? OFFSET ?
+    `, [...whereParams, limit, offset]);
 
     const orderIds = orders.map(o => o.id);
 
@@ -837,6 +1012,12 @@ router.get('/', async (req, res, next) => {
         status: order.status,
         payment_status: order.payment_status,
         payment_method: order.payment_method,
+        is_solde: order.payment_method === 'solde'
+          ? (Math.max(0, Math.round((Number(order.total_amount || 0) - Number(order.remise_used_amount || 0)) * 100) / 100) > 0 ? 1 : 0)
+          : Number(order.is_solde || 0),
+        solde_amount: order.payment_method === 'solde'
+          ? Math.max(0, Math.round((Number(order.total_amount || 0) - Number(order.remise_used_amount || 0)) * 100) / 100)
+          : Number(order.solde_amount || 0),
         delivery_method: order.delivery_method || 'delivery',
         pickup_location_id: order.pickup_location_id || null,
         created_at: order.created_at,
@@ -856,7 +1037,11 @@ router.get('/', async (req, res, next) => {
         items: itemsByOrder.get(order.id) || [],
         items_count: (itemsByOrder.get(order.id) || []).length,
       })),
-      total: orders.length
+      total,
+      page,
+      limit,
+      pages: total > 0 ? Math.ceil(total / limit) : 0,
+      returned: orders.length
     });
   } catch (err) {
     next(err);
@@ -893,6 +1078,29 @@ router.get('/:id', async (req, res, next) => {
     }
 
     const order = orders[0];
+
+    // If this is a solde order, ensure stored solde fields are consistent.
+    // This fixes older orders created when the server was still running without the new insert fields.
+    if (order.payment_method === 'solde') {
+      const computedSoldeAmount = Math.max(
+        0,
+        Math.round((Number(order.total_amount || 0) - Number(order.remise_used_amount || 0)) * 100) / 100
+      );
+      const computedIsSolde = computedSoldeAmount > 0 ? 1 : 0;
+      const currentIsSolde = Number(order.is_solde || 0);
+      const currentSoldeAmount = Number(order.solde_amount || 0);
+
+      if (currentIsSolde !== computedIsSolde || Math.abs(currentSoldeAmount - computedSoldeAmount) > 0.000001) {
+        await pool.query(
+          `UPDATE ecommerce_orders
+           SET is_solde = ?, solde_amount = ?
+           WHERE id = ?`,
+          [computedIsSolde, computedSoldeAmount, orderId]
+        );
+        order.is_solde = computedIsSolde;
+        order.solde_amount = computedSoldeAmount;
+      }
+    }
 
     // Verify ownership (user_id match or email match)
     if (userId && order.user_id !== userId) {
@@ -990,6 +1198,8 @@ router.get('/:id', async (req, res, next) => {
         status: order.status,
         payment_status: order.payment_status,
         payment_method: order.payment_method,
+        is_solde: Number(order.is_solde || 0),
+        solde_amount: Number(order.solde_amount || 0),
 
         // Remise (earned/applied)
         remise_applied: !!order.remise_earned_at,
@@ -1069,6 +1279,8 @@ router.put('/:id/status', async (req, res, next) => {
         status,
         payment_status,
         payment_method,
+        is_solde,
+        solde_amount,
         confirmed_at,
         total_amount,
         remise_used_amount,
@@ -1185,6 +1397,8 @@ router.put('/:id/status', async (req, res, next) => {
         status,
         payment_status,
         payment_method,
+        is_solde,
+        solde_amount,
         confirmed_at,
         total_amount,
         remise_used_amount,
@@ -1200,32 +1414,24 @@ router.put('/:id/status', async (req, res, next) => {
     let earned_remise_amount = 0;
 
     // Solde: when an admin confirms a solde order, book the debt once in the ledger.
-    // We only create the debit after confirmation to avoid booking debt for orders that were never approved.
+    // We keep solde info on the order itself (legacy-friendly fields).
     if (updatedOrder?.user_id && updatedOrder.payment_method === 'solde' && updatedOrder.confirmed_at !== null) {
       const totalAmount = Number(updatedOrder.total_amount || 0);
       const remiseUsed = Number(updatedOrder.remise_used_amount || 0);
       const soldeAmount = Math.max(0, Math.round((totalAmount - remiseUsed) * 100) / 100);
+      const computedIsSolde = soldeAmount > 0 ? 1 : 0;
 
-      if (soldeAmount > 0) {
-        const [existingDebit] = await connection.query(
-          `SELECT 1
-           FROM contact_solde_ledger
-           WHERE contact_id = ? AND order_id = ? AND entry_type = 'debit'
-           LIMIT 1`,
-          [updatedOrder.user_id, orderId]
+      // Ensure solde columns are set for legacy compatibility
+      if (
+        Number(updatedOrder.is_solde || 0) !== computedIsSolde ||
+        Math.abs(Number(updatedOrder.solde_amount || 0) - soldeAmount) > 0.000001
+      ) {
+        await connection.query(
+          `UPDATE ecommerce_orders
+           SET is_solde = ?, solde_amount = ?
+           WHERE id = ?`,
+          [computedIsSolde, soldeAmount, orderId]
         );
-
-        if (existingDebit.length === 0) {
-          await connection.query(
-            `
-            INSERT INTO contact_solde_ledger
-              (contact_id, order_id, entry_type, amount, description, created_by_employee_id)
-            VALUES
-              (?, ?, 'debit', ?, 'Solde order confirmed', ?)
-            `,
-            [updatedOrder.user_id, orderId, soldeAmount, userId || null]
-          );
-        }
       }
     }
 
@@ -1277,7 +1483,7 @@ router.put('/:id/status', async (req, res, next) => {
       message: 'Commande mise à jour avec succès',
       order_id: orderId,
       status: status || currentOrder.status,
-      payment_status: payment_status || currentOrder.payment_status,
+      payment_status: effectivePaymentStatus || currentOrder.payment_status,
       earned_remise_amount
     });
 
@@ -1393,36 +1599,8 @@ router.post('/:id/cancel', async (req, res, next) => {
       );
     }
 
-    // Solde: if the order was already confirmed and a debit was booked,
-    // cancel should reverse any remaining debt for that order.
-    if (order.payment_method === 'solde' && order.user_id) {
-      const [sumRows] = await connection.query(
-        `
-        SELECT
-          COALESCE(SUM(CASE WHEN entry_type = 'debit' THEN amount ELSE 0 END), 0) AS debits,
-          COALESCE(SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE 0 END), 0) AS credits
-        FROM contact_solde_ledger
-        WHERE contact_id = ? AND order_id = ?
-        `,
-        [order.user_id, orderId]
-      );
-
-      const debits = Number(sumRows?.[0]?.debits || 0);
-      const credits = Number(sumRows?.[0]?.credits || 0);
-      const remaining = Math.round((debits - credits) * 100) / 100;
-
-      if (remaining > 0) {
-        await connection.query(
-          `
-          INSERT INTO contact_solde_ledger
-            (contact_id, order_id, entry_type, amount, description, created_by_employee_id)
-          VALUES
-            (?, ?, 'credit', ?, 'Solde order cancelled (reversal)', NULL)
-          `,
-          [order.user_id, orderId, remaining]
-        );
-      }
-    }
+    // Note: no contact_solde_ledger usage here.
+    // Backoffice can compute contact solde from orders (sum of is_solde/solde_amount) if needed.
 
     // Log cancellation
     await connection.query(`
