@@ -414,6 +414,7 @@ export interface Payment {
   type_paiement: 'Client' | 'Fournisseur';
   contact_id: number; // ID du client ou fournisseur
   bon_id?: number;
+  bon_type?: string | null; // Type du bon (pour éviter collisions d'IDs entre tables)
   talon_id?: number; // ID du talon associé
   montant_total: number;
   mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement';
@@ -444,6 +445,7 @@ export interface CreatePaymentData {
   type_paiement: 'Client' | 'Fournisseur';
   contact_id: number;
   bon_id?: number;
+  bon_type?: string | null;
   montant_total: number;
   mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement';
   date_paiement: string | null;

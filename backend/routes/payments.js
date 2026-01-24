@@ -104,6 +104,7 @@ const toPayment = (r) => ({
   type_paiement: r.type_paiement,
   contact_id: r.contact_id,
   bon_id: r.bon_id,
+  bon_type: r.bon_type ?? null,
   montant_total: Number(r.montant_total ?? 0),
   montant: Number(r.montant_total ?? 0),
   mode_paiement: r.mode_paiement,
@@ -153,10 +154,11 @@ function mapToCanonical(s) {
 // List payments
 router.get('/', verifyToken, async (req, res) => {
   try {
-    const { bon_id, contact_id, mode_paiement, type_paiement, date_from, date_to, search } = req.query;
+    const { bon_id, bon_type, contact_id, mode_paiement, type_paiement, date_from, date_to, search } = req.query;
     const where = [];
     const params = [];
     if (bon_id) { where.push('bon_id = ?'); params.push(Number(bon_id)); }
+    if (bon_type) { where.push('bon_type = ?'); params.push(String(bon_type)); }
     if (contact_id) { where.push('contact_id = ?'); params.push(Number(contact_id)); }
     if (mode_paiement) { where.push('mode_paiement = ?'); params.push(String(mode_paiement)); }
     if (type_paiement) { where.push('type_paiement = ?'); params.push(String(type_paiement)); }
@@ -207,6 +209,7 @@ router.post('/', verifyToken, async (req, res) => {
       type_paiement = 'Client',
 			contact_id,
       bon_id = null,
+			bon_type = null,
 			montant_total,
 			mode_paiement,
 			date_paiement,
@@ -255,6 +258,7 @@ router.post('/', verifyToken, async (req, res) => {
     // Nettoyer les valeurs pour éviter les erreurs "Out of range"
     const cleanContactId = contact_id ? Number(contact_id) : null;
     const cleanBonId = bon_id ? Number(bon_id) : null;
+    const cleanBonType = bon_type != null && String(bon_type).trim() !== '' ? String(bon_type).trim() : null;
     const cleanTalonId = talon_id ? Number(talon_id) : null;
     const cleanDatePaiement = toYMDTime(date_paiement, true); // DATETIME avec heure actuelle
     const cleanDateEcheance = toYMD(date_echeance); // DATE simple
@@ -276,11 +280,22 @@ router.post('/', verifyToken, async (req, res) => {
     let createdAtValue = dateAjoutReelleStr; // Par défaut, la date actuelle
     if (cleanBonId) {
       try {
-        console.log('🔍 Recherche bon ID:', cleanBonId, '| Type:', type_paiement, '| Contact:', cleanContactId);
+        console.log('🔍 Recherche bon ID:', cleanBonId, '| BonType:', cleanBonType, '| TypePaiement:', type_paiement, '| Contact:', cleanContactId);
         
         // Déterminer les tables à rechercher en fonction du type de paiement
         let bonTables = [];
-        if (type_paiement === 'Client') {
+        const bonTypeToTable = {
+          Sortie: { table: 'bons_sortie', dateField: 'date_creation' },
+          Comptant: { table: 'bons_comptant', dateField: 'date_creation' },
+          Avoir: { table: 'avoirs_client', dateField: 'date_creation' },
+          Commande: { table: 'bons_commande', dateField: 'date_creation' },
+          AvoirFournisseur: { table: 'avoirs_fournisseur', dateField: 'date_creation' },
+        };
+
+        if (cleanBonType && bonTypeToTable[cleanBonType]) {
+          // Si le type du bon est fourni, ne chercher que dans la table correspondante
+          bonTables = [bonTypeToTable[cleanBonType]];
+        } else if (type_paiement === 'Client') {
           // Pour les clients: chercher d'abord dans bons sortie/comptant, puis avoirs client
           bonTables = [
             { table: 'bons_sortie', dateField: 'date_creation' },
@@ -334,10 +349,10 @@ router.post('/', verifyToken, async (req, res) => {
 
     const [result] = await pool.query(
       `INSERT INTO payments
-        (numero, type_paiement, contact_id, bon_id, montant_total, mode_paiement, date_paiement, designation,
+        (numero, type_paiement, contact_id, bon_id, bon_type, montant_total, mode_paiement, date_paiement, designation,
          date_echeance, banque, personnel, code_reglement, image_url, talon_id, statut, created_by, created_at, date_ajout_reelle)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ['', type_paiement, cleanContactId, cleanBonId, montant_total, mode_paiement, cleanDatePaiement, designation,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ['', type_paiement, cleanContactId, cleanBonId, cleanBonType, montant_total, mode_paiement, cleanDatePaiement, designation,
         cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanTalonId, statut, created_by, createdAtValue, dateAjoutReelleStr]
     );
     await pool.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
@@ -384,7 +399,7 @@ router.put('/:id', verifyToken, async (req, res) => {
     }
 
     const fields = [
-  'type_paiement','contact_id','bon_id','montant_total','mode_paiement','date_paiement','designation',
+  'type_paiement','contact_id','bon_id','bon_type','montant_total','mode_paiement','date_paiement','designation',
   'date_echeance','banque','personnel','code_reglement','image_url','talon_id','statut','updated_by'
     ];
     const setParts = [];

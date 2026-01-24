@@ -452,15 +452,33 @@ const ContactsPage: React.FC = () => {
       let associatedBonDateIso: string | undefined;
       try {
         const bonId = p.bon_id != null ? Number(p.bon_id) : NaN;
+        const bonType = (p as any).bon_type ? String((p as any).bon_type) : '';
         if (Number.isFinite(bonId)) {
-          const allBons: any[] = [
-            ...(sorties as any[]),
-            ...(comptants as any[]),
-            ...(avoirsClient as any[]),
-            ...(commandes as any[]),
-            ...(avoirsFournisseur as any[]),
-          ];
-          const linked = allBons.find((b: any) => Number(b?.id) === bonId);
+          // If bon_type is provided, use the matching table/list to avoid collisions between tables.
+          let linked: any | undefined;
+          if (bonType) {
+            const byType: Record<string, any[]> = {
+              Sortie: sorties as any[],
+              Comptant: comptants as any[],
+              Avoir: avoirsClient as any[],
+              Commande: commandes as any[],
+              AvoirFournisseur: avoirsFournisseur as any[],
+            };
+            const arr = byType[bonType] || [];
+            linked = arr.find((b: any) => Number(b?.id) === bonId);
+          }
+
+          // Backward compatibility: old payments may not have bon_type.
+          if (!linked) {
+            const allBons: any[] = [
+              ...(sorties as any[]),
+              ...(comptants as any[]),
+              ...(avoirsClient as any[]),
+              ...(commandes as any[]),
+              ...(avoirsFournisseur as any[]),
+            ];
+            linked = allBons.find((b: any) => Number(b?.id) === bonId);
+          }
           const d = linked?.date_creation || linked?.created_at;
           if (d) associatedBonDateIso = String(d);
         }
