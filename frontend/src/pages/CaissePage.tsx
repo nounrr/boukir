@@ -631,7 +631,9 @@ const paymentValidationSchema = Yup.object({
     }),
 
   notes: Yup.string().transform(toNull).nullable(),
-  bon_id: Yup.number().transform((v, orig) => (orig === '' ? null : v)).nullable(),
+  // bon_id comes from a select. To avoid collisions between tables, we store a composite value like "Comptant:123".
+  bon_id: Yup.string().transform(toNull).nullable(),
+  bon_type: Yup.string().transform(toNull).nullable(),
   talon_id: Yup.number().transform((v, orig) => (orig === '' ? null : v)).nullable(),
 });
 
@@ -674,8 +676,22 @@ const paymentValidationSchema = Yup.object({
   // Ajuster type/contact selon le bon choisi
   const onBonChange = (e: React.ChangeEvent<HTMLSelectElement>, setFieldValue: (f: string, v: any) => void, currentType: 'Client'|'Fournisseur') => {
     const val = e.target.value;
+
+    const parseBonValue = (raw: any): { id: string; type: string | null } => {
+      const s = String(raw ?? '').trim();
+      if (!s) return { id: '', type: null };
+      if (s.includes(':')) {
+        const [t, id] = s.split(':', 2);
+        return { id: String(id ?? '').trim(), type: String(t ?? '').trim() || null };
+      }
+      return { id: s, type: null };
+    };
+
+    const parsed = parseBonValue(val);
     setFieldValue('bon_id', val);
-    const bon = bons.find((b: Bon) => String(b.id) === String(val));
+    setFieldValue('bon_type', parsed.type);
+
+    const bon = bons.find((b: Bon) => String(b.id) === String(parsed.id) && (!parsed.type || String(b.type) === String(parsed.type)));
     if (bon) {
       // Respect current selected payer type; just populate matching contact
       if (currentType === 'Fournisseur') {
@@ -735,7 +751,7 @@ const paymentValidationSchema = Yup.object({
     if (selectedPayment) {
       let contactOptional = false;
       if (selectedPayment.bon_id) {
-        const related = bons.find((b: Bon) => b.id === selectedPayment.bon_id);
+        const related = bons.find((b: Bon) => b.id === selectedPayment.bon_id && (!selectedPayment.bon_type || String(b.type) === String(selectedPayment.bon_type)));
         if (related && related.type === 'Comptant' && !related.client_id) contactOptional = true;
       }
       
@@ -752,7 +768,8 @@ const paymentValidationSchema = Yup.object({
         type_paiement: selectedPayment.type_paiement || 'Client',
         contact_optional: contactOptional,
         contact_id: selectedPayment.contact_id || '',
-        bon_id: selectedPayment.bon_id || '',
+        bon_id: selectedPayment.bon_id ? (selectedPayment.bon_type ? `${selectedPayment.bon_type}:${selectedPayment.bon_id}` : String(selectedPayment.bon_id)) : '',
+        bon_type: selectedPayment.bon_type || '',
         montant: selectedPayment.montant || selectedPayment.montant_total,
         mode_paiement: selectedPayment.mode_paiement,
         statut: selectedPayment.statut || 'En attente',
@@ -770,6 +787,7 @@ const paymentValidationSchema = Yup.object({
       contact_optional: false,
       contact_id: '',
       bon_id: '',
+      bon_type: '',
       montant: 0,
       mode_paiement: 'Espèces',
       statut: 'En attente',
@@ -785,6 +803,20 @@ const paymentValidationSchema = Yup.object({
 
   const handleSubmit = async (values: any) => {
     try {
+      const parseBonValue = (raw: any): { bonId: number | null; bonType: string | null } => {
+        const s = String(raw ?? '').trim();
+        if (!s) return { bonId: null, bonType: null };
+        if (s.includes(':')) {
+          const [t, id] = s.split(':', 2);
+          const bonId = id && String(id).trim() !== '' ? Number(id) : NaN;
+          return { bonId: Number.isFinite(bonId) ? bonId : null, bonType: String(t ?? '').trim() || null };
+        }
+        const bonId = Number(s);
+        return { bonId: Number.isFinite(bonId) ? bonId : null, bonType: null };
+      };
+
+      const parsedBon = parseBonValue(values.bon_id);
+
       // Upload de l'image si présente
       let imageUrl: string | null = selectedPayment?.image_url || '';
       if (selectedImage && (values.mode_paiement === 'Chèque' || values.mode_paiement === 'Traite')) {
@@ -808,7 +840,8 @@ const paymentValidationSchema = Yup.object({
         id: selectedPayment ? selectedPayment.id : Date.now(),
         type_paiement: values.type_paiement || 'Client',
         contact_id: values.contact_id ? Number(values.contact_id) : null,
-        bon_id: values.bon_id ? Number(values.bon_id) : null,
+  bon_id: parsedBon.bonId,
+  bon_type: parsedBon.bonId ? parsedBon.bonType : null,
         montant_total: Number(values.montant),
         montant: Number(values.montant), // Alias
         mode_paiement: values.mode_paiement,
@@ -841,6 +874,7 @@ const paymentValidationSchema = Yup.object({
         const body: any = {
           type_paiement: paymentData.type_paiement,
           bon_id: paymentData.bon_id,
+          bon_type: paymentData.bon_type,
           montant_total: paymentData.montant_total,
           mode_paiement: paymentData.mode_paiement,
           statut: paymentData.statut,
@@ -917,9 +951,9 @@ const paymentValidationSchema = Yup.object({
   };
 
   // Version détaillée (même format que le select: NUMERO - MONTANT DH)
-  const getBonInfoDetailed = (bonId?: number) => {
+  const getBonInfoDetailed = (bonId?: number, bonType?: string | null) => {
     if (!bonId) return 'Paiement libre';
-    const bon = bons.find((b: Bon) => b.id === bonId);
+    const bon = bons.find((b: Bon) => b.id === bonId && (!bonType || String(b.type) === String(bonType)));
     if (!bon) return 'Bon supprimé';
     return `${displayBonNumero(bon)} - ${Number(bon.montant_total ?? 0)} DH`;
   };
@@ -1310,7 +1344,7 @@ const paymentValidationSchema = Yup.object({
                       <div className="text-sm text-gray-700">{payment.date_paiement ? formatDateTimeWithHour(payment.date_paiement) : '-'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{getBonInfoDetailed(payment.bon_id)}</div>
+                      <div className="text-sm text-gray-900">{getBonInfoDetailed(payment.bon_id, (payment as any).bon_type)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-sm text-gray-900">
@@ -1657,7 +1691,7 @@ const paymentValidationSchema = Yup.object({
                   {payment.date_echeance && (
                     <p className="text-xs text-gray-500">Échéance: {formatYMD(payment.date_echeance)}</p>
                   )}
-                  <p className="text-xs text-gray-500">{getBonInfoDetailed(payment.bon_id)}</p>
+                  <p className="text-xs text-gray-500">{getBonInfoDetailed(payment.bon_id, (payment as any).bon_type)}</p>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
                     <div>
                       <span className="text-gray-400">Créé par:</span> <span className="text-gray-700">{safeText((paymentsMeta as any)[payment.id]?.created_by_name)}</span>
@@ -2037,7 +2071,7 @@ const paymentValidationSchema = Yup.object({
                               const isAvoir = item.typeLabel === 'Avoir' || item.typeLabel === 'AvoirFournisseur';
                               const montant = item.debit || item.credit;
                               options.push(
-                                <option key={item.id} value={item.id}>
+                                <option key={item.id} value={`${item.typeLabel}:${item.id}`}>
                                   {dateStr} | {item.numero} | {isAvoir ? 'Avoir' : 'Bon'} {montant.toFixed(2)} DH | Solde: {item.soldeCumule.toFixed(2)} DH
                                 </option>
                               );
