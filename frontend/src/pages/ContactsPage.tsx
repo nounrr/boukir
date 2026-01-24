@@ -55,6 +55,21 @@ const ContactsPage: React.FC = () => {
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createRemiseItem] = useCreateRemiseItemMutation();
 
+  const isActiveBonStatut = (s: any) => {
+    if (!s) return false;
+    const norm = String(s).toLowerCase();
+    // On ignore les bons non confirmés / annulés
+    return !(
+      norm === 'annulé' ||
+      norm === 'annule' ||
+      norm === 'brouillon' ||
+      norm === 'refusé' ||
+      norm === 'refuse' ||
+      norm === 'expiré' ||
+      norm === 'expire'
+    );
+  };
+
   // Fonction pour détecter les contacts en retard de paiement (solde > 0 et pas de paiement depuis la période configurée)
   const isOverdueContact = (contact: Contact, allPayments: any[]): boolean => {
     // 0. Ignorer les contacts archivés/supprimés (si le champ existe)
@@ -77,48 +92,77 @@ const ContactsPage: React.FC = () => {
 
     if (solde <= 0) return false;
 
-    // 2. Trouver le dernier paiement du contact (avec statut validé/en attente)
-    const contactPayments = allPayments.filter((p: any) => 
+    // 2. Dernière activité = max(dernier paiement, dernier bon)
+    // - Paiements: seulement Validé/En attente
+    // - Bons: dernier bon créé (Sortie/Comptant pour client, Commande pour fournisseur)
+    const contactPayments = allPayments.filter((p: any) =>
       p.contact_id === contact.id && isAllowedStatut(p.statut)
     );
 
-    // Si aucun paiement, considérer comme en retard
-    if (contactPayments.length === 0) return true;
-
-    try {
-      // Trier par date de création (plus récent en premier)
+    let lastPaymentDate: Date | null = null;
+    if (contactPayments.length > 0) {
       const sortedPayments = [...contactPayments].sort((a: any, b: any) => {
         const dateA = new Date(a.date_creation || a.created_at);
         const dateB = new Date(b.date_creation || b.created_at);
         return dateB.getTime() - dateA.getTime();
       });
-
       const lastPayment = sortedPayments[0];
-      const lastPaymentDate = new Date(lastPayment.date_creation || lastPayment.created_at);
-      const now = new Date();
+      const d = new Date(lastPayment?.date_creation || lastPayment?.created_at);
+      if (!isNaN(d.getTime())) lastPaymentDate = d;
+    }
 
-      // Vérifier que la date est valide
-      if (isNaN(lastPaymentDate.getTime())) {
-        console.warn('Date de paiement invalide pour contact:', contact.id, lastPayment);
-        return true; // Considérer comme en retard si date invalide
-      }
+    let lastBonDate: Date | null = null;
+    try {
+      // NOTE: on s'appuie sur les listes globales (sorties/comptants/commandes) déjà chargées dans la page.
+      const relevantBons: any[] = contact.type === 'Client'
+        ? [...(sorties as any[]), ...(comptants as any[])]
+        : [...(commandes as any[])];
 
-      // 3. Calculer la différence en millisecondes depuis le dernier paiement
-      const diffMs = now.getTime() - lastPaymentDate.getTime();
+      const contactBons = relevantBons.filter((b: any) => {
+        const match = contact.type === 'Client'
+          ? b.client_id === contact.id
+          : b.fournisseur_id === contact.id;
+        return match && isActiveBonStatut(b.statut);
+      });
 
-      if (overdueUnit === 'days') {
-        // Convertir en jours
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        return diffDays >= overdueValue;
-      } else {
-        // Convertir en mois (approximatif: 30 jours par mois)
-        const diffMonths = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30));
-        return diffMonths >= overdueValue;
+      if (contactBons.length > 0) {
+        const sortedBons = [...contactBons].sort((a: any, b: any) => {
+          const dateA = new Date(a.date_creation || a.created_at);
+          const dateB = new Date(b.date_creation || b.created_at);
+          return dateB.getTime() - dateA.getTime();
+        });
+        const lastBon = sortedBons[0];
+        const d = new Date(lastBon?.date_creation || lastBon?.created_at);
+        if (!isNaN(d.getTime())) lastBonDate = d;
       }
     } catch (error) {
-      console.error('Erreur calcul date dernier paiement pour contact:', contact.id, error);
-      return true; // En cas d'erreur, considérer comme en retard
+      console.error('Erreur calcul date dernier bon pour contact:', contact.id, error);
+      // Ne pas considérer automatiquement en retard: on continue avec lastPaymentDate si dispo
     }
+
+    // Si aucun paiement ET aucun bon => en retard (solde>0)
+    if (!lastPaymentDate && !lastBonDate) return true;
+
+    const now = new Date();
+    const lastActivityTime = Math.max(
+      lastPaymentDate ? lastPaymentDate.getTime() : 0,
+      lastBonDate ? lastBonDate.getTime() : 0
+    );
+    const lastActivityDate = new Date(lastActivityTime);
+
+    // Date invalide => considérer en retard (cas très rare)
+    if (isNaN(lastActivityDate.getTime())) return true;
+
+    const diffMs = now.getTime() - lastActivityDate.getTime();
+    if (diffMs < 0) return false;
+
+    if (overdueUnit === 'days') {
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      return diffDays >= overdueValue;
+    }
+
+    const diffMonths = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30));
+    return diffMonths >= overdueValue;
   };
 
   // Backend products for enriching product details (remove fake data)
@@ -401,12 +445,35 @@ const ContactsPage: React.FC = () => {
       (p: any) => String(p.contact_id) === String(selectedContact.id) && isAllowedStatut(p.statut)
     );
     for (const p of paymentsForContact) {
+      const paymentDateIso = p.date_paiement || (p as any).date_creation || p.created_at;
+
+      // Si le paiement est lié à un bon, on le place chronologiquement au niveau du bon
+      // (utile quand on modifie le bon associé d'un paiement existant).
+      let associatedBonDateIso: string | undefined;
+      try {
+        const bonId = p.bon_id != null ? Number(p.bon_id) : NaN;
+        if (Number.isFinite(bonId)) {
+          const allBons: any[] = [
+            ...(sorties as any[]),
+            ...(comptants as any[]),
+            ...(avoirsClient as any[]),
+            ...(commandes as any[]),
+            ...(avoirsFournisseur as any[]),
+          ];
+          const linked = allBons.find((b: any) => Number(b?.id) === bonId);
+          const d = linked?.date_creation || linked?.created_at;
+          if (d) associatedBonDateIso = String(d);
+        }
+      } catch {}
+
+      const paymentSortDateIso = associatedBonDateIso || paymentDateIso;
       items.push({
         id: `payment-${p.id}`,
         bon_numero: getDisplayNumeroPayment(p),
         bon_type: 'Paiement',
-        bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()), // AFFICHER la vraie date du paiement
-        bon_date_iso: p.created_at, // TRIER par date du bon (created_at = date bon + 5s)
+        bon_id: p.bon_id,
+        bon_date: formatDateDMY(paymentDateIso || new Date().toISOString()), // AFFICHER la vraie date du paiement (ou fallback)
+        bon_date_iso: paymentSortDateIso, // TRIER/filtrer: date du bon si associé, sinon date paiement
         bon_statut: p.statut ? String(p.statut) : 'Paiement',
         product_reference: 'PAIEMENT',
         product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,
@@ -635,7 +702,6 @@ const ContactsPage: React.FC = () => {
     return { totalQty, totalAmount };
   }, []);
 
-
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
@@ -754,6 +820,67 @@ const ContactsPage: React.FC = () => {
     // Toujours inclure le solde initial pour les calculs corrects
     return [initRow, ...filteredTransactions];
   }, [searchedProductHistory, selectedContact, allProductHistory]);
+
+  const newSystemRemiseDisplayed = useMemo(() => {
+    const rows = (displayedProductHistory || []).filter((r: any) => r && !r.syntheticInitial);
+
+    const computeDiscountFromRow = (row: any) => {
+      if (!row || row.type !== 'produit') return 0;
+      // Only count new-system discounts that can exist on sales items
+      if (!['Sortie', 'Comptant'].includes(String(row.bon_type || ''))) return 0;
+
+      const q = Number(row.quantite) || 0;
+      const unit = Number(row.prix_unitaire) || 0;
+      const montant = Number(row.remise_montant ?? 0) || 0;
+      const pct = Number(row.remise_pourcentage ?? 0) || 0;
+
+      // Same rule as RemisesPage: if remise_montant is set, prefer it; otherwise use percentage.
+      const perUnit = montant !== 0 ? montant : (pct !== 0 ? (unit * pct) / 100 : 0);
+      const byFields = q * perUnit;
+      if (Number.isFinite(byFields) && byFields !== 0) return byFields;
+
+      // Fallback: infer from totals if fields are missing
+      const gross = q * unit;
+      const net = Number(row.total);
+      if (Number.isFinite(gross) && Number.isFinite(net) && gross > 0) {
+        const d = gross - net;
+        return d > 0 ? d : 0;
+      }
+
+      return 0;
+    };
+
+    let total = 0;
+    const byBon = new Map<string, any>();
+
+    for (const row of rows) {
+      const discount = computeDiscountFromRow(row);
+      if (!discount) continue;
+      total += discount;
+
+      const key = `${row.bon_type || ''}-${row.bon_id || ''}`;
+      const prev = byBon.get(key) || {
+        bon_id: row.bon_id,
+        bon_type: row.bon_type,
+        bon_numero: row.bon_numero,
+        bon_date_iso: row.bon_date_iso,
+        bon_date: row.bon_date,
+        totalRemise: 0,
+        lines: 0,
+      };
+      prev.totalRemise += discount;
+      prev.lines += 1;
+      byBon.set(key, prev);
+    }
+
+    const bons = Array.from(byBon.values()).sort((a, b) => {
+      const da = new Date(a.bon_date_iso || a.bon_date || 0).getTime();
+      const db = new Date(b.bon_date_iso || b.bon_date || 0).getTime();
+      return db - da;
+    });
+
+    return { total, bons };
+  }, [displayedProductHistory]);
 
   // Bons visibles dans le tableau (IDs uniques) — utile pour la sélection de bons
   const displayedBonIds = useMemo(() => {
@@ -1394,12 +1521,28 @@ const ContactsPage: React.FC = () => {
   const handlePrint = () => {
     if (!selectedContact) return;
 
-    const filteredBons = bonsForContact; // déjà filtré par statuts autorisés
-    // Pour l'impression, utiliser la même logique que displayedProductHistory
-    // avec le calcul correct des soldes cumulatifs tenant compte de la période
-    const filteredProductsForDisplay = displayedProductHistory.filter((item: any) => !item.syntheticInitial);
+    // Gestion de la sélection manuelle de bons
+    const hasBonSelection = selectedBonIds && selectedBonIds.size > 0;
+    
+    // Filtrage des bons : si sélection active, on ne garde que les bons sélectionnés
+    let filteredBons = bonsForContact;
+    if (hasBonSelection) {
+      filteredBons = filteredBons.filter(b => selectedBonIds.has(b.id));
+    }
 
-    // Calcul des statistiques par produit (SEULEMENT pour la période affichée)
+    // Filtrage des produits : utiliser la logique displayedProductHistory
+    let filteredProductsForDisplay = displayedProductHistory.filter((item: any) => !item.syntheticInitial);
+    
+    // Si bons sélectionnés, on ne garde que les lignes produits associées à ces bons
+    if (hasBonSelection) {
+      filteredProductsForDisplay = filteredProductsForDisplay.filter((item: any) => {
+        // item.bon_id ou item.id (selon construction). displayedProductHistory construit avec bon_id = b.id ?
+        // Vérifions item.bon_id ou remontons à la source.
+        return item.bon_id && selectedBonIds.has(Number(item.bon_id));
+      });
+    }
+
+    // Calcul des statistiques par produit (SEULEMENT pour la période affichée/sélectionnée)
     const productStats = filteredProductsForDisplay.reduce((acc: any, item: any) => {
       const key = `${item.product_reference}-${item.product_designation}`;
       if (!acc[key]) {
@@ -1419,15 +1562,19 @@ const ContactsPage: React.FC = () => {
       return acc;
     }, {});
 
-    // Utiliser le solde final de la liste complète (non filtrée par dates)
-    // qui tient compte de TOUTES les transactions 
-    const finalCalculatedSolde = finalSoldeNet; // Utiliser le solde calculé correctement
+    const printBons = filteredBons;
+    const filteredProductsForDisplay2 = filteredProductsForDisplay;
+    const printHasSelection = selectedProductIds.size > 0 || hasBonSelection;
+
+    // Calcul du solde affiché :
+    // - Si sélection active (bons ou produits) : Somme simple des totaux affichés
+    // - Sinon (mode global) : Solde net du contact (finalSoldeNet)
+    const finalCalculatedSolde = printHasSelection
+      ? filteredProductsForDisplay2.reduce((acc, item) => acc + (Number(item.total) || 0), 0)
+      : finalSoldeNet;
 
     const productStatsArray = Object.values(productStats).sort((a: any, b: any) => b.montant_total - a.montant_total);
 
-    const printBons = filteredBons;
-    const filteredProductsForDisplay2 = filteredProductsForDisplay;
-    const printHasSelection = selectedProductIds.size > 0;
 
     const printContent = `
       <html>
@@ -1680,7 +1827,7 @@ const ContactsPage: React.FC = () => {
         });
         return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total || 0), 0) / realBons.length).toFixed(2) : '0.00';
       })()} DH</p>
-                <p><strong>Solde actuel (calculé sur toutes les transactions):</strong> ${finalCalculatedSolde.toFixed(2)} DH</p>
+                <p><strong>${printHasSelection ? 'Total sélectionné' : 'Solde actuel (calculé sur toutes les transactions)'}:</strong> ${finalCalculatedSolde.toFixed(2)} DH</p>
               </div>
             </div>
           </div>
@@ -2945,27 +3092,45 @@ const ContactsPage: React.FC = () => {
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-3 border">
-                        <p className="font-semibold text-gray-600 text-sm">Total des remises</p>
+                        <p className="font-semibold text-gray-600 text-sm">Total des remises (Ancien + Nouveau)</p>
                         {(() => {
-                          const list = (allProductHistory || []).filter((i: any) => i.type === 'produit' && !i.syntheticInitial);
-                          const sum = list.reduce((s: number, it: any) => {
-                            let r = 0;
-                            if (typeof it.remise_totale === 'number') r = Number(it.remise_totale || 0);
-                            else if (typeof it.remise_montant === 'number') r = Number(it.remise_montant || 0) * (Number(it.quantite) || 0);
-                            else {
-                              try {
-                                const rems = getItemRemises(it);
-                                r = (Number(rems.abonne || 0) + Number(rems.client || 0));
-                              } catch (e) {
-                                r = 0;
-                              }
-                            }
-                            return s + r;
-                          }, 0);
+                          const newTotal = Number(newSystemRemiseDisplayed.total || 0);
+                          const oldTotal = contactRemises.reduce(
+                            (sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0),
+                            0
+                          );
+                          const combined = (selectedContact?.type === 'Client') ? (oldTotal + newTotal) : 0;
                           return (
                             <div className="space-y-1">
-                              <p className={`font-bold text-lg ${sum >= 0 ? 'text-green-600' : 'text-red-600'}`}>{contactRemises.reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH</p>
-                              <p className="text-xs text-gray-500">Somme des remises applicables aux produits affichés</p>
+                              {selectedContact?.type === 'Client' ? (
+                                <>
+                                  <p className={`font-bold text-lg ${combined >= 0 ? 'text-green-600' : 'text-red-600'}`}>{combined.toFixed(2)} DH</p>
+                                  <p className="text-xs text-gray-500">Nouveau (bons Sortie/Comptant): {newTotal.toFixed(2)} DH</p>
+                                  <p className="text-xs text-gray-500">Ancien (client_remises): {Number(oldTotal || 0).toFixed(2)} DH</p>
+
+                                  {Array.isArray(newSystemRemiseDisplayed.bons) && newSystemRemiseDisplayed.bons.length > 0 && (
+                                    <details className="text-xs text-gray-600">
+                                      <summary className="cursor-pointer select-none">Détail nouveau système par bon ({newSystemRemiseDisplayed.bons.length})</summary>
+                                      <div className="mt-2 max-h-40 overflow-y-auto rounded border bg-gray-50 p-2 space-y-1">
+                                        {newSystemRemiseDisplayed.bons.map((b: any) => (
+                                          <div key={`${b.bon_type}-${b.bon_id}`} className="flex justify-between gap-3">
+                                            <div className="min-w-0">
+                                              <span className="font-medium">{b.bon_type}</span> #{b.bon_numero || b.bon_id}
+                                              {b.bon_date ? <span className="text-gray-500"> · {b.bon_date}</span> : null}
+                                            </div>
+                                            <div className="font-semibold whitespace-nowrap">{Number(b.totalRemise || 0).toFixed(2)} DH</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </details>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <p className="font-bold text-lg text-gray-400">—</p>
+                                  <p className="text-xs text-gray-500">Disponible seulement pour les clients</p>
+                                </>
+                              )}
                             </div>
                           );
                         })()}
@@ -3156,18 +3321,21 @@ const ContactsPage: React.FC = () => {
                       )}
                     </h3>
                     {/* Résumé remises (debug + info) */}
-                    {selectedContact?.type === 'Client' && contactRemises.length > 0 && (
+                    {selectedContact?.type === 'Client' && (contactRemises.length > 0 || Number(newSystemRemiseDisplayed.total || 0) > 0) && (
                       <div className="flex flex-col sm:flex-row gap-2 sm:items-center bg-blue-50 border border-blue-200 rounded-md px-3 py-2 text-xs text-blue-800">
                         <div className="font-semibold">Résumé Remises</div>
                         <div className="flex gap-3 flex-wrap">
+                          <span>
+                            Total (Ancien+Nouveau): {(Number(newSystemRemiseDisplayed.total || 0) + contactRemises.reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0)).toFixed(2)} DH
+                          </span>
+                          <span>
+                            Nouveau (bons): {Number(newSystemRemiseDisplayed.total || 0).toFixed(2)} DH
+                          </span>
                           <span>
                             Abonné: {contactRemises.filter(r => r.type === 'client_abonne').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH
                           </span>
                           <span>
                             Client: {contactRemises.filter(r => r.type === 'client-remise').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH
-                          </span>
-                          <span>
-                            Total: {contactRemises.reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH
                           </span>
                         </div>
                       </div>

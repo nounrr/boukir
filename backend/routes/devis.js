@@ -378,9 +378,10 @@ router.post('/:id/transform', async (req, res) => {
       const [ins] = await connection.execute(`
         INSERT INTO bons_sortie (
           date_creation, client_id, vehicule_id, lieu_chargement,
-          montant_total, statut, created_by
-        ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)
-      `, [today, clientId, vehicule_id, lieu, devis.montant_total, created_by]);
+          montant_total, statut, created_by,
+          remise_is_client, remise_id
+        ) VALUES (?, ?, ?, ?, ?, 'En attente', ?, 1, ?)
+      `, [today, clientId, vehicule_id, lieu, devis.montant_total, created_by, clientId]);
 
   const sortieId = ins.insertId;
   // Numero non stocké, calculé pour l'affichage uniquement (2 chiffres)
@@ -462,9 +463,10 @@ router.post('/:id/transform', async (req, res) => {
       const [ins] = await connection.execute(`
         INSERT INTO bons_comptant (
           date_creation, client_id, vehicule_id, lieu_chargement,
-          montant_total, statut, created_by
-        ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)
-      `, [today, client_id, vehicule_id, lieu, devis.montant_total, created_by]);
+          montant_total, statut, created_by,
+          remise_is_client, remise_id
+        ) VALUES (?, ?, ?, ?, ?, 'En attente', ?, 1, ?)
+      `, [today, client_id, vehicule_id, lieu, devis.montant_total, created_by, client_id]);
 
   const bctId = ins.insertId;
   // Numero non stocké, calculé pour l'affichage uniquement (2 chiffres)
