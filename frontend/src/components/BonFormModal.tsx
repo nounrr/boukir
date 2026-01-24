@@ -1130,8 +1130,6 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     // Remise target validation (Sortie/Comptant)
     if ((requestType === 'Sortie' || requestType === 'Comptant') && showRemisePanel) {
-      // IMPORTANT: backend defaults remise_is_client=true when field is missing.
-      // For Comptant, client_id is often absent; so we force remise_is_client=0 in payload below.
       if (requestType === 'Sortie' && remiseTargetIsBonClient && !values.client_id) {
         const msg = "Choisissez un client pour 'Même client du bon', ou décochez et choisissez un client remise.";
         showError(msg);
@@ -1152,10 +1150,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     // Remise target resolution for payload
     // Goal: when editing, do NOT change remise target unless user opened the remise panel.
-    // Also avoid backend default remise_is_client=true when fields are missing (especially Comptant).
     const shouldSendRemiseTarget = requestType === 'Sortie' || requestType === 'Comptant';
 
-    const existingRemiseIsClient = initialValues ? Number((initialValues as any)?.remise_is_client ?? 1) : 1;
+    const existingRemiseIsClient = initialValues ? Number((initialValues as any)?.remise_is_client ?? 0) : 0;
     const existingRemiseIdRaw = initialValues ? (initialValues as any)?.remise_id : undefined;
     const existingRemiseId =
       existingRemiseIdRaw == null || existingRemiseIdRaw === '' ? null : Number(existingRemiseIdRaw);
@@ -1188,14 +1185,24 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       : showRemisePanel
       ? computeRemiseTargetFromUi()
       : initialValues
-      ? {
-          remise_is_client: Number.isFinite(existingRemiseIsClient) ? (existingRemiseIsClient ? 1 : 0) : 1,
-          remise_id: Number.isFinite(existingRemiseId as any) ? (existingRemiseId as any) : null,
-          remise_client_nom: undefined,
-        }
+      ? (() => {
+          // Logic for existing bons (edit mode) without opening remise panel
+          let rawIsClient = Number.isFinite(existingRemiseIsClient) ? (existingRemiseIsClient ? 1 : 0) : 0;
+          // Safety: if it says is_client=1 but we have no client_id (e.g. Comptant or unlinked Sortie), force 0
+          if (rawIsClient === 1) {
+             if (requestType === 'Comptant') rawIsClient = 0;
+             if (requestType === 'Sortie' && !values.client_id) rawIsClient = 0;
+          }
+          return {
+            remise_is_client: rawIsClient,
+            remise_id: Number.isFinite(existingRemiseId as any) ? (existingRemiseId as any) : null,
+            remise_client_nom: undefined,
+          };
+        })()
       : requestType === 'Comptant'
       ? { remise_is_client: 0, remise_id: null, remise_client_nom: undefined }
-      : { remise_is_client: 1, remise_id: null, remise_client_nom: undefined };
+      // New Sortie without opening the remise panel: do not force a client-based remise.
+      : { remise_is_client: 0, remise_id: null, remise_client_nom: undefined };
 
   const cleanBonData = {
   date_creation: formatDateInputToMySQL(values.date_bon) || new Date().toISOString().slice(0,19).replace('T',' '), // assure string

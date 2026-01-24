@@ -1,6 +1,6 @@
 import pool from '../db/pool.js';
 
-function toBool(v, defaultValue = true) {
+function toBool(v, defaultValue = false) {
   if (v === undefined || v === null) return defaultValue;
   if (typeof v === 'boolean') return v;
   const s = String(v).trim().toLowerCase();
@@ -24,7 +24,9 @@ export async function resolveRemiseTarget(params) {
     remiseClientNom,
   } = params || {};
 
-  const isClient = toBool(remiseIsClient, true);
+  // If remise_is_client is omitted, treat it as "no client remise".
+  // This prevents requiring client_id when the caller is not applying any remise.
+  const isClient = toBool(remiseIsClient, false);
 
   if (isClient) {
     const cid = toId(clientId);
