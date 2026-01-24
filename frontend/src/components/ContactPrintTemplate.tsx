@@ -160,8 +160,13 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   const totalAmountProducts: number = totalAmount !== undefined ? totalAmount : prDataRows
     .filter((r: any) => String(r.type || '').toLowerCase() === 'produit')
     .reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0);
+  
+  // Solde final: si sélection (skipInitialRow + totalAmount fourni), utiliser totalAmount uniquement
+  // Sinon, utiliser finalSolde fourni ou le dernier soldeCumulatif
   const finalSoldeProducts: number = finalSolde !== undefined ? finalSolde :
-    (prList && prList.length > 0 ? Number(prList[prList.length - 1]?.soldeCumulatif || initialSolde) : initialSolde);
+    (skipInitialRow && totalAmount !== undefined)
+      ? totalAmount  // Mode sélection: somme des totaux sélectionnés uniquement
+      : (prList && prList.length > 0 ? Number(prList[prList.length - 1]?.soldeCumulatif || initialSolde) : initialSolde);
 
   const finalSoldeTransactions: number = finalSolde !== undefined ? finalSolde :
     (txList && txList.length > 0 ? Number(txList[txList.length - 1]?.soldeCumulatif || initialSolde) : initialSolde);

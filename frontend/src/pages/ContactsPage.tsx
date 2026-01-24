@@ -1536,9 +1536,9 @@ const ContactsPage: React.FC = () => {
     // Si bons sélectionnés, on ne garde que les lignes produits associées à ces bons
     if (hasBonSelection) {
       filteredProductsForDisplay = filteredProductsForDisplay.filter((item: any) => {
-        // item.bon_id ou item.id (selon construction). displayedProductHistory construit avec bon_id = b.id ?
-        // Vérifions item.bon_id ou remontons à la source.
-        return item.bon_id && selectedBonIds.has(Number(item.bon_id));
+        // Lignes produit: bon_id = document parent. Lignes transaction: parfois pas de bon_id, fallback sur id.
+        if (item?.bon_id != null && item?.bon_id !== '') return selectedBonIds.has(Number(item.bon_id));
+        return selectedBonIds.has(Number(item?.id));
       });
     }
 
@@ -1566,12 +1566,8 @@ const ContactsPage: React.FC = () => {
     const filteredProductsForDisplay2 = filteredProductsForDisplay;
     const printHasSelection = selectedProductIds.size > 0 || hasBonSelection;
 
-    // Calcul du solde affiché :
-    // - Si sélection active (bons ou produits) : Somme simple des totaux affichés
-    // - Sinon (mode global) : Solde net du contact (finalSoldeNet)
-    const finalCalculatedSolde = printHasSelection
-      ? filteredProductsForDisplay2.reduce((acc, item) => acc + (Number(item.total) || 0), 0)
-      : finalSoldeNet;
+    // Pour sélection : somme des totaux sélectionnés uniquement (SANS solde initial)
+    const selectedTotal = filteredProductsForDisplay2.reduce((acc, item) => acc + (Number(item?.total) || 0), 0);
 
     const productStatsArray = Object.values(productStats).sort((a: any, b: any) => b.montant_total - a.montant_total);
 
@@ -1827,7 +1823,9 @@ const ContactsPage: React.FC = () => {
         });
         return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total || 0), 0) / realBons.length).toFixed(2) : '0.00';
       })()} DH</p>
-                <p><strong>${printHasSelection ? 'Total sélectionné' : 'Solde actuel (calculé sur toutes les transactions)'}:</strong> ${finalCalculatedSolde.toFixed(2)} DH</p>
+                ${printHasSelection
+                  ? `<p><strong>Solde final (sélection uniquement):</strong> ${selectedTotal.toFixed(2)} DH</p>`
+                  : `<p><strong>Solde actuel (calculé sur toutes les transactions):</strong> ${finalSoldeNet.toFixed(2)} DH</p>`}
               </div>
             </div>
           </div>
@@ -2135,6 +2133,14 @@ const ContactsPage: React.FC = () => {
       const selectedRows = displayedProductHistoryWithInitial.filter((it: any) =>
         selectedProductIds.has(String(it.id)) && !it.syntheticInitial
       );
+      setPrintProducts(selectedRows);
+    } else if (selectedBonIds && selectedBonIds.size > 0) {
+      // Mode sélection bons : imprimer uniquement les lignes appartenant aux bons sélectionnés
+      const selectedRows = (displayedProductHistory || []).filter((it: any) => {
+        if (!it || it.syntheticInitial) return false;
+        if (it?.bon_id != null && it?.bon_id !== '') return selectedBonIds.has(Number(it.bon_id));
+        return selectedBonIds.has(Number(it?.id));
+      });
       setPrintProducts(selectedRows);
     } else {
       // Mode complet : utiliser exactement ce qui est affiché dans le tableau
@@ -3410,11 +3416,15 @@ const ContactsPage: React.FC = () => {
                           dateFrom={dateFrom}
                           dateTo={dateTo}
                           skipInitialRow={
-                            // Skip initial row if:
-                            // 1. Selected products mode (specific selection)
-                            // 2. OR date filtering is active (period filtering)
-                            (printProducts.length > 0 && selectedProductIds.size > 0) ||
-                            !!(dateFrom || dateTo)
+                            (() => {
+                              const hasSelection =
+                                (selectedBonIds && selectedBonIds.size > 0) ||
+                                (selectedProductIds && selectedProductIds.size > 0);
+                              // Skip initial row if:
+                              // 1) user selected specific bons/products
+                              // 2) OR date filtering is active (period filtering)
+                              return hasSelection || !!(dateFrom || dateTo);
+                            })()
                           }
                           hideCumulative={
                             // Hide cumulative column ONLY when:
@@ -3439,8 +3449,9 @@ const ContactsPage: React.FC = () => {
                             if (!hasSelection) return finalSoldeNet;
                             const rows = (printProducts.length > 0 ? printProducts : displayedProductHistory) as any[];
                             const { totalAmount } = computeTotalsForRows(rows);
-                            const initialSolde = Number((selectedContact as any)?.solde ?? 0) || 0;
-                            return initialSolde + totalAmount;
+                            // Mode sélection: le “Solde final” affiché doit être le total sélectionné uniquement
+                            // (sans addition du solde initial)
+                            return totalAmount;
                           })()}
                         />
                       )}
