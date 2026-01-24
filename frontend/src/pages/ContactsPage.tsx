@@ -1521,12 +1521,28 @@ const ContactsPage: React.FC = () => {
   const handlePrint = () => {
     if (!selectedContact) return;
 
-    const filteredBons = bonsForContact; // déjà filtré par statuts autorisés
-    // Pour l'impression, utiliser la même logique que displayedProductHistory
-    // avec le calcul correct des soldes cumulatifs tenant compte de la période
-    const filteredProductsForDisplay = displayedProductHistory.filter((item: any) => !item.syntheticInitial);
+    // Gestion de la sélection manuelle de bons
+    const hasBonSelection = selectedBonIds && selectedBonIds.size > 0;
+    
+    // Filtrage des bons : si sélection active, on ne garde que les bons sélectionnés
+    let filteredBons = bonsForContact;
+    if (hasBonSelection) {
+      filteredBons = filteredBons.filter(b => selectedBonIds.has(b.id));
+    }
 
-    // Calcul des statistiques par produit (SEULEMENT pour la période affichée)
+    // Filtrage des produits : utiliser la logique displayedProductHistory
+    let filteredProductsForDisplay = displayedProductHistory.filter((item: any) => !item.syntheticInitial);
+    
+    // Si bons sélectionnés, on ne garde que les lignes produits associées à ces bons
+    if (hasBonSelection) {
+      filteredProductsForDisplay = filteredProductsForDisplay.filter((item: any) => {
+        // item.bon_id ou item.id (selon construction). displayedProductHistory construit avec bon_id = b.id ?
+        // Vérifions item.bon_id ou remontons à la source.
+        return item.bon_id && selectedBonIds.has(Number(item.bon_id));
+      });
+    }
+
+    // Calcul des statistiques par produit (SEULEMENT pour la période affichée/sélectionnée)
     const productStats = filteredProductsForDisplay.reduce((acc: any, item: any) => {
       const key = `${item.product_reference}-${item.product_designation}`;
       if (!acc[key]) {
@@ -1546,15 +1562,19 @@ const ContactsPage: React.FC = () => {
       return acc;
     }, {});
 
-    // Utiliser le solde final de la liste complète (non filtrée par dates)
-    // qui tient compte de TOUTES les transactions 
-    const finalCalculatedSolde = finalSoldeNet; // Utiliser le solde calculé correctement
+    const printBons = filteredBons;
+    const filteredProductsForDisplay2 = filteredProductsForDisplay;
+    const printHasSelection = selectedProductIds.size > 0 || hasBonSelection;
+
+    // Calcul du solde affiché :
+    // - Si sélection active (bons ou produits) : Somme simple des totaux affichés
+    // - Sinon (mode global) : Solde net du contact (finalSoldeNet)
+    const finalCalculatedSolde = printHasSelection
+      ? filteredProductsForDisplay2.reduce((acc, item) => acc + (Number(item.total) || 0), 0)
+      : finalSoldeNet;
 
     const productStatsArray = Object.values(productStats).sort((a: any, b: any) => b.montant_total - a.montant_total);
 
-    const printBons = filteredBons;
-    const filteredProductsForDisplay2 = filteredProductsForDisplay;
-    const printHasSelection = selectedProductIds.size > 0;
 
     const printContent = `
       <html>
@@ -1807,7 +1827,7 @@ const ContactsPage: React.FC = () => {
         });
         return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total || 0), 0) / realBons.length).toFixed(2) : '0.00';
       })()} DH</p>
-                <p><strong>Solde actuel (calculé sur toutes les transactions):</strong> ${finalCalculatedSolde.toFixed(2)} DH</p>
+                <p><strong>${printHasSelection ? 'Total sélectionné' : 'Solde actuel (calculé sur toutes les transactions)'}:</strong> ${finalCalculatedSolde.toFixed(2)} DH</p>
               </div>
             </div>
           </div>
