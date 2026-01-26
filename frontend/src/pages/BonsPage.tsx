@@ -58,7 +58,7 @@ const isKhezinAwatifName = (name: unknown) => {
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
   const navigate = useNavigate();
-  const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule'>('Commande');
+  const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule' | 'Ecommerce'>('Commande');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedBon, setSelectedBon] = useState<any>(null);
@@ -192,6 +192,7 @@ const BonsPage = () => {
       'AvoirFournisseur': 'AVF',
       'AvoirComptant': 'AVC',
       'Vehicule': 'VEH',
+      'Ecommerce': 'ORD',
     };
     const pref = map[type] || (type?.slice(0, 3).toUpperCase());
     return `${pref}${String(id).padStart(2, '0')}`;
@@ -376,7 +377,7 @@ const BonsPage = () => {
   // Helper to get contact name (client or fournisseur) used by filtering/render
   const getContactName = (bon: any) => {
     // Comptant et Devis: if client_nom is present (free text), prefer it
-    if ((bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || currentTab === 'Comptant' || currentTab === 'AvoirComptant' || bon?.type === 'Devis' || currentTab === 'Devis') && bon?.client_nom) {
+    if ((bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || currentTab === 'Comptant' || currentTab === 'AvoirComptant' || bon?.type === 'Devis' || currentTab === 'Devis' || bon?.type === 'Ecommerce' || currentTab === 'Ecommerce') && bon?.client_nom) {
       return bon.client_nom;
     }
     const clientId = bon?.client_id ?? bon?.contact_id;
@@ -409,6 +410,26 @@ const BonsPage = () => {
       }
     }
     return String(v);
+  };
+
+  const formatPaymentMethod = (v: any): string => {
+    const raw = (v == null ? '' : String(v)).trim();
+    if (!raw) return '-';
+    const s = raw.toLowerCase();
+    if (s === 'solde') return 'Solde';
+    if (s === 'cod' || s === 'cash_on_delivery' || s === 'cashondelivery') return 'Paiement à la livraison';
+    if (s === 'card' || s === 'stripe' || s === 'online') return 'Carte (en ligne)';
+    if (s === 'bank_transfer' || s === 'virement') return 'Virement';
+    return raw;
+  };
+
+  const formatDeliveryMethod = (v: any): string => {
+    const raw = (v == null ? '' : String(v)).trim();
+    if (!raw) return '-';
+    const s = raw.toLowerCase();
+    if (s === 'pickup' || s === 'retrait') return 'Retrait';
+    if (s === 'delivery' || s === 'livraison') return 'Livraison';
+    return raw;
   };
 
   // Flatten a bon into a single searchable string containing most fields and nested item values
@@ -793,6 +814,7 @@ const BonsPage = () => {
       case 'Avoir': return 'avoirs_client';
       case 'AvoirFournisseur': return 'avoirs_fournisseur';
       case 'AvoirComptant': return 'avoirs_comptant';
+      case 'Ecommerce': return 'ecommerce_orders';
       case 'Vehicule': return 'bons_vehicule';
       default: return '';
     }
@@ -1077,6 +1099,7 @@ const BonsPage = () => {
     { key: 'Avoir', label: 'Avoir Client' },
     { key: 'AvoirComptant', label: 'Avoir Comptant' },
     { key: 'AvoirFournisseur', label: 'Avoir Fournisseur' },
+    { key: 'Ecommerce', label: 'Bon Ecommerce' },
     { key: 'Devis', label: 'Devis' }
   ]), []);
 
@@ -1692,7 +1715,24 @@ const BonsPage = () => {
                           ) : (
                             <>{bon.vehicule_nom || '-'}</>
                           )
-                        ) : getContactName(bon)}
+                        ) : (
+                          currentTab === 'Ecommerce' || bon?.type === 'Ecommerce' ? (
+                            <div className="flex flex-col">
+                              <span className="text-sm text-gray-800">{getContactName(bon)}</span>
+                              {(() => {
+                                const bAny = bon as any;
+                                const email = bAny?.customer_email || bAny?.email || bAny?.customerEmail;
+                                return email ? (
+                                  <span className="text-xs text-gray-500">{safeText(email)}</span>
+                                ) : (
+                                  <span className="text-xs text-gray-400">-</span>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            getContactName(bon)
+                          )
+                        )}
                       </td>
                       {/* Téléphone cell */}
                       <td className="px-4 py-2 text-sm">
@@ -1715,10 +1755,42 @@ const BonsPage = () => {
                           ) : <span className="text-gray-400">-</span>;
                         })()}
                       </td>
-                      <td className="px-4 py-2 text-sm">{(bon as any).adresse_livraison ?? (bon as any).adresseLivraison ?? '-'}</td>
+                      <td className="px-4 py-2 text-sm">
+                        {(() => {
+                          const bAny = bon as any;
+                          const addr = bAny?.adresse_livraison ?? bAny?.adresseLivraison ?? '-';
+                          const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                          const deliveryMethod = bAny?.delivery_method ?? bAny?.deliveryMethod;
+                          const pickupId = bAny?.pickup_location_id ?? bAny?.pickupLocationId ?? bAny?.pickup_location?.id;
+                          return (
+                            <div className="flex flex-col">
+                              <span className="text-sm text-gray-700">{safeText(addr)}</span>
+                              {isEcom ? (
+                                <span className="text-xs text-gray-500">
+                                  {formatDeliveryMethod(deliveryMethod)}
+                                  {pickupId ? ` • Pickup #${safeText(pickupId)}` : ''}
+                                </span>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="px-4 py-2">
                         <div className="text-sm font-semibold text-gray-900">{computeMontantTotal(bon).toFixed(2)} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
+                        {(() => {
+                          const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                          if (!isEcom) return null;
+                          const bAny = bon as any;
+                          const pm = bAny?.payment_method ?? bAny?.paymentMethod;
+                          const ps = bAny?.payment_status ?? bAny?.paymentStatus;
+                          return (
+                            <div className="text-xs text-gray-500">
+                              <span className="font-medium">Paiement:</span> {formatPaymentMethod(pm)}
+                              {ps ? ` • ${safeText(ps)}` : ''}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-2 text-sm">{computeTotalPoids(bon).toFixed(2)}</td>
                       <td className="px-4 py-2 text-sm">

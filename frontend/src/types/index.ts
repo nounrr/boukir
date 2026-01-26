@@ -343,15 +343,24 @@ export interface CreateVehiculeData {
 export interface Bon {
   id: number;
   numero?: string;
-  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Devis' | 'Vehicule';
+  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Devis' | 'Vehicule' | 'Ecommerce';
   date_creation: string;
   date_echeance?: string;
   client_id?: number;
   fournisseur_id?: number;
+  // Free-text names (some endpoints don't use client_id/fournisseur_id)
+  client_nom?: string;
   phone?: string | null;
   adresse_livraison?: string;
   montant_total: number;
   statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente' | 'Envoyé' | 'Accepté' | 'Refusé' | 'Expiré' | 'Facturé';
+  // Ecommerce (optional)
+  customer_email?: string;
+  payment_method?: string;
+  payment_status?: string;
+  delivery_method?: string;
+  pickup_location_id?: number;
+  pickup_location?: { id: number; name?: string; address?: string } | null;
   // Champs spécifiques véhicule (bons_vehicule)
   vehicule_id?: number;
   vehicule_nom?: string;
@@ -379,7 +388,7 @@ export interface BonItem {
 }
 
 export interface CreateBonData {
-  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Devis' | 'Vehicule';
+  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Devis' | 'Vehicule' | 'Ecommerce';
   date_creation: string;
   date_echeance?: string;
   client_id?: number;

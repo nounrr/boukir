@@ -2,8 +2,10 @@ import React, { useMemo, useState } from 'react';
 import {
   Plus, Edit, Trash2, Search, Users, Truck, Phone, Mail, MapPin,
   CreditCard, Building2, DollarSign, Eye, Printer, Calendar, FileText,
-  ChevronUp, ChevronDown, Receipt, AlertTriangle, Settings, Send
+  ChevronUp, ChevronDown, Receipt, AlertTriangle, Settings, Send, GripVertical
 } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import type { DropResult } from '@hello-pangea/dnd';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import type { Contact } from '../types'; // Contact now includes optional solde_cumule from backend
@@ -17,7 +19,7 @@ import {
 import { useCreateClientRemiseMutation, useCreateRemiseItemMutation, useLazyGetClientAbonneByContactQuery } from '../store/api/remisesApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import { useGetProductsQuery } from '../store/api/productsApi';
-import { useGetPaymentsQuery } from '../store/api/paymentsApi';
+import { useGetPaymentsQuery, useReorderPaymentsMutation } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
 import { useGetArtisanRequestsQuery, useApproveArtisanRequestMutation, useRejectArtisanRequestMutation } from '../store/api/notificationsApi';
 import ContactPrintModal from '../components/ContactPrintModal';
@@ -54,6 +56,7 @@ const ContactsPage: React.FC = () => {
   const [deleteContactMutation] = useDeleteContactMutation();
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createRemiseItem] = useCreateRemiseItemMutation();
+  const [reorderPayments] = useReorderPaymentsMutation();
 
   const isActiveBonStatut = (s: any) => {
     if (!s) return false;
@@ -484,14 +487,15 @@ const ContactsPage: React.FC = () => {
         }
       } catch {}
 
-      const paymentSortDateIso = associatedBonDateIso || paymentDateIso;
+      // Utiliser date_paiement en priorité pour permettre le repositionnement manuel
+      const paymentSortDateIso = paymentDateIso || associatedBonDateIso;
       items.push({
         id: `payment-${p.id}`,
         bon_numero: getDisplayNumeroPayment(p),
         bon_type: 'Paiement',
         bon_id: p.bon_id,
         bon_date: formatDateDMY(paymentDateIso || new Date().toISOString()), // AFFICHER la vraie date du paiement (ou fallback)
-        bon_date_iso: paymentSortDateIso, // TRIER/filtrer: date du bon si associé, sinon date paiement
+        bon_date_iso: paymentSortDateIso, // TRIER: date_paiement en priorité pour permettre repositionnement manuel
         bon_statut: p.statut ? String(p.statut) : 'Paiement',
         product_reference: 'PAIEMENT',
         product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,
@@ -958,6 +962,114 @@ const ContactsPage: React.FC = () => {
 
       return next;
     });
+  };
+
+  // Handler pour le drag & drop des paiements
+  const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination) {
+      return;
+    }
+
+    if (result.source.index === result.destination.index) {
+      return;
+    }
+
+    if (!selectedContact?.id) {
+      showError('Aucun contact sélectionné');
+      return;
+    }
+
+    try {
+      const items = Array.from(displayedProductHistory);
+      const movedItem = items[result.source.index];
+      
+      if (!movedItem || movedItem.type !== 'paiement') {
+        return;
+      }
+
+      // Trouver le bon complet sous lequel on veut placer le paiement
+      const targetIndex = result.destination.index;
+      let targetItem = items[targetIndex];
+      
+      // Si on glisse sur un item de produit, trouver le dernier item de ce bon
+      if (targetItem && targetItem.type === 'produit' && targetItem.bon_id) {
+        // Trouver tous les items de ce bon
+        const bonId = targetItem.bon_id;
+        let lastIndexOfBon = targetIndex;
+        
+        // Parcourir les items suivants pour trouver le dernier item de ce bon
+        for (let i = targetIndex + 1; i < items.length; i++) {
+          if (items[i].bon_id === bonId && items[i].type === 'produit') {
+            lastIndexOfBon = i;
+          } else {
+            break;
+          }
+        }
+        
+        // Placer le paiement après le dernier item du bon
+        targetItem = items[lastIndexOfBon];
+      }
+
+      // Calculer la nouvelle date basée sur le bon précédent et suivant
+      let newDate: string;
+      const targetBonDate = targetItem?.bon_date_iso || targetItem?.bon_date;
+      
+      // Helper pour convertir en format MySQL
+      const toMySQLDateTime = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      };
+      
+      // Trouver le prochain item après le bon complet
+      let nextItem = null;
+      for (let i = targetIndex + 1; i < items.length; i++) {
+        if (items[i].bon_id !== targetItem?.bon_id) {
+          nextItem = items[i];
+          break;
+        }
+      }
+      
+      if (targetBonDate) {
+        const targetDate = new Date(targetBonDate);
+        if (nextItem && (nextItem.bon_date_iso || nextItem.bon_date)) {
+          // Entre deux bons : date moyenne
+          const nextDate = new Date(nextItem.bon_date_iso || nextItem.bon_date);
+          const avgTime = (targetDate.getTime() + nextDate.getTime()) / 2;
+          newDate = toMySQLDateTime(new Date(avgTime));
+        } else {
+          // Après le dernier bon : +1 minute
+          newDate = toMySQLDateTime(new Date(targetDate.getTime() + 60000));
+        }
+      } else if (nextItem && (nextItem.bon_date_iso || nextItem.bon_date)) {
+        // Avant le premier : -1 minute
+        const nextDate = new Date(nextItem.bon_date_iso || nextItem.bon_date);
+        newDate = toMySQLDateTime(new Date(nextDate.getTime() - 60000));
+      } else {
+        // Seul item : utiliser maintenant
+        newDate = toMySQLDateTime(new Date());
+      }
+
+      // Mettre à jour le paiement
+      const paymentId = typeof movedItem.id === 'string' ? parseInt(movedItem.id.replace(/\D/g, '')) : movedItem.id;
+      
+      await reorderPayments({
+        contactId: selectedContact.id,
+        paymentOrders: [{
+          id: paymentId,
+          newDate: newDate,
+        }],
+      }).unwrap();
+
+      showSuccess('Paiement déplacé sous le bon');
+    } catch (error) {
+      console.error('Erreur lors du déplacement:', error);
+      showError('Erreur lors du déplacement du paiement');
+    }
   };
 
   // Small helper to produce the CompanyHeader HTML used in bons prints
@@ -3590,60 +3702,90 @@ const ContactsPage: React.FC = () => {
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Solde Cumulé</th>
                           </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {displayedProductHistory.length === 0 ? (
-                            <tr>
-                              <td colSpan={20} className="px-6  text-center text-sm text-gray-500">
-                                Aucun produit trouvé pour cette période
-                              </td>
-                            </tr>
-                          ) : (
-                            displayedProductHistory.map((item) => (
-                              <tr key={item.id} className={`hover:bg-gray-50 ${(item.type || '').toLowerCase() === 'paiement' ? 'bg-green-100' : (item.type || '').toLowerCase() === 'avoir' ? 'bg-orange-100' : ''}`}>
-                                <td className="px-2  whitespace-nowrap">
-                                  {item.syntheticInitial ? (
-                                    <span className="text-xs text-gray-400">—</span>
-                                  ) : (
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedProductIds.has(String(item.id))}
-                                      onChange={(e) => {
-                                        const next = new Set<string>(selectedProductIds);
-                                        const id = String(item.id);
-                                        const bonId = Number(item.bon_id);
+                        <DragDropContext onDragEnd={handleDragEnd}>
+                          <Droppable droppableId="product-history-table">
+                            {(provided) => (
+                              <tbody 
+                                className="bg-white divide-y divide-gray-200"
+                                ref={provided.innerRef}
+                                {...provided.droppableProps}
+                              >
+                                {displayedProductHistory.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={20} className="px-6  text-center text-sm text-gray-500">
+                                      Aucun produit trouvé pour cette période
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  displayedProductHistory.map((item, index) => (
+                                    <Draggable 
+                                      key={item.id} 
+                                      draggableId={String(item.id)} 
+                                      index={index}
+                                      isDragDisabled={item.syntheticInitial || item.type !== 'paiement'}
+                                    >
+                                      {(provided, snapshot) => (
+                                        <tr 
+                                          ref={provided.innerRef}
+                                          {...provided.draggableProps}
+                                          className={`hover:bg-gray-50 ${
+                                            snapshot.isDragging ? 'shadow-lg bg-blue-50' : ''
+                                          } ${
+                                            (item.type || '').toLowerCase() === 'paiement' ? 'bg-green-100' : 
+                                            (item.type || '').toLowerCase() === 'avoir' ? 'bg-orange-100' : ''
+                                          }`}
+                                        >
+                                          <td className="px-2  whitespace-nowrap">
+                                            <div className="flex items-center gap-2">
+                                              {!item.syntheticInitial && item.type === 'paiement' && (
+                                                <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                                                  <GripVertical size={16} className="text-gray-400" />
+                                                </div>
+                                              )}
+                                              {item.syntheticInitial ? (
+                                                <span className="text-xs text-gray-400">—</span>
+                                              ) : (
+                                                <input
+                                                  type="checkbox"
+                                                  checked={selectedProductIds.has(String(item.id))}
+                                                  onChange={(e) => {
+                                                    const next = new Set<string>(selectedProductIds);
+                                                    const id = String(item.id);
+                                                    const bonId = Number(item.bon_id);
 
-                                        if (e.target.checked) {
-                                          next.add(id);
-                                        } else {
-                                          next.delete(id);
-                                        }
+                                                    if (e.target.checked) {
+                                                      next.add(id);
+                                                    } else {
+                                                      next.delete(id);
+                                                    }
 
-                                        setSelectedProductIds(next);
+                                                    setSelectedProductIds(next);
 
-                                        // Vérifier si tous les produits de ce bon sont maintenant sélectionnés
-                                        if (bonId) {
-                                          const allProductsOfBon = displayedProductHistory
-                                            .filter((p: any) => !p.syntheticInitial && Number(p.bon_id) === bonId)
-                                            .map((p: any) => String(p.id));
+                                                    // Vérifier si tous les produits de ce bon sont maintenant sélectionnés
+                                                    if (bonId) {
+                                                      const allProductsOfBon = displayedProductHistory
+                                                        .filter((p: any) => !p.syntheticInitial && Number(p.bon_id) === bonId)
+                                                        .map((p: any) => String(p.id));
 
-                                          const allSelected = allProductsOfBon.every(pId =>
-                                            pId === id ? e.target.checked : next.has(pId)
-                                          );
+                                                      const allSelected = allProductsOfBon.every(pId =>
+                                                        pId === id ? e.target.checked : next.has(pId)
+                                                      );
 
-                                          setSelectedBonIds(prevBons => {
-                                            const nextBons = new Set(prevBons);
-                                            if (allSelected) {
-                                              nextBons.add(bonId);
-                                            } else {
-                                              nextBons.delete(bonId);
-                                            }
-                                            return nextBons;
-                                          });
-                                        }
-                                      }}
-                                    />
-                                  )}
-                                </td>
+                                                      setSelectedBonIds(prevBons => {
+                                                        const nextBons = new Set(prevBons);
+                                                        if (allSelected) {
+                                                          nextBons.add(bonId);
+                                                        } else {
+                                                          nextBons.delete(bonId);
+                                                        }
+                                                        return nextBons;
+                                                      });
+                                                    }
+                                                  }}
+                                                />
+                                              )}
+                                            </div>
+                                          </td>
                                 <td className="px-6  whitespace-nowrap">
                                   <div className="text-sm text-gray-700">
                                     {item.syntheticInitial ? '-' : (
@@ -3880,9 +4022,15 @@ const ContactsPage: React.FC = () => {
                                   </div>
                                 </td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
+                                      )}
+                                    </Draggable>
+                                  ))
+                                )}
+                                {provided.placeholder}
+                              </tbody>
+                            )}
+                          </Droppable>
+                        </DragDropContext>
                       </table>
                     </div>
                   </div>

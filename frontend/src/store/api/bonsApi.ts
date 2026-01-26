@@ -2,7 +2,7 @@ import { api } from './apiSlice';
 import type { Bon } from '../../types';
 
 // Shared union for bon-like types including new AvoirComptant
-type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Vehicule';
+type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Vehicule' | 'Ecommerce';
 
 export const bonsApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -34,6 +34,8 @@ export const bonsApi = api.injectEndpoints({
             return '/avoirs_comptant';
           case 'Vehicule':
             return '/bons_vehicule';
+          case 'Ecommerce':
+            return '/ecommerce/orders';
           default:
             throw new Error('Type de bon invalide');
         }
@@ -41,6 +43,52 @@ export const bonsApi = api.injectEndpoints({
       // Certains endpoints backend ne renvoient pas le champ `type`.
       // On l'injecte côté client pour éviter que l'UI filtre tout à vide.
       transformResponse: (response: any, _meta, type) => {
+        if (type === 'Ecommerce') {
+          const orders = response?.orders || [];
+          return orders.map((o: any) => ({
+            id: o.id,
+            type: 'Ecommerce',
+            numero: o.order_number,
+            date_creation: o.created_at || o.confirmed_at,
+            created_at: o.created_at || o.confirmed_at || new Date().toISOString(),
+            updated_at: o.updated_at || o.created_at || o.confirmed_at || new Date().toISOString(),
+            client_nom: o.customer_name,
+            customer_email: o.customer_email || o.email,
+            phone: o.customer_phone,
+            adresse_livraison: o.shipping_address?.city
+              ? `${o.shipping_address.line1 || ''}${o.shipping_address.line2 ? `, ${o.shipping_address.line2}` : ''}, ${o.shipping_address.city}`
+              : (o.shipping_address?.line1 || o.shipping_address_line1 || ''),
+            montant_total: Number(o.total_amount || 0),
+            // Map status directly or to closest equivalents
+            statut: o.status === 'confirmed' ? 'Validé' : 
+                    o.status === 'pending' ? 'En attente' :
+                    o.status === 'cancelled' ? 'Annulé' :
+                    o.status === 'shipped' ? 'Envoyé' :
+                    o.status === 'delivered' ? 'Livré' :
+                    // Capitalize first letter for others
+                    (o.status ? String(o.status).charAt(0).toUpperCase() + String(o.status).slice(1) : 'En attente'),
+            items: (o.items || []).map((i: any) => ({
+              id: i.id,
+              bon_id: o.id,
+              produit_id: i.product_id,
+              quantite: Number(i.quantity),
+              prix_unitaire: Number(i.unit_price),
+              montant_ligne: Number(i.subtotal),
+              designation_custom: i.product_name,
+              produit: { 
+                id: i.product_id, 
+                designation: i.product_name, 
+                designation_ar: i.product_name_ar 
+              }
+            })),
+            is_solde: o.payment_method === 'solde' || !!o.solde_amount,
+            payment_method: o.payment_method,
+            payment_status: o.payment_status,
+            delivery_method: o.delivery_method,
+            pickup_location_id: o.pickup_location_id,
+            pickup_location: o.pickup_location_id ? { id: o.pickup_location_id } : null
+          }));
+        }
         const list: any[] = Array.isArray(response) ? response : (response?.data ?? []);
         return list.map((bon) => ({ ...bon, type }));
       },

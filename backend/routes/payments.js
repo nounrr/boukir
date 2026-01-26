@@ -449,6 +449,62 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 });
 
 
+// PATCH /payments/reorder - Réorganiser l'ordre d'affichage en modifiant date_paiement
+router.patch('/reorder', verifyToken, async (req, res) => {
+  try {
+    const { contactId, paymentOrders } = req.body;
+    
+    if (!contactId) {
+      return res.status(400).json({ message: 'contact_id requis' });
+    }
+    
+    if (!Array.isArray(paymentOrders) || paymentOrders.length === 0) {
+      return res.status(400).json({ message: 'paymentOrders doit être un tableau non vide' });
+    }
+    
+    const connection = await pool.getConnection();
+    
+    try {
+      await connection.beginTransaction();
+      
+      // Mettre à jour date_paiement pour changer l'ordre d'affichage
+      for (const item of paymentOrders) {
+        const { id, newDate } = item;
+        
+        if (!id || !newDate) {
+          throw new Error('Chaque item doit avoir id et newDate');
+        }
+        
+        // Mettre à jour date_paiement pour l'ordre d'affichage
+        await connection.query(
+          'UPDATE payments SET date_paiement = ?, updated_at = NOW() WHERE id = ? AND contact_id = ?',
+          [newDate, id, contactId]
+        );
+      }
+      
+      await connection.commit();
+      
+      res.json({ 
+        success: true, 
+        message: 'Ordre des paiements mis à jour'
+      });
+      
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+    
+  } catch (err) {
+    console.error('PATCH /payments/reorder error:', err);
+    res.status(500).json({ 
+      message: 'Erreur lors de la réorganisation', 
+      detail: String(err?.message || err) 
+    });
+  }
+});
+
 // Delete payment (PDG only)
 router.delete('/:id', verifyToken, requireRole('PDG'), async (req, res) => {
   const { id } = req.params;

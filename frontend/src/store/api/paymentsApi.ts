@@ -57,6 +57,28 @@ const paymentsApi = api.injectEndpoints({
       query: () => ({ url: '/payments/personnel' }),
       providesTags: ['Payment'],
     }),
+
+    reorderPayments: builder.mutation<
+      { success: boolean; message?: string },
+      { 
+        contactId: number; 
+        paymentOrders: Array<{ 
+          id: number; 
+          newDate: string;
+        }> 
+      }
+    >({
+      query: (body) => ({ 
+        url: '/payments/reorder', 
+        method: 'PATCH', 
+        body 
+      }),
+      invalidatesTags: (_result, _error, { contactId }) => [
+        'Payment',
+        'Contact',
+        { type: 'Contact' as const, id: contactId },
+      ],
+    }),
   }),
 });
 
@@ -69,4 +91,5 @@ export const {
   useDeletePaymentMutation,
   useGetPaymentsByBonQuery,
   useGetPersonnelNamesQuery,
+  useReorderPaymentsMutation,
 } = paymentsApi;
