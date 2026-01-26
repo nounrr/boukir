@@ -904,6 +904,177 @@ router.get('/me', async (req, res, next) => {
   }
 });
 
+// ==================== UPDATE CURRENT USER PROFILE ====================
+// PUT /api/users/auth/me - Update authenticated user's profile (no email changes)
+router.put('/me', async (req, res, next) => {
+  const connection = await pool.getConnection();
+  try {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (!token) {
+      return res.status(401).json({ message: 'Token manquant' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    } catch (err) {
+      return res.status(401).json({ message: 'Token invalide' });
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'email')) {
+      return res.status(400).json({
+        message: "La mise à jour de l'email n'est pas autorisée via cet endpoint",
+        field: 'email',
+      });
+    }
+
+    await ensureContactsCheckoutColumns(connection);
+
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
+      `SELECT id, prenom, nom, is_active
+       FROM contacts
+       WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none'
+       FOR UPDATE`,
+      [decoded.id]
+    );
+
+    const current = rows[0];
+    if (!current) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+    if (!current.is_active) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Compte désactivé' });
+    }
+
+    const normalizeNullableText = (value) => {
+      if (value === undefined) return undefined;
+      if (value === null) return null;
+      const s = String(value).trim();
+      return s.length === 0 ? null : s;
+    };
+
+    const updates = [];
+    const params = [];
+
+    const allowed = {
+      prenom: 'prenom',
+      nom: 'nom',
+      telephone: 'telephone',
+      adresse: 'adresse',
+      shipping_address_line1: 'shipping_address_line1',
+      shipping_address_line2: 'shipping_address_line2',
+      shipping_city: 'shipping_city',
+      shipping_state: 'shipping_state',
+      shipping_postal_code: 'shipping_postal_code',
+      shipping_country: 'shipping_country',
+    };
+
+    for (const [bodyKey, column] of Object.entries(allowed)) {
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, bodyKey)) {
+        const value = normalizeNullableText(req.body[bodyKey]);
+        updates.push(`${column} = ?`);
+        params.push(value);
+      }
+    }
+
+    // Keep nom_complet in sync if prenom/nom were provided
+    const nextPrenom = Object.prototype.hasOwnProperty.call(req.body || {}, 'prenom')
+      ? normalizeNullableText(req.body.prenom)
+      : (current.prenom != null ? String(current.prenom) : null);
+    const nextNom = Object.prototype.hasOwnProperty.call(req.body || {}, 'nom')
+      ? normalizeNullableText(req.body.nom)
+      : (current.nom != null ? String(current.nom) : null);
+
+    const prenomWasProvided = Object.prototype.hasOwnProperty.call(req.body || {}, 'prenom');
+    const nomWasProvided = Object.prototype.hasOwnProperty.call(req.body || {}, 'nom');
+    if (prenomWasProvided || nomWasProvided) {
+      const nomComplet = `${nextPrenom || ''} ${nextNom || ''}`.trim();
+      updates.push('nom_complet = ?');
+      params.push(nomComplet.length > 0 ? nomComplet : null);
+    }
+
+    if (updates.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Aucune mise à jour fournie',
+        allowed_fields: Object.keys(allowed),
+      });
+    }
+
+    params.push(decoded.id);
+    await connection.query(
+      `UPDATE contacts
+       SET ${updates.join(', ')}, updated_at = NOW()
+       WHERE id = ?`,
+      params
+    );
+
+    await connection.commit();
+
+    // Return fresh profile (same shape as GET /me)
+    const [users] = await pool.query(
+      `SELECT id, prenom, nom, email, telephone, type_compte, auth_provider,
+              email_verified, avatar_url, locale, is_active, last_login_at, created_at,
+              nom_complet, adresse,
+              shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_postal_code, shipping_country,
+              societe, ice, is_company, is_solde,
+              demande_artisan, artisan_approuve,
+              COALESCE(remise_balance, 0) AS remise_balance
+       FROM contacts WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none'`,
+      [decoded.id]
+    );
+
+    const user = users[0];
+    res.json({
+      message: 'Profil mis à jour avec succès',
+      user: {
+        id: user.id,
+        prenom: user.prenom,
+        nom: user.nom,
+        nom_complet: user.nom_complet,
+        email: user.email,
+        telephone: user.telephone,
+        adresse: user.adresse,
+        societe: user.societe,
+        ice: user.ice,
+        is_company: !!user.is_company,
+        is_solde: !!user.is_solde,
+        shipping_address_line1: user.shipping_address_line1,
+        shipping_address_line2: user.shipping_address_line2,
+        shipping_city: user.shipping_city,
+        shipping_state: user.shipping_state,
+        shipping_postal_code: user.shipping_postal_code,
+        shipping_country: user.shipping_country,
+        type_compte: user.type_compte,
+        auth_provider: user.auth_provider,
+        email_verified: !!user.email_verified,
+        avatar_url: user.avatar_url,
+        locale: user.locale,
+        last_login_at: user.last_login_at,
+        created_at: user.created_at,
+        demande_artisan: !!user.demande_artisan,
+        artisan_approuve: !!user.artisan_approuve,
+        remise_balance: Number(user.remise_balance || 0),
+      },
+    });
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch (e) {
+      // ignore rollback errors
+    }
+    next(err);
+  } finally {
+    connection.release();
+  }
+});
+
 // ==================== LOGOUT ====================
 // POST /api/users/auth/logout - Logout (client-side token removal mainly)
 router.post('/logout', async (req, res) => {

@@ -1,13 +1,12 @@
 import { Router } from 'express';
 import pool from '../../db/pool.js';
 import {
-  computeOrderEarnedRemiseAmount,
   computeOrderItemRemiseBreakdown,
   ensureContactsCheckoutColumns,
   ensureContactsRemiseBalance,
   ensureEcommerceOrderItemsRemiseColumns,
   ensureEcommerceOrdersRemiseColumns,
-  ensureProductRemiseColumns,
+  ensureProductRemiseColumns
 } from '../../utils/ensureRemiseSchema.js';
 
 async function ensureRemiseSchema() {
