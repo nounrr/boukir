@@ -457,13 +457,14 @@ router.get('/', async (req, res, next) => {
     `);
 
     // 4. Get all available brands
+    // NOTE: this list is used for filtering/navigation (e.g. brand_id=23),
+    // so we include brands that have at least one published product even if out of stock.
     const [allBrands] = await pool.query(`
       SELECT DISTINCT b.id, b.nom, b.image_url
       FROM brands b
       INNER JOIN products p ON p.brand_id = b.id
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
-        AND (p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)
       ORDER BY b.nom
     `);
 
@@ -481,6 +482,12 @@ router.get('/', async (req, res, next) => {
     // Calculate pagination metadata
     const totalPages = Math.ceil(total / itemsPerPage);
     
+    const brands = allBrands.map(b => ({
+      id: b.id,
+      nom: b.nom,
+      image_url: b.image_url
+    }));
+
     res.json({
       products,
       pagination: {
@@ -493,15 +500,13 @@ router.get('/', async (req, res, next) => {
         from: total > 0 ? offset + 1 : 0,
         to: Math.min(offset + itemsPerPage, total)
       },
+      // Alias for frontend convenience
+      brands,
       filters: {
         categories: rootCategories,
         colors: allColors.map(c => c.color),
         units: allUnits.map(u => u.unit),
-        brands: allBrands.map(b => ({
-          id: b.id,
-          nom: b.nom,
-          image_url: b.image_url
-        })),
+        brands,
         price_range: {
           min: priceRange[0].min_price ? Number(priceRange[0].min_price) : 0,
           max: priceRange[0].max_price ? Number(priceRange[0].max_price) : 0

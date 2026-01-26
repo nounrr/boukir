@@ -1,12 +1,14 @@
-import React, { useMemo, useState, useEffect } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { BarChart3, DollarSign, Package, Search, TrendingUp } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '../hooks/redux';
-import { useCreateSnapshotMutation, useListSnapshotsQuery, useGetSnapshotQuery } from '../store/api/inventoryApi';
-import { showSuccess, showError } from '../utils/notifications';
-import { formatDateTimeWithHour } from '../utils/dateUtils';
-import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { TrendingUp, Package, DollarSign, BarChart3, Search, Filter } from 'lucide-react';
+import { useCreateSnapshotMutation, useGetSnapshotQuery, useListSnapshotsQuery } from '../store/api/inventoryApi';
+import { useGetProductsQuery } from '../store/api/productsApi';
+import { formatDateTimeWithHour } from '../utils/dateUtils';
+import { showError, showSuccess } from '../utils/notifications';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 

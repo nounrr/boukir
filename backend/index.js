@@ -28,6 +28,8 @@ import ecommerceOrdersRouter from './routes/ecommerce/orders.js';
 import ecommercePromoRouter from './routes/ecommerce/promo.js';
 import ecommercePickupLocationsRouter from './routes/ecommerce/pickupLocations.js';
 import promoCodesRouter from './routes/promoCodes.js';
+import heroSlidesRouter from './routes/heroSlides.js';
+import heroSlidesAdminRouter from './routes/heroSlidesAdmin.js';
 import contactsRouter from './routes/contacts.js';
 import vehiculesRouter from './routes/vehicules.js';
 
@@ -165,6 +167,13 @@ const ECOMMERCE_PUBLIC_PREFIXES = [
   '/api/ecommerce/pickup-locations',
 ];
 
+// Public read-only resources (no token required for GET)
+const PUBLIC_READONLY_PREFIXES = [
+  '/api/categories',
+  '/api/brands',
+  '/api/hero-slides',
+];
+
 app.use((req, res, next) => {
   // Debug logging
   if (req.path.includes('ecommerce')) {
@@ -184,8 +193,16 @@ app.use((req, res, next) => {
   // Rendre publiques toutes les routes IA
   if (req.path.startsWith('/api/ai')) return next();
 
+  // Hero slides are public (homepage)
+  if (req.path.startsWith('/api/hero-slides')) return next();
+
   // Autoriser l'accès public aux endpoints e-commerce
   if (ECOMMERCE_PUBLIC_PREFIXES.some(prefix => req.path.startsWith(prefix))) return next();
+
+  // Autoriser l'accès public en lecture seule (GET) pour certaines ressources
+  if (req.method === 'GET' && PUBLIC_READONLY_PREFIXES.some(prefix => req.path.startsWith(prefix))) {
+    return next();
+  }
 
   verifyToken(req, res, () => {
     const store = requestContext.getStore();
@@ -254,6 +271,10 @@ app.use('/api/ecommerce/pickup-locations', optionalAuth, ecommercePickupLocation
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
 app.use('/api/ecommerce/wishlist', ecommerceWishlistRouter); // E-commerce wishlist (requires auth)
 app.use('/api/ecommerce/orders', ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
+
+// E-commerce homepage hero slides
+app.use('/api/hero-slides', optionalAuth, heroSlidesRouter); // Public (with optional auth)
+app.use('/api/admin/hero-slides', heroSlidesAdminRouter); // Backoffice management (protected)
 // Backoffice promo codes management (protected, non-ecommerce namespace)
 app.use('/api/promo-codes', promoCodesRouter);
 app.use('/api/contacts', contactsRouter);

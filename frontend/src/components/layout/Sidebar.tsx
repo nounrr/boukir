@@ -20,6 +20,7 @@ import {
   Archive,
   CalendarClock,
   Award,
+  Image,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -37,6 +38,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: true },
         { name: 'Remises', href: '/remises', icon: Percent, show: true },
         { name: 'Coupons', href: '/coupons', icon: Percent, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+        { name: 'Hero Slides', href: '/hero-slides', icon: Image, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
         { name: 'Contacts', href: '/contacts', icon: UserCheck, show: user?.role !== 'Employé' },
         { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: user?.role !== 'Employé' },
       ],

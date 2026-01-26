@@ -36,6 +36,7 @@ import ExportProducts from './pages/ExportProducts';
 import ExportContacts from './pages/ExportContacts';
 import RemisesPage from './pages/RemisesPage';
 import PromoCodesPage from './pages/PromoCodesPage';
+import HeroSlidesPage from './pages/HeroSlidesPage';
 import TalonsPage from './pages/TalonsPage';
 import TalonCaissePage from './pages/TalonCaissePage';
 import ArchivedProductsPage from './pages/ArchivedProductsPage';
@@ -367,6 +368,17 @@ const AppContent: React.FC = () => {
               <ProtectedRoute requiredRoles={["PDG", "Manager", "ManagerPlus"]}>
                 <LayoutWithAccessCheck>
                   <PromoCodesPage />
+                </LayoutWithAccessCheck>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/hero-slides"
+            element={
+              <ProtectedRoute requiredRoles={["PDG", "Manager", "ManagerPlus"]}>
+                <LayoutWithAccessCheck>
+                  <HeroSlidesPage />
                 </LayoutWithAccessCheck>
               </ProtectedRoute>
             }

@@ -65,7 +65,7 @@ router.post('/', upload.single('image'), async (req, res, next) => {
     const image_url = req.file ? `/uploads/brands/${req.file.filename}` : null;
 
     if (!nom || !nom.trim()) return res.status(400).json({ message: 'Nom requis' });
-    
+
     const now = new Date();
     const [result] = await pool.query(
       'INSERT INTO brands (nom, description, image_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
@@ -87,19 +87,19 @@ router.put('/:id', upload.single('image'), async (req, res, next) => {
 
     const image_url = req.file ? `/uploads/brands/${req.file.filename}` : undefined;
     const now = new Date();
-    
+
     const fields = [];
     const values = [];
-    
+
     if (nom !== undefined) { fields.push('nom = ?'); values.push(nom ? nom.trim() : null); }
     if (description !== undefined) { fields.push('description = ?'); values.push(description ? description.trim() : null); }
     if (image_url !== undefined) { fields.push('image_url = ?'); values.push(image_url); }
-    
+
     fields.push('updated_at = ?'); values.push(now);
-    
+
     const sql = `UPDATE brands SET ${fields.join(', ')} WHERE id = ?`;
     values.push(id);
-    
+
     await pool.query(sql, values);
     const [rows] = await pool.query('SELECT * FROM brands WHERE id = ?', [id]);
     res.json(rows[0]);
@@ -110,7 +110,7 @@ router.delete('/:id', async (req, res, next) => {
   try {
     await ensureBrandsTable();
     const id = Number(req.params.id);
-    
+
     // Check if any products use this brand
     // First check if brand_id column exists in products to avoid error if migration hasn't run
     try {
