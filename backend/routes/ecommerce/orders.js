@@ -754,7 +754,9 @@ router.post('/', async (req, res, next) => {
 router.get('/', async (req, res, next) => {
   try {
     const userId = req.user?.id;
-    const { email } = req.query; // Allow guest to fetch by email
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const isBackoffice = role.length > 0;
+    const { email } = req.query; // Allow fetch by email (when enabled by auth rules)
 
     // Pagination + date filters
     const rawPage = req.query?.page;
@@ -773,9 +775,9 @@ router.get('/', async (req, res, next) => {
     const limit = Math.min(100, Math.max(1, Number.parseInt(rawLimit ?? '20', 10) || 20));
     const offset = (page - 1) * limit;
 
-    if (!userId && !email) {
-      return res.status(401).json({ 
-        message: 'Authentification requise ou email nécessaire' 
+    if (!isBackoffice && !userId && !email) {
+      return res.status(401).json({
+        message: 'Authentification requise ou email nécessaire'
       });
     }
 
@@ -783,8 +785,15 @@ router.get('/', async (req, res, next) => {
     const whereParts = [];
     const whereParams = [];
 
-    whereParts.push(userId ? 'o.user_id = ?' : 'o.customer_email = ?');
-    whereParams.push(userId || email);
+    // Backoffice users (employees) can list all orders.
+    // E-commerce users are restricted to their own orders (by user_id) or by email.
+    if (!isBackoffice) {
+      whereParts.push(userId ? 'o.user_id = ?' : 'o.customer_email = ?');
+      whereParams.push(userId || email);
+    } else if (email) {
+      whereParts.push('o.customer_email = ?');
+      whereParams.push(email);
+    }
 
     const isValidDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
     const parseCsv = (v) =>
