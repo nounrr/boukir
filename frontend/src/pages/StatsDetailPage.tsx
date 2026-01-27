@@ -3,7 +3,7 @@ import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { Activity, Filter, Users, ArrowLeft } from "lucide-react";
 import { useGetProductsQuery } from "../store/api/productsApi";
-import { useGetClientsQuery } from "../store/api/contactsApi";
+import { useGetAllClientsQuery } from '../store/api/contactsApi';
 import { useGetBonsByTypeQuery } from "../store/api/bonsApi";
 import SearchableSelect from "../components/SearchableSelect";
 import type { RootState } from "../store";
@@ -83,7 +83,7 @@ const StatsDetailPage: React.FC = () => {
   const [showPasswordError, setShowPasswordError] = useState(false);
 
   const { data: products = [] } = useGetProductsQuery();
-  const { data: clients = [] } = useGetClientsQuery();
+  const { data: clients = [] } = useGetAllClientsQuery();
   const { data: bonsSortie = [] } = useGetBonsByTypeQuery('Sortie');
   const { data: bonsComptant = [] } = useGetBonsByTypeQuery('Comptant');
   const { data: bonsCommandes = [] } = useGetBonsByTypeQuery('Commande');

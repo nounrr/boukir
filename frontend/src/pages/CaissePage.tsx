@@ -82,7 +82,7 @@ const CaissePage = () => {
   // Redux data
   const user = useAppSelector(state => state.auth.user);
   const isPdgOrManagerPlus = user?.role === 'PDG' || user?.role === 'ManagerPlus';
-  const { data: clients = [] } = useGetClientsQuery();
+  const { data: clients = [] } = useGetAllClientsQuery();
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
   const { data: talons = [] } = useGetTalonsQuery(undefined);
   const { data: paymentsApi = [] } = useGetPaymentsQuery();

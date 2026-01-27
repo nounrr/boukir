@@ -15,7 +15,7 @@ import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantQuery } from '../store/api/comptantApi';
-import { useGetClientsQuery, useGetFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
+import { useGetAllClientsQuery, useGetAllFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
 // Removed unused: useGetPaymentsQuery, useGetBonsByTypeQuery
 import { useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
@@ -416,8 +416,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { data: employeesAll = [] } = useGetEmployeesQueryServer();
   const chauffeurs = useMemo(() => (employeesAll || []).filter((e: any) => e.role === 'Chauffeur'), [employeesAll]);
   const { data: products = [] } = useGetProductsQuery();
-  const { data: clients = [] } = useGetClientsQuery();
-  const { data: fournisseurs = [] } = useGetFournisseursQuery();
+  const { data: clients = [] } = useGetAllClientsQuery();
+  const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined);
   // For cumulative balances

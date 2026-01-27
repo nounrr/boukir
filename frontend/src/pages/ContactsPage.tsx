@@ -14,7 +14,8 @@ import {
   useGetFournisseursQuery,
   useCreateContactMutation,
   useUpdateContactMutation,
-  useDeleteContactMutation
+  useDeleteContactMutation,
+  useGetContactsSummaryQuery
 } from '../store/api/contactsApi';
 import { useCreateClientRemiseMutation, useCreateRemiseItemMutation, useLazyGetClientAbonneByContactQuery } from '../store/api/remisesApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
@@ -49,8 +50,11 @@ const ContactsPage: React.FC = () => {
   const isEmployee = (currentUser?.role === 'Employé');
   const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
-  const { data: clients = [] } = useGetClientsQuery();
-  const { data: fournisseurs = [] } = useGetFournisseursQuery();
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  
   const [createContact] = useCreateContactMutation();
   const [updateContactMutation] = useUpdateContactMutation();
   const [deleteContactMutation] = useDeleteContactMutation();
@@ -187,6 +191,30 @@ const ContactsPage: React.FC = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
+  // Charger les données paginées depuis le backend (avec filtres serveur)
+  const { data: clientsResponse, isLoading: clientsLoading } = useGetClientsQuery({
+    page: currentPage,
+    limit: itemsPerPage,
+    search: searchTerm,
+    clientSubTab,
+  });
+  const { data: fournisseursResponse, isLoading: fournisseursLoading } = useGetFournisseursQuery({
+    page: currentPage,
+    limit: itemsPerPage,
+    search: searchTerm,
+  });
+  
+  const clients = clientsResponse?.data || [];
+  const fournisseurs = fournisseursResponse?.data || [];
+  const clientsPagination = clientsResponse?.pagination;
+  const fournisseursPagination = fournisseursResponse?.pagination;
+
+  const { data: contactsSummary } = useGetContactsSummaryQuery({
+    type: activeTab === 'clients' ? 'Client' : 'Fournisseur',
+    search: searchTerm,
+    clientSubTab: activeTab === 'clients' ? clientSubTab : undefined,
+  });
+
   // États pour la configuration des périodes
   const [showSettings, setShowSettings] = useState(false);
   const [overdueValue, setOverdueValue] = useState(() => {
@@ -216,10 +244,6 @@ const ContactsPage: React.FC = () => {
   const [printModal, setPrintModal] = useState<{ open: boolean; mode: 'products' | null }>({ open: false, mode: null });
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [printProducts, setPrintProducts] = useState<any[]>([]);
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(30);
 
   // Charger les bons réels (selon type). Chargés globalement pour stats/solde.
   const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
@@ -2363,20 +2387,8 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  // Filtrage par source (clients) puis recherche
-  const baseContacts = (activeTab === 'clients' ? clients : fournisseurs);
-  const filteredBySource = activeTab === 'clients'
-    ? baseContacts.filter(c => (
-        clientSubTab === 'backoffice' ? c.source === 'backoffice' :
-        clientSubTab === 'ecommerce' ? (c.source === 'ecommerce' && (!c.demande_artisan || !!c.artisan_approuve)) :
-        true
-      ))
-    : baseContacts;
-  const filteredContacts = filteredBySource.filter((contact) =>
-    (contact.nom_complet?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (contact.societe?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (contact.telephone?.includes(searchTerm))
-  );
+  // Les filtres (search + sous-onglet) sont appliqués côté backend
+  const filteredContacts = (activeTab === 'clients' ? clients : fournisseurs);
 
   // Fonction de tri
   const sortedContacts = useMemo(() => {
@@ -2441,14 +2453,12 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  // Pagination
-  const totalItems = sortedContacts.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedContacts = sortedContacts.slice(startIndex, endIndex);
+  // Pagination côté serveur
+  const totalItems = activeTab === 'clients' ? (clientsPagination?.total || 0) : (fournisseursPagination?.total || 0);
+  const totalPages = activeTab === 'clients' ? (clientsPagination?.totalPages || 1) : (fournisseursPagination?.totalPages || 1);
+  const paginatedContacts = sortedContacts;
 
-  // Réinitialiser la page quand on change d'onglet ou de recherche
+  // Réinitialiser la page quand on change d'onglet, de sous-onglet ou de recherche
   React.useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, clientSubTab, searchTerm, sortField, sortDirection]);
@@ -2471,6 +2481,14 @@ const ContactsPage: React.FC = () => {
 
   return (
     <div className="p-6">
+      {(clientsLoading || fournisseursLoading) && (
+        <div className="fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50">
+          <div className="flex items-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+            <span>Chargement...</span>
+          </div>
+        </div>
+      )}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Gestion des Contacts</h1>
@@ -2665,7 +2683,7 @@ const ContactsPage: React.FC = () => {
             <Users className={`${activeTab === 'clients' ? 'text-blue-600' : 'text-gray-600'}`} size={32} />
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total {activeTab === 'clients' ? 'Clients' : 'Fournisseurs'}</p>
-              <p className="text-3xl font-bold text-gray-900">{sortedContacts.length}</p>
+              <p className="text-3xl font-bold text-gray-900">{contactsSummary?.totalContacts ?? totalItems}</p>
             </div>
           </div>
         </div>
@@ -2675,15 +2693,7 @@ const ContactsPage: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Solde cumulé</p>
               <p className="text-3xl font-bold text-gray-900">
-                {sortedContacts.reduce((sum: number, c: any) => {
-                  if (c.solde_cumule != null) return sum + Number(c.solde_cumule || 0);
-                  const base = Number(c.solde) || 0;
-                  const sales = activeTab === 'clients' ? (salesByClient.get(c.id) || 0) : 0;
-                  const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(c.id) || 0) : 0;
-                  const paid = paymentsByContact.get(c.id) || 0;
-                  const balance = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
-                  return sum + balance;
-                }, 0).toFixed(2)} DH
+                {(contactsSummary?.totalSoldeCumule ?? 0).toFixed(2)} DH
               </p>
             </div>
           </div>
@@ -2694,7 +2704,7 @@ const ContactsPage: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Avec ICE</p>
               <p className="text-3xl font-bold text-gray-900">
-                {sortedContacts.filter((c) => c.ice && c.ice.trim() !== '').length}
+                {contactsSummary?.totalWithICE ?? 0}
               </p>
             </div>
           </div>
@@ -2705,7 +2715,7 @@ const ContactsPage: React.FC = () => {
       <div className="mb-4 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-700">
-            Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} éléments
+            Affichage de {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, totalItems)} sur {totalItems} éléments
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -3130,6 +3140,7 @@ const ContactsPage: React.FC = () => {
           setEditingContact(null);
         }}
         contactType={activeTab === 'clients' ? 'Client' : 'Fournisseur'}
+        clientSubTab={activeTab === 'clients' ? clientSubTab : undefined}
         initialValues={editingContact || undefined}
         onContactAdded={(newContact) => {
           showSuccess(`${newContact.type} ajouté avec succès!`);

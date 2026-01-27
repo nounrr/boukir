@@ -49,6 +49,7 @@ interface ContactFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   contactType: 'Client' | 'Fournisseur';
+  clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests';
   initialValues?: Partial<Contact>;
   onContactAdded?: (contact: Contact) => void;
 }
@@ -57,6 +58,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   isOpen,
   onClose,
   contactType,
+  clientSubTab,
   initialValues,
   onContactAdded,
 }) => {
@@ -81,6 +83,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     rib: '',
     solde: 0,
     plafond: contactType === 'Client' ? 0 : null,
+    isSolde: clientSubTab === 'ecommerce' ? (initialValues?.isSolde ?? false) : true,
     ...initialValues
   };
 
@@ -126,6 +129,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 rib: values.rib || '',
                 type: contactType,
                 solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
+                isSolde: (values as any).isSolde ?? true,
                 ...(contactType === 'Client' && { 
                   plafond: values.plafond != null ? Number(values.plafond as any) : undefined 
                 })
@@ -383,6 +387,21 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Checkbox isSolde - visible uniquement pour l'onglet e-commerce */}
+              {contactType === 'Client' && clientSubTab === 'ecommerce' && (
+                <div className="flex items-center space-x-2">
+                  <Field
+                    id="isSolde"
+                    name="isSolde"
+                    type="checkbox"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="isSolde" className="text-sm font-medium text-gray-700">
+                    Autoriser les commandes en solde (crédit)
+                  </label>
+                </div>
+              )}
 
               <div className="flex justify-end space-x-3 mt-6">
                 <button

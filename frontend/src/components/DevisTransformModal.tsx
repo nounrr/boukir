@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import type { Contact } from '../types';
 import { showSuccess, showError } from '../utils/notifications';
 import type { RootState } from '../store';
-import { useGetClientsQuery } from '../store/api/contactsApi';
+import { useGetAllClientsQuery } from '../store/api/contactsApi';
 import { useTransformDevisMutation } from '../store/api/bonsApi';
 
 interface DevisTransformModalProps {
@@ -20,7 +20,7 @@ const DevisTransformModal: React.FC<DevisTransformModalProps> = ({
   onTransformComplete,
 }) => {
   const { user } = useSelector((state: RootState) => state.auth);
-  const { data: clients = [] } = useGetClientsQuery();
+  const { data: clients = [] } = useGetAllClientsQuery();
   const [transformDevis, { isLoading: isTransforming } ] = useTransformDevisMutation();
 
   const [transformationType, setTransformationType] = useState<'choice' | 'sortie'>('choice'); // 'choice' pour le choix initial, 'sortie' pour le select client

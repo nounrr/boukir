@@ -13,7 +13,7 @@ import { formatDateDMY } from '../utils/dateUtils';
 import PeriodConfig from '../components/PeriodConfig';
 
 const ContactArchiverPage: React.FC = () => {
-  const { data: clients = [] } = useGetClientsQuery();
+  const { data: clients = [] } = useGetAllClientsQuery();
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
 
   // États locaux
