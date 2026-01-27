@@ -59,14 +59,9 @@ export const bonsApi = api.injectEndpoints({
               ? `${o.shipping_address.line1 || ''}${o.shipping_address.line2 ? `, ${o.shipping_address.line2}` : ''}, ${o.shipping_address.city}`
               : (o.shipping_address?.line1 || o.shipping_address_line1 || ''),
             montant_total: Number(o.total_amount || 0),
-            // Map status directly or to closest equivalents
-            statut: o.status === 'confirmed' ? 'Validé' : 
-                    o.status === 'pending' ? 'En attente' :
-                    o.status === 'cancelled' ? 'Annulé' :
-                    o.status === 'shipped' ? 'Envoyé' :
-                    o.status === 'delivered' ? 'Livré' :
-                    // Capitalize first letter for others
-                    (o.status ? String(o.status).charAt(0).toUpperCase() + String(o.status).slice(1) : 'En attente'),
+            // Keep raw e-commerce order status values for consistent UI/actions
+            statut: o.status || 'pending',
+            ecommerce_status: o.status || 'pending',
             items: (o.items || []).map((i: any) => ({
               id: i.id,
               bon_id: o.id,
@@ -331,6 +326,22 @@ export const bonsApi = api.injectEndpoints({
       },
     }),
 
+    // E-commerce: update order status (admin)
+    updateEcommerceOrderStatus: builder.mutation<
+      any,
+      { id: number; status: string; payment_status?: string; admin_notes?: string }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/ecommerce/orders/${id}/status`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Ecommerce', id },
+        { type: 'Ecommerce', id: 'LIST' },
+      ],
+    }),
+
     // Transformer un devis vers Sortie/Comptant/Commande
     transformDevis: builder.mutation<
       any,
@@ -410,3 +421,6 @@ export const {
   useTransformDevisMutation,
   useMarkBonAsAvoirMutation,
 } = bonsApi;
+
+// Explicit re-export (avoids occasional TS server cache issues)
+export const useUpdateEcommerceOrderStatusMutation = bonsApi.useUpdateEcommerceOrderStatusMutation;
