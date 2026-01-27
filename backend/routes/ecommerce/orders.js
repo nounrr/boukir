@@ -849,7 +849,7 @@ router.get('/', async (req, res, next) => {
     }
 
     // Status filters
-    const allowedStatuses = new Set(['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']);
+    const allowedStatuses = new Set(['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded']);
     const allowedPaymentStatuses = new Set(['pending', 'paid', 'failed', 'refunded']);
     const allowedPaymentMethods = new Set(['cash_on_delivery', 'card', 'solde', 'pay_in_store']);
     const allowedDeliveryMethods = new Set(['delivery', 'pickup']);
