@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, MoreHorizontal, Send } from 'lucide-react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, MoreHorizontal, Send, Package, Truck, RotateCcw } from 'lucide-react';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
@@ -15,6 +15,7 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
     useGetBonsByTypeQuery, 
     useDeleteBonMutation, 
     useUpdateBonStatusMutation,
+    useUpdateEcommerceOrderStatusMutation,
     useCreateBonMutation
   } from '../store/api/bonsApi';
   import { 
@@ -175,6 +176,7 @@ const BonsPage = () => {
   const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery();
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
+  const [updateEcommerceOrderStatus] = useUpdateEcommerceOrderStatusMutation();
   const [createBon] = useCreateBonMutation();
   // Bon links API: record duplications
   const [createBonLink] = useCreateBonLinkMutation();
@@ -363,6 +365,37 @@ const BonsPage = () => {
       const status = error?.status;
       const msg = error?.data?.message || error?.message || 'Erreur inconnue';
       if (status === 401) {
+        showError('Session expirée. Veuillez vous reconnecter.');
+        dispatch(logout());
+      } else {
+        showError(`Erreur lors du changement de statut: ${msg}`);
+      }
+    }
+  };
+
+  const getEcommerceStatusValue = (bon: any): string => {
+    const raw = (bon as any)?.ecommerce_status ?? bon?.statut ?? bon?.status;
+    return String(raw || '').trim().toLowerCase();
+  };
+
+  const canChangeEcommerceStatus = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || currentUser?.role === 'Manager';
+
+  const handleChangeEcommerceStatus = async (
+    bon: any,
+    status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded'
+  ) => {
+    try {
+      if (!canChangeEcommerceStatus) {
+        showError('Permission refusée: vous ne pouvez pas changer le statut e-commerce.');
+        return;
+      }
+      await updateEcommerceOrderStatus({ id: bon.id, status }).unwrap();
+      showSuccess(`Statut e-commerce mis à jour: ${status}`);
+    } catch (error: any) {
+      console.error('Erreur mise à jour statut e-commerce:', error);
+      const httpStatus = error?.status;
+      const msg = error?.data?.message || error?.message || 'Erreur inconnue';
+      if (httpStatus === 401) {
         showError('Session expirée. Veuillez vous reconnecter.');
         dispatch(logout());
       } else {
@@ -1909,6 +1942,23 @@ const BonsPage = () => {
                               </button>
                             );
                           })()}
+
+                          {/* Ecommerce: always visible confirm icon (others in 3-dot menu) */}
+                          {(() => {
+                            const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                            if (!isEcom || !canChangeEcommerceStatus) return null;
+                            const s = getEcommerceStatusValue(bon);
+                            if (s !== 'pending') return null;
+                            return (
+                              <button
+                                onClick={() => handleChangeEcommerceStatus(bon, 'confirmed')}
+                                className="text-emerald-600 hover:text-emerald-800"
+                                title="Confirmer (E-commerce)"
+                              >
+                                <CheckCircle2 size={ACTION_ICON_SIZE} />
+                              </button>
+                            );
+                          })()}
                           
                           {/* Validation icon - visible for authorized users and non-validated bons */}
                           {(() => {
@@ -1986,6 +2036,42 @@ const BonsPage = () => {
                             {openMenuBonId === String(bon.id) && (
                               <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 p-1">
                                 <div className="flex flex-col gap-1">
+                                  {/* Status-change actions */}
+                                  {(() => {
+                                    const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                                    if (!isEcom || !canChangeEcommerceStatus) return null;
+                                    const current = getEcommerceStatusValue(bon);
+                                    const actions: Array<{ status: any; title: string; cls: string; Icon: any }> = [
+                                      { status: 'pending', title: 'pending', cls: 'text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800', Icon: Clock },
+                                      { status: 'confirmed', title: 'confirmed', cls: 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800', Icon: CheckCircle2 },
+                                      { status: 'processing', title: 'processing', cls: 'text-blue-600 hover:bg-blue-50 hover:text-blue-800', Icon: Package },
+                                      { status: 'shipped', title: 'shipped', cls: 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800', Icon: Truck },
+                                      { status: 'delivered', title: 'delivered', cls: 'text-green-600 hover:bg-green-50 hover:text-green-800', Icon: CheckCircle2 },
+                                      { status: 'cancelled', title: 'cancelled', cls: 'text-red-600 hover:bg-red-50 hover:text-red-800', Icon: XCircle },
+                                      { status: 'refunded', title: 'refunded', cls: 'text-purple-600 hover:bg-purple-50 hover:text-purple-800', Icon: RotateCcw },
+                                    ];
+                                    return (
+                                      <div className="flex gap-1">
+                                        {actions.map(({ status, title, cls, Icon }) => {
+                                          if (String(status) === current) return null;
+                                          return (
+                                            <button
+                                              key={String(status)}
+                                              onClick={() => {
+                                                handleChangeEcommerceStatus(bon, status);
+                                                setOpenMenuBonId(null);
+                                              }}
+                                              className={`p-2 rounded ${cls}`}
+                                              title={`Changer statut: ${title}`}
+                                            >
+                                              <Icon size={16} />
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    );
+                                  })()}
+
                                   {/* Status-change actions - Secondary actions only (En attente/Annuler) */}
                                   {(() => {
                                     // Full privileged actions for:
@@ -2250,7 +2336,7 @@ const BonsPage = () => {
           key={bonFormKey}
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
-          currentTab={currentTab}
+          currentTab={currentTab as any}
           initialValues={selectedBon || undefined}
           onBonAdded={(newBon) => {
             // Le bon est automatiquement ajouté au store Redux
@@ -2588,7 +2674,7 @@ const BonsPage = () => {
             setSelectedBonForPrint(null);
           }}
           bon={selectedBonForPrint}
-          type={(currentTab === 'Avoir' || currentTab === 'AvoirComptant') ? 'AvoirClient' : currentTab}
+          type={((currentTab === 'Avoir' || currentTab === 'AvoirComptant') ? 'AvoirClient' : currentTab) as any}
           products={products}
           contact={(() => {
             const b = selectedBonForPrint;
@@ -2922,7 +3008,14 @@ const BonsPage = () => {
 
   export default BonsPage;
   function getStatusClasses(statut?: string) {
-    switch (statut) {
+    const raw = String(statut || '').trim();
+    const s = raw.toLowerCase();
+    if (['pending'].includes(s) || s.includes('en attente') || s === 'attente') return 'bg-blue-200 text-blue-700';
+    if (['confirmed', 'delivered'].includes(s) || s.includes('valid') || s.includes('accept') || s.includes('livr')) return 'bg-green-200 text-green-700';
+    if (['processing', 'shipped'].includes(s) || s.includes('envoy')) return 'bg-indigo-200 text-indigo-700';
+    if (['cancelled'].includes(s) || s.includes('annul') || s.includes('refus') || s.includes('expir')) return 'bg-red-200 text-red-700';
+    if (['refunded'].includes(s)) return 'bg-purple-200 text-purple-700';
+    switch (raw) {
       case 'Brouillon':
         return 'bg-gray-200 text-gray-700';
       case 'Validé':
@@ -2944,9 +3037,11 @@ const BonsPage = () => {
   }
   function getStatusIcon(statut?: string) {
     const s = String(statut || '').toLowerCase();
-    if (s.includes('en attente') || s === 'attente') return <Clock size={14} />;
-    if (s.includes('valid')) return <CheckCircle2 size={14} />;
-    if (s.includes('refus')) return <XCircle size={14} />;
-    if (s.includes('annul')) return <XCircle size={14} />;
+    if (s === 'pending' || s.includes('en attente') || s === 'attente') return <Clock size={14} />;
+    if (s === 'processing') return <Package size={14} />;
+    if (s === 'shipped') return <Truck size={14} />;
+    if (s === 'refunded') return <RotateCcw size={14} />;
+    if (s === 'confirmed' || s === 'delivered' || s.includes('valid') || s.includes('accept') || s.includes('livr')) return <CheckCircle2 size={14} />;
+    if (s.includes('refus') || s.includes('annul') || s === 'cancelled') return <XCircle size={14} />;
     return null;
   }

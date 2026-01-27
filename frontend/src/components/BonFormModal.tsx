@@ -366,7 +366,7 @@ const AutoCheckNonCalculatedForAwatif: React.FC<{ isOpen: boolean; clients: any[
 interface BonFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule';
+  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule' | 'Ecommerce';
   initialValues?: any;
   onBonAdded?: (bon: any) => void;
 }

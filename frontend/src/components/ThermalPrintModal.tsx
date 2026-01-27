@@ -8,7 +8,7 @@ interface ThermalPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
   bon: any;
-  type: 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'AvoirClient' | 'AvoirFournisseur' | 'Avoir' | 'Vehicule';
+  type: 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'AvoirClient' | 'AvoirFournisseur' | 'Avoir' | 'Vehicule' | 'Ecommerce';
   contact?: any;
   items?: any[];
   products?: any[];
@@ -34,6 +34,7 @@ const getTypeLabel = (t: string) => {
     Sortie: 'DEVIS',
     Comptant: 'DEVIS',
     Devis: 'DEVIS',
+    Ecommerce: 'E-COMMERCE',
     AvoirClient: 'AVOIR CLIENT',
     Avoir: 'AVOIR CLIENT',
     AvoirFournisseur: 'AVOIR FOURNISSEUR',
