@@ -329,7 +329,7 @@ export const bonsApi = api.injectEndpoints({
     // E-commerce: update order status (admin)
     updateEcommerceOrderStatus: builder.mutation<
       any,
-      { id: number; status: string; payment_status?: string; admin_notes?: string }
+      { id: number; status?: string; payment_status?: string; admin_notes?: string }
     >({
       query: ({ id, ...body }) => ({
         url: `/ecommerce/orders/${id}/status`,

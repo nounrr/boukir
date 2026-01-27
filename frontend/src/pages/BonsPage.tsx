@@ -207,7 +207,7 @@ const BonsPage = () => {
     if (showAuditCols) {
       base.push('140','140'); // created_by, updated_by
     }
-    base.push('180','120','120'); // lié, statut, actions
+    base.push('180','120','140','120'); // lié, statut, payment_status, actions
     return base.map(v => `${v}px`);
   }, [showAuditCols]);
 
@@ -400,6 +400,30 @@ const BonsPage = () => {
         dispatch(logout());
       } else {
         showError(`Erreur lors du changement de statut: ${msg}`);
+      }
+    }
+  };
+
+  const handleChangeEcommercePaymentStatus = async (
+    bon: any,
+    payment_status: 'pending' | 'paid' | 'failed' | 'refunded'
+  ) => {
+    try {
+      if (!canChangeEcommerceStatus) {
+        showError('Permission refusée: vous ne pouvez pas changer le payment status e-commerce.');
+        return;
+      }
+      await updateEcommerceOrderStatus({ id: bon.id, payment_status }).unwrap();
+      showSuccess(`Payment status e-commerce mis à jour: ${payment_status}`);
+    } catch (error: any) {
+      console.error('Erreur mise à jour payment status e-commerce:', error);
+      const httpStatus = error?.status;
+      const msg = error?.data?.message || error?.message || 'Erreur inconnue';
+      if (httpStatus === 401) {
+        showError('Session expirée. Veuillez vous reconnecter.');
+        dispatch(logout());
+      } else {
+        showError(`Erreur lors du changement de payment status: ${msg}`);
       }
     }
   };
@@ -1701,10 +1725,18 @@ const BonsPage = () => {
                     />
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
-                    Actions
+                    Payment status
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
                       onMouseDown={(e) => startResize(e, showAuditCols ? 12 : 10)}
+                      title="Glisser pour redimensionner"
+                    />
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
+                    Actions
+                    <span 
+                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                      onMouseDown={(e) => startResize(e, showAuditCols ? 13 : 11)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -1713,7 +1745,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={showAuditCols ? 13 : 11} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={showAuditCols ? 14 : 12} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTab}
                     </td>
                   </tr>
@@ -1898,6 +1930,30 @@ const BonsPage = () => {
                           {getStatusIcon(bon.statut)}
                           {bon.statut || '-'}
                         </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        {(() => {
+                          const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                          if (!isEcom) return <span className="text-gray-400">-</span>;
+                          const bAny = bon as any;
+                          const currentPs = String(bAny?.payment_status ?? bAny?.paymentStatus ?? '').trim().toLowerCase() as any;
+                          const value: 'pending' | 'paid' | 'failed' | 'refunded' =
+                            (['pending', 'paid', 'failed', 'refunded'].includes(currentPs) ? currentPs : 'pending');
+                          return (
+                            <select
+                              value={value}
+                              onChange={(e) => handleChangeEcommercePaymentStatus(bon, e.target.value as any)}
+                              disabled={!canChangeEcommerceStatus}
+                              className="w-full max-w-[160px] text-xs border border-gray-300 rounded px-2 py-1 bg-white disabled:opacity-60"
+                              title={!canChangeEcommerceStatus ? 'Permission refusée' : 'Changer payment status'}
+                            >
+                              <option value="pending">pending</option>
+                              <option value="paid">paid</option>
+                              <option value="failed">failed</option>
+                              <option value="refunded">refunded</option>
+                            </select>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="inline-flex gap-2 items-center relative">
