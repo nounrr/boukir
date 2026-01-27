@@ -13,6 +13,7 @@ export interface PaginatedContactsResponse {
 
 export interface ContactsSummaryResponse {
   totalContacts: number;
+  totalContactsGrouped?: number;
   totalSoldeCumule: number;
   totalWithICE: number;
 }
@@ -31,13 +32,14 @@ const contactsApi = api.injectEndpoints({
       providesTags: ['Contact'],
     }),
 
-    getContactsSummary: builder.query<ContactsSummaryResponse, { type?: 'Client' | 'Fournisseur'; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests' }>({
-      query: ({ type, search, clientSubTab }) => ({
+    getContactsSummary: builder.query<ContactsSummaryResponse, { type?: 'Client' | 'Fournisseur'; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number }>({
+      query: ({ type, search, clientSubTab, groupId }) => ({
         url: '/contacts/summary',
         params: {
           ...(type && { type }),
           ...(search ? { search } : {}),
           ...(clientSubTab ? { clientSubTab } : {}),
+          ...(groupId ? { groupId } : {}),
         },
       }),
       providesTags: ['Contact'],
@@ -74,8 +76,8 @@ const contactsApi = api.injectEndpoints({
       invalidatesTags: ['Contact'],
     }),
 
-    getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests' }>({
-      query: ({ page = 1, limit = 50, search, clientSubTab } = {}) => ({ 
+    getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number }>({
+      query: ({ page = 1, limit = 50, search, clientSubTab, groupId } = {}) => ({ 
         url: '/contacts', 
         params: { 
           type: 'Client',
@@ -83,19 +85,21 @@ const contactsApi = api.injectEndpoints({
           limit,
           ...(search ? { search } : {}),
           ...(clientSubTab ? { clientSubTab } : {}),
+          ...(groupId ? { groupId } : {}),
         } 
       }),
       providesTags: ['Contact'],
     }),
 
-    getFournisseurs: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string }>({
-      query: ({ page = 1, limit = 50, search } = {}) => ({ 
+    getFournisseurs: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; groupId?: number }>({
+      query: ({ page = 1, limit = 50, search, groupId } = {}) => ({ 
         url: '/contacts', 
         params: { 
           type: 'Fournisseur',
           page,
           limit,
           ...(search ? { search } : {}),
+          ...(groupId ? { groupId } : {}),
         } 
       }),
       providesTags: ['Contact'],

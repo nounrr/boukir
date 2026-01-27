@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Plus, Edit, Trash2, Search, Users, Truck, Phone, Mail, MapPin,
   CreditCard, Building2, DollarSign, Eye, Printer, Calendar, FileText,
-  ChevronUp, ChevronDown, Receipt, AlertTriangle, Settings, Send, GripVertical
+  ChevronUp, ChevronDown, ChevronRight, Receipt, AlertTriangle, Settings, Send, GripVertical, Layers
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -17,8 +17,16 @@ import {
   useDeleteContactMutation,
   useGetContactsSummaryQuery
 } from '../store/api/contactsApi';
+import {
+  useAssignContactsToGroupMutation,
+  useCreateContactGroupMutation,
+  useGetContactGroupsQuery,
+  useUpdateContactGroupMutation,
+  useDeleteContactGroupMutation,
+  useUnassignContactsFromGroupMutation,
+} from '../store/api/contactGroupsApi';
 import { useCreateClientRemiseMutation, useCreateRemiseItemMutation, useLazyGetClientAbonneByContactQuery } from '../store/api/remisesApi';
-import { showError, showSuccess, showConfirmation } from '../utils/notifications';
+import { showError, showSuccess, showInfo, showConfirmation } from '../utils/notifications';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetPaymentsQuery, useReorderPaymentsMutation } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
@@ -177,19 +185,57 @@ const ContactsPage: React.FC = () => {
   // Allow selecting bons to control print content
   const [selectedBonIds, setSelectedBonIds] = React.useState<Set<number>>(new Set());
 
-  const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs'>('clients');
+  const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs' | 'groups'>('clients');
   const [clientSubTab, setClientSubTab] = useState<'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'>('all');
   // Forcer les employés à rester sur l'onglet clients uniquement
   React.useEffect(() => {
-    if (isEmployee && activeTab !== 'clients') setActiveTab('clients');
+    if (isEmployee && activeTab === 'fournisseurs') setActiveTab('clients');
   }, [isEmployee, activeTab]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isGroupEditModalOpen, setIsGroupEditModalOpen] = useState(false);
+  const [groupEditId, setGroupEditId] = useState<number | null>(null);
+  const [groupEditName, setGroupEditName] = useState('');
+  const [groupEditContactsTab, setGroupEditContactsTab] = useState<'clients' | 'fournisseurs'>('clients');
+  const [groupEditMode, setGroupEditMode] = useState<'members' | 'all'>('members');
+  const [groupEditSearch, setGroupEditSearch] = useState('');
+  const [groupEditPage, setGroupEditPage] = useState(1);
+  const [groupEditItemsPerPage, setGroupEditItemsPerPage] = useState(20);
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  const { data: contactGroups = [], isLoading: contactGroupsLoading } = useGetContactGroupsQuery();
+  const [createContactGroup] = useCreateContactGroupMutation();
+  const [updateContactGroup] = useUpdateContactGroupMutation();
+  const [deleteContactGroup] = useDeleteContactGroupMutation();
+  const [assignContactsToGroup] = useAssignContactsToGroupMutation();
+  const [unassignContactsFromGroup] = useUnassignContactsFromGroupMutation();
+
+  const isGroupsTab = activeTab === 'groups';
+
+  const openGroupEditModal = React.useCallback((groupId: number, mode?: 'members' | 'all', contactsTab?: 'clients' | 'fournisseurs') => {
+    const g = contactGroups.find((x) => x.id === groupId);
+    setGroupEditId(groupId);
+    setGroupEditName(g?.name || '');
+    setGroupEditMode(mode || 'members');
+    setGroupEditContactsTab(contactsTab || 'clients');
+    setGroupEditSearch('');
+    setGroupEditPage(1);
+    setIsGroupEditModalOpen(true);
+    setTimeout(() => {
+      const el = document.getElementById('group-edit-search') as HTMLInputElement | null;
+      el?.focus();
+    }, 50);
+  }, [contactGroups]);
+
+  React.useEffect(() => {
+    if (!isGroupEditModalOpen) return;
+    setGroupEditPage(1);
+  }, [isGroupEditModalOpen, groupEditId, groupEditMode, groupEditContactsTab, groupEditSearch]);
 
   // Charger les données paginées depuis le backend (avec filtres serveur)
   const { data: clientsResponse, isLoading: clientsLoading } = useGetClientsQuery({
@@ -197,12 +243,12 @@ const ContactsPage: React.FC = () => {
     limit: itemsPerPage,
     search: searchTerm,
     clientSubTab,
-  });
+  }, { skip: isGroupsTab });
   const { data: fournisseursResponse, isLoading: fournisseursLoading } = useGetFournisseursQuery({
     page: currentPage,
     limit: itemsPerPage,
     search: searchTerm,
-  });
+  }, { skip: isGroupsTab });
   
   const clients = clientsResponse?.data || [];
   const fournisseurs = fournisseursResponse?.data || [];
@@ -213,7 +259,30 @@ const ContactsPage: React.FC = () => {
     type: activeTab === 'clients' ? 'Client' : 'Fournisseur',
     search: searchTerm,
     clientSubTab: activeTab === 'clients' ? clientSubTab : undefined,
-  });
+  }, { skip: isGroupsTab });
+
+  const groupEditQueryGroupId = groupEditMode === 'members' ? (groupEditId ?? undefined) : undefined;
+  const groupEditBaseSkip = !isGroupEditModalOpen || (groupEditMode === 'members' && groupEditId == null);
+  const { data: groupEditClientsResponse, isLoading: groupsClientsLoading } = useGetClientsQuery({
+    page: groupEditPage,
+    limit: groupEditItemsPerPage,
+    search: groupEditSearch,
+    clientSubTab: 'all',
+    groupId: groupEditQueryGroupId,
+  }, { skip: groupEditBaseSkip || groupEditContactsTab !== 'clients' });
+  const { data: groupEditFournisseursResponse, isLoading: groupsFournisseursLoading } = useGetFournisseursQuery({
+    page: groupEditPage,
+    limit: groupEditItemsPerPage,
+    search: groupEditSearch,
+    groupId: groupEditQueryGroupId,
+  }, { skip: groupEditBaseSkip || groupEditContactsTab !== 'fournisseurs' });
+
+  const groupEditContacts = (groupEditContactsTab === 'clients'
+    ? (groupEditClientsResponse?.data || [])
+    : (groupEditFournisseursResponse?.data || [])) as Contact[];
+  const groupEditPagination = groupEditContactsTab === 'clients'
+    ? groupEditClientsResponse?.pagination
+    : groupEditFournisseursResponse?.pagination;
 
   // États pour la configuration des périodes
   const [showSettings, setShowSettings] = useState(false);
@@ -2458,6 +2527,57 @@ const ContactsPage: React.FC = () => {
   const totalPages = activeTab === 'clients' ? (clientsPagination?.totalPages || 1) : (fournisseursPagination?.totalPages || 1);
   const paginatedContacts = sortedContacts;
 
+  const getContactSoldeDisplay = React.useCallback((contact: Contact) => {
+    const backend = (contact as any).solde_cumule;
+    if (backend != null) return Number(backend) || 0;
+    const base = Number(contact.solde) || 0;
+    const sales = activeTab === 'clients' ? (salesByClient.get(contact.id) || 0) : 0;
+    const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
+    const paid = paymentsByContact.get(contact.id) || 0;
+    return activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
+  }, [activeTab, salesByClient, purchasesByFournisseur, paymentsByContact]);
+
+  type AccordionRow =
+    | { kind: 'contact'; contact: Contact }
+    | { kind: 'group'; groupId: number; groupName: string; members: Contact[] };
+
+  const accordionRows: AccordionRow[] = useMemo(() => {
+    const rows: AccordionRow[] = [];
+    const groups = new Map<number, { groupId: number; groupName: string; members: Contact[] }>();
+
+    for (const c of paginatedContacts) {
+      const gidRaw = (c as any).group_id;
+      const groupId = gidRaw != null ? Number(gidRaw) : 0;
+      if (groupId) {
+        let g = groups.get(groupId);
+        if (!g) {
+          g = {
+            groupId,
+            groupName: String((c as any).group_name || ''),
+            members: [],
+          };
+          groups.set(groupId, g);
+          rows.push({ kind: 'group', groupId, groupName: g.groupName, members: g.members });
+        }
+        g.members.push(c);
+      } else {
+        rows.push({ kind: 'contact', contact: c });
+      }
+    }
+
+    return rows;
+  }, [paginatedContacts]);
+
+  const toggleGroupExpanded = React.useCallback((groupId: number) => {
+    const key = `${activeTab}:${groupId}`;
+    setExpandedGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, [activeTab]);
+
   // Réinitialiser la page quand on change d'onglet, de sous-onglet ou de recherche
   React.useEffect(() => {
     setCurrentPage(1);
@@ -2481,7 +2601,7 @@ const ContactsPage: React.FC = () => {
 
   return (
     <div className="p-6">
-      {(clientsLoading || fournisseursLoading) && (
+      {(clientsLoading || fournisseursLoading || contactGroupsLoading || groupsClientsLoading || groupsFournisseursLoading) && (
         <div className="fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50">
           <div className="flex items-center gap-2">
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
@@ -2510,6 +2630,17 @@ const ContactsPage: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <Truck size={18} />
                   Fournisseurs
+                </div>
+              </button>
+            )}
+            {!isEmployee && (
+              <button
+                className={`px-6 py-2 font-medium ${activeTab === 'groups' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setActiveTab('groups')}
+              >
+                <div className="flex items-center gap-2">
+                  <Layers size={18} />
+                  Groupes
                 </div>
               </button>
             )}
@@ -2557,25 +2688,29 @@ const ContactsPage: React.FC = () => {
             <Settings size={16} />
             Paramètres
           </button>
-          <button
-            onClick={handleGlobalPrint}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-            title={`Imprimer rapport global de tous les ${activeTab === 'clients' ? 'clients' : 'fournisseurs'} (selon filtres appliqués)`}
-          >
-            <FileText size={16} />
-            Rapport Global ({sortedContacts.length})
-          </button>
-          <button
-            onClick={() => {
-              setEditingContact(null);
-              formik.resetForm();
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-          >
-            <Plus size={20} />
-            Nouveau {activeTab === 'clients' ? 'Client' : 'Fournisseur'}
-          </button>
+          {activeTab !== 'groups' && (
+            <>
+              <button
+                onClick={handleGlobalPrint}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                title={`Imprimer rapport global de tous les ${activeTab === 'clients' ? 'clients' : 'fournisseurs'} (selon filtres appliqués)`}
+              >
+                <FileText size={16} />
+                Rapport Global ({sortedContacts.length})
+              </button>
+              <button
+                onClick={() => {
+                  setEditingContact(null);
+                  formik.resetForm();
+                  setIsModalOpen(true);
+                }}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+              >
+                <Plus size={20} />
+                Nouveau {activeTab === 'clients' ? 'Client' : 'Fournisseur'}
+              </button>
+            </>
+          )}
         </div>
       </div >
 
@@ -2662,104 +2797,490 @@ const ContactsPage: React.FC = () => {
         )
       }
 
-      {/* Recherche */}
-      <div className="mb-6">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder={`Rechercher (Nom, Société ou Téléphone) ${activeTab === 'clients' ? 'client' : 'fournisseur'}...`}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-      </div>
+      {activeTab === 'groups' && !isEmployee && (
+        <div className="mb-6">
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Groupes</h2>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const Swal = (await import('sweetalert2')).default;
+                    const result = await Swal.fire({
+                      title: 'Nouveau groupe',
+                      html: `
+                        <div style="text-align:left;font-size:13px;margin-top:10px">
+                          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                            <input type="checkbox" id="link-contacts" />
+                            <span>Lier des contacts à ce groupe maintenant</span>
+                          </label>
+                          <div id="link-options" style="margin-top:10px;opacity:0.5">
+                            <div style="font-weight:600;margin-bottom:6px">Type de contacts</div>
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px">
+                              <input type="radio" name="link-type" value="clients" checked />
+                              <span>Clients</span>
+                            </label>
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                              <input type="radio" name="link-type" value="fournisseurs" />
+                              <span>Fournisseurs</span>
+                            </label>
+                          </div>
+                        </div>
+                      `,
+                      input: 'text',
+                      inputPlaceholder: 'Nom du groupe',
+                      inputAttributes: { autocapitalize: 'off' },
+                      showCancelButton: true,
+                      confirmButtonText: 'Créer',
+                      cancelButtonText: 'Annuler',
+                      reverseButtons: true,
+                      buttonsStyling: false,
+                      customClass: {
+                        confirmButton: 'px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md',
+                        cancelButton: 'px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-md',
+                      },
+                      didOpen: () => {
+                        const cb = document.getElementById('link-contacts') as HTMLInputElement | null;
+                        const opts = document.getElementById('link-options') as HTMLDivElement | null;
+                        const sync = () => {
+                          if (!opts) return;
+                          const enabled = !!cb?.checked;
+                          opts.style.opacity = enabled ? '1' : '0.5';
+                          opts.style.pointerEvents = enabled ? 'auto' : 'none';
+                        };
+                        sync();
+                        cb?.addEventListener('change', sync);
+                      },
+                      inputValidator: (value) => {
+                        const v = String(value || '').trim();
+                        return v ? undefined : 'Nom du groupe requis';
+                      },
+                      preConfirm: (val) => {
+                        const linkContacts = !!(document.getElementById('link-contacts') as HTMLInputElement | null)?.checked;
+                        const linkType = ((document.querySelector('input[name="link-type"]:checked') as HTMLInputElement | null)?.value || 'clients') as
+                          | 'clients'
+                          | 'fournisseurs';
+                        return { name: typeof val === 'string' ? val : '', linkContacts, linkType };
+                      },
+                    });
+                    if (!result.isConfirmed) return;
+                    const clean = String((result.value as any)?.name || '').trim();
+                    if (!clean) return;
+                    const created = await createContactGroup({ name: clean }).unwrap();
+                    showSuccess('Groupe créé');
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <Users className={`${activeTab === 'clients' ? 'text-blue-600' : 'text-gray-600'}`} size={32} />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total {activeTab === 'clients' ? 'Clients' : 'Fournisseurs'}</p>
-              <p className="text-3xl font-bold text-gray-900">{contactsSummary?.totalContacts ?? totalItems}</p>
+                    const linkContacts = (result.value as any)?.linkContacts === true;
+                    const linkType = ((result.value as any)?.linkType || 'clients') as 'clients' | 'fournisseurs';
+                    if (linkContacts) {
+                      openGroupEditModal(created.id, 'all', linkType);
+                      showInfo('Groupe créé: tu peux maintenant lier des contacts');
+                    }
+                  } catch (e: any) {
+                    showError(e?.data?.error || e?.message || 'Erreur création groupe');
+                  }
+                }}
+                className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                + Groupe
+              </button>
             </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <DollarSign className="text-green-600" size={32} />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Solde cumulé</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {(contactsSummary?.totalSoldeCumule ?? 0).toFixed(2)} DH
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center">
-            <Building2 className="text-purple-600" size={32} />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Avec ICE</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {contactsSummary?.totalWithICE ?? 0}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Contrôles de pagination */}
-      <div className="mb-4 flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-700">
-            Affichage de {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, totalItems)} sur {totalItems} éléments
-          </span>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-700">Éléments par page:</span>
-            <select
-              value={itemsPerPage}
-              onChange={(e) => {
-                setItemsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="border border-gray-300 rounded px-2 py-1 text-sm"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={30}>30</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+            {contactGroups.length === 0 ? (
+              <div className="text-sm text-gray-600">Aucun groupe. Créez-en un.</div>
+            ) : (
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Contacts</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {contactGroups.map((g) => (
+                      <tr key={g.id}>
+                        <td className="px-4 py-2 text-sm text-gray-900">
+                          <div className="font-medium">{g.name}</div>
+                          <div className="text-xs text-gray-500">ID: {g.id}</div>
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-700 text-right">{g.contacts_count ?? 0}</td>
+                        <td className="px-4 py-2 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openGroupEditModal(g.id, 'members', 'clients')}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="Modifier"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const result = await showConfirmation(
+                                  'Supprimer ce groupe ? Les contacts seront gardés (sans groupe).',
+                                  'Supprimer groupe',
+                                  'Supprimer',
+                                  'Annuler'
+                                );
+                                if (!result.isConfirmed) return;
+                                try {
+                                  await deleteContactGroup({ id: g.id }).unwrap();
+                                  if (groupEditId === g.id) {
+                                    setIsGroupEditModalOpen(false);
+                                    setGroupEditId(null);
+                                  }
+                                  showSuccess('Groupe supprimé');
+                                } catch (e: any) {
+                                  showError(e?.data?.error || e?.message || 'Erreur suppression groupe');
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-900"
+                              title="Supprimer"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Informations sur le tri */}
-      {
-        (activeTab === 'clients' ? clients : fournisseurs).some(c => isOverdueContact(c, payments)) && (
-          <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
-            <div className="flex items-center">
-              <AlertTriangle className="h-5 w-5 text-red-400 mr-2" />
-              <div className="text-sm">
-                <p className="text-red-800">
-                  <strong>Priorité d'affichage :</strong> Les contacts en retard de paiement (solde {'>'}  0 depuis {overdueValue} {overdueUnit === 'days' ? 'jour(s)' : 'mois'}) sont affichés en rouge et en priorité dans la liste.
-                </p>
+      {isGroupEditModalOpen && groupEditId != null && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Modifier Groupe</h3>
+                <div className="text-xs text-gray-500">ID: {groupEditId}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsGroupEditModalOpen(false)}
+                className="px-3 py-2 text-gray-600 hover:text-gray-900"
+                aria-label="Fermer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom du groupe</label>
+                  <input
+                    value={groupEditName}
+                    onChange={(e) => setGroupEditName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Nom du groupe"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const clean = String(groupEditName || '').trim();
+                    if (!clean) {
+                      showError('Nom du groupe requis');
+                      return;
+                    }
+                    try {
+                      await updateContactGroup({ id: groupEditId, name: clean }).unwrap();
+                      showSuccess('Groupe mis à jour');
+                    } catch (e: any) {
+                      showError(e?.data?.error || e?.message || 'Erreur mise à jour groupe');
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Enregistrer
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="inline-flex rounded-md border border-gray-200 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setGroupEditContactsTab('clients')}
+                    className={`px-3 py-2 text-sm ${groupEditContactsTab === 'clients' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    Clients
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGroupEditContactsTab('fournisseurs')}
+                    className={`px-3 py-2 text-sm ${groupEditContactsTab === 'fournisseurs' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    Fournisseurs
+                  </button>
+                </div>
+
+                <div className="inline-flex rounded-md border border-gray-200 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setGroupEditMode('members')}
+                    className={`px-3 py-2 text-sm ${groupEditMode === 'members' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    Membres
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGroupEditMode('all')}
+                    className={`px-3 py-2 text-sm ${groupEditMode === 'all' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    Tous
+                  </button>
+                </div>
+
+                <div className="flex-1 min-w-[240px] relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    id="group-edit-search"
+                    type="text"
+                    placeholder={groupEditMode === 'members' ? 'Rechercher dans ce groupe...' : 'Rechercher pour assigner au groupe...'}
+                    value={groupEditSearch}
+                    onChange={(e) => setGroupEditSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {groupEditMode === 'members' && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGroupEditMode('all');
+                        setGroupEditContactsTab('clients');
+                      }}
+                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                      title="Ajouter des clients à ce groupe"
+                    >
+                      <Users size={16} />
+                      Ajouter Clients
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGroupEditMode('all');
+                        setGroupEditContactsTab('fournisseurs');
+                      }}
+                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                      title="Ajouter des fournisseurs à ce groupe"
+                    >
+                      <Truck size={16} />
+                      Ajouter Fournisseurs
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Société</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {groupEditContacts.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-4 text-center text-sm text-gray-500">
+                          Aucun contact
+                        </td>
+                      </tr>
+                    ) : (
+                      groupEditContacts.map((c) => (
+                        <tr key={c.id}>
+                          <td className="px-4 py-2 text-sm text-gray-900">{c.nom_complet || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{c.societe || '-'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{c.telephone || '-'}</td>
+                          <td className="px-4 py-2 text-right">
+                            {groupEditMode === 'members' ? (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const r = await unassignContactsFromGroup({ contactIds: [c.id] }).unwrap();
+                                    showSuccess(`Retiré du groupe (${r.affectedRows})`);
+                                  } catch (e: any) {
+                                    showError(e?.data?.error || e?.message || 'Erreur retrait');
+                                  }
+                                }}
+                                className="px-3 py-1.5 text-sm bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100"
+                              >
+                                Retirer
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const r = await assignContactsToGroup({ groupId: groupEditId, contactIds: [c.id] }).unwrap();
+                                    showSuccess(`Assigné au groupe (${r.affectedRows})`);
+                                  } catch (e: any) {
+                                    showError(e?.data?.error || e?.message || 'Erreur assignation');
+                                  }
+                                }}
+                                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                              >
+                                Assigner
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-gray-600">Total: {groupEditPagination?.total ?? 0}</div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={groupEditItemsPerPage}
+                    onChange={(e) => setGroupEditItemsPerPage(Number(e.target.value))}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={30}>30</option>
+                    <option value={50}>50</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setGroupEditPage((p) => Math.max(1, p - 1))}
+                    disabled={groupEditPage <= 1}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Précédent
+                  </button>
+                  <div className="text-sm text-gray-700">Page {groupEditPage} / {groupEditPagination?.totalPages || 1}</div>
+                  <button
+                    type="button"
+                    onClick={() => setGroupEditPage((p) => Math.min((groupEditPagination?.totalPages || 1), p + 1))}
+                    disabled={groupEditPage >= (groupEditPagination?.totalPages || 1)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Suivant
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        )
-      }
+        </div>
+      )}
 
-      {/* Liste */}
-      {activeTab === 'clients' && clientSubTab === 'artisan-requests' ? (
-        <ArtisanRequestsSection onView={handleViewDetails} />
-      ) : (
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      {activeTab !== 'groups' && (
+        <>
+          {/* Recherche */}
+          <div className="mb-6">
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder={`Rechercher (Nom, Société ou Téléphone) ${activeTab === 'clients' ? 'client' : 'fournisseur'}...`}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div className="bg-white p-6 rounded-lg shadow">
+              <div className="flex items-center">
+                <Users className={`${activeTab === 'clients' ? 'text-blue-600' : 'text-gray-600'}`} size={32} />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total {activeTab === 'clients' ? 'Clients' : 'Fournisseurs'}</p>
+                  <p className="text-3xl font-bold text-gray-900">{contactsSummary?.totalContactsGrouped ?? contactsSummary?.totalContacts ?? totalItems}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <div className="flex items-center">
+                <DollarSign className="text-green-600" size={32} />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Solde cumulé</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {(contactsSummary?.totalSoldeCumule ?? 0).toFixed(2)} DH
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <div className="flex items-center">
+                <Building2 className="text-purple-600" size={32} />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Avec ICE</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {contactsSummary?.totalWithICE ?? 0}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Contrôles de pagination */}
+          <div className="mb-4 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-gray-700">
+                Affichage de {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, totalItems)} sur {totalItems} éléments
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">Éléments par page:</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="border border-gray-300 rounded px-2 py-1 text-sm"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={30}>30</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Informations sur le tri */}
+          {
+            (activeTab === 'clients' ? clients : fournisseurs).some(c => isOverdueContact(c, payments)) && (
+              <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 text-red-400 mr-2" />
+                  <div className="text-sm">
+                    <p className="text-red-800">
+                      <strong>Priorité d'affichage :</strong> Les contacts en retard de paiement (solde {'>'}  0 depuis {overdueValue} {overdueUnit === 'days' ? 'jour(s)' : 'mois'}) sont affichés en rouge et en priorité dans la liste.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
+          {/* Liste */}
+          {activeTab === 'clients' && clientSubTab === 'artisan-requests' ? (
+            <ArtisanRequestsSection onView={handleViewDetails} />
+          ) : (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
         {/* Desktop/tablet: table view */}
         <div className="overflow-x-auto hidden sm:block">
           <table className="min-w-full divide-y divide-gray-200">
@@ -2799,6 +3320,7 @@ const ContactsPage: React.FC = () => {
                     )}
                   </div>
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Groupe</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type Compte</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Téléphone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
@@ -2813,136 +3335,350 @@ const ContactsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {paginatedContacts.length === 0 ? (
+              {accordionRows.length === 0 ? (
                 <tr>
-                  <td colSpan={activeTab === 'clients' ? 11 : 10} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={activeTab === 'clients' ? 12 : 11} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun {activeTab === 'clients' ? 'client' : 'fournisseur'} trouvé
                   </td>
                 </tr>
               ) : (
-                paginatedContacts.map((contact) => {
-                  const isOverdue = isOverdueContact(contact, payments);
-                  return (
-                    <tr
-                      key={contact.id}
-                      className={`hover:bg-gray-50 cursor-pointer ${isOverdue ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
-                      onClick={() => handleViewDetails(contact)}
-                    >
-                      {/* Solde en premier */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {(() => {
-                          const backend = (contact as any).solde_cumule;
-                          let display: number;
-                          if (backend != null) {
-                            display = Number(backend) || 0;
-                          } else {
-                            const base = Number(contact.solde) || 0;
-                            const sales = activeTab === 'clients' ? (salesByClient.get(contact.id) || 0) : 0;
-                            const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
-                            const paid = paymentsByContact.get(contact.id) || 0;
-                            display = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
-                          }
-                          const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
-                          return (
-                            <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                              {display.toFixed(2)} DH
-                              {overPlafond && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{contact.nom_complet}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900">{(contact.societe && contact.societe.trim()) ? contact.societe : '-'}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {contact.type_compte || '-'}
-                          {contact.demande_artisan && !contact.artisan_approuve && (
-                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                              Demande
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <Phone size={16} className="text-gray-400 mr-2" />
-                          <span className="text-sm text-gray-900">{contact.telephone || '-'}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center">
-                          <Mail size={16} className="text-gray-400 mr-2" />
-                          <span className="text-sm text-gray-900">{contact.email || '-'}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center">
-                          <MapPin size={16} className="text-gray-400 mr-2" />
-                          <span className="text-sm text-gray-900">{contact.adresse || '-'}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{contact.ice || '-'}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <CreditCard size={16} className="text-gray-400 mr-2" />
-                          <span className="text-sm text-gray-900">
-                            {contact.rib ? `${contact.rib.substring(0, 4)}...` : '-'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
-                      </td>
-                      {activeTab === 'clients' && (
+                accordionRows.map((row) => {
+                  if (row.kind === 'contact') {
+                    const contact = row.contact;
+                    const isOverdue = isOverdueContact(contact, payments);
+                    return (
+                      <tr
+                        key={contact.id}
+                        className={`hover:bg-gray-50 cursor-pointer ${isOverdue ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
+                        onClick={() => handleViewDetails(contact)}
+                      >
+                        {/* Solde en premier */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {(() => {
+                            const display = getContactSoldeDisplay(contact);
+                            const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
+                            return (
+                              <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                                {display.toFixed(2)} DH
+                                {overPlafond && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-medium text-gray-900">{contact.nom_complet}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-900">{(contact.societe && contact.societe.trim()) ? contact.societe : '-'}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-900">{(contact as any).group_name || '-'}</div>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {contact.plafond ? `${contact.plafond} DH` : '-'}
+                            {contact.type_compte || '-'}
+                            {contact.demande_artisan && !contact.artisan_approuve && (
+                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                Demande
+                              </span>
+                            )}
                           </div>
                         </td>
-                      )}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleViewDetails(contact); }}
-                            className="text-indigo-600 hover:text-indigo-900"
-                            title="Voir détails"
-                          >
-                            <Eye size={16} />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleQuickPrint(contact); }}
-                            className="text-green-600 hover:text-green-900"
-                            title="Imprimer fiche"
-                          >
-                            <Printer size={16} />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
-                            className="text-blue-600 hover:text-blue-900"
-                            title="Modifier"
-                          >
-                            <Edit size={16} />
-                          </button>
-                          {currentUser?.role === 'PDG' && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <Phone size={16} className="text-gray-400 mr-2" />
+                            <span className="text-sm text-gray-900">{contact.telephone || '-'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center">
+                            <Mail size={16} className="text-gray-400 mr-2" />
+                            <span className="text-sm text-gray-900">{contact.email || '-'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center">
+                            <MapPin size={16} className="text-gray-400 mr-2" />
+                            <span className="text-sm text-gray-900">{contact.adresse || '-'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{contact.ice || '-'}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <CreditCard size={16} className="text-gray-400 mr-2" />
+                            <span className="text-sm text-gray-900">
+                              {contact.rib ? `${contact.rib.substring(0, 4)}...` : '-'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
+                        </td>
+                        {activeTab === 'clients' && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              {contact.plafond ? `${contact.plafond} DH` : '-'}
+                            </div>
+                          </td>
+                        )}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex gap-2">
                             <button
-                              onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
-                              className="text-red-600 hover:text-red-900"
-                              title="Supprimer"
+                              onClick={(e) => { e.stopPropagation(); handleViewDetails(contact); }}
+                              className="text-indigo-600 hover:text-indigo-900"
+                              title="Voir détails"
                             >
-                              <Trash2 size={16} />
+                              <Eye size={16} />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleQuickPrint(contact); }}
+                              className="text-green-600 hover:text-green-900"
+                              title="Imprimer fiche"
+                            >
+                              <Printer size={16} />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="Modifier"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            {currentUser?.role === 'PDG' && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
+                                className="text-red-600 hover:text-red-900"
+                                title="Supprimer"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const groupId = row.groupId;
+                  const key = `${activeTab}:${groupId}`;
+                  const isOpen = expandedGroupKeys.has(key);
+                  const members = row.members || [];
+                  const groupName = (row.groupName && row.groupName.trim()) ? row.groupName : `Groupe #${groupId}`;
+                  const totalSolde = members.reduce((s, c) => s + getContactSoldeDisplay(c), 0);
+                  const hasOverdue = members.some((c) => isOverdueContact(c, payments));
+
+                  return (
+                    <React.Fragment key={`group-${groupId}`}>
+                      <tr
+                        className={`cursor-pointer ${hasOverdue ? 'bg-red-50 border-l-4 border-red-500' : 'bg-gray-50'} hover:bg-gray-100`}
+                        onClick={() => toggleGroupExpanded(groupId)}
+                      >
+                        {/* Solde total du groupe */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className={`flex items-center gap-2 text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                            {totalSolde.toFixed(2)} DH
+                            <span className="text-xs text-gray-500 font-normal">
+                              (Total groupe)
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Nom du groupe */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isOpen ? <ChevronDown size={18} className="text-gray-500" /> : <ChevronRight size={18} className="text-gray-500" />}
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-gray-900 truncate">{groupName}</div>
+                              <div className="text-xs text-gray-500">Clique pour {isOpen ? 'réduire' : 'voir'} les membres</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Société */}
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {members.length} {activeTab === 'clients' ? 'clients' : 'fournisseurs'}
+                          </span>
+                        </td>
+
+                        {/* Groupe */}
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-900">{groupName}</div>
+                        </td>
+
+                        {/* Type Compte */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">-</div>
+                        </td>
+
+                        {/* Téléphone */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">-</div>
+                        </td>
+
+                        {/* Email */}
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-500">-</div>
+                        </td>
+
+                        {/* Adresse */}
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-500">-</div>
+                        </td>
+
+                        {/* ICE */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">-</div>
+                        </td>
+
+                        {/* RIB */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">-</div>
+                        </td>
+
+                        {/* Date création */}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">-</div>
+                        </td>
+
+                        {activeTab === 'clients' && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">-</div>
+                          </td>
+                        )}
+
+                        {/* Actions */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="text-sm text-gray-500">-</div>
+                        </td>
+                      </tr>
+
+                      {isOpen && members.map((contact) => {
+                        const isOverdue = isOverdueContact(contact, payments);
+                        return (
+                          <tr
+                            key={`group-${groupId}-member-${contact.id}`}
+                            className={`hover:bg-gray-50 cursor-pointer ${isOverdue ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
+                            onClick={() => handleViewDetails(contact)}
+                          >
+                            {/* Solde en premier */}
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {(() => {
+                                const display = getContactSoldeDisplay(contact);
+                                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
+                                return (
+                                  <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                                    {display.toFixed(2)} DH
+                                    {overPlafond && (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm font-medium text-gray-900">
+                                <span className="text-gray-400 mr-2">↳</span>
+                                {contact.nom_complet}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm text-gray-900">{(contact.societe && contact.societe.trim()) ? contact.societe : '-'}</div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm text-gray-900">{(contact as any).group_name || '-'}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {contact.type_compte || '-'}
+                                {contact.demande_artisan && !contact.artisan_approuve && (
+                                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    Demande
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <Phone size={16} className="text-gray-400 mr-2" />
+                                <span className="text-sm text-gray-900">{contact.telephone || '-'}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center">
+                                <Mail size={16} className="text-gray-400 mr-2" />
+                                <span className="text-sm text-gray-900">{contact.email || '-'}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center">
+                                <MapPin size={16} className="text-gray-400 mr-2" />
+                                <span className="text-sm text-gray-900">{contact.adresse || '-'}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">{contact.ice || '-'}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <CreditCard size={16} className="text-gray-400 mr-2" />
+                                <span className="text-sm text-gray-900">
+                                  {contact.rib ? `${contact.rib.substring(0, 4)}...` : '-'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
+                            </td>
+                            {activeTab === 'clients' && (
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {contact.plafond ? `${contact.plafond} DH` : '-'}
+                                </div>
+                              </td>
+                            )}
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleViewDetails(contact); }}
+                                  className="text-indigo-600 hover:text-indigo-900"
+                                  title="Voir détails"
+                                >
+                                  <Eye size={16} />
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleQuickPrint(contact); }}
+                                  className="text-green-600 hover:text-green-900"
+                                  title="Imprimer fiche"
+                                >
+                                  <Printer size={16} />
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
+                                  className="text-blue-600 hover:text-blue-900"
+                                  title="Modifier"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                                {currentUser?.role === 'PDG' && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
+                                    className="text-red-600 hover:text-red-900"
+                                    title="Supprimer"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
                   );
                 })
               )}
@@ -2991,90 +3727,184 @@ const ContactsPage: React.FC = () => {
 
         {/* Mobile: card view */}
         <div className="sm:hidden divide-y divide-gray-100">
-          {paginatedContacts.length === 0 ? (
+          {accordionRows.length === 0 ? (
             <div className="p-4 text-center text-sm text-gray-500">
               Aucun {activeTab === 'clients' ? 'client' : 'fournisseur'} trouvé
             </div>
           ) : (
-            paginatedContacts.map((contact) => (
-              <div
-                key={contact.id}
-                className="p-4 hover:bg-gray-50 cursor-pointer"
-                onClick={() => handleViewDetails(contact)}
-              >
-                {/* Top row: Name + Solde */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">{contact.nom_complet}</div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {(contact.societe && contact.societe.trim()) ? contact.societe : '-'}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    {(() => {
-                      const backend = (contact as any).solde_cumule;
-                      let display: number;
-                      if (backend != null) {
-                        display = Number(backend) || 0;
-                      } else {
-                        const base = Number(contact.solde) || 0;
-                        const sales = activeTab === 'clients' ? (salesByClient.get(contact.id) || 0) : 0;
-                        const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
-                        const paid = paymentsByContact.get(contact.id) || 0;
-                        display = activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
-                      }
-                      const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
-                      return (
+            accordionRows.map((row) => {
+              if (row.kind === 'contact') {
+                const contact = row.contact;
+                const display = getContactSoldeDisplay(contact);
+                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
+
+                return (
+                  <div
+                    key={contact.id}
+                    className="p-4 hover:bg-gray-50 cursor-pointer"
+                    onClick={() => handleViewDetails(contact)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-gray-900 truncate">{contact.nom_complet}</div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {(contact.societe && contact.societe.trim()) ? contact.societe : '-'}
+                        </div>
+                      </div>
+                      <div className="text-right">
                         <div className={`text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
                           {display.toFixed(2)} DH
                           {overPlafond && (
                             <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
                           )}
                         </div>
-                      );
-                    })()}
-                  </div>
-                </div>
+                      </div>
+                    </div>
 
-                {/* Body grid */}
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
-                  <div><span className="text-gray-500">Téléphone:</span> {contact.telephone || '-'}</div>
-                  <div><span className="text-gray-500">Email:</span> {contact.email || '-'}</div>
-                  <div className="col-span-2"><span className="text-gray-500">Adresse:</span> {contact.adresse || '-'}</div>
-                  <div><span className="text-gray-500">ICE:</span> {contact.ice || '-'}</div>
-                  <div><span className="text-gray-500">RIB:</span> {contact.rib || '-'}</div>
-                  <div className="col-span-2"><span className="text-gray-500">Créé le:</span> {contact.created_at ? String(contact.created_at).slice(0, 10) : '-'}</div>
-                  {activeTab === 'clients' && (
-                    <div className="col-span-2"><span className="text-gray-500">Plafond:</span> {typeof contact.plafond === 'number' ? `${contact.plafond.toFixed(2)} DH` : '-'}</div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                      <div className="col-span-2"><span className="text-gray-500">Groupe:</span> {(contact as any).group_name || '-'}</div>
+                      <div><span className="text-gray-500">Téléphone:</span> {contact.telephone || '-'}</div>
+                      <div><span className="text-gray-500">Email:</span> {contact.email || '-'}</div>
+                      <div className="col-span-2"><span className="text-gray-500">Adresse:</span> {contact.adresse || '-'}</div>
+                      <div><span className="text-gray-500">ICE:</span> {contact.ice || '-'}</div>
+                      <div><span className="text-gray-500">RIB:</span> {contact.rib || '-'}</div>
+                      <div className="col-span-2"><span className="text-gray-500">Créé le:</span> {contact.created_at ? String(contact.created_at).slice(0, 10) : '-'}</div>
+                      {activeTab === 'clients' && (
+                        <div className="col-span-2"><span className="text-gray-500">Plafond:</span> {typeof contact.plafond === 'number' ? `${contact.plafond.toFixed(2)} DH` : '-'}</div>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-700 border border-blue-200"
+                        onClick={(e) => { e.stopPropagation(); handleQuickPrint(contact); }}
+                        title="Imprimer"
+                      >
+                        Imprimer
+                      </button>
+                      <button
+                        className="px-2 py-1 text-xs rounded bg-amber-50 text-amber-700 border border-amber-200"
+                        onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
+                        title="Modifier"
+                      >
+                        Modifier
+                      </button>
+                      <button
+                        className="ml-auto px-2 py-1 text-xs rounded bg-red-50 text-red-700 border border-red-200"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
+                        title="Supprimer"
+                      >
+                        Supprimer
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              const groupId = row.groupId;
+              const key = `${activeTab}:${groupId}`;
+              const isOpen = expandedGroupKeys.has(key);
+              const members = row.members || [];
+              const groupName = (row.groupName && row.groupName.trim()) ? row.groupName : `Groupe #${groupId}`;
+              const totalSolde = members.reduce((s, c) => s + getContactSoldeDisplay(c), 0);
+
+              return (
+                <div key={`group-${groupId}`} className="p-4 bg-gray-50">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroupExpanded(groupId)}
+                    className="w-full flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isOpen ? <ChevronDown size={18} className="text-gray-500" /> : <ChevronRight size={18} className="text-gray-500" />}
+                      <div className="min-w-0 text-left">
+                        <div className="text-sm font-semibold text-gray-900 truncate">{groupName}</div>
+                        <div className="text-xs text-gray-500">{members.length} membres</div>
+                      </div>
+                    </div>
+                    <div className={`text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>{totalSolde.toFixed(2)} DH</div>
+                  </button>
+
+                  {isOpen && (
+                    <div className="mt-3 space-y-2">
+                      {members.map((contact) => {
+                        const display = getContactSoldeDisplay(contact);
+                        const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
+                        return (
+                          <div
+                            key={`group-${groupId}-member-${contact.id}`}
+                            className="p-4 bg-white rounded border border-gray-200 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => handleViewDetails(contact)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') handleViewDetails(contact);
+                            }}
+                          >
+                            {/* Top row: Name + Solde */}
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-gray-900 truncate">↳ {contact.nom_complet}</div>
+                                <div className="text-xs text-gray-500 truncate">
+                                  {(contact.societe && contact.societe.trim()) ? contact.societe : '-'}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className={`text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                                  {display.toFixed(2)} DH
+                                  {overPlafond && (
+                                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Body grid */}
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                              <div className="col-span-2"><span className="text-gray-500">Groupe:</span> {(contact as any).group_name || '-'}</div>
+                              <div><span className="text-gray-500">Téléphone:</span> {contact.telephone || '-'}</div>
+                              <div><span className="text-gray-500">Email:</span> {contact.email || '-'}</div>
+                              <div className="col-span-2"><span className="text-gray-500">Adresse:</span> {contact.adresse || '-'}</div>
+                              <div><span className="text-gray-500">ICE:</span> {contact.ice || '-'}</div>
+                              <div><span className="text-gray-500">RIB:</span> {contact.rib || '-'}</div>
+                              <div className="col-span-2"><span className="text-gray-500">Créé le:</span> {contact.created_at ? String(contact.created_at).slice(0, 10) : '-'}</div>
+                              {activeTab === 'clients' && (
+                                <div className="col-span-2"><span className="text-gray-500">Plafond:</span> {typeof contact.plafond === 'number' ? `${contact.plafond.toFixed(2)} DH` : '-'}</div>
+                              )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="mt-3 flex items-center gap-2">
+                              <button
+                                className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-700 border border-blue-200"
+                                onClick={(e) => { e.stopPropagation(); handleQuickPrint(contact); }}
+                                title="Imprimer"
+                              >
+                                Imprimer
+                              </button>
+                              <button
+                                className="px-2 py-1 text-xs rounded bg-amber-50 text-amber-700 border border-amber-200"
+                                onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
+                                title="Modifier"
+                              >
+                                Modifier
+                              </button>
+                              <button
+                                className="ml-auto px-2 py-1 text-xs rounded bg-red-50 text-red-700 border border-red-200"
+                                onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
+                                title="Supprimer"
+                              >
+                                Supprimer
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
-
-                {/* Actions */}
-                <div className="mt-3 flex items-center gap-2">
-                  <button
-                    className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-700 border border-blue-200"
-                    onClick={(e) => { e.stopPropagation(); handleQuickPrint(contact); }}
-                    title="Imprimer"
-                  >
-                    Imprimer
-                  </button>
-                  <button
-                    className="px-2 py-1 text-xs rounded bg-amber-50 text-amber-700 border border-amber-200"
-                    onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
-                    title="Modifier"
-                  >
-                    Modifier
-                  </button>
-                  <button
-                    className="ml-auto px-2 py-1 text-xs rounded bg-red-50 text-red-700 border border-red-200"
-                    onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
-                    title="Supprimer"
-                  >
-                    Supprimer
-                  </button>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -3131,6 +3961,8 @@ const ContactsPage: React.FC = () => {
           </div>
         )
       }
+        </>
+      )}
 
       {/* Modal: ajouter / modifier */}
       <ContactFormModal
@@ -3139,7 +3971,7 @@ const ContactsPage: React.FC = () => {
           setIsModalOpen(false);
           setEditingContact(null);
         }}
-        contactType={activeTab === 'clients' ? 'Client' : 'Fournisseur'}
+        contactType={activeTab === 'fournisseurs' ? 'Fournisseur' : 'Client'}
         clientSubTab={activeTab === 'clients' ? clientSubTab : undefined}
         initialValues={editingContact || undefined}
         onContactAdded={(newContact) => {

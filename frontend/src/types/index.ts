@@ -223,6 +223,14 @@ export interface CreateProductData {
 }
 
 // Types pour les contacts
+export interface ContactGroup {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  contacts_count?: number;
+}
+
 export interface Contact {
   id: number;
   reference?: string; // Référence auto-générée
@@ -255,6 +263,8 @@ export interface Contact {
   avatar_url?: string | null;
   email_verified?: boolean;
   source?: 'backoffice' | 'ecommerce';
+  group_id?: number | null;
+  group_name?: string | null;
   isSolde?: boolean; // Indique si le client peut commander en solde (crédit)
   created_by?: number;
   updated_by?: number;
@@ -294,6 +304,7 @@ export interface CreateContactData {
   avatar_url?: string | null;
   email_verified?: boolean;
   source?: 'backoffice' | 'ecommerce';
+  group_id?: number | null;
 }
 
 // Types pour les véhicules

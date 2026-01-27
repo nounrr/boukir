@@ -15,7 +15,7 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Employee', 'Product', 'Contact', 'Bon', 'Payment', 'Category', 'Vehicule', 'Commande', 'Sortie', 'Comptant', 'Devis', 'AvoirClient', 'AvoirFournisseur', 'AvoirComptant', 'Remise', 'RemiseItem', 'Talon', 'DocumentType', 'EmployeeDoc', 'OldTalonCaisse', 'AccessSchedule'],
+  tagTypes: ['Employee', 'Product', 'Contact', 'ContactGroup', 'Bon', 'Payment', 'Category', 'Vehicule', 'Commande', 'Sortie', 'Comptant', 'Devis', 'AvoirClient', 'AvoirFournisseur', 'AvoirComptant', 'Remise', 'RemiseItem', 'Talon', 'DocumentType', 'EmployeeDoc', 'OldTalonCaisse', 'AccessSchedule'],
   endpoints: () => ({}),
 });
 

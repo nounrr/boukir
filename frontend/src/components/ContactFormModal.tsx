@@ -3,6 +3,7 @@ import { Formik, Form, Field } from 'formik';
 import * as Yup from 'yup';
 import type { Contact } from '../types';
 import { useCreateContactMutation, useUpdateContactMutation } from '../store/api/contactsApi';
+import { useCreateContactGroupMutation, useGetContactGroupsQuery } from '../store/api/contactGroupsApi';
 import { showSuccess, showError } from '../utils/notifications';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
@@ -64,6 +65,8 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
 }) => {
   const [createContact] = useCreateContactMutation();
   const [updateContact] = useUpdateContactMutation();
+  const { data: contactGroups = [] } = useGetContactGroupsQuery();
+  const [createContactGroup] = useCreateContactGroupMutation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isEmployee = currentUser?.role === 'Employé';
 
@@ -75,6 +78,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     prenom: '',
     nom: '',
     type_compte: '',
+    group_id: '',
     password: '',
     telephone: '',
     email: '',
@@ -130,6 +134,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 type: contactType,
                 solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
                 isSolde: (values as any).isSolde ?? true,
+                group_id: (values as any).group_id === '' || (values as any).group_id == null ? null : Number((values as any).group_id),
                 ...(contactType === 'Client' && { 
                   plafond: values.plafond != null ? Number(values.plafond as any) : undefined 
                 })
@@ -164,7 +169,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
             }
           }}
         >
-          {({ errors, touched }) => (
+          {({ errors, touched, setFieldValue }) => (
             <Form className="space-y-4">
               {/* Nom complet - pleine largeur */}
               <div>
@@ -218,6 +223,64 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Nom de la société"
                 />
+              </div>
+
+              {/* Groupe */}
+              <div>
+                <label htmlFor="group_id" className="block text-sm font-medium text-gray-700 mb-1">Groupe</label>
+                <div className="flex gap-2">
+                  <Field
+                    as="select"
+                    id="group_id"
+                    name="group_id"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Aucun</option>
+                    {contactGroups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </Field>
+                  <button
+                    type="button"
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 border border-gray-300"
+                    onClick={async () => {
+                      try {
+                        const Swal = (await import('sweetalert2')).default;
+                        const result = await Swal.fire({
+                          title: 'Nouveau groupe',
+                          input: 'text',
+                          inputPlaceholder: 'Nom du groupe',
+                          showCancelButton: true,
+                          confirmButtonText: 'Créer',
+                          cancelButtonText: 'Annuler',
+                          reverseButtons: true,
+                          buttonsStyling: false,
+                          customClass: {
+                            confirmButton: 'px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md',
+                            cancelButton: 'px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-md',
+                          },
+                          inputValidator: (value) => {
+                            const v = String(value || '').trim();
+                            return v ? undefined : 'Nom du groupe requis';
+                          },
+                        });
+                        if (!result.isConfirmed) return;
+                        const clean = String(result.value || '').trim();
+                        if (!clean) return;
+                        const created = await createContactGroup({ name: clean }).unwrap();
+                        showSuccess('Groupe créé');
+                        setFieldValue('group_id', created.id);
+                      } catch (e: any) {
+                        showError(e?.data?.error || e?.message || 'Erreur création groupe');
+                      }
+                    }}
+                    title="Créer un nouveau groupe"
+                  >
+                    + Groupe
+                  </button>
+                </div>
               </div>
 
               {/* Type Compte et Demande Artisan */}

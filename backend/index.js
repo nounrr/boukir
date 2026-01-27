@@ -31,6 +31,7 @@ import promoCodesRouter from './routes/promoCodes.js';
 import heroSlidesRouter from './routes/heroSlides.js';
 import heroSlidesAdminRouter from './routes/heroSlidesAdmin.js';
 import contactsRouter from './routes/contacts.js';
+import contactGroupsRouter from './routes/contactGroups.js';
 import vehiculesRouter from './routes/vehicules.js';
 
 // Documents
@@ -278,6 +279,7 @@ app.use('/api/admin/hero-slides', heroSlidesAdminRouter); // Backoffice manageme
 // Backoffice promo codes management (protected, non-ecommerce namespace)
 app.use('/api/promo-codes', promoCodesRouter);
 app.use('/api/contacts', contactsRouter);
+app.use('/api/contact-groups', contactGroupsRouter);
 app.use('/api/vehicules', vehiculesRouter);
 
 // Documents séparés

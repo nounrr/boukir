@@ -13,6 +13,7 @@ import './api/employeeArchiveApi';
 import './api/productsApi';
 import './api/categoriesApi';
 import './api/contactsApi';
+import './api/contactGroupsApi';
 import './api/bonsApi';
 import './api/paymentsApi';
 import './api/talonsApi';

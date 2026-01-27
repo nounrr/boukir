@@ -3,7 +3,7 @@ import pool from '../db/pool.js';
 
 const router = express.Router();
 
-const applyContactsFilters = ({ type, search, clientSubTab }) => {
+const applyContactsFilters = ({ type, search, clientSubTab, groupId }) => {
   let whereSql = ' WHERE 1=1';
   const params = [];
 
@@ -29,11 +29,21 @@ const applyContactsFilters = ({ type, search, clientSubTab }) => {
     }
   }
 
+  if (groupId !== undefined && groupId !== null && String(groupId).trim() !== '') {
+    const n = Number(groupId);
+    if (!Number.isFinite(n) || n <= 0) {
+      // ignore invalid groupId (keeps backward compatibility)
+    } else {
+      whereSql += ' AND c.group_id = ?';
+      params.push(n);
+    }
+  }
+
   return { whereSql, params };
 };
 
 const BALANCE_EXPR = `
-  CASE 
+  CASE
     WHEN c.type = 'Client' THEN
       COALESCE(c.solde, 0)
       + COALESCE(ventes_client.total_ventes, 0)
@@ -44,18 +54,18 @@ const BALANCE_EXPR = `
       + COALESCE(achats_fournisseur.total_achats, 0)
       - COALESCE(paiements_fournisseur.total_paiements, 0)
       - COALESCE(avoirs_fournisseur.total_avoirs, 0)
-    ELSE c.solde
+    ELSE COALESCE(c.solde, 0)
   END
 `;
 
 // GET /api/contacts - Get all contacts with optional type filter (avec solde_cumule calculé) et pagination
 router.get('/', async (req, res) => {
   try {
-    const { type, page = 1, limit = 50, search, clientSubTab } = req.query;
+    const { type, page = 1, limit = 50, search, clientSubTab, groupId } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
     // Requête pour compter le total
-    const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab });
+    const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab, groupId });
     const countQuery = `SELECT COUNT(*) as total FROM contacts c${countWhereSql}`;
     
     const [countResult] = await pool.execute(countQuery, countParams);
@@ -64,8 +74,11 @@ router.get('/', async (req, res) => {
     let query = `
       SELECT 
         c.*,
+        cg.name AS group_name,
         ${BALANCE_EXPR} AS solde_cumule
       FROM contacts c
+
+      LEFT JOIN contact_groups cg ON cg.id = c.group_id
 
       -- Ventes client = bons_sortie + bons_comptant
       LEFT JOIN (
@@ -124,7 +137,7 @@ router.get('/', async (req, res) => {
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
     `;
 
-    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab });
+    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId });
     query += whereSql;
     query += ' ORDER BY c.created_at DESC LIMIT ?, ?';
     params.push(offset, parseInt(limit));
@@ -173,12 +186,16 @@ router.get('/', async (req, res) => {
 // GET /api/contacts/summary - Stats globales (count, solde cumulé, avec ICE)
 router.get('/summary', async (req, res) => {
   try {
-    const { type, search, clientSubTab } = req.query;
-    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab });
+    const { type, search, clientSubTab, groupId } = req.query;
+    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId });
 
     const summaryQuery = `
       SELECT
         COUNT(*) AS totalContacts,
+        (
+          COALESCE(SUM(CASE WHEN c.group_id IS NULL THEN 1 ELSE 0 END), 0)
+          + COALESCE(COUNT(DISTINCT c.group_id), 0)
+        ) AS totalContactsGrouped,
         COALESCE(SUM(${BALANCE_EXPR}), 0) AS totalSoldeCumule,
         COALESCE(SUM(CASE WHEN c.ice IS NOT NULL AND TRIM(c.ice) <> '' THEN 1 ELSE 0 END), 0) AS totalWithICE
       FROM contacts c
@@ -239,6 +256,7 @@ router.get('/summary', async (req, res) => {
     const row = rows?.[0] || {};
     res.json({
       totalContacts: Number(row.totalContacts || 0),
+      totalContactsGrouped: Number(row.totalContactsGrouped || 0),
       totalSoldeCumule: Number(row.totalSoldeCumule || 0),
       totalWithICE: Number(row.totalWithICE || 0),
     });
@@ -254,6 +272,7 @@ router.get('/:id', async (req, res) => {
     const [rows] = await pool.execute(
       `SELECT 
         c.*,
+        cg.name AS group_name,
         CASE 
           WHEN c.type = 'Client' THEN
             COALESCE(c.solde, 0)
@@ -268,6 +287,8 @@ router.get('/:id', async (req, res) => {
           ELSE c.solde
         END AS solde_cumule
       FROM contacts c
+
+      LEFT JOIN contact_groups cg ON cg.id = c.group_id
 
       LEFT JOIN (
         SELECT client_id, SUM(montant_total) AS total_ventes
@@ -372,6 +393,7 @@ router.post('/', async (req, res) => {
       avatar_url,
       email_verified,
       source,
+      group_id,
       created_by
     } = req.body;
 
@@ -398,9 +420,9 @@ router.post('/', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO contacts 
-       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-  [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice')]
+       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+  [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null)]
     );
 
     // Fetch the created contact
@@ -448,6 +470,7 @@ router.put('/:id', async (req, res) => {
       avatar_url,
       email_verified,
       source,
+      group_id,
       updated_by
     } = req.body;
 
@@ -509,6 +532,10 @@ router.put('/:id', async (req, res) => {
   if (avatar_url !== undefined) { updates.push('avatar_url = ?'); params.push(avatar_url); }
   if (email_verified !== undefined) { updates.push('email_verified = ?'); params.push(email_verified); }
   if (source !== undefined) { updates.push('source = ?'); params.push(source); }
+  if (group_id !== undefined) {
+    updates.push('group_id = ?');
+    params.push(group_id === null || group_id === '' ? null : Number(group_id));
+  }
     if (updated_by !== undefined) { updates.push('updated_by = ?'); params.push(updated_by); }
 
     updates.push('updated_at = NOW()');
@@ -521,13 +548,78 @@ router.put('/:id', async (req, res) => {
       );
     }
 
-    // Fetch updated contact
+    // Fetch updated contact (reuse GET-by-id shape so group_name + solde_cumule are consistent)
     const [rows] = await pool.execute(
-      'SELECT * FROM contacts WHERE id = ?',
+      `SELECT 
+        c.*,
+        CASE 
+          WHEN c.type = 'Client' THEN
+            COALESCE(c.solde, 0)
+            + COALESCE(ventes_client.total_ventes, 0)
+            - COALESCE(paiements_client.total_paiements, 0)
+            - COALESCE(avoirs_client.total_avoirs, 0)
+          WHEN c.type = 'Fournisseur' THEN
+            COALESCE(c.solde, 0)
+            + COALESCE(achats_fournisseur.total_achats, 0)
+            - COALESCE(paiements_fournisseur.total_paiements, 0)
+            - COALESCE(avoirs_fournisseur.total_avoirs, 0)
+          ELSE c.solde
+        END AS solde_cumule,
+        cg.name AS group_name
+      FROM contacts c
+      LEFT JOIN contact_groups cg ON cg.id = c.group_id
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_ventes
+        FROM (
+          SELECT client_id, montant_total, statut FROM bons_sortie
+          UNION ALL
+          SELECT client_id, montant_total, statut FROM bons_comptant
+        ) vc
+        WHERE vc.client_id IS NOT NULL
+        AND vc.statut IN ('Validé','En attente')
+        GROUP BY client_id
+      ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_achats
+        FROM bons_commande
+        WHERE fournisseur_id IS NOT NULL
+          AND statut IN ('Validé','En attente')
+        GROUP BY fournisseur_id
+      ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+      LEFT JOIN (
+        SELECT contact_id, SUM(montant_total) AS total_paiements
+        FROM payments
+        WHERE type_paiement = 'Client'
+          AND statut IN ('Validé','En attente')
+        GROUP BY contact_id
+      ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
+      LEFT JOIN (
+        SELECT contact_id, SUM(montant_total) AS total_paiements
+        FROM payments
+        WHERE type_paiement = 'Fournisseur'
+          AND statut IN ('Validé','En attente')
+        GROUP BY contact_id
+      ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_client
+        WHERE statut IN ('Validé','En attente')
+        GROUP BY client_id
+      ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_fournisseur
+        WHERE statut IN ('Validé','En attente')
+        GROUP BY fournisseur_id
+      ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+      WHERE c.id = ?`,
       [req.params.id]
     );
 
-    res.json(rows[0]);
+    res.json({
+      ...rows[0],
+      solde_cumule: Number(rows?.[0]?.solde_cumule || 0),
+    });
   } catch (error) {
     console.error('Error updating contact:', error);
     res.status(500).json({ error: 'Failed to update contact' });
