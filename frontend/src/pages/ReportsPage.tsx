@@ -100,7 +100,7 @@ const ReportsPage: React.FC = () => {
   const [showPasswordError, setShowPasswordError] = useState(false);
 
   /** ---------- Data (RTK Query) ---------- */
-  const { data: clients = [] } = useGetClientsQuery();
+  const { data: clients = [] } = useGetAllClientsQuery();
   const { data: fournisseurs = [] } = useGetFournisseursQuery();
   const { data: products = [] } = useGetProductsQuery();
   const { data: bonsComptant = [] } = useGetComptantQuery(undefined);

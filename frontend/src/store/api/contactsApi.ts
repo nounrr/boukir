@@ -1,12 +1,44 @@
 import { api } from './apiSlice';
 import type { Contact, CreateContactData } from '../../types';
 
+export interface PaginatedContactsResponse {
+  data: Contact[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ContactsSummaryResponse {
+  totalContacts: number;
+  totalSoldeCumule: number;
+  totalWithICE: number;
+}
+
 const contactsApi = api.injectEndpoints({
   endpoints: (builder) => ({
-    getContacts: builder.query<Contact[], { type?: 'Client' | 'Fournisseur' }>({
-      query: ({ type }) => ({ 
+    getContacts: builder.query<PaginatedContactsResponse, { type?: 'Client' | 'Fournisseur'; page?: number; limit?: number }>({
+      query: ({ type, page = 1, limit = 50 }) => ({ 
         url: '/contacts', 
-        params: type ? { type } : undefined 
+        params: { 
+          ...(type && { type }), 
+          page, 
+          limit 
+        }
+      }),
+      providesTags: ['Contact'],
+    }),
+
+    getContactsSummary: builder.query<ContactsSummaryResponse, { type?: 'Client' | 'Fournisseur'; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests' }>({
+      query: ({ type, search, clientSubTab }) => ({
+        url: '/contacts/summary',
+        params: {
+          ...(type && { type }),
+          ...(search ? { search } : {}),
+          ...(clientSubTab ? { clientSubTab } : {}),
+        },
       }),
       providesTags: ['Contact'],
     }),
@@ -42,13 +74,49 @@ const contactsApi = api.injectEndpoints({
       invalidatesTags: ['Contact'],
     }),
 
-    getClients: builder.query<Contact[], void>({
-      query: () => ({ url: '/contacts', params: { type: 'Client' } }),
+    getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests' }>({
+      query: ({ page = 1, limit = 50, search, clientSubTab } = {}) => ({ 
+        url: '/contacts', 
+        params: { 
+          type: 'Client',
+          page,
+          limit,
+          ...(search ? { search } : {}),
+          ...(clientSubTab ? { clientSubTab } : {}),
+        } 
+      }),
       providesTags: ['Contact'],
     }),
 
-    getFournisseurs: builder.query<Contact[], void>({
-      query: () => ({ url: '/contacts', params: { type: 'Fournisseur' } }),
+    getFournisseurs: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string }>({
+      query: ({ page = 1, limit = 50, search } = {}) => ({ 
+        url: '/contacts', 
+        params: { 
+          type: 'Fournisseur',
+          page,
+          limit,
+          ...(search ? { search } : {}),
+        } 
+      }),
+      providesTags: ['Contact'],
+    }),
+
+    // Endpoints pour charger TOUS les contacts (pour compatibilité avec les autres pages)
+    getAllClients: builder.query<Contact[], void>({
+      query: () => ({ 
+        url: '/contacts', 
+        params: { type: 'Client', page: 1, limit: 10000 } 
+      }),
+      transformResponse: (response: PaginatedContactsResponse) => response.data,
+      providesTags: ['Contact'],
+    }),
+
+    getAllFournisseurs: builder.query<Contact[], void>({
+      query: () => ({ 
+        url: '/contacts', 
+        params: { type: 'Fournisseur', page: 1, limit: 10000 } 
+      }),
+      transformResponse: (response: PaginatedContactsResponse) => response.data,
       providesTags: ['Contact'],
     }),
   }),
@@ -56,10 +124,14 @@ const contactsApi = api.injectEndpoints({
 
 export const {
   useGetContactsQuery,
+  useGetContactsSummaryQuery,
   useGetContactQuery,
   useCreateContactMutation,
   useUpdateContactMutation,
   useDeleteContactMutation,
   useGetClientsQuery,
   useGetFournisseursQuery,
+  useGetAllClientsQuery,
+  useGetAllFournisseursQuery,
 } = contactsApi;
+

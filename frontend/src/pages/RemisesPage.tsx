@@ -6,7 +6,7 @@ import { getBonNumeroDisplay } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useCreateClientRemiseMutation, useUpdateClientRemiseMutation, useDeleteClientRemiseMutation, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useUpdateRemiseItemMutation, useDeleteRemiseItemMutation } from '../store/api/remisesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
-import { useGetClientsQuery } from '../store/api/contactsApi';
+import { useGetAllClientsQuery } from '../store/api/contactsApi';
 import { useAuth } from '../hooks/redux';
 
 const parseItems = (items: any): any[] => {
@@ -62,7 +62,7 @@ const RemisesPage: React.FC = () => {
   const [deleteClient] = useDeleteClientRemiseMutation();
 
   // Direct clients (Contacts) for the “bons → client” remises view
-  const { data: directClients = [] } = useGetClientsQuery();
+  const { data: directClients = [] } = useGetAllClientsQuery();
 
   // New system: remises are stored per item on Sortie/Comptant, and beneficiary is stored on bon header
   const { data: sortiesAll = [] } = useGetBonsByTypeQuery('Sortie');

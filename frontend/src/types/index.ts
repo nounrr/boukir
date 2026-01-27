@@ -253,6 +253,7 @@ export interface Contact {
   avatar_url?: string | null;
   email_verified?: boolean;
   source?: 'backoffice' | 'ecommerce';
+  isSolde?: boolean; // Indique si le client peut commander en solde (crédit)
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -276,6 +277,7 @@ export interface CreateContactData {
   ice?: string;
   solde?: number;
   plafond?: number;
+  isSolde?: boolean;
   demande_artisan?: boolean;
   artisan_approuve?: boolean;
   artisan_approuve_par?: number | null;

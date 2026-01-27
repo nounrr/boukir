@@ -18,8 +18,8 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
     useCreateBonMutation
   } from '../store/api/bonsApi';
   import { 
-    useGetClientsQuery, 
-  useGetFournisseursQuery
+    useGetAllClientsQuery, 
+  useGetAllFournisseursQuery
   } from '../store/api/contactsApi';
   import { useGetProductsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
@@ -170,8 +170,8 @@ const BonsPage = () => {
   // RTK Query hooks
   // Load bons by type
   const { data: bons = [], isLoading: bonsLoading } = useGetBonsByTypeQuery(currentTab);
-  const { data: clients = [], isLoading: clientsLoading } = useGetClientsQuery();
-  const { data: suppliers = [], isLoading: suppliersLoading } = useGetFournisseursQuery();
+  const { data: clients = [], isLoading: clientsLoading } = useGetAllClientsQuery();
+  const { data: suppliers = [], isLoading: suppliersLoading } = useGetAllFournisseursQuery();
   const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery();
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();

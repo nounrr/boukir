@@ -3,26 +3,68 @@ import pool from '../db/pool.js';
 
 const router = express.Router();
 
-// GET /api/contacts - Get all contacts with optional type filter (avec solde_cumule calculé)
+const applyContactsFilters = ({ type, search, clientSubTab }) => {
+  let whereSql = ' WHERE 1=1';
+  const params = [];
+
+  if (type && (type === 'Client' || type === 'Fournisseur')) {
+    whereSql += ' AND c.type = ?';
+    params.push(type);
+  }
+
+  if (search && String(search).trim() !== '') {
+    const like = `%${String(search).trim()}%`;
+    whereSql += ' AND (c.nom_complet LIKE ? OR c.societe LIKE ? OR c.telephone LIKE ?)';
+    params.push(like, like, like);
+  }
+
+  if (clientSubTab && type === 'Client') {
+    if (clientSubTab === 'backoffice') {
+      whereSql += ' AND c.source = ?';
+      params.push('backoffice');
+    } else if (clientSubTab === 'ecommerce') {
+      whereSql += " AND c.source = 'ecommerce' AND (c.demande_artisan IS NULL OR c.demande_artisan = 0 OR c.artisan_approuve = 1)";
+    } else if (clientSubTab === 'artisan-requests') {
+      whereSql += ' AND (c.demande_artisan = 1) AND (c.artisan_approuve IS NULL OR c.artisan_approuve = 0)';
+    }
+  }
+
+  return { whereSql, params };
+};
+
+const BALANCE_EXPR = `
+  CASE 
+    WHEN c.type = 'Client' THEN
+      COALESCE(c.solde, 0)
+      + COALESCE(ventes_client.total_ventes, 0)
+      - COALESCE(paiements_client.total_paiements, 0)
+      - COALESCE(avoirs_client.total_avoirs, 0)
+    WHEN c.type = 'Fournisseur' THEN
+      COALESCE(c.solde, 0)
+      + COALESCE(achats_fournisseur.total_achats, 0)
+      - COALESCE(paiements_fournisseur.total_paiements, 0)
+      - COALESCE(avoirs_fournisseur.total_avoirs, 0)
+    ELSE c.solde
+  END
+`;
+
+// GET /api/contacts - Get all contacts with optional type filter (avec solde_cumule calculé) et pagination
 router.get('/', async (req, res) => {
   try {
-    const { type } = req.query;
+    const { type, page = 1, limit = 50, search, clientSubTab } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Requête pour compter le total
+    const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab });
+    const countQuery = `SELECT COUNT(*) as total FROM contacts c${countWhereSql}`;
+    
+    const [countResult] = await pool.execute(countQuery, countParams);
+    const total = countResult[0].total;
+    
     let query = `
       SELECT 
         c.*,
-        CASE 
-          WHEN c.type = 'Client' THEN
-            COALESCE(c.solde, 0)
-            + COALESCE(ventes_client.total_ventes, 0)
-            - COALESCE(paiements_client.total_paiements, 0)
-            - COALESCE(avoirs_client.total_avoirs, 0)
-          WHEN c.type = 'Fournisseur' THEN
-            COALESCE(c.solde, 0)
-            + COALESCE(achats_fournisseur.total_achats, 0)
-            - COALESCE(paiements_fournisseur.total_paiements, 0)
-            - COALESCE(avoirs_fournisseur.total_avoirs, 0)
-          ELSE c.solde
-        END AS solde_cumule
+        ${BALANCE_EXPR} AS solde_cumule
       FROM contacts c
 
       -- Ventes client = bons_sortie + bons_comptant
@@ -80,22 +122,20 @@ router.get('/', async (req, res) => {
         WHERE statut IN ('Validé','En attente')
         GROUP BY fournisseur_id
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+    `;
 
-      WHERE 1=1`;
+    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab });
+    query += whereSql;
+    query += ' ORDER BY c.created_at DESC LIMIT ?, ?';
+    params.push(offset, parseInt(limit));
+
+    // NOTE: MySQL/MariaDB prepared statements may fail with LIMIT placeholders.
+    // Use pool.query (text protocol) to allow `LIMIT ?, ?`.
+    const [rows] = await pool.query(query, params);
     
-    const params = [];
-
-    if (type && (type === 'Client' || type === 'Fournisseur')) {
-      query += ' AND c.type = ?';
-      params.push(type);
-    }
-
-    query += ' ORDER BY c.created_at DESC ';
-
-    const [rows] = await pool.execute(query, params);
-    
-    console.log(`=== CONTACTS RÉCUPÉRÉS ===`);
-    console.log(`Total: ${rows.length} contacts`);
+    console.log(`=== CONTACTS RÉCUPÉRÉS (PAGINÉS) ===`);
+    console.log(`Page: ${page}, Limit: ${limit}, Total: ${total}`);
+    console.log(`Résultats: ${rows.length} contacts`);
     console.log(`Type filter: ${type || 'Tous'}`);
     
     // Convertir solde_cumule en nombre pour éviter les problèmes de type
@@ -105,19 +145,106 @@ router.get('/', async (req, res) => {
     }));
     
     processedRows.forEach((contact, index) => {
-      if (index < 20) { // Afficher les 20 premiers pour debug
+      if (index < 10) { // Afficher les 10 premiers pour debug
         console.log(`${index + 1}. ID: ${contact.id}, Nom: ${contact.nom_complet}, Type: ${contact.type}, Solde initial: ${contact.solde}, Solde cumulé: ${contact.solde_cumule}`);
       }
     });
     
-    if (processedRows.length > 20) {
-      console.log(`... et ${processedRows.length - 20} autres contacts`);
+    if (processedRows.length > 10) {
+      console.log(`... et ${processedRows.length - 10} autres contacts`);
     }
     
-    res.json(processedRows);
+    // Retourner les données avec métadonnées de pagination
+    res.json({
+      data: processedRows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: total,
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
   } catch (error) {
     console.error('Error fetching contacts:', error);
     res.status(500).json({ error: 'Failed to fetch contacts' });
+  }
+});
+
+// GET /api/contacts/summary - Stats globales (count, solde cumulé, avec ICE)
+router.get('/summary', async (req, res) => {
+  try {
+    const { type, search, clientSubTab } = req.query;
+    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab });
+
+    const summaryQuery = `
+      SELECT
+        COUNT(*) AS totalContacts,
+        COALESCE(SUM(${BALANCE_EXPR}), 0) AS totalSoldeCumule,
+        COALESCE(SUM(CASE WHEN c.ice IS NOT NULL AND TRIM(c.ice) <> '' THEN 1 ELSE 0 END), 0) AS totalWithICE
+      FROM contacts c
+
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_ventes
+        FROM (
+          SELECT client_id, montant_total, statut FROM bons_sortie
+          UNION ALL
+          SELECT client_id, montant_total, statut FROM bons_comptant
+        ) vc
+        WHERE vc.client_id IS NOT NULL
+        AND vc.statut IN ('Validé','En attente')
+        GROUP BY client_id
+      ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
+
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_achats
+        FROM bons_commande
+        WHERE fournisseur_id IS NOT NULL
+          AND statut IN ('Validé','En attente')
+        GROUP BY fournisseur_id
+      ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+
+      LEFT JOIN (
+        SELECT contact_id, SUM(montant_total) AS total_paiements
+        FROM payments
+        WHERE type_paiement = 'Client'
+          AND statut IN ('Validé','En attente')
+        GROUP BY contact_id
+      ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
+
+      LEFT JOIN (
+        SELECT contact_id, SUM(montant_total) AS total_paiements
+        FROM payments
+        WHERE type_paiement = 'Fournisseur'
+          AND statut IN ('Validé','En attente')
+        GROUP BY contact_id
+      ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
+
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_client
+        WHERE statut IN ('Validé','En attente')
+        GROUP BY client_id
+      ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
+
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_fournisseur
+        WHERE statut IN ('Validé','En attente')
+        GROUP BY fournisseur_id
+      ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+      ${whereSql}
+    `;
+
+    const [rows] = await pool.execute(summaryQuery, params);
+    const row = rows?.[0] || {};
+    res.json({
+      totalContacts: Number(row.totalContacts || 0),
+      totalSoldeCumule: Number(row.totalSoldeCumule || 0),
+      totalWithICE: Number(row.totalWithICE || 0),
+    });
+  } catch (error) {
+    console.error('Error fetching contacts summary:', error);
+    res.status(500).json({ error: 'Failed to fetch contacts summary' });
   }
 });
 
