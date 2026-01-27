@@ -273,6 +273,15 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE products ADD COLUMN has_variants TINYINT(1) DEFAULT 0`);
   }
 
+  // Check is_obligatoire_variant
+  const [colsObligVar] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'is_obligatoire_variant'`
+  );
+  if (!colsObligVar.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN is_obligatoire_variant TINYINT(1) NOT NULL DEFAULT 0`);
+  }
+
   // Check base_unit
   const [colsBaseUnit] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -525,6 +534,7 @@ router.get('/', async (req, res, next) => {
       created_at: r.created_at,
       updated_at: r.updated_at,
       has_variants: !!r.has_variants,
+      isObligatoireVariant: !!r.is_obligatoire_variant,
       base_unit: r.base_unit,
       categorie_base: r.categorie_base,
       variants: typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []),
@@ -684,6 +694,7 @@ router.get('/:id', async (req, res, next) => {
       created_at: r.created_at,
       updated_at: r.updated_at,
       has_variants: !!r.has_variants,
+      isObligatoireVariant: !!r.is_obligatoire_variant,
       base_unit: r.base_unit,
       categorie_base: r.categorie_base,
       variants: variants.map(v => ({
@@ -763,6 +774,10 @@ router.post('/', upload.fields([
     const isStockPartage = stock_partage_ecom === 'true' || stock_partage_ecom === true || stock_partage_ecom === '1' || stock_partage_ecom === 1;
     const isHasVariants = has_variants === 'true' || has_variants === true || has_variants === '1' || has_variants === 1;
 
+    const obligVarRaw = req.body?.isObligatoireVariant ?? req.body?.is_obligatoire_variant;
+    const isObligatoireVariant = obligVarRaw === 'true' || obligVarRaw === true || obligVarRaw === '1' || obligVarRaw === 1;
+    const isObligatoireVariantEffective = isHasVariants ? isObligatoireVariant : false;
+
     const totalQuantite = Number(isService ? 0 : (quantite ?? 0));
     const shareQty = Number(req.body?.stock_partage_ecom_qty ?? 0);
     if (shareQty > totalQuantite) {
@@ -788,8 +803,8 @@ router.post('/', upload.fields([
 
     const [result] = await pool.query(
       `INSERT INTO products
-      (designation, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, remise_client, remise_artisan, est_service, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, base_unit, categorie_base, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (designation, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, remise_client, remise_artisan, est_service, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, is_obligatoire_variant, base_unit, categorie_base, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         (designation && String(designation).trim()) || 'Sans désignation',
         designation_ar || null,
@@ -823,6 +838,7 @@ router.post('/', upload.fields([
         isStockPartage ? 1 : 0,
         shareQty,
         isHasVariants ? 1 : 0,
+        isObligatoireVariantEffective ? 1 : 0,
         base_unit || 'u',
         (categorie_base === 'Professionel' || categorie_base === 'Maison') ? categorie_base : 'Maison',
         created_by ?? null,
@@ -1008,6 +1024,7 @@ router.put('/:id', upload.fields([
       stock_partage_ecom_qty,
       updated_by,
       has_variants,
+      is_obligatoire_variant,
       base_unit,
       categorie_base,
       fiche_technique,
@@ -1033,6 +1050,11 @@ router.put('/:id', upload.fields([
     const isHasVariants = (has_variants !== undefined)
       ? (has_variants === 'true' || has_variants === true || has_variants === '1' || has_variants === 1)
       : !!existing.has_variants;
+
+    const obligVarRaw = req.body?.isObligatoireVariant ?? is_obligatoire_variant;
+    const isObligatoireVariant = (obligVarRaw !== undefined)
+      ? (obligVarRaw === 'true' || obligVarRaw === true || obligVarRaw === '1' || obligVarRaw === 1)
+      : !!existing.is_obligatoire_variant;
 
     // Quantity, share
     const newQuantite = (quantite !== undefined && quantite !== null && quantite !== '')
@@ -1107,6 +1129,7 @@ router.put('/:id', upload.fields([
       stock_partage_ecom: isStockPartage ? 1 : 0,
       stock_partage_ecom_qty: shareQty,
       has_variants: isHasVariants ? 1 : 0,
+      is_obligatoire_variant: (isHasVariants && isObligatoireVariant) ? 1 : 0,
       base_unit: (base_unit !== undefined && base_unit !== null && base_unit !== '') ? base_unit : (existing.base_unit || 'u'),
       categorie_base: (categorie_base === 'Professionel' || categorie_base === 'Maison') ? categorie_base : (existing.categorie_base || 'Maison'),
       updated_by: updated_by ?? existing.updated_by,

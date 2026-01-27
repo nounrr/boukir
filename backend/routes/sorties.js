@@ -266,6 +266,21 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
 
+      const [productRows] = await connection.execute(
+        'SELECT has_variants, is_obligatoire_variant FROM products WHERE id = ?',
+        [product_id]
+      );
+      const p = Array.isArray(productRows) ? productRows[0] : null;
+      if (!p) {
+        await connection.rollback();
+        return res.status(400).json({ message: `Produit introuvable (id=${product_id})` });
+      }
+      const requiresVariant = Number(p.has_variants) === 1 && Number(p.is_obligatoire_variant) === 1;
+      if (requiresVariant && !variant_id) {
+        await connection.rollback();
+        return res.status(400).json({ message: `Variante obligatoire pour le produit (id=${product_id})` });
+      }
+
       await connection.execute(`
         INSERT INTO sortie_items (
           bon_sortie_id, product_id, quantite, prix_unitaire,
@@ -399,6 +414,21 @@ router.put('/:id', async (req, res) => {
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
+      }
+
+      const [productRows] = await connection.execute(
+        'SELECT has_variants, is_obligatoire_variant FROM products WHERE id = ?',
+        [product_id]
+      );
+      const p = Array.isArray(productRows) ? productRows[0] : null;
+      if (!p) {
+        await connection.rollback();
+        return res.status(400).json({ message: `Produit introuvable (id=${product_id})` });
+      }
+      const requiresVariant = Number(p.has_variants) === 1 && Number(p.is_obligatoire_variant) === 1;
+      if (requiresVariant && !variant_id) {
+        await connection.rollback();
+        return res.status(400).json({ message: `Variante obligatoire pour le produit (id=${product_id})` });
       }
 
       await connection.execute(`

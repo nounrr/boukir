@@ -65,6 +65,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
       prix_vente: editingProduct?.prix_vente || 0,
       prix_vente_pourcentage: editingProduct?.prix_vente_pourcentage || 0,
       est_service: editingProduct?.est_service || false,
+      isObligatoireVariant: (editingProduct as any)?.isObligatoireVariant ?? (editingProduct as any)?.is_obligatoire_variant ?? false,
       // Variants are supported on creation. Editing route doesn't update variants.
       variants: Array.isArray((editingProduct as any)?.variants)
         ? (editingProduct as any).variants.map((v: any) => ({
@@ -131,6 +132,7 @@ const ProductModal: React.FC<ProductModalProps> = ({
           prix_vente: prices.prix_vente,
           // Attach variants for creation
           variants: variantsPayload,
+          isObligatoireVariant: Boolean((values as any).isObligatoireVariant) && Array.isArray((values as any).variants) && (values as any).variants.length > 0,
           created_at: editingProduct ? editingProduct.created_at : new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
@@ -438,6 +440,15 @@ const ProductModal: React.FC<ProductModalProps> = ({
           <div className="mt-8">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-gray-900">Variantes</h3>
+              <label className="flex items-center gap-2 text-sm text-gray-700 mr-3 font-semibold">
+                <input
+                  type="checkbox"
+                  checked={!!(formik.values as any).isObligatoireVariant}
+                  disabled={!Array.isArray((formik.values as any).variants) || ((formik.values as any).variants || []).length === 0}
+                  onChange={(e) => formik.setFieldValue('isObligatoireVariant', e.target.checked)}
+                />
+                Variante obligatoire
+              </label>
               <button
                 type="button"
                 onClick={() => {

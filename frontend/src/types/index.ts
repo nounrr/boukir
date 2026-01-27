@@ -187,6 +187,7 @@ export interface Product {
   stock_partage_ecom?: boolean;
   stock_partage_ecom_qty?: number;
   has_variants?: boolean;
+  isObligatoireVariant?: boolean;
   base_unit?: string;
   categorie_base?: 'Professionel' | 'Maison' | null;
   variants?: ProductVariant[];
@@ -215,6 +216,7 @@ export interface CreateProductData {
   stock_partage_ecom?: boolean;
   stock_partage_ecom_qty?: number;
   has_variants?: boolean;
+  isObligatoireVariant?: boolean;
   base_unit?: string;
   variants?: ProductVariant[];
   units?: ProductUnit[];

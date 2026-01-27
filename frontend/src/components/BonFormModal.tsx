@@ -1094,6 +1094,29 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       setSubmitting(false);
       return;
     }
+
+    // Variant mandatory guard
+    const missingVariantRows = Array.isArray(values?.items)
+      ? values.items
+          .map((item: any, idx: number) => {
+            const product = products.find((p: any) => String(p.id) === String(item?.product_id));
+            const variants = product?.variants ?? [];
+            const hasVariants = Array.isArray(variants) && variants.length > 0;
+            const required = hasVariants && !!(product as any)?.isObligatoireVariant;
+            const selected = String(item?.variant_id ?? '').trim();
+            return required && !selected ? idx : -1;
+          })
+          .filter((i: number) => i >= 0)
+      : [];
+    if (missingVariantRows.length > 0) {
+      const humanRows = missingVariantRows.map((i: number) => i + 1).join(', ');
+      const msg = `Variante obligatoire: veuillez sélectionner une variante pour les lignes ${humanRows}.`;
+      setFieldError?.('items', msg);
+      showError(msg);
+      try { setTimeout(() => focusCell(missingVariantRows[0], 'variant'), 0); } catch {}
+      setSubmitting(false);
+      return;
+    }
     // Suppression du blocage lié au stock: permettre la soumission même si la quantité dépasse le stock
     
     const montantTotal = values.items.reduce((sum: number, item: any, idx: number) => {
@@ -2525,13 +2548,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                   {(() => {
                                     const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
                                     const variants = product?.variants ?? [];
+                                    const isRequired = !!(product as any)?.isObligatoireVariant && Array.isArray(variants) && variants.length > 0;
+                                    const isMissing = isRequired && !String(values.items[index].variant_id || '').trim();
                                     if (!product || variants.length === 0) {
                                       return <span className="text-xs text-gray-400">-</span>;
                                     }
                                     return (
                                       <select
-                                        className="w-full px-1 py-1 text-sm border rounded"
+                                        className={`w-full px-1 py-1 text-sm border rounded ${isMissing ? 'border-red-500' : ''}`}
                                         value={values.items[index].variant_id || ''}
+                                        data-row={index}
+                                        data-col="variant"
                                         onChange={(e) => {
                                           const vId = e.target.value;
                                           setFieldValue(`items.${index}.variant_id`, vId);

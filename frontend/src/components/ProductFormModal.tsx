@@ -276,6 +276,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     ecom_published: false,
     stock_partage_ecom: false,
     stock_partage_ecom_qty: 0,
+    isObligatoireVariant: false,
     variants: [] as ProductVariant[],
     units: [] as ProductUnit[],
     base_unit: 'u',
@@ -310,6 +311,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           ecom_published: (baseEdit as any).ecom_published ?? false,
           stock_partage_ecom: (baseEdit as any).stock_partage_ecom ?? false,
           stock_partage_ecom_qty: (baseEdit as any).stock_partage_ecom_qty ?? 0,
+          isObligatoireVariant: (baseEdit as any).isObligatoireVariant ?? (baseEdit as any).is_obligatoire_variant ?? false,
           variants: (baseEdit as any).variants ?? [],
           units: (baseEdit as any).units ?? [],
           base_unit: (baseEdit as any).base_unit ?? 'u',
@@ -361,6 +363,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         units: values.units,
         base_unit: values.base_unit,
         categorie_base: (values as any).categorie_base,
+        isObligatoireVariant: Boolean((values as any).isObligatoireVariant) && Array.isArray(values.variants) && values.variants.length > 0,
       };
 
       try {
@@ -389,6 +392,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('ecom_published', productData.ecom_published ? '1' : '0');
           formData.append('stock_partage_ecom', productData.stock_partage_ecom ? '1' : '0');
           formData.append('stock_partage_ecom_qty', String(productData.stock_partage_ecom_qty ?? 0));
+          formData.append('is_obligatoire_variant', (productData as any).isObligatoireVariant ? '1' : '0');
           formData.append('updated_by', '1');
           formData.append('categorie_base', String((productData as any).categorie_base || 'Maison'));
           formData.append('has_variants', String(productData.variants && productData.variants.length > 0));
@@ -458,6 +462,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('stock_partage_ecom', productData.stock_partage_ecom ? '1' : '0');
           formData.append('stock_partage_ecom_qty', String(productData.stock_partage_ecom_qty ?? 0));
           formData.append('created_by', '1');
+          formData.append('is_obligatoire_variant', (productData as any).isObligatoireVariant ? '1' : '0');
           formData.append('has_variants', String(productData.variants && productData.variants.length > 0));
           formData.append('base_unit', productData.base_unit || 'u');
           formData.append('categorie_base', String((productData as any).categorie_base || 'Maison'));
@@ -1494,6 +1499,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium text-gray-900">Variantes du produit</h3>
+              <label className="flex items-center gap-2 text-sm text-gray-700 font-semibold">
+                <input
+                  type="checkbox"
+                  checked={!!(formik.values as any).isObligatoireVariant}
+                  disabled={!Array.isArray(formik.values.variants) || formik.values.variants.length === 0}
+                  onChange={(e) => formik.setFieldValue('isObligatoireVariant', e.target.checked)}
+                />
+                Variante obligatoire dans les bons
+              </label>
             </div>
             
             <FormikProvider value={formik}>
