@@ -161,3 +161,4 @@ main().catch((e) => {
   console.error('Script failed:', e);
   process.exit(1);
 });
+'pending','confirmed','processing','shipped','delivered','cancelled','refunded'

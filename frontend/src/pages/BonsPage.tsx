@@ -59,7 +59,7 @@ const isKhezinAwatifName = (name: unknown) => {
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
   const navigate = useNavigate();
-  const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule' | 'Ecommerce'>('Commande');
+  const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce'>('Commande');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedBon, setSelectedBon] = useState<any>(null);
@@ -93,6 +93,7 @@ const BonsPage = () => {
   // Menu actions state
   const [openMenuBonId, setOpenMenuBonId] = useState<string | null>(null);
   const [sendingWhatsAppId, setSendingWhatsAppId] = useState<string | null>(null);
+  const [pendingOpenAvoirEcommercePicker, setPendingOpenAvoirEcommercePicker] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -104,6 +105,7 @@ const BonsPage = () => {
 
   // Auth context
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const isPdg = currentUser?.role === 'PDG';
   const isEmployee = currentUser?.role === 'Employé';
   // Manager full access only for Commande & AvoirFournisseur
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
@@ -112,6 +114,13 @@ const BonsPage = () => {
   
   // Feature flag: show WhatsApp button only for PDG and Manager+
   const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
+
+  // UI restriction: ecommerce bon + avoir ecommerce are visible only for PDG
+  useEffect(() => {
+    if (!isPdg && (currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce')) {
+      setCurrentTab('Commande');
+    }
+  }, [isPdg, currentTab]);
 
   // Helper to build the per-type storage key for auto-send checkbox
   const getAutoSendKey = (type: string) => `autoSendWhatsAppOnValidation_${type}`;
@@ -193,6 +202,7 @@ const BonsPage = () => {
       'Avoir': 'AVC',
       'AvoirFournisseur': 'AVF',
       'AvoirComptant': 'AVC',
+      'AvoirEcommerce': 'AVE',
       'Vehicule': 'VEH',
       'Ecommerce': 'ORD',
     };
@@ -378,7 +388,7 @@ const BonsPage = () => {
     return String(raw || '').trim().toLowerCase();
   };
 
-  const canChangeEcommerceStatus = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || currentUser?.role === 'Manager';
+  const canChangeEcommerceStatus = isPdg;
 
   const handleChangeEcommerceStatus = async (
     bon: any,
@@ -433,9 +443,30 @@ const BonsPage = () => {
 
   // Helper to get contact name (client or fournisseur) used by filtering/render
   const getContactName = (bon: any) => {
+    const ecommerceRaw = bon?.ecommerce_raw ?? bon;
+    const ecommerceContactName =
+      ecommerceRaw?.contact_nom_complet ||
+      ecommerceRaw?.contact_name ||
+      [ecommerceRaw?.contact_prenom, ecommerceRaw?.contact_nom]
+        .filter((v: any) => v != null && String(v).trim() !== '')
+        .join(' ')
+        .trim() ||
+      null;
+
+    if ((bon?.type === 'Ecommerce' || currentTab === 'Ecommerce' || bon?.type === 'AvoirEcommerce' || currentTab === 'AvoirEcommerce') && ecommerceContactName) {
+      return String(ecommerceContactName);
+    }
+
     // Comptant et Devis: if client_nom is present (free text), prefer it
-    if ((bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || currentTab === 'Comptant' || currentTab === 'AvoirComptant' || bon?.type === 'Devis' || currentTab === 'Devis' || bon?.type === 'Ecommerce' || currentTab === 'Ecommerce') && bon?.client_nom) {
-      return bon.client_nom;
+    const freeClientName = bon?.client_nom ?? bon?.customer_name;
+    if (
+      (bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || currentTab === 'Comptant' || currentTab === 'AvoirComptant' ||
+       bon?.type === 'Devis' || currentTab === 'Devis' ||
+       bon?.type === 'Ecommerce' || currentTab === 'Ecommerce' ||
+       bon?.type === 'AvoirEcommerce' || currentTab === 'AvoirEcommerce') &&
+      freeClientName
+    ) {
+      return String(freeClientName);
     }
     const clientId = bon?.client_id ?? bon?.contact_id;
     if (clientId && clients.length > 0) {
@@ -871,6 +902,7 @@ const BonsPage = () => {
       case 'Avoir': return 'avoirs_client';
       case 'AvoirFournisseur': return 'avoirs_fournisseur';
       case 'AvoirComptant': return 'avoirs_comptant';
+      case 'AvoirEcommerce': return 'avoirs_ecommerce';
       case 'Ecommerce': return 'ecommerce_orders';
       case 'Vehicule': return 'bons_vehicule';
       default: return '';
@@ -882,6 +914,8 @@ const BonsPage = () => {
   // Helper: envoyer WhatsApp pour un bon depuis la liste
   // (imports moved to top of file)
   const resolveBonPhone = (bon: any): string | null => {
+    // Priorité: customer_phone / phone si présent (e-commerce)
+    if ((bon as any)?.customer_phone) return String((bon as any).customer_phone);
     // Priorité: bon.phone si présent
     if (bon?.phone) return String(bon.phone);
     // Client selon type
@@ -1148,17 +1182,192 @@ const BonsPage = () => {
   }, [currentTab, searchTerm]);
 
   // Tabs configuration
-  const tabs = useMemo(() => ([
-    { key: 'Commande', label: 'Bon de Commande' },
-    { key: 'Sortie', label: 'Bon de Sortie' },
-    { key: 'Comptant', label: 'Bon Comptant' },
-    { key: 'Vehicule', label: 'Bon Véhicule' },
-    { key: 'Avoir', label: 'Avoir Client' },
-    { key: 'AvoirComptant', label: 'Avoir Comptant' },
-    { key: 'AvoirFournisseur', label: 'Avoir Fournisseur' },
-    { key: 'Ecommerce', label: 'Bon Ecommerce' },
-    { key: 'Devis', label: 'Devis' }
-  ]), []);
+  const tabs = useMemo(() => {
+    const base = [
+      { key: 'Commande', label: 'Bon de Commande' },
+      { key: 'Sortie', label: 'Bon de Sortie' },
+      { key: 'Comptant', label: 'Bon Comptant' },
+      { key: 'Vehicule', label: 'Bon Véhicule' },
+      { key: 'Avoir', label: 'Avoir Client' },
+      { key: 'AvoirComptant', label: 'Avoir Comptant' },
+      { key: 'AvoirFournisseur', label: 'Avoir Fournisseur' },
+      { key: 'AvoirEcommerce', label: 'Avoir Ecommerce' },
+      { key: 'Ecommerce', label: 'Bon Ecommerce' },
+      { key: 'Devis', label: 'Devis' }
+    ];
+
+    if (isPdg) return base;
+    return base.filter((t) => t.key !== 'Ecommerce' && t.key !== 'AvoirEcommerce');
+  }, [isPdg]);
+
+  const toMySQLDateTime = (d: Date = new Date()) => d.toISOString().slice(0, 19).replace('T', ' ');
+
+  const openBlankAvoirEcommerceModal = useCallback(() => {
+    if (!isPdg) {
+      showError('Permission refusée: seul le PDG peut créer un avoir e-commerce.');
+      return;
+    }
+
+    setSelectedBon({
+      type: 'AvoirEcommerce',
+      ecommerce_order_id: '',
+      order_number: '',
+      client_nom: '',
+      customer_email: '',
+      phone: '',
+      adresse_livraison: '',
+      date_creation: toMySQLDateTime(new Date()),
+      statut: 'En attente',
+      items: [],
+    });
+    setBonFormKey((k) => k + 1);
+    setIsCreateModalOpen(true);
+  }, [isPdg, toMySQLDateTime]);
+
+  const openAvoirEcommerceModalFromOrder = useCallback((bon: any) => {
+    if (!bon?.id) {
+      showError('Commande e-commerce invalide');
+      return;
+    }
+
+    const items = Array.isArray(bon?.items) ? bon.items : [];
+    if (items.length === 0) {
+      showError('Cette commande ne contient aucun article');
+      return;
+    }
+
+    const normalizedItems = items.map((it: any) => {
+      const productId = it?.product_id ?? it?.produit_id ?? it?.produit?.id;
+      const quantite = Number(it?.quantite ?? it?.quantity ?? 0);
+      const prixUnitaire = Number(it?.prix_unitaire ?? it?.unit_price ?? it?.unitPrice ?? 0);
+      const total = Number(it?.total ?? it?.montant_ligne ?? it?.subtotal ?? (quantite * prixUnitaire));
+      const designation = it?.designation ?? it?.designation_custom ?? it?.produit?.designation ?? it?.produit?.name ?? '';
+      const kg = Number(it?.kg ?? it?.kg_value ?? it?.produit?.kg ?? 0);
+      return {
+        product_id: productId != null ? String(productId) : '',
+        product_reference: String(it?.product_reference ?? it?.reference ?? ''),
+        designation,
+        quantite,
+        prix_unitaire: prixUnitaire,
+        prix_achat: Number(it?.prix_achat ?? it?.pa ?? 0) || 0,
+        cout_revient: Number(it?.cout_revient ?? it?.cr ?? it?.cout ?? 0) || 0,
+        kg,
+        total,
+      };
+    });
+
+    setSelectedBon({
+      type: 'AvoirEcommerce',
+      ecommerce_order_id: bon.id,
+      order_number: bon.numero || bon.order_number || null,
+      client_nom: bon.client_nom || bon.customer_name || '',
+      customer_email: bon.customer_email || bon.email || '',
+      phone: bon.phone || bon.customer_phone || '',
+      adresse_livraison: bon.adresse_livraison || '',
+      date_creation: toMySQLDateTime(new Date()),
+      statut: 'En attente',
+      items: normalizedItems,
+    });
+    // Force remount to reset internal state when switching from edit/create
+    setBonFormKey((k) => k + 1);
+    setIsCreateModalOpen(true);
+  }, [toMySQLDateTime]);
+
+  const handleCreateEcommerceAvoir = async (bon: any) => {
+    try {
+      if (!currentUser?.id) {
+        showError('Utilisateur non authentifié');
+        return;
+      }
+      if (!bon?.id) {
+        showError('Commande e-commerce invalide');
+        return;
+      }
+
+      const result = await showConfirmation(
+        'Créer un avoir e-commerce',
+        `Créer un avoir pour la commande ${bon?.numero || bon?.order_number || bon?.id} ?`,
+        'Créer',
+        'Annuler'
+      );
+      if (!result.isConfirmed) return;
+
+      // Open the same popup as other avoirs to let user select/edit products & quantities.
+      openAvoirEcommerceModalFromOrder(bon);
+    } catch (error: any) {
+      console.error('Erreur création avoir ecommerce:', error);
+      showError(`Erreur: ${error?.data?.message || error?.message || 'Erreur inconnue'}`);
+    }
+  };
+
+  // Ajouter un avoir e-commerce à partir d'une commande e-commerce visible (sélection via popup)
+  // (déclaré après handleCreateEcommerceAvoir pour éviter TDZ)
+  const handleAddAvoirEcommerce = useCallback(async () => {
+    try {
+      if (!isPdg) {
+        showError('Permission refusée: seul le PDG peut créer un avoir e-commerce.');
+        return;
+      }
+      if (currentTab !== 'Ecommerce') {
+        showError('Cette action est disponible uniquement dans l\'onglet Bon Ecommerce.');
+        return;
+      }
+      if (!paginatedBons.length) {
+        showError('Aucune commande e-commerce visible pour créer un avoir.');
+        return;
+      }
+
+      const Swal = (await import('sweetalert2')).default;
+      const inputOptions: Record<string, string> = {};
+
+      for (const o of paginatedBons) {
+        const id = o?.id;
+        if (id == null) continue;
+        const bAny = o as any;
+        const numero = bAny?.numero || bAny?.order_number || id;
+        const name = bAny?.client_nom || bAny?.customer_name || getContactName(o);
+        const total = computeMontantTotal(o);
+        inputOptions[String(id)] = `${numero} • ${name} • ${Number(total || 0).toFixed(2)} DH`;
+      }
+
+      const result = await Swal.fire({
+        title: 'Créer un avoir e-commerce',
+        text: 'Choisissez une commande e-commerce (liste actuelle) :',
+        input: 'select',
+        inputOptions,
+        inputPlaceholder: 'Sélectionner une commande',
+        showCancelButton: true,
+        confirmButtonText: 'Créer',
+        cancelButtonText: 'Annuler',
+        heightAuto: false,
+        customClass: { popup: 'swal2-show' },
+      });
+      if (!result.isConfirmed) return;
+
+      const selectedId = String(result.value ?? '');
+      const selectedOrder = paginatedBons.find((x) => String(x?.id) === selectedId);
+      if (!selectedOrder) {
+        showError('Commande e-commerce introuvable.');
+        return;
+      }
+
+      openAvoirEcommerceModalFromOrder(selectedOrder);
+    } catch (e: any) {
+      console.error('Erreur création avoir e-commerce (bouton):', e);
+      showError(e?.message || 'Erreur lors de la création de l\'avoir e-commerce');
+    }
+  }, [isPdg, currentTab, paginatedBons, getContactName, computeMontantTotal, openAvoirEcommerceModalFromOrder]);
+
+  // If user clicks the button from AvoirEcommerce tab, we switch to Ecommerce then open the picker.
+  useEffect(() => {
+    if (!pendingOpenAvoirEcommercePicker) return;
+    if (!isPdg) { setPendingOpenAvoirEcommercePicker(false); return; }
+    if (currentTab !== 'Ecommerce') return;
+
+    setPendingOpenAvoirEcommercePicker(false);
+    // Fire and forget; errors are handled inside.
+    void handleAddAvoirEcommerce();
+  }, [pendingOpenAvoirEcommercePicker, currentTab, isPdg, handleAddAvoirEcommerce]);
 
   // Fonction pour ouvrir le modal de création d'un nouveau bon
   const handleAddNew = () => {
@@ -1445,18 +1654,32 @@ const BonsPage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setSelectedBon(null);
-                // Incrémenter la clé pour forcer un remontage du composant modal (nettoyage complet de l'état interne)
-                setBonFormKey(k => k + 1);
-                setIsCreateModalOpen(true);
-              }}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-            >
-              <Plus size={20} />
-              Nouveau {currentTab}
-            </button>
+            {currentTab !== 'Ecommerce' && currentTab !== 'AvoirEcommerce' && (
+              <button
+                onClick={() => {
+                  setSelectedBon(null);
+                  // Incrémenter la clé pour forcer un remontage du composant modal (nettoyage complet de l'état interne)
+                  setBonFormKey(k => k + 1);
+                  setIsCreateModalOpen(true);
+                }}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+              >
+                <Plus size={20} />
+                Nouveau {currentTab}
+              </button>
+            )}
+            {(currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce') && isPdg && (
+              <button
+                onClick={() => {
+                  openBlankAvoirEcommerceModal();
+                }}
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors"
+                title="Créer un avoir e-commerce"
+              >
+                <RotateCcw size={20} />
+                Ajouter Avoir Ecommerce
+              </button>
+            )}
             <button
               onClick={() => navigate('/inventaire')}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
@@ -1492,13 +1715,27 @@ const BonsPage = () => {
         <div className="bg-white rounded-lg shadow mb-4 p-4">
           <div className="flex flex-wrap items-center gap-3">
             {/* Bouton Ajouter */}
-            <button
-              onClick={handleAddNew}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
-            >
-              <Plus size={18} className="mr-2" />
-              Ajouter {currentTab}
-            </button>
+            {currentTab !== 'Ecommerce' && currentTab !== 'AvoirEcommerce' && (
+              <button
+                onClick={handleAddNew}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+              >
+                <Plus size={18} className="mr-2" />
+                Ajouter {currentTab}
+              </button>
+            )}
+            {(currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce') && isPdg && (
+              <button
+                onClick={() => {
+                  openBlankAvoirEcommerceModal();
+                }}
+                className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors font-medium"
+                title="Créer un avoir e-commerce"
+              >
+                <RotateCcw size={18} className="mr-2" />
+                Ajouter Avoir Ecommerce
+              </button>
+            )}
 
             {/* Recherche */}
             <div className="relative flex-1 min-w-[300px]">
@@ -1781,7 +2018,7 @@ const BonsPage = () => {
                             <>{bon.vehicule_nom || '-'}</>
                           )
                         ) : (
-                          currentTab === 'Ecommerce' || bon?.type === 'Ecommerce' ? (
+                          currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce' || bon?.type === 'Ecommerce' || bon?.type === 'AvoirEcommerce' ? (
                             <div className="flex flex-col">
                               <span className="text-sm text-gray-800">{getContactName(bon)}</span>
                               {(() => {
@@ -1901,12 +2138,33 @@ const BonsPage = () => {
                       {/* Linked info (placed after audit cols, before Statut) */}
                       <td className="px-4 py-2 text-xs text-gray-700">
                         {(() => {
+                          const bAny = bon as any;
+                          const extraIncoming: Array<{ from_type: string; from_id: any }> = [];
+                          const type = bon?.type || currentTab;
+                          if (type === 'AvoirEcommerce') {
+                            const orderId = bAny?.ecommerce_order_id ?? bAny?.order_id;
+                            if (orderId != null && orderId !== '') {
+                              extraIncoming.push({ from_type: 'Ecommerce', from_id: orderId });
+                            }
+                          }
+
                           const lk = bonLinksMap[String(bon.id)] || { outgoing: [], incoming: [] };
-                          if ((!lk.incoming || lk.incoming.length === 0) && (!lk.outgoing || lk.outgoing.length === 0)) {
+                          if (
+                            (!lk.incoming || lk.incoming.length === 0) &&
+                            (!lk.outgoing || lk.outgoing.length === 0) &&
+                            extraIncoming.length === 0
+                          ) {
                             return <span className="text-gray-400">-</span>;
                           }
                           return (
                             <div className="space-y-1">
+                              {extraIncoming.map((r, idx) => (
+                                <div key={`x-in-${idx}`} className="flex items-center gap-1">
+                                  <span className="inline-block px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-700 rounded">de</span>
+                                  <span></span>
+                                  <span className="text-gray-500">{r.from_type} {formatNumeroByType(r.from_type, r.from_id)}</span>
+                                </div>
+                              ))}
                               {lk.incoming?.map((r, idx) => (
                                 <div key={`in-${idx}`} className="flex items-center gap-1">
                                   <span className="inline-block px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-700 rounded">de</span>
@@ -2160,7 +2418,11 @@ const BonsPage = () => {
                                               )}
                                             </div>
                                           )}
-                                          {( (currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ) && (
+                                          {(
+                                            (currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) ||
+                                            ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ||
+                                            (currentUser?.role === 'PDG' && currentTab === 'AvoirEcommerce')
+                                          ) && (
                                             <div className="flex gap-1">
                                               {/* Show "En attente" only if not already "En attente" */}
                                               {bon.statut !== 'En attente' && (
@@ -2232,7 +2494,7 @@ const BonsPage = () => {
                                               </button>
                                             </div>
                                           )}
-                                          {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant') && bon.statut !== 'Validé' && (
+                                          {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant' || currentTab === 'AvoirEcommerce') && bon.statut !== 'Validé' && (
                                             <div className="flex gap-1">
                                               <button 
                                                 onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
@@ -2282,6 +2544,20 @@ const BonsPage = () => {
                                         title="Voir l'historique d'audit"
                                       >
                                         <Clock size={16} />
+                                      </button>
+                                    )}
+
+                                    {/* Ecommerce: create credit note */}
+                                    {(currentTab === 'Ecommerce' || bon?.type === 'Ecommerce') && currentUser?.role === 'PDG' && (
+                                      <button
+                                        onClick={() => {
+                                          handleCreateEcommerceAvoir(bon);
+                                          setOpenMenuBonId(null);
+                                        }}
+                                        className="p-2 text-purple-600 hover:bg-purple-50 hover:text-purple-800 rounded"
+                                        title="Créer un avoir e-commerce"
+                                      >
+                                        <RotateCcw size={16} />
                                       </button>
                                     )}
                                     
@@ -2396,10 +2672,13 @@ const BonsPage = () => {
           initialValues={selectedBon || undefined}
           onBonAdded={(newBon) => {
             // Le bon est automatiquement ajouté au store Redux
-            const labelTab = String(currentTab);
+            const labelTab = String(newBon?.type || currentTab);
             showSuccess(`${labelTab} ${getDisplayNumero(newBon)} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
             setIsCreateModalOpen(false);
             setSelectedBon(null);
+            if (newBon?.type && newBon.type !== currentTab) {
+              setCurrentTab(newBon.type);
+            }
           }}
         />
 
@@ -2466,6 +2745,251 @@ const BonsPage = () => {
                     </div>
                   </div>
 
+                  {(selectedBon?.type === 'Ecommerce' || currentTab === 'Ecommerce') && (() => {
+                    const raw = (selectedBon as any)?.ecommerce_raw ?? selectedBon;
+                    return (
+                      <div className="space-y-4">
+                        {/* Numéro commande & Client */}
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4">
+                          <h3 className="text-sm font-bold text-blue-800 uppercase tracking-wide mb-3 flex items-center gap-2">
+                            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                            Client & Commande
+                          </h3>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">order_number</span>
+                              <p className="font-semibold text-gray-900">{raw?.order_number || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">user_id</span>
+                              <p className="font-semibold text-gray-900">{raw?.user_id ?? '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">contact_nom_complet</span>
+                              <p className="font-semibold text-gray-900">{raw?.contact_nom_complet || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">customer_name</span>
+                              <p className="font-semibold text-gray-900">{raw?.customer_name || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">customer_email</span>
+                              <p className="font-semibold text-gray-900 break-all">{raw?.customer_email || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">customer_phone</span>
+                              <p className="font-semibold text-gray-900">{raw?.customer_phone || '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Adresse de livraison */}
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4">
+                          <h3 className="text-sm font-bold text-green-800 uppercase tracking-wide mb-3 flex items-center gap-2">
+                            <Truck size={14} />
+                            Adresse de livraison
+                          </h3>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div className="col-span-2">
+                              <span className="text-gray-500">shipping_address_line1</span>
+                              <p className="font-semibold text-gray-900">{raw?.shipping_address_line1 || '-'}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-gray-500">shipping_address_line2</span>
+                              <p className="font-semibold text-gray-900">{raw?.shipping_address_line2 || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">shipping_city</span>
+                              <p className="font-semibold text-gray-900">{raw?.shipping_city || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">shipping_state</span>
+                              <p className="font-semibold text-gray-900">{raw?.shipping_state || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">shipping_postal_code</span>
+                              <p className="font-semibold text-gray-900">{raw?.shipping_postal_code || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">shipping_country</span>
+                              <p className="font-semibold text-gray-900">{raw?.shipping_country || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">delivery_method</span>
+                              <p className="font-semibold text-gray-900">{raw?.delivery_method || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">pickup_location_id</span>
+                              <p className="font-semibold text-gray-900">{raw?.pickup_location_id ?? '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Montants */}
+                        <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-100 rounded-xl p-4">
+                          <h3 className="text-sm font-bold text-amber-800 uppercase tracking-wide mb-3 flex items-center gap-2">
+                            <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+                            Montants
+                          </h3>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">subtotal</span>
+                              <p className="font-semibold text-gray-900">{raw?.subtotal != null ? `${Number(raw.subtotal).toFixed(2)} DH` : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">tax_amount</span>
+                              <p className="font-semibold text-gray-900">{raw?.tax_amount != null ? `${Number(raw.tax_amount).toFixed(2)} DH` : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">shipping_cost</span>
+                              <p className="font-semibold text-gray-900">{raw?.shipping_cost != null ? `${Number(raw.shipping_cost).toFixed(2)} DH` : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">discount_amount</span>
+                              <p className="font-semibold text-gray-900">{raw?.discount_amount != null ? `${Number(raw.discount_amount).toFixed(2)} DH` : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">promo_code</span>
+                              <p className="font-semibold text-gray-900">{raw?.promo_code || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">promo_discount_amount</span>
+                              <p className="font-semibold text-gray-900">{raw?.promo_discount_amount != null ? `${Number(raw.promo_discount_amount).toFixed(2)} DH` : '-'}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-gray-500">total_amount</span>
+                              <p className="font-bold text-blue-700 text-lg">{raw?.total_amount != null ? `${Number(raw.total_amount).toFixed(2)} DH` : '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Paiement & Solde */}
+                        <div className="bg-gradient-to-r from-cyan-50 to-sky-50 border border-cyan-100 rounded-xl p-4">
+                          <h3 className="text-sm font-bold text-cyan-800 uppercase tracking-wide mb-3 flex items-center gap-2">
+                            <span className="w-2 h-2 bg-cyan-500 rounded-full"></span>
+                            Paiement & Solde
+                          </h3>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">payment_method</span>
+                              <p className="font-semibold text-gray-900">{raw?.payment_method || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">payment_status</span>
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                raw?.payment_status === 'paid' ? 'bg-green-100 text-green-800' :
+                                raw?.payment_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>{raw?.payment_status || '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">is_solde</span>
+                              <p className="font-semibold text-gray-900">{raw?.is_solde != null ? (raw.is_solde ? 'Oui' : 'Non') : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">solde_amount</span>
+                              <p className="font-semibold text-gray-900">{raw?.solde_amount != null ? `${Number(raw.solde_amount).toFixed(2)} DH` : '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Remise (fidélité) */}
+                        <div className="bg-gradient-to-r from-pink-50 to-rose-50 border border-pink-100 rounded-xl p-4">
+                          <h3 className="text-sm font-bold text-pink-800 uppercase tracking-wide mb-3 flex items-center gap-2">
+                            <span className="w-2 h-2 bg-pink-500 rounded-full"></span>
+                            Remise (fidélité)
+                          </h3>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">remise_used_amount</span>
+                              <p className="font-semibold text-gray-900">{raw?.remise_used_amount != null ? `${Number(raw.remise_used_amount).toFixed(2)} DH` : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">remise_earned_amount</span>
+                              <p className="font-semibold text-gray-900">{raw?.remise_earned_amount != null ? `${Number(raw.remise_earned_amount).toFixed(2)} DH` : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">remise_earned_at</span>
+                              <p className="font-semibold text-gray-900">{raw?.remise_earned_at ? formatDateTimeWithHour(raw.remise_earned_at) : '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Statut & Dates */}
+                        <div className="bg-gradient-to-r from-purple-50 to-fuchsia-50 border border-purple-100 rounded-xl p-4">
+                          <h3 className="text-sm font-bold text-purple-800 uppercase tracking-wide mb-3 flex items-center gap-2">
+                            <Clock size={14} />
+                            Statut & Dates
+                          </h3>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">status</span>
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                raw?.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                                raw?.status === 'shipped' ? 'bg-indigo-100 text-indigo-800' :
+                                raw?.status === 'delivered' ? 'bg-green-100 text-green-800' :
+                                raw?.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>{raw?.status || '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">confirmed_at</span>
+                              <p className="font-semibold text-gray-900">{raw?.confirmed_at ? formatDateTimeWithHour(raw.confirmed_at) : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">shipped_at</span>
+                              <p className="font-semibold text-gray-900">{raw?.shipped_at ? formatDateTimeWithHour(raw.shipped_at) : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">delivered_at</span>
+                              <p className="font-semibold text-gray-900">{raw?.delivered_at ? formatDateTimeWithHour(raw.delivered_at) : '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">cancelled_at</span>
+                              <p className="font-semibold text-gray-900">{raw?.cancelled_at ? formatDateTimeWithHour(raw.cancelled_at) : '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Notes */}
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                          <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">Notes</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">customer_notes</span>
+                              <p className="font-semibold text-gray-900">{raw?.customer_notes || '-'}</p>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">admin_notes</span>
+                              <p className="font-semibold text-gray-900">{raw?.admin_notes || '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Bouton copier JSON (discret) */}
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const text = JSON.stringify(raw, null, 2);
+                                await navigator.clipboard.writeText(text);
+                                showSuccess('Données JSON copiées');
+                              } catch (e) {
+                                console.error('Copy ecommerce order failed', e);
+                                showError('Impossible de copier');
+                              }
+                            }}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100"
+                            title="Copier JSON brut"
+                          >
+                            <Copy size={14} /> Copier JSON
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="border rounded-md p-4">
                     <h3 className="font-bold mb-3">Produits</h3>
                     <div className="responsive-table-container">
@@ -2484,7 +3008,14 @@ const BonsPage = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
-                          {selectedBon.items.map((item: any) => {
+                          {parseItemsSafe(selectedBon.items).length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-3 text-sm text-gray-500">
+                                Aucun produit
+                              </td>
+                            </tr>
+                          ) : (
+                          parseItemsSafe(selectedBon.items).map((item: any) => {
                             const pid = item.product_id ?? item.produit_id;
                             const product = products.find((p: any) => String(p.id) === String(pid));
                             const designation = item.designation || item.designation_custom || product?.designation || 'Produit';
@@ -2509,7 +3040,7 @@ const BonsPage = () => {
                                 <td className="px-4 py-2 text-sm text-right font-semibold">{Number(item.montant_ligne || item.total || 0).toFixed(2)} DH</td>
                               </tr>
                             );
-                          })}
+                          }))}
                         </tbody>
                       </table>
                     </div>

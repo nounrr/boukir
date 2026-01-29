@@ -6,15 +6,15 @@ import {
 } from 'lucide-react';
 import type { Contact } from '../types';
 import { 
-  useGetClientsQuery, 
-  useGetFournisseursQuery,
+  useGetAllClientsQuery,
+  useGetAllFournisseursQuery,
 } from '../store/api/contactsApi';
 import { formatDateDMY } from '../utils/dateUtils';
 import PeriodConfig from '../components/PeriodConfig';
 
 const ContactArchiverPage: React.FC = () => {
   const { data: clients = [] } = useGetAllClientsQuery();
-  const { data: fournisseurs = [] } = useGetFournisseursQuery();
+  const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
 
   // États locaux
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs'>('clients');

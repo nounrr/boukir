@@ -917,16 +917,34 @@ router.get('/', async (req, res, next) => {
     );
     const total = Number(countRows?.[0]?.total || 0);
 
-    // Fetch orders with shipping details
+    // Fetch orders with all relevant fields for backoffice/detail display
     const [orders] = await pool.query(`
       SELECT 
         o.id,
         o.order_number,
+        o.user_id,
         o.customer_name,
         o.customer_email,
         o.customer_phone,
+
+        c.nom_complet AS contact_nom_complet,
+        c.nom AS contact_nom,
+        c.prenom AS contact_prenom,
+        c.telephone AS contact_telephone,
+        c.email AS contact_email,
+
+        o.subtotal,
+        o.tax_amount,
+        o.shipping_cost,
+        o.discount_amount,
+        o.promo_code,
+        o.promo_discount_amount,
         o.total_amount,
+
         o.remise_used_amount,
+        o.remise_earned_amount,
+        o.remise_earned_at,
+
         o.status,
         o.payment_status,
         o.payment_method,
@@ -934,12 +952,16 @@ router.get('/', async (req, res, next) => {
         o.solde_amount,
         o.delivery_method,
         o.pickup_location_id,
+
+        o.customer_notes,
+        o.admin_notes,
+
         o.created_at,
         o.confirmed_at,
-        o.remise_earned_at,
-        o.remise_earned_amount,
         o.shipped_at,
         o.delivered_at,
+        o.cancelled_at,
+
         o.shipping_address_line1,
         o.shipping_address_line2,
         o.shipping_city,
@@ -947,6 +969,7 @@ router.get('/', async (req, res, next) => {
         o.shipping_postal_code,
         o.shipping_country
       FROM ecommerce_orders o
+      LEFT JOIN contacts c ON c.id = o.user_id AND c.deleted_at IS NULL
       ${whereSql}
       ORDER BY o.created_at DESC
       LIMIT ? OFFSET ?
@@ -1009,47 +1032,93 @@ router.get('/', async (req, res, next) => {
     }
 
     res.json({
-      orders: orders.map(order => ({
-        id: order.id,
-        order_number: order.order_number,
-        customer_name: order.customer_name,
-        customer_email: order.customer_email,
-        customer_phone: order.customer_phone,
-        total_amount: Number(order.total_amount),
-        remise_used_amount: Number(order.remise_used_amount || 0),
-        status: order.status,
-        payment_status: order.payment_status,
-        payment_method: order.payment_method,
-        is_solde: order.payment_method === 'solde'
+      orders: orders.map((order) => {
+        const computedIsSolde = order.payment_method === 'solde'
           ? (Math.max(0, Math.round((Number(order.total_amount || 0) - Number(order.remise_used_amount || 0)) * 100) / 100) > 0 ? 1 : 0)
-          : Number(order.is_solde || 0),
-        solde_amount: order.payment_method === 'solde'
+          : Number(order.is_solde || 0);
+
+        const computedSoldeAmount = order.payment_method === 'solde'
           ? Math.max(0, Math.round((Number(order.total_amount || 0) - Number(order.remise_used_amount || 0)) * 100) / 100)
-          : Number(order.solde_amount || 0),
-        delivery_method: order.delivery_method || 'delivery',
-        pickup_location_id: order.pickup_location_id || null,
-        created_at: order.created_at,
-        confirmed_at: order.confirmed_at,
-        remise_applied: !!order.remise_earned_at,
-        remise_earned_amount: Number(order.remise_earned_amount || 0),
-        shipped_at: order.shipped_at,
-        delivered_at: order.delivered_at,
-        shipping_address: {
-          line1: order.shipping_address_line1,
-          line2: order.shipping_address_line2,
-          city: order.shipping_city,
-          state: order.shipping_state,
-          postal_code: order.shipping_postal_code,
-          country: order.shipping_country,
-        },
-        items: itemsByOrder.get(order.id) || [],
-        items_count: (itemsByOrder.get(order.id) || []).length,
-      })),
+          : Number(order.solde_amount || 0);
+
+        const contactName =
+          order.contact_nom_complet ||
+          [order.contact_prenom, order.contact_nom].filter((v) => v != null && String(v).trim() !== '').join(' ').trim() ||
+          null;
+
+        return {
+          // Match ecommerce_orders column names where possible
+          id: order.id,
+          order_number: order.order_number,
+          user_id: order.user_id ?? null,
+          customer_name: order.customer_name,
+          customer_email: order.customer_email,
+          customer_phone: order.customer_phone,
+
+          // Contact (from contacts table using user_id)
+          contact_nom_complet: contactName,
+          contact_nom: order.contact_nom || null,
+          contact_prenom: order.contact_prenom || null,
+          contact_telephone: order.contact_telephone || null,
+          contact_email: order.contact_email || null,
+
+          subtotal: order.subtotal == null ? null : Number(order.subtotal),
+          tax_amount: order.tax_amount == null ? null : Number(order.tax_amount),
+          shipping_cost: order.shipping_cost == null ? null : Number(order.shipping_cost),
+          discount_amount: order.discount_amount == null ? null : Number(order.discount_amount),
+          promo_code: order.promo_code || null,
+          promo_discount_amount: order.promo_discount_amount == null ? null : Number(order.promo_discount_amount),
+          total_amount: Number(order.total_amount || 0),
+
+          status: order.status,
+          payment_status: order.payment_status,
+          payment_method: order.payment_method,
+          is_solde: computedIsSolde,
+          solde_amount: computedSoldeAmount,
+          delivery_method: order.delivery_method || 'delivery',
+          pickup_location_id: order.pickup_location_id || null,
+
+          customer_notes: order.customer_notes || null,
+          // Avoid leaking admin_notes to non-backoffice clients
+          admin_notes: isBackoffice ? (order.admin_notes || null) : null,
+
+          confirmed_at: order.confirmed_at,
+          shipped_at: order.shipped_at,
+          delivered_at: order.delivered_at,
+          cancelled_at: order.cancelled_at,
+
+          remise_used_amount: Number(order.remise_used_amount || 0),
+          remise_earned_amount: Number(order.remise_earned_amount || 0),
+          remise_earned_at: order.remise_earned_at,
+          remise_applied: !!order.remise_earned_at,
+
+          created_at: order.created_at,
+
+          // Keep both flattened columns and a normalized object for compatibility
+          shipping_address_line1: order.shipping_address_line1,
+          shipping_address_line2: order.shipping_address_line2,
+          shipping_city: order.shipping_city,
+          shipping_state: order.shipping_state,
+          shipping_postal_code: order.shipping_postal_code,
+          shipping_country: order.shipping_country,
+          shipping_address: {
+            line1: order.shipping_address_line1,
+            line2: order.shipping_address_line2,
+            city: order.shipping_city,
+            state: order.shipping_state,
+            postal_code: order.shipping_postal_code,
+            country: order.shipping_country,
+          },
+
+          items: itemsByOrder.get(order.id) || [],
+          items_count: (itemsByOrder.get(order.id) || []).length,
+        };
+      }),
       total,
       page,
       limit,
       pages: total > 0 ? Math.ceil(total / limit) : 0,
-      returned: orders.length
+      returned: orders.length,
     });
   } catch (err) {
     next(err);
@@ -1064,10 +1133,18 @@ router.get('/:id', async (req, res, next) => {
     const userId = req.user?.id;
     const { email } = req.query; // Allow guest to fetch by email
 
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const isBackoffice = role.length > 0;
+
     // Get order (+ pickup location if any)
     const [orders] = await pool.query(`
       SELECT
         o.*,
+        c.nom_complet AS contact_nom_complet,
+        c.nom AS contact_nom,
+        c.prenom AS contact_prenom,
+        c.telephone AS contact_telephone,
+        c.email AS contact_email,
         pl.name AS pickup_location_name,
         pl.address_line1 AS pickup_address_line1,
         pl.address_line2 AS pickup_address_line2,
@@ -1076,6 +1153,7 @@ router.get('/:id', async (req, res, next) => {
         pl.postal_code AS pickup_postal_code,
         pl.country AS pickup_country
       FROM ecommerce_orders o
+      LEFT JOIN contacts c ON c.id = o.user_id AND c.deleted_at IS NULL
       LEFT JOIN ecommerce_pickup_locations pl ON o.pickup_location_id = pl.id
       WHERE o.id = ?
       LIMIT 1
@@ -1173,6 +1251,15 @@ router.get('/:id', async (req, res, next) => {
       order: {
         id: order.id,
         order_number: order.order_number,
+
+        user_id: order.user_id ?? null,
+
+        // Contact (from contacts table using user_id)
+        contact_nom_complet: order.contact_nom_complet || [order.contact_prenom, order.contact_nom].filter((v) => v != null && String(v).trim() !== '').join(' ').trim() || null,
+        contact_nom: order.contact_nom || null,
+        contact_prenom: order.contact_prenom || null,
+        contact_telephone: order.contact_telephone || null,
+        contact_email: order.contact_email || null,
         
         // Customer
         customer_name: order.customer_name,
@@ -1201,6 +1288,8 @@ router.get('/:id', async (req, res, next) => {
         discount_amount: Number(order.discount_amount),
         total_amount: Number(order.total_amount),
         remise_used_amount: Number(order.remise_used_amount || 0),
+        promo_code: order.promo_code || null,
+        promo_discount_amount: order.promo_discount_amount == null ? null : Number(order.promo_discount_amount),
         
         // Status
         status: order.status,
@@ -1215,7 +1304,7 @@ router.get('/:id', async (req, res, next) => {
 
         // Notes
         customer_notes: order.customer_notes,
-        admin_notes: order.admin_notes,
+        admin_notes: isBackoffice ? (order.admin_notes || null) : null,
         
         // Dates
         created_at: order.created_at,

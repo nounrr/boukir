@@ -16,8 +16,8 @@ import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantQuery } from '../store/api/comptantApi';
 import { useGetAllClientsQuery, useGetAllFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
-// Removed unused: useGetPaymentsQuery, useGetBonsByTypeQuery
-import { useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
+// Removed unused: useGetPaymentsQuery
+import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
 import type { Contact } from '../types';
@@ -307,9 +307,13 @@ const bonValidationSchema = Yup.object({
   // Pour Comptant et Devis, on peut saisir un nom libre
   client_nom: Yup.string().when(['type', 'client_id'], ([type, client_id], schema) => {
     if (type === 'Comptant' || type === 'AvoirComptant') return schema.trim();
+    if (type === 'AvoirEcommerce') return schema.trim().required('Nom client requis');
     if (type === 'Devis' && !client_id) return schema.trim().required('Veuillez sélectionner un client ou entrer un nom');
     return schema.optional();
   }),
+  ecommerce_order_id: Yup.string().optional(),
+  order_number: Yup.string().optional(),
+  customer_email: Yup.string().trim().optional(),
   fournisseur_id: Yup.number().when('type', ([type], schema) => {
     if (type === 'Commande' || type === 'AvoirFournisseur') return schema.required('Fournisseur requis');
     return schema.nullable();
@@ -366,7 +370,7 @@ const AutoCheckNonCalculatedForAwatif: React.FC<{ isOpen: boolean; clients: any[
 interface BonFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'Devis' | 'Vehicule' | 'Ecommerce';
+  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
   initialValues?: any;
   onBonAdded?: (bon: any) => void;
 }
@@ -381,6 +385,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { user, token } = useAuth();
   const dispatch = useDispatch();
   const formikRef = useRef<FormikProps<any>>(null);
+  const isEditMode = Boolean((initialValues as any)?.id);
   // Container ref to detect when Enter is pressed within the products area
   const itemsContainerRef = useRef<HTMLDivElement>(null);
   
@@ -420,6 +425,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined);
+  const shouldFetchEcommerceOrders = isOpen && (currentTab === 'AvoirEcommerce' || String((initialValues as any)?.type || '') === 'AvoirEcommerce');
+  const { data: ecommerceOrders = [] } = useGetBonsByTypeQuery('Ecommerce', { skip: !shouldFetchEcommerceOrders });
   // For cumulative balances
   // Removed unused aggregated queries to reduce unnecessary re-renders / warnings
   // const { data: commandesAll = [] } = useGetBonsByTypeQuery('Commande');
@@ -445,6 +452,137 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     return map;
   }, [products]);
 
+  const getEcommerceOrderRef = (o: any) => String(o?.numero || o?.order_number || o?.id || '');
+
+  const ecommerceOrdersByRef = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const o of ecommerceOrders as any[]) {
+      const ref = getEcommerceOrderRef(o);
+      if (!ref) continue;
+      if (!m.has(ref)) m.set(ref, o);
+    }
+    return m;
+  }, [ecommerceOrders]);
+
+  const ecommerceOrderOptions = useMemo(() => {
+    return (ecommerceOrders as any[])
+      .map((o) => {
+        const ref = getEcommerceOrderRef(o);
+        if (!ref) return null;
+        const name = String(o?.client_nom || o?.customer_name || o?.customer?.name || '').trim();
+        const total = Number(o?.montant_total ?? o?.total_amount ?? 0) || 0;
+        return {
+          value: ref,
+          label: `${ref}${name ? ` • ${name}` : ''} • ${total.toFixed(2)} DH`,
+          data: o,
+        };
+      })
+      .filter(Boolean) as { value: string; label: string; data?: any }[];
+  }, [ecommerceOrders]);
+
+  const ecommerceClientOptions = useMemo(() => {
+    return (clients || []).map((c: any) => {
+      const name = String(c?.nom_complet || '').trim();
+      const ref = String(c?.reference || '').trim();
+      const phone = String(c?.telephone || c?.phone || '').trim();
+      const labelParts = [name, ref ? `(${ref})` : '', phone ? `• ${phone}` : ''].filter(Boolean);
+      return {
+        value: name,
+        label: labelParts.join(' ').replace(/\s+/g, ' ').trim(),
+        data: c,
+      };
+    });
+  }, [clients]);
+
+  const normalizeEcommerceItemsToForm = (order: any) => {
+    const rawItems = Array.isArray(order?.items) ? order.items : [];
+    const normalized = rawItems
+      .map((it: any) => {
+        const productId = it?.product_id ?? it?.produit_id ?? it?.produit?.id ?? it?.product?.id;
+        if (productId == null || productId === '') return null;
+
+        const quantite = Number(it?.quantite ?? it?.quantity ?? 0) || 0;
+        const prixUnitaire = Number(it?.prix_unitaire ?? it?.unit_price ?? it?.unitPrice ?? 0) || 0;
+        const total = Number(it?.total ?? it?.montant_ligne ?? it?.subtotal ?? quantite * prixUnitaire) || 0;
+
+        const productFromCatalog = productMap.get(String(productId));
+        const product_reference =
+          String(
+            it?.product_reference ??
+              it?.reference ??
+              it?.produit?.reference ??
+              it?.product?.reference ??
+              (productFromCatalog?.reference ?? '')
+          ) || String(productId);
+
+        const designation =
+          String(
+            it?.designation ??
+              it?.designation_custom ??
+              it?.product_name ??
+              it?.produit?.designation ??
+              it?.product?.designation ??
+              (productFromCatalog?.designation ?? '')
+          ) || '';
+
+        const kg = Number(it?.kg ?? it?.kg_value ?? it?.produit?.kg ?? it?.product?.kg ?? (productFromCatalog?.kg ?? 0)) || 0;
+
+        return {
+          _rowId: makeRowId(),
+          product_id: String(productId),
+          variant_id: String(it?.variant_id ?? it?.variantId ?? it?.variant?.id ?? ''),
+          unit_id: String(it?.unit_id ?? it?.unitId ?? it?.unit?.id ?? ''),
+          product_reference,
+          designation,
+          quantite,
+          prix_achat: Number(it?.prix_achat ?? it?.pa ?? 0) || 0,
+          cout_revient: Number(it?.cout_revient ?? it?.cr ?? 0) || 0,
+          prix_unitaire: prixUnitaire,
+          kg,
+          total,
+          unite: it?.unite ?? 'pièce',
+        };
+      })
+      .filter(Boolean);
+
+    return normalized.length
+      ? normalized
+      : [
+          {
+            _rowId: makeRowId(),
+            product_id: '',
+            product_reference: '',
+            designation: '',
+            quantite: 0,
+            prix_achat: 0,
+            prix_unitaire: 0,
+            cout_revient: 0,
+            kg: 0,
+            total: 0,
+            unite: 'pièce',
+          },
+        ];
+  };
+
+  const seedRawFromItems = (items: any[], bonType: string) => {
+    setUnitPriceRaw(() => {
+      const next: Record<number, string> = {};
+      (items || []).forEach((it: any, idx: number) => {
+        const v = bonType === 'Commande' ? it?.prix_achat : it?.prix_unitaire;
+        next[idx] = v === undefined || v === null ? '' : String(v);
+      });
+      return next;
+    });
+    setQtyRaw(() => {
+      const next: Record<number, string> = {};
+      (items || []).forEach((it: any, idx: number) => {
+        const q = it?.quantite;
+        next[idx] = q === undefined || q === null ? '' : String(q);
+      });
+      return next;
+    });
+  };
+
   const sanitizeFileSegment = (value: string | number | null | undefined, fallback = 'bon') => {
     if (value == null) return fallback;
     const cleaned = String(value).trim().replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -455,7 +593,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     let clientContact: any;
     let fournisseurContact: any;
 
-    if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'Devis'].includes(bonType)) {
+    if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirEcommerce', 'Devis'].includes(bonType)) {
       const clientId = formValues?.client_id ?? formValues?.contact_id;
       if (clientId != null) {
         const found = clients.find((c: any) => String(c.id) === String(clientId));
@@ -472,7 +610,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         clientContact = {
           nom_complet: formValues.client_nom,
           telephone: formValues.phone || '',
-          email: formValues.client_email || '',
+          email: formValues.customer_email || formValues.client_email || '',
           adresse: formValues.adresse_livraison || formValues.client_adresse || '',
           societe: formValues.client_societe || '',
         };
@@ -793,6 +931,10 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         client_id: (initialValues.client_id || '').toString(),
         fournisseur_id: (initialValues.fournisseur_id || '').toString(),
         vehicule_id: (initialValues.vehicule_id || '').toString(),
+        ecommerce_order_id: String((initialValues as any).ecommerce_order_id || ''),
+        order_number: String((initialValues as any).order_number || ''),
+        customer_name: String((initialValues as any).customer_name || (initialValues as any).client_nom || ''),
+        customer_email: String((initialValues as any).customer_email || ''),
         livraisons: Array.isArray((initialValues as any)?.livraisons)
           ? (initialValues as any).livraisons.map((l: any) => ({ vehicule_id: String(l.vehicule_id || ''), user_id: l.user_id ? String(l.user_id) : '' }))
           : [],
@@ -808,7 +950,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         fournisseur_adresse: initialValues.fournisseur_adresse || '',
         fournisseur_societe: initialValues.fournisseur_societe || '',
   adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
-  phone: initialValues.phone || '',
+  phone: initialValues.phone || initialValues.customer_phone || '',
         isNotCalculated: initialValues.isNotCalculated || false,
         statut: initialValues.statut || 'En attente',
       };
@@ -831,6 +973,10 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       fournisseur_nom: '',
       fournisseur_adresse: '',
       fournisseur_societe: '',
+    ecommerce_order_id: '',
+    order_number: '',
+    customer_name: '',
+    customer_email: '',
       adresse_livraison: '',
       montant_ht: 0,
       montant_total: 0,
@@ -1134,7 +1280,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     const requestType = values.type;
     let vehiculeId: number | undefined = undefined;
-    if (requestType !== 'Avoir' && requestType !== 'AvoirFournisseur' && values.vehicule_id) {
+    if (!['Avoir', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce'].includes(requestType) && values.vehicule_id) {
       vehiculeId = parseInt(values.vehicule_id);
     }
 
@@ -1235,9 +1381,18 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   phone: values.phone || null,
       isNotCalculated: values.isNotCalculated ? true : null,
       statut: values.statut || 'Brouillon',
-  client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
+  client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
+      ...(requestType === 'AvoirEcommerce'
+        ? {
+            ecommerce_order_id: values.ecommerce_order_id ? Number(values.ecommerce_order_id) : undefined,
+            order_number: values.order_number || null,
+            customer_name: values.client_nom || null,
+            customer_email: values.customer_email || null,
+            customer_phone: values.phone || null,
+          }
+        : {}),
       // New remise target stored on Sortie/Comptant header
       remise_is_client: (requestType === 'Sortie' || requestType === 'Comptant') ? effectiveRemiseTarget.remise_is_client : undefined,
       remise_id: (requestType === 'Sortie' || requestType === 'Comptant') ? effectiveRemiseTarget.remise_id : undefined,
@@ -1284,8 +1439,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       }),
     };
 
-    if (initialValues) {
-      const updated = await updateBonMutation({ id: initialValues.id, type: requestType, ...cleanBonData }).unwrap();
+    if (isEditMode) {
+      const updated = await updateBonMutation({ id: (initialValues as any).id, type: requestType, ...cleanBonData }).unwrap();
       // Rafraîchir les stocks produits immédiatement après mise à jour du bon
       try { dispatch(api.util.invalidateTags(['Product'])); } catch {}
       // Optionally show WhatsApp prompt on update
@@ -1304,7 +1459,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
               if (!clientPhone) {
                 showError('Numéro de téléphone client introuvable. Renseignez le champ téléphone.');
               } else {
-                const numero = updated?.numero || initialValues?.numero || '';
+                const numero = updated?.numero || (initialValues as any)?.numero || '';
                 try {
                   await sendBonViaWhatsAppWithPdf({
                     bonType: requestType,
@@ -1312,7 +1467,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
                     bonRecord: updated,
                     formValues: values,
                     phone: String(clientPhone),
-                    bonId: updated?.id || initialValues?.id,
+                    bonId: updated?.id || (initialValues as any)?.id,
                     montantTotalValue: montantTotal,
                   });
                 } catch (err: any) {
@@ -1856,7 +2011,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         {/* Header */}
         <div className="bg-blue-600 px-4 sm:px-6 py-3 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
           <h2 className="text-base sm:text-lg font-semibold text-white truncate">
-            {initialValues ? 'Modifier' : 'Créer'} un {currentTab}
+            {isEditMode ? 'Modifier' : 'Créer'} un {currentTab}
           </h2>
           <button
             onClick={onClose}
@@ -2180,22 +2335,128 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 </div>
               )}
 
-      {/* Client libre pour Comptant & AvoirComptant */}
-      {(values.type === 'Comptant' || values.type === 'AvoirComptant') && (
+      {/* Client libre pour Comptant / AvoirComptant / AvoirEcommerce */}
+      {(values.type === 'Comptant' || values.type === 'AvoirComptant' || values.type === 'AvoirEcommerce') && (
                 <div>
                   <label htmlFor="client_nom" className="block text-sm font-medium text-gray-700 mb-1">
-        Client (texte libre){values.type === 'AvoirComptant' ? ' - Avoir Comptant' : ''}
+        {values.type === 'AvoirEcommerce'
+          ? 'Client (E-commerce)'
+          : `Client (texte libre)${values.type === 'AvoirComptant' ? ' - Avoir Comptant' : ''}`}
                   </label>
-                  <Field
-                    type="text"
-                    id="client_nom"
-                    name="client_nom"
-                    placeholder="Saisir le nom du client"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
+                  {values.type === 'AvoirEcommerce' ? (
+                    <SearchableSelect
+                      options={ecommerceClientOptions}
+                      value={values.client_nom || ''}
+                      onChange={(v) => {
+                        setFieldValue('client_nom', v);
+                        if (!v) return;
+                        const opt = (ecommerceClientOptions || []).find((x) => x.value === v);
+                        const c = opt?.data;
+                        if (c) {
+                          setFieldValue('customer_email', c.email || values.customer_email || '');
+                          setFieldValue('phone', c.telephone || c.phone || values.phone || '');
+                        }
+                      }}
+                      placeholder="Rechercher un client e-commerce"
+                      className="w-full"
+                      maxDisplayItems={200}
+                      autoOpenOnFocus
+                    />
+                  ) : (
+                    <Field
+                      type="text"
+                      id="client_nom"
+                      name="client_nom"
+                      placeholder="Saisir le nom du client"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  )}
+                  {values.type === 'AvoirEcommerce' && (
+                    <>
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label htmlFor="customer_email" className="block text-sm font-medium text-gray-700 mb-1">
+                            Email (optionnel)
+                          </label>
+                          <Field
+                            type="email"
+                            id="customer_email"
+                            name="customer_email"
+                            placeholder="ex: client@email.com"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="order_number" className="block text-sm font-medium text-gray-700 mb-1">
+                            Commande (référence)
+                          </label>
+                          <SearchableSelect
+                            options={(() => {
+                              const base = ecommerceOrderOptions || [];
+                              const v = String(values.order_number || '').trim();
+                              if (v && !base.some((o) => o.value === v)) {
+                                return [{ value: v, label: v, data: { custom: true } }, ...base];
+                              }
+                              return base;
+                            })()}
+                            value={values.order_number || ''}
+                            onChange={(ref) => {
+                              setFieldValue('order_number', ref);
+                              const order = ecommerceOrdersByRef.get(String(ref)) || null;
+                              if (order) {
+                                setFieldValue('ecommerce_order_id', String(order.id || ''));
+                                // Force client selection from the full contacts list.
+                                const orderName = String(order.client_nom || order.customer_name || '').trim();
+                                const matched = (clients || []).find((c: any) => {
+                                  const cName = String(c?.nom_complet || '').trim();
+                                  if (!cName || !orderName) return false;
+                                  return normalizeHumanName(cName) === normalizeHumanName(orderName);
+                                });
+                                if (matched) {
+                                  setFieldValue('client_nom', String(matched.nom_complet || ''));
+                                  setFieldValue('customer_email', matched.email || values.customer_email || '');
+                                  setFieldValue('phone', matched.telephone || matched.phone || values.phone || '');
+                                } else {
+                                  // If we can't match, clear to force picking a valid client from list.
+                                  setFieldValue('client_nom', '');
+                                  setFieldValue('customer_email', order.customer_email || order.email || values.customer_email || '');
+                                  setFieldValue('phone', order.phone || order.customer_phone || values.phone || '');
+                                }
+                                setFieldValue('adresse_livraison', order.adresse_livraison || values.adresse_livraison || '');
+
+                                const nextItems = normalizeEcommerceItemsToForm(order);
+                                setFieldValue('items', nextItems);
+                                seedRawFromItems(nextItems, values.type);
+                              } else {
+                                // If user cleared selection, unlink order but keep manual items
+                                if (!ref) setFieldValue('ecommerce_order_id', '');
+                              }
+                            }}
+                            placeholder="Rechercher une commande (ORD...)"
+                            className="w-full"
+                            maxDisplayItems={200}
+                            autoOpenOnFocus
+                            allowCreate
+                            createText="Utiliser"
+                            onCreate={(label) => {
+                              setFieldValue('order_number', label);
+                              setFieldValue('ecommerce_order_id', '');
+                            }}
+                          />
+                          <ErrorMessage name="order_number" component="div" className="text-red-500 text-sm mt-1" />
+                        </div>
+                      </div>
+                      {/* hidden but validated */}
+                      <Field type="hidden" name="ecommerce_order_id" />
+                      <ErrorMessage name="ecommerce_order_id" component="div" className="text-red-500 text-sm mt-1" />
+                    </>
+                  )}
                   <div className="text-xs text-gray-500 mt-1">
         Ce client ne sera pas ajouté à la page Contacts.
                   </div>
+                  {values.type === 'AvoirEcommerce' && (
+                    <ErrorMessage name="client_nom" component="div" className="text-red-500 text-sm mt-1" />
+                  )}
                 </div>
               )}
 
@@ -3177,7 +3438,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
                   >
                     {(() => {
-                      if (initialValues) return 'Mettre à jour';
+                      if (isEditMode) return 'Mettre à jour';
                       if (values.type === 'Devis') return 'Créer Devis';
                       return 'Valider Bon';
                     })()}

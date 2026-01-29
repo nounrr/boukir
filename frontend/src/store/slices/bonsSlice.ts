@@ -8,7 +8,7 @@ interface BonsState {
   error: string | null;
   selectedBon: Bon | null;
   filters: {
-  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis' | 'Vehicule' | 'all';
+  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'Devis' | 'Vehicule' | 'Ecommerce' | 'AvoirEcommerce' | 'all';
     search: string;
     dateFrom: string;
     dateTo: string;

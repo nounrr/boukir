@@ -1,8 +1,8 @@
 import { api } from './apiSlice';
 import type { Bon } from '../../types';
 
-// Shared union for bon-like types including new AvoirComptant
-type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Vehicule' | 'Ecommerce';
+// Shared union for bon-like types
+type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'AvoirEcommerce' | 'Vehicule' | 'Ecommerce';
 
 export const bonsApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -32,6 +32,8 @@ export const bonsApi = api.injectEndpoints({
             return '/avoirs_fournisseur';
           case 'AvoirComptant':
             return '/avoirs_comptant';
+          case 'AvoirEcommerce':
+            return '/avoirs_ecommerce';
           case 'Vehicule':
             return '/bons_vehicule';
           case 'Ecommerce':
@@ -46,13 +48,15 @@ export const bonsApi = api.injectEndpoints({
         if (type === 'Ecommerce') {
           const orders = response?.orders || [];
           return orders.map((o: any) => ({
+            // Keep the full payload so UI can show all columns/details when needed
+            ecommerce_raw: o,
             id: o.id,
             type: 'Ecommerce',
             numero: o.order_number,
             date_creation: o.created_at || o.confirmed_at,
             created_at: o.created_at || o.confirmed_at || new Date().toISOString(),
             updated_at: o.updated_at || o.created_at || o.confirmed_at || new Date().toISOString(),
-            client_nom: o.customer_name,
+            client_nom: o.contact_nom_complet || o.contact_name || o.customer_name,
             customer_email: o.customer_email || o.email,
             phone: o.customer_phone,
             adresse_livraison: o.shipping_address?.city
@@ -66,6 +70,8 @@ export const bonsApi = api.injectEndpoints({
               id: i.id,
               bon_id: o.id,
               produit_id: i.product_id,
+              variant_id: i.variant_id ?? null,
+              unit_id: i.unit_id ?? null,
               quantite: Number(i.quantity),
               prix_unitaire: Number(i.unit_price),
               montant_ligne: Number(i.subtotal),
@@ -91,6 +97,7 @@ export const bonsApi = api.injectEndpoints({
         let actual: any = type;
         if (type === 'Avoir') actual = 'AvoirClient';
         else if (type === 'AvoirComptant') actual = 'AvoirComptant';
+        else if (type === 'AvoirEcommerce') actual = 'AvoirEcommerce';
         return result
           ? [...result.map(({ id }) => ({ type: actual, id })), { type: actual, id: 'LIST' }]
           : [{ type: actual, id: 'LIST' }];
@@ -129,6 +136,9 @@ export const bonsApi = api.injectEndpoints({
             break;
           case 'AvoirComptant':
             endpoint = '/avoirs_comptant';
+            break;
+          case 'AvoirEcommerce':
+            endpoint = '/avoirs_ecommerce';
             break;
           case 'Vehicule':
             endpoint = '/bons_vehicule';
@@ -169,6 +179,9 @@ export const bonsApi = api.injectEndpoints({
           case 'AvoirComptant':
             tags.push({ type: 'AvoirComptant', id: 'LIST' });
             break;
+          case 'AvoirEcommerce':
+            tags.push({ type: 'AvoirEcommerce', id: 'LIST' });
+            break;
           case 'Vehicule':
             tags.push({ type: 'Vehicule', id: 'LIST' });
             break;
@@ -203,6 +216,9 @@ export const bonsApi = api.injectEndpoints({
           case 'AvoirComptant':
             endpoint = `/avoirs_comptant/${id}`;
             break;
+          case 'AvoirEcommerce':
+            endpoint = `/avoirs_ecommerce/${id}`;
+            break;
           case 'Vehicule':
             endpoint = `/bons_vehicule/${id}`;
             break;
@@ -219,6 +235,7 @@ export const bonsApi = api.injectEndpoints({
         let actualTagType: any = (type as AnyBonType) || 'Bon';
         if (type === 'Avoir') actualTagType = 'AvoirClient';
         else if ((type as any) === 'AvoirComptant') actualTagType = 'AvoirComptant';
+        else if ((type as any) === 'AvoirEcommerce') actualTagType = 'AvoirEcommerce';
         return [
           { type: actualTagType, id },
           { type: actualTagType, id: 'LIST' },
@@ -251,6 +268,12 @@ export const bonsApi = api.injectEndpoints({
           case 'AvoirFournisseur':
             endpoint = `/avoirs_fournisseur/${id}`;
             break;
+          case 'AvoirComptant':
+            endpoint = `/avoirs_comptant/${id}`;
+            break;
+          case 'AvoirEcommerce':
+            endpoint = `/avoirs_ecommerce/${id}`;
+            break;
           case 'Vehicule':
             endpoint = `/bons_vehicule/${id}`;
             break;
@@ -266,6 +289,7 @@ export const bonsApi = api.injectEndpoints({
   let tagType: any = type || 'Bon';
         if (type === 'Avoir') tagType = 'AvoirClient';
         else if ((type as any) === 'AvoirComptant') tagType = 'AvoirComptant';
+        else if ((type as any) === 'AvoirEcommerce') tagType = 'AvoirEcommerce';
         return [
           { type: tagType, id },
           { type: tagType, id: 'LIST' },
@@ -300,6 +324,9 @@ export const bonsApi = api.injectEndpoints({
           case 'AvoirComptant':
             endpoint = `/avoirs_comptant/${id}/statut`;
             break;
+          case 'AvoirEcommerce':
+            endpoint = `/avoirs_ecommerce/${id}/statut`;
+            break;
           case 'Vehicule':
             endpoint = `/bons_vehicule/${id}/statut`;
             break;
@@ -316,6 +343,7 @@ export const bonsApi = api.injectEndpoints({
         let actualTagType: any = (type as AnyBonType) || 'Bon';
         if (type === 'Avoir') actualTagType = 'AvoirClient';
         else if ((type as any) === 'AvoirComptant') actualTagType = 'AvoirComptant';
+        else if ((type as any) === 'AvoirEcommerce') actualTagType = 'AvoirEcommerce';
         return [
           { type: actualTagType, id },
           { type: actualTagType, id: 'LIST' },
