@@ -95,3 +95,5 @@ SET @sql_comptant_remise_id := IF(
 PREPARE stmt FROM @sql_comptant_remise_id;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+
