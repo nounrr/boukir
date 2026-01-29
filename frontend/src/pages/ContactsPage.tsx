@@ -321,6 +321,8 @@ const ContactsPage: React.FC = () => {
   const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
   const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
   const { data: avoirsFournisseur = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
+  const { data: ecommerceOrders = [] } = useGetBonsByTypeQuery('Ecommerce');
+  const { data: avoirsEcommerce = [] } = useGetBonsByTypeQuery('AvoirEcommerce');
   const { data: payments = [] } = useGetPaymentsQuery();
   // Remises tab removed
 
@@ -338,15 +340,61 @@ const ContactsPage: React.FC = () => {
       map.set(clientId, (map.get(clientId) || 0) - val);
     };
 
+    const isAllowedAvoirEcommerceStatut = (s: any) => {
+      if (!s) return false;
+      const norm = String(s).toLowerCase();
+      // avoirs_ecommerce: En attente | Validé | Appliqué | Annulé
+      return !(norm === 'annulé' || norm === 'annule');
+    };
+
+    const isAllowedEcommerceOrderForSolde = (raw: any) => {
+      const status = String(raw?.status ?? raw?.ecommerce_status ?? raw?.statut ?? '').toLowerCase().trim();
+      if (status === 'cancelled' || status === 'refunded') return false;
+      const isSolde = Number(raw?.is_solde ?? 0) === 1;
+      return isSolde;
+    };
+
+    // Map order_id -> user_id so we can assign avoirs_ecommerce to the right contact
+    const ecommerceUserByOrderId = new Map<number, number>();
+    (ecommerceOrders || []).forEach((b: any) => {
+      const raw = b?.ecommerce_raw ?? b;
+      const orderId = Number(raw?.id);
+      const uid = Number(raw?.user_id);
+      if (Number.isFinite(orderId) && orderId > 0 && Number.isFinite(uid) && uid > 0) {
+        ecommerceUserByOrderId.set(orderId, uid);
+      }
+    });
+
     // Ajouter les ventes (sorties et comptants)
     sorties.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
     comptants.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
 
+    // Ajouter les bons e-commerce en "solde à recevoir"
+    (ecommerceOrders || []).forEach((b: any) => {
+      const raw = b?.ecommerce_raw ?? b;
+      if (!isAllowedEcommerceOrderForSolde(raw)) return;
+      const uid = raw?.user_id != null ? Number(raw.user_id) : null;
+      if (!uid || !Number.isFinite(uid)) return;
+      const amount = raw?.solde_amount != null ? Number(raw.solde_amount) : 0;
+      if (!Number.isFinite(amount) || amount <= 0) return;
+      add(uid, amount);
+    });
+
     // Soustraire les avoirs clients (crédits/remboursements)
     avoirsClient.forEach((b: any) => { if (isAllowedStatut(b.statut)) subtract(b.client_id, b.montant_total); });
 
+    // Soustraire les avoirs e-commerce (li e9s  e0 une commande e-commerce)
+    (avoirsEcommerce || []).forEach((a: any) => {
+      if (!isAllowedAvoirEcommerceStatut(a?.statut)) return;
+      const orderId = a?.ecommerce_order_id != null ? Number(a.ecommerce_order_id) : null;
+      if (!orderId || !Number.isFinite(orderId)) return;
+      const uid = ecommerceUserByOrderId.get(orderId);
+      if (!uid) return;
+      subtract(uid, a?.montant_total);
+    });
+
     return map;
-  }, [sorties, comptants, avoirsClient]);
+  }, [sorties, comptants, avoirsClient, ecommerceOrders, avoirsEcommerce]);
 
   const paymentsByContact = useMemo(() => {
     const map = new Map<number, number>();

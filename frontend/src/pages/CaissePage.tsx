@@ -29,7 +29,7 @@ import {
 import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-import { useGetClientsQuery, useGetFournisseursQuery } from '../store/api/contactsApi';
+import { useGetAllClientsQuery, useGetAllFournisseursQuery } from '../store/api/contactsApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { canModifyPayments } from '../utils/permissions';
@@ -82,8 +82,8 @@ const CaissePage = () => {
   // Redux data
   const user = useAppSelector(state => state.auth.user);
   const isPdgOrManagerPlus = user?.role === 'PDG' || user?.role === 'ManagerPlus';
-  const { data: clients = [] } = useGetAllClientsQuery();
-  const { data: fournisseurs = [] } = useGetFournisseursQuery();
+  const { data: clients = [] } = useGetAllClientsQuery(undefined);
+  const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
   const { data: talons = [] } = useGetTalonsQuery(undefined);
   const { data: paymentsApi = [] } = useGetPaymentsQuery();
   const payments = paymentsApi;

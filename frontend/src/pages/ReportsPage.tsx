@@ -16,7 +16,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { useGetProductsQuery } from "../store/api/productsApi";
-import { useGetClientsQuery, useGetFournisseursQuery } from "../store/api/contactsApi";
+import { useGetAllClientsQuery, useGetAllFournisseursQuery } from "../store/api/contactsApi";
 import { useGetComptantQuery } from "../store/api/comptantApi";
 import { useGetSortiesQuery } from "../store/api/sortiesApi";
 import { useGetCommandesQuery } from "../store/api/commandesApi";
@@ -78,6 +78,7 @@ type BonLite = {
   type: "Comptant" | "Sortie" | "Commande" | "Avoir" | "AvoirFournisseur" | "Vehicule";
   contact_id?: number | string | null;
   date: string; // jj-mm-aa
+  date_creation?: string | null;
   montant: number;
   statut: string;
 };
@@ -90,6 +91,7 @@ type PaymentLite = {
   montant: number;
   mode?: string;
   type: string;
+  date_paiement?: string | null;
 };
 
 const ReportsPage: React.FC = () => {
@@ -100,8 +102,8 @@ const ReportsPage: React.FC = () => {
   const [showPasswordError, setShowPasswordError] = useState(false);
 
   /** ---------- Data (RTK Query) ---------- */
-  const { data: clients = [] } = useGetAllClientsQuery();
-  const { data: fournisseurs = [] } = useGetFournisseursQuery();
+  const { data: clients = [] } = useGetAllClientsQuery(undefined);
+  const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
   const { data: products = [] } = useGetProductsQuery();
   const { data: bonsComptant = [] } = useGetComptantQuery(undefined);
   const { data: bonsSortie = [] } = useGetSortiesQuery(undefined);
@@ -709,7 +711,7 @@ const ReportsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{bon.date}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{formatDateTimeWithHour(bon.date_creation)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{bon.date_creation ? formatDateTimeWithHour(bon.date_creation as string) : '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right">
                         {toNumber(bon.montant).toFixed(2)} DH
                       </td>
