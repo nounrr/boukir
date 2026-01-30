@@ -85,7 +85,11 @@ const ProductModal: React.FC<ProductModalProps> = ({
       try {
         // Sanitize possible string inputs with "," or "." before calculations
         const toNum = (v: any) => typeof v === 'string' ? (parseFloat(String(v).replace(',', '.')) || 0) : (Number(v) || 0);
-        const prixAchatNum = toNum(values.prix_achat);
+        const prixAchatRaw = values.prix_achat;
+        const hasPrixAchatInput = !(prixAchatRaw === null || prixAchatRaw === undefined || String(prixAchatRaw).trim() === '');
+        const prixAchatNum = hasPrixAchatInput
+          ? toNum(prixAchatRaw)
+          : (editingProduct ? toNum((editingProduct as any).prix_achat) : 0);
         const crPctNum = toNum(values.cout_revient_pourcentage);
         const grosPctNum = toNum(values.prix_gros_pourcentage);
         const ventePctNum = toNum(values.prix_vente_pourcentage);
@@ -327,6 +331,13 @@ const ProductModal: React.FC<ProductModalProps> = ({
                   formik.setFieldValue('prix_achat', raw);
                 }}
                 onBlur={() => {
+                  const raw = String(formik.values.prix_achat ?? '').trim();
+                  if (raw === '') {
+                    if (editingProduct) {
+                      formik.setFieldValue('prix_achat', String((editingProduct as any).prix_achat ?? ''));
+                    }
+                    return;
+                  }
                   const num = typeof formik.values.prix_achat === 'string'
                     ? (parseFloat(String(formik.values.prix_achat).replace(',', '.')) || 0)
                     : (Number(formik.values.prix_achat) || 0);

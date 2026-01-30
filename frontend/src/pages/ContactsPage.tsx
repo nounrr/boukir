@@ -217,18 +217,30 @@ const ContactsPage: React.FC = () => {
 
   const isGroupsTab = activeTab === 'groups';
 
-  const openGroupEditModal = React.useCallback((groupId: number, mode?: 'members' | 'all', contactsTab?: 'clients' | 'fournisseurs') => {
+  const openGroupEditModal = React.useCallback((
+    groupId: number,
+    mode?: 'members' | 'all',
+    contactsTab?: 'clients' | 'fournisseurs',
+    initialName?: string
+  ) => {
     const g = contactGroups.find((x) => x.id === groupId);
     setGroupEditId(groupId);
-    setGroupEditName(g?.name || '');
+    setGroupEditName((initialName ?? g?.name) || '');
     setGroupEditMode(mode || 'members');
     setGroupEditContactsTab(contactsTab || 'clients');
     setGroupEditSearch('');
     setGroupEditPage(1);
     setIsGroupEditModalOpen(true);
     setTimeout(() => {
-      const el = document.getElementById('group-edit-search') as HTMLInputElement | null;
-      el?.focus();
+      const preferName = initialName != null;
+      const nameEl = document.getElementById('group-edit-name') as HTMLInputElement | null;
+      const searchEl = document.getElementById('group-edit-search') as HTMLInputElement | null;
+      if (preferName) {
+        nameEl?.focus();
+        nameEl?.select?.();
+      } else {
+        searchEl?.focus();
+      }
     }, 50);
   }, [contactGroups]);
 
@@ -277,12 +289,43 @@ const ContactsPage: React.FC = () => {
     groupId: groupEditQueryGroupId,
   }, { skip: groupEditBaseSkip || groupEditContactsTab !== 'fournisseurs' });
 
+  // Quand on est en mode "Tous" (assignation), on doit cacher les contacts déjà assignés au groupe.
+  // On récupère la liste des membres (sans filtre de recherche) et on filtre côté UI.
+  const groupMembersBaseSkip = !isGroupEditModalOpen || groupEditId == null || groupEditMode !== 'all';
+  const { data: groupMembersClientsResponse } = useGetClientsQuery({
+    page: 1,
+    limit: 5000,
+    search: '',
+    clientSubTab: 'all',
+    groupId: groupEditId ?? undefined,
+  }, { skip: groupMembersBaseSkip || groupEditContactsTab !== 'clients' });
+  const { data: groupMembersFournisseursResponse } = useGetFournisseursQuery({
+    page: 1,
+    limit: 5000,
+    search: '',
+    groupId: groupEditId ?? undefined,
+  }, { skip: groupMembersBaseSkip || groupEditContactsTab !== 'fournisseurs' });
+
   const groupEditContacts = (groupEditContactsTab === 'clients'
     ? (groupEditClientsResponse?.data || [])
     : (groupEditFournisseursResponse?.data || [])) as Contact[];
   const groupEditPagination = groupEditContactsTab === 'clients'
     ? groupEditClientsResponse?.pagination
     : groupEditFournisseursResponse?.pagination;
+
+  const groupMemberIdSet = useMemo(() => {
+    if (groupEditMode !== 'all') return new Set<number>();
+    const members = (groupEditContactsTab === 'clients'
+      ? (groupMembersClientsResponse?.data || [])
+      : (groupMembersFournisseursResponse?.data || [])) as Contact[];
+    return new Set<number>(members.map((c) => Number(c.id)).filter((n) => Number.isFinite(n)));
+  }, [groupEditMode, groupEditContactsTab, groupMembersClientsResponse, groupMembersFournisseursResponse]);
+
+  const visibleGroupEditContacts = useMemo(() => {
+    if (groupEditMode !== 'all') return groupEditContacts;
+    if (!groupMemberIdSet.size) return groupEditContacts;
+    return groupEditContacts.filter((c) => !groupMemberIdSet.has(Number(c.id)));
+  }, [groupEditMode, groupEditContacts, groupMemberIdSet]);
 
   // États pour la configuration des périodes
   const [showSettings, setShowSettings] = useState(false);
@@ -2616,15 +2659,68 @@ const ContactsPage: React.FC = () => {
     return rows;
   }, [paginatedContacts]);
 
+  const expandedGroupIdForActiveTab = useMemo(() => {
+    const prefix = `${activeTab}:`;
+    for (const key of expandedGroupKeys) {
+      if (key.startsWith(prefix)) {
+        const raw = key.slice(prefix.length);
+        const id = Number(raw);
+        return Number.isFinite(id) ? id : null;
+      }
+    }
+    return null;
+  }, [expandedGroupKeys, activeTab]);
+
+  const expandedGroupRowForActiveTab = useMemo(() => {
+    if (!expandedGroupIdForActiveTab) return null;
+    const row = accordionRows.find((r) => r.kind === 'group' && r.groupId === expandedGroupIdForActiveTab);
+    return row && row.kind === 'group' ? row : null;
+  }, [accordionRows, expandedGroupIdForActiveTab]);
+
+  const visibleAccordionRows: AccordionRow[] = useMemo(() => {
+    if (expandedGroupRowForActiveTab) return [expandedGroupRowForActiveTab];
+    return accordionRows;
+  }, [accordionRows, expandedGroupRowForActiveTab]);
+
+  const expandedGroupTotalSoldeForActiveTab = useMemo(() => {
+    if (!expandedGroupRowForActiveTab) return 0;
+    return (expandedGroupRowForActiveTab.members || []).reduce((s, c) => s + getContactSoldeDisplay(c), 0);
+  }, [expandedGroupRowForActiveTab, getContactSoldeDisplay]);
+
+  const clearExpandedGroupsForActiveTab = React.useCallback(() => {
+    const prefix = `${activeTab}:`;
+    setExpandedGroupKeys((prev) => {
+      const next = new Set(prev);
+      for (const k of Array.from(next)) {
+        if (k.startsWith(prefix)) next.delete(k);
+      }
+      return next;
+    });
+  }, [activeTab]);
+
   const toggleGroupExpanded = React.useCallback((groupId: number) => {
     const key = `${activeTab}:${groupId}`;
     setExpandedGroupKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
-      else next.add(key);
+      else {
+        // UX: n'afficher qu'un seul groupe ouvert à la fois (mode focus)
+        for (const k of Array.from(next)) {
+          if (k.startsWith(`${activeTab}:`)) next.delete(k);
+        }
+        next.add(key);
+      }
       return next;
     });
   }, [activeTab]);
+
+  React.useEffect(() => {
+    if (!expandedGroupIdForActiveTab) return;
+    const existsOnPage = accordionRows.some((r) => r.kind === 'group' && r.groupId === expandedGroupIdForActiveTab);
+    if (!existsOnPage) {
+      clearExpandedGroupsForActiveTab();
+    }
+  }, [expandedGroupIdForActiveTab, accordionRows, clearExpandedGroupsForActiveTab]);
 
   // Réinitialiser la page quand on change d'onglet, de sous-onglet ou de recherche
   React.useEffect(() => {
@@ -2854,76 +2950,15 @@ const ContactsPage: React.FC = () => {
                 type="button"
                 onClick={async () => {
                   try {
-                    const Swal = (await import('sweetalert2')).default;
-                    const result = await Swal.fire({
-                      title: 'Nouveau groupe',
-                      html: `
-                        <div style="text-align:left;font-size:13px;margin-top:10px">
-                          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                            <input type="checkbox" id="link-contacts" />
-                            <span>Lier des contacts à ce groupe maintenant</span>
-                          </label>
-                          <div id="link-options" style="margin-top:10px;opacity:0.5">
-                            <div style="font-weight:600;margin-bottom:6px">Type de contacts</div>
-                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px">
-                              <input type="radio" name="link-type" value="clients" checked />
-                              <span>Clients</span>
-                            </label>
-                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                              <input type="radio" name="link-type" value="fournisseurs" />
-                              <span>Fournisseurs</span>
-                            </label>
-                          </div>
-                        </div>
-                      `,
-                      input: 'text',
-                      inputPlaceholder: 'Nom du groupe',
-                      inputAttributes: { autocapitalize: 'off' },
-                      showCancelButton: true,
-                      confirmButtonText: 'Créer',
-                      cancelButtonText: 'Annuler',
-                      reverseButtons: true,
-                      buttonsStyling: false,
-                      customClass: {
-                        confirmButton: 'px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md',
-                        cancelButton: 'px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-md',
-                      },
-                      didOpen: () => {
-                        const cb = document.getElementById('link-contacts') as HTMLInputElement | null;
-                        const opts = document.getElementById('link-options') as HTMLDivElement | null;
-                        const sync = () => {
-                          if (!opts) return;
-                          const enabled = !!cb?.checked;
-                          opts.style.opacity = enabled ? '1' : '0.5';
-                          opts.style.pointerEvents = enabled ? 'auto' : 'none';
-                        };
-                        sync();
-                        cb?.addEventListener('change', sync);
-                      },
-                      inputValidator: (value) => {
-                        const v = String(value || '').trim();
-                        return v ? undefined : 'Nom du groupe requis';
-                      },
-                      preConfirm: (val) => {
-                        const linkContacts = !!(document.getElementById('link-contacts') as HTMLInputElement | null)?.checked;
-                        const linkType = ((document.querySelector('input[name="link-type"]:checked') as HTMLInputElement | null)?.value || 'clients') as
-                          | 'clients'
-                          | 'fournisseurs';
-                        return { name: typeof val === 'string' ? val : '', linkContacts, linkType };
-                      },
-                    });
-                    if (!result.isConfirmed) return;
-                    const clean = String((result.value as any)?.name || '').trim();
-                    if (!clean) return;
-                    const created = await createContactGroup({ name: clean }).unwrap();
+                    // Ouvrir directement la modal d'édition (2ème popup) sans demander le nom d'abord.
+                    // On crée un groupe avec un nom provisoire unique, puis l'utilisateur peut le renommer.
+                    const now = new Date();
+                    const pad2 = (n: number) => String(n).padStart(2, '0');
+                    const provisionalName = `Nouveau groupe ${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
+                    const created = await createContactGroup({ name: provisionalName }).unwrap();
                     showSuccess('Groupe créé');
-
-                    const linkContacts = (result.value as any)?.linkContacts === true;
-                    const linkType = ((result.value as any)?.linkType || 'clients') as 'clients' | 'fournisseurs';
-                    if (linkContacts) {
-                      openGroupEditModal(created.id, 'all', linkType);
-                      showInfo('Groupe créé: tu peux maintenant lier des contacts');
-                    }
+                    openGroupEditModal(created.id, 'all', 'clients', provisionalName);
+                    showInfo('Renomme le groupe et lie les contacts ici');
                   } catch (e: any) {
                     showError(e?.data?.error || e?.message || 'Erreur création groupe');
                   }
@@ -3025,6 +3060,7 @@ const ContactsPage: React.FC = () => {
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nom du groupe</label>
                   <input
+                    id="group-edit-name"
                     value={groupEditName}
                     onChange={(e) => setGroupEditName(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -3140,14 +3176,16 @@ const ContactsPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {groupEditContacts.length === 0 ? (
+                    {visibleGroupEditContacts.length === 0 ? (
                       <tr>
                         <td colSpan={4} className="px-4 py-4 text-center text-sm text-gray-500">
-                          Aucun contact
+                          {groupEditMode === 'all'
+                            ? 'Aucun contact à assigner (tous déjà dans ce groupe)'
+                            : 'Aucun contact'}
                         </td>
                       </tr>
                     ) : (
-                      groupEditContacts.map((c) => (
+                      visibleGroupEditContacts.map((c) => (
                         <tr key={c.id}>
                           <td className="px-4 py-2 text-sm text-gray-900">{c.nom_complet || '-'}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">{c.societe || '-'}</td>
@@ -3280,6 +3318,41 @@ const ContactsPage: React.FC = () => {
             </div>
           </div>
 
+          {expandedGroupRowForActiveTab && (
+            <div className="mb-6 bg-white p-5 rounded-lg shadow border border-blue-100">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-xs uppercase tracking-wide text-gray-500">Groupe ouvert</div>
+                  <div className="text-lg font-semibold text-gray-900 truncate">
+                    {(expandedGroupRowForActiveTab.groupName && expandedGroupRowForActiveTab.groupName.trim())
+                      ? expandedGroupRowForActiveTab.groupName
+                      : `Groupe #${expandedGroupRowForActiveTab.groupId}`}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {(expandedGroupRowForActiveTab.members || []).length} membre(s) affiché(s)
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs uppercase tracking-wide text-gray-500">Total solde</div>
+                  <div className={`text-2xl font-bold ${expandedGroupTotalSoldeForActiveTab > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                    {expandedGroupTotalSoldeForActiveTab.toFixed(2)} DH
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={clearExpandedGroupsForActiveTab}
+                  className="px-4 py-2 rounded-md border border-gray-300 bg-white text-sm hover:bg-gray-50"
+                  title="Afficher tous les contacts"
+                >
+                  Afficher tous
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Contrôles de pagination */}
           <div className="mb-4 flex justify-between items-center">
             <div className="flex items-center gap-4">
@@ -3383,14 +3456,14 @@ const ContactsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {accordionRows.length === 0 ? (
+              {visibleAccordionRows.length === 0 ? (
                 <tr>
                   <td colSpan={activeTab === 'clients' ? 12 : 11} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun {activeTab === 'clients' ? 'client' : 'fournisseur'} trouvé
                   </td>
                 </tr>
               ) : (
-                accordionRows.map((row) => {
+                visibleAccordionRows.map((row) => {
                   if (row.kind === 'contact') {
                     const contact = row.contact;
                     const isOverdue = isOverdueContact(contact, payments);
@@ -3775,12 +3848,12 @@ const ContactsPage: React.FC = () => {
 
         {/* Mobile: card view */}
         <div className="sm:hidden divide-y divide-gray-100">
-          {accordionRows.length === 0 ? (
+          {visibleAccordionRows.length === 0 ? (
             <div className="p-4 text-center text-sm text-gray-500">
               Aucun {activeTab === 'clients' ? 'client' : 'fournisseur'} trouvé
             </div>
           ) : (
-            accordionRows.map((row) => {
+            visibleAccordionRows.map((row) => {
               if (row.kind === 'contact') {
                 const contact = row.contact;
                 const display = getContactSoldeDisplay(contact);

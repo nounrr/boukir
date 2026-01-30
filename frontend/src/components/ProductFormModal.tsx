@@ -331,7 +331,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
         return;
       }
-      const prixAchatNum = toNum(values.prix_achat);
+      const prixAchatRaw = values.prix_achat;
+      const hasPrixAchatInput = !(prixAchatRaw === null || prixAchatRaw === undefined || String(prixAchatRaw).trim() === '');
+      const prixAchatNum = hasPrixAchatInput
+        ? toNum(prixAchatRaw)
+        : (editingProduct ? toNum((editingProduct as any).prix_achat) : 0);
       const kgNum = values.kg !== undefined && values.kg !== null ? toNum(values.kg) : null;
       const crPctNum = toNum(values.cout_revient_pourcentage);
       const pgPctNum = toNum(values.prix_gros_pourcentage);
@@ -377,7 +381,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           if (productData.brand_id) formData.append('brand_id', String(productData.brand_id));
           formData.append('quantite', String(qteNum));
           if (kgNum !== null && kgNum !== undefined) formData.append('kg', String(kgNum));
-          formData.append('prix_achat', String(prixAchatNum));
+          // IMPORTANT: ne pas modifier prix_achat automatiquement.
+          // Si l'utilisateur laisse le champ vide, on n'envoie pas prix_achat => le backend garde l'ancien prix.
+          if (hasPrixAchatInput) {
+            formData.append('prix_achat', String(prixAchatNum));
+          }
           formData.append('cout_revient_pourcentage', String(crPctNum));
           formData.append('prix_gros_pourcentage', String(pgPctNum));
           formData.append('prix_vente_pourcentage', String(pvPctNum));
@@ -1150,7 +1158,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 name="prix_achat"
                 value={String(formik.values.prix_achat ?? '')}
                 onChange={(e) => formik.setFieldValue('prix_achat', e.target.value)}
-                onBlur={() => formik.setFieldValue('prix_achat', toNum(formik.values.prix_achat))}
+                onBlur={() => {
+                  const raw = String(formik.values.prix_achat ?? '').trim();
+                  if (raw === '') {
+                    // En édition: si on efface puis blur, on revient à l'ancien prix au lieu de forcer 0.
+                    if (editingProduct) {
+                      formik.setFieldValue('prix_achat', String((editingProduct as any).prix_achat ?? ''));
+                    }
+                    return;
+                  }
+                  formik.setFieldValue('prix_achat', toNum(raw));
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="0.00"
               />

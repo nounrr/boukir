@@ -340,53 +340,110 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     if (enteringValidation || leavingValidation) {
       // Récupérer items + produits
       const [items] = await connection.execute(`
-        SELECT ci.id AS ci_id, ci.product_id, ci.prix_unitaire, ci.old_prix_achat, ci.price_applied,
+        SELECT ci.id AS ci_id, ci.product_id, ci.variant_id, ci.prix_unitaire, ci.old_prix_achat, ci.price_applied,
                p.prix_achat AS prod_prix_achat,
-               p.cout_revient_pourcentage, p.prix_gros_pourcentage, p.prix_vente_pourcentage,
-               p.cout_revient, p.prix_gros, p.prix_vente
+               p.prix_vente AS prod_prix_vente,
+               p.cout_revient_pourcentage AS prod_cout_revient_pourcentage,
+               p.prix_gros_pourcentage AS prod_prix_gros_pourcentage,
+               p.cout_revient AS prod_cout_revient,
+               p.prix_gros AS prod_prix_gros,
+               pv.prix_achat AS var_prix_achat,
+               pv.prix_vente AS var_prix_vente,
+               pv.cout_revient_pourcentage AS var_cout_revient_pourcentage,
+               pv.prix_gros_pourcentage AS var_prix_gros_pourcentage,
+               pv.cout_revient AS var_cout_revient,
+               pv.prix_gros AS var_prix_gros
           FROM commande_items ci
           JOIN products p ON p.id = ci.product_id
+          LEFT JOIN product_variants pv ON pv.id = ci.variant_id
          WHERE ci.bon_commande_id = ?
       `, [id]);
 
+      const computeVentePourcentage = (prixVente, prixAchat) => {
+        const pv = Number(prixVente);
+        const pa = Number(prixAchat);
+        if (!Number.isFinite(pv) || !Number.isFinite(pa) || pa <= 0) return null;
+        // products.js utilise: pv = pa * (1 + pvp/100)
+        const pvp = ((pv / pa) - 1) * 100;
+        return Math.round(pvp * 100) / 100;
+      };
+
       for (const row of items) {
         const {
-          ci_id, product_id, prix_unitaire, old_prix_achat, price_applied,
+          ci_id, product_id, variant_id, prix_unitaire, old_prix_achat, price_applied,
           prod_prix_achat,
-          cout_revient_pourcentage, prix_gros_pourcentage, prix_vente_pourcentage
+          prod_prix_vente,
+          prod_cout_revient_pourcentage, prod_prix_gros_pourcentage,
+          prod_cout_revient, prod_prix_gros,
+          var_prix_achat,
+          var_prix_vente,
+          var_cout_revient_pourcentage, var_prix_gros_pourcentage,
+          var_cout_revient, var_prix_gros
         } = row;
 
+        // Si on a une variante valide, on applique les prix sur product_variants.
+        // Sinon, fallback sur products.
+        const hasVariantTarget = variant_id != null && var_prix_achat != null;
+        const currentPrixAchat = hasVariantTarget ? Number(var_prix_achat) : Number(prod_prix_achat);
+        const currentPrixVente = hasVariantTarget ? Number(var_prix_vente) : Number(prod_prix_vente);
+        const crPct = hasVariantTarget ? var_cout_revient_pourcentage : prod_cout_revient_pourcentage;
+        const pgPct = hasVariantTarget ? var_prix_gros_pourcentage : prod_prix_gros_pourcentage;
+        const currentCr = hasVariantTarget ? var_cout_revient : prod_cout_revient;
+        const currentPg = hasVariantTarget ? var_prix_gros : prod_prix_gros;
+
         if (enteringValidation) {
-          if (prix_unitaire > 0 && Number(prix_unitaire) !== Number(prod_prix_achat)) {
+          if (prix_unitaire > 0 && Number(prix_unitaire) !== Number(currentPrixAchat)) {
             const newPrixAchat = Number(prix_unitaire);
-            const oldPrix = Number(prod_prix_achat);
-            const newCoutRevient = cout_revient_pourcentage != null ? newPrixAchat * (1 + cout_revient_pourcentage / 100) : row.cout_revient;
-            const newPrixGros = prix_gros_pourcentage != null ? newPrixAchat * (1 + prix_gros_pourcentage / 100) : row.prix_gros;
-            const newPrixVente = prix_vente_pourcentage != null ? newPrixAchat * (1 + prix_vente_pourcentage / 100) : row.prix_vente;
+            const oldPrix = Number(currentPrixAchat);
+            const newCoutRevient = crPct != null ? newPrixAchat * (1 + crPct / 100) : currentCr;
+            const newPrixGros = pgPct != null ? newPrixAchat * (1 + pgPct / 100) : currentPg;
+            const newPrixVentePct = computeVentePourcentage(currentPrixVente, newPrixAchat);
 
             // Sauvegarde old prix dans commande_items et marque applied
             await connection.execute(`UPDATE commande_items SET old_prix_achat = ?, price_applied = 1 WHERE id = ?`, [oldPrix, ci_id]);
-            // Appliquer au produit
-            await connection.execute(`
-              UPDATE products
-                 SET prix_achat = ?,
-                     cout_revient = ?,
-                     prix_gros = ?,
-                     prix_vente = ?
-               WHERE id = ?
-            `, [newPrixAchat, newCoutRevient, newPrixGros, newPrixVente, product_id]);
+            if (hasVariantTarget) {
+              // Appliquer à la variante (sans toucher prix_vente, mais mettre à jour le pourcentage)
+              await connection.execute(
+                `UPDATE product_variants
+                    SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente_pourcentage = COALESCE(?, prix_vente_pourcentage)
+                  WHERE id = ?`,
+                [newPrixAchat, newCoutRevient, newPrixGros, newPrixVentePct, variant_id]
+              );
+            } else {
+              // Appliquer au produit (sans toucher prix_vente, mais mettre à jour le pourcentage)
+              await connection.execute(
+                `UPDATE products
+                    SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente_pourcentage = COALESCE(?, prix_vente_pourcentage)
+                  WHERE id = ?`,
+                [newPrixAchat, newCoutRevient, newPrixGros, newPrixVentePct, product_id]
+              );
+            }
           }
         } else if (leavingValidation) {
           // Revert seulement si on avait appliqué et si le prix produit correspond toujours au prix_unitaire (sécurité)
           if (price_applied === 1 && old_prix_achat != null) {
-            // Vérifier prix produit courant
-            if (Number(prod_prix_achat) === Number(prix_unitaire)) {
+            // Vérifier prix courant (produit ou variante)
+            if (Number(currentPrixAchat) === Number(prix_unitaire)) {
               const revertPrix = Number(old_prix_achat);
-              const newCoutRevient = cout_revient_pourcentage != null ? revertPrix * (1 + cout_revient_pourcentage / 100) : row.cout_revient;
-              const newPrixGros = prix_gros_pourcentage != null ? revertPrix * (1 + prix_gros_pourcentage / 100) : row.prix_gros;
-              const newPrixVente = prix_vente_pourcentage != null ? revertPrix * (1 + prix_vente_pourcentage / 100) : row.prix_vente;
+              const newCoutRevient = crPct != null ? revertPrix * (1 + crPct / 100) : currentCr;
+              const newPrixGros = pgPct != null ? revertPrix * (1 + pgPct / 100) : currentPg;
+              const revertPrixVentePct = computeVentePourcentage(currentPrixVente, revertPrix);
 
-              await connection.execute(`UPDATE products SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente = ? WHERE id = ?`, [revertPrix, newCoutRevient, newPrixGros, newPrixVente, product_id]);
+              if (hasVariantTarget) {
+                await connection.execute(
+                  `UPDATE product_variants
+                      SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente_pourcentage = COALESCE(?, prix_vente_pourcentage)
+                    WHERE id = ?`,
+                  [revertPrix, newCoutRevient, newPrixGros, revertPrixVentePct, variant_id]
+                );
+              } else {
+                await connection.execute(
+                  `UPDATE products
+                      SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente_pourcentage = COALESCE(?, prix_vente_pourcentage)
+                    WHERE id = ?`,
+                  [revertPrix, newCoutRevient, newPrixGros, revertPrixVentePct, product_id]
+                );
+              }
             }
             // Dans tous les cas on remet le flag (on ne peut revert qu'une fois)
             await connection.execute(`UPDATE commande_items SET price_applied = 0 WHERE id = ?`, [ci_id]);

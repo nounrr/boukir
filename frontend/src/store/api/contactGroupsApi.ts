@@ -17,7 +17,7 @@ const contactGroupsApi = api.injectEndpoints({
       providesTags: ['ContactGroup'],
     }),
 
-    createContactGroup: builder.mutation<ContactGroup, { name: string }>({
+    createContactGroup: builder.mutation<ContactGroup, { name: string; contact_type?: 'Client' | 'Fournisseur' }>({
       query: (body) => ({
         url: '/contact-groups',
         method: 'POST',
