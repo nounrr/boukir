@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
+import { useGetContactQuery } from '../store/api/contactsApi';
 
 interface PaymentPrintTemplateProps {
   payment: any;
@@ -49,6 +50,10 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
   bonsAvoirsFournisseur = [],
 }) => {
   const [selectedCompany, setSelectedCompany] = useState<'DIAMOND' | 'MPC'>(companyType);
+
+  const contactIdRaw = payment?.contact_id ?? payment?.client_id ?? payment?.fournisseur_id ?? null;
+  const contactIdNum = contactIdRaw != null ? Number(contactIdRaw) : null;
+  const { data: contactFromApi } = useGetContactQuery(contactIdNum as any, { skip: !contactIdNum });
 
   const formatHeure = (dateStr: string) => {
     if (!dateStr) return "";
@@ -110,9 +115,9 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
   // Calcul du solde cumulé (privilégier le solde_cumule backend si dispo; sinon fallback logique locale)
   const calculateCumulativeSaldo = () => {
     const contactEntity = client || fournisseur;
-    const soldeCumuleBackend = contactEntity && (contactEntity as any).solde_cumule;
+    const soldeCumuleBackend = (contactFromApi as any)?.solde_cumule ?? (contactEntity as any)?.solde_cumule;
     const startingSolde = Number(contactEntity?.solde ?? 0); // fallback
-    const contactId = payment.contact_id ?? payment.client_id ?? payment.fournisseur_id ?? null;
+    const contactId = contactIdNum;
     const isClient = payment.type_paiement === 'Client' || !!client;
 
     // Si le backend fournit solde_cumule, on l'utilise comme "solde après" (plus fiable, tient compte des règles backend)

@@ -444,6 +444,18 @@ const BonsPage = () => {
   // Helper to get contact name (client or fournisseur) used by filtering/render
   const getContactName = (bon: any) => {
     const ecommerceRaw = bon?.ecommerce_raw ?? bon;
+
+    const ecommerceUserId = ecommerceRaw?.user_id != null && ecommerceRaw?.user_id !== '' ? Number(ecommerceRaw.user_id) : null;
+    const ecommerceContactFromUserId =
+      ecommerceUserId != null && Number.isFinite(ecommerceUserId)
+        ? (clients || []).find((c: any) => Number(c?.id) === ecommerceUserId)
+        : null;
+
+    // Prefer contact lookup by user_id for e-commerce bons when available
+    if ((bon?.type === 'Ecommerce' || currentTab === 'Ecommerce' || bon?.type === 'AvoirEcommerce' || currentTab === 'AvoirEcommerce') && ecommerceContactFromUserId?.nom_complet) {
+      return String(ecommerceContactFromUserId.nom_complet);
+    }
+
     const ecommerceContactName =
       ecommerceRaw?.contact_nom_complet ||
       ecommerceRaw?.contact_name ||
@@ -2273,6 +2285,38 @@ const BonsPage = () => {
                               </button>
                             );
                           })()}
+
+                          {/* Avoir e-commerce: always visible validate + back-to-pending */}
+                          {(() => {
+                            const isAvoirEcom = currentTab === 'AvoirEcommerce' || bon?.type === 'AvoirEcommerce';
+                            if (!isAvoirEcom) return null;
+                            // UI restriction already hides this tab for non-PDG, but keep it safe.
+                            if (currentUser?.role !== 'PDG') return null;
+                            if (bon.statut === 'Annulé') return null;
+
+                            return (
+                              <>
+                                {bon.statut !== 'Validé' && (
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'Validé')}
+                                    className="text-emerald-600 hover:text-emerald-800"
+                                    title="Valider (Avoir e-commerce)"
+                                  >
+                                    <CheckCircle2 size={ACTION_ICON_SIZE} />
+                                  </button>
+                                )}
+                                {bon.statut === 'Validé' && (
+                                  <button
+                                    onClick={() => handleChangeStatus(bon, 'En attente')}
+                                    className="text-yellow-600 hover:text-yellow-800"
+                                    title="Revenir en attente (Avoir e-commerce)"
+                                  >
+                                    <Clock size={ACTION_ICON_SIZE} />
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                           
                           {/* Validation icon - visible for authorized users and non-validated bons */}
                           {(() => {
@@ -2348,7 +2392,7 @@ const BonsPage = () => {
                             
                             {/* Popup menu */}
                             {openMenuBonId === String(bon.id) && (
-                              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 p-1">
+                              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-[9999] p-1">
                                 <div className="flex flex-col gap-1">
                                   {/* Status-change actions */}
                                   {(() => {
@@ -2747,6 +2791,11 @@ const BonsPage = () => {
 
                   {(selectedBon?.type === 'Ecommerce' || currentTab === 'Ecommerce') && (() => {
                     const raw = (selectedBon as any)?.ecommerce_raw ?? selectedBon;
+                    const uid = raw?.user_id != null && raw?.user_id !== '' ? Number(raw.user_id) : null;
+                    const contactFromUserId =
+                      uid != null && Number.isFinite(uid)
+                        ? (clients || []).find((c: any) => Number(c?.id) === uid)
+                        : null;
                     return (
                       <div className="space-y-4">
                         {/* Numéro commande & Client */}
@@ -2763,6 +2812,28 @@ const BonsPage = () => {
                             <div>
                               <span className="text-gray-500">user_id</span>
                               <p className="font-semibold text-gray-900">{raw?.user_id ?? '-'}</p>
+                            </div>
+                            <div className="md:col-span-2">
+                              <span className="text-gray-500">Client (table contacts)</span>
+                              <p className="font-semibold text-gray-900">
+                                {contactFromUserId?.nom_complet
+                                  ? String(contactFromUserId.nom_complet)
+                                  : (uid != null ? 'Contact introuvable' : '-')}
+                              </p>
+                              {(contactFromUserId?.telephone || contactFromUserId?.email || contactFromUserId?.reference) && (
+                                <p className="text-xs text-gray-600 mt-1">
+                                  {[
+                                    contactFromUserId?.reference ? `Ref: ${String(contactFromUserId.reference)}` : null,
+                                    contactFromUserId?.telephone ? `Tel: ${String(contactFromUserId.telephone)}` : null,
+                                    contactFromUserId?.email ? `Email: ${String(contactFromUserId.email)}` : null,
+                                  ].filter(Boolean).join(' • ')}
+                                </p>
+                              )}
+                              {contactFromUserId?.solde_cumule != null && (
+                                <p className="text-xs text-gray-600 mt-1">
+                                  Solde cumulé: {Number(contactFromUserId.solde_cumule).toFixed(2)} DH
+                                </p>
+                              )}
                             </div>
                             <div>
                               <span className="text-gray-500">contact_nom_complet</span>

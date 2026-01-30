@@ -70,6 +70,25 @@ const ContactsPage: React.FC = () => {
   const [createRemiseItem] = useCreateRemiseItemMutation();
   const [reorderPayments] = useReorderPaymentsMutation();
 
+  // Statuts considérés comme "actifs" (bons/paiements) pour les calculs
+  const isAllowedStatut = (s: any) => {
+    if (!s) return false;
+    const norm = String(s).toLowerCase().trim();
+    return !(
+      norm === 'annulé' ||
+      norm === 'annule' ||
+      norm === 'brouillon' ||
+      norm === 'refusé' ||
+      norm === 'refuse' ||
+      norm === 'expiré' ||
+      norm === 'expire'
+    );
+  };
+
+  // Config période "retard de paiement" (utilisée dans PeriodConfig + tri)
+  const [overdueValue, setOverdueValue] = useState<number>(30);
+  const [overdueUnit, setOverdueUnit] = useState<'days' | 'months'>('days');
+
   const isActiveBonStatut = (s: any) => {
     if (!s) return false;
     const norm = String(s).toLowerCase();
@@ -93,17 +112,7 @@ const ContactsPage: React.FC = () => {
     }
 
     // 1. Vérifier que le solde cumulé est > 0
-    const backend = (contact as any).solde_cumule;
-    let solde: number;
-
-    if (backend != null) {
-      solde = Number(backend) || 0;
-    } else {
-      // Calcul local du solde si pas de valeur backend
-      const base = Number(contact.solde) || 0;
-      // Pour simplifier, on prend juste le solde de base ici
-      solde = base;
-    }
+    const solde = Number((contact as any).solde_cumule ?? 0) || 0;
 
     if (solde <= 0) return false;
 
@@ -184,6 +193,10 @@ const ContactsPage: React.FC = () => {
   const { data: products = [] } = useGetProductsQuery();
   // Allow selecting bons to control print content
   const [selectedBonIds, setSelectedBonIds] = React.useState<Set<number>>(new Set());
+  const [selectedProductIds, setSelectedProductIds] = React.useState<Set<string>>(new Set());
+  const [showRemiseMode, setShowRemiseMode] = useState(false);
+  const [selectedItemsForRemise, setSelectedItemsForRemise] = useState<Set<string>>(new Set());
+  const [remisePrices, setRemisePrices] = useState<Record<string, number>>({});
 
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs' | 'groups'>('clients');
   const [clientSubTab, setClientSubTab] = useState<'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'>('all');
@@ -207,6 +220,9 @@ const ContactsPage: React.FC = () => {
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [printModal, setPrintModal] = useState<{ open: boolean; mode: 'products' | null }>({ open: false, mode: null });
+  const [printProducts, setPrintProducts] = useState<any[]>([]);
 
   const { data: contactGroups = [], isLoading: contactGroupsLoading } = useGetContactGroupsQuery();
   const [createContactGroup] = useCreateContactGroupMutation();
@@ -321,43 +337,25 @@ const ContactsPage: React.FC = () => {
     return new Set<number>(members.map((c) => Number(c.id)).filter((n) => Number.isFinite(n)));
   }, [groupEditMode, groupEditContactsTab, groupMembersClientsResponse, groupMembersFournisseursResponse]);
 
-  const visibleGroupEditContacts = useMemo(() => {
-    if (groupEditMode !== 'all') return groupEditContacts;
-    if (!groupMemberIdSet.size) return groupEditContacts;
-    return groupEditContacts.filter((c) => !groupMemberIdSet.has(Number(c.id)));
-  }, [groupEditMode, groupEditContacts, groupMemberIdSet]);
+  const visibleGroupEditContacts = useMemo((): Contact[] => {
+    const term = String(groupEditSearch || '').trim().toLowerCase();
 
-  // États pour la configuration des périodes
-  const [showSettings, setShowSettings] = useState(false);
-  const [overdueValue, setOverdueValue] = useState(() => {
-    const saved = localStorage.getItem('contacts-overdue-value');
-    return saved ? parseInt(saved) : 4;
-  });
-  const [overdueUnit, setOverdueUnit] = useState<'days' | 'months'>(() => {
-    const saved = localStorage.getItem('contacts-overdue-unit');
-    return (saved as 'days' | 'months') || 'months';
-  });
+    let rows = groupEditContacts;
 
-  // Sauvegarder les paramètres dans localStorage
-  React.useEffect(() => {
-    localStorage.setItem('contacts-overdue-value', overdueValue.toString());
-    localStorage.setItem('contacts-overdue-unit', overdueUnit);
-  }, [overdueValue, overdueUnit]);
-  // États pour l'application des remises
-  const [showRemiseMode, setShowRemiseMode] = useState(false);
-  const [remisePrices, setRemisePrices] = useState<Record<string, number>>({});
-  const [selectedItemsForRemise, setSelectedItemsForRemise] = useState<Set<string>>(new Set());
-  const isAllowedStatut = (s: any) => {
-    if (!s) return false;
-    const norm = String(s).toLowerCase();
-    return norm === 'validé' || norm === 'valide' || norm === 'en attente' || norm === 'attente';
-  };
-  // Print modal state
-  const [printModal, setPrintModal] = useState<{ open: boolean; mode: 'products' | null }>({ open: false, mode: null });
-  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
-  const [printProducts, setPrintProducts] = useState<any[]>([]);
+    if (groupEditMode === 'all' && groupMemberIdSet.size > 0) {
+      rows = rows.filter((c) => !groupMemberIdSet.has(Number(c.id)));
+    }
 
-  // Charger les bons réels (selon type). Chargés globalement pour stats/solde.
+    if (!term) return rows;
+    return rows.filter((c) => {
+      const n = String(c.nom_complet || '').toLowerCase();
+      const s = String(c.societe || '').toLowerCase();
+      const t = String(c.telephone || '').toLowerCase();
+      return n.includes(term) || s.includes(term) || t.includes(term);
+    });
+  }, [groupEditContacts, groupEditSearch, groupEditMode, groupMemberIdSet]);
+
+  // Data: bons + paiements (utilisés dans les calculs et le détail contact)
   const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
   const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
   const { data: devis = [] } = useGetBonsByTypeQuery('Devis');
@@ -366,114 +364,8 @@ const ContactsPage: React.FC = () => {
   const { data: avoirsFournisseur = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
   const { data: ecommerceOrders = [] } = useGetBonsByTypeQuery('Ecommerce');
   const { data: avoirsEcommerce = [] } = useGetBonsByTypeQuery('AvoirEcommerce');
+
   const { data: payments = [] } = useGetPaymentsQuery();
-  // Remises tab removed
-
-  // Agrégats pour calculer les soldes des clients
-  const salesByClient = useMemo(() => {
-    const map = new Map<number, number>();
-    const add = (clientId?: number, amount?: any) => {
-      if (!clientId) return;
-      const val = Number(amount || 0);
-      map.set(clientId, (map.get(clientId) || 0) + val);
-    };
-    const subtract = (clientId?: number, amount?: any) => {
-      if (!clientId) return;
-      const val = Number(amount || 0);
-      map.set(clientId, (map.get(clientId) || 0) - val);
-    };
-
-    const isAllowedAvoirEcommerceStatut = (s: any) => {
-      if (!s) return false;
-      const norm = String(s).toLowerCase();
-      // avoirs_ecommerce: En attente | Validé | Appliqué | Annulé
-      return !(norm === 'annulé' || norm === 'annule');
-    };
-
-    const isAllowedEcommerceOrderForSolde = (raw: any) => {
-      const status = String(raw?.status ?? raw?.ecommerce_status ?? raw?.statut ?? '').toLowerCase().trim();
-      if (status === 'cancelled' || status === 'refunded') return false;
-      const isSolde = Number(raw?.is_solde ?? 0) === 1;
-      return isSolde;
-    };
-
-    // Map order_id -> user_id so we can assign avoirs_ecommerce to the right contact
-    const ecommerceUserByOrderId = new Map<number, number>();
-    (ecommerceOrders || []).forEach((b: any) => {
-      const raw = b?.ecommerce_raw ?? b;
-      const orderId = Number(raw?.id);
-      const uid = Number(raw?.user_id);
-      if (Number.isFinite(orderId) && orderId > 0 && Number.isFinite(uid) && uid > 0) {
-        ecommerceUserByOrderId.set(orderId, uid);
-      }
-    });
-
-    // Ajouter les ventes (sorties et comptants)
-    sorties.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
-    comptants.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.client_id, b.montant_total); });
-
-    // Ajouter les bons e-commerce en "solde à recevoir"
-    (ecommerceOrders || []).forEach((b: any) => {
-      const raw = b?.ecommerce_raw ?? b;
-      if (!isAllowedEcommerceOrderForSolde(raw)) return;
-      const uid = raw?.user_id != null ? Number(raw.user_id) : null;
-      if (!uid || !Number.isFinite(uid)) return;
-      const amount = raw?.solde_amount != null ? Number(raw.solde_amount) : 0;
-      if (!Number.isFinite(amount) || amount <= 0) return;
-      add(uid, amount);
-    });
-
-    // Soustraire les avoirs clients (crédits/remboursements)
-    avoirsClient.forEach((b: any) => { if (isAllowedStatut(b.statut)) subtract(b.client_id, b.montant_total); });
-
-    // Soustraire les avoirs e-commerce (li e9s  e0 une commande e-commerce)
-    (avoirsEcommerce || []).forEach((a: any) => {
-      if (!isAllowedAvoirEcommerceStatut(a?.statut)) return;
-      const orderId = a?.ecommerce_order_id != null ? Number(a.ecommerce_order_id) : null;
-      if (!orderId || !Number.isFinite(orderId)) return;
-      const uid = ecommerceUserByOrderId.get(orderId);
-      if (!uid) return;
-      subtract(uid, a?.montant_total);
-    });
-
-    return map;
-  }, [sorties, comptants, avoirsClient, ecommerceOrders, avoirsEcommerce]);
-
-  const paymentsByContact = useMemo(() => {
-    const map = new Map<number, number>();
-    payments.forEach((p: any) => {
-      const cid = p.contact_id; // peut être undefined dans les mocks => 0 par défaut
-      if (!cid) return;
-      // N'inclure que les paiements avec statut autorisé (En attente / Validé)
-      if (!isAllowedStatut(p.statut)) return;
-      const amt = Number(p.montant ?? p.montant_total ?? 0);
-      map.set(cid, (map.get(cid) || 0) + amt);
-    });
-    return map;
-  }, [payments]);
-
-  // Agrégats pour calculer les soldes des fournisseurs (Commandes)
-  const purchasesByFournisseur = useMemo(() => {
-    const map = new Map<number, number>();
-    const add = (fournisseurId?: number, amount?: any) => {
-      if (!fournisseurId) return;
-      const val = Number(amount || 0);
-      map.set(fournisseurId, (map.get(fournisseurId) || 0) + val);
-    };
-    const subtract = (fournisseurId?: number, amount?: any) => {
-      if (!fournisseurId) return;
-      const val = Number(amount || 0);
-      map.set(fournisseurId, (map.get(fournisseurId) || 0) - val);
-    };
-
-    // Ajouter les achats (commandes)
-    commandes.forEach((b: any) => { if (isAllowedStatut(b.statut)) add(b.fournisseur_id, b.montant_total); });
-
-    // Soustraire les avoirs fournisseurs (crédits/remboursements)
-    avoirsFournisseur.forEach((b: any) => { if (isAllowedStatut(b.statut)) subtract(b.fournisseur_id, b.montant_total); });
-
-    return map;
-  }, [commandes, avoirsFournisseur]);
 
   // Util: filtre de période (accepte ISO ou format JJ-MM-YYYY). Inclusif.
   const isWithinDateRange = (dateValue?: string | null) => {
@@ -549,7 +441,6 @@ const ContactsPage: React.FC = () => {
     filtered.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
     return filtered;
   }, [selectedContact, sorties, devis, comptants, avoirsClient, commandes, avoirsFournisseur, dateFrom, dateTo]);
-
 
   const productHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
@@ -692,6 +583,168 @@ const ContactsPage: React.FC = () => {
       });
     }
 
+    // Ajouter bons/avoirs e-commerce (intégrés dans l'historique produits)
+    if (selectedContact.type === 'Client') {
+      const contactId = Number(selectedContact.id);
+      const canonPhone = (v: any) => {
+        const digits = String(v ?? '').replace(/\D+/g, '');
+        if (!digits) return '';
+        // Keep last 9 digits to be robust to country code prefixes (e.g., 212 / 0)
+        return digits.length > 9 ? digits.slice(-9) : digits;
+      };
+      const contactPhoneCanon = canonPhone((selectedContact as any)?.telephone);
+      const safeNumber = (v: any) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      };
+      const computeProfitFromEcomItems = (rawOrDoc: any) => {
+        const raw = rawOrDoc as any;
+        const list: any[] = Array.isArray(raw?.items)
+          ? raw.items
+          : Array.isArray(raw?.order_items)
+            ? raw.order_items
+            : Array.isArray(raw?.lines)
+              ? raw.lines
+              : Array.isArray(raw?.products)
+                ? raw.products
+                : [];
+
+        if (!Array.isArray(list) || list.length === 0) return 0;
+
+        let profit = 0;
+        for (const it of list) {
+          if (!it) continue;
+          const pid = it.product_id ?? it.produit_id ?? it.id_product ?? it.productId ?? null;
+          const q = safeNumber(it.quantite ?? it.quantity ?? it.qte ?? it.qty ?? 0);
+          if (!q) continue;
+          const unit = safeNumber(it.prix_unitaire ?? it.unit_price ?? it.price ?? it.prix ?? 0);
+          const cost = resolveCost({
+            product_id: pid,
+            cout_revient: it.cout_revient ?? it.cost,
+            prix_achat: it.prix_achat ?? it.purchase_price,
+          });
+          profit += (unit - cost) * q;
+        }
+
+        return Number.isFinite(profit) ? profit : 0;
+      };
+      const getEcomOrderDate = (b: any) => {
+        const raw = (b as any)?.ecommerce_raw ?? (b as any);
+        return b?.date_creation ?? raw?.created_at ?? raw?.confirmed_at ?? raw?.updated_at ?? raw?.date_creation;
+      };
+
+      const ecomAll = (ecommerceOrders || []).filter((b: any) => {
+        const raw = (b as any)?.ecommerce_raw ?? (b as any);
+        const uid = raw?.user_id != null ? Number(raw.user_id) : NaN;
+        return Number.isFinite(uid) && uid === contactId;
+      });
+
+      // Bons e-commerce
+      for (const b of ecomAll) {
+        const raw = (b as any)?.ecommerce_raw ?? (b as any);
+        const dt = getEcomOrderDate(b);
+        const montant = safeNumber((b as any)?.montant_total ?? (raw as any)?.montant_total ?? (raw as any)?.total_amount ?? (raw as any)?.total ?? 0);
+        const benefice = computeProfitFromEcomItems(raw);
+        const orderId = raw?.id != null ? Number(raw.id) : (b?.id != null ? Number(b.id) : NaN);
+        const bonId = Number.isFinite(orderId) ? (-1000000000 - orderId) : (-1000000000 - Math.floor(Math.random() * 1_000_000));
+        const rawNumero = String(b?.numero ?? raw?.order_number ?? '').trim();
+        const numero = rawNumero
+          ? (/^ecom[-\s]?/i.test(rawNumero) ? rawNumero : `ECOM-${rawNumero}`)
+          : (Number.isFinite(orderId) ? `ECOM-${orderId}` : 'ECOM');
+        const statut = b?.statut ?? raw?.status ?? raw?.payment_status ?? '-';
+
+        const adresseRaw = raw?.shipping_address ?? raw?.delivery_address ?? raw?.adresse_livraison ?? b?.adresse_livraison;
+        const adresse =
+          typeof adresseRaw === 'string'
+            ? adresseRaw
+            : (adresseRaw && typeof adresseRaw === 'object'
+              ? (adresseRaw.address || adresseRaw.full || adresseRaw.line1 || '')
+              : '');
+
+        items.push({
+          id: `ecom-order-${orderId ?? Math.random()}`,
+          bon_id: bonId,
+          bon_numero: String(numero),
+          bon_type: 'Ecommerce',
+          bon_date: dt ? formatDateDMY(dt) : '',
+          bon_date_iso: dt,
+          bon_statut: String(statut),
+          product_id: null,
+          product_reference: 'ECOM',
+          product_designation: 'Bon e-commerce',
+          quantite: 1,
+          prix_unitaire: montant,
+          total: montant,
+          mouvement: 0,
+          remise_unitaire: 0,
+          remise_totale: 0,
+          benefice,
+          type: 'produit',
+          created_at: raw?.created_at ?? b?.created_at,
+          adresse_livraison: adresse || '',
+        });
+      }
+
+      // Avoirs e-commerce (liés via ecommerce_order_id)
+      const orderIds = new Set<number>();
+      for (const b of ecomAll) {
+        const raw = (b as any)?.ecommerce_raw ?? (b as any);
+        const oid = raw?.id != null ? Number(raw.id) : NaN;
+        if (Number.isFinite(oid)) orderIds.add(oid);
+      }
+
+      {
+        const ecomAvoirsAll = (avoirsEcommerce || []).filter((a: any) => {
+          const orderUserId = (a as any)?.order_user_id != null ? Number((a as any).order_user_id) : NaN;
+          if (Number.isFinite(orderUserId)) return orderUserId === contactId;
+
+          const oid = (a as any)?.ecommerce_order_id != null ? Number((a as any).ecommerce_order_id) : NaN;
+          if (Number.isFinite(oid) && orderIds.has(oid)) return true;
+
+          // Fallback: link by phone when order linkage is missing
+          const avoirPhoneCanon = canonPhone((a as any)?.customer_phone ?? (a as any)?.phone);
+          return Boolean(contactPhoneCanon && avoirPhoneCanon && contactPhoneCanon === avoirPhoneCanon);
+        });
+
+        for (const a of ecomAvoirsAll) {
+          const dt = (a as any)?.date_creation ?? (a as any)?.created_at;
+          const montant = safeNumber((a as any)?.montant_total ?? (a as any)?.total_amount ?? (a as any)?.total ?? 0);
+          const profitAbs = Math.abs(computeProfitFromEcomItems(a));
+          const avoirId = a?.id != null ? Number(a.id) : NaN;
+          const bonId = Number.isFinite(avoirId) ? (-2000000000 - avoirId) : (-2000000000 - Math.floor(Math.random() * 1_000_000));
+          const rawNumero = String((a as any)?.numero ?? '').trim();
+          const numero = rawNumero
+            ? (/^ave[-\s]?ecom[-\s]?/i.test(rawNumero) ? rawNumero : `AVE-ECOM-${rawNumero}`)
+            : (Number.isFinite(avoirId) ? `AVE-ECOM-${avoirId}` : 'AVE-ECOM');
+          const statut = a?.statut ?? '-';
+          const cmd = (a as any)?.order_number ?? (a as any)?.ecommerce_order_id ?? '';
+
+          items.push({
+            id: `ecom-avoir-${avoirId ?? Math.random()}`,
+            bon_id: bonId,
+            bon_numero: String(numero),
+            bon_type: 'AvoirEcommerce',
+            bon_date: dt ? formatDateDMY(dt) : '',
+            bon_date_iso: dt,
+            bon_statut: String(statut),
+            product_id: null,
+            product_reference: 'AVOIR-ECOM',
+            product_designation: cmd ? `Avoir e-commerce (commande ${cmd})` : 'Avoir e-commerce',
+            quantite: 1,
+            prix_unitaire: montant,
+            total: montant,
+            mouvement: 0,
+            remise_unitaire: 0,
+            remise_totale: 0,
+            benefice: -profitAbs,
+            type: 'avoir',
+            created_at: a?.created_at,
+            adresse_livraison: '',
+          });
+        }
+      }
+    }
+
     // Appliquer le filtre de période maintenant :
     //  - Les bons sont déjà filtrés par date_creation dans bonsForContact
     //  - Les paiements doivent être filtrés ici via leur date_paiement (stockée dans bon_date_iso)
@@ -756,6 +809,72 @@ const ContactsPage: React.FC = () => {
           total: Number(p.montant ?? p.montant_total ?? 0) || 0,
           type: 'paiement',
         });
+      }
+
+      // Ajouter bons/avoirs e-commerce (sans filtre) pour calculer le solde début période
+      if (selectedContact.type === 'Client') {
+        const contactId = Number(selectedContact.id);
+        const canonPhone = (v: any) => {
+          const digits = String(v ?? '').replace(/\D+/g, '');
+          if (!digits) return '';
+          return digits.length > 9 ? digits.slice(-9) : digits;
+        };
+        const contactPhoneCanon = canonPhone((selectedContact as any)?.telephone);
+        const ecomAll = (ecommerceOrders || []).filter((b: any) => {
+          const raw = (b as any)?.ecommerce_raw ?? (b as any);
+          const uid = raw?.user_id != null ? Number(raw.user_id) : NaN;
+          return Number.isFinite(uid) && uid === contactId;
+        });
+
+        const getEcomOrderDate = (b: any) => {
+          const raw = (b as any)?.ecommerce_raw ?? (b as any);
+          return b?.date_creation ?? raw?.created_at ?? raw?.confirmed_at ?? raw?.updated_at ?? raw?.date_creation;
+        };
+
+        for (const b of ecomAll) {
+          const raw = (b as any)?.ecommerce_raw ?? (b as any);
+          const dt = getEcomOrderDate(b);
+          const montant = Number((b as any)?.montant_total ?? (raw as any)?.montant_total ?? (raw as any)?.total_amount ?? (raw as any)?.total ?? 0) || 0;
+          if (dt) {
+            allItems.push({
+              bon_date_iso: dt,
+              total: montant,
+              type: 'produit',
+            });
+          }
+        }
+
+        const orderIds = new Set<number>();
+        for (const b of ecomAll) {
+          const raw = (b as any)?.ecommerce_raw ?? (b as any);
+          const oid = raw?.id != null ? Number(raw.id) : NaN;
+          if (Number.isFinite(oid)) orderIds.add(oid);
+        }
+
+        {
+          const ecomAvoirsAll = (avoirsEcommerce || []).filter((a: any) => {
+            const orderUserId = (a as any)?.order_user_id != null ? Number((a as any).order_user_id) : NaN;
+            if (Number.isFinite(orderUserId)) return orderUserId === contactId;
+
+            const oid = (a as any)?.ecommerce_order_id != null ? Number((a as any).ecommerce_order_id) : NaN;
+            if (Number.isFinite(oid) && orderIds.has(oid)) return true;
+
+            const avoirPhoneCanon = canonPhone((a as any)?.customer_phone ?? (a as any)?.phone);
+            return Boolean(contactPhoneCanon && avoirPhoneCanon && contactPhoneCanon === avoirPhoneCanon);
+          });
+
+          for (const a of ecomAvoirsAll) {
+            const dt = (a as any)?.date_creation ?? (a as any)?.created_at;
+            const montant = Number((a as any)?.montant_total ?? (a as any)?.total_amount ?? (a as any)?.total ?? 0) || 0;
+            if (dt) {
+              allItems.push({
+                bon_date_iso: dt,
+                total: montant,
+                type: 'avoir',
+              });
+            }
+          }
+        }
       }
 
       // Trier toutes les transactions par date
@@ -878,7 +997,8 @@ const ContactsPage: React.FC = () => {
       const amount = Number(row.total) || 0;
 
       if (row.type === 'produit') {
-        totalQty += Number(row.quantite) || 0;
+        // Ne pas compter les documents synthétiques (ex: e-commerce) dans la quantité
+        if (row.product_id != null) totalQty += Number(row.quantite) || 0;
         totalAmount += amount;
       } else if (row.type === 'paiement' || row.type === 'avoir') {
         totalAmount -= amount;
@@ -898,7 +1018,7 @@ const ContactsPage: React.FC = () => {
       const t = String(row.type || '').toLowerCase();
 
       if (t === 'produit') {
-        totalQty += Number(row.quantite) || 0;
+        if (row.product_id != null) totalQty += Number(row.quantite) || 0;
         totalAmount += amount;
       } else if (t === 'paiement' || t.includes('avoir')) {
         totalAmount -= amount;
@@ -2287,12 +2407,7 @@ const ContactsPage: React.FC = () => {
     // Calcul des statistiques globales
     const totalContacts = contactsList.length;
     const totalSoldes = contactsList.reduce((sum, contact) => {
-      const base = Number(contact.solde) || 0;
-      const isClient = contact.type === 'Client';
-      const sales = isClient ? (salesByClient.get(contact.id) || 0) : 0;
-      const purchases = !isClient ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
-      const paid = paymentsByContact.get(contact.id) || 0;
-      const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
+      const soldeActuel = Number((contact as any).solde_cumule ?? 0) || 0;
       return sum + soldeActuel;
     }, 0);
 
@@ -2356,15 +2471,12 @@ const ContactsPage: React.FC = () => {
             </tr>
             ${contactsList.map(contact => {
       const base = Number(contact.solde) || 0;
-      const isClient = contact.type === 'Client';
       const id = contact.id;
-      const sales = isClient ? (salesByClient.get(id) || 0) : 0;
-      const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
-      const paid = paymentsByContact.get(id) || 0;
-      const soldeActuel = isClient ? (base + sales - paid) : (base + purchases - paid);
+      const soldeActuel = Number((contact as any).solde_cumule ?? 0) || 0;
 
       // Compter les transactions
       let transactionCount = 0;
+      const isClient = contact.type === 'Client';
       if (isClient) {
         transactionCount += sorties.filter((b: any) => b.client_id === id).length;
         transactionCount += devis.filter((b: any) => b.client_id === id).length;
@@ -2579,20 +2691,8 @@ const ContactsPage: React.FC = () => {
         aValue = a.societe?.toLowerCase() || '';
         bValue = b.societe?.toLowerCase() || '';
       } else if (sortField === 'solde') {
-        // Utiliser la valeur backend (solde_cumule) si disponible, sinon fallback calcul local.
-        const baseA = Number(a.solde) || 0;
-        const salesA = activeTab === 'clients' ? (salesByClient.get(a.id) || 0) : 0;
-        const purchasesA = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(a.id) || 0) : 0;
-        const paidA = paymentsByContact.get(a.id) || 0;
-        const computedA = activeTab === 'clients' ? (baseA + salesA - paidA) : (baseA + purchasesA - paidA);
-        aValue = (a as any).solde_cumule != null ? Number((a as any).solde_cumule) : computedA;
-
-        const baseB = Number(b.solde) || 0;
-        const salesB = activeTab === 'clients' ? (salesByClient.get(b.id) || 0) : 0;
-        const purchasesB = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(b.id) || 0) : 0;
-        const paidB = paymentsByContact.get(b.id) || 0;
-        const computedB = activeTab === 'clients' ? (baseB + salesB - paidB) : (baseB + purchasesB - paidB);
-        bValue = (b as any).solde_cumule != null ? Number((b as any).solde_cumule) : computedB;
+        aValue = Number((a as any).solde_cumule ?? 0) || 0;
+        bValue = Number((b as any).solde_cumule ?? 0) || 0;
       }
 
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
@@ -2601,7 +2701,7 @@ const ContactsPage: React.FC = () => {
     });
 
     return sorted;
-  }, [filteredContacts, sortField, sortDirection, activeTab, salesByClient, purchasesByFournisseur, paymentsByContact, payments, overdueValue, overdueUnit]);
+  }, [filteredContacts, sortField, sortDirection, activeTab, payments, overdueValue, overdueUnit]);
 
   // Fonction pour gérer le tri
   const handleSort = (field: 'nom' | 'societe' | 'solde') => {
@@ -2619,14 +2719,8 @@ const ContactsPage: React.FC = () => {
   const paginatedContacts = sortedContacts;
 
   const getContactSoldeDisplay = React.useCallback((contact: Contact) => {
-    const backend = (contact as any).solde_cumule;
-    if (backend != null) return Number(backend) || 0;
-    const base = Number(contact.solde) || 0;
-    const sales = activeTab === 'clients' ? (salesByClient.get(contact.id) || 0) : 0;
-    const purchases = activeTab === 'fournisseurs' ? (purchasesByFournisseur.get(contact.id) || 0) : 0;
-    const paid = paymentsByContact.get(contact.id) || 0;
-    return activeTab === 'clients' ? (base + sales - paid) : (base + purchases - paid);
-  }, [activeTab, salesByClient, purchasesByFournisseur, paymentsByContact]);
+    return Number((contact as any).solde_cumule ?? 0) || 0;
+  }, []);
 
   type AccordionRow =
     | { kind: 'contact'; contact: Contact }
@@ -2728,10 +2822,9 @@ const ContactsPage: React.FC = () => {
   }, [activeTab, clientSubTab, searchTerm, sortField, sortDirection]);
 
   // Load payments from Redux (RTK Query) to enrich payment rows
-  const { data: paymentsList } = useGetPaymentsQuery();
   const paymentsMap = useMemo(() => {
     const m = new Map<string, any>();
-    (paymentsList || []).forEach((p: any) => {
+    (payments || []).forEach((p: any) => {
       m.set(String(p.id), p);
       m.set(`payment-${p.id}`, p);
       if (p.bon_id) m.set(String(p.bon_id), p);
@@ -2741,7 +2834,7 @@ const ContactsPage: React.FC = () => {
       if (displayNum) m.set(displayNum, p);
     });
     return m;
-  }, [paymentsList]);
+  }, [payments]);
 
   return (
     <div className="p-6">
@@ -2906,15 +2999,13 @@ const ContactsPage: React.FC = () => {
                     {(() => {
                       const contactsWithPositiveBalance = (activeTab === 'clients' ? clients : fournisseurs)
                         .filter(c => {
-                          const backend = (c as any).solde_cumule;
-                          const solde = backend != null ? Number(backend) : Number(c.solde || 0);
+                          const solde = Number((c as any).solde_cumule ?? 0) || 0;
                           return solde > 0;
                         })
                         .slice(0, 2);
 
                       return contactsWithPositiveBalance.map((contact) => {
-                        const backend = (contact as any).solde_cumule;
-                        const solde = backend != null ? Number(backend) : Number(contact.solde || 0);
+                        const solde = Number((contact as any).solde_cumule ?? 0) || 0;
                         const isOverdue = isOverdueContact(contact, payments);
                         const lastUpdate = contact.updated_at ? new Date(contact.updated_at) : null;
                         const daysSinceUpdate = lastUpdate ? Math.floor((new Date().getTime() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24)) : null;
@@ -4240,24 +4331,10 @@ const ContactsPage: React.FC = () => {
                       <div className="bg-white rounded-lg p-3 border flex-1">
                         <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
                         {(() => {
-                          const backend = (selectedContact as any).solde_cumule;
-                          const soldeInitial = Number(selectedContact.solde) || 0;
-                          const isClient = selectedContact.type === 'Client';
-                          const id = selectedContact.id;
-                          const sales = isClient ? (salesByClient.get(id) || 0) : 0;
-                          const purchases = !isClient ? (purchasesByFournisseur.get(id) || 0) : 0;
-                          const paid = paymentsByContact.get(id) || 0;
-                          const localComputed = isClient ? (soldeInitial + sales - paid) : (soldeInitial + purchases - paid);
-                          const value = backend != null ? Number(backend) : localComputed;
-                          const diff = backend != null ? (Number(backend) - localComputed) : 0;
+                          const value = Number((selectedContact as any).solde_cumule ?? 0) || 0;
                           return (
                             <div className="space-y-1">
                               <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(2)} DH</p>
-                              {backend != null && Math.abs(diff) > 0.01 && (
-                                <p className="text-xs text-orange-600 font-medium">
-                                  Attention: différence entre calcul local ({localComputed.toFixed(2)} DH) et base ({Number(backend).toFixed(2)} DH) = {diff > 0 ? '+' : ''}{diff.toFixed(2)} DH
-                                </p>
-                              )}
                             </div>
                           );
                         })()}
@@ -4265,11 +4342,21 @@ const ContactsPage: React.FC = () => {
                       <div className="bg-white rounded-lg p-3 border flex-1">
                         <p className="font-semibold text-gray-600 text-sm">Bénéfice total</p>
                         <p className={`font-bold text-lg ${(() => {
-                          const sum = (allProductHistory || []).filter((i: any) => i.type === 'produit' && !i.syntheticInitial).reduce((s: number, i: any) => s + Number(i.benefice || 0), 0);
+                          const sum = (allProductHistory || [])
+                            .filter((i: any) => !i.syntheticInitial && (i.type === 'produit' || i.type === 'avoir'))
+                            .reduce((s: number, i: any) => {
+                              const b = Number(i.benefice || 0) || 0;
+                              return s + (i.type === 'avoir' ? -Math.abs(b) : b);
+                            }, 0);
                           return sum >= 0 ? 'text-green-600' : 'text-red-600';
                         })()}`}>
                           {(() => {
-                            const sum = (allProductHistory || []).filter((i: any) => i.type === 'produit' && !i.syntheticInitial).reduce((s: number, i: any) => s + Number(i.benefice || 0), 0);
+                            const sum = (allProductHistory || [])
+                              .filter((i: any) => !i.syntheticInitial && (i.type === 'produit' || i.type === 'avoir'))
+                              .reduce((s: number, i: any) => {
+                                const b = Number(i.benefice || 0) || 0;
+                                return s + (i.type === 'avoir' ? -Math.abs(b) : b);
+                              }, 0);
                             return `${sum.toFixed(2)} DH`;
                           })()}
                         </p>
@@ -4294,7 +4381,10 @@ const ContactsPage: React.FC = () => {
                         {(() => {
                           const selectedBenefit = allProductHistory
                             .filter((item: any) => selectedProductIds.has(String(item.id)) && !item.syntheticInitial)
-                            .reduce((sum: number, item: any) => sum + (Number(item.benefice) || 0), 0);
+                            .reduce((sum: number, item: any) => {
+                              const b = Number(item.benefice) || 0;
+                              return sum + (item.type === 'avoir' ? -Math.abs(b) : b);
+                            }, 0);
                           return (
                             <p className={`font-bold text-2xl ${selectedBenefit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                               {selectedBenefit.toFixed(2)} DH
@@ -4777,6 +4867,10 @@ const ContactsPage: React.FC = () => {
                                   <span
                                     className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${item.bon_type === 'Solde initial' ? 'bg-gray-200 text-gray-700' : item.bon_type === 'Paiement'
                                       ? 'bg-green-200 text-green-700'
+                                      : item.bon_type === 'Ecommerce'
+                                        ? 'bg-indigo-200 text-indigo-800'
+                                        : item.bon_type === 'AvoirEcommerce'
+                                          ? 'bg-orange-200 text-orange-800'
                                       : item.bon_type === 'Commande'
                                         ? 'bg-blue-200 text-blue-700'
                                         : item.bon_type === 'Sortie'

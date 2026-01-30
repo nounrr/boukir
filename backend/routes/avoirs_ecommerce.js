@@ -122,6 +122,11 @@ router.get('/', async (_req, res) => {
     const [rows] = await pool.execute(`
       SELECT
         ae.*,
+        o.user_id AS order_user_id,
+        o.order_number,
+        o.status AS order_status,
+        o.payment_status,
+        o.is_solde,
         COALESCE((
           SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
@@ -142,6 +147,7 @@ router.get('/', async (_req, res) => {
           WHERE i.avoir_ecommerce_id = ae.id
         ), JSON_ARRAY()) AS items
       FROM avoirs_ecommerce ae
+      LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
       ORDER BY ae.created_at DESC
     `);
 
@@ -169,6 +175,11 @@ router.get('/:id', async (req, res) => {
     const [rows] = await pool.execute(`
       SELECT
         ae.*,
+        o.user_id AS order_user_id,
+        o.order_number,
+        o.status AS order_status,
+        o.payment_status,
+        o.is_solde,
         COALESCE((
           SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
@@ -189,6 +200,7 @@ router.get('/:id', async (req, res) => {
           WHERE i.avoir_ecommerce_id = ae.id
         ), JSON_ARRAY()) AS items
       FROM avoirs_ecommerce ae
+      LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
       WHERE ae.id = ?
       LIMIT 1
     `, [id]);

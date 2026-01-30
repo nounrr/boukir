@@ -1052,8 +1052,7 @@ const paymentValidationSchema = Yup.object({
     const source = type === 'Client' ? clients : fournisseurs;
     const contact = source.find((c: any) => Number(c.id) === idNum);
     if (!contact) return 0;
-    // Utiliser le champ solde_cumule s'il existe, sinon fallback sur solde initial
-    return Number((contact as any).solde_cumule ?? (contact as any).solde ?? 0) || 0;
+    return Number((contact as any).solde_cumule ?? 0) || 0;
   }
 
   return (

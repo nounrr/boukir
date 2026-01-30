@@ -46,19 +46,7 @@ const ContactArchiverPage: React.FC = () => {
 
   // Fonction pour calculer si un contact est inactif (solde = 0 depuis la période configurée)
   const isInactiveContact = (contact: Contact): boolean => {
-    // Debug: vérifier les valeurs de solde
-    const soldeBackend = contact.solde_cumule;
-    const soldeLocal = contact.solde;
-    
-    // Utiliser solde_cumule du backend s'il existe, sinon fallback sur solde local
-    let solde: number;
-    if (soldeBackend != null) {
-      solde = Number(soldeBackend);
-    } else if (soldeLocal != null) {
-      solde = Number(soldeLocal);
-    } else {
-      solde = 0;
-    }
+    const solde = Number(contact.solde_cumule ?? 0) || 0;
     
     // Vérifier si le solde est exactement 0
     if (solde !== 0) return false;

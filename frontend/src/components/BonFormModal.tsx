@@ -1489,9 +1489,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(requestType) && cleanBonData.client_id) {
         const client = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
         if (client && client.plafond && Number(client.plafond) > 0) {
-          // Utiliser le solde cumulé fourni par le backend (fallback sur solde initial)
+          // Utiliser le solde cumulé fourni par le backend
           const backendClientSolde = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
-          const soldeCumule = Number(backendClientSolde?.solde_cumule ?? backendClientSolde?.solde ?? 0) || 0;
+          const soldeCumule = Number(backendClientSolde?.solde_cumule ?? 0) || 0;
           const plafond = Number(client.plafond);
           const nouveauSolde = soldeCumule + montantTotal;
           
@@ -2186,7 +2186,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </div>
                   <SearchableSelect
                     options={clients.map((c: Contact) => {
-                      const soldeCumule = Number(c.solde_cumule ?? c.solde ?? 0) || 0;
+                      const soldeCumule = Number(c.solde_cumule ?? 0) || 0;
                       const plafond = Number(c.plafond || 0);
                       const isOverLimit = plafond > 0 && soldeCumule > plafond;
                       const depassement = isOverLimit ? soldeCumule - plafond : 0;
@@ -2211,7 +2211,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         return;
                       }
                       
-                      const soldeCumule = Number(client.solde_cumule ?? client.solde ?? 0) || 0;
+                      const soldeCumule = Number(client.solde_cumule ?? 0) || 0;
                       const plafond = Number(client.plafond || 0);
                       const isOverLimit = plafond > 0 && soldeCumule > plafond;
                       
@@ -2284,7 +2284,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       <span className="text-sm text-blue-800 font-semibold">
                         {(() => {
                           const selectedClient = clients.find((c: Contact) => c.id.toString() === values.client_id.toString());
-                          const solde = Number(selectedClient?.solde_cumule ?? selectedClient?.solde ?? 0);
+                          const solde = Number(selectedClient?.solde_cumule ?? 0);
                           return Number.isFinite(solde) ? `${solde.toFixed(2)} DH` : '—';
                         })()}
                       </span>
@@ -2415,7 +2415,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 if (matched) {
                                   setFieldValue('client_nom', String(matched.nom_complet || ''));
                                   setFieldValue('customer_email', matched.email || values.customer_email || '');
-                                  setFieldValue('phone', matched.telephone || matched.phone || values.phone || '');
+                                  setFieldValue('phone', (matched as any).telephone || (matched as any).phone || (values as any).phone || '');
                                 } else {
                                   // If we can't match, clear to force picking a valid client from list.
                                   setFieldValue('client_nom', '');
@@ -2508,7 +2508,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       <span className="text-sm text-blue-800 font-semibold">
                         {(() => {
                           const fournisseurSel = fournisseurs.find((f: Contact) => f.id.toString() === values.fournisseur_id.toString());
-                          const solde = Number(fournisseurSel?.solde_cumule ?? fournisseurSel?.solde ?? 0);
+                          const solde = Number(fournisseurSel?.solde_cumule ?? 0);
                           return Number.isFinite(solde) ? `${solde.toFixed(2)} DH` : '—';
                         })()}
                       </span>
