@@ -50,14 +50,13 @@ const InventoryPage: React.FC = () => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'charts'>('table');
   const [chartType, setChartType] = useState<'snapshots' | 'products' | 'categories'>('snapshots');
-  const [compareSnapshotIds, setCompareSnapshotIds] = useState<number[]>([]);
 
   useEffect(() => {
     // Auto-select latest snapshot when list changes
     if (latestId != null) setSelectedId(latestId);
   }, [latestId]);
 
-  const { data: snapshotDetail, isFetching: loadingDetail } = useGetSnapshotQuery(
+  const { data: snapshotDetail } = useGetSnapshotQuery(
     selectedId != null ? { id: String(selectedId), date: today } : { id: '', date: today },
     { skip: selectedId == null }
   );
@@ -138,18 +137,45 @@ const InventoryPage: React.FC = () => {
     });
   }, [snapshotDetail, searchTerm, categoryFilterIds, productById]);
 
+  const totalAchatSnapshot = useMemo(() => {
+    const items = snapshotDetail?.snapshot?.items || [];
+    return items.reduce((sum: number, it: any) => {
+      const qte = Number(it?.quantite || 0);
+      const pa = Number(it?.prix_achat || 0);
+      return sum + qte * pa;
+    }, 0);
+  }, [snapshotDetail]);
+
   // Chart data: Compare snapshots
   const snapshotComparisonData = useMemo(() => {
-    const data = snapshots.map((s) => ({
-      name: `#${s.id}`,
-      id: s.id,
-      date: formatDateTimeWithHour(s.created_at),
-      produits: s.totals?.totalProducts || 0,
-      quantité: Number(s.totals?.totalQty || 0),
-      valeurCoût: Number(s.totals?.totalCost || 0),
-      valeurVente: Number(s.totals?.totalSale || 0),
-    }));
-    console.log('[InventoryPage] Snapshot comparison data:', data);
+    const data = snapshots.map((s, idx, arr) => {
+      const produits = s.totals?.totalProducts || 0;
+      const quantité = Number(s.totals?.totalQty || 0);
+      const totalAchat = Number(s.totals?.totalCost || 0);
+      
+      // Calculate deltas from previous snapshot
+      const prev = idx > 0 ? arr[idx - 1] : null;
+      const prevProduits = prev?.totals?.totalProducts || produits;
+      const prevQuantité = Number(prev?.totals?.totalQty || quantité);
+      const prevTotalAchat = Number(prev?.totals?.totalCost || totalAchat);
+      
+      return {
+        name: `#${s.id}`,
+        id: s.id,
+        date: formatDateTimeWithHour(s.created_at),
+        produits,
+        quantité,
+        totalAchat,
+        // Deltas
+        deltaProduits: produits - prevProduits,
+        deltaQuantité: quantité - prevQuantité,
+        deltaTotalAchat: totalAchat - prevTotalAchat,
+        // Percentage changes
+        pctProduits: prevProduits > 0 ? ((produits - prevProduits) / prevProduits) * 100 : 0,
+        pctQuantité: prevQuantité > 0 ? ((quantité - prevQuantité) / prevQuantité) * 100 : 0,
+        pctTotalAchat: prevTotalAchat > 0 ? ((totalAchat - prevTotalAchat) / prevTotalAchat) * 100 : 0,
+      };
+    });
     return data;
   }, [snapshots]);
 
@@ -221,7 +247,7 @@ const InventoryPage: React.FC = () => {
 
         {/* Stats overview */}
         {snapshotDetail?.snapshot?.totals && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-blue-900">Total Produits</span>
@@ -238,17 +264,10 @@ const InventoryPage: React.FC = () => {
             </div>
             <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-orange-900">Valeur Coût</span>
+                <span className="text-sm font-medium text-orange-900">Total Achat</span>
                 <DollarSign className="text-orange-600" size={20} />
               </div>
-              <div className="text-2xl font-bold text-orange-900">{Number(snapshotDetail.snapshot.totals.totalCost).toFixed(2)} DH</div>
-            </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-purple-900">Valeur Vente</span>
-                <DollarSign className="text-purple-600" size={20} />
-              </div>
-              <div className="text-2xl font-bold text-purple-900">{Number(snapshotDetail.snapshot.totals.totalSale).toFixed(2)} DH</div>
+              <div className="text-2xl font-bold text-orange-900">{Number(totalAchatSnapshot).toFixed(2)} DH</div>
             </div>
           </div>
         )}
@@ -397,8 +416,7 @@ const InventoryPage: React.FC = () => {
                         <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Qté</th>
                         <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Prix achat</th>
                         <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Prix vente</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Valeur coût</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Valeur vente</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Total achat</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -411,8 +429,7 @@ const InventoryPage: React.FC = () => {
                           <td className="px-4 py-3 text-sm text-right text-gray-700">{Number(it.quantite).toFixed(3)}</td>
                           <td className="px-4 py-3 text-sm text-right text-gray-700">{Number(it.prix_achat).toFixed(2)} DH</td>
                           <td className="px-4 py-3 text-sm text-right text-gray-700">{Number(it.prix_vente).toFixed(2)} DH</td>
-                          <td className="px-4 py-3 text-sm text-right font-medium text-orange-700">{Number(it.valeur_cost).toFixed(2)} DH</td>
-                          <td className="px-4 py-3 text-sm text-right font-medium text-green-700">{Number(it.valeur_sale).toFixed(2)} DH</td>
+                          <td className="px-4 py-3 text-sm text-right font-medium text-orange-700">{(Number(it.quantite || 0) * Number(it.prix_achat || 0)).toFixed(2)} DH</td>
                         </tr>
                       ))}
                     </tbody>
@@ -467,21 +484,66 @@ const InventoryPage: React.FC = () => {
                       </div>
                     ) : (
                       <>
-                        <div className="text-sm text-gray-600 mb-4">
-                          {snapshotComparisonData.length} snapshot(s) disponible(s) pour comparaison
-                        </div>
+                        {/* Statistiques de comparaison en haut */}
+                        {snapshotComparisonData.length >= 2 && (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                              <h5 className="text-sm font-semibold text-blue-900 mb-2">Δ Produits</h5>
+                              <div className="flex items-baseline gap-2">
+                                <span className={`text-2xl font-bold ${snapshotComparisonData[snapshotComparisonData.length - 1].deltaProduits >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {snapshotComparisonData[snapshotComparisonData.length - 1].deltaProduits >= 0 ? '+' : ''}
+                                  {snapshotComparisonData[snapshotComparisonData.length - 1].deltaProduits}
+                                </span>
+                                <span className="text-sm text-gray-500">
+                                  ({snapshotComparisonData[snapshotComparisonData.length - 1].pctProduits.toFixed(1)}%)
+                                </span>
+                              </div>
+                              <div className="text-xs text-blue-700 mt-1">vs snapshot précédent</div>
+                            </div>
 
-                        {/* Tableau de comparaison */}
+                            <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                              <h5 className="text-sm font-semibold text-green-900 mb-2">Δ Quantité Stock</h5>
+                              <div className="flex items-baseline gap-2">
+                                <span className={`text-2xl font-bold ${snapshotComparisonData[snapshotComparisonData.length - 1].deltaQuantité >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {snapshotComparisonData[snapshotComparisonData.length - 1].deltaQuantité >= 0 ? '+' : ''}
+                                  {snapshotComparisonData[snapshotComparisonData.length - 1].deltaQuantité.toFixed(2)}
+                                </span>
+                                <span className="text-sm text-gray-500">
+                                  ({snapshotComparisonData[snapshotComparisonData.length - 1].pctQuantité.toFixed(1)}%)
+                                </span>
+                              </div>
+                              <div className="text-xs text-green-700 mt-1">vs snapshot précédent</div>
+                            </div>
+
+                            <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                              <h5 className="text-sm font-semibold text-orange-900 mb-2">Δ Total Achat</h5>
+                              <div className="flex items-baseline gap-2">
+                                <span className={`text-2xl font-bold ${snapshotComparisonData[snapshotComparisonData.length - 1].deltaTotalAchat >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {snapshotComparisonData[snapshotComparisonData.length - 1].deltaTotalAchat >= 0 ? '+' : ''}
+                                  {snapshotComparisonData[snapshotComparisonData.length - 1].deltaTotalAchat.toFixed(2)} DH
+                                </span>
+                                <span className="text-sm text-gray-500">
+                                  ({snapshotComparisonData[snapshotComparisonData.length - 1].pctTotalAchat.toFixed(1)}%)
+                                </span>
+                              </div>
+                              <div className="text-xs text-orange-700 mt-1">vs snapshot précédent</div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Tableau de comparaison enrichi */}
                         <div className="overflow-x-auto border rounded-lg mb-6">
                           <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                               <tr>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Snapshot</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Date</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Nombre Produits</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Stock Total (Qté)</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Valeur Coût (DH)</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Valeur Vente (DH)</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Produits</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Δ</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Stock (Qté)</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Δ</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Total Achat</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Δ</th>
                               </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
@@ -490,62 +552,84 @@ const InventoryPage: React.FC = () => {
                                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{s.name}</td>
                                   <td className="px-4 py-3 text-sm text-gray-600">{s.date}</td>
                                   <td className="px-4 py-3 text-sm text-right font-medium text-blue-700">{s.produits}</td>
+                                  <td className="px-4 py-3 text-sm text-right">
+                                    {idx > 0 && (
+                                      <span className={`font-medium ${s.deltaProduits >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {s.deltaProduits >= 0 ? '+' : ''}{s.deltaProduits}
+                                      </span>
+                                    )}
+                                  </td>
                                   <td className="px-4 py-3 text-sm text-right font-medium text-green-700">{s.quantité.toFixed(2)}</td>
-                                  <td className="px-4 py-3 text-sm text-right font-medium text-orange-700">{s.valeurCoût.toFixed(2)}</td>
-                                  <td className="px-4 py-3 text-sm text-right font-medium text-purple-700">{s.valeurVente.toFixed(2)}</td>
+                                  <td className="px-4 py-3 text-sm text-right">
+                                    {idx > 0 && (
+                                      <span className={`font-medium ${s.deltaQuantité >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {s.deltaQuantité >= 0 ? '+' : ''}{s.deltaQuantité.toFixed(2)}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-right font-medium text-orange-700">{s.totalAchat.toFixed(2)} DH</td>
+                                  <td className="px-4 py-3 text-sm text-right">
+                                    {idx > 0 && (
+                                      <span className={`font-medium ${s.deltaTotalAchat >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {s.deltaTotalAchat >= 0 ? '+' : ''}{s.deltaTotalAchat.toFixed(2)}
+                                      </span>
+                                    )}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
                         </div>
 
-                        {/* Graphique: Nombre de Produits */}
-                        <div>
-                          <h4 className="text-md font-semibold text-gray-800 mb-3">Nombre de Produits par Snapshot</h4>
-                          <ResponsiveContainer width="100%" height={250}>
-                            <BarChart data={snapshotComparisonData}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="name" />
-                              <YAxis />
-                              <Tooltip 
-                                formatter={(value: any) => {
-                                  return [`${value} produits`, 'Nombre'];
-                                }}
-                              />
-                              <Legend />
-                              <Bar dataKey="produits" fill="#3b82f6" name="Nombre de Produits" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-
-                        {/* Graphique: Stock Total (Quantité) */}
-                        <div>
-                          <h4 className="text-md font-semibold text-gray-800 mb-3">Stock Total (Quantité) par Snapshot</h4>
-                          <ResponsiveContainer width="100%" height={250}>
-                            <BarChart data={snapshotComparisonData}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="name" />
-                              <YAxis />
-                              <Tooltip 
-                                formatter={(value: any) => {
-                                  if (typeof value === 'number') return [`${value.toFixed(2)} unités`, 'Quantité'];
-                                  return value;
-                                }}
-                              />
-                              <Legend />
-                              <Bar dataKey="quantité" fill="#10b981" name="Stock Total" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-
-                        {/* Graphique: Évolution des Valeurs */}
-                        <div>
-                          <h4 className="text-md font-semibold text-gray-800 mb-3">Évolution des Valeurs Financières</h4>
-                          <ResponsiveContainer width="100%" height={300}>
-                            <LineChart data={snapshotComparisonData}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="name" />
+                        {/* Graphique combiné: Évolution globale */}
+                        <div className="bg-white border rounded-lg p-4">
+                          <h4 className="text-md font-semibold text-gray-800 mb-4">Évolution Globale</h4>
+                          <ResponsiveContainer width="100%" height={350}>
+                            <BarChart data={snapshotComparisonData} barCategoryGap="20%">
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                               <YAxis 
+                                yAxisId="left" 
+                                orientation="left" 
+                                tick={{ fontSize: 12 }}
+                                tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}
+                              />
+                              <YAxis 
+                                yAxisId="right" 
+                                orientation="right" 
+                                tick={{ fontSize: 12 }}
+                              />
+                              <Tooltip 
+                                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                                formatter={(value: any, name: any) => {
+                                  if (name === 'Total Achat (DH)') return [`${Number(value).toFixed(2)} DH`, name];
+                                  if (typeof value === 'number') return [value.toFixed(2), name];
+                                  return [value, name];
+                                }}
+                              />
+                              <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                              <Bar yAxisId="right" dataKey="produits" fill="#3b82f6" name="Produits" radius={[4, 4, 0, 0]} />
+                              <Bar yAxisId="right" dataKey="quantité" fill="#10b981" name="Quantité" radius={[4, 4, 0, 0]} />
+                              <Bar yAxisId="left" dataKey="totalAchat" fill="#f59e0b" name="Total Achat (DH)" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        {/* Graphique: Évolution Total Achat avec ligne de tendance */}
+                        <div className="bg-white border rounded-lg p-4">
+                          <h4 className="text-md font-semibold text-gray-800 mb-4">Évolution Total Achat</h4>
+                          <ResponsiveContainer width="100%" height={280}>
+                            <LineChart data={snapshotComparisonData}>
+                              <defs>
+                                <linearGradient id="colorTotalAchat" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                              <YAxis 
+                                tick={{ fontSize: 12 }}
                                 tickFormatter={(value) => {
                                   if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
                                   if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
@@ -553,84 +637,80 @@ const InventoryPage: React.FC = () => {
                                 }}
                               />
                               <Tooltip 
-                                formatter={(value: any, name: any) => {
-                                  if (typeof value === 'number') {
-                                    return [value.toFixed(2) + ' DH', name];
-                                  }
-                                  return [value, name];
-                                }}
+                                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                                formatter={(value: any) => [`${Number(value).toFixed(2)} DH`, 'Total Achat']}
                               />
-                              <Legend />
-                              <Line type="monotone" dataKey="valeurCoût" stroke="#f59e0b" name="Valeur Coût" strokeWidth={2} dot={{ r: 4 }} />
-                              <Line type="monotone" dataKey="valeurVente" stroke="#8b5cf6" name="Valeur Vente" strokeWidth={2} dot={{ r: 4 }} />
+                              <Line 
+                                type="monotone" 
+                                dataKey="totalAchat" 
+                                stroke="#f59e0b" 
+                                strokeWidth={3} 
+                                dot={{ r: 6, fill: '#f59e0b', strokeWidth: 2, stroke: '#fff' }}
+                                activeDot={{ r: 8, fill: '#f59e0b' }}
+                              />
                             </LineChart>
                           </ResponsiveContainer>
                         </div>
 
-                        {/* Statistiques de comparaison */}
+                        {/* Graphique: Variations (deltas) */}
                         {snapshotComparisonData.length >= 2 && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                              <h5 className="text-sm font-semibold text-blue-900 mb-2">Différence Produits</h5>
-                              <div className="text-2xl font-bold text-blue-700">
-                                {(() => {
-                                  const first = snapshotComparisonData[0].produits;
-                                  const last = snapshotComparisonData[snapshotComparisonData.length - 1].produits;
-                                  const diff = last - first;
-                                  const pct = first > 0 ? ((diff / first) * 100).toFixed(1) : '0';
-                                  return `${diff > 0 ? '+' : ''}${diff} (${pct}%)`;
-                                })()}
-                              </div>
-                              <div className="text-xs text-blue-700 mt-1">
-                                Premier vs Dernier snapshot
-                              </div>
-                            </div>
+                          <div className="bg-white border rounded-lg p-4">
+                            <h4 className="text-md font-semibold text-gray-800 mb-4">Variations entre Snapshots</h4>
+                            <ResponsiveContainer width="100%" height={280}>
+                              <BarChart data={snapshotComparisonData.slice(1)}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                                <YAxis tick={{ fontSize: 12 }} />
+                                <Tooltip 
+                                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                                  formatter={(value: any, name: any) => {
+                                    const prefix = Number(value) >= 0 ? '+' : '';
+                                    if (name.includes('Achat')) return [`${prefix}${Number(value).toFixed(2)} DH`, name];
+                                    return [`${prefix}${Number(value).toFixed(2)}`, name];
+                                  }}
+                                />
+                                <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                                <Bar dataKey="deltaProduits" name="Δ Produits" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="deltaQuantité" name="Δ Quantité" fill="#10b981" radius={[4, 4, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
 
-                            <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-                              <h5 className="text-sm font-semibold text-green-900 mb-2">Différence Stock Total</h5>
-                              <div className="text-2xl font-bold text-green-700">
-                                {(() => {
-                                  const first = snapshotComparisonData[0].quantité;
-                                  const last = snapshotComparisonData[snapshotComparisonData.length - 1].quantité;
-                                  const diff = last - first;
-                                  const pct = first > 0 ? ((diff / first) * 100).toFixed(1) : '0';
-                                  return `${diff > 0 ? '+' : ''}${diff.toFixed(2)} (${pct}%)`;
-                                })()}
+                        {/* Résumé Premier vs Dernier */}
+                        {snapshotComparisonData.length >= 2 && (
+                          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-5">
+                            <h4 className="text-md font-semibold text-indigo-900 mb-4">📊 Résumé: Premier → Dernier Snapshot</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div className="text-center">
+                                <div className="text-sm text-gray-600 mb-1">Produits</div>
+                                <div className="text-lg font-semibold text-gray-900">
+                                  {snapshotComparisonData[0].produits} → {snapshotComparisonData[snapshotComparisonData.length - 1].produits}
+                                </div>
+                                <div className={`text-sm font-medium ${snapshotComparisonData[snapshotComparisonData.length - 1].produits - snapshotComparisonData[0].produits >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {snapshotComparisonData[snapshotComparisonData.length - 1].produits - snapshotComparisonData[0].produits >= 0 ? '↑' : '↓'}
+                                  {' '}{Math.abs(snapshotComparisonData[snapshotComparisonData.length - 1].produits - snapshotComparisonData[0].produits)}
+                                </div>
                               </div>
-                              <div className="text-xs text-green-700 mt-1">
-                                Premier vs Dernier snapshot
+                              <div className="text-center">
+                                <div className="text-sm text-gray-600 mb-1">Quantité Stock</div>
+                                <div className="text-lg font-semibold text-gray-900">
+                                  {snapshotComparisonData[0].quantité.toFixed(0)} → {snapshotComparisonData[snapshotComparisonData.length - 1].quantité.toFixed(0)}
+                                </div>
+                                <div className={`text-sm font-medium ${snapshotComparisonData[snapshotComparisonData.length - 1].quantité - snapshotComparisonData[0].quantité >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {snapshotComparisonData[snapshotComparisonData.length - 1].quantité - snapshotComparisonData[0].quantité >= 0 ? '↑' : '↓'}
+                                  {' '}{Math.abs(snapshotComparisonData[snapshotComparisonData.length - 1].quantité - snapshotComparisonData[0].quantité).toFixed(2)}
+                                </div>
                               </div>
-                            </div>
-
-                            <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
-                              <h5 className="text-sm font-semibold text-orange-900 mb-2">Différence Valeur Coût</h5>
-                              <div className="text-2xl font-bold text-orange-700">
-                                {(() => {
-                                  const first = snapshotComparisonData[0].valeurCoût;
-                                  const last = snapshotComparisonData[snapshotComparisonData.length - 1].valeurCoût;
-                                  const diff = last - first;
-                                  const pct = first > 0 ? ((diff / first) * 100).toFixed(1) : '0';
-                                  return `${diff > 0 ? '+' : ''}${diff.toFixed(2)} DH (${pct}%)`;
-                                })()}
-                              </div>
-                              <div className="text-xs text-orange-700 mt-1">
-                                Premier vs Dernier snapshot
-                              </div>
-                            </div>
-
-                            <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                              <h5 className="text-sm font-semibold text-purple-900 mb-2">Différence Valeur Vente</h5>
-                              <div className="text-2xl font-bold text-purple-700">
-                                {(() => {
-                                  const first = snapshotComparisonData[0].valeurVente;
-                                  const last = snapshotComparisonData[snapshotComparisonData.length - 1].valeurVente;
-                                  const diff = last - first;
-                                  const pct = first > 0 ? ((diff / first) * 100).toFixed(1) : '0';
-                                  return `${diff > 0 ? '+' : ''}${diff.toFixed(2)} DH (${pct}%)`;
-                                })()}
-                              </div>
-                              <div className="text-xs text-purple-700 mt-1">
-                                Premier vs Dernier snapshot
+                              <div className="text-center">
+                                <div className="text-sm text-gray-600 mb-1">Total Achat</div>
+                                <div className="text-lg font-semibold text-gray-900">
+                                  {snapshotComparisonData[0].totalAchat.toFixed(0)} → {snapshotComparisonData[snapshotComparisonData.length - 1].totalAchat.toFixed(0)} DH
+                                </div>
+                                <div className={`text-sm font-medium ${snapshotComparisonData[snapshotComparisonData.length - 1].totalAchat - snapshotComparisonData[0].totalAchat >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {snapshotComparisonData[snapshotComparisonData.length - 1].totalAchat - snapshotComparisonData[0].totalAchat >= 0 ? '↑' : '↓'}
+                                  {' '}{Math.abs(snapshotComparisonData[snapshotComparisonData.length - 1].totalAchat - snapshotComparisonData[0].totalAchat).toFixed(2)} DH
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -643,7 +723,7 @@ const InventoryPage: React.FC = () => {
                 {chartType === 'products' && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-gray-900">Top Produits par Valeur</h3>
+                      <h3 className="text-lg font-semibold text-gray-900">Top Produits par Total Achat</h3>
                       <select
                         value={topProductsCount}
                         onChange={(e) => setTopProductsCount(Number(e.target.value))}
@@ -655,73 +735,139 @@ const InventoryPage: React.FC = () => {
                         <option value={50}>Top 50</option>
                       </select>
                     </div>
-                    <ResponsiveContainer width="100%" height={400}>
-                      <BarChart data={topProductsData} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" />
-                        <YAxis dataKey="name" type="category" width={150} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="valeurVente" fill="#10b981" name="Valeur Vente (DH)" />
-                        <Bar dataKey="valeurCoût" fill="#f59e0b" name="Valeur Coût (DH)" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={topProductsData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={(entry) => `${entry.name.slice(0, 20)}`}
-                          outerRadius={100}
-                          fill="#8884d8"
-                          dataKey="valeurVente"
-                        >
-                          {topProductsData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    
+                    {/* Bar chart horizontal */}
+                    <div className="bg-white border rounded-lg p-4">
+                      <ResponsiveContainer width="100%" height={Math.max(300, topProductsCount * 35)}>
+                        <BarChart data={topProductsData} layout="vertical" barCategoryGap="15%">
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis 
+                            type="number" 
+                            tick={{ fontSize: 11 }}
+                            tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}
+                          />
+                          <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11 }} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                            formatter={(value: any) => [`${Number(value).toFixed(2)} DH`, 'Total Achat']}
+                          />
+                          <Bar dataKey="valeurCoût" fill="#f59e0b" name="Total Achat (DH)" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Pie chart */}
+                    <div className="bg-white border rounded-lg p-4">
+                      <h4 className="text-md font-semibold text-gray-800 mb-4 text-center">Répartition par Produit</h4>
+                      <ResponsiveContainer width="100%" height={320}>
+                        <PieChart>
+                          <Pie
+                            data={topProductsData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={true}
+                            label={(entry: any) => `${String(entry?.name ?? '').slice(0, 15)}...`}
+                            outerRadius={100}
+                            innerRadius={40}
+                            fill="#8884d8"
+                            dataKey="valeurCoût"
+                            paddingAngle={2}
+                          >
+                            {topProductsData.map((_entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                            formatter={(value: any) => [`${Number(value).toFixed(2)} DH`, 'Total Achat']}
+                          />
+                          <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 )}
 
                 {chartType === 'categories' && (
                   <div className="space-y-6">
                     <h3 className="text-lg font-semibold text-gray-900">Distribution par Catégorie</h3>
-                    <ResponsiveContainer width="100%" height={400}>
-                      <BarChart data={categoryData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="valeurVente" fill="#10b981" name="Valeur Vente (DH)" />
-                        <Bar dataKey="valeurCoût" fill="#f59e0b" name="Valeur Coût (DH)" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={categoryData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={(entry) => entry.name}
-                          outerRadius={100}
-                          fill="#8884d8"
-                          dataKey="valeurVente"
-                        >
-                          {categoryData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    
+                    {/* Bar chart par catégorie */}
+                    <div className="bg-white border rounded-lg p-4">
+                      <ResponsiveContainer width="100%" height={400}>
+                        <BarChart data={categoryData} barCategoryGap="20%">
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis 
+                            dataKey="name" 
+                            angle={-35} 
+                            textAnchor="end" 
+                            height={80} 
+                            tick={{ fontSize: 11 }}
+                            interval={0}
+                          />
+                          <YAxis 
+                            tick={{ fontSize: 11 }}
+                            tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}
+                          />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                            formatter={(value: any, name: any) => [`${Number(value).toFixed(2)} DH`, name]}
+                          />
+                          <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                          <Bar dataKey="valeurCoût" fill="#f59e0b" name="Total Achat (DH)" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Pie + Stats */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="bg-white border rounded-lg p-4">
+                        <h4 className="text-md font-semibold text-gray-800 mb-4 text-center">Répartition Total Achat</h4>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={categoryData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={(entry: any) => `${((entry.percent || 0) * 100).toFixed(0)}%`}
+                              outerRadius={90}
+                              innerRadius={45}
+                              fill="#8884d8"
+                              dataKey="valeurCoût"
+                              paddingAngle={2}
+                            >
+                              {categoryData.map((_entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                              formatter={(value: any) => [`${Number(value).toFixed(2)} DH`, 'Total Achat']}
+                            />
+                            <Legend layout="vertical" verticalAlign="middle" align="right" />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      
+                      <div className="bg-white border rounded-lg p-4">
+                        <h4 className="text-md font-semibold text-gray-800 mb-4">Détails par Catégorie</h4>
+                        <div className="space-y-3 max-h-[280px] overflow-y-auto">
+                          {categoryData.map((cat, idx) => (
+                            <div key={cat.name} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
+                                <span className="text-sm font-medium text-gray-700">{cat.name}</span>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-sm font-semibold text-orange-700">{cat.valeurCoût.toFixed(2)} DH</div>
+                                <div className="text-xs text-gray-500">{cat.produits} produits • {cat.quantité.toFixed(0)} unités</div>
+                              </div>
+                            </div>
                           ))}
-                        </Pie>
-                        <Tooltip />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </>
