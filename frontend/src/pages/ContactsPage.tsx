@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Plus, Edit, Trash2, Search, Users, Truck, Phone, Mail, MapPin,
   CreditCard, Building2, DollarSign, Eye, Printer, Calendar, FileText,
@@ -54,10 +55,59 @@ const contactValidationSchema = Yup.object({
 });
 
 const ContactsPage: React.FC = () => {
+  const location = useLocation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const authTokenValue = useSelector((state: RootState) => (state as any).auth?.token);
   const isEmployee = (currentUser?.role === 'Employé');
   const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+
+  // DEV debug: call backend breakdown on page enter.
+  // Usage: /contacts?debugSolde=477 (if omitted, defaults to 477 in DEV)
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+
+    const sp = new URLSearchParams(location.search);
+    const raw = sp.get('debugSolde') ?? sp.get('debugSoldeUserId') ?? '477';
+
+    const userId = Number(raw);
+    if (!Number.isFinite(userId) || userId <= 0) return;
+
+    const controller = new AbortController();
+    const headers: Record<string, string> = {};
+    if (authTokenValue) headers.authorization = `Bearer ${authTokenValue}`;
+
+    console.log('[ContactsPage][debugSolde] calling', {
+      url: `/api/contacts/debug-solde?user_id=${userId}`,
+      userId,
+      hasToken: Boolean(authTokenValue),
+      search: location.search,
+    });
+
+    fetch(`/api/contacts/debug-solde?user_id=${userId}`,
+      {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      }
+    )
+      .then(async (r) => {
+        const text = await r.text();
+        let json: any = null;
+        try {
+          json = text ? JSON.parse(text) : null;
+        } catch {
+          json = text;
+        }
+        console.log('[ContactsPage][debugSolde]', { userId, status: r.status, data: json });
+      })
+      .catch((e) => {
+        if (e?.name === 'AbortError') return;
+        console.warn('[ContactsPage][debugSolde] failed', e);
+      });
+
+    return () => controller.abort();
+  }, [location.search, authTokenValue]);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -1442,8 +1492,7 @@ const ContactsPage: React.FC = () => {
 
   // État pour stocker les remises du contact sélectionné
   const [contactRemises, setContactRemises] = useState<any[]>([]);
-  // Token auth pour appels directs fetch
-  const authToken = useSelector((s: RootState) => (s as any)?.auth?.token);
+  // Token auth pour appels directs fetch (déjà disponible via authTokenValue en haut du composant)
 
   const handleSendWhatsAppContactProducts = async () => {
     if (!selectedContact) return;
@@ -1671,7 +1720,7 @@ const ContactsPage: React.FC = () => {
       const fileName = `Rapport_${safeName}_${suffix}_${new Date().toISOString().slice(0, 10)}.pdf`;
 
       const uploadResult = await uploadBonPdf(pdfBlob, fileName, {
-        token: authToken || undefined,
+        token: authTokenValue || undefined,
         bonId: selectedContact.id,
         bonType: 'CONTACT_PRODUCTS',
       });
@@ -1693,7 +1742,7 @@ const ContactsPage: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          ...(authTokenValue ? { Authorization: `Bearer ${authTokenValue}` } : {}),
         },
         body: JSON.stringify({
           to: String(toPhone),
@@ -1727,7 +1776,7 @@ const ContactsPage: React.FC = () => {
     try {
       // Récupérer toutes les remises liées à ce contact (protégé -> besoin Authorization)
       const response = await fetch(`/api/remises/clients`, {
-        headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        headers: authTokenValue ? { 'Authorization': `Bearer ${authTokenValue}` } : {}
       });
       if (response.ok) {
         const allRemises = await response.json();
@@ -1745,7 +1794,7 @@ const ContactsPage: React.FC = () => {
           const isLegacyAbonne = !remise.contact_id && remise.type === 'client_abonne' && contactNameVariants.has(normalize(remise.nom));
           if (isDirectLink || isLegacyAbonne) {
             const itemsResponse = await fetch(`/api/remises/clients/${remise.id}/items`, {
-              headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+              headers: authTokenValue ? { 'Authorization': `Bearer ${authTokenValue}` } : {}
             });
             if (itemsResponse.ok) {
               const items = await itemsResponse.json();

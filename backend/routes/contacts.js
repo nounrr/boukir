@@ -46,7 +46,10 @@ const applyContactsFilters = ({ type, search, clientSubTab, groupId }) => {
 // without relying solely on ecommerce_orders.user_id.
 const phone9Sql = (expr) => {
   // Remove common non-digit chars; keep last 9 digits to ignore country code/prefix.
-  return `RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${expr}, ''), ' ', ''), '+', ''), '-', ''), '(', ''), ')', ''), '.', ''), '/', ''), ',', ''), 9)`;
+  const cleaned = `RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${expr}, ''), ' ', ''), '+', ''), '-', ''), '(', ''), ')', ''), '.', ''), '/', ''), ',', ''), 9)`;
+  // Force a single collation/charset for comparisons (digits only) to avoid
+  // "Illegal mix of collations" errors when DB tables use different utf8mb4 collations.
+  return `CONVERT(${cleaned} USING ascii)`;
 };
 
 const CONTACT_PHONE_MAP_SUBQUERY = `
@@ -112,20 +115,25 @@ router.get('/', async (req, res) => {
       ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
 
       -- Ventes e-commerce (bons ecommerce): inclure seulement les commandes en solde (is_solde = 1), même si payées
-      -- Montant pris = solde_amount sinon (total_amount - remise_used_amount)
+      -- Montant pris = total_amount
       LEFT JOIN (
         SELECT
-          COALESCE(c_by_id.id, c_by_phone.contact_id) AS contact_id,
-          SUM(COALESCE(o.solde_amount, GREATEST(0, COALESCE(o.total_amount, 0) - COALESCE(o.remise_used_amount, 0)))) AS total_ventes
+          c_link.id AS contact_id,
+          SUM(o.total_amount) AS total_ventes
         FROM ecommerce_orders o
-        LEFT JOIN contacts c_by_id ON c_by_id.id = o.user_id
-        LEFT JOIN (
-          ${CONTACT_PHONE_MAP_SUBQUERY}
-        ) c_by_phone ON c_by_phone.phone9 = ${phone9Sql('o.customer_phone')}
-        WHERE COALESCE(o.is_solde, 0) = 1
+        INNER JOIN contacts c_link
+          ON (
+            o.user_id = c_link.id
+            OR (
+              c_link.telephone IS NOT NULL
+              AND TRIM(c_link.telephone) <> ''
+              AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c_link.telephone')}
+            )
+          )
+        WHERE c_link.type = 'Client'
+          AND COALESCE(o.is_solde, 0) = 1
           AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-          AND COALESCE(c_by_id.id, c_by_phone.contact_id) IS NOT NULL
-        GROUP BY COALESCE(c_by_id.id, c_by_phone.contact_id)
+        GROUP BY c_link.id
       ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
 
       -- Achats fournisseur = bons_commande
@@ -166,18 +174,22 @@ router.get('/', async (req, res) => {
       -- Avoirs e-commerce (liés par ecommerce_order_id -> ecommerce_orders.user_id)
       LEFT JOIN (
         SELECT
-          COALESCE(c_by_id.id, c_by_phone.contact_id) AS contact_id,
+          c_link.id AS contact_id,
           SUM(ae.montant_total) AS total_avoirs
         FROM avoirs_ecommerce ae
         LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-        LEFT JOIN contacts c_by_id ON c_by_id.id = o.user_id
-        LEFT JOIN (
-          ${CONTACT_PHONE_MAP_SUBQUERY}
-        ) c_by_phone ON c_by_phone.phone9 = ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')}
-        WHERE ae.ecommerce_order_id IS NOT NULL
+        INNER JOIN contacts c_link
+          ON (
+            o.user_id = c_link.id
+            OR (
+              c_link.telephone IS NOT NULL
+              AND TRIM(c_link.telephone) <> ''
+              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ${phone9Sql('c_link.telephone')}
+            )
+          )
+        WHERE c_link.type = 'Client'
           AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
-          AND COALESCE(c_by_id.id, c_by_phone.contact_id) IS NOT NULL
-        GROUP BY COALESCE(c_by_id.id, c_by_phone.contact_id)
+        GROUP BY c_link.id
       ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
 
       -- Avoirs fournisseur (avoirs_fournisseur table)
@@ -270,17 +282,22 @@ router.get('/summary', async (req, res) => {
 
       LEFT JOIN (
         SELECT
-          COALESCE(c_by_id.id, c_by_phone.contact_id) AS contact_id,
-          SUM(COALESCE(o.solde_amount, GREATEST(0, COALESCE(o.total_amount, 0) - COALESCE(o.remise_used_amount, 0)))) AS total_ventes
+          c_link.id AS contact_id,
+          SUM(o.total_amount) AS total_ventes
         FROM ecommerce_orders o
-        LEFT JOIN contacts c_by_id ON c_by_id.id = o.user_id
-        LEFT JOIN (
-          ${CONTACT_PHONE_MAP_SUBQUERY}
-        ) c_by_phone ON c_by_phone.phone9 = ${phone9Sql('o.customer_phone')}
-        WHERE COALESCE(o.is_solde, 0) = 1
+        INNER JOIN contacts c_link
+          ON (
+            o.user_id = c_link.id
+            OR (
+              c_link.telephone IS NOT NULL
+              AND TRIM(c_link.telephone) <> ''
+              AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c_link.telephone')}
+            )
+          )
+        WHERE c_link.type = 'Client'
+          AND COALESCE(o.is_solde, 0) = 1
           AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-          AND COALESCE(c_by_id.id, c_by_phone.contact_id) IS NOT NULL
-        GROUP BY COALESCE(c_by_id.id, c_by_phone.contact_id)
+        GROUP BY c_link.id
       ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
@@ -316,18 +333,22 @@ router.get('/summary', async (req, res) => {
 
       LEFT JOIN (
         SELECT
-          COALESCE(c_by_id.id, c_by_phone.contact_id) AS contact_id,
+          c_link.id AS contact_id,
           SUM(ae.montant_total) AS total_avoirs
         FROM avoirs_ecommerce ae
         LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-        LEFT JOIN contacts c_by_id ON c_by_id.id = o.user_id
-        LEFT JOIN (
-          ${CONTACT_PHONE_MAP_SUBQUERY}
-        ) c_by_phone ON c_by_phone.phone9 = ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')}
-        WHERE ae.ecommerce_order_id IS NOT NULL
+        INNER JOIN contacts c_link
+          ON (
+            o.user_id = c_link.id
+            OR (
+              c_link.telephone IS NOT NULL
+              AND TRIM(c_link.telephone) <> ''
+              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ${phone9Sql('c_link.telephone')}
+            )
+          )
+        WHERE c_link.type = 'Client'
           AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
-          AND COALESCE(c_by_id.id, c_by_phone.contact_id) IS NOT NULL
-        GROUP BY COALESCE(c_by_id.id, c_by_phone.contact_id)
+        GROUP BY c_link.id
       ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
@@ -366,7 +387,7 @@ router.get('/debug-solde', async (req, res) => {
     const allowedStatuts = ['validé', 'valide', 'en attente', 'pending'];
 
     const [[contact]] = await pool.execute(
-      `SELECT id, type, nom_complet, societe, solde, source, telephone
+      `SELECT id, type, nom_complet, societe, solde, source, telephone, created_at
        FROM contacts
        WHERE id = ?
        LIMIT 1`,
@@ -377,27 +398,28 @@ router.get('/debug-solde', async (req, res) => {
       return res.status(404).json({ error: `Contact not found for id=${userId}` });
     }
 
+    // 1. Backoffice Sales
     const [ventesBoRows] = await pool.execute(
-      `SELECT src, id, montant_total, statut
+      `SELECT src, id, montant_total, statut, date_creation
        FROM (
-         SELECT 'bons_sortie' AS src, id, montant_total, statut
+         SELECT 'bons_sortie' AS src, id, montant_total, statut, date_creation
          FROM bons_sortie
          WHERE client_id = ?
          UNION ALL
-         SELECT 'bons_comptant' AS src, id, montant_total, statut
+         SELECT 'bons_comptant' AS src, id, montant_total, statut, date_creation
          FROM bons_comptant
          WHERE client_id = ?
        ) x
        WHERE LOWER(TRIM(x.statut)) IN (${allowedStatuts.map(() => '?').join(',')})
-       ORDER BY src, id`,
+       ORDER BY date_creation`,
       [userId, userId, ...allowedStatuts]
     );
 
     const ventesBoTotal = ventesBoRows.reduce((acc, r) => acc + Number(r.montant_total || 0), 0);
-
     const contactPhone9 = String(contact?.telephone ?? '').replace(/\D+/g, '').slice(-9);
 
-    const [ecomOrdersRows] = await pool.execute(
+    // 2. Ecommerce Orders
+    const [allEcomOrdersRaw] = await pool.execute(
       `SELECT
          id,
          order_number,
@@ -409,46 +431,70 @@ router.get('/debug-solde', async (req, res) => {
          solde_amount,
          total_amount,
          remise_used_amount,
-         COALESCE(solde_amount, GREATEST(0, COALESCE(total_amount, 0) - COALESCE(remise_used_amount, 0))) AS amount_counted
+         created_at,
+         total_amount AS amount_counted
        FROM ecommerce_orders
-       WHERE COALESCE(is_solde, 0) = 1
-         AND LOWER(COALESCE(status, '')) NOT IN ('cancelled','refunded')
-         AND (
-           user_id = ?
-           OR (
-             ? <> ''
-             AND ${phone9Sql('customer_phone')} = ?
-           )
+       WHERE (
+         user_id = ?
+         OR (
+           ? <> ''
+           AND ${phone9Sql('customer_phone')} = ?
          )
-       ORDER BY id`,
+       )
+       ORDER BY created_at`,
       [userId, contactPhone9, contactPhone9]
     );
 
-    const ventesEcomTotal = ecomOrdersRows.reduce((acc, r) => acc + Number(r.amount_counted || 0), 0);
+    const excludedOrderStatuses = new Set(['cancelled', 'refunded']);
+    const allEcomOrdersRows = allEcomOrdersRaw.map((r) => {
+      const statusNorm = String(r?.status ?? '').toLowerCase().trim();
+      const isSolde = Number(r?.is_solde || 0) === 1;
+      const isExcludedStatus = excludedOrderStatuses.has(statusNorm);
+      const included = isSolde && !isExcludedStatus;
 
+      let reason = 'included';
+      if (!isSolde) reason = 'excluded: is_solde != 1';
+      else if (isExcludedStatus) reason = `excluded: status=${statusNorm}`;
+
+      const amountCounted = Number(r?.amount_counted || 0);
+      return {
+        ...r,
+        included,
+        reason,
+        amount_included: included ? amountCounted : 0,
+      };
+    });
+
+    const ventesEcomTotal = allEcomOrdersRows.reduce((acc, r) => acc + Number(r.amount_included || 0), 0);
+
+    // 3. Payments
     const [paymentsRows] = await pool.execute(
       `SELECT id, montant_total, statut, mode_paiement, date_paiement
        FROM payments
        WHERE type_paiement = 'Client'
          AND contact_id = ?
          AND LOWER(TRIM(statut)) IN (${allowedStatuts.map(() => '?').join(',')})
-       ORDER BY id`,
+       ORDER BY date_paiement`,
       [userId, ...allowedStatuts]
     );
 
     const paymentsTotal = paymentsRows.reduce((acc, r) => acc + Number(r.montant_total || 0), 0);
 
+    // 4. Backoffice Credit Notes (Avoirs)
     const [avoirsClientRows] = await pool.execute(
-      `SELECT id, montant_total, statut
+      `SELECT id, montant_total, statut, date_creation
        FROM avoirs_client
        WHERE client_id = ?
          AND LOWER(TRIM(statut)) IN (${allowedStatuts.map(() => '?').join(',')})
-       ORDER BY id`,
+       ORDER BY date_creation`,
       [userId, ...allowedStatuts]
     );
 
     const avoirsClientTotal = avoirsClientRows.reduce((acc, r) => acc + Number(r.montant_total || 0), 0);
 
+    // 5. Ecommerce Credit Notes (Avoirs)
+    // Attempting to select created_at. If table lacks it, this might fail, so we might need fallback.
+    // Assuming created_at exists based on common schema patterns in this project.
     const [avoirsEcomRows] = await pool.execute(
       `SELECT
          ae.id,
@@ -456,6 +502,7 @@ router.get('/debug-solde', async (req, res) => {
          ae.montant_total,
          ae.statut,
          ae.customer_phone,
+         ae.created_at,
          o.order_number,
          o.status AS order_status,
          o.is_solde,
@@ -463,8 +510,7 @@ router.get('/debug-solde', async (req, res) => {
          o.customer_phone AS order_customer_phone
        FROM avoirs_ecommerce ae
        LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-       WHERE ae.ecommerce_order_id IS NOT NULL
-         AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
+       WHERE LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
          AND (
            o.user_id = ?
            OR (
@@ -472,73 +518,152 @@ router.get('/debug-solde', async (req, res) => {
              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ?
            )
          )
-       ORDER BY ae.id`,
+       ORDER BY ae.created_at`,
       [userId, contactPhone9, contactPhone9]
     );
 
     const avoirsEcomTotal = avoirsEcomRows.reduce((acc, r) => acc + Number(r.montant_total || 0), 0);
 
-    const soldeCumule =
-      Number(contact.solde || 0)
-      + ventesBoTotal
-      + ventesEcomTotal
-      - paymentsTotal
-      - avoirsClientTotal
-      - avoirsEcomTotal;
+    // --- Build Unified Ledger ---
+    let ledger = [];
 
-    console.log('[debug-solde]', {
-      userId,
-      contactType: contact.type,
-      baseSolde: Number(contact.solde || 0),
-      ventesBoTotal,
-      ventesEcomTotal,
-      paymentsTotal,
-      avoirsClientTotal,
-      avoirsEcomTotal,
-      soldeCumule,
-      ecomOrdersCount: ecomOrdersRows.length,
-      avoirsEcomCount: avoirsEcomRows.length,
-      ventesBoCount: ventesBoRows.length,
-      paymentsCount: paymentsRows.length,
+    // Initial Balance
+    // We assume initial solde (legacy) is from beginning of time or migration.
+    // We'll give it a null date or very old date for sorting, or just unshift it.
+    const baseSolde = Number(contact.solde || 0);
+    if (baseSolde !== 0) {
+      ledger.push({
+        date: contact.created_at || '1970-01-01', // fallback
+        type: 'SOLDE_INITIAL',
+        reference: 'Migration/Legacy',
+        debit: baseSolde > 0 ? baseSolde : 0,
+        credit: baseSolde < 0 ? Math.abs(baseSolde) : 0,
+        amount_signed: baseSolde,
+        details: 'Solde initial fiche contact'
+      });
+    }
+
+    // BO Sales
+    ventesBoRows.forEach(r => {
+      ledger.push({
+        date: r.date_creation,
+        type: 'VENTE_BO',
+        reference: `${r.src} #${r.id}`,
+        debit: Number(r.montant_total),
+        credit: 0,
+        amount_signed: Number(r.montant_total),
+        details: r.statut
+      });
     });
+
+    // Ecom Sales
+    allEcomOrdersRows.forEach(r => {
+      if (r.included) {
+        ledger.push({
+          date: r.created_at,
+          type: 'VENTE_ECOM',
+          reference: `Order #${r.order_number || r.id}`,
+          debit: Number(r.amount_included),
+          credit: 0,
+          amount_signed: Number(r.amount_included),
+          details: `${r.status} (is_solde=1)`
+        });
+      }
+    });
+
+    // Payments
+    paymentsRows.forEach(r => {
+      ledger.push({
+        date: r.date_paiement,
+        type: 'PAIEMENT',
+        reference: `Pay #${r.id}`,
+        debit: 0,
+        credit: Number(r.montant_total),
+        amount_signed: -Number(r.montant_total),
+        details: `${r.mode_paiement} (${r.statut})`
+      });
+    });
+
+    // Avoirs BO
+    avoirsClientRows.forEach(r => {
+      ledger.push({
+        date: r.date_creation,
+        type: 'AVOIR_BO',
+        reference: `Avoir #${r.id}`,
+        debit: 0,
+        credit: Number(r.montant_total),
+        amount_signed: -Number(r.montant_total),
+        details: r.statut
+      });
+    });
+
+    // Avoirs Ecom
+    avoirsEcomRows.forEach(r => {
+      ledger.push({
+        date: r.created_at,
+        type: 'AVOIR_ECOM',
+        reference: `AvoirEcom #${r.id}`,
+        debit: 0,
+        credit: Number(r.montant_total),
+        amount_signed: -Number(r.montant_total),
+        details: r.statut
+      });
+    });
+
+    // Sort by Date
+    ledger.sort((a, b) => {
+      const da = new Date(a.date || 0);
+      const db = new Date(b.date || 0);
+      return da - db;
+    });
+
+    // Calculate Running Balance
+    let runningBalance = 0;
+    ledger = ledger.map(item => {
+      runningBalance += item.amount_signed;
+      return {
+        ...item,
+        solde_cumule: runningBalance
+      };
+    });
+
+    const soldeFinal = runningBalance;
+
+    if (userId === 477) {
+      console.log('--- DEBUG LEDGER FOR USER 477 ---');
+      console.table(ledger.map(i => ({
+        DATE: i.date ? new Date(i.date).toISOString().slice(0, 19).replace('T', ' ') : 'N/A',
+        TYPE: i.type,
+        REF: i.reference,
+        DEBIT: i.debit.toFixed(2),
+        CREDIT: i.credit.toFixed(2),
+        SOLDE: i.solde_cumule.toFixed(2)
+      })));
+      console.log('--- ALL ECOM ORDERS (Check if missing ones are here) ---');
+      console.table(allEcomOrdersRows.map(r => ({
+        id: r.id,
+        ref: r.order_number,
+        date: r.created_at,
+        is_solde: r.is_solde,
+        status: r.status,
+        INCLUDED: r.included,
+        REASON: r.reason
+      })));
+    }
 
     return res.json({
       contact,
-      filters: {
-        allowedStatuts,
-        ecommerce: {
-          onlyIsSolde: true,
-          excludedOrderStatuses: ['cancelled', 'refunded'],
-          amountFormula: 'COALESCE(solde_amount, GREATEST(0, total_amount - remise_used_amount))',
-        },
-      },
-      breakdown: {
-        baseSolde: Number(contact.solde || 0),
-        ventes_backoffice: {
-          total: ventesBoTotal,
-          rows: ventesBoRows,
-        },
-        ventes_ecommerce: {
-          total: ventesEcomTotal,
-          rows: ecomOrdersRows,
-        },
-        paiements_client: {
-          total: paymentsTotal,
-          rows: paymentsRows,
-        },
-        avoirs_client: {
-          total: avoirsClientTotal,
-          rows: avoirsClientRows,
-        },
-        avoirs_ecommerce: {
-          total: avoirsEcomTotal,
-          rows: avoirsEcomRows,
-        },
-      },
-      computed: {
-        solde_cumule: soldeCumule,
-      },
+      ledger,
+      solde_final: soldeFinal,
+      totals: {
+        ventes_bo: ventesBoTotal,
+        ventes_ecom: ventesEcomTotal,
+        paiements: paymentsTotal,
+        avoirs_bo: avoirsClientTotal,
+        avoirs_ecom: avoirsEcomTotal
+      }
     });
+
   } catch (error) {
     console.error('Error in debug-solde:', error);
     res.status(500).json({ error: 'Failed to debug solde' });
@@ -571,17 +696,22 @@ router.get('/:id', async (req, res) => {
 
       LEFT JOIN (
         SELECT
-          COALESCE(c_by_id.id, c_by_phone.contact_id) AS contact_id,
-          SUM(COALESCE(o.solde_amount, GREATEST(0, COALESCE(o.total_amount, 0) - COALESCE(o.remise_used_amount, 0)))) AS total_ventes
+          c_link.id AS contact_id,
+          SUM(o.total_amount) AS total_ventes
         FROM ecommerce_orders o
-        LEFT JOIN contacts c_by_id ON c_by_id.id = o.user_id
-        LEFT JOIN (
-          ${CONTACT_PHONE_MAP_SUBQUERY}
-        ) c_by_phone ON c_by_phone.phone9 = ${phone9Sql('o.customer_phone')}
-        WHERE COALESCE(o.is_solde, 0) = 1
+        INNER JOIN contacts c_link
+          ON (
+            o.user_id = c_link.id
+            OR (
+              c_link.telephone IS NOT NULL
+              AND TRIM(c_link.telephone) <> ''
+              AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c_link.telephone')}
+            )
+          )
+        WHERE c_link.type = 'Client'
+          AND COALESCE(o.is_solde, 0) = 1
           AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-          AND COALESCE(c_by_id.id, c_by_phone.contact_id) IS NOT NULL
-        GROUP BY COALESCE(c_by_id.id, c_by_phone.contact_id)
+        GROUP BY c_link.id
       ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
@@ -617,18 +747,22 @@ router.get('/:id', async (req, res) => {
 
       LEFT JOIN (
         SELECT
-          COALESCE(c_by_id.id, c_by_phone.contact_id) AS contact_id,
+          c_link.id AS contact_id,
           SUM(ae.montant_total) AS total_avoirs
         FROM avoirs_ecommerce ae
         LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-        LEFT JOIN contacts c_by_id ON c_by_id.id = o.user_id
-        LEFT JOIN (
-          ${CONTACT_PHONE_MAP_SUBQUERY}
-        ) c_by_phone ON c_by_phone.phone9 = ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')}
-        WHERE ae.ecommerce_order_id IS NOT NULL
+        INNER JOIN contacts c_link
+          ON (
+            o.user_id = c_link.id
+            OR (
+              c_link.telephone IS NOT NULL
+              AND TRIM(c_link.telephone) <> ''
+              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ${phone9Sql('c_link.telephone')}
+            )
+          )
+        WHERE c_link.type = 'Client'
           AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
-          AND COALESCE(c_by_id.id, c_by_phone.contact_id) IS NOT NULL
-        GROUP BY COALESCE(c_by_id.id, c_by_phone.contact_id)
+        GROUP BY c_link.id
       ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
@@ -868,17 +1002,22 @@ router.put('/:id', async (req, res) => {
 
       LEFT JOIN (
         SELECT
-          COALESCE(c_by_id.id, c_by_phone.contact_id) AS contact_id,
-          SUM(COALESCE(o.solde_amount, GREATEST(0, COALESCE(o.total_amount, 0) - COALESCE(o.remise_used_amount, 0)))) AS total_ventes
+          c_link.id AS contact_id,
+          SUM(o.total_amount) AS total_ventes
         FROM ecommerce_orders o
-        LEFT JOIN contacts c_by_id ON c_by_id.id = o.user_id
-        LEFT JOIN (
-          ${CONTACT_PHONE_MAP_SUBQUERY}
-        ) c_by_phone ON c_by_phone.phone9 = ${phone9Sql('o.customer_phone')}
-        WHERE COALESCE(o.is_solde, 0) = 1
+        INNER JOIN contacts c_link
+          ON (
+            o.user_id = c_link.id
+            OR (
+              c_link.telephone IS NOT NULL
+              AND TRIM(c_link.telephone) <> ''
+              AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c_link.telephone')}
+            )
+          )
+        WHERE c_link.type = 'Client'
+          AND COALESCE(o.is_solde, 0) = 1
           AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-          AND COALESCE(c_by_id.id, c_by_phone.contact_id) IS NOT NULL
-        GROUP BY COALESCE(c_by_id.id, c_by_phone.contact_id)
+        GROUP BY c_link.id
       ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
       LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_achats
@@ -910,18 +1049,22 @@ router.put('/:id', async (req, res) => {
 
       LEFT JOIN (
         SELECT
-          COALESCE(c_by_id.id, c_by_phone.contact_id) AS contact_id,
+          c_link.id AS contact_id,
           SUM(ae.montant_total) AS total_avoirs
         FROM avoirs_ecommerce ae
         LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-        LEFT JOIN contacts c_by_id ON c_by_id.id = o.user_id
-        LEFT JOIN (
-          ${CONTACT_PHONE_MAP_SUBQUERY}
-        ) c_by_phone ON c_by_phone.phone9 = ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')}
-        WHERE ae.ecommerce_order_id IS NOT NULL
+        INNER JOIN contacts c_link
+          ON (
+            o.user_id = c_link.id
+            OR (
+              c_link.telephone IS NOT NULL
+              AND TRIM(c_link.telephone) <> ''
+              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ${phone9Sql('c_link.telephone')}
+            )
+          )
+        WHERE c_link.type = 'Client'
           AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
-          AND COALESCE(c_by_id.id, c_by_phone.contact_id) IS NOT NULL
-        GROUP BY COALESCE(c_by_id.id, c_by_phone.contact_id)
+        GROUP BY c_link.id
       ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
       LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
