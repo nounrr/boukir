@@ -63,6 +63,8 @@ router.get('/', async (req, res, next) => {
         p.remise_artisan,
         p.image_url,
         p.stock_partage_ecom_qty,
+        p.has_variants,
+        p.is_obligatoire_variant,
         pv.variant_name,
         pv.prix_vente as variant_price,
         pv.stock_quantity as variant_stock,
@@ -133,7 +135,10 @@ router.get('/', async (req, res, next) => {
         quantity: quantity,
         product: {
           designation: item.designation,
-          image_url: primaryImage
+          image_url: primaryImage,
+          has_variants: !!item.has_variants,
+          is_obligatoire_variant: Number(item.is_obligatoire_variant || 0) === 1,
+          isObligatoireVariant: Number(item.is_obligatoire_variant || 0) === 1
         },
         variant: item.variant_id ? {
           id: item.variant_id,
@@ -270,6 +275,7 @@ router.post('/items', async (req, res, next) => {
         is_deleted,
         stock_partage_ecom_qty,
         has_variants,
+        is_obligatoire_variant,
         prix_vente,
         pourcentage_promo
       FROM products
@@ -284,6 +290,15 @@ router.post('/items', async (req, res, next) => {
 
     if (!product.ecom_published || product.is_deleted) {
       return res.status(400).json({ message: 'Ce produit n\'est pas disponible' });
+    }
+
+    const requiresVariant = Number(product.has_variants || 0) === 1 && Number(product.is_obligatoire_variant || 0) === 1;
+    if (requiresVariant && !variantId) {
+      return res.status(400).json({
+        message: 'Variante obligatoire pour ce produit',
+        error_type: 'VARIANT_REQUIRED',
+        product_id: productId
+      });
     }
 
     // Validate variant if provided
@@ -813,6 +828,8 @@ router.post('/validate', async (req, res, next) => {
         p.ecom_published,
         p.is_deleted,
         p.stock_partage_ecom_qty,
+        p.has_variants,
+        p.is_obligatoire_variant,
         pv.stock_quantity as variant_stock,
         pv.variant_name
       FROM cart_items ci
@@ -831,6 +848,28 @@ router.post('/validate', async (req, res, next) => {
     const issues = [];
 
     for (const item of cartItems) {
+      const requiresVariant = Number(item.has_variants || 0) === 1 && Number(item.is_obligatoire_variant || 0) === 1;
+      if (requiresVariant && !item.variant_id) {
+        issues.push({
+          cart_item_id: item.id,
+          product_id: item.product_id,
+          issue: 'variant_required',
+          message: `${item.designation}: variante obligatoire`
+        });
+        continue;
+      }
+
+      if (item.variant_id && item.variant_name == null) {
+        issues.push({
+          cart_item_id: item.id,
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          issue: 'variant_invalid',
+          message: `${item.designation}: variante invalide`
+        });
+        continue;
+      }
+
       // Check if product is still published
       if (!item.ecom_published || item.is_deleted) {
         issues.push({

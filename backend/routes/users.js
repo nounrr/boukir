@@ -441,6 +441,126 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+// ==================== REQUEST ARTISAN ROLE (EXISTING CLIENT) ====================
+// POST /api/users/auth/request-artisan - Existing authenticated client requests Artisan/Promoteur role
+router.post('/request-artisan', async (req, res, next) => {
+  const connection = await pool.getConnection();
+  try {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) {
+      return res.status(401).json({ message: 'Token manquant' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    } catch (err) {
+      return res.status(401).json({ message: 'Token invalide' });
+    }
+
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
+      `SELECT id, prenom, nom, nom_complet, email, telephone, avatar_url,
+              type_compte, demande_artisan, artisan_approuve,
+              is_active, is_blocked, locked_until
+       FROM contacts
+       WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none'
+       FOR UPDATE`,
+      [decoded.id]
+    );
+
+    const user = rows[0];
+    if (!user) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+
+    if (!user.is_active) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Compte désactivé', error_type: 'ACCOUNT_INACTIVE' });
+    }
+
+    const lockStatus = isAccountLocked(user);
+    if (lockStatus.locked) {
+      await connection.rollback();
+      return res.status(403).json({ message: lockStatus.reason, error_type: 'ACCOUNT_LOCKED' });
+    }
+
+    // If already artisan
+    const isArtisan = user.type_compte === 'Artisan/Promoteur' || !!user.artisan_approuve;
+    if (isArtisan) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Vous êtes déjà Artisan/Promoteur', status: 'already_artisan' });
+    }
+
+    // If already requested and pending
+    if (!!user.demande_artisan && !user.artisan_approuve) {
+      await connection.commit();
+      return res.json({
+        message: 'Votre demande est déjà en attente',
+        status: 'pending',
+        user: {
+          id: user.id,
+          type_compte: user.type_compte,
+          demande_artisan: true,
+          artisan_approuve: false,
+        },
+      });
+    }
+
+    // Create (or re-create) the request
+    await connection.query(
+      `UPDATE contacts
+       SET demande_artisan = TRUE,
+           artisan_approuve = FALSE,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [user.id]
+    );
+
+    await connection.commit();
+
+    // Notify PDG/admins (same event as registration flow)
+    try {
+      emitToPDG('artisan-request:new', {
+        contact_id: user.id,
+        nom_complet: user.nom_complet || `${user.prenom || ''} ${user.nom || ''}`.trim(),
+        prenom: user.prenom,
+        nom: user.nom,
+        email: user.email,
+        telephone: user.telephone,
+        avatar_url: user.avatar_url,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('emitToPDG artisan-request:new failed', e?.message || e);
+    }
+
+    return res.json({
+      message: 'Demande envoyée avec succès. Elle sera validée par un administrateur.',
+      status: 'requested',
+      user: {
+        id: user.id,
+        type_compte: user.type_compte,
+        demande_artisan: true,
+        artisan_approuve: false,
+      },
+    });
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {
+      // ignore
+    }
+    console.error('Request artisan error:', err);
+    next(err);
+  } finally {
+    connection.release();
+  }
+});
+
 // ==================== GOOGLE SSO ====================
 // POST /api/users/auth/google - Login/Register with Google
 router.post('/google', async (req, res, next) => {

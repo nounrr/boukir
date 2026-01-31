@@ -187,6 +187,7 @@ router.get('/', async (req, res, next) => {
         p.image_url,
         p.stock_partage_ecom_qty as quantite_disponible,
         p.has_variants,
+        p.is_obligatoire_variant,
         p.base_unit,
         p.categorie_base,
         b.id as brand_id,
@@ -360,6 +361,8 @@ router.get('/', async (req, res, next) => {
         })),
         quantite_disponible: Number(r.quantite_disponible),
         has_variants: !!r.has_variants,
+        is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
+        isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,
         base_unit: r.base_unit,
         categorie_base: r.categorie_base,
         
@@ -833,6 +836,8 @@ router.get('/:id', async (req, res, next) => {
       
       // Variants & Units
       has_variants: !!r.has_variants,
+      is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
+      isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,
       variants,
       units: productUnits,
       
@@ -873,6 +878,7 @@ router.get('/featured/promo', async (req, res, next) => {
         p.image_url,
         p.stock_partage_ecom_qty as quantite_disponible,
         p.has_variants,
+        p.is_obligatoire_variant,
         b.nom as brand_nom
       FROM products p
       LEFT JOIN brands b ON p.brand_id = b.id
@@ -934,6 +940,8 @@ router.get('/featured/promo', async (req, res, next) => {
         })),
         quantite_disponible: Number(r.quantite_disponible),
         has_variants: !!r.has_variants,
+        is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
+        isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,
         brand_nom: r.brand_nom,
         is_wishlisted: userId ? wishlistProductIds.has(r.id) : null
       };
@@ -965,6 +973,7 @@ router.get('/featured/new', async (req, res, next) => {
         p.image_url,
         p.stock_partage_ecom_qty as quantite_disponible,
         p.has_variants,
+        p.is_obligatoire_variant,
         b.nom as brand_nom
       FROM products p
       LEFT JOIN brands b ON p.brand_id = b.id
@@ -1028,6 +1037,8 @@ router.get('/featured/new', async (req, res, next) => {
         })),
         quantite_disponible: Number(r.quantite_disponible),
         has_variants: !!r.has_variants,
+        is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
+        isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,
         brand_nom: r.brand_nom,
         is_wishlisted: userId ? wishlistProductIds.has(r.id) : null
       };

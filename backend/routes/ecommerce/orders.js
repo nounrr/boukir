@@ -266,6 +266,8 @@ router.post('/', async (req, res, next) => {
           p.prix_vente as base_price,
           p.pourcentage_promo,
           p.stock_partage_ecom_qty,
+          p.has_variants,
+          p.is_obligatoire_variant,
           p.ecom_published,
           p.is_deleted,
           pv.variant_name,
@@ -304,6 +306,8 @@ router.post('/', async (req, res, next) => {
             p.prix_vente as base_price,
             p.pourcentage_promo,
             p.stock_partage_ecom_qty,
+            p.has_variants,
+            p.is_obligatoire_variant,
             p.ecom_published,
             p.is_deleted,
             pv.variant_name,
@@ -344,6 +348,26 @@ router.post('/', async (req, res, next) => {
         await connection.rollback();
         return res.status(400).json({ 
           message: `Produit non disponible: ${item.designation}` 
+        });
+      }
+
+      const requiresVariant = Number(item.has_variants || 0) === 1 && Number(item.is_obligatoire_variant || 0) === 1;
+      if (requiresVariant && !item.variant_id) {
+        await connection.rollback();
+        return res.status(400).json({
+          message: `Variante obligatoire pour ${item.designation}`,
+          error_type: 'VARIANT_REQUIRED',
+          product_id: item.product_id
+        });
+      }
+
+      if (item.variant_id && item.variant_name == null) {
+        await connection.rollback();
+        return res.status(400).json({
+          message: `Variante invalide pour ${item.designation}`,
+          error_type: 'VARIANT_INVALID',
+          product_id: item.product_id,
+          variant_id: item.variant_id
         });
       }
 
