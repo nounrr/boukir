@@ -30,7 +30,8 @@ backend/.env.*
 .env
 .env.*
 *.env
-# Allow example env file (must be last to override ignores)
-!backend/.env.example
+# Allow example env files (must be last to override ignores)
+!.env.example
+!**/.env.example
 whtsp-servicelocalhost.sql
 localhost.sql
