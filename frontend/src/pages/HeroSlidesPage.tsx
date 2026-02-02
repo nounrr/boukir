@@ -82,7 +82,10 @@ function toInputDateTime(value: string | null | undefined) {
 }
 
 const HeroSlidesPage: React.FC = () => {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const apiBaseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
+  const API_BASE = apiBaseUrl
+    ? String(apiBaseUrl).replace(/\/$/, '') + '/api'
+    : '/api';
 
   const { user } = useAuth();
   const isPdg = user?.role === 'PDG';

@@ -18,6 +18,13 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+function getLocalYmd(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function toCsv(rows, headers) {
   const escape = (v) => {
     const s = v == null ? '' : String(v);
@@ -108,7 +115,7 @@ router.post('/snapshots', requireSnapshotCreator, async (req, res, next) => {
 router.get('/snapshots', async (req, res, next) => {
   try {
     const date = String(req.query.date || '').trim();
-    const ymd = date || new Date().toISOString().slice(0, 10);
+    const ymd = date || getLocalYmd();
     const baseDir = path.join(__dirname, '..', 'uploads', 'inventory', ymd);
     if (!fs.existsSync(baseDir)) return res.json({ ok: true, date: ymd, snapshots: [] });
     const files = fs.readdirSync(baseDir).filter((f) => f.startsWith('snapshot-'));
@@ -165,7 +172,7 @@ router.get('/snapshots', async (req, res, next) => {
 router.get('/snapshots/:id', async (req, res, next) => {
   try {
     const id = String(req.params.id || '').trim();
-    const date = String(req.query.date || '').trim() || new Date().toISOString().slice(0, 10);
+    const date = String(req.query.date || '').trim() || getLocalYmd();
     const baseDir = path.join(__dirname, '..', 'uploads', 'inventory', date);
     const file = path.join(baseDir, `snapshot-${id}.json`);
     if (!fs.existsSync(file)) return res.status(404).json({ ok: false, message: 'Snapshot introuvable' });
