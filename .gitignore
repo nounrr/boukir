@@ -35,3 +35,10 @@ backend/.env.*
 !**/.env.example
 whtsp-servicelocalhost.sql
 localhost.sql
+
+
+backend/uploads/
+backend/.env
+backend/db/pool.js
+*.save
+env/
