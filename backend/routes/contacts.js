@@ -811,6 +811,8 @@ router.post('/', async (req, res) => {
       ice,
       solde = 0,
       plafond,
+      is_solde,
+      isSolde,
       demande_artisan,
       artisan_approuve,
       artisan_approuve_par,
@@ -828,6 +830,18 @@ router.post('/', async (req, res) => {
       group_id,
       created_by
     } = req.body;
+
+    const columnExists = async (tableName, columnName) => {
+      const [rows] = await pool.execute(
+        `SELECT COUNT(*) AS cnt
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = ?
+           AND COLUMN_NAME = ?`,
+        [tableName, columnName]
+      );
+      return Number(rows?.[0]?.cnt || 0) > 0;
+    };
 
     // Validation
     if (!type) {
@@ -856,6 +870,20 @@ router.post('/', async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
   [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null)]
     );
+
+    // Optional: persist solde eligibility if column exists.
+    const hasIsSolde = await columnExists('contacts', 'is_solde');
+    if (hasIsSolde) {
+      const normalizedIsSolde =
+        is_solde !== undefined
+          ? Number(is_solde)
+          : isSolde !== undefined
+            ? (isSolde ? 1 : 0)
+            : undefined;
+      if (normalizedIsSolde !== undefined) {
+        await pool.execute('UPDATE contacts SET is_solde = ? WHERE id = ?', [normalizedIsSolde ? 1 : 0, result.insertId]);
+      }
+    }
 
     // Fetch the created contact
     const [rows] = await pool.execute(
@@ -888,6 +916,8 @@ router.put('/:id', async (req, res) => {
       ice,
       solde,
       plafond,
+      is_solde,
+      isSolde,
       demande_artisan,
       artisan_approuve,
       artisan_approuve_par,
@@ -905,6 +935,27 @@ router.put('/:id', async (req, res) => {
       group_id,
       updated_by
     } = req.body;
+
+    const isProd = process.env.NODE_ENV === 'production';
+
+    const toNullableNumber = (value) => {
+      if (value === undefined) return undefined;
+      if (value === null || value === '') return null;
+      const n = Number(value);
+      return n;
+    };
+
+    const columnExists = async (tableName, columnName) => {
+      const [rows] = await pool.execute(
+        `SELECT COUNT(*) AS cnt
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = ?
+           AND COLUMN_NAME = ?`,
+        [tableName, columnName]
+      );
+      return Number(rows?.[0]?.cnt || 0) > 0;
+    };
 
     // Check if contact exists
     const [existing] = await pool.execute(
@@ -948,8 +999,31 @@ router.put('/:id', async (req, res) => {
     if (adresse !== undefined) { updates.push('adresse = ?'); params.push(adresse); }
     if (rib !== undefined) { updates.push('rib = ?'); params.push(rib); }
     if (ice !== undefined) { updates.push('ice = ?'); params.push(ice); }
-    if (solde !== undefined) { updates.push('solde = ?'); params.push(Number(solde)); }
-    if (plafond !== undefined) { updates.push('plafond = ?'); params.push(plafond ? Number(plafond) : null); }
+    if (solde !== undefined) {
+      const soldeNumber = Number(solde);
+      if (!Number.isFinite(soldeNumber)) {
+        return res.status(400).json({ error: 'solde must be a number' });
+      }
+      updates.push('solde = ?');
+      params.push(soldeNumber);
+    }
+    if (plafond !== undefined) {
+      const plafondNumber = toNullableNumber(plafond);
+      if (plafondNumber !== null && plafondNumber !== undefined && !Number.isFinite(plafondNumber)) {
+        return res.status(400).json({ error: 'plafond must be a number' });
+      }
+      updates.push('plafond = ?');
+      params.push(plafondNumber === undefined ? null : plafondNumber);
+    }
+
+    if (is_solde !== undefined || isSolde !== undefined) {
+      const hasIsSolde = await columnExists('contacts', 'is_solde');
+      if (hasIsSolde) {
+        const normalized = is_solde !== undefined ? Number(is_solde) : (isSolde ? 1 : 0);
+        updates.push('is_solde = ?');
+        params.push(normalized ? 1 : 0);
+      }
+    }
   if (demande_artisan !== undefined) { updates.push('demande_artisan = ?'); params.push(demande_artisan); }
   if (artisan_approuve !== undefined) { updates.push('artisan_approuve = ?'); params.push(artisan_approuve); }
   if (artisan_approuve_par !== undefined) { updates.push('artisan_approuve_par = ?'); params.push(artisan_approuve_par); }
@@ -968,7 +1042,13 @@ router.put('/:id', async (req, res) => {
     updates.push('group_id = ?');
     params.push(group_id === null || group_id === '' ? null : Number(group_id));
   }
-    if (updated_by !== undefined) { updates.push('updated_by = ?'); params.push(updated_by); }
+    if (updated_by !== undefined) {
+      const hasUpdatedBy = await columnExists('contacts', 'updated_by');
+      if (hasUpdatedBy) {
+        updates.push('updated_by = ?');
+        params.push(updated_by);
+      }
+    }
 
     updates.push('updated_at = NOW()');
     params.push(req.params.id);
@@ -1082,7 +1162,20 @@ router.put('/:id', async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating contact:', error);
-    res.status(500).json({ error: 'Failed to update contact' });
+    res.status(500).json({
+      error: 'Failed to update contact',
+      ...(isProd
+        ? {}
+        : {
+            details: {
+              message: error?.message,
+              code: error?.code,
+              errno: error?.errno,
+              sqlState: error?.sqlState,
+              sqlMessage: error?.sqlMessage,
+            },
+          }),
+    });
   }
 });
 

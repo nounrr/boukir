@@ -2643,18 +2643,36 @@ const ContactsPage: React.FC = () => {
     validationSchema: contactValidationSchema,
     onSubmit: async (values, { resetForm }) => {
       try {
+        const emptyToNull = (v: any) => (v === '' ? null : v);
+        const toNumberOrNull = (v: any) => {
+          if (v === '' || v === null || v === undefined) return null;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        };
+
+        const payload = {
+          ...values,
+          telephone: emptyToNull(values.telephone),
+          email: emptyToNull(values.email),
+          adresse: emptyToNull(values.adresse),
+          rib: emptyToNull(values.rib),
+          ice: emptyToNull(values.ice),
+          solde: toNumberOrNull(values.solde) ?? 0,
+          plafond: toNumberOrNull(values.plafond),
+        };
+
         if (editingContact) {
           await updateContactMutation({
             id: editingContact.id,
-            ...values,
-            updated_by: 1,
+            ...payload,
+            updated_by: currentUser?.id || 1,
           }).unwrap();
           showSuccess('Contact mis à jour avec succès');
         } else {
           await createContact({
-            ...values,
+            ...payload,
             type: activeTab === 'clients' ? 'Client' : 'Fournisseur',
-            created_by: 1,
+            created_by: currentUser?.id || 1,
           }).unwrap();
           showSuccess('Contact ajouté avec succès');
         }
@@ -2663,7 +2681,15 @@ const ContactsPage: React.FC = () => {
         resetForm();
       } catch (error) {
         console.error('Erreur lors de la sauvegarde:', error);
-        showError('Erreur lors de la sauvegarde du contact');
+        const anyErr: any = error;
+        const msg =
+          anyErr?.data?.details?.sqlMessage ||
+          anyErr?.data?.details?.message ||
+          anyErr?.data?.error ||
+          anyErr?.error ||
+          anyErr?.message ||
+          'Erreur lors de la sauvegarde du contact';
+        showError(String(msg));
       }
     },
   });
