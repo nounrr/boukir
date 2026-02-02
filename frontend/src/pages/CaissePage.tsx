@@ -126,14 +126,19 @@ const CaissePage = () => {
   // Charger les avoirs pour les afficher dans l'historique du solde cumulé
   const { data: avoirsClient = [], isLoading: avoirsClientLoading } = useGetBonsByTypeQuery('Avoir');
   const { data: avoirsFournisseur = [], isLoading: avoirsFournisseurLoading } = useGetBonsByTypeQuery('AvoirFournisseur');
+  // Bons e-commerce (commandes e-commerce + avoirs e-commerce)
+  const { data: ecommerceOrders = [], isLoading: ecommerceOrdersLoading } = useGetBonsByTypeQuery('Ecommerce');
+  const { data: avoirsEcommerce = [], isLoading: avoirsEcommerceLoading } = useGetBonsByTypeQuery('AvoirEcommerce');
   
-  const bonsLoading = sortiesLoading || comptantsLoading || commandesLoading || avoirsClientLoading || avoirsFournisseurLoading;
+  const bonsLoading = sortiesLoading || comptantsLoading || commandesLoading || avoirsClientLoading || avoirsFournisseurLoading || ecommerceOrdersLoading || avoirsEcommerceLoading;
   const bons: Bon[] = [
     ...(Array.isArray(sorties) ? sorties : []),
     ...(Array.isArray(comptantsRaw) ? comptantsRaw.filter((b: any) => !!b.client_id) : []),
     ...(Array.isArray(commandes) ? commandes : []),
     ...(Array.isArray(avoirsClient) ? avoirsClient : []),
     ...(Array.isArray(avoirsFournisseur) ? avoirsFournisseur : []),
+    ...(Array.isArray(ecommerceOrders) ? ecommerceOrders : []),
+    ...(Array.isArray(avoirsEcommerce) ? avoirsEcommerce : []),
   ];
 
   // Backend now provides payments; no mock seeding
@@ -699,6 +704,8 @@ const paymentValidationSchema = Yup.object({
         const fid = bon.fournisseur_id;
         if (fid) setFieldValue('contact_id', String(fid));
       } else {
+        // Note: pour les bons e-commerce sans client_id, on garde le contact sélectionné.
+        // L'association se fait via l'historique (match tel/email) côté calculateContactSoldeHistory.
         if (bon.type === 'Comptant' && !bon.client_id) {
           setFieldValue('contact_optional', true);
           setFieldValue('contact_id', '');
@@ -1957,7 +1964,7 @@ const paymentValidationSchema = Yup.object({
                           data: c,
                         }))}
                         value={values.contact_id ? String(values.contact_id) : ''}
-                        onChange={(v) => { setFieldValue('contact_id', v); setFieldValue('bon_id', ''); }}
+                        onChange={(v) => { setFieldValue('contact_id', v); setFieldValue('contact_optional', false); setFieldValue('bon_id', ''); }}
                         placeholder={isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}
                         className="w-full"
                         autoOpenOnFocus={true}
@@ -2056,6 +2063,31 @@ const paymentValidationSchema = Yup.object({
 
                           const options: ReactNode[] = [];
 
+                          const formatItems = (items: any[]) => {
+                            if (!Array.isArray(items) || items.length === 0) return '';
+                            const parts = items
+                              .slice(0, 4)
+                              .map((it: any) => {
+                                const q = Number(it?.quantite ?? it?.qty ?? 0);
+                                const name = String(
+                                  it?.designation_custom ||
+                                  it?.designation ||
+                                  it?.produit?.designation ||
+                                  it?.produit?.nom ||
+                                  it?.produit?.name ||
+                                  it?.nom ||
+                                  it?.title ||
+                                  ''
+                                ).trim();
+                                if (!name) return '';
+                                return q > 0 ? `${name} x${q}` : name;
+                              })
+                              .filter(Boolean);
+                            if (!parts.length) return '';
+                            const suffix = items.length > 4 ? ' …' : '';
+                            return parts.join(', ') + suffix;
+                          };
+
                           // Générer les options du select
                           history.forEach((item) => {
                             if (item.type === 'initial') {
@@ -2069,9 +2101,10 @@ const paymentValidationSchema = Yup.object({
                               const dateStr = new Date(item.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
                               const isAvoir = item.typeLabel === 'Avoir' || item.typeLabel === 'AvoirFournisseur';
                               const montant = item.debit || item.credit;
+                              const itemsLabel = formatItems(item?.data?.items || []);
                               options.push(
                                 <option key={item.id} value={`${item.typeLabel}:${item.id}`}>
-                                  {dateStr} | {item.numero} | {isAvoir ? 'Avoir' : 'Bon'} {montant.toFixed(2)} DH | Solde: {item.soldeCumule.toFixed(2)} DH
+                                  {dateStr} | {item.numero} | {isAvoir ? 'Avoir' : 'Bon'} {montant.toFixed(2)} DH | Solde: {item.soldeCumule.toFixed(2)} DH{itemsLabel ? ` | ${itemsLabel}` : ''}
                                 </option>
                               );
                             } else if (item.type === 'paiement') {

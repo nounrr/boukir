@@ -52,6 +52,8 @@ export const bonsApi = api.injectEndpoints({
             ecommerce_raw: o,
             id: o.id,
             type: 'Ecommerce',
+            // Link to contacts when available (contacts.id === ecommerce_orders.user_id)
+            client_id: o.user_id ?? undefined,
             numero: o.order_number,
             date_creation: o.created_at || o.confirmed_at,
             created_at: o.created_at || o.confirmed_at || new Date().toISOString(),
