@@ -82,8 +82,20 @@ const BALANCE_EXPR = `
 // GET /api/contacts - Get all contacts with optional type filter (avec solde_cumule calculé) et pagination
 router.get('/', async (req, res) => {
   try {
-    const { type, page = 1, limit = 50, search, clientSubTab, groupId } = req.query;
+    const { type, page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const normalizedSortDir = String(sortDir || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const normalizedSortBy = String(sortBy || '').toLowerCase().trim();
+    const sortMap = {
+      created_at: 'c.created_at',
+      nom: 'c.nom_complet',
+      nom_complet: 'c.nom_complet',
+      societe: 'c.societe',
+      solde: 'solde_cumule',
+      solde_cumule: 'solde_cumule',
+    };
+    const sortExpr = sortMap[normalizedSortBy] || sortMap.nom_complet;
     
     // Requête pour compter le total
     const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab, groupId });
@@ -203,7 +215,15 @@ router.get('/', async (req, res) => {
 
     const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId });
     query += whereSql;
-    query += ' ORDER BY c.created_at DESC LIMIT ?, ?';
+    // IMPORTANT: ordering must be done in SQL to keep pagination correct.
+    // Use a whitelist to prevent SQL injection.
+    if (sortExpr === 'solde_cumule') {
+      query += ` ORDER BY solde_cumule ${normalizedSortDir}, c.id ${normalizedSortDir}`;
+    } else {
+      // Use COALESCE to keep NULLs stable
+      query += ` ORDER BY COALESCE(${sortExpr}, '') ${normalizedSortDir}, c.id ${normalizedSortDir}`;
+    }
+    query += ' LIMIT ?, ?';
     params.push(offset, parseInt(limit));
 
     // NOTE: MySQL/MariaDB prepared statements may fail with LIMIT placeholders.

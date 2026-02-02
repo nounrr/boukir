@@ -259,6 +259,8 @@ const ContactsPage: React.FC = () => {
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [isGroupEditModalOpen, setIsGroupEditModalOpen] = useState(false);
   const [groupEditId, setGroupEditId] = useState<number | null>(null);
   const [groupEditName, setGroupEditName] = useState('');
@@ -315,17 +317,25 @@ const ContactsPage: React.FC = () => {
     setGroupEditPage(1);
   }, [isGroupEditModalOpen, groupEditId, groupEditMode, groupEditContactsTab, groupEditSearch]);
 
-  // Charger les données paginées depuis le backend (avec filtres serveur)
+  // Charger les données paginées depuis le backend (avec filtres + tri serveur)
+  // IMPORTANT: le tri côté UI casse la pagination (tri seulement sur la page courante)
+  const backendSortBy = sortField || 'nom';
+  const backendSortDir = sortDirection;
+
   const { data: clientsResponse, isLoading: clientsLoading } = useGetClientsQuery({
     page: currentPage,
     limit: itemsPerPage,
     search: searchTerm,
     clientSubTab,
+    sortBy: backendSortBy,
+    sortDir: backendSortDir,
   }, { skip: isGroupsTab });
   const { data: fournisseursResponse, isLoading: fournisseursLoading } = useGetFournisseursQuery({
     page: currentPage,
     limit: itemsPerPage,
     search: searchTerm,
+    sortBy: backendSortBy,
+    sortDir: backendSortDir,
   }, { skip: isGroupsTab });
   
   const clients = clientsResponse?.data || [];
@@ -474,35 +484,30 @@ const ContactsPage: React.FC = () => {
     const id = selectedContact.id;
     const list: any[] = [];
 
-    // Pour un client: sorties, comptants, avoirs client (EXCLUDING Devis per UI request)
     if (isClient) {
       for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
       // Devis intentionally excluded from detail/transactions per requirement
       for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
       for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
     } else {
-      // Fournisseur: commandes, avoirs fournisseur
       for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
       for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
     }
 
-    // Filtre période + tri
-    const filtered = list.filter((b) => isWithinDateRange(b.date_creation));
-    filtered.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
-    return filtered;
-  }, [selectedContact, sorties, devis, comptants, avoirsClient, commandes, avoirsFournisseur, dateFrom, dateTo]);
+    return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
+  }, [selectedContact, sorties, comptants, avoirsClient, commandes, avoirsFournisseur, isAllowedStatut]);
 
+  // Historique produits + paiements (détails contact)
   const productHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
-    const items: any[] = [];
-    // Helper to resolve cost like in BonsPage: prefer cout_revient, then prix_achat, then product fallback
+
     const resolveCost = (it: any) => {
       if (it == null) return 0;
       if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
       if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
       const pid = it.product_id || it.produit_id;
       if (pid) {
-        const prod = (products as any[]).find(p => String(p.id) === String(pid));
+        const prod = (products as any[]).find((p) => String(p.id) === String(pid));
         if (prod) {
           if (prod.cout_revient !== undefined && prod.cout_revient !== null) return Number(prod.cout_revient) || 0;
           if (prod.prix_achat !== undefined && prod.prix_achat !== null) return Number(prod.prix_achat) || 0;
@@ -511,48 +516,51 @@ const ContactsPage: React.FC = () => {
       return 0;
     };
 
-    // Ajouter les produits des bons
+    const items: any[] = [];
+
+    // Produits issus des bons
     for (const b of bonsForContact) {
       const bDate = formatDateDMY(b.date_creation);
       const bonItems = Array.isArray(b.items) ? b.items : [];
+
       for (const it of bonItems) {
         const prod = products.find((p) => p.id === it.product_id);
-        const ref = prod ? String(prod.reference ?? prod.id) : String(it.product_id);
-        const des = prod ? prod.designation : (it.designation || '');
+        const ref = prod ? String((prod as any).reference ?? prod.id) : String(it.product_id);
+        const des = prod ? (prod as any).designation : (it.designation || '');
         const prixUnit = Number(it.prix_unitaire ?? it.prix ?? 0) || 0;
-        // Remises éventuelles
-        const remise_pourcentage = parseFloat(String(it.remise_pourcentage ?? it.remise_pct ?? 0)) || 0;
-        const remise_montant = parseFloat(String(it.remise_montant ?? it.remise_valeur ?? 0)) || 0;
+
+        const remise_pourcentage = parseFloat(String(it.remise_pourcentage ?? (it as any).remise_pct ?? 0)) || 0;
+        const remise_montant = parseFloat(String((it as any).remise_montant ?? (it as any).remise_valeur ?? 0)) || 0;
+
         let total = Number((it as any).total ?? (it as any).montant_ligne);
         if (!Number.isFinite(total) || total === 0) {
           total = (Number(it.quantite) || 0) * prixUnit;
           if (remise_pourcentage > 0) total = total * (1 - remise_pourcentage / 100);
           if (remise_montant > 0) total = total - remise_montant;
         }
-        // Compute mouvement (profit) and remises per the BonsPage rules
+
         const q = Number(it.quantite) || 0;
         const cost = resolveCost(it);
         const mouvement = (prixUnit - cost) * q;
-        const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0; // per-unit remise as in BonsPage
+        const remiseUnitaire = Number((it as any).remise_montant || (it as any).remise_valeur || 0) || 0;
         const remiseTotale = remiseUnitaire * q;
-        // Apply remises only for types that affect mouvement (same list as BonsPage)
         const applyRemise = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(b.type);
         const benefice = mouvement - (applyRemise ? remiseTotale : 0);
-        // Déterminer le type d'item basé sur le type de bon
+
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
         items.push({
-          id: `${b.id}-${it.product_id}-${it.id ?? Math.random()}`,
+          id: `${b.id}-${it.product_id}-${it.id ?? `${items.length}`}`,
           bon_id: b.id,
           bon_numero: b.numero,
           code_reglement: b.code_reglement,
           bon_type: b.type,
           bon_date: bDate,
-          bon_date_iso: b.date_creation, // Date ISO pour l'affichage avec heure
+          bon_date_iso: b.date_creation,
           bon_statut: b.statut,
-          product_id: it.product_id, // Ajouter product_id pour les remises
+          product_id: it.product_id,
           product_reference: ref,
           product_designation: des,
-          quantite: Number(it.quantite) || 0,
+          quantite: q,
           prix_unitaire: prixUnit,
           total,
           mouvement,
@@ -983,8 +991,6 @@ const ContactsPage: React.FC = () => {
 
   // Search term and filtering for the Products detail tab
   const [productSearch, setProductSearch] = useState('');
-  const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde' | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   const searchedProductHistory = useMemo(() => {
     const term = productSearch.trim().toLowerCase();
@@ -2737,46 +2743,8 @@ const ContactsPage: React.FC = () => {
   // Les filtres (search + sous-onglet) sont appliqués côté backend
   const filteredContacts = (activeTab === 'clients' ? clients : fournisseurs);
 
-  // Fonction de tri
-  const sortedContacts = useMemo(() => {
-    const sorted = [...filteredContacts].sort((a, b) => {
-      // 🔥 PRIORITÉ ABSOLUE : Contacts en retard de paiement toujours en premier
-      const aOverdue = isOverdueContact(a, payments);
-      const bOverdue = isOverdueContact(b, payments);
-
-      // Si l'un est en retard et pas l'autre, le contact en retard vient en premier
-      if (aOverdue && !bOverdue) return -1;
-      if (!aOverdue && bOverdue) return 1;
-
-      // Si les deux ont le même statut de retard, appliquer le tri normal
-      if (!sortField) {
-        // Tri par défaut par nom si aucun champ de tri n'est sélectionné
-        const aName = a.nom_complet?.toLowerCase() || '';
-        const bName = b.nom_complet?.toLowerCase() || '';
-        return aName.localeCompare(bName);
-      }
-
-      let aValue: any = '';
-      let bValue: any = '';
-
-      if (sortField === 'nom') {
-        aValue = a.nom_complet?.toLowerCase() || '';
-        bValue = b.nom_complet?.toLowerCase() || '';
-      } else if (sortField === 'societe') {
-        aValue = a.societe?.toLowerCase() || '';
-        bValue = b.societe?.toLowerCase() || '';
-      } else if (sortField === 'solde') {
-        aValue = Number((a as any).solde_cumule ?? 0) || 0;
-        bValue = Number((b as any).solde_cumule ?? 0) || 0;
-      }
-
-      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return sorted;
-  }, [filteredContacts, sortField, sortDirection, activeTab, payments, overdueValue, overdueUnit]);
+  // IMPORTANT: le tri doit être fait côté backend, sinon la pagination est fausse.
+  const sortedContacts = useMemo(() => filteredContacts, [filteredContacts]);
 
   // Fonction pour gérer le tri
   const handleSort = (field: 'nom' | 'societe' | 'solde') => {
