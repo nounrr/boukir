@@ -52,6 +52,8 @@ export const bonsApi = api.injectEndpoints({
             ecommerce_raw: o,
             id: o.id,
             type: 'Ecommerce',
+            // Link to contacts when available (contacts.id === ecommerce_orders.user_id)
+            client_id: o.user_id ?? undefined,
             numero: o.order_number,
             date_creation: o.created_at || o.confirmed_at,
             created_at: o.created_at || o.confirmed_at || new Date().toISOString(),
@@ -68,6 +70,7 @@ export const bonsApi = api.injectEndpoints({
             ecommerce_status: o.status || 'pending',
             items: (o.items || []).map((i: any) => ({
               id: i.id,
+              order_item_id: i.id,
               bon_id: o.id,
               produit_id: i.product_id,
               variant_id: i.variant_id ?? null,
@@ -75,6 +78,10 @@ export const bonsApi = api.injectEndpoints({
               quantite: Number(i.quantity),
               prix_unitaire: Number(i.unit_price),
               montant_ligne: Number(i.subtotal),
+              discount_percentage: Number(i.discount_percentage ?? 0),
+              discount_amount: Number(i.discount_amount ?? 0),
+              remise_percent_applied: Number(i.remise_percent_applied ?? 0),
+              remise_amount: Number(i.remise_amount ?? 0),
               designation_custom: i.product_name,
               produit: { 
                 id: i.product_id, 
@@ -370,6 +377,22 @@ export const bonsApi = api.injectEndpoints({
       ],
     }),
 
+    // E-commerce: update per-item remises (admin)
+    updateEcommerceOrderRemises: builder.mutation<
+      any,
+      { id: number; items: Array<{ order_item_id: number; remise_percent_applied?: number; remise_amount?: number }> }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/ecommerce/orders/${id}/remises`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Ecommerce', id },
+        { type: 'Ecommerce', id: 'LIST' },
+      ],
+    }),
+
     // Transformer un devis vers Sortie/Comptant/Commande
     transformDevis: builder.mutation<
       any,
@@ -452,3 +475,4 @@ export const {
 
 // Explicit re-export (avoids occasional TS server cache issues)
 export const useUpdateEcommerceOrderStatusMutation = bonsApi.useUpdateEcommerceOrderStatusMutation;
+export const useUpdateEcommerceOrderRemisesMutation = bonsApi.useUpdateEcommerceOrderRemisesMutation;
