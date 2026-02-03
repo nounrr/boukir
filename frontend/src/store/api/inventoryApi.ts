@@ -2,8 +2,20 @@ import { apiSlice } from './apiSlice';
 
 export const inventoryApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    createSnapshot: builder.mutation<{ ok: boolean; id: number; date: string; jsonUrl: string; csvUrl: string; totals: any }, void>({
-      query: () => ({ url: '/inventory/snapshots', method: 'POST' }),
+    createSnapshot: builder.mutation<{ ok: boolean; id: number; date: string; jsonUrl: string; csvUrl: string; totals: any }, { date?: string } | void>({
+      query: (arg) => {
+        const date = (arg as any)?.date;
+        return { url: '/inventory/snapshots', method: 'POST', body: date ? { date } : undefined };
+      },
+      invalidatesTags: ['Product'],
+    }),
+    importSnapshotExcel: builder.mutation<{ ok: boolean; id: number; date: string; jsonUrl: string; csvUrl: string; totals: any; missingIds?: number[] }, { date: string; file: File }>({
+      query: ({ date, file }) => {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('date', date);
+        return { url: '/inventory/snapshots/import-excel', method: 'POST', body: fd };
+      },
       invalidatesTags: ['Product'],
     }),
     listSnapshots: builder.query<{ ok: boolean; date: string; snapshots: Array<{ id: number; created_at: string; totals?: any; files: Array<{ type: 'json'|'csv'; url: string }> }> }, { date?: string }>({
@@ -15,4 +27,4 @@ export const inventoryApi = apiSlice.injectEndpoints({
   }),
 });
 
-export const { useCreateSnapshotMutation, useListSnapshotsQuery, useGetSnapshotQuery } = inventoryApi;
+export const { useCreateSnapshotMutation, useImportSnapshotExcelMutation, useListSnapshotsQuery, useGetSnapshotQuery } = inventoryApi;
