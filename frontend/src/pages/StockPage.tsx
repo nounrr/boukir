@@ -69,6 +69,12 @@ const StockPage: React.FC = () => {
   const [itemsPerPage, setItemsPerPage] = useState(30);
   // Unit display selection per product (keyed by product id or originalId for variants)
   const [unitSelection, setUnitSelection] = useState<Record<string, string>>({});
+  const [hoverPreview, setHoverPreview] = useState<null | {
+    url: string;
+    x: number;
+    y: number;
+    alt: string;
+  }>(null);
 
   const formatNum = (n: number) => String(parseFloat((Number(n || 0)).toFixed(2)));
 
@@ -284,6 +290,36 @@ const StockPage: React.FC = () => {
 
   return (
     <div className="p-6">
+      {/* Hover image preview (fixed overlay so it isn't clipped by table overflow) */}
+      {hoverPreview?.url && typeof window !== 'undefined' && (() => {
+        const maxW = 420;
+        const maxH = 320;
+        const pad = 16;
+        const left = Math.max(
+          pad,
+          Math.min(hoverPreview.x + 18, window.innerWidth - maxW - pad)
+        );
+        const top = Math.max(
+          pad,
+          Math.min(hoverPreview.y + 18, window.innerHeight - maxH - pad)
+        );
+
+        return (
+          <div
+            className="fixed z-[9999] pointer-events-none"
+            style={{ left, top, maxWidth: maxW, maxHeight: maxH }}
+          >
+            <div className="w-fit h-fit max-w-[420px] max-h-[320px] rounded-lg border border-gray-200 bg-white shadow-2xl overflow-hidden p-2">
+              <img
+                src={hoverPreview.url}
+                alt={hoverPreview.alt}
+                className="block max-w-full max-h-[304px] object-contain bg-white"
+              />
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div className="flex flex-col gap-2">
@@ -575,7 +611,31 @@ const StockPage: React.FC = () => {
                       </div>
                     ) : (
                       product.image_url ? (
-                        <img src={product.image_url} alt={product.designation} className="h-10 w-10 object-cover rounded" />
+                        <div
+                          className="inline-block"
+                          onMouseEnter={(e) => {
+                            setHoverPreview({
+                              url: product.image_url,
+                              x: e.clientX,
+                              y: e.clientY,
+                              alt: String(product.designation ?? 'Image produit'),
+                            });
+                          }}
+                          onMouseMove={(e) => {
+                            setHoverPreview((prev) => {
+                              if (!prev) return prev;
+                              if (prev.url !== product.image_url) return prev;
+                              return { ...prev, x: e.clientX, y: e.clientY };
+                            });
+                          }}
+                          onMouseLeave={() => setHoverPreview(null)}
+                        >
+                          <img
+                            src={product.image_url}
+                            alt={product.designation}
+                            className="h-10 w-10 object-cover rounded"
+                          />
+                        </div>
                       ) : (
                         <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
                           <Package size={20} />

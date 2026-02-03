@@ -240,15 +240,15 @@ export interface Contact {
   nom?: string | null;
   type: 'Client' | 'Fournisseur';
   type_compte?: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null;
-  telephone?: string;
-  email?: string;
+  telephone?: string | null;
+  email?: string | null;
   password?: string;
-  adresse?: string;
-  rib?: string;
-  ice?: string;
+  adresse?: string | null;
+  rib?: string | null;
+  ice?: string | null;
   solde: number;
   solde_cumule?: number; // Solde cumulé calculé côté backend
-  plafond?: number; // Plafond de crédit (clients)
+  plafond?: number | null; // Plafond de crédit (clients)
   demande_artisan?: boolean;
   artisan_approuve?: boolean;
   artisan_approuve_par?: number | null;
@@ -281,14 +281,14 @@ export interface CreateContactData {
   nom?: string | null;
   type: 'Client' | 'Fournisseur';
   type_compte?: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null;
-  telephone?: string;
-  email?: string;
+  telephone?: string | null;
+  email?: string | null;
   password?: string;
-  adresse?: string;
-  rib?: string;
-  ice?: string;
+  adresse?: string | null;
+  rib?: string | null;
+  ice?: string | null;
   solde?: number;
-  plafond?: number;
+  plafond?: number | null;
   isSolde?: boolean;
   demande_artisan?: boolean;
   artisan_approuve?: boolean;

@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { BarChart3, DollarSign, Package, Search, TrendingUp } from 'lucide-react';
+import { BarChart3, DollarSign, Download, Package, Search, TrendingUp } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import * as XLSX from 'xlsx';
 import { useAuth } from '../hooks/redux';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { useCreateSnapshotMutation, useGetSnapshotQuery, useListSnapshotsQuery } from '../store/api/inventoryApi';
@@ -14,7 +15,13 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 const InventoryPage: React.FC = () => {
   const { user } = useAuth();
-  const today = new Date().toISOString().slice(0,10);
+  const today = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
   const { data, refetch, isFetching } = useListSnapshotsQuery({ date: today });
   const [createSnapshot, { isLoading }] = useCreateSnapshotMutation();
 
@@ -225,6 +232,93 @@ const InventoryPage: React.FC = () => {
     })).sort((a, b) => b.valeurVente - a.valeurVente);
   }, [snapshotDetail, productById, categories]);
 
+  const downloadExcel = React.useCallback(() => {
+    try {
+      if (!snapshotDetail?.snapshot) {
+        showError('Aucun snapshot sélectionné');
+        return;
+      }
+
+      const snapshotId = selectedId != null ? selectedId : snapshotDetail?.snapshot?.id;
+      const snapshotCreatedAt = snapshotDetail?.snapshot?.created_at || '';
+
+      const sourceItems = snapshotDetail?.snapshot?.items || [];
+      const rows = (sourceItems || []).map((it: any) => {
+        const qte = Number(it?.quantite || 0);
+        const pa = Number(it?.prix_achat || 0);
+        const pv = Number(it?.prix_vente || 0);
+        const totalAchat = qte * pa;
+        const totalVente = qte * pv;
+
+        const prod = productById.get(Number(it?.id));
+        let categorie = 'Sans catégorie';
+        if (prod) {
+          if (Array.isArray((prod as any).categories) && (prod as any).categories.length > 0) {
+            categorie = String((prod as any).categories[0]?.nom || categorie);
+          } else {
+            const cat = categories.find((c: any) => Number(c.id) === Number((prod as any).categorie_id));
+            if (cat) categorie = String(cat.nom || categorie);
+          }
+        }
+
+        return {
+          SnapshotId: snapshotId,
+          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : today,
+          ProduitId: it?.id,
+          Designation: it?.designation,
+          Categorie: categorie,
+          Quantite: qte,
+          PrixAchat: pa,
+          PrixVente: pv,
+          TotalAchat: totalAchat,
+          TotalVente: totalVente,
+        };
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Lignes');
+
+      const totals = snapshotDetail?.snapshot?.totals || {};
+      const resumeRows = [
+        {
+          SnapshotId: snapshotId,
+          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : today,
+          TotalProduits: Number(totals?.totalProducts || 0),
+          TotalQuantite: Number(totals?.totalQty || 0),
+          TotalVente: Number(totals?.totalSale || 0),
+          TotalAchat: Number(totals?.totalCost || 0),
+          TotalAchatRecalcule: Number(totalAchatSnapshot || 0),
+          ExportMode: 'all',
+          Search: searchTerm || '',
+          FilterCategory: filterCategory || '',
+        },
+      ];
+      const ws2 = XLSX.utils.json_to_sheet(resumeRows);
+      XLSX.utils.book_append_sheet(wb, ws2, 'Résumé');
+
+      const safeDate = String(today || '').replace(/[^0-9\-]/g, '');
+      const fileName = `inventaire_${safeDate}_snapshot_${snapshotId}.xlsx`;
+
+      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([out], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e: any) {
+      console.error('[InventoryPage] Excel export failed', e);
+      showError(e?.message || 'Échec export Excel');
+    }
+  }, [categories, filterCategory, productById, searchTerm, selectedId, snapshotDetail, today, totalAchatSnapshot]);
+
   return (
     <div className="p-6 space-y-6">
       {/* Header with stats cards */}
@@ -346,6 +440,14 @@ const InventoryPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Détails Snapshot #{selectedId}</h2>
               <div className="flex gap-2">
+                <button
+                  onClick={() => downloadExcel()}
+                  className="px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+                  title="Télécharger un fichier Excel (.xlsx) de toutes les lignes du snapshot"
+                >
+                  <Download size={16} className="inline mr-1" />
+                  Excel
+                </button>
                 <button
                   onClick={() => setViewMode('table')}
                   className={`px-4 py-2 text-sm rounded-lg ${

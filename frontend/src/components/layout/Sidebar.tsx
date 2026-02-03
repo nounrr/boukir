@@ -37,7 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       items: [
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: true },
         { name: 'Remises', href: '/remises', icon: Percent, show: true },
-        { name: 'Coupons', href: '/coupons', icon: Percent, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+        { name: 'Promo codes', href: '/promo-codes', icon: Percent, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
         { name: 'Hero Slides', href: '/hero-slides', icon: Image, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
         { name: 'Contacts', href: '/contacts', icon: UserCheck, show: user?.role !== 'Employé' },
         { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: user?.role !== 'Employé' },

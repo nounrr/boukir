@@ -38,6 +38,35 @@ const computeBonDiscount = (bon: any): number => {
   return items.reduce((sum: number, it: any) => sum + computeItemDiscount(it), 0);
 };
 
+const computeEcommerceItemRemise = (it: any): number => {
+  const q = Number(it?.quantite ?? it?.quantity ?? 0) || 0;
+  if (!q) return 0;
+  const unit = Number(it?.prix_unitaire ?? it?.unit_price ?? it?.price ?? 0) || 0;
+
+  // E-commerce item remises are stored as either a percent applied or a fixed amount.
+  // Prefer remise_amount when present.
+  const amount = Number(it?.remise_amount ?? 0) || 0;
+  if (amount !== 0) return amount * q;
+
+  const pct = Number(it?.remise_percent_applied ?? 0) || 0;
+  if (pct !== 0) return (unit * pct * q) / 100;
+
+  return 0;
+};
+
+const computeEcommerceOrderRemise = (order: any): number => {
+  const items = Array.isArray(order?.items)
+    ? order.items
+    : Array.isArray(order?.order_items)
+      ? order.order_items
+      : Array.isArray(order?.ecommerce_raw?.items)
+        ? order.ecommerce_raw.items
+        : [];
+
+  if (!Array.isArray(items) || items.length === 0) return 0;
+  return items.reduce((sum: number, it: any) => sum + computeEcommerceItemRemise(it), 0);
+};
+
 const getBonRemiseTarget = (bon: any) => {
   const isClientRaw = bon?.remise_is_client ?? bon?.remiseIsClient ?? bon?.remise_isClient;
   const idRaw = bon?.remise_id ?? bon?.remiseId;
@@ -67,6 +96,7 @@ const RemisesPage: React.FC = () => {
   // New system: remises are stored per item on Sortie/Comptant, and beneficiary is stored on bon header
   const { data: sortiesAll = [] } = useGetBonsByTypeQuery('Sortie');
   const { data: comptantsAll = [] } = useGetBonsByTypeQuery('Comptant');
+  const { data: ecommerceOrdersAll = [] } = useGetBonsByTypeQuery('Ecommerce');
 
   useGetProductsQuery();
 
@@ -98,8 +128,21 @@ const RemisesPage: React.FC = () => {
       countById.set(clientId, (countById.get(clientId) || 0) + 1);
     }
 
+    // E-commerce orders: remises come from ecommerce_order_items
+    for (const o of (ecommerceOrdersAll as any[])) {
+      const clientIdRaw = (o as any)?.client_id ?? (o as any)?.user_id ?? (o as any)?.ecommerce_raw?.user_id;
+      const clientId = clientIdRaw == null || clientIdRaw === '' ? null : Number(clientIdRaw);
+      if (!clientId || !Number.isFinite(clientId)) continue;
+
+      const disc = computeEcommerceOrderRemise(o);
+      if (!disc) continue;
+
+      totalById.set(clientId, (totalById.get(clientId) || 0) + disc);
+      countById.set(clientId, (countById.get(clientId) || 0) + 1);
+    }
+
     return { totalById, countById };
-  }, [sortiesAll, comptantsAll]);
+  }, [sortiesAll, comptantsAll, ecommerceOrdersAll]);
 
   const filteredDirectClients = useMemo(() => {
     const term = directSearch.trim().toLowerCase();
@@ -225,9 +268,45 @@ const RemisesPage: React.FC = () => {
     return list;
   }, [selectedDirectClient?.id, sortiesAll, comptantsAll]);
 
+  const directClientEcommerceOrders = useMemo(() => {
+    const id = Number(selectedDirectClient?.id);
+    if (!Number.isFinite(id)) return [] as any[];
+    const hasRemise = (n: any) => Math.abs(Number(n || 0)) > 0.000001;
+
+    const list = (ecommerceOrdersAll as any[])
+      .filter((o: any) => {
+        const clientIdRaw = o?.client_id ?? o?.user_id ?? o?.ecommerce_raw?.user_id;
+        const clientId = clientIdRaw == null || clientIdRaw === '' ? null : Number(clientIdRaw);
+        return Number.isFinite(clientId) && Number(clientId) === id;
+      })
+      .map((o: any) => {
+        const items = Array.isArray(o?.items) ? o.items : (Array.isArray(o?.ecommerce_raw?.items) ? o.ecommerce_raw.items : []);
+        const itemsWithRemise = (items || []).filter((it: any) => {
+          const d = computeEcommerceItemRemise(it);
+          return Number(d || 0) !== 0;
+        });
+        const totalRemise = computeEcommerceOrderRemise(o);
+        return {
+          ...o,
+          _ecom_total_remise: totalRemise,
+          _ecom_items_with_remise: itemsWithRemise,
+        };
+      })
+      .filter((o: any) => hasRemise(o?._ecom_total_remise) && Array.isArray(o?._ecom_items_with_remise) && o._ecom_items_with_remise.length > 0)
+      .sort((a: any, b: any) => {
+        const ta = new Date(a?.date_creation || a?.created_at || 0).getTime() || 0;
+        const tb = new Date(b?.date_creation || b?.created_at || 0).getTime() || 0;
+        return tb - ta;
+      });
+
+    return list;
+  }, [selectedDirectClient?.id, ecommerceOrdersAll]);
+
   const directClientTotalRemise = useMemo(() => {
-    return (directClientBons || []).reduce((sum: number, b: any) => sum + Number(b?._new_total_remise || 0), 0);
-  }, [directClientBons]);
+    const fromBons = (directClientBons || []).reduce((sum: number, b: any) => sum + Number(b?._new_total_remise || 0), 0);
+    const fromEcom = (directClientEcommerceOrders || []).reduce((sum: number, o: any) => sum + Number(o?._ecom_total_remise || 0), 0);
+    return fromBons + fromEcom;
+  }, [directClientBons, directClientEcommerceOrders]);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -715,6 +794,50 @@ const RemisesPage: React.FC = () => {
                       {directClientBons.length === 0 && (
                         <tr>
                           <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">Aucun bon trouvé pour ce client.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+                  <h3 className="text-lg font-semibold text-gray-900">Commandes e-commerce + remises</h3>
+                  <p className="text-xs text-gray-500 mt-1">Remises calculées depuis ecommerce_order_items (remise_amount / remise_percent_applied)</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gradient-to-r from-amber-50 to-orange-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-amber-700 uppercase tracking-wider">Commande</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-amber-700 uppercase tracking-wider">Date</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-amber-700 uppercase tracking-wider">Statut</th>
+                        <th className="px-6 py-4 text-center text-xs font-semibold text-amber-700 uppercase tracking-wider">Lignes remisées</th>
+                        <th className="px-6 py-4 text-right text-xs font-semibold text-amber-700 uppercase tracking-wider">Remise (ecom)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
+                      {directClientEcommerceOrders.map((o: any) => {
+                        const orderId = o?.id;
+                        const numero = String(o?.numero || (o?.ecommerce_raw?.order_number ? `ECOM-${o.ecommerce_raw.order_number}` : `ECOM-${orderId}`));
+                        const d = (o?.date_creation || o?.created_at) ? new Date(o.date_creation || o.created_at).toLocaleDateString('fr-FR') : '-';
+                        const statut = o?.statut || o?.ecommerce_raw?.status || '-';
+                        const lines = Array.isArray(o?._ecom_items_with_remise) ? o._ecom_items_with_remise.length : 0;
+                        const r = Number(o?._ecom_total_remise || 0);
+                        return (
+                          <tr key={`ecom-${orderId}`} className="hover:bg-gradient-to-r hover:from-amber-25 hover:to-orange-25 transition-all duration-200">
+                            <td className="px-6 py-4 font-medium text-gray-900">{numero}</td>
+                            <td className="px-6 py-4 text-gray-600">{d}</td>
+                            <td className="px-6 py-4 text-gray-600">{statut}</td>
+                            <td className="px-6 py-4 text-center text-gray-700">{lines}</td>
+                            <td className="px-6 py-4 text-right"><span className="text-lg font-bold text-amber-700">{r.toFixed(2)} DH</span></td>
+                          </tr>
+                        );
+                      })}
+                      {directClientEcommerceOrders.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500">Aucune commande e-commerce avec remise trouvée pour ce client.</td>
                         </tr>
                       )}
                     </tbody>
