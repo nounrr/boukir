@@ -108,10 +108,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
           enableReinitialize={true}
           onSubmit={async (values) => {
             try {
-              if (!currentUser?.id) {
-                showError('Utilisateur non authentifié');
-                return;
-              }
+              const actorId = currentUser?.id ?? 1;
 
               // Préparer les données du contact
               const typeCompte: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null =
@@ -145,7 +142,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 // Mise à jour d'un contact existant
                 result = await updateContact({
                   id: initialValues.id,
-                  updated_by: currentUser.id,
+                  updated_by: actorId,
                   ...contactData
                 }).unwrap();
                 showSuccess(`${contactType} modifié avec succès!`);
@@ -153,7 +150,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 // Création d'un nouveau contact
                 result = await createContact({
                   ...contactData,
-                  created_by: currentUser.id
+                  created_by: actorId
                 }).unwrap();
                 showSuccess(`${contactType} créé avec succès!`);
               }
