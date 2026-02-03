@@ -17,12 +17,17 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requiredRoles,
   forbiddenRoles
 }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, passwordChangeRequired } = useAuth();
   const location = useLocation();
 
   // Si l'utilisateur n'est pas authentifié, rediriger vers la page de login
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // If password change is required, block access to all routes except the change-password page
+  if (passwordChangeRequired && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
   }
 
   // Si le rôle de l'utilisateur est dans les rôles interdits

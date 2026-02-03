@@ -4284,7 +4284,6 @@ const ContactsPage: React.FC = () => {
                   <h3 className="font-bold text-lg mb-3">Informations du {selectedContact.type}</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
                     <div>
-                      <p className="font-semibold text-gray-600">Société:</p>
                       <p>{(selectedContact.societe && selectedContact.societe.trim()) ? selectedContact.societe : '-'}</p>
                     </div>
                     <div>
