@@ -363,7 +363,7 @@ const AppContent: React.FC = () => {
         />
 
           <Route
-            path="/coupons"
+            path="/promo-codes"
             element={
               <ProtectedRoute requiredRoles={["PDG", "Manager", "ManagerPlus"]}>
                 <LayoutWithAccessCheck>
@@ -371,6 +371,12 @@ const AppContent: React.FC = () => {
                 </LayoutWithAccessCheck>
               </ProtectedRoute>
             }
+          />
+
+          {/* Backward-compatible alias */}
+          <Route
+            path="/coupons"
+            element={<Navigate to="/promo-codes" replace />}
           />
 
           <Route

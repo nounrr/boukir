@@ -2033,6 +2033,201 @@ router.put('/:id/status', async (req, res, next) => {
   }
 });
 
+// ==================== UPDATE ORDER ITEM REMISES (ADMIN) ====================
+// PUT /api/ecommerce/orders/:id/remises
+// Body: { items: [{ order_item_id, remise_percent_applied?, remise_amount? }, ...] }
+router.put('/:id/remises', async (req, res, next) => {
+  const connection = await pool.getConnection();
+
+  const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  const round4 = (v) => Math.round((Number(v) || 0) * 10000) / 10000;
+
+  try {
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const canEdit = role === 'PDG' || role === 'ManagerPlus';
+    if (!canEdit) {
+      return res.status(403).json({ message: 'Permission refusée' });
+    }
+
+    const orderId = Number(req.params.id);
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+      return res.status(400).json({ message: 'ID commande invalide' });
+    }
+
+    const items = Array.isArray(req.body?.items) ? req.body.items : null;
+    if (!items || items.length === 0) {
+      return res.status(400).json({ message: 'Aucune mise à jour fournie' });
+    }
+
+    // Ensure schema for remise
+    await ensureProductRemiseColumns(connection);
+    await ensureContactsRemiseBalance(connection);
+    await ensureEcommerceOrdersRemiseColumns(connection);
+    await ensureEcommerceOrderItemsRemiseColumns(connection);
+
+    await connection.beginTransaction();
+
+    const [orders] = await connection.query(
+      `
+      SELECT id, user_id, remise_earned_at, remise_earned_amount
+      FROM ecommerce_orders
+      WHERE id = ?
+      FOR UPDATE
+      `,
+      [orderId]
+    );
+
+    if (orders.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Commande introuvable' });
+    }
+
+    const order = orders[0];
+
+    // Lock all order items and fetch subtotals for computations
+    const [dbItems] = await connection.query(
+      `
+      SELECT id, subtotal, remise_percent_applied, remise_amount
+      FROM ecommerce_order_items
+      WHERE order_id = ?
+      FOR UPDATE
+      `,
+      [orderId]
+    );
+
+    const itemById = new Map(dbItems.map((it) => [Number(it.id), it]));
+
+    for (const input of items) {
+      const orderItemId = Number(input?.order_item_id);
+      if (!Number.isFinite(orderItemId) || orderItemId <= 0) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'order_item_id invalide' });
+      }
+
+      const db = itemById.get(orderItemId);
+      if (!db) {
+        await connection.rollback();
+        return res.status(400).json({ message: `Article introuvable pour cette commande: ${orderItemId}` });
+      }
+
+      const subtotal = Number(db.subtotal || 0);
+
+      const hasPercent = input?.remise_percent_applied != null && input?.remise_percent_applied !== '';
+      const hasAmount = input?.remise_amount != null && input?.remise_amount !== '';
+      if (!hasPercent && !hasAmount) {
+        continue;
+      }
+
+      let percent = hasPercent ? Number(input.remise_percent_applied) : null;
+      let amount = hasAmount ? Number(input.remise_amount) : null;
+
+      if (percent != null && !Number.isFinite(percent)) percent = 0;
+      if (amount != null && !Number.isFinite(amount)) amount = 0;
+
+      // Compute missing side from subtotal
+      if (amount == null && percent != null) {
+        amount = subtotal > 0 ? (subtotal * percent) / 100 : 0;
+      } else if (percent == null && amount != null) {
+        percent = subtotal > 0 ? (amount / subtotal) * 100 : 0;
+      }
+
+      percent = Math.max(0, Math.min(100, round4(percent || 0)));
+      amount = Math.max(0, round2(amount || 0));
+
+      await connection.query(
+        `
+        UPDATE ecommerce_order_items
+        SET remise_percent_applied = ?, remise_amount = ?
+        WHERE id = ? AND order_id = ?
+        `,
+        [percent, amount, orderItemId, orderId]
+      );
+    }
+
+    // Recompute new total
+    const [sumRows] = await connection.query(
+      `SELECT COALESCE(SUM(remise_amount), 0) AS total FROM ecommerce_order_items WHERE order_id = ?`,
+      [orderId]
+    );
+    const newTotal = round2(sumRows?.[0]?.total || 0);
+    const oldTotal = round2(order.remise_earned_amount || 0);
+    const delta = round2(newTotal - oldTotal);
+
+    // Keep order aggregate in sync for backoffice display
+    await connection.query(
+      `UPDATE ecommerce_orders SET remise_earned_amount = ?, updated_at = NOW() WHERE id = ?`,
+      [newTotal, orderId]
+    );
+
+    // If the order already impacted contact balance, reconcile delta
+    if (order?.user_id && order?.remise_earned_at && delta !== 0) {
+      await connection.query(
+        `
+        UPDATE contacts
+        SET remise_balance = GREATEST(0, remise_balance + ?)
+        WHERE id = ?
+        `,
+        [delta, order.user_id]
+      );
+    }
+
+    await connection.commit();
+
+    const [updatedItems] = await connection.query(
+      `
+      SELECT
+        id,
+        order_id,
+        product_id,
+        variant_id,
+        unit_id,
+        product_name,
+        product_name_ar,
+        variant_name,
+        variant_type,
+        unit_name,
+        unit_price,
+        quantity,
+        subtotal,
+        discount_percentage,
+        discount_amount,
+        remise_percent_applied,
+        remise_amount
+      FROM ecommerce_order_items
+      WHERE order_id = ?
+      ORDER BY id
+      `,
+      [orderId]
+    );
+
+    res.json({
+      message: 'Remises mises à jour',
+      order_id: orderId,
+      remise_earned_amount: newTotal,
+      remise_balance_delta: delta,
+      items: (updatedItems || []).map((it) => ({
+        ...it,
+        unit_price: Number(it.unit_price),
+        quantity: Number(it.quantity),
+        subtotal: Number(it.subtotal),
+        discount_percentage: Number(it.discount_percentage || 0),
+        discount_amount: Number(it.discount_amount || 0),
+        remise_percent_applied: Number(it.remise_percent_applied || 0),
+        remise_amount: Number(it.remise_amount || 0),
+      })),
+    });
+  } catch (err) {
+    try {
+      await connection.rollback();
+    } catch {
+      // ignore
+    }
+    next(err);
+  } finally {
+    connection.release();
+  }
+});
+
 // ==================== CANCEL ORDER ====================
 // POST /api/ecommerce/orders/:id/cancel - Cancel order (restore stock)
 router.post('/:id/cancel', async (req, res, next) => {

@@ -16,6 +16,7 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
     useDeleteBonMutation, 
     useUpdateBonStatusMutation,
     useUpdateEcommerceOrderStatusMutation,
+    useUpdateEcommerceOrderRemisesMutation,
     useCreateBonMutation
   } from '../store/api/bonsApi';
   import { 
@@ -63,6 +64,10 @@ const BonsPage = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedBon, setSelectedBon] = useState<any>(null);
+
+  const [isEcommerceRemiseModalOpen, setIsEcommerceRemiseModalOpen] = useState(false);
+  const [selectedEcommerceForRemise, setSelectedEcommerceForRemise] = useState<any>(null);
+  const [ecommerceRemiseDraftItems, setEcommerceRemiseDraftItems] = useState<Array<any>>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
@@ -186,6 +191,7 @@ const BonsPage = () => {
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
   const [updateEcommerceOrderStatus] = useUpdateEcommerceOrderStatusMutation();
+  const [updateEcommerceOrderRemises, { isLoading: isSavingEcommerceRemises }] = useUpdateEcommerceOrderRemisesMutation();
   const [createBon] = useCreateBonMutation();
   // Bon links API: record duplications
   const [createBonLink] = useCreateBonLinkMutation();
@@ -386,6 +392,36 @@ const BonsPage = () => {
   const getEcommerceStatusValue = (bon: any): string => {
     const raw = (bon as any)?.ecommerce_status ?? bon?.statut ?? bon?.status;
     return String(raw || '').trim().toLowerCase();
+  };
+
+  const round2 = (v: any): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100) / 100;
+  };
+
+  const openEcommerceRemiseEditor = (bon: any) => {
+    const raw = (bon as any)?.ecommerce_raw ?? bon;
+    const rawItems: any[] = Array.isArray(raw?.items) ? raw.items : [];
+    const draft = rawItems.map((it: any) => {
+      const subtotal = Number(it.subtotal ?? it.montant_ligne ?? 0) || 0;
+      const remise_amount = Number(it.remise_amount ?? 0) || 0;
+      const remise_percent_applied = Number(it.remise_percent_applied ?? (subtotal > 0 ? (remise_amount / subtotal) * 100 : 0)) || 0;
+      const labelParts = [it.product_name, it.variant_name, it.unit_name].filter((v: any) => v != null && String(v).trim() !== '');
+      return {
+        order_item_id: Number(it.id ?? it.order_item_id),
+        label: labelParts.length ? labelParts.join(' • ') : (it.product_name || 'Article'),
+        quantity: Number(it.quantity ?? it.quantite ?? 0) || 0,
+        unit_price: Number(it.unit_price ?? it.prix_unitaire ?? 0) || 0,
+        subtotal: subtotal,
+        remise_percent_applied: round2(remise_percent_applied),
+        remise_amount: round2(remise_amount),
+      };
+    }).filter((it: any) => Number.isFinite(it.order_item_id));
+
+    setSelectedEcommerceForRemise(bon);
+    setEcommerceRemiseDraftItems(draft);
+    setIsEcommerceRemiseModalOpen(true);
   };
 
   const canChangeEcommerceStatus = isPdg;
@@ -2361,12 +2397,17 @@ const BonsPage = () => {
                             // Don't show edit for cancelled bons
                             if (bon.statut === 'Annulé') return null;
                             
+                            const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
                             return canModifyBons(currentUser) ? (
                               <button
                                 onClick={() => {
                                   // Double-check validation status before opening modal
                                   if (bon.statut === 'Validé') {
                                     showError('Impossible de modifier un bon validé.');
+                                    return;
+                                  }
+                                  if (isEcom) {
+                                    openEcommerceRemiseEditor(bon);
                                     return;
                                   }
                                   setSelectedBon(bon);
@@ -2983,7 +3024,74 @@ const BonsPage = () => {
                               <span className="text-gray-500">remise_earned_at</span>
                               <p className="font-semibold text-gray-900">{raw?.remise_earned_at ? formatDateTimeWithHour(raw.remise_earned_at) : '-'}</p>
                             </div>
+                            {isPdg && (
+                              <div className="md:col-span-4 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => openEcommerceRemiseEditor(selectedBon)}
+                                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg border border-pink-300 text-pink-700 hover:bg-pink-50"
+                                  title="Modifier les remises par article"
+                                >
+                                  <Edit size={14} /> Modifier remises
+                                </button>
+                              </div>
+                            )}
                           </div>
+                        </div>
+
+                        {/* Remises par article */}
+                        <div className="bg-white border border-gray-200 rounded-xl p-4">
+                          <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">Remises par article</h3>
+                          {(() => {
+                            const items: any[] = Array.isArray(raw?.items) ? raw.items : [];
+                            const totalRemise = items.reduce((acc: number, it: any) => acc + (Number(it?.remise_amount) || 0), 0);
+                            return (
+                              <div className="responsive-table-container">
+                                <table className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact" style={{ minWidth: 700 }}>
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Article</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qté</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">PU</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Sous-total</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Remise %</th>
+                                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Remise</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-200">
+                                    {items.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={6} className="px-4 py-3 text-sm text-gray-500">Aucun article</td>
+                                      </tr>
+                                    ) : (
+                                      items.map((it: any) => {
+                                        const labelParts = [it.product_name, it.variant_name, it.unit_name].filter((v: any) => v != null && String(v).trim() !== '');
+                                        const label = labelParts.length ? labelParts.join(' • ') : (it.product_name || 'Article');
+                                        const q = Number(it.quantity || 0) || 0;
+                                        const pu = Number(it.unit_price || 0) || 0;
+                                        const sub = Number(it.subtotal || 0) || 0;
+                                        const rp = Number(it.remise_percent_applied || 0) || 0;
+                                        const ra = Number(it.remise_amount || 0) || 0;
+                                        return (
+                                          <tr key={String(it.id)} className="hover:bg-gray-50">
+                                            <td className="px-4 py-2 text-sm text-gray-700">{label}</td>
+                                            <td className="px-4 py-2 text-sm text-right">{q}</td>
+                                            <td className="px-4 py-2 text-sm text-right">{pu.toFixed(2)} DH</td>
+                                            <td className="px-4 py-2 text-sm text-right">{sub.toFixed(2)} DH</td>
+                                            <td className="px-4 py-2 text-sm text-right">{rp.toFixed(2)}%</td>
+                                            <td className="px-4 py-2 text-sm text-right font-semibold text-pink-700">{ra.toFixed(2)} DH</td>
+                                          </tr>
+                                        );
+                                      })
+                                    )}
+                                  </tbody>
+                                </table>
+                                <div className="flex justify-end text-sm font-semibold mt-2 text-pink-800">
+                                  Total remise (articles): {Number(totalRemise || 0).toFixed(2)} DH
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Statut & Dates */}
@@ -3181,6 +3289,137 @@ const BonsPage = () => {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Modal: modifier remises e-commerce */}
+        {isEcommerceRemiseModalOpen && selectedEcommerceForRemise && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Modifier remises (E-commerce) {getDisplayNumero(selectedEcommerceForRemise)}</h2>
+                <button
+                  onClick={() => setIsEcommerceRemiseModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="border rounded-md p-4">
+                <div className="responsive-table-container">
+                  <table className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact" style={{ minWidth: 760 }}>
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Article</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Sous-total</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Remise %</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Remise (DH)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {ecommerceRemiseDraftItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-3 text-sm text-gray-500">Aucun article</td>
+                        </tr>
+                      ) : (
+                        ecommerceRemiseDraftItems.map((it: any) => (
+                          <tr key={String(it.order_item_id)} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 text-sm text-gray-700">{String(it.label || 'Article')}</td>
+                            <td className="px-4 py-2 text-sm text-right">{Number(it.subtotal || 0).toFixed(2)} DH</td>
+                            <td className="px-4 py-2 text-sm text-right">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                max={100}
+                                value={String(it.remise_percent_applied ?? 0)}
+                                onChange={(e) => {
+                                  const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                  const sub = Number(it.subtotal || 0) || 0;
+                                  const amt = round2((sub * v) / 100);
+                                  setEcommerceRemiseDraftItems((prev) => prev.map((x: any) => x.order_item_id === it.order_item_id ? ({ ...x, remise_percent_applied: v, remise_amount: amt }) : x));
+                                }}
+                                className="w-24 text-right text-xs border border-gray-300 rounded px-2 py-1"
+                              />
+                              <span className="text-xs text-gray-500 ml-1">%</span>
+                            </td>
+                            <td className="px-4 py-2 text-sm text-right">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                value={String(it.remise_amount ?? 0)}
+                                onChange={(e) => {
+                                  const amt = Math.max(0, round2(Number(e.target.value) || 0));
+                                  const sub = Number(it.subtotal || 0) || 0;
+                                  const pct = sub > 0 ? round2((amt / sub) * 100) : 0;
+                                  setEcommerceRemiseDraftItems((prev) => prev.map((x: any) => x.order_item_id === it.order_item_id ? ({ ...x, remise_amount: amt, remise_percent_applied: Math.max(0, Math.min(100, pct)) }) : x));
+                                }}
+                                className="w-28 text-right text-xs border border-gray-300 rounded px-2 py-1"
+                              />
+                              <span className="text-xs text-gray-500 ml-1">DH</span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  onClick={() => setIsEcommerceRemiseModalOpen(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-50"
+                  disabled={isSavingEcommerceRemises}
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const orderId = Number((selectedEcommerceForRemise as any)?.id);
+                      if (!Number.isFinite(orderId)) {
+                        showError('Commande invalide');
+                        return;
+                      }
+                      const payloadItems = ecommerceRemiseDraftItems.map((it: any) => ({
+                        order_item_id: Number(it.order_item_id),
+                        remise_percent_applied: Number(it.remise_percent_applied) || 0,
+                        remise_amount: Number(it.remise_amount) || 0,
+                      }));
+                      const res = await updateEcommerceOrderRemises({ id: orderId, items: payloadItems }).unwrap();
+                      showSuccess('Remises e-commerce mises à jour');
+
+                      if (res?.items) {
+                        setSelectedBon((prev: any) => {
+                          if (!prev || Number(prev?.id) !== orderId) return prev;
+                          const rawPrev = (prev as any)?.ecommerce_raw ?? prev;
+                          return { ...prev, ecommerce_raw: { ...rawPrev, items: res.items, remise_earned_amount: res.remise_earned_amount } };
+                        });
+                      }
+
+                      setIsEcommerceRemiseModalOpen(false);
+                    } catch (error: any) {
+                      console.error('Erreur mise à jour remises e-commerce:', error);
+                      const httpStatus = error?.status;
+                      const msg = error?.data?.message || error?.message || 'Erreur inconnue';
+                      if (httpStatus === 401) {
+                        showError('Session expirée. Veuillez vous reconnecter.');
+                        dispatch(logout());
+                      } else {
+                        showError(`Erreur lors de la mise à jour des remises: ${msg}`);
+                      }
+                    }
+                  }}
+                  className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-md disabled:opacity-60"
+                  disabled={isSavingEcommerceRemises}
+                >
+                  {isSavingEcommerceRemises ? 'Enregistrement…' : 'Enregistrer'}
+                </button>
+              </div>
             </div>
           </div>
         )}

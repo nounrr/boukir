@@ -32,7 +32,10 @@ type PromoForm = {
 };
 
 const PromoCodesPage: React.FC = () => {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const apiBaseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
+  const API_BASE = apiBaseUrl
+    ? String(apiBaseUrl).replace(/\/$/, '') + '/api'
+    : '/api';
 
   const [codes, setCodes] = useState<PromoCode[]>([]);
   const [loading, setLoading] = useState(false);

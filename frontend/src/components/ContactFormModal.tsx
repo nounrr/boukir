@@ -87,7 +87,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     rib: '',
     solde: 0,
     plafond: contactType === 'Client' ? 0 : null,
-    isSolde: clientSubTab === 'ecommerce' ? (initialValues?.isSolde ?? false) : true,
+    isSolde: Boolean((initialValues as any)?.isSolde ?? (initialValues as any)?.is_solde ?? false),
     ...initialValues
   };
 
@@ -108,10 +108,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
           enableReinitialize={true}
           onSubmit={async (values) => {
             try {
-              if (!currentUser?.id) {
-                showError('Utilisateur non authentifié');
-                return;
-              }
+              const actorId = currentUser?.id ?? 1;
 
               // Préparer les données du contact
               const typeCompte: 'Client' | 'Artisan/Promoteur' | 'Fournisseur' | null =
@@ -133,7 +130,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 rib: values.rib || '',
                 type: contactType,
                 solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
-                isSolde: (values as any).isSolde ?? true,
+                is_solde: (values as any).isSolde ? 1 : 0,
                 group_id: (values as any).group_id === '' || (values as any).group_id == null ? null : Number((values as any).group_id),
                 ...(contactType === 'Client' && { 
                   plafond: values.plafond != null ? Number(values.plafond as any) : undefined 
@@ -145,7 +142,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 // Mise à jour d'un contact existant
                 result = await updateContact({
                   id: initialValues.id,
-                  updated_by: currentUser.id,
+                  updated_by: actorId,
                   ...contactData
                 }).unwrap();
                 showSuccess(`${contactType} modifié avec succès!`);
@@ -153,7 +150,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 // Création d'un nouveau contact
                 result = await createContact({
                   ...contactData,
-                  created_by: currentUser.id
+                  created_by: actorId
                 }).unwrap();
                 showSuccess(`${contactType} créé avec succès!`);
               }
@@ -165,12 +162,34 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               onClose();
             } catch (error: any) {
               console.error('Erreur lors de l\'opération sur le contact:', error);
-              showError(`Erreur lors de l'${initialValues?.id ? 'modification' : 'ajout'} du ${contactType.toLowerCase()}: ${error.message || 'Erreur inconnue'}`);
+              const msg =
+                error?.data?.details?.sqlMessage ||
+                error?.data?.details?.message ||
+                error?.data?.error ||
+                error?.error ||
+                error?.message ||
+                'Erreur inconnue';
+              showError(`Erreur lors de l'${initialValues?.id ? 'modification' : 'ajout'} du ${contactType.toLowerCase()}: ${String(msg)}`);
             }
           }}
         >
           {({ errors, touched, setFieldValue }) => (
             <Form className="space-y-4">
+              {/* Checkbox isSolde - en haut (clients seulement) */}
+              {contactType === 'Client' && (
+                <div className="flex items-center space-x-2">
+                  <Field
+                    id="isSolde"
+                    name="isSolde"
+                    type="checkbox"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="isSolde" className="text-sm font-medium text-gray-700">
+                    Autoriser les commandes en solde (crédit)
+                  </label>
+                </div>
+              )}
+
               {/* Nom complet - pleine largeur */}
               <div>
                 <label htmlFor="nom_complet" className="block text-sm font-medium text-gray-700 mb-1">
@@ -450,21 +469,6 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   )}
                 </div>
               </div>
-
-              {/* Checkbox isSolde - visible uniquement pour l'onglet e-commerce */}
-              {contactType === 'Client' && clientSubTab === 'ecommerce' && (
-                <div className="flex items-center space-x-2">
-                  <Field
-                    id="isSolde"
-                    name="isSolde"
-                    type="checkbox"
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="isSolde" className="text-sm font-medium text-gray-700">
-                    Autoriser les commandes en solde (crédit)
-                  </label>
-                </div>
-              )}
 
               <div className="flex justify-end space-x-3 mt-6">
                 <button
