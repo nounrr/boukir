@@ -32,12 +32,15 @@ CREATE TABLE `vehicules` (
   `type_vehicule` enum('Camion','Camionnette','Voiture','Moto','Autre') NOT NULL DEFAULT 'Camion',
   `capacite_charge` decimal(10,2) DEFAULT NULL,
   `statut` enum('Disponible','En service','En maintenance','Hors service') NOT NULL DEFAULT 'Disponible',
+  `employe_id` int DEFAULT NULL,
   `created_by` int DEFAULT NULL,
   `updated_by` int DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `immatriculation` (`immatriculation`)
+  UNIQUE KEY `immatriculation` (`immatriculation`),
+  KEY `idx_vehicules_employe_id` (`employe_id`),
+  CONSTRAINT `fk_vehicules_employe` FOREIGN KEY (`employe_id`) REFERENCES `employees` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Check, Plus } from 'lucide-react';
 import { addBon } from '../store/slices/bonsSlice';
 import { generateBonReference } from '../utils/referenceUtils';
-import { showSuccess } from '../utils/notifications';
+import { showSuccess, showError } from '../utils/notifications';
 import { formatDateInputToMySQL, getCurrentDateTimeInput } from '../utils/dateUtils';
 import type { RootState } from '../store';
 import type { Bon, Contact } from '../types';
@@ -64,6 +64,8 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
   onAvoirCreated
 }) => {
   const dispatch = useDispatch();
+  const currentUser = useSelector((state: RootState) => state.auth.user);
+  const isChefChauffeur = currentUser?.role === 'ChefChauffeur';
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
   const [typeAvoir, setTypeAvoir] = useState<'libre' | 'lie' | 'avoir_client' | 'avoir_fournisseur'>(bonOrigine ? 'lie' : 'libre');
   const [selectedBon, setSelectedBon] = useState<any>(bonOrigine || null);
@@ -94,6 +96,10 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
 
   // Fonction pour créer un avoir complet
   const handleCreateFullAvoir = () => {
+    if (isChefChauffeur) {
+      showError('Permission refusée: Chef Chauffeur ne peut pas créer des avoirs.');
+      return;
+    }
     if (!selectedBon) return;
     
     try {
@@ -135,6 +141,10 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
 
   // Fonction pour créer un avoir partiel
   const handleCreatePartialAvoir = () => {
+    if (isChefChauffeur) {
+      showError('Permission refusée: Chef Chauffeur ne peut pas créer des avoirs.');
+      return;
+    }
     if (!selectedBon || selectedProducts.length === 0) {
       alert('Veuillez sélectionner au moins un produit');
       return;
@@ -218,6 +228,12 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
             Créer un Avoir
           </h3>
 
+          {isChefChauffeur && (
+            <div className="mb-4 rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
+              Lecture seule: le rôle Chef Chauffeur ne peut pas créer d'avoir.
+            </div>
+          )}
+
           <Formik
             initialValues={{
               type_avoir: typeAvoir,
@@ -230,6 +246,10 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
             }}
             validationSchema={validationSchema}
             onSubmit={(values) => {
+              if (isChefChauffeur) {
+                showError('Permission refusée: Chef Chauffeur ne peut pas créer des avoirs.');
+                return;
+              }
               if (values.type_avoir === 'libre') {
                 // Créer un avoir libre
                 let contactId = 0;
@@ -563,7 +583,8 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                     <div className="mt-4">
                       <button
                         type="submit"
-                        className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                        disabled={isChefChauffeur}
+                        className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-60"
                       >
                         <Check size={16} className="inline mr-2" />
                         Créer Avoir Libre
@@ -646,7 +667,8 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                     <div className="mt-4">
                       <button
                         type="submit"
-                        className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                        disabled={isChefChauffeur}
+                        className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-60"
                       >
                         <Check size={16} className="inline mr-2" />
                         Créer Avoir Client
@@ -729,7 +751,8 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                     <div className="mt-4">
                       <button
                         type="submit"
-                        className="w-full px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+                        disabled={isChefChauffeur}
+                        className="w-full px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors disabled:opacity-60"
                       >
                         <Check size={16} className="inline mr-2" />
                         Créer Avoir Fournisseur
@@ -800,7 +823,8 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                             <button
                               type="button"
                               onClick={handleCreateFullAvoir}
-                              className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                              disabled={isChefChauffeur}
+                              className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-60"
                             >
                               Créer Avoir Complet
                             </button>
@@ -864,7 +888,8 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={handleCreatePartialAvoir}
-                                  className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                                  disabled={isChefChauffeur}
+                                  className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-60"
                                 >
                                   <Check size={16} className="inline mr-2" />
                                   Créer Avoir Partiel

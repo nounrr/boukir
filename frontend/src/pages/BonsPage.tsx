@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, MoreHorizontal, Send, Package, Truck, RotateCcw } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
@@ -97,6 +98,8 @@ const BonsPage = () => {
 
   // Menu actions state
   const [openMenuBonId, setOpenMenuBonId] = useState<string | null>(null);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [sendingWhatsAppId, setSendingWhatsAppId] = useState<string | null>(null);
   const [pendingOpenAvoirEcommercePicker, setPendingOpenAvoirEcommercePicker] = useState(false);
 
@@ -112,6 +115,7 @@ const BonsPage = () => {
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isPdg = currentUser?.role === 'PDG';
   const isEmployee = currentUser?.role === 'Employé';
+  const isChefChauffeur = currentUser?.role === 'ChefChauffeur';
   // Manager full access only for Commande & AvoirFournisseur
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
   const isManager = currentUser?.role === 'Manager';
@@ -120,12 +124,24 @@ const BonsPage = () => {
   // Feature flag: show WhatsApp button only for PDG and Manager+
   const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
 
-  // UI restriction: ecommerce bon + avoir ecommerce are visible only for PDG
+  // UI restrictions:
+  // - Ecommerce + AvoirEcommerce: allowed for PDG and ChefChauffeur
+  // - Devis: not allowed for ChefChauffeur
   useEffect(() => {
-    if (!isPdg && (currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce')) {
+    const canSeeEcommerce = isPdg || isChefChauffeur;
+    if (!canSeeEcommerce && (currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce')) {
       setCurrentTab('Commande');
+      return;
     }
-  }, [isPdg, currentTab]);
+    // ChefChauffeur: hide Commande tab
+    if (isChefChauffeur && currentTab === 'Commande') {
+      setCurrentTab('Sortie');
+      return;
+    }
+    if (isChefChauffeur && currentTab === 'Devis') {
+      setCurrentTab('Sortie');
+    }
+  }, [isPdg, isChefChauffeur, currentTab]);
 
   // Helper to build the per-type storage key for auto-send checkbox
   const getAutoSendKey = (type: string) => `autoSendWhatsAppOnValidation_${type}`;
@@ -336,6 +352,19 @@ const BonsPage = () => {
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
   const handleChangeStatus = async (bon: any, statut: 'Validé' | 'En attente' | 'Annulé' | 'Accepté' | 'Envoyé' | 'Refusé') => {
     try {
+      // ChefChauffeur: lecture seule avec exception: peut uniquement Annuler / Mettre en attente
+      // (utile pour ajuster le stock via Annulation sur Comptant/Sortie)
+      if (isChefChauffeur) {
+        if (bon.statut === 'Validé') {
+          showError('Permission refusée: Chef Chauffeur ne peut pas modifier un bon déjà validé.');
+          return;
+        }
+        if (!['Annulé', 'En attente'].includes(statut)) {
+          showError('Permission refusée: Chef Chauffeur peut uniquement mettre En attente ou Annuler.');
+          return;
+        }
+      }
+
       // Employé: uniquement Annuler ou En attente, mais pas sur les bons déjà validés
       if (isEmployee) {
         if (bon.statut === 'Validé') {
@@ -1200,16 +1229,39 @@ const BonsPage = () => {
   // Handle click outside to close menu
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (!openMenuBonId) return;
+      const target = event.target as Node;
+      if (menuAnchorEl && menuAnchorEl.contains(target)) return;
+      if (menuRef.current && menuRef.current.contains(target)) return;
         setOpenMenuBonId(null);
-      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, []);
+  }, [openMenuBonId, menuAnchorEl]);
+
+  // Keep dropdown position synced (scroll/resize)
+  useEffect(() => {
+    if (!openMenuBonId || !menuAnchorEl) return;
+
+    const update = () => {
+      const rect = menuAnchorEl.getBoundingClientRect();
+      // Position to the bottom-right of the anchor; the menu itself will translateX(-100%)
+      setMenuPosition({ top: rect.bottom + 6, left: rect.right });
+    };
+
+    update();
+    const onMove = () => update();
+    window.addEventListener('resize', onMove);
+    // capture=true so it reacts to scroll on any container
+    window.addEventListener('scroll', onMove, true);
+    return () => {
+      window.removeEventListener('resize', onMove);
+      window.removeEventListener('scroll', onMove, true);
+    };
+  }, [openMenuBonId, menuAnchorEl]);
 
   // Add table mouse events for column resizing
   useEffect(() => {
@@ -1244,9 +1296,18 @@ const BonsPage = () => {
       { key: 'Devis', label: 'Devis' }
     ];
 
-    if (isPdg) return base;
-    return base.filter((t) => t.key !== 'Ecommerce' && t.key !== 'AvoirEcommerce');
-  }, [isPdg]);
+    // ChefChauffeur: allow ecommerce tabs, but no Devis, and hide Commande
+    if (isChefChauffeur) {
+      return base.filter((t) => t.key !== 'Devis' && t.key !== 'Commande');
+    }
+
+    // Non-PDG: hide ecommerce tabs
+    if (!isPdg) {
+      return base.filter((t) => t.key !== 'Ecommerce' && t.key !== 'AvoirEcommerce');
+    }
+
+    return base;
+  }, [isPdg, isChefChauffeur]);
 
   const toMySQLDateTime = (d: Date = new Date()) => d.toISOString().slice(0, 19).replace('T', ' ');
 
@@ -1419,7 +1480,13 @@ const BonsPage = () => {
 
   // Fonction pour ouvrir le modal de création d'un nouveau bon
   const handleAddNew = () => {
+    if (isChefChauffeur) {
+      showError("Permission refusée: Chef Chauffeur ne peut pas ajouter de bon/avoir/devis.");
+      return;
+    }
     setSelectedBon(null);
+    // Forcer un remontage du modal pour repartir sur un état vierge
+    setBonFormKey((k) => k + 1);
     setIsCreateModalOpen(true);
   };
 
@@ -1695,21 +1762,20 @@ const BonsPage = () => {
                 );
               })()}
               <span className={`text-xs px-2 py-1 rounded ${
-                canModifyBons(currentUser) ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                canModifyBons(currentUser) || isChefChauffeur ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
               }`}>
-                {canModifyBons(currentUser) ? '✅ Peut modifier les bons' : '❌ Lecture seule'}
+                {canModifyBons(currentUser)
+                  ? '✅ Peut modifier les bons'
+                  : isChefChauffeur
+                    ? '📝 Quantité/Statut seulement'
+                    : '❌ Lecture seule'}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {currentTab !== 'Ecommerce' && currentTab !== 'AvoirEcommerce' && (
+            {!isChefChauffeur && currentTab !== 'Ecommerce' && currentTab !== 'AvoirEcommerce' && (
               <button
-                onClick={() => {
-                  setSelectedBon(null);
-                  // Incrémenter la clé pour forcer un remontage du composant modal (nettoyage complet de l'état interne)
-                  setBonFormKey(k => k + 1);
-                  setIsCreateModalOpen(true);
-                }}
+                onClick={handleAddNew}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
               >
                 <Plus size={20} />
@@ -1728,14 +1794,16 @@ const BonsPage = () => {
                 Ajouter Avoir Ecommerce
               </button>
             )}
-            <button
-              onClick={() => navigate('/inventaire')}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
-              title="Enregistrer un inventaire (ne modifie pas le stock)"
-            >
-              <Plus size={20} />
-              Enregistrer inventaire
-            </button>
+            {!isChefChauffeur && (
+              <button
+                onClick={() => navigate('/inventaire')}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
+                title="Enregistrer un inventaire (ne modifie pas le stock)"
+              >
+                <Plus size={20} />
+                Enregistrer inventaire
+              </button>
+            )}
           </div>
         </div>
 
@@ -1763,7 +1831,7 @@ const BonsPage = () => {
         <div className="bg-white rounded-lg shadow mb-4 p-4">
           <div className="flex flex-wrap items-center gap-3">
             {/* Bouton Ajouter */}
-            {currentTab !== 'Ecommerce' && currentTab !== 'AvoirEcommerce' && (
+            {!isChefChauffeur && currentTab !== 'Ecommerce' && currentTab !== 'AvoirEcommerce' && (
               <button
                 onClick={handleAddNew}
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
@@ -2398,7 +2466,8 @@ const BonsPage = () => {
                             if (bon.statut === 'Annulé') return null;
                             
                             const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
-                            return canModifyBons(currentUser) ? (
+                            const canOpenEditModal = canModifyBons(currentUser) || (isChefChauffeur && !isEcom);
+                            return canOpenEditModal ? (
                               <button
                                 onClick={() => {
                                   // Double-check validation status before opening modal
@@ -2414,7 +2483,7 @@ const BonsPage = () => {
                                   setIsCreateModalOpen(true);
                                 }}
                                 className="text-blue-600 hover:text-blue-800"
-                                title="Modifier"
+                                title={isChefChauffeur ? 'Modifier (quantité seulement)' : 'Modifier'}
                               >
                                 <Edit size={ACTION_ICON_SIZE} />
                               </button>
@@ -2424,7 +2493,17 @@ const BonsPage = () => {
                           {/* 3-dot menu for other actions */}
                           <div className="relative" ref={openMenuBonId === String(bon.id) ? menuRef : null}>
                             <button
-                              onClick={() => setOpenMenuBonId(openMenuBonId === String(bon.id) ? null : String(bon.id))}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const next = openMenuBonId === String(bon.id) ? null : String(bon.id);
+                                setOpenMenuBonId(next);
+                                if (next) {
+                                  setMenuAnchorEl(e.currentTarget as HTMLElement);
+                                } else {
+                                  setMenuAnchorEl(null);
+                                  setMenuPosition(null);
+                                }
+                              }}
                               className="text-gray-600 hover:text-gray-800 p-1 rounded hover:bg-gray-100"
                               title="Plus d'actions"
                             >
@@ -2432,9 +2511,21 @@ const BonsPage = () => {
                             </button>
                             
                             {/* Popup menu */}
-                            {openMenuBonId === String(bon.id) && (
-                              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-[9999] p-1">
-                                <div className="flex flex-col gap-1">
+                            {openMenuBonId === String(bon.id) && menuPosition && createPortal(
+                              <>
+                                {/* Backdrop to guarantee click-outside works even inside scroll containers */}
+                                <div
+                                  className="fixed inset-0 z-[10040]"
+                                  onClick={() => { setOpenMenuBonId(null); setMenuAnchorEl(null); setMenuPosition(null); }}
+                                />
+                                {/* Fullscreen layer for absolute positioning */}
+                                <div className="fixed inset-0 z-[10050] pointer-events-none">
+                                  <div
+                                    ref={menuRef}
+                                    className="absolute pointer-events-auto bg-white border border-gray-200 rounded-md shadow-lg p-1"
+                                    style={{ top: menuPosition.top, left: menuPosition.left, transform: 'translateX(-100%)' }}
+                                  >
+                                    <div className="flex flex-col gap-1">
                                   {/* Status-change actions */}
                                   {(() => {
                                     const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
@@ -2600,6 +2691,43 @@ const BonsPage = () => {
                                         </>
                                       );
                                     }
+
+                                    // ChefChauffeur: secondary actions only (En attente / Annuler) on non-validé bons
+                                    if (isChefChauffeur && bon.statut !== 'Validé') {
+                                      const isDocTab = (
+                                        currentTab === 'Commande' ||
+                                        currentTab === 'Sortie' ||
+                                        currentTab === 'Comptant' ||
+                                        currentTab === 'Devis' ||
+                                        currentTab === 'Avoir' ||
+                                        currentTab === 'AvoirFournisseur' ||
+                                        currentTab === 'AvoirComptant' ||
+                                        currentTab === 'AvoirEcommerce' ||
+                                        currentTab === 'Vehicule'
+                                      );
+                                      if (!isDocTab) return null;
+                                      return (
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
+                                            className="p-2 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-800 rounded"
+                                            title="Mettre En attente"
+                                          >
+                                            <Clock size={16} />
+                                          </button>
+                                          {bon.statut !== 'Annulé' && (
+                                            <button
+                                              onClick={() => { handleChangeStatus(bon, 'Annulé'); setOpenMenuBonId(null); }}
+                                              className="p-2 text-red-600 hover:bg-red-50 hover:text-red-800 rounded"
+                                              title="Annuler"
+                                            >
+                                              <XCircle size={16} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+
                                     // Managers (other tabs) limited: can only Annuler if not already cancelled or validated
                                     if (isManager && bon.statut !== 'Annulé' && bon.statut !== 'Validé') {
                                       return (
@@ -2614,7 +2742,7 @@ const BonsPage = () => {
                                     }
                                     return null;
                                   })()}
-                                  
+
                                   {/* Other actions */}
                                   <div className="flex gap-1">
                                     {/* Audit history */}
@@ -2685,7 +2813,10 @@ const BonsPage = () => {
                                   </div>
                                 </div>
                               </div>
-                            )}
+                              </div>
+                          </>,
+                          document.body
+                        )}
                           </div>
                         </div>
                       </td>

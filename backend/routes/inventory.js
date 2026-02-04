@@ -3,9 +3,15 @@ import pool from '../db/pool.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
+import * as XLSX from 'xlsx';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+});
 
 // Role guard: allow PDG and ManagerPlus to create snapshots; others can view only
 function requireSnapshotCreator(req, res, next) {
@@ -23,6 +29,19 @@ function getLocalYmd(date = new Date()) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function normalizeYmd(input) {
+  const s = String(input || '').trim();
+  if (!s) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (!m) return null;
+  const yyyy = m[1];
+  const mm = String(m[2]).padStart(2, '0');
+  const dd = String(m[3]).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function toCsv(rows, headers) {
@@ -75,10 +94,7 @@ router.post('/snapshots', requireSnapshotCreator, async (req, res, next) => {
 
     const now = new Date();
     const ts = now.toISOString();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    const dateFolder = `${y}-${m}-${d}`;
+    const dateFolder = normalizeYmd(req.body?.date) || normalizeYmd(req.query?.date) || getLocalYmd(now);
     const baseDir = path.join(__dirname, '..', 'uploads', 'inventory', dateFolder);
     ensureDir(baseDir);
 
@@ -106,6 +122,171 @@ router.post('/snapshots', requireSnapshotCreator, async (req, res, next) => {
     const csvUrl = `/uploads/inventory/${dateFolder}/${csvName}`;
 
     res.json({ ok: true, id: suffix, date: dateFolder, jsonUrl, csvUrl, totals });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/inventory/snapshots/import-excel
+ * Form-Data: file=<.xlsx|.xls|.csv>, date=YYYY-MM-DD (or YYYY/MM/DD)
+ * Expected columns:
+ *  - reference (product id) [also supports: refernce, ref, product_id, produit_id]
+ *  - quantite (optional) [also supports: qte, qty, quantity]
+ */
+router.post('/snapshots/import-excel', requireSnapshotCreator, upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, message: 'file is required' });
+
+    const ymd = normalizeYmd(req.body?.date) || normalizeYmd(req.query?.date) || getLocalYmd();
+    if (!ymd) return res.status(400).json({ ok: false, message: 'Invalid date. Use YYYY-MM-DD' });
+
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { raw: true, defval: null });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ ok: false, message: 'No rows found in file' });
+    }
+
+    const normalizeKey = (k) =>
+      String(k ?? '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .replace(/[^a-z0-9]+/g, '');
+
+    const pick = (row, keys) => {
+      if (!row || typeof row !== 'object') return null;
+      const map = new Map();
+      for (const [k, v] of Object.entries(row)) map.set(normalizeKey(k), v);
+      for (const key of keys) {
+        const nk = normalizeKey(key);
+        if (map.has(nk)) return map.get(nk);
+      }
+      return null;
+    };
+
+    const num = (v) => {
+      if (v === undefined || v === null) return null;
+      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+      const str = String(v).trim();
+      if (!str) return null;
+      const normalized = str.replace(/\s+/g, '').replace(',', '.');
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const idToQty = new Map();
+    for (const r of rows) {
+      const ref = pick(r, [
+        'reference',
+        'refernce',
+        'référence',
+        'ref',
+        'product_id',
+        'produit_id',
+        'produitid',
+        'produit id',
+      ]);
+      const idNum = num(ref);
+      const id = Number.isFinite(idNum) ? Math.trunc(idNum) : null;
+      if (!id) continue;
+
+      const q = num(pick(r, ['quantite', 'quantité', 'qte', 'qty', 'quantity']));
+      const prev = idToQty.get(id);
+      if (q == null) {
+        if (prev === undefined) idToQty.set(id, null);
+      } else {
+        const nextQty = (prev == null ? 0 : Number(prev)) + Number(q);
+        idToQty.set(id, nextQty);
+      }
+    }
+
+    const ids = Array.from(idToQty.keys());
+    if (ids.length === 0) {
+      return res.status(400).json({ ok: false, message: "No valid 'reference' values found" });
+    }
+
+    const [prodRows] = await pool.query(
+      `
+      SELECT id, designation, quantite, prix_achat, prix_vente, kg
+      FROM products
+      WHERE COALESCE(is_deleted,0) = 0
+        AND id IN (?)
+      ORDER BY id ASC
+      `,
+      [ids]
+    );
+
+    const foundIds = new Set(prodRows.map((p) => Number(p.id)));
+    const missingIds = ids.filter((id) => !foundIds.has(id));
+
+    const items = prodRows.map((p) => {
+      const id = Number(p.id);
+      const excelQty = idToQty.get(id);
+      const quantite = excelQty == null ? Number(p.quantite || 0) : Number(excelQty || 0);
+      const prix_achat = Number(p.prix_achat || 0);
+      const prix_vente = Number(p.prix_vente || 0);
+      return {
+        id,
+        designation: p.designation || '',
+        quantite,
+        prix_achat,
+        prix_vente,
+        kg: p.kg != null ? Number(p.kg) : null,
+        valeur_cost: quantite * prix_achat,
+        valeur_sale: quantite * prix_vente,
+      };
+    });
+
+    if (items.length === 0) {
+      return res.status(400).json({ ok: false, message: 'No products matched the provided references', missingIds });
+    }
+
+    const totals = items.reduce(
+      (acc, it) => {
+        acc.totalProducts += 1;
+        acc.totalQty += Number(it.quantite || 0);
+        acc.totalCost += Number(it.valeur_cost || 0);
+        acc.totalSale += Number(it.valeur_sale || 0);
+        return acc;
+      },
+      { totalProducts: 0, totalQty: 0, totalCost: 0, totalSale: 0 }
+    );
+
+    const baseDir = path.join(__dirname, '..', 'uploads', 'inventory', ymd);
+    ensureDir(baseDir);
+
+    const suffix = Date.now();
+    const jsonName = `snapshot-${suffix}.json`;
+    const csvName = `snapshot-${suffix}.csv`;
+
+    const snapshot = {
+      id: suffix,
+      created_at: `${ymd}T12:00:00.000Z`,
+      created_by: req.user?.id || null,
+      role: req.user?.role || null,
+      source: {
+        type: 'excel',
+        original_filename: req.file.originalname,
+        imported_at: new Date().toISOString(),
+      },
+      totals,
+      items,
+    };
+
+    fs.writeFileSync(path.join(baseDir, jsonName), JSON.stringify(snapshot, null, 2), 'utf8');
+
+    const csvHeaders = ['id', 'designation', 'quantite', 'prix_achat', 'prix_vente', 'kg', 'valeur_cost', 'valeur_sale'];
+    const csvContent = toCsv(items, csvHeaders);
+    fs.writeFileSync(path.join(baseDir, csvName), csvContent, 'utf8');
+
+    const jsonUrl = `/uploads/inventory/${ymd}/${jsonName}`;
+    const csvUrl = `/uploads/inventory/${ymd}/${csvName}`;
+
+    res.json({ ok: true, id: suffix, date: ymd, jsonUrl, csvUrl, totals, missingIds });
   } catch (err) {
     next(err);
   }

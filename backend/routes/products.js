@@ -33,6 +33,40 @@ const upload = multer({ storage: storage });
 let ensuredProductsColumns = false;
 async function ensureProductsColumns() {
   if (ensuredProductsColumns) return;
+
+  // Ensure product_units has prix_vente column (nullable override; when NULL => auto compute from factor)
+  try {
+    const [tbl] = await pool.query(
+      `SELECT TABLE_NAME FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_units'`
+    );
+    if (tbl?.length) {
+      const [col] = await pool.query(
+        `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_units' AND COLUMN_NAME = 'prix_vente'`
+      );
+      if (!col.length) {
+        await pool.query(`ALTER TABLE product_units ADD COLUMN prix_vente DECIMAL(10,2) DEFAULT NULL AFTER conversion_factor`);
+      }
+
+      // Ensure facteur_isNormal column (1 => default/auto price, 0 => manual override)
+      const [colFlag] = await pool.query(
+        `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_units' AND COLUMN_NAME = 'facteur_isNormal'`
+      );
+      if (!colFlag.length) {
+        await pool.query(
+          `ALTER TABLE product_units ADD COLUMN facteur_isNormal TINYINT(1) NOT NULL DEFAULT 1 AFTER prix_vente`
+        );
+        // Best-effort backfill: if a unit has an explicit price, it's not normal/auto
+        try {
+          await pool.query(`UPDATE product_units SET facteur_isNormal = 0 WHERE prix_vente IS NOT NULL`);
+        } catch {}
+      }
+    }
+  } catch (e) {
+    console.log('ensureProductsColumns: product_units.prix_vente check skipped', e?.message || e);
+  }
   
   // Check is_deleted
   const [colsDeleted] = await pool.query(
@@ -486,6 +520,8 @@ router.get('/', async (req, res, next) => {
         'id', pu.id, 
         'unit_name', pu.unit_name, 
         'conversion_factor', pu.conversion_factor, 
+        'prix_vente', pu.prix_vente,
+        'facteur_isNormal', pu.facteur_isNormal,
         'is_default', pu.is_default
       )) FROM product_units pu WHERE pu.product_id = p.id) as units,
       c.nom as categorie_nom
@@ -715,6 +751,8 @@ router.get('/:id', async (req, res, next) => {
       units: units.map(u => ({
         ...u,
         conversion_factor: Number(u.conversion_factor),
+        prix_vente: u.prix_vente === null || u.prix_vente === undefined ? null : Number(u.prix_vente),
+        facteur_isNormal: u.facteur_isNormal === null || u.facteur_isNormal === undefined ? 1 : Number(u.facteur_isNormal) ? 1 : 0,
         is_default: !!u.is_default
       }))
     });
@@ -787,6 +825,33 @@ router.post('/', upload.fields([
     const cr = pa * (1 + crp / 100);
     const pg = pa * (1 + pgp / 100);
     const pv = pa * (1 + pvp / 100);
+
+    // Variant pricing rule:
+    // If product has exactly one unit and that unit is manual (facteur_isNormal=0),
+    // force variants to have the same selling price as the product's effective unit price.
+    let parsedUnitsForInsert = null;
+    if (units) {
+      try {
+        const parsed = typeof units === 'string' ? JSON.parse(units) : units;
+        if (Array.isArray(parsed)) parsedUnitsForInsert = parsed;
+      } catch {}
+    }
+
+    const lockVariantPrixVente =
+      Array.isArray(parsedUnitsForInsert) &&
+      parsedUnitsForInsert.length === 1 &&
+      Number(parsedUnitsForInsert?.[0]?.facteur_isNormal ?? 1) === 0;
+
+    let lockedVariantPrixVente = null;
+    if (lockVariantPrixVente) {
+      const u0 = parsedUnitsForInsert?.[0] || {};
+      const pvRaw = u0?.prix_vente;
+      const pvNum = pvRaw === '' || pvRaw === null || pvRaw === undefined ? null : Number(pvRaw);
+      const pvVal = pvNum !== null && Number.isFinite(pvNum) ? pvNum : null;
+      const conv = Number(u0?.conversion_factor ?? 1);
+      const convVal = Number.isFinite(conv) && conv > 0 ? conv : 1;
+      lockedVariantPrixVente = pvVal !== null ? pvVal : (pv * convVal);
+    }
 
     const now = new Date();
     const catId = categorie_id ? Number(categorie_id) : null;
@@ -868,6 +933,10 @@ router.post('/', upload.fields([
       try { parsed = typeof variants === 'string' ? JSON.parse(variants) : variants; } catch {}
       if (Array.isArray(parsed)) {
         for (const v of parsed) {
+          const variantPrixVentePourcentage = lockVariantPrixVente ? 0 : Number(v.prix_vente_pourcentage ?? 0);
+          const variantPrixVente = lockVariantPrixVente
+            ? Number(lockedVariantPrixVente ?? 0)
+            : Number(v.prix_vente ?? 0);
           await pool.query(
             `INSERT INTO product_variants (product_id, variant_name, variant_type, reference, prix_achat, cout_revient, cout_revient_pourcentage, prix_gros, prix_gros_pourcentage, prix_vente_pourcentage, prix_vente, remise_client, remise_artisan, stock_quantity, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -881,8 +950,8 @@ router.post('/', upload.fields([
               Number(v.cout_revient_pourcentage ?? 0),
               Number(v.prix_gros ?? 0),
               Number(v.prix_gros_pourcentage ?? 0),
-              Number(v.prix_vente_pourcentage ?? 0),
-              Number(v.prix_vente ?? 0),
+              variantPrixVentePourcentage,
+              variantPrixVente,
               Number(v.remise_client ?? 0),
               Number(v.remise_artisan ?? 0),
               Number(v.stock_quantity ?? 0),
@@ -895,17 +964,18 @@ router.post('/', upload.fields([
     }
 
     // Units
-    if (units) {
-      let parsed = [];
-      try { parsed = typeof units === 'string' ? JSON.parse(units) : units; } catch {}
-      if (Array.isArray(parsed)) {
-        for (const u of parsed) {
-          await pool.query(
-            `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_default, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [id, u.unit_name, Number(u.conversion_factor), u.is_default ? 1 : 0, now, now]
-          );
-        }
+    if (Array.isArray(parsedUnitsForInsert)) {
+      for (const u of parsedUnitsForInsert) {
+        const pvRaw = u?.prix_vente;
+        const pvNum = pvRaw === '' || pvRaw === null || pvRaw === undefined ? null : Number(pvRaw);
+        const pvVal = pvNum !== null && Number.isFinite(pvNum) ? pvNum : null;
+        // Normalize flag: presence of an explicit unit selling price => manual override (0), otherwise auto (1).
+        const facteur_isNormal = pvVal === null ? 1 : 0;
+        await pool.query(
+          `INSERT INTO product_units (product_id, unit_name, conversion_factor, prix_vente, facteur_isNormal, is_default, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, u.unit_name, Number(u.conversion_factor), pvVal, facteur_isNormal, u.is_default ? 1 : 0, now, now]
+        );
       }
     }
 
@@ -976,6 +1046,8 @@ router.post('/', upload.fields([
       units: unts.map(u => ({
         ...u,
         conversion_factor: Number(u.conversion_factor),
+        prix_vente: u.prix_vente === null || u.prix_vente === undefined ? null : Number(u.prix_vente),
+        facteur_isNormal: u.facteur_isNormal === null || u.facteur_isNormal === undefined ? 1 : Number(u.facteur_isNormal) ? 1 : 0,
         is_default: !!u.is_default,
       })),
     });
@@ -1076,6 +1148,43 @@ router.put('/:id', upload.fields([
     const pg = pa * (1 + pgp / 100);
     const pv = pa * (1 + pvp / 100);
 
+    // Variant pricing rule:
+    // If (desired OR current) units are exactly 1 and it's manual (facteur_isNormal=0),
+    // force variants prix_vente to the product effective unit price.
+    const computeVariantPriceLock = (unitsArr) => {
+      if (!Array.isArray(unitsArr) || unitsArr.length !== 1) return { lock: false, forcedPrixVente: null };
+      const u0 = unitsArr[0] || {};
+      const flag = Number(u0?.facteur_isNormal ?? 1);
+      const pvRaw = u0?.prix_vente;
+      const pvNum = pvRaw === '' || pvRaw === null || pvRaw === undefined ? null : Number(pvRaw);
+      const pvVal = pvNum !== null && Number.isFinite(pvNum) ? pvNum : null;
+      const isManual = flag === 0;
+      if (!isManual) return { lock: false, forcedPrixVente: null };
+      const conv = Number(u0?.conversion_factor ?? 1);
+      const convVal = Number.isFinite(conv) && conv > 0 ? conv : 1;
+      const forced = pvVal !== null ? pvVal : (pv * convVal);
+      return { lock: true, forcedPrixVente: forced };
+    };
+
+    let lockVariantPrixVente = false;
+    let lockedVariantPrixVente = null;
+    if (unitsJson !== undefined) {
+      let parsedUnits = [];
+      try { parsedUnits = typeof unitsJson === 'string' ? JSON.parse(unitsJson) : unitsJson; } catch {}
+      const r = computeVariantPriceLock(parsedUnits);
+      lockVariantPrixVente = r.lock;
+      lockedVariantPrixVente = r.forcedPrixVente;
+    } else {
+      // No new units sent => decide based on current DB units
+      const [dbUnits] = await pool.query(
+        'SELECT prix_vente, facteur_isNormal, conversion_factor FROM product_units WHERE product_id = ? ORDER BY id ASC',
+        [id]
+      );
+      const r = computeVariantPriceLock(dbUnits);
+      lockVariantPrixVente = r.lock;
+      lockedVariantPrixVente = r.forcedPrixVente;
+    }
+
     // Category handling and validation: allow null/0 to clear
     let newCatId = null;
     if (categorie_id === undefined) {
@@ -1168,6 +1277,10 @@ router.put('/:id', upload.fields([
 
           for (const v of parsed) {
             const variantId = Number(v?.id ?? 0);
+            const variantPrixVentePourcentage = lockVariantPrixVente ? 0 : Number(v?.prix_vente_pourcentage ?? 0);
+            const variantPrixVente = lockVariantPrixVente
+              ? Number(lockedVariantPrixVente ?? 0)
+              : Number(v?.prix_vente ?? 0);
             const payloadVals = [
               v?.variant_name,
               v?.variant_type || 'Autre',
@@ -1177,8 +1290,8 @@ router.put('/:id', upload.fields([
               Number(v?.cout_revient_pourcentage ?? 0),
               Number(v?.prix_gros ?? 0),
               Number(v?.prix_gros_pourcentage ?? 0),
-              Number(v?.prix_vente_pourcentage ?? 0),
-              Number(v?.prix_vente ?? 0),
+              variantPrixVentePourcentage,
+              variantPrixVente,
               Number(v?.remise_client ?? 0),
               Number(v?.remise_artisan ?? 0),
               Number(v?.stock_quantity ?? 0),
@@ -1251,30 +1364,37 @@ router.put('/:id', upload.fields([
 
           for (const u of parsed) {
             const unitId = Number(u?.id ?? 0);
+            const pvRaw = u?.prix_vente;
+            const pvNum = pvRaw === '' || pvRaw === null || pvRaw === undefined ? null : Number(pvRaw);
+            const pvVal = pvNum !== null && Number.isFinite(pvNum) ? pvNum : null;
+            // Normalize flag: presence of an explicit unit selling price => manual override (0), otherwise auto (1).
+            const facteur_isNormal = pvVal === null ? 1 : 0;
             const unitVals = [
               u?.unit_name,
               Number(u?.conversion_factor ?? 0),
+              pvVal,
+              facteur_isNormal,
               u?.is_default ? 1 : 0,
             ];
 
             if (unitId && Number.isFinite(unitId)) {
               const [updated] = await pool.query(
                 `UPDATE product_units
-                 SET unit_name = ?, conversion_factor = ?, is_default = ?, updated_at = ?
+                 SET unit_name = ?, conversion_factor = ?, prix_vente = ?, facteur_isNormal = ?, is_default = ?, updated_at = ?
                  WHERE id = ? AND product_id = ?`,
                 [...unitVals, now, unitId, id]
               );
               if (!(updated && updated.affectedRows > 0)) {
                 await pool.query(
-                  `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_default, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?)`,
+                  `INSERT INTO product_units (product_id, unit_name, conversion_factor, prix_vente, facteur_isNormal, is_default, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                   [id, ...unitVals, now, now]
                 );
               }
             } else {
               await pool.query(
-                `INSERT INTO product_units (product_id, unit_name, conversion_factor, is_default, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO product_units (product_id, unit_name, conversion_factor, prix_vente, facteur_isNormal, is_default, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [id, ...unitVals, now, now]
               );
             }
@@ -1376,6 +1496,7 @@ router.put('/:id', upload.fields([
         ...u,
         conversion_factor: Number(u.conversion_factor),
         prix_vente: u.prix_vente ? Number(u.prix_vente) : null,
+        facteur_isNormal: u.facteur_isNormal === null || u.facteur_isNormal === undefined ? 1 : Number(u.facteur_isNormal) ? 1 : 0,
         is_default: !!u.is_default
       }))
     });

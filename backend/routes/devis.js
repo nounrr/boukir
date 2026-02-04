@@ -1,8 +1,12 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// Devis are not accessible to ChefChauffeur (read-only role limited to other docs)
+router.use(verifyToken, forbidRoles('ChefChauffeur'));
 
 /* ========== GET /devis (liste) ========== */
 router.get('/', async (_req, res) => {
@@ -97,7 +101,7 @@ router.get('/:id', async (req, res) => {
 /* ========== POST /devis (création) ========== */
 /* numero auto: dev{ID} */
 // --- POST /devis ---
-router.post('/', async (req, res) => {
+router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();

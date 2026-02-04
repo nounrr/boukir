@@ -12,6 +12,7 @@ import { initializeSocketServer } from './socket/socketServer.js';
 
 import pool, { requestContext } from './db/pool.js';
 import { verifyToken } from './middleware/auth.js';
+import { enforceWeeklyPasswordChange } from './middleware/passwordPolicy.js';
 import jwt from 'jsonwebtoken';
 
 import employeesRouter from './routes/employees.js';
@@ -214,6 +215,9 @@ app.use((req, res, next) => {
     next();
   });
 });
+
+// Block access until password is changed (weekly Monday policy)
+app.use(enforceWeeklyPasswordChange);
 
 app.use(morgan('dev'));
 

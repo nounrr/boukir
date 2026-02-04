@@ -262,10 +262,10 @@ const EmployeeArchivePage: React.FC = () => {
                         employee.role === 'PDG' ? 'bg-purple-100 text-purple-700' :
                         employee.role === 'Manager' ? 'bg-blue-100 text-blue-700' :
                         employee.role === 'ManagerPlus' ? 'bg-indigo-100 text-indigo-700' :
-                        employee.role === 'Chauffeur' ? 'bg-orange-100 text-orange-700' :
+                        (employee.role === 'Chauffeur' || employee.role === 'ChefChauffeur') ? 'bg-orange-100 text-orange-700' :
                         'bg-gray-100 text-gray-700'
                       }`}>
-                        {employee.role || 'Non défini'}
+                        {employee.role === 'ChefChauffeur' ? 'Chef Chauffeur' : (employee.role || 'Non défini')}
                       </span>
                     </div>
                   </td>

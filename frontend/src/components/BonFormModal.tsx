@@ -386,6 +386,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const dispatch = useDispatch();
   const formikRef = useRef<FormikProps<any>>(null);
   const isEditMode = Boolean((initialValues as any)?.id);
+  const isChefChauffeur = user?.role === 'ChefChauffeur';
+  const isQtyOnlyEdit = isChefChauffeur && isEditMode;
   // Container ref to detect when Enter is pressed within the products area
   const itemsContainerRef = useRef<HTMLDivElement>(null);
   
@@ -419,7 +421,13 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // RTK Query hooks
   const { data: vehicules = [] } = useGetVehiculesQuery();
   const { data: employeesAll = [] } = useGetEmployeesQueryServer();
-  const chauffeurs = useMemo(() => (employeesAll || []).filter((e: any) => e.role === 'Chauffeur'), [employeesAll]);
+  const chauffeurs = useMemo(
+    () =>
+      (employeesAll || []).filter(
+        (e: any) => (e?.role === 'Chauffeur' || e?.role === 'ChefChauffeur') && !e?.deleted_at
+      ),
+    [employeesAll]
+  );
   const { data: products = [] } = useGetProductsQuery();
   const { data: clients = [] } = useGetAllClientsQuery();
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
@@ -786,6 +794,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
   // Saisie brute par ligne pour "prix_unitaire"
   const [unitPriceRaw, setUnitPriceRaw] = useState<Record<number, string>>({});
+  // When user clicks other controls (variant/unit/product), we suppress the async price onBlur commit
+  // to avoid race conditions (blur finishing after onChange).
+  const suppressPriceBlurRef = useRef<{ row: number; ts: number } | null>(null);
 // 🆕 Saisie brute par ligne pour "quantite"
 const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ----------------------- Initialisation des valeurs ----------------------- */
@@ -1221,6 +1232,12 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ------------------------------ Soumission ------------------------------ */
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
   try {
+    if (isChefChauffeur && !isEditMode) {
+      showError('Permission refusée: Chef Chauffeur ne peut pas créer des bons/avoirs.');
+      setSubmitting(false);
+      return;
+    }
+
     // Validation stricte: chaque ligne produit doit avoir une quantité > 0
     const invalidQtyRows: number[] = Array.isArray(values.items)
       ? values.items
@@ -1373,7 +1390,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       // New Sortie without opening the remise panel: do not force a client-based remise.
       : { remise_is_client: 0, remise_id: null, remise_client_nom: undefined };
 
-  const cleanBonData = {
+    let cleanBonData: any = {
   date_creation: formatDateInputToMySQL(values.date_bon) || new Date().toISOString().slice(0,19).replace('T',' '), // assure string
       vehicule_id: vehiculeId,
       lieu_chargement: values.lieu_charge || '',
@@ -1438,6 +1455,52 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         };
       }),
     };
+
+    // ChefChauffeur: en modification, autoriser seulement les quantités (tout le reste est verrouillé)
+    if (isQtyOnlyEdit) {
+      const locked = (initialValues as any) || {};
+      const lockedItems: any[] = Array.isArray(locked?.items) ? locked.items : [];
+
+      // Lock header fields (server will also enforce)
+      cleanBonData = {
+        ...cleanBonData,
+        date_creation: locked?.date_creation ?? cleanBonData.date_creation,
+        vehicule_id: locked?.vehicule_id ?? cleanBonData.vehicule_id,
+        lieu_chargement: locked?.lieu_chargement ?? cleanBonData.lieu_chargement,
+        adresse_livraison: locked?.adresse_livraison ?? cleanBonData.adresse_livraison,
+        phone: locked?.phone ?? cleanBonData.phone,
+        isNotCalculated: locked?.isNotCalculated ?? cleanBonData.isNotCalculated,
+        statut: locked?.statut ?? cleanBonData.statut,
+        client_id: locked?.client_id ?? cleanBonData.client_id,
+        client_nom: locked?.client_nom ?? cleanBonData.client_nom,
+        fournisseur_id: locked?.fournisseur_id ?? cleanBonData.fournisseur_id,
+        remise_is_client: locked?.remise_is_client ?? cleanBonData.remise_is_client,
+        remise_id: locked?.remise_id ?? cleanBonData.remise_id,
+        remise_client_nom: locked?.remise_client_nom ?? cleanBonData.remise_client_nom,
+        // Never allow editing livraisons in qty-only mode
+        livraisons: undefined,
+      };
+
+      cleanBonData.items = (cleanBonData.items || []).map((it: any, idx: number) => {
+        const ex = lockedItems[idx];
+        if (!ex) return it;
+        const q = Number(it?.quantite ?? 0) || 0;
+        const exPrix = Number(ex?.prix_unitaire ?? it?.prix_unitaire ?? 0) || 0;
+        const exRp = Number(ex?.remise_pourcentage ?? it?.remise_pourcentage ?? 0) || 0;
+        const exRm = Number(ex?.remise_montant ?? it?.remise_montant ?? 0) || 0;
+        return {
+          product_id: Number(ex?.product_id ?? it?.product_id),
+          variant_id: ex?.variant_id ?? it?.variant_id ?? null,
+          unit_id: ex?.unit_id ?? it?.unit_id ?? null,
+          quantite: q,
+          prix_unitaire: exPrix,
+          remise_pourcentage: exRp,
+          remise_montant: exRm,
+          total: q * exPrix,
+        };
+      });
+      cleanBonData.montant_total = (cleanBonData.items || []).reduce((s: number, r: any) => s + (Number(r?.total) || 0), 0);
+    }
 
     if (isEditMode) {
       const updated = await updateBonMutation({ id: (initialValues as any).id, type: requestType, ...cleanBonData }).unwrap();
@@ -2035,6 +2098,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               className="space-y-4"
               onKeyDown={(e) => handleFormKeyDown(e)}
             >
+              {isQtyOnlyEdit && (
+                <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
+                  Chef Chauffeur: modification limitée — vous pouvez changer uniquement les quantités.
+                </div>
+              )}
               <AutoCheckNonCalculatedForAwatif isOpen={isOpen} clients={clients as any[]} />
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
 
@@ -2043,7 +2111,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   <label htmlFor="date_bon" className="block text-sm font-medium text-gray-700 mb-1">
                     Date et heure du bon
                   </label>
-                  <Field type="datetime-local" id="date_bon" name="date_bon" className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                  <Field type="datetime-local" id="date_bon" name="date_bon" disabled={isQtyOnlyEdit} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                   <ErrorMessage name="date_bon" component="div" className="text-red-500 text-sm mt-1" />
                 </div>
 
@@ -2058,6 +2126,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       id="vehicule_id"
                       name="vehicule_id"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      disabled={isQtyOnlyEdit}
                       value={values.vehicule_id || ''}
                       onChange={(e) => setFieldValue('vehicule_id', e.target.value)}
                     >
@@ -2077,19 +2146,19 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   <label htmlFor="lieu_charge" className="block text-sm font-medium text-gray-700 mb-1">
                     Lieu de charge
                   </label>
-                  <Field type="text" id="lieu_charge" name="lieu_charge" className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Ex: Entrepôt Casablanca" />
+                  <Field type="text" id="lieu_charge" name="lieu_charge" disabled={isQtyOnlyEdit} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Ex: Entrepôt Casablanca" />
                 </div>
                 <div>
                   <label htmlFor="adresse_livraison" className="block text-sm font-medium text-gray-700 mb-1">
                     Adresse de livraison
                   </label>
-                  <Field type="text" id="adresse_livraison" name="adresse_livraison" className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Adresse complète de livraison" />
+                  <Field type="text" id="adresse_livraison" name="adresse_livraison" disabled={isQtyOnlyEdit} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Adresse complète de livraison" />
                 </div>
                 <div>
                   <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
                     Téléphone du bon
                   </label>
-                  <Field type="text" id="phone" name="phone" className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Numéro de téléphone lié à ce bon (facultatif)" />
+                  <Field type="text" id="phone" name="phone" disabled={isQtyOnlyEdit} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Numéro de téléphone lié à ce bon (facultatif)" />
                 </div>
                 <div className="flex items-center gap-2">
                   <Field type="checkbox" id="isNotCalculated" name="isNotCalculated" className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
@@ -2108,7 +2177,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     <button
                       type="button"
                       className="px-2 py-1 text-sm bg-blue-600 text-white rounded"
-                      onClick={() => setFieldValue('livraisons', [...(values.livraisons || []), { vehicule_id: '', user_id: '' }])}
+                      disabled={isQtyOnlyEdit}
+                      onClick={() => {
+                        if (isQtyOnlyEdit) return;
+                        setFieldValue('livraisons', [...(values.livraisons || []), { vehicule_id: '', user_id: '' }]);
+                      }}
                     >
                       Ajouter véhicule + chauffeur
                     </button>
@@ -2122,10 +2195,22 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                               <label className="block text-xs text-gray-600 mb-1">Véhicule</label>
                               <select
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                disabled={isQtyOnlyEdit}
                                 value={l.vehicule_id || ''}
                                 onChange={(e) => {
+                                  if (isQtyOnlyEdit) return;
+                                  const selectedVehiculeId = e.target.value;
+                                  const selectedVehicule = (vehicules || []).find((v: any) => String(v?.id) === String(selectedVehiculeId));
+                                  const linkedChauffeurId = selectedVehicule?.employe_id;
+                                  const linkedChauffeurExists = linkedChauffeurId != null && (chauffeurs || []).some((c: any) => Number(c?.id) === Number(linkedChauffeurId));
+
                                   const arr = [...(values.livraisons || [])];
-                                  arr[idx] = { ...arr[idx], vehicule_id: e.target.value };
+                                  arr[idx] = {
+                                    ...arr[idx],
+                                    vehicule_id: selectedVehiculeId,
+                                    // Auto-select linked chauffeur if vehicule has one
+                                    user_id: linkedChauffeurExists ? String(linkedChauffeurId) : '',
+                                  };
                                   setFieldValue('livraisons', arr);
                                 }}
                               >
@@ -2141,8 +2226,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                               <label className="block text-xs text-gray-600 mb-1">Chauffeur (optionnel)</label>
                               <select
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                disabled={isQtyOnlyEdit}
                                 value={l.user_id || ''}
                                 onChange={(e) => {
+                                  if (isQtyOnlyEdit) return;
                                   const arr = [...(values.livraisons || [])];
                                   arr[idx] = { ...arr[idx], user_id: e.target.value };
                                   setFieldValue('livraisons', arr);
@@ -2157,7 +2244,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                               </select>
                             </div>
                             <div className="flex items-center gap-2">
-                              <button type="button" className="px-2 py-2 bg-red-600 text-white rounded" onClick={() => remove(idx)}>
+                              <button type="button" disabled={isQtyOnlyEdit} className="px-2 py-2 bg-red-600 text-white rounded disabled:opacity-60" onClick={() => !isQtyOnlyEdit && remove(idx)}>
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
@@ -2179,7 +2266,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     <button
                       type="button"
                       className="text-blue-600 underline text-xs"
-                      onClick={() => setIsContactModalOpen('Client')}
+                      disabled={isQtyOnlyEdit}
+                      onClick={() => {
+                        if (isQtyOnlyEdit) return;
+                        setIsContactModalOpen('Client');
+                      }}
                     >
                       Nouveau client
                     </button>
@@ -2204,7 +2295,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       };
                     })}
                     value={values.client_id}
+                    disabled={isQtyOnlyEdit}
                     onChange={async (clientId) => {
+                      if (isQtyOnlyEdit) return;
                       const client = clients.find((c: Contact) => c.id.toString() === clientId);
                       if (!client) {
                         setFieldValue('client_id', clientId);
@@ -2470,7 +2563,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     <button
                       type="button"
                       className="text-blue-600 underline text-xs"
-                      onClick={() => setIsContactModalOpen('Fournisseur')}
+                      disabled={isQtyOnlyEdit}
+                      onClick={() => {
+                        if (isQtyOnlyEdit) return;
+                        setIsContactModalOpen('Fournisseur');
+                      }}
                     >
                       Nouveau fournisseur
                     </button>
@@ -2482,7 +2579,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       data: f,
                     }))}
                     value={values.fournisseur_id}
+                    disabled={isQtyOnlyEdit}
                     onChange={(fournisseurId) => {
+                      if (isQtyOnlyEdit) return;
                       setFieldValue('fournisseur_id', fournisseurId);
                       if (fournisseurId) {
                         const f = fournisseurs.find((x: Contact) => x.id.toString() === fournisseurId);
@@ -2537,14 +2636,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     {(values.type === 'Sortie' || values.type === 'Comptant') && (
                       <button
                         type="button"
+                        disabled={isQtyOnlyEdit}
                         onClick={() => {
+                          if (isQtyOnlyEdit) return;
                           const next = !showRemisePanel;
                           setShowRemisePanel(next);
                           if (next && values.type === 'Comptant') {
                             setRemiseTargetIsBonClient(false);
                           }
                         }}
-                        className="flex items-center text-purple-600 hover:text-purple-800"
+                        className="flex items-center text-purple-600 hover:text-purple-800 disabled:opacity-60"
                         title={showRemisePanel ? 'Masquer remises' : 'Afficher / appliquer des remises'}
                       >
                         {showRemisePanel ? 'Masquer remises' : 'Appliquer remises'}
@@ -2552,7 +2653,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     )}
                     <button
                       type="button"
+                      disabled={isQtyOnlyEdit}
                       onClick={() => {
+                        if (isQtyOnlyEdit) return;
                         const newItem = {
                           _rowId: makeRowId(),
                           product_id: '',
@@ -2580,14 +2683,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         }, 50);
 
                       }}
-                      className="flex items-center text-blue-600 hover:text-blue-800"
+                      className="flex items-center text-blue-600 hover:text-blue-800 disabled:opacity-60"
                     >
                       <Plus size={16} className="mr-1" /> Ajouter ligne
                     </button>
 
                     <button
                       type="button"
+                      disabled={isQtyOnlyEdit}
                       onClick={() => {
+                        if (isQtyOnlyEdit) return;
                         const current = formikRef.current?.values ?? { items: [] };
                         const emptyRow = {
                           _rowId: makeRowId(),
@@ -2609,7 +2714,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         setTargetRowIndex(rowIndex);
                         setIsProductModalOpen(true);
                       }}
-                      className="flex items-center text-green-600 hover:text-green-800"
+                      className="flex items-center text-green-600 hover:text-green-800 disabled:opacity-60"
                     >
                       <Plus size={16} className="mr-1" /> Nouveau produit
                     </button>
@@ -2746,6 +2851,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     }))}
                                     value={String(values.items[index].product_id || '')}
                                     onChange={(productId) => {
+                                      if (isQtyOnlyEdit) return;
                                       const product = products.find((p: any) => String(p.id) === productId);
                                       if (product) {
                                         setFieldValue(`items.${index}.product_id`, product.id);
@@ -2794,6 +2900,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     }}
                                     placeholder="Sélectionner produit"
                                     className="w-full"
+                                    disabled={isQtyOnlyEdit}
                                     maxDisplayItems={300}
                                     autoOpenOnFocus
                                     buttonProps={{
@@ -2817,38 +2924,76 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     return (
                                       <select
                                         className={`w-full px-1 py-1 text-sm border rounded ${isMissing ? 'border-red-500' : ''}`}
+                                        disabled={isQtyOnlyEdit}
                                         value={values.items[index].variant_id || ''}
                                         data-row={index}
                                         data-col="variant"
+                                        onPointerDown={() => {
+                                          suppressPriceBlurRef.current = { row: index, ts: Date.now() };
+                                        }}
                                         onChange={(e) => {
+                                          if (isQtyOnlyEdit) return;
                                           const vId = e.target.value;
                                           setFieldValue(`items.${index}.variant_id`, vId);
+                                          const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                          const unitIdSel = values.items[index].unit_id;
+                                          const unitsForProduct = product?.units ?? [];
+
                                           if (vId) {
                                             const variant = variants.find((v: any) => String(v.id) === vId);
                                             if (variant) {
                                               // Update price based on variant
-                                              const variantBasePrice = values.type === 'Commande' ? Number(variant.prix_achat || 0) : Number(variant.prix_vente || 0);
+                                              const variantBasePrice = values.type === 'Commande'
+                                                ? Number(variant.prix_achat || 0)
+                                                : Number(variant.prix_vente || 0);
+
                                               // If a unit is already selected, apply its conversion factor to the variant price
-                                              const unitIdSel = values.items[index].unit_id;
-                                              const unitsForProduct = product?.units ?? [];
                                               let effectivePrice = variantBasePrice;
                                               if (unitIdSel) {
                                                 const unitSel = unitsForProduct.find((u: any) => String(u.id) === String(unitIdSel));
                                                 const factorSel = Number(unitSel?.conversion_factor || 1) || 1;
                                                 effectivePrice = Number((variantBasePrice * factorSel).toFixed(2));
                                               }
+
                                               if (values.type === 'Commande') {
                                                 setFieldValue(`items.${index}.prix_achat`, effectivePrice);
                                               } else {
                                                 setFieldValue(`items.${index}.prix_unitaire`, effectivePrice);
                                               }
                                               setUnitPriceRaw((prev) => ({ ...prev, [index]: String(effectivePrice) }));
-                                              
-                                              // Recalculate total
-                                              const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
                                               setFieldValue(`items.${index}.total`, q * effectivePrice);
                                             }
+                                            return;
                                           }
+
+                                          // Variant cleared => revert to base product price (respect unit selection)
+                                          const basePriceAchat = Number(product?.prix_achat ?? 0) || 0;
+                                          const basePriceVente = Number(product?.prix_vente ?? 0) || 0;
+
+                                          let effectivePrice = values.type === 'Commande' ? basePriceAchat : basePriceVente;
+                                          if (unitIdSel) {
+                                            const unitSel = unitsForProduct.find((u: any) => String(u.id) === String(unitIdSel));
+                                            const factorSel = Number(unitSel?.conversion_factor || 1) || 1;
+                                            if (values.type === 'Commande') {
+                                              effectivePrice = Number((basePriceAchat * factorSel).toFixed(2));
+                                            } else {
+                                              const unitPv = unitSel?.prix_vente;
+                                              const pvNum = unitPv === null || unitPv === undefined ? null : Number(unitPv);
+                                              if (pvNum !== null && Number.isFinite(pvNum)) {
+                                                effectivePrice = Number(pvNum.toFixed(2));
+                                              } else {
+                                                effectivePrice = Number((basePriceVente * factorSel).toFixed(2));
+                                              }
+                                            }
+                                          }
+
+                                          if (values.type === 'Commande') {
+                                            setFieldValue(`items.${index}.prix_achat`, effectivePrice);
+                                          } else {
+                                            setFieldValue(`items.${index}.prix_unitaire`, effectivePrice);
+                                          }
+                                          setUnitPriceRaw((prev) => ({ ...prev, [index]: String(effectivePrice) }));
+                                          setFieldValue(`items.${index}.total`, q * effectivePrice);
                                         }}
                                       >
                                         <option value="">--</option>
@@ -2876,8 +3021,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     return (
                                       <select
                                         className="w-full px-1 py-1 text-sm border rounded"
+                                        disabled={isQtyOnlyEdit}
                                         value={values.items[index].unit_id || ''}
                                         onChange={(e) => {
+                                          if (isQtyOnlyEdit) return;
                                           const uId = e.target.value;
                                           setFieldValue(`items.${index}.unit_id`, uId);
                                           
@@ -2905,7 +3052,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 newPrice = Number((baseA * factor).toFixed(2));
                                                 setFieldValue(`items.${index}.prix_achat`, newPrice);
                                               } else {
-                                                newPrice = Number((baseV * factor).toFixed(2));
+                                                // If unit has an explicit selling price override, prefer it (only when no variant is selected)
+                                                const unitPv = unit?.prix_vente;
+                                                const pvNum = unitPv === null || unitPv === undefined ? null : Number(unitPv);
+                                                if (!selectedVariantId && pvNum !== null && Number.isFinite(pvNum)) {
+                                                  newPrice = Number(pvNum.toFixed(2));
+                                                } else {
+                                                  newPrice = Number((baseV * factor).toFixed(2));
+                                                }
                                                 setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                               }
                                               setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
@@ -3063,8 +3217,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     pattern="[0-9]*[.,]?[0-9]*"
     name={values.type === 'Commande' ? `items.${index}.prix_achat` : `items.${index}.prix_unitaire`}
     className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+    disabled={isQtyOnlyEdit}
     value={unitPriceRaw[index] ?? ''}
     onChange={(e) => {
+      if (isQtyOnlyEdit) return;
       const raw = e.target.value;
       if (!isDecimalLike(raw)) return;
       setUnitPriceRaw((prev) => ({ ...prev, [index]: raw }));
@@ -3075,6 +3231,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       setFieldValue(`items.${index}.total`, q * unit);
     }}
     onBlur={async () => {
+      if (isQtyOnlyEdit) return;
+
+      // If blur happened because user clicked variant/unit/product selector, don't commit
+      const sup = suppressPriceBlurRef.current;
+      if (sup && sup.row === index && Date.now() - sup.ts < 600) {
+        suppressPriceBlurRef.current = null;
+        return;
+      }
       const val = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       
       // Créer une version temporaire des valeurs avec le nouveau prix
@@ -3131,7 +3295,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       <label className="mt-1 flex items-center gap-2 text-[11px] text-gray-700">
         <input
           type="checkbox"
+          disabled={isQtyOnlyEdit}
           onChange={(e) => {
+            if (isQtyOnlyEdit) return;
             if (!e.target.checked) return;
             const p = suggested;
             setUnitPriceRaw((prev) => ({ ...prev, [index]: formatFull(p) }));
@@ -3174,13 +3340,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       pattern="[0-9]*[.,]?[0-9]*"
                                       name={`items.${index}.remise_montant`}
                                       className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                      disabled={isQtyOnlyEdit}
                                       value={remiseRaw[index] ?? ''}
                                       onChange={(e) => {
+                                        if (isQtyOnlyEdit) return;
                                         const raw = e.target.value;
                                         if (!isDecimalLike(raw)) return;
                                         setRemiseRaw((prev) => ({ ...prev, [index]: raw }));
                                       }}
                                       onBlur={() => {
+                                        if (isQtyOnlyEdit) return;
                                         const val = parseFloat(normalizeDecimal(remiseRaw[index] ?? '')) || 0;
                                         setFieldValue(`items.${index}.remise_montant`, val);
                                         setRemiseRaw((prev) => ({ ...prev, [index]: formatNumber(val) }));
@@ -3210,7 +3379,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 <td className="px-1 py-2 w-[50px]">
   <button
     type="button"
+    disabled={isQtyOnlyEdit}
     onClick={() => {
+      if (isQtyOnlyEdit) return;
       remove(index);
 
       // compacter unitPriceRaw
@@ -3255,7 +3426,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         return compacted;
       });
     }}
-    className="text-red-600 hover:text-red-800"
+    className="text-red-600 hover:text-red-800 disabled:opacity-60"
   data-row={index}
   data-col="delete"
   >
@@ -3370,7 +3541,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   )}
                   <button
                     type="button"
-                    disabled={isDuplicating || (values.items?.length || 0) === 0}
+                    disabled={isDuplicating || (values.items?.length || 0) === 0 || user?.role === 'ChefChauffeur'}
                     onClick={async () => {
                       try {
                         setIsDuplicating(true);
@@ -3434,7 +3605,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || (isChefChauffeur && !isEditMode)}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
                   >
                     {(() => {

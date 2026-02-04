@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Provider } from 'react-redux';
 import { store } from './store';
 import { initializeAuth, logout } from './store/slices/authSlice';
+import { setPasswordChangeRequired } from './store/slices/authSlice';
 import { useAppDispatch, useAuth } from './hooks/redux';
 import { useValidateTokenQuery } from './store/api/authApi';
 import { useAccessScheduleMonitor } from './hooks/useAccessScheduleMonitor';
@@ -49,6 +50,7 @@ import ChiffreAffairesPage from './pages/ChiffreAffairesPage';
 import ChiffreAffairesDetailPage from './pages/ChiffreAffairesDetailPage';
 import WhatsAppTestPage from './pages/WhatsAppTestPage';
 import InventoryPage from './pages/InventoryPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 
 // Composant Layout avec accès aux fonctions de monitoring
 const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -59,7 +61,7 @@ const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ childr
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   // Initialize Socket.IO connection for PDG users
   useSocketConnection();
@@ -78,12 +80,20 @@ const AppContent: React.FC = () => {
   }, [dispatch]);
 
   // Validate token with backend when authenticated; if invalid, logout
-  const { isError: tokenInvalid } = useValidateTokenQuery(undefined, { skip: !isAuthenticated });
+  const { data: meData, isError: tokenInvalid } = useValidateTokenQuery(undefined, { skip: !isAuthenticated });
   useEffect(() => {
     if (tokenInvalid) {
       dispatch(logout());
     }
   }, [tokenInvalid, dispatch]);
+
+  // Sync weekly password policy from backend
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (meData && typeof (meData as any).password_change_required !== 'undefined') {
+      dispatch(setPasswordChangeRequired(Boolean((meData as any).password_change_required)));
+    }
+  }, [isAuthenticated, meData, dispatch]);
 
   return (
     <>
@@ -93,8 +103,17 @@ const AppContent: React.FC = () => {
           <Route 
             path="/login" 
             element={
-              isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
+              isAuthenticated ? <Navigate to={user?.role === 'ChefChauffeur' ? '/bons' : '/dashboard'} replace /> : <LoginPage />
             } 
+          />
+
+          <Route
+            path="/change-password"
+            element={
+              <ProtectedRoute>
+                <ChangePasswordPage />
+              </ProtectedRoute>
+            }
           />
           
           {/* Routes protégées */}
@@ -266,7 +285,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/vehicules"
           element={
-            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus']}>
+            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus','ChefChauffeur']}>
               <LayoutWithAccessCheck>
                 <VehiculesPage />
               </LayoutWithAccessCheck>

@@ -93,6 +93,7 @@ router.post('/', async (req, res) => {
       type_vehicule = 'Camion',
       capacite_charge,
       statut = 'Disponible',
+      employe_id,
       created_by
     } = req.body;
 
@@ -107,6 +108,30 @@ router.post('/', async (req, res) => {
     );
     const colSet = new Set(cols.map((r) => r.COLUMN_NAME));
 
+    // Optional: validate employe_id if provided (must exist and be Chauffeur)
+    let employeIdForDb = employe_id;
+    if (employe_id !== undefined) {
+      if (employe_id === null || employe_id === '') {
+        employeIdForDb = null;
+      } else {
+        const eid = Number(employe_id);
+        if (!Number.isFinite(eid) || eid <= 0) {
+          return res.status(400).json({ message: 'employe_id invalide' });
+        }
+        const [empRows] = await pool.execute(
+          "SELECT id, role FROM employees WHERE id = ? AND deleted_at IS NULL",
+          [eid]
+        );
+        if (empRows.length === 0) {
+          return res.status(400).json({ message: 'Chauffeur introuvable' });
+        }
+        if (empRows[0]?.role && !['Chauffeur', 'ChefChauffeur'].includes(empRows[0].role)) {
+          return res.status(400).json({ message: "L'employé sélectionné n'est pas un chauffeur" });
+        }
+        employeIdForDb = eid;
+      }
+    }
+
     const desired = [
       ['nom', nom],
       ['marque', marque],
@@ -116,6 +141,7 @@ router.post('/', async (req, res) => {
       ['type_vehicule', type_vehicule],
       ['capacite_charge', capacite_charge],
       ['statut', statut],
+      ['employe_id', employeIdForDb],
       ['created_by', created_by],
     ];
     const insertPairs = desired.filter(([k, v]) => colSet.has(k) && v !== undefined);
@@ -159,6 +185,7 @@ router.put('/:id', async (req, res) => {
       type_vehicule,
       capacite_charge,
       statut,
+      employe_id,
       updated_by
     } = req.body;
 
@@ -173,9 +200,33 @@ router.put('/:id', async (req, res) => {
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vehicules'`
     );
     const colSet = new Set(cols.map((r) => r.COLUMN_NAME));
+
+    // Optional: validate employe_id if provided (allow null to unassign)
+    let employeIdForDb = employe_id;
+    if (employe_id !== undefined) {
+      if (employe_id === null || employe_id === '') {
+        employeIdForDb = null;
+      } else {
+        const eid = Number(employe_id);
+        if (!Number.isFinite(eid) || eid <= 0) {
+          return res.status(400).json({ message: 'employe_id invalide' });
+        }
+        const [empRows] = await pool.execute(
+          "SELECT id, role FROM employees WHERE id = ? AND deleted_at IS NULL",
+          [eid]
+        );
+        if (empRows.length === 0) {
+          return res.status(400).json({ message: 'Chauffeur introuvable' });
+        }
+        if (empRows[0]?.role && !['Chauffeur', 'ChefChauffeur'].includes(empRows[0].role)) {
+          return res.status(400).json({ message: "L'employé sélectionné n'est pas un chauffeur" });
+        }
+        employeIdForDb = eid;
+      }
+    }
     const candidate = {
       nom, marque, modele, immatriculation, annee, type_vehicule,
-      capacite_charge, statut, updated_by,
+      capacite_charge, statut, employe_id: employeIdForDb, updated_by,
     };
     const updateFields = [];
     const updateValues = [];

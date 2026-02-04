@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { forbidRoles } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -183,7 +184,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /bons - Créer un nouveau bon
-router.post('/', async (req, res) => {
+router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   const connection = await pool.getConnection();
   
   try {

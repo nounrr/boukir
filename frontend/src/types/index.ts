@@ -1,5 +1,5 @@
 // Types pour l'authentification
-export type Role = 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'Employé';
+export type Role = 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'ChefChauffeur' | 'Employé';
 export interface User {
   id: number;
   nom_complet?: string | null;
@@ -19,6 +19,7 @@ export interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  passwordChangeRequired: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -113,6 +114,10 @@ export interface ProductUnit {
   product_id?: number;
   unit_name: string;
   conversion_factor: number;
+  // Optional override for selling price for this unit. When null/undefined => auto compute from product.prix_vente * conversion_factor
+  prix_vente?: number | null;
+  // 1 => default/auto price, 0 => manual override
+  facteur_isNormal?: 0 | 1;
   is_default: boolean;
   created_at?: string;
   updated_at?: string;
@@ -318,6 +323,7 @@ export interface Vehicule {
   type_vehicule: 'Camion' | 'Camionnette' | 'Voiture' | 'Moto' | 'Autre';
   capacite_charge?: number;
   statut: 'Disponible' | 'En service' | 'En maintenance' | 'Hors service';
+  employe_id?: number | null;
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -352,6 +358,7 @@ export interface CreateVehiculeData {
   type_vehicule?: 'Camion' | 'Camionnette' | 'Voiture' | 'Moto' | 'Autre';
   capacite_charge?: number;
   statut?: 'Disponible' | 'En service' | 'En maintenance' | 'Hors service';
+  employe_id?: number | null;
 }
 
 // Types pour les bons

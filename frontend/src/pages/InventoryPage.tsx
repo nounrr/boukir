@@ -6,7 +6,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieCh
 import * as XLSX from 'xlsx';
 import { useAuth } from '../hooks/redux';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
-import { useCreateSnapshotMutation, useGetSnapshotQuery, useListSnapshotsQuery } from '../store/api/inventoryApi';
+import { useCreateSnapshotMutation, useGetSnapshotQuery, useImportSnapshotExcelMutation, useListSnapshotsQuery } from '../store/api/inventoryApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { formatDateTimeWithHour } from '../utils/dateUtils';
 import { showError, showSuccess } from '../utils/notifications';
@@ -15,25 +15,56 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 const InventoryPage: React.FC = () => {
   const { user } = useAuth();
-  const today = useMemo(() => {
+  const initialDate = useMemo(() => {
     const now = new Date();
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const d = String(now.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   }, []);
-  const { data, refetch, isFetching } = useListSnapshotsQuery({ date: today });
+
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const { data, refetch, isFetching } = useListSnapshotsQuery({ date: selectedDate });
   const [createSnapshot, { isLoading }] = useCreateSnapshotMutation();
+  const [importSnapshotExcel, { isLoading: isImporting }] = useImportSnapshotExcelMutation();
+  const [importFile, setImportFile] = useState<File | null>(null);
 
   const canCreate = user?.role === 'PDG' || user?.role === 'ManagerPlus';
 
   const handleCreate = async () => {
     try {
-      const res = await createSnapshot().unwrap();
+      const res = await createSnapshot({ date: selectedDate }).unwrap();
       showSuccess(`Inventaire enregistré: #${res.id}`);
       refetch();
     } catch (e: any) {
       showError(e?.data?.message || e?.message || 'Échec de l\'enregistrement d\'inventaire');
+    }
+  };
+
+  const handleImportExcel = async () => {
+    try {
+      if (!importFile) {
+        showError('Veuillez sélectionner un fichier Excel');
+        return;
+      }
+      if (!selectedDate) {
+        showError('Veuillez choisir une date');
+        return;
+      }
+
+      const res = await importSnapshotExcel({ date: selectedDate, file: importFile }).unwrap();
+      const missing = Array.isArray((res as any)?.missingIds) ? (res as any).missingIds : [];
+
+      if (missing.length > 0) {
+        showSuccess(`Snapshot importé: #${res.id} (produits manquants: ${missing.length})`);
+      } else {
+        showSuccess(`Snapshot importé: #${res.id}`);
+      }
+
+      setImportFile(null);
+      refetch();
+    } catch (e: any) {
+      showError(e?.data?.message || e?.message || 'Échec import Excel');
     }
   };
 
@@ -64,7 +95,7 @@ const InventoryPage: React.FC = () => {
   }, [latestId]);
 
   const { data: snapshotDetail } = useGetSnapshotQuery(
-    selectedId != null ? { id: String(selectedId), date: today } : { id: '', date: today },
+    selectedId != null ? { id: String(selectedId), date: selectedDate } : { id: '', date: selectedDate },
     { skip: selectedId == null }
   );
 
@@ -263,7 +294,7 @@ const InventoryPage: React.FC = () => {
 
         return {
           SnapshotId: snapshotId,
-          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : today,
+          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : selectedDate,
           ProduitId: it?.id,
           Designation: it?.designation,
           Categorie: categorie,
@@ -283,7 +314,7 @@ const InventoryPage: React.FC = () => {
       const resumeRows = [
         {
           SnapshotId: snapshotId,
-          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : today,
+          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : selectedDate,
           TotalProduits: Number(totals?.totalProducts || 0),
           TotalQuantite: Number(totals?.totalQty || 0),
           TotalVente: Number(totals?.totalSale || 0),
@@ -297,7 +328,7 @@ const InventoryPage: React.FC = () => {
       const ws2 = XLSX.utils.json_to_sheet(resumeRows);
       XLSX.utils.book_append_sheet(wb, ws2, 'Résumé');
 
-      const safeDate = String(today || '').replace(/[^0-9\-]/g, '');
+      const safeDate = String(selectedDate || '').replace(/[^0-9\-]/g, '');
       const fileName = `inventaire_${safeDate}_snapshot_${snapshotId}.xlsx`;
 
       const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -317,15 +348,44 @@ const InventoryPage: React.FC = () => {
       console.error('[InventoryPage] Excel export failed', e);
       showError(e?.message || 'Échec export Excel');
     }
-  }, [categories, filterCategory, productById, searchTerm, selectedId, snapshotDetail, today, totalAchatSnapshot]);
+  }, [categories, filterCategory, productById, searchTerm, selectedDate, selectedId, snapshotDetail, totalAchatSnapshot]);
 
   return (
     <div className="p-6 space-y-6">
       {/* Header with stats cards */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Inventaire du jour</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Inventaire</h1>
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Date</label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+
+            {canCreate && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                  className="text-sm"
+                />
+                <button
+                  onClick={handleImportExcel}
+                  disabled={isImporting || !importFile}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                  title="Importer un Excel (colonne reference) pour créer un snapshot à la date choisie"
+                >
+                  {isImporting ? 'Import...' : 'Importer Excel'}
+                </button>
+              </div>
+            )}
+
             {canCreate && (
               <button
                 onClick={handleCreate}
@@ -370,13 +430,13 @@ const InventoryPage: React.FC = () => {
       {/* Snapshots list */}
       <div className="bg-white rounded-lg shadow">
         <div className="p-4 border-b">
-          <h2 className="text-lg font-semibold">Snapshots du {today}</h2>
+          <h2 className="text-lg font-semibold">Snapshots du {selectedDate}</h2>
         </div>
         <div className="p-4">
           {isFetching ? (
             <div className="text-gray-500">Chargement...</div>
           ) : snapshots.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">Aucun inventaire enregistré aujourd'hui.</div>
+            <div className="text-center py-8 text-gray-500">Aucun inventaire enregistré pour cette date.</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {snapshots.map((s) => (
