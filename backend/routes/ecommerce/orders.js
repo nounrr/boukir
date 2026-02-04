@@ -8,6 +8,7 @@ import {
   ensureEcommerceOrdersRemiseColumns,
   ensureProductRemiseColumns
 } from '../../utils/ensureRemiseSchema.js';
+import { getContactSoldeCumule, phone9Sql } from '../../utils/soldeCumule.js';
 
 async function ensureRemiseSchema() {
   try {
@@ -572,8 +573,9 @@ router.post('/', async (req, res, next) => {
         });
       }
 
+      // Lock the contact row to prevent concurrent checkouts from bypassing plafond.
       const [soldeRows] = await connection.query(
-        'SELECT is_solde FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+        'SELECT is_solde, plafond FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
         [userId]
       );
       const isSoldeEnabled = Number(soldeRows?.[0]?.is_solde || 0) === 1;
@@ -583,6 +585,24 @@ router.post('/', async (req, res, next) => {
           message: 'Votre compte n\'est pas autorisé à payer en solde',
           error_type: 'SOLDE_NOT_ALLOWED',
         });
+      }
+
+      const plafond = soldeRows?.[0]?.plafond == null ? null : Number(soldeRows?.[0]?.plafond);
+      if (plafond != null && Number.isFinite(plafond) && plafond > 0) {
+        const soldeCumule = await getContactSoldeCumule(connection, userId);
+        const projected = Math.round((soldeCumule + soldeAmount) * 100) / 100;
+        const limit = Math.round(plafond * 100) / 100;
+        if (projected - limit > 0.000001) {
+          await connection.rollback();
+          return res.status(403).json({
+            message: 'Plafond solde dépassé',
+            error_type: 'SOLDE_PLAFOND_EXCEEDED',
+            plafond: limit,
+            solde_cumule: soldeCumule,
+            solde_amount: soldeAmount,
+            solde_projected: projected,
+          });
+        }
       }
     }
 
@@ -1143,6 +1163,403 @@ router.get('/', async (req, res, next) => {
       limit,
       pages: total > 0 ? Math.ceil(total / limit) : 0,
       returned: orders.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==================== SOLDE ORDERS TIMELINE (E-COMMERCE SAFE) ====================
+// GET /api/ecommerce/orders/solde - List current user's orders paid with solde (timeline)
+// Notes:
+// - Designed for e-commerce frontend consumption (no profit/benefit fields).
+// - Returns a running cumulative based on `solde_amount` (remaining to pay after remise).
+router.get('/solde', async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        message: 'Authentification requise',
+      });
+    }
+
+    const money = (value) => {
+      const n = Number(value || 0);
+      if (!Number.isFinite(n)) return 0;
+      return Math.round(n * 100) / 100;
+    };
+
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const isBackoffice = role.length > 0;
+
+    const rawContactId = req.query?.contact_id;
+    const requestedContactId = rawContactId != null && String(rawContactId).trim() !== ''
+      ? Number.parseInt(String(rawContactId), 10)
+      : null;
+
+    const targetContactId = requestedContactId != null && Number.isFinite(requestedContactId) && requestedContactId > 0
+      ? requestedContactId
+      : userId;
+
+    if (targetContactId !== userId && !isBackoffice) {
+      return res.status(403).json({
+        message: 'Accès refusé',
+      });
+    }
+
+    const rawView = String(req.query?.view ?? '').toLowerCase().trim();
+    const view = rawView === '' ? 'statement' : rawView;
+
+    const rawIncludeItems = String(req.query?.include_items ?? '').toLowerCase();
+    const includeItems = rawIncludeItems === ''
+      ? true
+      : !(rawIncludeItems === '0' || rawIncludeItems === 'false');
+
+    const [contactRows] = await pool.query(
+      `SELECT id, nom_complet, email, telephone, is_solde, plafond, solde, created_at
+       FROM contacts
+       WHERE id = ? AND deleted_at IS NULL
+       LIMIT 1`,
+      [targetContactId]
+    );
+
+    const contact = contactRows?.[0];
+    if (!contact) {
+      return res.status(404).json({ message: 'Utilisateur introuvable' });
+    }
+
+    // Default: statement/timeline view (ContactsPage-like) limited to the 5 requested sources.
+    if (view !== 'orders') {
+      const rawLimit = Number.parseInt(String(req.query?.limit ?? ''), 10);
+      const rawOffset = Number.parseInt(String(req.query?.offset ?? ''), 10);
+      const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 2000) : 500;
+      const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+      const from = req.query?.from != null && String(req.query.from).trim() !== '' ? String(req.query.from).trim() : null;
+      const to = req.query?.to != null && String(req.query.to).trim() !== '' ? String(req.query.to).trim() : null;
+
+      const contactPhone = contact.telephone != null ? String(contact.telephone) : '';
+
+      const dateFilters = [];
+      const dateParams = [];
+      if (from) {
+        dateFilters.push(`t.date >= ?`);
+        dateParams.push(from);
+      }
+      if (to) {
+        dateFilters.push(`t.date <= ?`);
+        dateParams.push(to);
+      }
+      const dateWhere = dateFilters.length > 0 ? `WHERE ${dateFilters.join(' AND ')}` : '';
+
+      const query = `
+        SELECT
+          t.source,
+          t.doc_id,
+          t.ref,
+          t.date,
+          t.statut,
+          t.debit,
+          t.credit,
+          t.linked_id,
+          t.mode_paiement
+        FROM (
+          -- Bon e-commerce (solde only): increases debt by solde_amount
+          SELECT
+            (CONVERT('BON_ECOMMERCE' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS source,
+            o.id AS doc_id,
+            (CONVERT(o.order_number USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS ref,
+            o.created_at AS date,
+            (CONVERT(o.status USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS statut,
+            COALESCE(o.solde_amount, 0) AS debit,
+            0 AS credit,
+            NULL AS linked_id,
+            NULL AS mode_paiement
+          FROM ecommerce_orders o
+          WHERE o.user_id = ?
+            AND COALESCE(o.is_solde, 0) = 1
+            AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
+
+          UNION ALL
+
+          -- Avoir e-commerce: reduces debt (credit)
+          SELECT
+            (CONVERT('AVOIR_ECOMMERCE' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS source,
+            ae.id AS doc_id,
+            (CONVERT(COALESCE(ae.order_number, CONCAT('AE', ae.id)) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS ref,
+            ae.date_creation AS date,
+            (CONVERT(ae.statut USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS statut,
+            0 AS debit,
+            COALESCE(ae.montant_total, 0) AS credit,
+            ae.ecommerce_order_id AS linked_id,
+            NULL AS mode_paiement
+          FROM avoirs_ecommerce ae
+          LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
+          WHERE (
+            o.user_id = ?
+            OR (
+              TRIM(COALESCE(?, '')) <> ''
+              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ${phone9Sql('?')}
+            )
+          )
+          AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
+
+          UNION ALL
+
+          -- Bon sortie: increases debt (debit)
+          SELECT
+            (CONVERT('BON_SORTIE' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS source,
+            bs.id AS doc_id,
+            (CONVERT(CONCAT('BS', bs.id) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS ref,
+            bs.created_at AS date,
+            (CONVERT(bs.statut USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS statut,
+            COALESCE(bs.montant_total, 0) AS debit,
+            0 AS credit,
+            NULL AS linked_id,
+            NULL AS mode_paiement
+          FROM bons_sortie bs
+          WHERE bs.client_id = ?
+            AND LOWER(COALESCE(bs.statut, '')) NOT IN ('annulé','annule')
+
+          UNION ALL
+
+          -- Avoir client: reduces debt (credit)
+          SELECT
+            (CONVERT('AVOIR_CLIENT' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS source,
+            ac.id AS doc_id,
+            (CONVERT(CONCAT('AVC', ac.id) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS ref,
+            ac.created_at AS date,
+            (CONVERT(ac.statut USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS statut,
+            0 AS debit,
+            COALESCE(ac.montant_total, 0) AS credit,
+            NULL AS linked_id,
+            NULL AS mode_paiement
+          FROM avoirs_client ac
+          WHERE ac.client_id = ?
+            AND LOWER(COALESCE(ac.statut, '')) NOT IN ('annulé','annule')
+
+          UNION ALL
+
+          -- Payments: reduces debt (credit)
+          SELECT
+            (CONVERT('PAYMENT' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS source,
+            p.id AS doc_id,
+            (CONVERT(COALESCE(p.numero, CONCAT('PAY', p.id)) USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS ref,
+            p.created_at AS date,
+            (CONVERT(p.statut USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS statut,
+            0 AS debit,
+            COALESCE(p.montant_total, 0) AS credit,
+            p.bon_id AS linked_id,
+            (CONVERT(p.mode_paiement USING utf8mb4) COLLATE utf8mb4_0900_ai_ci) AS mode_paiement
+          FROM payments p
+          WHERE p.type_paiement = 'Client'
+            AND p.contact_id = ?
+            AND LOWER(COALESCE(p.statut, '')) NOT IN ('refusé','refuse','annulé','annule')
+        ) t
+        ${dateWhere}
+        ORDER BY t.date ASC, t.source ASC, t.doc_id ASC
+        LIMIT ? OFFSET ?
+      `;
+
+      const params = [
+        targetContactId, // ecommerce_orders.user_id
+        targetContactId, // o.user_id for avoirs_ecommerce join
+        contactPhone, // phone present?
+        contactPhone, // phone9 compare
+        targetContactId, // bons_sortie
+        targetContactId, // avoirs_client
+        targetContactId, // payments
+        ...dateParams,
+        limit,
+        offset,
+      ];
+
+      const [rows] = await pool.query(query, params);
+
+      const initialSolde = money(contact.solde);
+      let running = initialSolde;
+      let totalDebit = 0;
+      let totalCredit = 0;
+
+      const timeline = [];
+      timeline.push({
+        source: 'SOLDE_INITIAL',
+        doc_id: null,
+        ref: null,
+        date: null,
+        statut: null,
+        debit: 0,
+        credit: 0,
+        delta: 0,
+        solde_cumule: running,
+        linked_id: null,
+        mode_paiement: null,
+      });
+
+      for (const r of rows || []) {
+        const debit = money(r.debit);
+        const credit = money(r.credit);
+        const delta = money(debit - credit);
+        totalDebit = money(totalDebit + debit);
+        totalCredit = money(totalCredit + credit);
+        running = money(running + delta);
+
+        timeline.push({
+          source: r.source,
+          doc_id: r.doc_id,
+          ref: r.ref,
+          date: r.date,
+          statut: r.statut,
+          debit,
+          credit,
+          delta,
+          solde_cumule: running,
+          linked_id: r.linked_id ?? null,
+          mode_paiement: r.mode_paiement ?? null,
+        });
+      }
+
+      return res.json({
+        view: 'statement',
+        contact: {
+          id: contact.id,
+          nom_complet: contact.nom_complet,
+          email: contact.email,
+          telephone: contact.telephone,
+          is_solde: !!contact.is_solde,
+          plafond: contact.plafond == null ? null : Number(contact.plafond),
+        },
+        summary: {
+          initial_solde: initialSolde,
+          debit_total: totalDebit,
+          credit_total: totalCredit,
+          final_solde: running,
+          returned: (rows || []).length,
+          limit,
+          offset,
+        },
+        timeline,
+      });
+    }
+
+    const [orderRows] = await pool.query(
+      `SELECT
+         o.id,
+         o.order_number,
+         o.created_at,
+         o.status,
+         o.payment_status,
+         o.payment_method,
+         o.total_amount,
+         o.remise_used_amount,
+         o.is_solde,
+         o.solde_amount,
+         o.delivery_method,
+         o.pickup_location_id
+       FROM ecommerce_orders o
+       WHERE o.user_id = ?
+         AND COALESCE(o.is_solde, 0) = 1
+         AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
+       ORDER BY o.created_at ASC, o.id ASC`,
+      [targetContactId]
+    );
+
+    const ordersBase = (orderRows || []).map((o) => ({
+      id: o.id,
+      order_number: o.order_number,
+      created_at: o.created_at,
+      status: o.status,
+      payment_status: o.payment_status,
+      payment_method: o.payment_method,
+      total_amount: Number(o.total_amount || 0),
+      remise_used_amount: Number(o.remise_used_amount || 0),
+      is_solde: Number(o.is_solde || 0) === 1 ? 1 : 0,
+      solde_amount: Number(o.solde_amount || 0),
+      delivery_method: o.delivery_method,
+      pickup_location_id: o.pickup_location_id,
+    }));
+
+    // Running cumulative: based on solde_amount (amount financed by solde after remise).
+    let running = 0;
+    const orders = ordersBase.map((o) => {
+      running = Math.round((running + (Number(o.solde_amount || 0))) * 100) / 100;
+      return {
+        ...o,
+        solde_cumule: running,
+      };
+    });
+
+    // Optionally attach items.
+    let itemsByOrderId = new Map();
+    if (includeItems && orders.length > 0) {
+      const ids = orders.map((o) => o.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const [itemRows] = await pool.query(
+        `SELECT
+           oi.order_id,
+           oi.product_id,
+           oi.variant_id,
+           oi.unit_id,
+           oi.product_name,
+           oi.product_name_ar,
+           oi.variant_name,
+           oi.variant_type,
+           oi.unit_name,
+           oi.unit_price,
+           oi.quantity,
+           oi.subtotal,
+           oi.discount_percentage,
+           oi.discount_amount
+         FROM ecommerce_order_items oi
+         WHERE oi.order_id IN (${placeholders})
+         ORDER BY oi.order_id ASC, oi.id ASC`,
+        ids
+      );
+
+      itemsByOrderId = new Map();
+      for (const row of itemRows || []) {
+        const key = row.order_id;
+        if (!itemsByOrderId.has(key)) itemsByOrderId.set(key, []);
+        itemsByOrderId.get(key).push({
+          product_id: row.product_id,
+          variant_id: row.variant_id,
+          unit_id: row.unit_id,
+          product_name: row.product_name,
+          product_name_ar: row.product_name_ar,
+          variant_name: row.variant_name,
+          variant_type: row.variant_type,
+          unit_name: row.unit_name,
+          unit_price: Number(row.unit_price || 0),
+          quantity: Number(row.quantity || 0),
+          subtotal: Number(row.subtotal || 0),
+          discount_percentage: row.discount_percentage != null ? Number(row.discount_percentage) : null,
+          discount_amount: Number(row.discount_amount || 0),
+        });
+      }
+    }
+
+    const ordersWithItems = includeItems
+      ? orders.map((o) => ({ ...o, items: itemsByOrderId.get(o.id) || [] }))
+      : orders;
+
+    const soldeTotal = orders.reduce((sum, o) => sum + Number(o.solde_amount || 0), 0);
+    const soldeTotalRounded = Math.round(soldeTotal * 100) / 100;
+
+    res.json({
+      view: 'orders',
+      contact: {
+        id: contact.id,
+        nom_complet: contact.nom_complet,
+        email: contact.email,
+        telephone: contact.telephone,
+        is_solde: !!contact.is_solde,
+        plafond: contact.plafond == null ? null : Number(contact.plafond),
+      },
+      summary: {
+        orders_count: orders.length,
+        solde_total: soldeTotalRounded,
+      },
+      orders: ordersWithItems,
     });
   } catch (err) {
     next(err);
