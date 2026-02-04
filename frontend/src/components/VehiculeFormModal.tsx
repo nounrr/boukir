@@ -1,11 +1,12 @@
 import React from 'react';
 import { Formik, Form, Field } from 'formik';
 import * as Yup from 'yup';
-import type { Vehicule } from '../types';
+import type { Vehicule, Employee } from '../types';
 import { useCreateVehiculeMutation, useUpdateVehiculeMutation } from '../store/api/vehiculesApi';
 import { showSuccess, showError } from '../utils/notifications';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
+import { useGetEmployeesQueryServer as useGetEmployeesQuery } from '../store/api/employeesApi.server';
 
 // Schema de validation pour les véhicules
 const vehiculeValidationSchema = Yup.object({
@@ -17,6 +18,9 @@ const vehiculeValidationSchema = Yup.object({
   type_vehicule: Yup.string().required('Type de véhicule requis'),
   capacite_charge: Yup.number().min(0, 'La capacité ne peut pas être négative'),
   statut: Yup.string().required('Statut requis'),
+  employe_id: Yup.number()
+    .nullable()
+    .transform((value, originalValue) => (originalValue === '' ? null : value)),
 });
 
 interface VehiculeFormModalProps {
@@ -35,8 +39,17 @@ const VehiculeFormModal: React.FC<VehiculeFormModalProps> = ({
   const [createVehicule] = useCreateVehiculeMutation();
   const [updateVehicule] = useUpdateVehiculeMutation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const { data: employeesAll = [] } = useGetEmployeesQuery();
+
+  const chauffeurs = React.useMemo(() => {
+    return (employeesAll as Employee[])
+      .filter((e) => (e?.role === 'Chauffeur' || e?.role === 'ChefChauffeur') && !e?.deleted_at)
+      .sort((a, b) => String(a.nom_complet || '').localeCompare(String(b.nom_complet || '')));
+  }, [employeesAll]);
 
   if (!isOpen) return null;
+
+  const { employe_id: initialEmployeId, ...restInitialValues } = initialValues ?? {};
 
   const defaultValues = {
     nom: '',
@@ -47,7 +60,9 @@ const VehiculeFormModal: React.FC<VehiculeFormModalProps> = ({
     type_vehicule: 'Camion' as const,
     capacite_charge: 0,
     statut: 'Disponible' as const,
-    ...initialValues
+    ...restInitialValues,
+    // Normalize to string for <select>
+    employe_id: initialEmployeId != null ? String(initialEmployeId) : '',
   };
 
   const title = initialValues?.id 
@@ -83,6 +98,10 @@ const VehiculeFormModal: React.FC<VehiculeFormModalProps> = ({
                 type_vehicule: values.type_vehicule,
                 capacite_charge: values.capacite_charge || undefined,
                 statut: values.statut,
+                employe_id:
+                  (values as any).employe_id === ''
+                    ? null
+                    : Number((values as any).employe_id),
               };
 
               let result;
@@ -257,6 +276,29 @@ const VehiculeFormModal: React.FC<VehiculeFormModalProps> = ({
                     <p className="text-red-500 text-xs mt-1">{errors.capacite_charge}</p>
                   )}
                 </div>
+              </div>
+
+              {/* Chauffeur */}
+              <div>
+                <label htmlFor="employe_id" className="block text-sm font-medium text-gray-700 mb-1">
+                  Chauffeur
+                </label>
+                <Field
+                  id="employe_id"
+                  name="employe_id"
+                  as="select"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Aucun chauffeur</option>
+                  {chauffeurs.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.nom_complet || `Employé #${e.id}`}
+                    </option>
+                  ))}
+                </Field>
+                {(errors as any).employe_id && (touched as any).employe_id && (
+                  <p className="text-red-500 text-xs mt-1">{(errors as any).employe_id}</p>
+                )}
               </div>
 
               {/* Statut */}

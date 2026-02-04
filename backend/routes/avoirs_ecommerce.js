@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -222,7 +223,7 @@ router.get('/:id', async (req, res) => {
 });
 
 /* =================== POST / (création) =================== */
-router.post('/', async (req, res) => {
+router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await ensureAvoirEcommerceTables(connection);
@@ -331,7 +332,10 @@ router.put('/:id', async (req, res) => {
     await connection.beginTransaction();
 
     const { id } = req.params;
-    const {
+    const userRole = req.user?.role;
+    const isChefChauffeur = userRole === 'ChefChauffeur';
+
+    let {
       ecommerce_order_id,
       order_number,
       customer_name,
@@ -343,19 +347,74 @@ router.put('/:id', async (req, res) => {
       statut,
       items = [],
     } = req.body || {};
-    const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+    let isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
-    const [exists] = await connection.execute('SELECT statut FROM avoirs_ecommerce WHERE id = ? FOR UPDATE', [id]);
+    const [exists] = await connection.execute('SELECT ecommerce_order_id, order_number, customer_name, customer_email, customer_phone, adresse_livraison, date_creation, montant_total, statut, isNotCalculated FROM avoirs_ecommerce WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Avoir ecommerce non trouvé' });
     }
-    const oldStatut = exists[0].statut;
+    const oldBon = exists[0];
+    const oldStatut = oldBon.statut;
+
+    if (isChefChauffeur && (String(oldStatut) === 'Validé' || String(oldStatut) === 'Annulé')) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé: modification interdite sur un avoir validé/annulé' });
+    }
 
     const [oldItems] = await connection.execute(
-      'SELECT product_id, variant_id, quantite FROM avoir_ecommerce_items WHERE avoir_ecommerce_id = ?',
+      'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant FROM avoir_ecommerce_items WHERE avoir_ecommerce_id = ? ORDER BY id ASC',
       [id]
     );
+
+    if (isChefChauffeur) {
+      const incomingItems = Array.isArray(items) ? items : [];
+      if (!Array.isArray(oldItems) || oldItems.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Avoir invalide: aucun item existant' });
+      }
+      if (incomingItems.length !== oldItems.length) {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: modification des lignes interdite (ajout/suppression)' });
+      }
+
+      const sanitizedItems = oldItems.map((oldIt, idx) => {
+        const inc = incomingItems[idx] || {};
+        const sameProduct = Number(inc.product_id) === Number(oldIt.product_id);
+        const sameVariant = (inc.variant_id == null || inc.variant_id === '' ? null : Number(inc.variant_id)) === (oldIt.variant_id == null ? null : Number(oldIt.variant_id));
+        const sameUnit = (inc.unit_id == null || inc.unit_id === '' ? null : Number(inc.unit_id)) === (oldIt.unit_id == null ? null : Number(oldIt.unit_id));
+        if (!sameProduct || !sameVariant || !sameUnit) {
+          throw Object.assign(new Error('Accès refusé: modification des produits/variantes/unités interdite'), { statusCode: 403 });
+        }
+        const q = Number(inc.quantite);
+        if (!Number.isFinite(q) || q <= 0) {
+          throw Object.assign(new Error('Quantité invalide'), { statusCode: 400 });
+        }
+        const pu = Number(oldIt.prix_unitaire) || 0;
+        return {
+          product_id: oldIt.product_id,
+          variant_id: oldIt.variant_id ?? null,
+          unit_id: oldIt.unit_id ?? null,
+          quantite: q,
+          prix_unitaire: pu,
+          remise_pourcentage: oldIt.remise_pourcentage ?? 0,
+          remise_montant: oldIt.remise_montant ?? 0,
+          total: q * pu,
+        };
+      });
+
+      items = sanitizedItems;
+      montant_total = sanitizedItems.reduce((s, r) => s + (Number(r.total) || 0), 0);
+      ecommerce_order_id = oldBon.ecommerce_order_id;
+      order_number = oldBon.order_number;
+      customer_name = oldBon.customer_name;
+      customer_email = oldBon.customer_email;
+      customer_phone = oldBon.customer_phone;
+      adresse_livraison = oldBon.adresse_livraison;
+      date_creation = oldBon.date_creation;
+      statut = oldStatut;
+      isNotCalculated = oldBon.isNotCalculated;
+    }
 
     const dt = normalizeDateTime(date_creation);
     const total = normalizeMoney(montant_total);
@@ -441,7 +500,9 @@ router.put('/:id', async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('PUT /avoirs_ecommerce/:id error:', error);
-    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+    const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
+    const msg = status === 500 ? 'Erreur du serveur' : (error?.message || 'Erreur');
+    res.status(status).json({ message: msg, error: status === 500 ? (error?.sqlMessage || error?.message) : undefined });
   } finally {
     connection.release();
   }
@@ -467,13 +528,8 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    // PDG/ManagerPlus restriction for validation
     const userRole = req.user?.role;
-    const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valide') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
-      await connection.rollback();
-      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
-    }
+    const isChefChauffeur = userRole === 'ChefChauffeur';
 
     const [oldRows] = await connection.execute('SELECT statut FROM avoirs_ecommerce WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(oldRows) || oldRows.length === 0) {
@@ -481,6 +537,25 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(404).json({ message: 'Avoir ecommerce non trouvé' });
     }
     const oldStatut = oldRows[0].statut;
+
+    if (isChefChauffeur) {
+      const allowed = new Set(['En attente', 'Annulé']);
+      if (String(oldStatut) === 'Validé') {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: avoir déjà validé' });
+      }
+      if (!allowed.has(statut)) {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: Chef Chauffeur peut فقط En attente / Annulé' });
+      }
+    }
+
+    // PDG/ManagerPlus restriction for validation (ChefChauffeur ne valide pas)
+    const lower = String(statut).toLowerCase();
+    if (!isChefChauffeur && (lower === 'validé' || lower === 'valide') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
+    }
     if (oldStatut === statut) {
       await connection.rollback();
       return res.status(200).json({ success: true, message: 'Aucun changement de statut', data: { id: Number(id), statut } });

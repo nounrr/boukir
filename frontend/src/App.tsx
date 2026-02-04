@@ -61,7 +61,7 @@ const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ childr
 // Composant pour initialiser l'app
 const AppContent: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   // Initialize Socket.IO connection for PDG users
   useSocketConnection();
@@ -103,7 +103,7 @@ const AppContent: React.FC = () => {
           <Route 
             path="/login" 
             element={
-              isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
+              isAuthenticated ? <Navigate to={user?.role === 'ChefChauffeur' ? '/bons' : '/dashboard'} replace /> : <LoginPage />
             } 
           />
 
@@ -285,7 +285,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/vehicules"
           element={
-            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus']}>
+            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus','ChefChauffeur']}>
               <LayoutWithAccessCheck>
                 <VehiculesPage />
               </LayoutWithAccessCheck>

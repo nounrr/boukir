@@ -1,6 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
-import { verifyToken } from '../middleware/auth.js';
+import { forbidRoles, verifyToken } from '../middleware/auth.js';
 import { canManageBon, canValidate } from '../utils/permissions.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 
@@ -8,7 +8,7 @@ const router = express.Router();
 
 // GET /commandes - Obtenir tous les bons de commande
 // GET /commandes - liste
-router.get('/', async (_req, res) => {
+router.get('/', verifyToken, forbidRoles('ChefChauffeur'), async (_req, res) => {
   try {
     // 1) Charger les commandes sans fonctions JSON (compat MySQL)
     const [rows] = await pool.query(
@@ -84,7 +84,7 @@ router.get('/', async (_req, res) => {
 });
 
 // GET /commandes/:id - détail
-router.get('/:id', async (req, res) => {
+router.get('/:id', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -295,25 +295,40 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     }
 
     const userRole = req.user?.role;
-    const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valid') && !canValidate('Commande', userRole)) {
-      await connection.rollback();
-      return res.status(403).json({ message: 'Rôle Manager ou PDG requis pour valider' });
-    }
+    const isChefChauffeur = userRole === 'ChefChauffeur';
 
-    // General modification rights check
-    if (!canManageBon('Commande', userRole)) {
-      await connection.rollback();
-      return res.status(403).json({ message: 'Accès refusé' });
-    }
-
-    // Charger ancien statut pour savoir si transition
+    // Charger ancien statut pour savoir si transition (also needed for ChefChauffeur rules)
     const [oldRows] = await connection.execute(`SELECT statut FROM bons_commande WHERE id = ? FOR UPDATE`, [id]);
     if (!Array.isArray(oldRows) || oldRows.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Commande non trouvée' });
     }
     const oldStatut = oldRows[0].statut;
+
+    // ChefChauffeur: allow only secondary status actions (En attente / Annulé) and never on Validé
+    if (isChefChauffeur) {
+      const allowed = new Set(['En attente', 'Annulé']);
+      if (String(oldStatut) === 'Validé') {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: bon déjà validé' });
+      }
+      if (!allowed.has(statut)) {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: Chef Chauffeur peut فقط En attente / Annulé' });
+      }
+    }
+
+    const lower = String(statut).toLowerCase();
+    if (!isChefChauffeur && (lower === 'validé' || lower === 'valid') && !canValidate('Commande', userRole)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Rôle Manager ou PDG requis pour valider' });
+    }
+
+    // General modification rights check
+    if (!isChefChauffeur && !canManageBon('Commande', userRole)) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
     if (oldStatut === statut) {
       await connection.rollback();
       return res.status(200).json({ success: true, message: 'Aucun changement de statut', data: { id, statut } });
@@ -475,53 +490,116 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 // PUT /commandes/:id - Mettre à jour un bon de commande
 // PUT /commandes/:id - Mettre à jour un bon de commande
 router.put('/:id', verifyToken, async (req, res) => {
-    if (!canManageBon('Commande', req.user?.role)) {
-      return res.status(403).json({ message: 'Accès refusé' });
-    }
+  const userRole = req.user?.role;
+  const isChefChauffeur = userRole === 'ChefChauffeur';
+  if (!canManageBon('Commande', userRole) && !isChefChauffeur) {
+    return res.status(403).json({ message: 'Accès refusé' });
+  }
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
     const { id } = req.params;
-  const {
+    let {
       date_creation,
       fournisseur_id,
       vehicule_id,
       lieu_chargement,
-  adresse_livraison,
+      adresse_livraison,
       montant_total,
       statut,
-    items = [],
-    livraisons
+      items = [],
+      livraisons,
     } = req.body || {};
-    const phone = req.body?.phone ?? null;
-    const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+    let phone = req.body?.phone ?? null;
+    let isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
-    // Verrouiller la commande et récupérer l'ancien statut (pour stock)
+    // Verrouiller la commande et récupérer l'ancien statut (pour stock) + champs nécessaires
     const [oldBonRows] = await connection.execute(
-      'SELECT statut FROM bons_commande WHERE id = ? FOR UPDATE',
+      'SELECT date_creation, fournisseur_id, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated FROM bons_commande WHERE id = ? FOR UPDATE',
       [id]
     );
     if (!Array.isArray(oldBonRows) || oldBonRows.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Commande non trouvée' });
     }
-    const oldStatut = oldBonRows[0].statut;
+    const oldBon = oldBonRows[0];
+    const oldStatut = oldBon.statut;
+
+    if (isChefChauffeur && (String(oldStatut) === 'Validé' || String(oldStatut) === 'Annulé')) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé: modification interdite sur un bon validé/annulé' });
+    }
 
     // Capturer les anciens items (pour ajuster le stock en cas de modification)
     const [oldItemsStock] = await connection.execute(
-      'SELECT product_id, variant_id, quantite FROM commande_items WHERE bon_commande_id = ?',
+      'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant FROM commande_items WHERE bon_commande_id = ? ORDER BY id ASC',
       [id]
     );
 
+    // ChefChauffeur: only quantities can change; lock all header fields and item price/identity
+    if (isChefChauffeur) {
+      const incomingItems = Array.isArray(items) ? items : [];
+      if (!Array.isArray(oldItemsStock) || oldItemsStock.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Bon invalide: aucun item existant' });
+      }
+      if (incomingItems.length !== oldItemsStock.length) {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: modification des lignes interdite (ajout/suppression)' });
+      }
+
+      const sanitizedItems = oldItemsStock.map((oldIt, idx) => {
+        const inc = incomingItems[idx] || {};
+        const sameProduct = Number(inc.product_id) === Number(oldIt.product_id);
+        const sameVariant = (inc.variant_id == null || inc.variant_id === '' ? null : Number(inc.variant_id)) === (oldIt.variant_id == null ? null : Number(oldIt.variant_id));
+        const sameUnit = (inc.unit_id == null || inc.unit_id === '' ? null : Number(inc.unit_id)) === (oldIt.unit_id == null ? null : Number(oldIt.unit_id));
+        if (!sameProduct || !sameVariant || !sameUnit) {
+          throw Object.assign(new Error('Accès refusé: modification des produits/variantes/unités interdite'), { statusCode: 403 });
+        }
+        const q = Number(inc.quantite);
+        if (!Number.isFinite(q) || q <= 0) {
+          throw Object.assign(new Error('Quantité invalide'), { statusCode: 400 });
+        }
+        const pu = Number(oldIt.prix_unitaire) || 0;
+        return {
+          product_id: oldIt.product_id,
+          variant_id: oldIt.variant_id ?? null,
+          unit_id: oldIt.unit_id ?? null,
+          quantite: q,
+          prix_unitaire: pu,
+          remise_pourcentage: oldIt.remise_pourcentage ?? 0,
+          remise_montant: oldIt.remise_montant ?? 0,
+          total: q * pu,
+        };
+      });
+
+      items = sanitizedItems;
+      montant_total = sanitizedItems.reduce((s, r) => s + (Number(r.total) || 0), 0);
+      // lock header fields
+      date_creation = oldBon.date_creation;
+      fournisseur_id = oldBon.fournisseur_id;
+      vehicule_id = oldBon.vehicule_id;
+      lieu_chargement = oldBon.lieu_chargement;
+      adresse_livraison = oldBon.adresse_livraison;
+      statut = oldStatut;
+      // lock booleans/phone
+      phone = oldBon.phone;
+      isNotCalculated = oldBon.isNotCalculated;
+      // ignore livraisons changes
+      livraisons = undefined;
+    }
+
     // validations minimales (détaillées)
-    const missingPut = [];
-    if (!date_creation) missingPut.push('date_creation');
-    if (!(typeof montant_total === 'number' ? true : montant_total != null)) missingPut.push('montant_total');
-    if (!statut) missingPut.push('statut');
-    if (missingPut.length) {
-      await connection.rollback();
-      return res.status(400).json({ message: 'Champs requis manquants', missing: missingPut });
+    if (!isChefChauffeur) {
+      const missingPut = [];
+      if (!date_creation) missingPut.push('date_creation');
+      if (!(typeof montant_total === 'number' ? true : montant_total != null)) missingPut.push('montant_total');
+      if (!statut) missingPut.push('statut');
+      if (missingPut.length) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Champs requis manquants', missing: missingPut });
+      }
     }
 
     // Normalisation: undefined -> null
@@ -530,7 +608,7 @@ router.put('/:id', verifyToken, async (req, res) => {
     const lieu = lieu_chargement ?? null;
     const st  = statut ?? 'Brouillon';
 
-  await connection.execute(`
+    await connection.execute(`
       UPDATE bons_commande
      SET date_creation = ?, fournisseur_id = ?, phone = ?, vehicule_id = ?,
        lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?, updated_at = NOW()
@@ -610,7 +688,9 @@ router.put('/:id', verifyToken, async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('Erreur lors de la mise à jour du bon de commande:', error);
-    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+    const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
+    const msg = status === 500 ? 'Erreur du serveur' : (error?.message || 'Erreur');
+    res.status(status).json({ message: msg, error: status === 500 ? (error?.sqlMessage || error?.message) : undefined });
   } finally {
     connection.release();
   }

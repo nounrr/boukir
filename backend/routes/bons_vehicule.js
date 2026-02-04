@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -97,7 +98,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /bons_vehicule - create
-router.post('/', async (req, res) => {
+router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -166,14 +167,71 @@ router.put('/:id', async (req, res) => {
     await connection.beginTransaction();
 
     const { id } = req.params;
-  const { date_creation, vehicule_id, lieu_chargement, adresse_livraison, montant_total, statut, items = [] } = req.body || {};
-  const phone = req.body?.phone ?? null;
-  const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+    const userRole = req.user?.role;
+    const isChefChauffeur = userRole === 'ChefChauffeur';
 
-    const [exists] = await connection.execute('SELECT id FROM bons_vehicule WHERE id = ?', [id]);
-    if (exists.length === 0) {
+    let { date_creation, vehicule_id, lieu_chargement, adresse_livraison, montant_total, statut, items = [] } = req.body || {};
+    let phone = req.body?.phone ?? null;
+    let isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+
+    const [exists] = await connection.execute('SELECT date_creation, vehicule_id, phone, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated FROM bons_vehicule WHERE id = ? FOR UPDATE', [id]);
+    if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon véhicule non trouvé' });
+    }
+
+    const oldBon = exists[0];
+    const oldStatut = oldBon.statut;
+    if (isChefChauffeur && (String(oldStatut) === 'Validé' || String(oldStatut) === 'Annulé')) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé: modification interdite sur un bon validé/annulé' });
+    }
+
+    const [oldItems] = await connection.execute(
+      'SELECT product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant FROM vehicule_items WHERE bon_vehicule_id = ? ORDER BY id ASC',
+      [id]
+    );
+
+    if (isChefChauffeur) {
+      const incomingItems = Array.isArray(items) ? items : [];
+      if (!Array.isArray(oldItems) || oldItems.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Bon invalide: aucun item existant' });
+      }
+      if (incomingItems.length !== oldItems.length) {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: modification des lignes interdite (ajout/suppression)' });
+      }
+
+      const sanitizedItems = oldItems.map((oldIt, idx) => {
+        const inc = incomingItems[idx] || {};
+        if (Number(inc.product_id) !== Number(oldIt.product_id)) {
+          throw Object.assign(new Error('Accès refusé: modification des produits interdite'), { statusCode: 403 });
+        }
+        const q = Number(inc.quantite);
+        if (!Number.isFinite(q) || q <= 0) {
+          throw Object.assign(new Error('Quantité invalide'), { statusCode: 400 });
+        }
+        const pu = Number(oldIt.prix_unitaire) || 0;
+        return {
+          product_id: oldIt.product_id,
+          quantite: q,
+          prix_unitaire: pu,
+          remise_pourcentage: oldIt.remise_pourcentage ?? 0,
+          remise_montant: oldIt.remise_montant ?? 0,
+          total: q * pu,
+        };
+      });
+
+      items = sanitizedItems;
+      montant_total = sanitizedItems.reduce((s, r) => s + (Number(r.total) || 0), 0);
+      date_creation = oldBon.date_creation;
+      vehicule_id = oldBon.vehicule_id;
+      phone = oldBon.phone;
+      lieu_chargement = oldBon.lieu_chargement;
+      adresse_livraison = oldBon.adresse_livraison;
+      statut = oldStatut;
+      isNotCalculated = oldBon.isNotCalculated;
     }
 
     const vId = vehicule_id ?? null;
@@ -208,7 +266,9 @@ router.put('/:id', async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('PUT /bons_vehicule/:id error:', error);
-    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+    const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
+    const msg = status === 500 ? 'Erreur du serveur' : (error?.message || 'Erreur');
+    res.status(status).json({ message: msg, error: status === 500 ? (error?.sqlMessage || error?.message) : undefined });
   } finally {
     connection.release();
   }
@@ -216,24 +276,56 @@ router.put('/:id', async (req, res) => {
 
 // PATCH /bons_vehicule/:id/statut - change status
 router.patch('/:id/statut', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
+
     const { id } = req.params;
     const { statut } = req.body;
-    if (!statut) return res.status(400).json({ message: 'Statut requis' });
+    if (!statut) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Statut requis' });
+    }
 
     const userRole = req.user?.role;
-    const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
-      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
-    }
+    const isChefChauffeur = userRole === 'ChefChauffeur';
 
     const valides = ['Brouillon', 'En attente', 'Validé', 'Livré', 'Annulé'];
     if (!valides.includes(statut)) {
+      await connection.rollback();
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    const [result] = await pool.execute('UPDATE bons_vehicule SET statut = ?, updated_at = NOW() WHERE id = ?', [statut, id]);
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'Bon véhicule non trouvé' });
+    const [oldRows] = await connection.execute('SELECT statut FROM bons_vehicule WHERE id = ? FOR UPDATE', [id]);
+    if (!Array.isArray(oldRows) || oldRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon véhicule non trouvé' });
+    }
+    const oldStatut = oldRows[0].statut;
+
+    if (isChefChauffeur) {
+      const allowed = new Set(['En attente', 'Annulé']);
+      if (String(oldStatut) === 'Validé') {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: bon déjà validé' });
+      }
+      if (!allowed.has(statut)) {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: Chef Chauffeur peut فقط En attente / Annulé' });
+      }
+    }
+
+    const lower = String(statut).toLowerCase();
+    if (!isChefChauffeur && (lower === 'validé' || lower === 'valid') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
+    }
+
+    const [result] = await connection.execute('UPDATE bons_vehicule SET statut = ?, updated_at = NOW() WHERE id = ?', [statut, id]);
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon véhicule non trouvé' });
+    }
 
     const [rows] = await pool.execute(`
       SELECT bv.*, v.nom AS vehicule_nom
@@ -241,10 +333,14 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       LEFT JOIN vehicules v ON v.id = bv.vehicule_id
       WHERE bv.id = ?
     `, [id]);
+    await connection.commit();
     res.json({ success: true, message: `Statut mis à jour: ${statut}`, data: rows[0] });
   } catch (error) {
     console.error('PATCH /bons_vehicule/:id/statut error:', error);
+    try { await connection.rollback(); } catch (e) { /* noop */ }
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  } finally {
+    connection.release();
   }
 });
 

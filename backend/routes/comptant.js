@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { resolveRemiseTarget } from '../utils/remiseTarget.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
@@ -163,7 +164,7 @@ router.get('/:id', async (req, res) => {
 /* =========================
    POST /comptant (création)
    ========================= */
-router.post('/', async (req, res) => {
+router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -320,7 +321,10 @@ router.put('/:id', async (req, res) => {
     await connection.beginTransaction();
 
     const { id } = req.params;
-  const {
+    const userRole = req.user?.role;
+    const isChefChauffeur = userRole === 'ChefChauffeur';
+
+    let {
       date_creation,
   client_id,
   client_nom,
@@ -332,24 +336,81 @@ router.put('/:id', async (req, res) => {
     items = [],
     livraisons
     } = req.body || {};
-    const phone = req.body?.phone ?? null;
-    const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+    let phone = req.body?.phone ?? null;
+    let isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
     const remise_is_client = req.body?.remise_is_client;
     const remise_id = req.body?.remise_id;
     const remise_client_nom = req.body?.remise_client_nom;
 
-    const [exists] = await connection.execute('SELECT statut FROM bons_comptant WHERE id = ? FOR UPDATE', [id]);
+    const [exists] = await connection.execute('SELECT date_creation, client_id, client_nom, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated, remise_is_client, remise_id FROM bons_comptant WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon comptant non trouvé' });
     }
-    const oldStatut = exists[0].statut;
+    const oldBon = exists[0];
+    const oldStatut = oldBon.statut;
+
+    if (isChefChauffeur && (String(oldStatut) === 'Validé' || String(oldStatut) === 'Annulé')) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Accès refusé: modification interdite sur un bon validé/annulé' });
+    }
 
     const [oldItemsStock] = await connection.execute(
-      'SELECT product_id, variant_id, quantite FROM comptant_items WHERE bon_comptant_id = ?',
+      'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant FROM comptant_items WHERE bon_comptant_id = ? ORDER BY id ASC',
       [id]
     );
+
+    if (isChefChauffeur) {
+      const incomingItems = Array.isArray(items) ? items : [];
+      if (!Array.isArray(oldItemsStock) || oldItemsStock.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Bon invalide: aucun item existant' });
+      }
+      if (incomingItems.length !== oldItemsStock.length) {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: modification des lignes interdite (ajout/suppression)' });
+      }
+
+      const sanitizedItems = oldItemsStock.map((oldIt, idx) => {
+        const inc = incomingItems[idx] || {};
+        const sameProduct = Number(inc.product_id) === Number(oldIt.product_id);
+        const sameVariant = (inc.variant_id == null || inc.variant_id === '' ? null : Number(inc.variant_id)) === (oldIt.variant_id == null ? null : Number(oldIt.variant_id));
+        const sameUnit = (inc.unit_id == null || inc.unit_id === '' ? null : Number(inc.unit_id)) === (oldIt.unit_id == null ? null : Number(oldIt.unit_id));
+        if (!sameProduct || !sameVariant || !sameUnit) {
+          throw Object.assign(new Error('Accès refusé: modification des produits/variantes/unités interdite'), { statusCode: 403 });
+        }
+        const q = Number(inc.quantite);
+        if (!Number.isFinite(q) || q <= 0) {
+          throw Object.assign(new Error('Quantité invalide'), { statusCode: 400 });
+        }
+        const pu = Number(oldIt.prix_unitaire) || 0;
+        return {
+          product_id: oldIt.product_id,
+          variant_id: oldIt.variant_id ?? null,
+          unit_id: oldIt.unit_id ?? null,
+          quantite: q,
+          prix_unitaire: pu,
+          remise_pourcentage: oldIt.remise_pourcentage ?? 0,
+          remise_montant: oldIt.remise_montant ?? 0,
+          total: q * pu,
+        };
+      });
+
+      items = sanitizedItems;
+      montant_total = sanitizedItems.reduce((s, r) => s + (Number(r.total) || 0), 0);
+      date_creation = oldBon.date_creation;
+      client_id = oldBon.client_id;
+      client_nom = oldBon.client_nom;
+      vehicule_id = oldBon.vehicule_id;
+      phone = oldBon.phone;
+      lieu_chargement = oldBon.lieu_chargement;
+      adresse_livraison = oldBon.adresse_livraison;
+      statut = oldStatut;
+      isNotCalculated = oldBon.isNotCalculated;
+      // lock livraisons
+      livraisons = undefined;
+    }
 
     const cId  = client_id ?? null;
     const vId  = vehicule_id ?? null;
@@ -366,13 +427,15 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ message: 'Champs requis manquants', missing: missingPut });
     }
 
-    const resolved = await resolveRemiseTarget({
-      db: connection,
-      clientId: cId,
-      remiseIsClient: remise_is_client,
-      remiseId: remise_id,
-      remiseClientNom: remise_client_nom,
-    });
+    const resolved = isChefChauffeur
+      ? { remise_is_client: oldBon.remise_is_client ?? null, remise_id: oldBon.remise_id ?? null }
+      : await resolveRemiseTarget({
+          db: connection,
+          clientId: cId,
+          remiseIsClient: remise_is_client,
+          remiseId: remise_id,
+          remiseClientNom: remise_client_nom,
+        });
     if (resolved?.error) {
       await connection.rollback();
       return res.status(400).json({ message: resolved.error });
@@ -465,14 +528,16 @@ router.put('/:id', async (req, res) => {
       // apply new: subtract
       mergeStockDeltaMaps(deltas, buildStockDeltaMaps(items, -1));
     }
-    await applyStockDeltas(connection, deltas, req.user?.id ?? created_by ?? null);
+    await applyStockDeltas(connection, deltas, req.user?.id ?? null);
 
     await connection.commit();
     res.json({ message: 'Bon comptant mis à jour avec succès' });
   } catch (error) {
     await connection.rollback();
     console.error('Erreur PUT /comptant/:id:', error);
-    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message || String(error) });
+    const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
+    const msg = status === 500 ? 'Erreur du serveur' : (error?.message || 'Erreur');
+    res.status(status).json({ message: msg, error: status === 500 ? (error?.sqlMessage || error?.message || String(error)) : undefined });
   } finally {
     connection.release();
   }
@@ -542,13 +607,8 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    // PDG-only for validation
     const userRole = req.user?.role;
-    const lower = String(statut).toLowerCase();
-    if ((lower === 'validé' || lower === 'valid') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
-      await connection.rollback();
-      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
-    }
+    const isChefChauffeur = userRole === 'ChefChauffeur';
 
     const [oldRows] = await connection.execute(
       'SELECT statut FROM bons_comptant WHERE id = ? FOR UPDATE',
@@ -559,6 +619,25 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       return res.status(404).json({ message: 'Bon comptant non trouvé' });
     }
     const oldStatut = oldRows[0].statut;
+
+    if (isChefChauffeur) {
+      const allowed = new Set(['En attente', 'Annulé']);
+      if (String(oldStatut) === 'Validé') {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: bon déjà validé' });
+      }
+      if (!allowed.has(statut)) {
+        await connection.rollback();
+        return res.status(403).json({ message: 'Accès refusé: Chef Chauffeur peut فقط En attente / Annulé' });
+      }
+    }
+
+    // PDG-only for validation
+    const lower = String(statut).toLowerCase();
+    if (!isChefChauffeur && (lower === 'validé' || lower === 'valid') && userRole !== 'PDG' && userRole !== 'ManagerPlus') {
+      await connection.rollback();
+      return res.status(403).json({ message: 'Rôle PDG requis pour valider' });
+    }
     if (oldStatut === statut) {
       await connection.rollback();
       return res.status(200).json({ success: true, message: 'Aucun changement de statut', data: { id: Number(id), statut } });

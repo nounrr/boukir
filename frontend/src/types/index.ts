@@ -1,5 +1,5 @@
 // Types pour l'authentification
-export type Role = 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'Employé';
+export type Role = 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'ChefChauffeur' | 'Employé';
 export interface User {
   id: number;
   nom_complet?: string | null;
@@ -319,6 +319,7 @@ export interface Vehicule {
   type_vehicule: 'Camion' | 'Camionnette' | 'Voiture' | 'Moto' | 'Autre';
   capacite_charge?: number;
   statut: 'Disponible' | 'En service' | 'En maintenance' | 'Hors service';
+  employe_id?: number | null;
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -353,6 +354,7 @@ export interface CreateVehiculeData {
   type_vehicule?: 'Camion' | 'Camionnette' | 'Voiture' | 'Moto' | 'Autre';
   capacite_charge?: number;
   statut?: 'Disponible' | 'En service' | 'En maintenance' | 'Hors service';
+  employe_id?: number | null;
 }
 
 // Types pour les bons

@@ -17,8 +17,17 @@ const MobileBottomNav: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const isChefChauffeur = user?.role === 'ChefChauffeur';
 
-  const groups = [
+  const groups = isChefChauffeur ? [
+    {
+      key: 'ops', label: 'Opérations', icon: FileText,
+      items: [
+        { name: 'Bons', to: '/bons', show: true },
+        { name: 'Véhicules', to: '/vehicules', show: true },
+      ],
+    },
+  ] : [
     {
       key: 'general', label: 'Général', icon: Home,
       items: [

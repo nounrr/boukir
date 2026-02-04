@@ -1,8 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/redux';
-
-type Role = 'PDG' | 'Employé' | 'Manager' | 'ManagerPlus';
+import type { Role } from '../../types';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -28,6 +27,18 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // If password change is required, block access to all routes except the change-password page
   if (passwordChangeRequired && location.pathname !== '/change-password') {
     return <Navigate to="/change-password" replace />;
+  }
+
+  // ChefChauffeur: allow only Bons + Véhicules (and change-password)
+  if (user?.role === 'ChefChauffeur') {
+    const allowed =
+      location.pathname === '/bons' ||
+      location.pathname === '/vehicules' ||
+      location.pathname === '/change-password';
+
+    if (!allowed) {
+      return <Navigate to="/bons" replace />;
+    }
   }
 
   // Si le rôle de l'utilisateur est dans les rôles interdits

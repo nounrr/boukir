@@ -29,62 +29,63 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   const { user } = useAuth();
+  const isChefChauffeur = user?.role === 'ChefChauffeur';
 
   // Grouped navigation for desktop sidebar (mobile uses bottom nav)
   const groups: { title: string; items: { name: string; href: string; icon: any; show: boolean }[] }[] = [
     {
       title: 'Général',
       items: [
-        { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: true },
-        { name: 'Remises', href: '/remises', icon: Percent, show: true },
-        { name: 'Promo codes', href: '/promo-codes', icon: Percent, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
-        { name: 'Hero Slides', href: '/hero-slides', icon: Image, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
-        { name: 'Contacts', href: '/contacts', icon: UserCheck, show: user?.role !== 'Employé' },
-        { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: user?.role !== 'Employé' },
+        { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: !isChefChauffeur },
+        { name: 'Remises', href: '/remises', icon: Percent, show: !isChefChauffeur },
+        { name: 'Promo codes', href: '/promo-codes', icon: Percent, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus') },
+        { name: 'Hero Slides', href: '/hero-slides', icon: Image, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus') },
+        { name: 'Contacts', href: '/contacts', icon: UserCheck, show: !isChefChauffeur && user?.role !== 'Employé' },
+        { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: !isChefChauffeur && user?.role !== 'Employé' },
       ],
     },
     {
       title: 'Produits',
       items: [
-        { name: 'Stock', href: '/stock', icon: Package, show: true },
-        { name: 'Inventaire', href: '/inventaire', icon: ClipboardList, show: user?.role !== undefined },
-        { name: 'Catégories', href: '/categories', icon: Tags, show: true },
-        { name: 'Marques', href: '/brands', icon: Award, show: true },
-        { name: 'Produits archivés', href: '/products/archived', icon: Package, show: user?.role === 'PDG' },
+        { name: 'Stock', href: '/stock', icon: Package, show: !isChefChauffeur },
+        { name: 'Inventaire', href: '/inventaire', icon: ClipboardList, show: !isChefChauffeur && user?.role !== undefined },
+        { name: 'Catégories', href: '/categories', icon: Tags, show: !isChefChauffeur },
+        { name: 'Marques', href: '/brands', icon: Award, show: !isChefChauffeur },
+        { name: 'Produits archivés', href: '/products/archived', icon: Package, show: !isChefChauffeur && user?.role === 'PDG' },
       ],
     },
     {
       title: 'Opérations',
       items: [
         { name: 'Bons', href: '/bons', icon: FileText, show: true },
-    { name: 'Véhicules', href: '/vehicules', icon: Truck, show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
-    { name: 'Caisse', href: '/caisse', icon: CreditCard, show: true },
+    { name: 'Véhicules', href: '/vehicules', icon: Truck, show: isChefChauffeur || user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+    { name: 'Caisse', href: '/caisse', icon: CreditCard, show: !isChefChauffeur },
     // Talons et Talon Caisse : visibles seulement PDG
-  { name: 'Talons', href: '/talons', icon: ClipboardList, show: user?.role === 'PDG' || user?.role === 'ManagerPlus' },
-  { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: user?.role === 'PDG' || user?.role === 'ManagerPlus' },
+  { name: 'Talons', href: '/talons', icon: ClipboardList, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
+  { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
       ],
     },
     {
       title: 'Administration',
       items: [
-        { name: 'Employés', href: '/employees', icon: Users, show: canManageEmployees(user) },
-        { name: 'Mes Informations', href: '/employee/self', icon: Users, show: user?.role === 'Employé' },
-        { name: 'Horaires d\'Accès', href: '/access-schedules', icon: CalendarClock, show: user?.role === 'PDG' },
+        { name: 'Employés', href: '/employees', icon: Users, show: !isChefChauffeur && canManageEmployees(user) },
+        { name: 'Mes Informations', href: '/employee/self', icon: Users, show: !isChefChauffeur && user?.role === 'Employé' },
+        { name: 'Horaires d\'Accès', href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },
       ],
     },
     {
       title: 'Rapports',
       items: [
     // Audit et Rapports : visibles seulement PDG
-    { name: 'Audit', href: '/audit', icon: Activity, show: user?.role === 'PDG' },
-    { name: 'Rapports', href: '/reports', icon: BarChart3, show: user?.role === 'PDG' },
-    { name: 'Stats détaillées', href: '/reports/details', icon: Activity, show: user?.role === 'PDG' },
+    { name: 'Audit', href: '/audit', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
+    { name: 'Rapports', href: '/reports', icon: BarChart3, show: !isChefChauffeur && user?.role === 'PDG' },
+    { name: 'Stats détaillées', href: '/reports/details', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
       ],
     },
     {
       title: 'Outils',
       items: [
-        { name: 'Import Excel', href: '/import', icon: Upload, show: user?.role !== undefined },
+        { name: 'Import Excel', href: '/import', icon: Upload, show: !isChefChauffeur && user?.role !== undefined },
       ],
     },
   ];

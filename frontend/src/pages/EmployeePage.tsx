@@ -390,7 +390,7 @@ const validationSchemaCreate = Yup.object({
   cin: Yup.string().required('CIN requis'),
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
-  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Chauffeur', 'Employé']).optional(),
+  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Chauffeur', 'ChefChauffeur', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').required('Mot de passe requis'),
 });
@@ -399,7 +399,7 @@ const validationSchemaEdit = Yup.object({
   cin: Yup.string().required('CIN requis'),
   nom_complet: Yup.string().optional(),
   date_embauche: Yup.string().optional(),
-  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Chauffeur', 'Employé']).optional(),
+  role: Yup.string().oneOf(['PDG', 'Manager', 'ManagerPlus', 'Chauffeur', 'ChefChauffeur', 'Employé']).optional(),
   salaire: Yup.number().typeError('Salaire invalide').nullable().optional(),
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').optional(),
 });
@@ -469,14 +469,14 @@ const EmployeePage: React.FC = () => { // NOSONAR
           cin: string;
           nom_complet: string | null;
           date_embauche: string | null;
-          role: 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'Employé' | null;
+          role: 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'ChefChauffeur' | 'Employé' | null;
           salaire: number | null;
           password: string;
         } = {
           cin: values.cin.trim(),
           nom_complet: values.nom_complet?.trim() || null,
           date_embauche: values.date_embauche?.trim() ? values.date_embauche : null,
-          role: values.role ? (values.role as 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'Employé') : null,
+          role: values.role ? (values.role as 'PDG' | 'Manager' | 'ManagerPlus' | 'Chauffeur' | 'ChefChauffeur' | 'Employé') : null,
           salaire: values.salaire !== undefined && values.salaire !== null && String(values.salaire).trim() !== ''
             ? Number(values.salaire)
             : null,
@@ -817,9 +817,11 @@ const EmployeePage: React.FC = () => { // NOSONAR
                           ? 'bg-blue-100 text-blue-800'
                           : employee.role === 'Manager'
                           ? 'bg-yellow-100 text-yellow-800'
+                          : employee.role === 'Chauffeur' || employee.role === 'ChefChauffeur'
+                          ? 'bg-orange-100 text-orange-800'
                           : 'bg-green-100 text-green-800'
                       }`}>
-                        {employee.role}
+                        {employee.role === 'ChefChauffeur' ? 'Chef Chauffeur' : employee.role}
                       </span>
                     ) : (
                       <span className="text-gray-400 text-sm">-</span>
@@ -1036,6 +1038,7 @@ const EmployeePage: React.FC = () => { // NOSONAR
                     <option value="Manager">Manager</option>
                     <option value="ManagerPlus">ManagerPlus</option>
                     <option value="Chauffeur">Chauffeur</option>
+                    <option value="ChefChauffeur">Chef Chauffeur</option>
                     <option value="PDG">PDG</option>
                   </select>
                   {formik.touched.role && formik.errors.role && (
