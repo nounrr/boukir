@@ -9,6 +9,7 @@ import {
   ensureContactsCheckoutColumns,
   ensureContactsRemiseBalance,
 } from '../utils/ensureRemiseSchema.js';
+import { getContactSoldeCumule } from '../utils/soldeCumule.js';
 
 const router = Router();
 
@@ -959,6 +960,7 @@ router.get('/me', async (req, res, next) => {
               nom_complet, adresse,
               shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_postal_code, shipping_country,
               societe, ice, is_company, is_solde,
+              plafond,
               demande_artisan, artisan_approuve,
               COALESCE(remise_balance, 0) AS remise_balance
        FROM contacts WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none'`,
@@ -975,6 +977,14 @@ router.get('/me', async (req, res, next) => {
     if (!user.is_active) {
       return res.status(403).json({ message: 'Compte désactivé' });
     }
+
+    // Useful for checkout: current cumulative solde & remaining capacity (when plafond is set).
+    const plafond = user.plafond == null ? null : Number(user.plafond);
+    const solde_cumule = await getContactSoldeCumule(pool, user.id);
+    const solde_available =
+      plafond != null && Number.isFinite(plafond) && plafond > 0
+        ? Math.max(0, Math.round((plafond - solde_cumule) * 100) / 100)
+        : null;
 
     if (debug) {
       const tEnd = process.hrtime.bigint();
@@ -998,6 +1008,9 @@ router.get('/me', async (req, res, next) => {
         ice: user.ice,
         is_company: !!user.is_company,
         is_solde: !!user.is_solde,
+        plafond: plafond,
+        solde_cumule,
+        solde_available,
         shipping_address_line1: user.shipping_address_line1,
         shipping_address_line2: user.shipping_address_line2,
         shipping_city: user.shipping_city,
