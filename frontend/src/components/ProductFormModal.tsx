@@ -76,6 +76,12 @@ const validationSchema = Yup.object({
     Yup.object({
       unit_name: Yup.string().required('Nom requis'),
       conversion_factor: Yup.number().min(0.0001, 'Facteur > 0').required('Facteur requis'),
+      prix_vente: Yup.number()
+        .nullable()
+        .transform((val, originalVal) => (originalVal === '' || originalVal === null || originalVal === undefined ? null : val))
+        .min(0, 'Prix vente >= 0')
+        .optional(),
+      facteur_isNormal: Yup.number().oneOf([0, 1]).optional(),
       is_default: Yup.boolean().optional(),
     })
   ).optional(),
@@ -345,6 +351,33 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
       const computed = calculatePrices(prixAchatNum, crPctNum, pgPctNum, pvPctNum);
 
+      const unit0 = Array.isArray(values.units) ? values.units[0] : undefined;
+      const lockVariantPrixVente =
+        Array.isArray(values.units) &&
+        values.units.length === 1 &&
+        Number((unit0 as any)?.facteur_isNormal ?? 1) === 0;
+
+      const lockedVariantPrixVente = (() => {
+        if (!lockVariantPrixVente) return null;
+        const pvRaw = (unit0 as any)?.prix_vente;
+        const pvHas = !(pvRaw === '' || pvRaw === null || pvRaw === undefined);
+        const pvUnit = pvHas ? toNum(pvRaw) : null;
+        const conv = toNum((unit0 as any)?.conversion_factor ?? 1);
+        const convVal = conv > 0 ? conv : 1;
+        return pvUnit !== null ? pvUnit : (computed.prix_vente * convVal);
+      })();
+
+      const variantsNormalized = Array.isArray(values.variants)
+        ? values.variants.map((v) => {
+            if (!lockVariantPrixVente) return v;
+            return {
+              ...v,
+              prix_vente_pourcentage: 0,
+              prix_vente: Number(lockedVariantPrixVente ?? 0),
+            } as any;
+          })
+        : values.variants;
+
       const productData: Partial<Product> = {
         ...values,
         prix_achat: prixAchatNum,
@@ -363,7 +396,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         stock_partage_ecom_qty: values.stock_partage_ecom_qty ?? 0,
         remise_client: Number((values as any)?.remise_client ?? 0),
         remise_artisan: Number((values as any)?.remise_artisan ?? 0),
-        variants: values.variants,
+        variants: variantsNormalized as any,
         units: values.units,
         base_unit: values.base_unit,
         categorie_base: (values as any).categorie_base,
@@ -545,6 +578,35 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setFicheZh('');
     },
   });
+
+  const variantPrixVenteLock = useMemo(() => {
+    const units = (formik.values as any)?.units;
+    if (!Array.isArray(units) || units.length !== 1) return { lock: false, forcedPrixVente: null };
+    const u0 = units[0] || {};
+    const flag = Number(u0?.facteur_isNormal ?? 1);
+    const pvRaw = u0?.prix_vente;
+    const pvHas = !(pvRaw === '' || pvRaw === null || pvRaw === undefined);
+    const pvUnit = pvHas ? toNum(pvRaw) : null;
+    const isManual = flag === 0;
+    if (!isManual) return { lock: false, forcedPrixVente: null };
+    const conv = toNum(u0?.conversion_factor ?? 1);
+    const convVal = conv > 0 ? conv : 1;
+    const forcedPrixVente = pvUnit !== null ? pvUnit : (dynamicPrices.prix_vente * convVal);
+    return { lock: true, forcedPrixVente };
+  }, [formik.values.units, dynamicPrices.prix_vente]);
+
+  useEffect(() => {
+    if (!variantPrixVenteLock.lock) return;
+    if (!Array.isArray(formik.values.variants) || formik.values.variants.length === 0) return;
+    const forced = Number(variantPrixVenteLock.forcedPrixVente ?? 0);
+    const needsUpdate = formik.values.variants.some((v: any) => Number(v?.prix_vente ?? 0) !== forced || Number(v?.prix_vente_pourcentage ?? 0) !== 0);
+    if (!needsUpdate) return;
+
+    for (let i = 0; i < formik.values.variants.length; i++) {
+      formik.setFieldValue(`variants.${i}.prix_vente_pourcentage`, 0, false);
+      formik.setFieldValue(`variants.${i}.prix_vente`, forced, false);
+    }
+  }, [variantPrixVenteLock.lock, variantPrixVenteLock.forcedPrixVente, formik.values.variants.length]);
 
   // When opening in "new" mode, hard-reset all states to ensure empty form
   useEffect(() => {
@@ -1454,7 +1516,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     {formik.values.units && formik.values.units.length > 0 ? (
                       formik.values.units.map((unit, index) => (
                         <div key={index} className="flex gap-4 items-start bg-white p-4 rounded border border-gray-200">
-                          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Nom (ex: Sac 25kg)</label>
                               <input
@@ -1479,6 +1541,54 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 step="0.0001"
                               />
                             </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Prix vente ({unit.unit_name || 'unité'})</label>
+                              {(() => {
+                                const isAuto = (unit as any).prix_vente === '' || (unit as any).prix_vente === null || (unit as any).prix_vente === undefined;
+                                const factor = toNum((unit as any).conversion_factor) || 1;
+                                const basePv = Number((dynamicPrices as any).prix_vente || 0) || 0;
+                                const computed = Number((basePv * factor).toFixed(2));
+                                return (
+                                  <div className="flex flex-col gap-1">
+                                    <label className="inline-flex items-center gap-2 text-xs text-gray-600 select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={isAuto}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            formik.setFieldValue(`units.${index}.prix_vente`, '');
+                                            formik.setFieldValue(`units.${index}.facteur_isNormal`, 1);
+                                          } else {
+                                            formik.setFieldValue(`units.${index}.prix_vente`, String(computed));
+                                            formik.setFieldValue(`units.${index}.facteur_isNormal`, 0);
+                                          }
+                                        }}
+                                      />
+                                      Auto (prix = base × facteur)
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="number"
+                                        name={`units.${index}.prix_vente`}
+                                        value={isAuto ? computed : ((unit as any).prix_vente ?? '')}
+                                        onChange={(e) => {
+                                          // When user types manually => switch off auto by storing a value
+                                          formik.setFieldValue(`units.${index}.prix_vente`, e.target.value);
+                                          formik.setFieldValue(`units.${index}.facteur_isNormal`, 0);
+                                        }}
+                                        disabled={isAuto}
+                                        className={`w-full px-2 py-1 text-sm border rounded ${isAuto ? 'bg-gray-100 text-gray-700' : ''}`}
+                                        placeholder="Auto"
+                                        step="0.01"
+                                        min={0}
+                                      />
+                                      <span className="text-xs text-gray-500">DH</span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
                             
                           </div>
                           <button
@@ -1500,6 +1610,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                         arrayHelpers.push({
                           unit_name: '',
                           conversion_factor: 1,
+                          prix_vente: '',
+                          facteur_isNormal: 1,
                           is_default: false
                         });
                       }}
@@ -1611,24 +1723,38 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   <input
                                     type="checkbox"
                                     className="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    disabled={variantPrixVenteLock.lock}
                                     checked={
-                                      variant.prix_achat == formik.values.prix_achat && 
-                                      variant.prix_vente == dynamicPrices.prix_vente &&
-                                      (formik.values.prix_achat !== '' || dynamicPrices.prix_vente !== 0)
+                                      variantPrixVenteLock.lock
+                                        ? true
+                                        : (
+                                            variant.prix_achat == formik.values.prix_achat &&
+                                            variant.prix_vente == dynamicPrices.prix_vente &&
+                                            (formik.values.prix_achat !== '' || dynamicPrices.prix_vente !== 0)
+                                          )
                                     }
                                     onChange={(e) => {
+                                      if (variantPrixVenteLock.lock) return;
                                       if (e.target.checked) {
                                         formik.setFieldValue(`variants.${index}.prix_achat`, formik.values.prix_achat);
                                         formik.setFieldValue(`variants.${index}.cout_revient_pourcentage`, formik.values.cout_revient_pourcentage);
                                         formik.setFieldValue(`variants.${index}.cout_revient`, dynamicPrices.cout_revient);
                                         formik.setFieldValue(`variants.${index}.prix_gros_pourcentage`, formik.values.prix_gros_pourcentage);
                                         formik.setFieldValue(`variants.${index}.prix_gros`, dynamicPrices.prix_gros);
-                                        formik.setFieldValue(`variants.${index}.prix_vente_pourcentage`, formik.values.prix_vente_pourcentage);
-                                        formik.setFieldValue(`variants.${index}.prix_vente`, dynamicPrices.prix_vente);
+                                        formik.setFieldValue(
+                                          `variants.${index}.prix_vente_pourcentage`,
+                                          formik.values.prix_vente_pourcentage
+                                        );
+                                        formik.setFieldValue(
+                                          `variants.${index}.prix_vente`,
+                                          dynamicPrices.prix_vente
+                                        );
                                       }
                                     }}
                                   />
-                                  <span className="text-[10px] text-blue-600 whitespace-nowrap">Même prix</span>
+                                  <span className="text-[10px] text-blue-600 whitespace-nowrap">
+                                    Même prix{variantPrixVenteLock.lock ? ' (obligatoire)' : ''}
+                                  </span>
                                 </label>
                               </div>
                               <input
@@ -1643,7 +1769,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   const pvp = Number(variant.prix_vente_pourcentage || 0);
                                   formik.setFieldValue(`variants.${index}.cout_revient`, Number((pa * (1 + crp/100)).toFixed(2)));
                                   formik.setFieldValue(`variants.${index}.prix_gros`, Number((pa * (1 + pgp/100)).toFixed(2)));
-                                  formik.setFieldValue(`variants.${index}.prix_vente`, Number((pa * (1 + pvp/100)).toFixed(2)));
+                                  if (variantPrixVenteLock.lock) {
+                                    formik.setFieldValue(`variants.${index}.prix_vente`, Number(variantPrixVenteLock.forcedPrixVente ?? 0));
+                                  } else {
+                                    formik.setFieldValue(`variants.${index}.prix_vente`, Number((pa * (1 + pvp/100)).toFixed(2)));
+                                  }
                                 }}
                                 className="w-full px-2 py-1 text-sm border rounded"
                                 placeholder="0.00"
@@ -1720,7 +1850,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   type="number"
                                   name={`variants.${index}.prix_vente_pourcentage`}
                                   value={variant.prix_vente_pourcentage}
+                                  disabled={variantPrixVenteLock.lock}
                                   onChange={(e) => {
+                                    if (variantPrixVenteLock.lock) {
+                                      formik.setFieldValue(`variants.${index}.prix_vente_pourcentage`, 0);
+                                      formik.setFieldValue(`variants.${index}.prix_vente`, Number(variantPrixVenteLock.forcedPrixVente ?? 0));
+                                      return;
+                                    }
                                     formik.handleChange(e);
                                     const pct = Number(e.target.value);
                                     const pa = Number(variant.prix_achat || 0);
@@ -1737,6 +1873,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   name={`variants.${index}.prix_vente`}
                                   value={variant.prix_vente}
                                   onChange={formik.handleChange}
+                                  disabled={variantPrixVenteLock.lock}
                                   className="w-full px-2 py-1 text-sm border rounded"
                                   placeholder="0.00"
                                 />

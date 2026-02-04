@@ -794,6 +794,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
   // Saisie brute par ligne pour "prix_unitaire"
   const [unitPriceRaw, setUnitPriceRaw] = useState<Record<number, string>>({});
+  // When user clicks other controls (variant/unit/product), we suppress the async price onBlur commit
+  // to avoid race conditions (blur finishing after onChange).
+  const suppressPriceBlurRef = useRef<{ row: number; ts: number } | null>(null);
 // 🆕 Saisie brute par ligne pour "quantite"
 const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ----------------------- Initialisation des valeurs ----------------------- */
@@ -2925,36 +2928,72 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         value={values.items[index].variant_id || ''}
                                         data-row={index}
                                         data-col="variant"
+                                        onPointerDown={() => {
+                                          suppressPriceBlurRef.current = { row: index, ts: Date.now() };
+                                        }}
                                         onChange={(e) => {
                                           if (isQtyOnlyEdit) return;
                                           const vId = e.target.value;
                                           setFieldValue(`items.${index}.variant_id`, vId);
+                                          const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                          const unitIdSel = values.items[index].unit_id;
+                                          const unitsForProduct = product?.units ?? [];
+
                                           if (vId) {
                                             const variant = variants.find((v: any) => String(v.id) === vId);
                                             if (variant) {
                                               // Update price based on variant
-                                              const variantBasePrice = values.type === 'Commande' ? Number(variant.prix_achat || 0) : Number(variant.prix_vente || 0);
+                                              const variantBasePrice = values.type === 'Commande'
+                                                ? Number(variant.prix_achat || 0)
+                                                : Number(variant.prix_vente || 0);
+
                                               // If a unit is already selected, apply its conversion factor to the variant price
-                                              const unitIdSel = values.items[index].unit_id;
-                                              const unitsForProduct = product?.units ?? [];
                                               let effectivePrice = variantBasePrice;
                                               if (unitIdSel) {
                                                 const unitSel = unitsForProduct.find((u: any) => String(u.id) === String(unitIdSel));
                                                 const factorSel = Number(unitSel?.conversion_factor || 1) || 1;
                                                 effectivePrice = Number((variantBasePrice * factorSel).toFixed(2));
                                               }
+
                                               if (values.type === 'Commande') {
                                                 setFieldValue(`items.${index}.prix_achat`, effectivePrice);
                                               } else {
                                                 setFieldValue(`items.${index}.prix_unitaire`, effectivePrice);
                                               }
                                               setUnitPriceRaw((prev) => ({ ...prev, [index]: String(effectivePrice) }));
-                                              
-                                              // Recalculate total
-                                              const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
                                               setFieldValue(`items.${index}.total`, q * effectivePrice);
                                             }
+                                            return;
                                           }
+
+                                          // Variant cleared => revert to base product price (respect unit selection)
+                                          const basePriceAchat = Number(product?.prix_achat ?? 0) || 0;
+                                          const basePriceVente = Number(product?.prix_vente ?? 0) || 0;
+
+                                          let effectivePrice = values.type === 'Commande' ? basePriceAchat : basePriceVente;
+                                          if (unitIdSel) {
+                                            const unitSel = unitsForProduct.find((u: any) => String(u.id) === String(unitIdSel));
+                                            const factorSel = Number(unitSel?.conversion_factor || 1) || 1;
+                                            if (values.type === 'Commande') {
+                                              effectivePrice = Number((basePriceAchat * factorSel).toFixed(2));
+                                            } else {
+                                              const unitPv = unitSel?.prix_vente;
+                                              const pvNum = unitPv === null || unitPv === undefined ? null : Number(unitPv);
+                                              if (pvNum !== null && Number.isFinite(pvNum)) {
+                                                effectivePrice = Number(pvNum.toFixed(2));
+                                              } else {
+                                                effectivePrice = Number((basePriceVente * factorSel).toFixed(2));
+                                              }
+                                            }
+                                          }
+
+                                          if (values.type === 'Commande') {
+                                            setFieldValue(`items.${index}.prix_achat`, effectivePrice);
+                                          } else {
+                                            setFieldValue(`items.${index}.prix_unitaire`, effectivePrice);
+                                          }
+                                          setUnitPriceRaw((prev) => ({ ...prev, [index]: String(effectivePrice) }));
+                                          setFieldValue(`items.${index}.total`, q * effectivePrice);
                                         }}
                                       >
                                         <option value="">--</option>
@@ -3013,7 +3052,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 newPrice = Number((baseA * factor).toFixed(2));
                                                 setFieldValue(`items.${index}.prix_achat`, newPrice);
                                               } else {
-                                                newPrice = Number((baseV * factor).toFixed(2));
+                                                // If unit has an explicit selling price override, prefer it (only when no variant is selected)
+                                                const unitPv = unit?.prix_vente;
+                                                const pvNum = unitPv === null || unitPv === undefined ? null : Number(unitPv);
+                                                if (!selectedVariantId && pvNum !== null && Number.isFinite(pvNum)) {
+                                                  newPrice = Number(pvNum.toFixed(2));
+                                                } else {
+                                                  newPrice = Number((baseV * factor).toFixed(2));
+                                                }
                                                 setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                               }
                                               setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
@@ -3186,6 +3232,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     }}
     onBlur={async () => {
       if (isQtyOnlyEdit) return;
+
+      // If blur happened because user clicked variant/unit/product selector, don't commit
+      const sup = suppressPriceBlurRef.current;
+      if (sup && sup.row === index && Date.now() - sup.ts < 600) {
+        suppressPriceBlurRef.current = null;
+        return;
+      }
       const val = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       
       // Créer une version temporaire des valeurs avec le nouveau prix

@@ -114,6 +114,10 @@ export interface ProductUnit {
   product_id?: number;
   unit_name: string;
   conversion_factor: number;
+  // Optional override for selling price for this unit. When null/undefined => auto compute from product.prix_vente * conversion_factor
+  prix_vente?: number | null;
+  // 1 => default/auto price, 0 => manual override
+  facteur_isNormal?: 0 | 1;
   is_default: boolean;
   created_at?: string;
   updated_at?: string;

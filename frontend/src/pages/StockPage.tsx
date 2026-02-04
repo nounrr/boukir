@@ -80,15 +80,16 @@ const StockPage: React.FC = () => {
 
   const unitOptionsForProduct = (prod: any) => {
     const base = prod.base_unit || 'u';
-    const opts: Array<{ key: string; label: string; factor: number }> = [
-      { key: 'base', label: base, factor: 1 }
+    const opts: Array<{ key: string; label: string; factor: number; prix_vente?: number | null }> = [
+      { key: 'base', label: base, factor: 1, prix_vente: null }
     ];
     if (Array.isArray(prod.units)) {
       prod.units.forEach((u: any) => {
         if (!u) return;
         const f = Number(u.conversion_factor) || 1;
         const name = String(u.unit_name || `${f} ${base}`);
-        opts.push({ key: `name:${name}`, label: name, factor: f });
+        const pv = u.prix_vente === null || u.prix_vente === undefined || u.prix_vente === '' ? null : Number(u.prix_vente);
+        opts.push({ key: `id:${u.id ?? name}`, label: name, factor: f, prix_vente: Number.isFinite(pv as any) ? (pv as any) : null });
       });
     }
     return opts;
@@ -104,6 +105,14 @@ const StockPage: React.FC = () => {
     const opts = unitOptionsForProduct(prod);
     const found = opts.find(o => o.key === key);
     return found ? Number(found.factor) || 1 : 1;
+  };
+
+  const getSelectedUnitPrixVenteOverride = (prod: any) => {
+    const key = getSelectedUnitKey(prod);
+    const opts = unitOptionsForProduct(prod);
+    const found = opts.find(o => o.key === key);
+    const pv = found?.prix_vente;
+    return pv === null || pv === undefined ? null : Number(pv);
   };
 
   const getSelectedUnitLabel = (prod: any) => {
@@ -694,7 +703,8 @@ const StockPage: React.FC = () => {
                     {(() => {
                       const basePv = Number(product.prix_vente || 0);
                       const factor = getSelectedUnitFactor(product);
-                      const converted = basePv * factor;
+                      const unitPv = getSelectedUnitPrixVenteOverride(product);
+                      const converted = unitPv !== null && Number.isFinite(unitPv) ? unitPv : (basePv * factor);
                       return (
                         <>
                           {formatNum(converted)} DH
