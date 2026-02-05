@@ -1,11 +1,55 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const router = Router();
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.join(__dirname, '..', 'uploads', 'categories');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage });
+
+function maybeUploadSingle(fieldName) {
+  const mw = upload.single(fieldName);
+  return (req, res, next) => {
+    const ct = String(req.headers['content-type'] || '');
+    if (!ct.toLowerCase().includes('multipart/form-data')) return next();
+    return mw(req, res, next);
+  };
+}
+
+function normalizeNullableText(value) {
+  if (value === undefined) return undefined;
+  const s = String(value ?? '').trim();
+  return s ? s : null;
+}
+
+function toNullableNumber(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
 router.get('/', async (_req, res, next) => {
   try {
-    const [rows] = await pool.query('SELECT id, nom, description, parent_id, created_by, updated_by, created_at, updated_at FROM categories ORDER BY id DESC');
+    const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, updated_by, created_at, updated_at FROM categories ORDER BY id DESC');
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -14,21 +58,28 @@ router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
-    const [rows] = await pool.query('SELECT id, nom, description, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
+    const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
     const cat = rows[0];
     if (!cat) return res.status(404).json({ message: 'Catégorie introuvable' });
     res.json(cat);
   } catch (err) { next(err); }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', maybeUploadSingle('image'), async (req, res, next) => {
   try {
-    const { nom, description, parent_id, created_by } = req.body;
+    const { nom, nom_ar, nom_en, nom_zh, description, parent_id, created_by, image_url: image_url_body } = req.body;
     if (!nom || !nom.trim()) return res.status(400).json({ message: 'Nom requis' });
+
+    const image_url_from_upload = req.file ? `/uploads/categories/${req.file.filename}` : null;
+    const image_url_from_body = normalizeNullableText(image_url_body);
+    const image_url = image_url_from_upload || image_url_from_body || null;
+
+    const parentId = toNullableNumber(parent_id);
+    const createdBy = toNullableNumber(created_by);
     
     // Prevent circular references
-    if (parent_id) {
-      const [parentCheck] = await pool.query('SELECT id FROM categories WHERE id = ?', [parent_id]);
+    if (parentId) {
+      const [parentCheck] = await pool.query('SELECT id FROM categories WHERE id = ?', [parentId]);
       if (parentCheck.length === 0) {
         return res.status(400).json({ message: 'Catégorie parente introuvable' });
       }
@@ -36,33 +87,45 @@ router.post('/', async (req, res, next) => {
     
     const now = new Date();
     const [result] = await pool.query(
-      'INSERT INTO categories (nom, description, parent_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [nom.trim(), description?.trim() || null, parent_id || null, created_by ?? null, now, now]
+      'INSERT INTO categories (nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        nom.trim(),
+        normalizeNullableText(nom_ar) ?? null,
+        normalizeNullableText(nom_en) ?? null,
+        normalizeNullableText(nom_zh) ?? null,
+        normalizeNullableText(description) ?? null,
+        image_url,
+        parentId ?? null,
+        createdBy ?? null,
+        now,
+        now,
+      ]
     );
     const id = result.insertId;
-    const [rows] = await pool.query('SELECT id, nom, description, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
+    const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', maybeUploadSingle('image'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: 'ID invalide' });
-    const { nom, description, parent_id, updated_by } = req.body;
+    const { nom, nom_ar, nom_en, nom_zh, description, parent_id, updated_by, image_url: image_url_body } = req.body;
     const [exists] = await pool.query('SELECT id, parent_id FROM categories WHERE id = ?', [id]);
     if (exists.length === 0) return res.status(404).json({ message: 'Catégorie introuvable' });
     
     const currentCategory = exists[0];
     
     // Prevent circular references and self-parenting
-    if (parent_id !== undefined && parent_id !== null) {
-      if (parent_id === id) {
+    const parentId = toNullableNumber(parent_id);
+    if (parentId !== undefined && parentId !== null) {
+      if (parentId === id) {
         return res.status(400).json({ message: 'Une catégorie ne peut pas être son propre parent' });
       }
       
       // Check if parent exists
-      const [parentCheck] = await pool.query('SELECT id FROM categories WHERE id = ?', [parent_id]);
+      const [parentCheck] = await pool.query('SELECT id FROM categories WHERE id = ?', [parentId]);
       if (parentCheck.length === 0) {
         return res.status(400).json({ message: 'Catégorie parente introuvable' });
       }
@@ -77,7 +140,7 @@ router.put('/:id', async (req, res, next) => {
         return false;
       }
       
-      if (await isDescendant(id, parent_id)) {
+      if (await isDescendant(id, parentId)) {
         return res.status(400).json({ message: 'Impossible: cela créerait une référence circulaire' });
       }
     }
@@ -85,15 +148,27 @@ router.put('/:id', async (req, res, next) => {
     const now = new Date();
     const fields = [];
     const values = [];
-    if (nom !== undefined) { fields.push('nom = ?'); values.push(nom ? nom.trim() : null); }
-    if (description !== undefined) { fields.push('description = ?'); values.push(description ? description.trim() : null); }
-    if (parent_id !== undefined) { fields.push('parent_id = ?'); values.push(parent_id || null); }
-    if (updated_by !== undefined) { fields.push('updated_by = ?'); values.push(updated_by); }
+    if (nom !== undefined) { fields.push('nom = ?'); values.push(normalizeNullableText(nom)); }
+    if (nom_ar !== undefined) { fields.push('nom_ar = ?'); values.push(normalizeNullableText(nom_ar)); }
+    if (nom_en !== undefined) { fields.push('nom_en = ?'); values.push(normalizeNullableText(nom_en)); }
+    if (nom_zh !== undefined) { fields.push('nom_zh = ?'); values.push(normalizeNullableText(nom_zh)); }
+    if (description !== undefined) { fields.push('description = ?'); values.push(normalizeNullableText(description)); }
+    if (parentId !== undefined) { fields.push('parent_id = ?'); values.push(parentId); }
+    if (updated_by !== undefined) { fields.push('updated_by = ?'); values.push(toNullableNumber(updated_by)); }
+
+    const image_url_from_upload = req.file ? `/uploads/categories/${req.file.filename}` : null;
+    if (image_url_from_upload) {
+      fields.push('image_url = ?');
+      values.push(image_url_from_upload);
+    } else if (image_url_body !== undefined) {
+      fields.push('image_url = ?');
+      values.push(normalizeNullableText(image_url_body));
+    }
     fields.push('updated_at = ?'); values.push(now);
     const sql = `UPDATE categories SET ${fields.join(', ')} WHERE id = ?`;
     values.push(id);
     await pool.query(sql, values);
-    const [rows] = await pool.query('SELECT id, nom, description, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
+    const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, updated_by, created_at, updated_at FROM categories WHERE id = ?', [id]);
     res.json(rows[0]);
   } catch (err) { next(err); }
 });

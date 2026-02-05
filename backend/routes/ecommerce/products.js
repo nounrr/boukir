@@ -194,7 +194,10 @@ router.get('/', async (req, res, next) => {
         b.nom as brand_nom,
         b.image_url as brand_image_url,
         c.id as categorie_id,
-        c.nom as categorie_nom
+        c.nom as categorie_nom,
+        c.nom_ar as categorie_nom_ar,
+        c.nom_en as categorie_nom_en,
+        c.nom_zh as categorie_nom_zh
       FROM products p
       LEFT JOIN brands b ON p.brand_id = b.id
       LEFT JOIN categories c ON p.categorie_id = c.id
@@ -384,7 +387,10 @@ router.get('/', async (req, res, next) => {
         } : null,
         categorie: r.categorie_id ? {
           id: r.categorie_id,
-          nom: r.categorie_nom
+          nom: r.categorie_nom,
+          nom_ar: r.categorie_nom_ar,
+          nom_en: r.categorie_nom_en,
+          nom_zh: r.categorie_nom_zh
         } : null,
 
         // Wishlist status (only if user is authenticated)
@@ -397,7 +403,7 @@ router.get('/', async (req, res, next) => {
     const [allCategories] = await pool.query(`
       WITH RECURSIVE category_tree AS (
         -- Get all leaf categories that have published products
-        SELECT DISTINCT c.id, c.nom, c.parent_id
+        SELECT DISTINCT c.id, c.nom, c.nom_ar, c.nom_en, c.nom_zh, c.parent_id
         FROM categories c
         INNER JOIN products p ON p.categorie_id = c.id
         WHERE p.ecom_published = 1 
@@ -406,11 +412,11 @@ router.get('/', async (req, res, next) => {
         UNION
         
         -- Recursively get all parent categories
-        SELECT c.id, c.nom, c.parent_id
+        SELECT c.id, c.nom, c.nom_ar, c.nom_en, c.nom_zh, c.parent_id
         FROM categories c
         INNER JOIN category_tree ct ON c.id = ct.parent_id
       )
-      SELECT DISTINCT id, nom, parent_id
+      SELECT DISTINCT id, nom, nom_ar, nom_en, nom_zh, parent_id
       FROM category_tree
       ORDER BY parent_id, nom
     `);
@@ -423,6 +429,9 @@ router.get('/', async (req, res, next) => {
       categoryMap[cat.id] = {
         id: cat.id,
         nom: cat.nom,
+        nom_ar: cat.nom_ar,
+        nom_en: cat.nom_en,
+        nom_zh: cat.nom_zh,
         parent_id: cat.parent_id,
         children: []
       };
@@ -681,6 +690,9 @@ router.get('/:id', async (req, res, next) => {
           p.brand_id,
           b.nom as brand_nom,
           c.nom as categorie_nom,
+          c.nom_ar as categorie_nom_ar,
+          c.nom_en as categorie_nom_en,
+          c.nom_zh as categorie_nom_zh,
           (
             CASE WHEN p.categorie_id = ${categoryPlaceholder} THEN 10 ELSE 0 END +
             CASE WHEN p.brand_id = ${brandPlaceholder} THEN 5 ELSE 0 END +
@@ -761,7 +773,10 @@ router.get('/:id', async (req, res, next) => {
           } : null,
           categorie: sp.categorie_id ? {
             id: sp.categorie_id,
-            nom: sp.categorie_nom
+            nom: sp.categorie_nom,
+            nom_ar: sp.categorie_nom_ar,
+            nom_en: sp.categorie_nom_en,
+            nom_zh: sp.categorie_nom_zh
           } : null,
           relevance_score: Number(sp.relevance_score),
           suggestion_reason: sp.relevance_score >= 15 ? 'same_category_and_brand' :
