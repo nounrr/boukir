@@ -69,7 +69,11 @@ export interface EmployeeSalaireSummaryRow {
 export interface Category {
   id: number;
   nom: string;
+  nom_ar?: string | null;
+  nom_en?: string | null;
+  nom_zh?: string | null;
   description?: string;
+  image_url?: string | null;
   parent_id?: number | null;
   created_by?: number;
   updated_by?: number;
@@ -79,7 +83,11 @@ export interface Category {
 
 export interface CreateCategoryData {
   nom: string;
+  nom_ar?: string | null;
+  nom_en?: string | null;
+  nom_zh?: string | null;
   description?: string;
+  image?: File;
   parent_id?: number | null;
 }
 

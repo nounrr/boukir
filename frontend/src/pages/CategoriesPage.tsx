@@ -8,6 +8,7 @@ import {
 } from '../store/api/categoriesApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import CategoryFormModal from '../components/CategoryFormModal';
+import { toBackendUrl } from '../utils/url';
 
 const CategoriesPage: React.FC = () => {
 	const { data: categories = [], isLoading } = useGetCategoriesQuery();
@@ -16,12 +17,22 @@ const CategoriesPage: React.FC = () => {
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 	const [search, setSearch] = useState('');
+	const [hoverPreview, setHoverPreview] = useState<null | {
+		url: string;
+		x: number;
+		y: number;
+		alt: string;
+	}>(null);
 
 	const filtered = useMemo(() => {
 		const q = search.toLowerCase();
 		if (!q) return categories;
 		return categories.filter((c) =>
-			(c.nom || '').toLowerCase().includes(q) || (c.description || '').toLowerCase().includes(q)
+			(c.nom || '').toLowerCase().includes(q) ||
+			(c.nom_ar || '').toLowerCase().includes(q) ||
+			(c.nom_en || '').toLowerCase().includes(q) ||
+			(c.nom_zh || '').toLowerCase().includes(q) ||
+			(c.description || '').toLowerCase().includes(q)
 		);
 	}, [categories, search]);
 
@@ -59,6 +70,36 @@ const CategoriesPage: React.FC = () => {
 
 	return (
 		<div className="p-6">
+			{/* Hover image preview (fixed overlay so it isn't clipped by table overflow) */}
+			{hoverPreview?.url && typeof window !== 'undefined' && (() => {
+				const maxW = 420;
+				const maxH = 320;
+				const pad = 16;
+				const left = Math.max(
+					pad,
+					Math.min(hoverPreview.x + 18, window.innerWidth - maxW - pad)
+				);
+				const top = Math.max(
+					pad,
+					Math.min(hoverPreview.y + 18, window.innerHeight - maxH - pad)
+				);
+
+				return (
+					<div
+						className="fixed z-[9999] pointer-events-none"
+						style={{ left, top, maxWidth: maxW, maxHeight: maxH }}
+					>
+						<div className="w-fit h-fit max-w-[420px] max-h-[320px] rounded-lg border border-gray-200 bg-white shadow-2xl overflow-hidden p-2">
+							<img
+								src={hoverPreview.url}
+								alt={hoverPreview.alt}
+								className="block max-w-full max-h-[304px] object-contain bg-white"
+							/>
+						</div>
+					</div>
+				);
+			})()}
+
 			<div className="flex justify-between items-center mb-6">
 				<div className="flex items-center gap-3">
 					<Tags className="text-purple-600" size={28} />
@@ -98,6 +139,7 @@ const CategoriesPage: React.FC = () => {
 					<table className="min-w-full divide-y divide-gray-200">
 						<thead className="bg-gray-50">
 							<tr>
+								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parent</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
@@ -107,17 +149,49 @@ const CategoriesPage: React.FC = () => {
 						<tbody className="bg-white divide-y divide-gray-200">
 											{isLoading && (
 												<tr>
-													<td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">Chargement...</td>
+													<td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">Chargement...</td>
 												</tr>
 											)}
 											{!isLoading && filtered.length === 0 && (
 												<tr>
-													<td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">Aucune catégorie</td>
+													<td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">Aucune catégorie</td>
 												</tr>
 											)}
 											{!isLoading && filtered.length > 0 && (
 								filtered.map((c) => (
 									<tr key={c.id} className="hover:bg-gray-50">
+										<td className="px-6 py-4 whitespace-nowrap">
+											{c.image_url ? (
+												<div
+													className="inline-block"
+													onMouseEnter={(e) => {
+														setHoverPreview({
+															url: toBackendUrl(c.image_url),
+															x: e.clientX,
+															y: e.clientY,
+															alt: String(c.nom ?? 'Image catégorie'),
+														});
+													}}
+													onMouseMove={(e) => {
+														setHoverPreview((prev) => {
+															if (!prev) return prev;
+															const nextUrl = toBackendUrl(c.image_url);
+															if (prev.url !== nextUrl) return prev;
+															return { ...prev, x: e.clientX, y: e.clientY };
+														});
+													}}
+													onMouseLeave={() => setHoverPreview(null)}
+												>
+													<img
+														src={toBackendUrl(c.image_url)}
+														alt={c.nom}
+														className="h-10 w-10 object-cover rounded"
+													/>
+												</div>
+											) : (
+												<div className="h-10 w-10 bg-gray-200 rounded" />
+											)}
+										</td>
 										<td className="px-6 py-4 whitespace-nowrap">
 											<div className="text-sm font-medium text-gray-900">{c.nom}</div>
 										</td>
