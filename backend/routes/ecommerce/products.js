@@ -581,7 +581,7 @@ router.get('/:id', async (req, res, next) => {
 
     // Get product category
     const [categories] = await pool.query(`
-      SELECT c.id, c.nom, c.parent_id
+      SELECT c.id, c.nom, c.nom_ar, c.nom_en, c.nom_zh, c.parent_id
       FROM categories c
       WHERE c.id = ?
     `, [r.categorie_id]);
@@ -846,6 +846,9 @@ router.get('/:id', async (req, res, next) => {
       categorie: categories.length > 0 ? {
         id: categories[0].id,
         nom: categories[0].nom,
+        nom_ar: categories[0].nom_ar,
+        nom_en: categories[0].nom_en,
+        nom_zh: categories[0].nom_zh,
         parent_id: categories[0].parent_id
       } : null,
       

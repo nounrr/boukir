@@ -4,8 +4,12 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { ensureCategoryColumns } from '../utils/ensureCategorySchema.js';
 
 const router = Router();
+
+// Make sure schema columns exist so routes don't crash if a migration was missed.
+ensureCategoryColumns().catch((e) => console.error('ensureCategoryColumns:', e));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

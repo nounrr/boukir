@@ -78,6 +78,7 @@ import {
   ensureEcommerceOrdersRemiseColumns,
   ensureProductRemiseColumns,
 } from './utils/ensureRemiseSchema.js';
+import { ensureCategoryColumns } from './utils/ensureCategorySchema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -85,6 +86,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Ensure remise schema exists (safe to call on every boot)
 (async () => {
   try {
+    await ensureCategoryColumns();
     await ensureProductRemiseColumns();
     await ensureContactsRemiseBalance();
     await ensureBonsRemiseTargetColumns();
