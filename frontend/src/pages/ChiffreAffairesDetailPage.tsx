@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, FileText, TrendingUp, DollarSign, Package, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
-import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-import { useGetProductsQuery } from '../store/api/productsApi';
+import { useGetChiffreAffairesDetailQuery } from '../store/api/statsApi';
 
 // Types
 interface BonDetail {
@@ -186,18 +185,24 @@ const ChiffreAffairesDetailPage: React.FC = () => {
     </div>
   );
 
-  // Data
-  const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
-  const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
-  const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
-  const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
-  const { data: avoirsComptant = [] } = useGetBonsByTypeQuery('AvoirComptant');
-  const { data: bonsVehicule = [] } = useGetBonsByTypeQuery('Vehicule');
-  const { data: products = [] } = useGetProductsQuery();
+  const {
+    data: chiffresDetailResp = [],
+    isLoading,
+    isFetching,
+    error,
+  } = useGetChiffreAffairesDetailQuery({ date: selectedDate }, { skip: !selectedDate });
+
+  const errorMessage = useMemo(() => {
+    const anyErr = error as any;
+    if (!anyErr) return null;
+    if (anyErr?.status === 401) return 'Non autorisé. Veuillez vous reconnecter.';
+    return anyErr?.data?.message || anyErr?.error || 'Erreur lors du chargement du détail.';
+  }, [error]);
 
   // Utility functions
   const formatDate = (dateStr: string): string => {
-    const date = new Date(dateStr);
+    // Avoid UTC parsing shift for 'YYYY-MM-DD'
+    const date = new Date(`${dateStr}T00:00:00`);
     return date.toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
@@ -213,261 +218,18 @@ const ChiffreAffairesDetailPage: React.FC = () => {
     }).format(amount);
   };
 
-  const parseItemsSafe = (items: any): any[] => {
-    if (Array.isArray(items)) return items;
-    if (typeof items === 'string') {
-      try {
-        const parsed = JSON.parse(items);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  };
-
-  // Robust number parser: handles strings, commas, and mixed characters
-  const toNumber = (v: any): number => {
-    if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-    if (typeof v === 'boolean') return v ? 1 : 0;
-    if (v == null) return 0;
-    const s = String(v).trim();
-    if (!s) return 0;
-    // Replace comma with dot, strip non-numeric except dot and minus
-    const cleaned = s.replace(/,/g, '.').replace(/[^0-9.-]/g, '');
-    const n = Number(cleaned);
-    return Number.isFinite(n) ? n : 0;
-  };
-
-  const resolveCost = (item: any): number => {
-    // Prefer item-provided costs if present
-    if (item?.cout_revient !== undefined && item?.cout_revient !== null) {
-      const v = toNumber(item.cout_revient);
-      if (!Number.isNaN(v)) return v;
-    }
-    if (item?.prix_achat !== undefined && item?.prix_achat !== null) {
-      const v = toNumber(item.prix_achat);
-      if (!Number.isNaN(v)) return v;
-    }
-    // Try various product id fields
-    const pid = item?.product_id ?? item?.produit_id ?? item?.product?.id ?? item?.produit?.id;
-    if (pid != null) {
-      const product = products.find((p: any) => String(p.id) === String(pid));
-      if (product) {
-        const pa = product.prix_achat;
-        const cr = product.cout_revient;
-        if (pa !== undefined && pa !== null) {
-          const v = toNumber(pa);
-          if (!Number.isNaN(v)) return v;
-        }
-        if (cr !== undefined && cr !== null) {
-          const v = toNumber(cr);
-          if (!Number.isNaN(v)) return v;
-        }
-      }
-    }
-    return 0;
-  };
-
-  // Align movement/profit calculation with BonsPage (no remise subtracted from profit)
-  const computeMouvementDetail = (bon: any) => {
-    const items = parseItemsSafe(bon.items);
-    let profit = 0; // Mouvement: Σ((PV - coût) × Qté)
-    let costBase = 0;
-    let totalRemise = 0;
-    const itemsDetail = [];
-
-    for (const it of items) {
-      // Quantity fallbacks
-      const q = toNumber(it.quantite ?? it.qte ?? it.qty ?? it.quantity ?? 0);
-      if (!q) continue;
-      // Robust price resolution (align closer to BonsPage)
-      const prixVente = toNumber(
-        it.prix_unitaire ?? it.prix_vente ?? it.pu ?? it.price ?? it.prix ?? 0
-      );
-      let cost = 0;
-      if (it.cout_revient !== undefined && it.cout_revient !== null) cost = toNumber(it.cout_revient) || 0;
-      else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = toNumber(it.prix_achat) || 0;
-      else cost = resolveCost(it);
-
-      const remiseLigne = Number(it.remise_montant || it.remise_valeur || 0) || 0;
-      const remiseTotale = toNumber(remiseLigne) * q;
-      const montant_ligne = prixVente * q;
-
-      profit += (prixVente - cost) * q;
-      totalRemise += remiseTotale;
-      costBase += cost * q;
-
-      itemsDetail.push({
-        designation: it.designation || 'Produit sans nom',
-        quantite: q,
-        prix_unitaire: prixVente,
-        cout_revient: it.cout_revient,
-        prix_achat: it.prix_achat,
-        montant_ligne,
-        profit: (prixVente - cost) * q, // profit sans remise
-        profitBrut: (prixVente - cost) * q, // identique ici
-        remise_unitaire: remiseLigne,
-        remise_total: remiseTotale
-      });
-    }
-
-    const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
-    return {
-      profit,
-      costBase,
-      marginPct,
-      totalRemise,
-      items: itemsDetail,
-      totalBon: Number(bon.montant_total || 0)
-    };
-  };
-
-  const computeBonDetail = (bon: any) => {
-    const clientDetail = computeMouvementDetail(bon);
-    const calc = bon?.calc;
-    const totalBon = clientDetail.totalBon;
-    return {
-      bonId: bon.id,
-      bonNumero: bon.numero || `#${bon.id}`,
-      bonType: bon.type,
-      items: Array.isArray(calc?.items) ? calc.items : clientDetail.items,
-      totalBon,
-      profitBon: typeof calc?.profitBon === 'number' ? calc.profitBon : clientDetail.profit,
-      totalRemiseBon: typeof calc?.totalRemiseBon === 'number' ? calc.totalRemiseBon : clientDetail.totalRemise,
-      netTotalBon: typeof calc?.netTotalBon === 'number' ? calc.netTotalBon : (totalBon - clientDetail.totalRemise)
-    };
-  };
-
-  // Calculate detailed data for the specific date
   const chiffresDetail = useMemo(() => {
-    const validStatuses = new Set(['En attente', 'Validé']);
-    const isNonCalculated = (b: any): boolean => {
-      const v = (b?.isNotCalculated ?? b?.is_not_calculated);
-      return v === true || v === 1 || v === '1';
-    };
-    
-    // Filter documents for the specific date
-    const filterByDate = (docs: any[]) => docs.filter((doc: any) => {
-      const docDate = doc.date_creation?.split('T')[0];
-      return docDate === selectedDate && validStatuses.has(doc.statut) && !isNonCalculated(doc);
+    return chiffresDetailResp.map((section) => {
+      const icon =
+        section.type === 'CA_NET' ? <DollarSign size={20} /> : section.type === 'BENEFICIAIRE' ? <TrendingUp size={20} /> : <Package size={20} />;
+      const color = section.type === 'CA_NET' ? 'text-yellow-600' : section.type === 'BENEFICIAIRE' ? 'text-emerald-600' : 'text-indigo-600';
+      return {
+        ...section,
+        icon,
+        color,
+      } as any;
     });
-
-    const dayVentes = filterByDate([...sorties, ...comptants]);
-    const dayAvoirsClient = filterByDate(avoirsClient);
-    const dayAvoirsComptant = filterByDate(avoirsComptant);
-    const dayVehicules = filterByDate(bonsVehicule);
-    const dayCommandes = filterByDate(commandes);
-
-    // CA Net calculation
-    const caNetDetails: ChiffreDetail = {
-      type: 'CA_NET',
-      title: 'Chiffre d\'Affaires Net',
-      icon: <DollarSign size={20} />,
-      color: 'text-yellow-600',
-      total: 0,
-      bons: [],
-      calculs: []
-    };
-
-    // Add ventes (positive)
-    dayVentes.forEach(bon => {
-      const detail = computeBonDetail(bon);
-  // CA Net = total brut (les remises ne réduisent pas le chiffre d'affaires, seulement le profit)
-  caNetDetails.total += detail.totalBon;
-      caNetDetails.bons.push(bon);
-      caNetDetails.calculs.push(detail);
-    });
-
-    // Subtract avoirs client (negative)
-    dayAvoirsClient.forEach(avoir => {
-      const detail = computeBonDetail(avoir);
-      caNetDetails.total -= detail.totalBon; // soustraction brute
-      caNetDetails.bons.push(avoir);
-      const avoirDetail = { ...detail, totalBon: -detail.totalBon };
-      caNetDetails.calculs.push(avoirDetail);
-    });
-
-    // Subtract avoirs comptant (negative)
-    dayAvoirsComptant.forEach(avoir => {
-      const detail = computeBonDetail(avoir);
-      caNetDetails.total -= detail.totalBon; // soustraction brute
-      caNetDetails.bons.push(avoir);
-      const avoirDetail = { ...detail, totalBon: -detail.totalBon };
-      caNetDetails.calculs.push(avoirDetail);
-    });    // Chiffre Bénéficiaire calculation
-    const beneficiaireDetails: ChiffreDetail = {
-      type: 'BENEFICIAIRE',
-      title: 'Chiffre Bénéficiaire (Profits)',
-      icon: <TrendingUp size={20} />,
-      color: 'text-emerald-600',
-      total: 0,
-      bons: [],
-      calculs: []
-    };
-
-    // Add profits from ventes
-    dayVentes.forEach(bon => {
-      const detail = computeBonDetail(bon);
-      beneficiaireDetails.total += detail.profitBon || 0;
-      beneficiaireDetails.bons.push(bon);
-      beneficiaireDetails.calculs.push(detail);
-    });
-
-    // Subtract profits from avoirs client
-    dayAvoirsClient.forEach(avoir => {
-      const detail = computeBonDetail(avoir);
-      beneficiaireDetails.total -= detail.profitBon || 0;
-      beneficiaireDetails.bons.push(avoir);
-      const avoirDetail = { ...detail, profitBon: -(detail.profitBon || 0) };
-      beneficiaireDetails.calculs.push(avoirDetail);
-    });
-
-    // Subtract profits from avoirs comptant
-    dayAvoirsComptant.forEach(avoir => {
-      const detail = computeBonDetail(avoir);
-      beneficiaireDetails.total -= detail.profitBon || 0;
-      beneficiaireDetails.bons.push(avoir);
-      const avoirDetail = { ...detail, profitBon: -(detail.profitBon || 0) };
-      beneficiaireDetails.calculs.push(avoirDetail);
-    });
-
-    // Subtract vehicle bons total amount (not profit-based)
-    dayVehicules.forEach(bon => {
-      const montantTotal = parseFloat(bon.montant_total) || 0;
-      beneficiaireDetails.total -= montantTotal;
-      beneficiaireDetails.bons.push(bon);
-      // Create a special entry for vehicle bons
-      beneficiaireDetails.calculs.push({
-        bonId: bon.id,
-        bonNumero: bon.numero,
-        bonType: 'Bon Véhicule',
-        totalBon: -montantTotal,
-        profitBon: -montantTotal, // For vehicle bons, total amount is the "loss"
-        items: [] // Vehicle bons don't have detailed items
-      });
-    });
-
-    // CA Achats calculation
-    const achatsDetails: ChiffreDetail = {
-      type: 'ACHATS',
-      title: 'CA des Achats (Commandes)',
-      icon: <Package size={20} />,
-      color: 'text-indigo-600',
-      total: 0,
-      bons: [],
-      calculs: []
-    };
-
-    dayCommandes.forEach(commande => {
-      const detail = computeBonDetail(commande);
-      achatsDetails.total += detail.totalBon;
-      achatsDetails.bons.push(commande);
-      achatsDetails.calculs.push(detail);
-    });
-
-    return [caNetDetails, beneficiaireDetails, achatsDetails];
-  }, [selectedDate, sorties, comptants, avoirsClient, avoirsComptant, bonsVehicule, commandes, products]);
+  }, [chiffresDetailResp]);
 
   if (!selectedDate) {
     return (
@@ -506,6 +268,18 @@ const ChiffreAffairesDetailPage: React.FC = () => {
         </p>
       </div>
 
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-6">
+          {errorMessage}
+        </div>
+      )}
+
+      {(isLoading || isFetching) && (
+        <div className="bg-white border rounded-lg p-4 text-sm text-gray-600 mb-6">
+          Chargement du détail...
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {chiffresDetail.map((chiffre) => (
@@ -535,7 +309,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
         const accordionKey = chiffre.type;
         const isOpen = openAccordions.has(accordionKey);
         // Group calculs by bonType for nested accordions
-        const groups: Record<string, { calculs: typeof chiffre.calculs; total: number }> = {} as any;
+        const groups: Record<string, { calculs: CalculDetail[]; total: number }> = {};
         for (const c of chiffre.calculs) {
           const key = c.bonType || 'Autre';
           const amount = chiffre.type === 'BENEFICIAIRE' ? (c.profitBon || 0) : c.totalBon;
@@ -619,7 +393,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
 
                           {subOpen && (
                             <div className="p-4 space-y-6">
-                              {g.calculs.map((calcul) => (
+                              {g.calculs.map((calcul: CalculDetail) => (
                                 renderCalculCard(calcul, chiffre.type === 'BENEFICIAIRE')
                               ))}
                             </div>
@@ -641,7 +415,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                           {formatAmount(chiffre.total)} DH
                         </div>
                       </div>
-                      {chiffre.type === 'CA_NET' && chiffre.calculs.some(c => c.bonType === 'Avoir') && (
+                      {chiffre.type === 'CA_NET' && chiffre.calculs.some((c: CalculDetail) => c.bonType === 'Avoir') && (
                         <div className="text-sm text-gray-500 mt-2">
                           * Les avoirs client sont soustraits du total
                         </div>

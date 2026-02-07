@@ -1,8 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, TrendingUp, TrendingDown, ArrowLeft, Package } from 'lucide-react';
-import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-import { useGetProductsQuery } from '../store/api/productsApi';
+import { useGetChiffreAffairesStatsQuery } from '../store/api/statsApi';
 
 // Types
 interface ChiffreAffairesData {
@@ -23,13 +22,10 @@ const formatAmount = (amount: number): string => {
   }).format(amount);
 };
 
-const isDateInRange = (dateStr: string, startDate: string, endDate: string): boolean => {
-  const date = dateStr.split('T')[0];
-  return date >= startDate && date <= endDate;
-};
-
 const formatDate = (dateStr: string): string => {
-  const date = new Date(dateStr);
+  // `new Date('YYYY-MM-DD')` is parsed as UTC by JS, which can shift the day.
+  // Force local parsing.
+  const date = new Date(`${dateStr}T00:00:00`);
   return date.toLocaleDateString('fr-FR', {
     weekday: 'long',
     year: 'numeric',
@@ -38,266 +34,58 @@ const formatDate = (dateStr: string): string => {
   });
 };
 
+const getLocalYyyyMmDd = (d: Date = new Date()): string => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const getLocalYyyyMm = (d: Date = new Date()): string => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${yyyy}-${mm}`;
+};
+
 const ChiffreAffairesPage: React.FC = () => {
   const navigate = useNavigate();
   
   // Filter states
   const [filterType, setFilterType] = useState<'all' | 'day' | 'period' | 'month'>('all');
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalYyyyMmDd());
+  const [startDate, setStartDate] = useState<string>(getLocalYyyyMmDd());
+  const [endDate, setEndDate] = useState<string>(getLocalYyyyMmDd());
+  const [selectedMonth, setSelectedMonth] = useState<string>(getLocalYyyyMm());
 
-  // API queries
-  const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
-  const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
-  const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
-  const { data: avoirsComptant = [] } = useGetBonsByTypeQuery('AvoirComptant');
-  const { data: bonsVehicule = [] } = useGetBonsByTypeQuery('Vehicule');
-  const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
-  const { data: products = [] } = useGetProductsQuery();
+  const statsQueryArgs = useMemo(() => {
+    if (filterType === 'day') return { filterType, date: selectedDate };
+    if (filterType === 'period') return { filterType, startDate, endDate };
+    if (filterType === 'month') return { filterType, month: selectedMonth };
+    return { filterType };
+  }, [filterType, selectedDate, startDate, endDate, selectedMonth]);
 
-  // Utility function to resolve cost for profit calculation
-  const resolveCost = (item: any): number => {
-    const product = products.find((p: any) => p.id === item.product_id);
-    if (product?.prix_achat) return Number(product.prix_achat);
-    if (product?.cout_revient) return Number(product.cout_revient);
-    return 0;
-  };
+  const {
+    data: chiffreAffairesDataResp,
+    isLoading,
+    isFetching,
+    error,
+  } = useGetChiffreAffairesStatsQuery(statsQueryArgs);
 
-  const parseItemsSafe = (items: any): any[] => {
-    if (Array.isArray(items)) return items;
-    if (typeof items === 'string') {
-      try {
-        const parsed = JSON.parse(items);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  };
-
-  const computeMouvementDetail = (bon: any) => {
-    const items = parseItemsSafe(bon.items);
-    let profitNet = 0; // après remises
-    let profitBrut = 0; // avant remises
-    let costBase = 0;
-    let totalRemise = 0;
-    for (const it of items) {
-      const q = Number(it.quantite || 0);
-      if (!q) continue;
-      const prixVente = Number(it.prix_unitaire || 0);
-      let cost = 0;
-      if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
-      else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
-      else cost = resolveCost(it);
-      const remiseLigne = Number(it.remise_montant || it.remise_valeur || 0) || 0;
-      const remiseTotale = remiseLigne * q;
-      profitBrut += (prixVente - cost) * q;
-      profitNet += (prixVente - cost) * q - remiseTotale;
-      totalRemise += remiseTotale;
-      costBase += cost * q;
-    }
-    const marginPct = costBase > 0 ? (profitNet / costBase) * 100 : null;
-    return { profitNet, profitBrut, costBase, marginPct, totalRemise };
-  };
-
-  // Calculate data based on filter
   const chiffreAffairesData = useMemo(() => {
-    const validStatuses = new Set(['En attente', 'Validé']);
-    // Exclude bons marked as non-calculated
-    const isNonCalculated = (b: any): boolean => {
-      const v = (b?.isNotCalculated ?? b?.is_not_calculated);
-      return v === true || v === 1 || v === '1';
-    };
-    
-    // Get all data sources with valid status
-    const salesDocs = [...sorties, ...comptants].filter((b: any) => validStatuses.has(b.statut) && !isNonCalculated(b));
-    const avoirClientDocs = avoirsClient.filter((a: any) => validStatuses.has(a.statut) && !isNonCalculated(a));
-    const avoirComptantDocs = avoirsComptant.filter((a: any) => validStatuses.has(a.statut) && !isNonCalculated(a));
-    const vehiculeDocs = bonsVehicule.filter((v: any) => validStatuses.has(v.statut) && !isNonCalculated(v));
-    const commandeDocs = commandes.filter((c: any) => validStatuses.has(c.statut) && !isNonCalculated(c));
-    
-    // Filter documents based on selected filter type
-    let filteredSales: any[] = [];
-    let filteredAvoirsClient: any[] = [];
-    let filteredAvoirsComptant: any[] = [];
-    let filteredVehicules: any[] = [];
-    let filteredCommandes: any[] = [];
-    
-    switch (filterType) {
-      case 'all':
-        filteredSales = salesDocs;
-        filteredAvoirsClient = avoirClientDocs;
-        filteredAvoirsComptant = avoirComptantDocs;
-        filteredVehicules = vehiculeDocs;
-        filteredCommandes = commandeDocs;
-        break;
-      case 'day':
-        filteredSales = salesDocs.filter((b: any) => 
-          b.date_creation?.startsWith(selectedDate)
-        );
-        filteredAvoirsClient = avoirClientDocs.filter((a: any) => 
-          a.date_creation?.startsWith(selectedDate)
-        );
-        filteredAvoirsComptant = avoirComptantDocs.filter((a: any) => 
-          a.date_creation?.startsWith(selectedDate)
-        );
-        filteredVehicules = vehiculeDocs.filter((v: any) => 
-          v.date_creation?.startsWith(selectedDate)
-        );
-        filteredCommandes = commandeDocs.filter((c: any) => 
-          c.date_creation?.startsWith(selectedDate)
-        );
-        break;
-      case 'period':
-        filteredSales = salesDocs.filter((b: any) => 
-          b.date_creation && isDateInRange(b.date_creation, startDate, endDate)
-        );
-        filteredAvoirsClient = avoirClientDocs.filter((a: any) => 
-          a.date_creation && isDateInRange(a.date_creation, startDate, endDate)
-        );
-        filteredAvoirsComptant = avoirComptantDocs.filter((a: any) => 
-          a.date_creation && isDateInRange(a.date_creation, startDate, endDate)
-        );
-        filteredVehicules = vehiculeDocs.filter((v: any) => 
-          v.date_creation && isDateInRange(v.date_creation, startDate, endDate)
-        );
-        filteredCommandes = commandeDocs.filter((c: any) => 
-          c.date_creation && isDateInRange(c.date_creation, startDate, endDate)
-        );
-        break;
-      case 'month':
-        filteredSales = salesDocs.filter((b: any) => 
-          b.date_creation?.startsWith(selectedMonth)
-        );
-        filteredAvoirsClient = avoirClientDocs.filter((a: any) => 
-          a.date_creation?.startsWith(selectedMonth)
-        );
-        filteredAvoirsComptant = avoirComptantDocs.filter((a: any) => 
-          a.date_creation?.startsWith(selectedMonth)
-        );
-        filteredVehicules = vehiculeDocs.filter((v: any) => 
-          v.date_creation?.startsWith(selectedMonth)
-        );
-        filteredCommandes = commandeDocs.filter((c: any) => 
-          c.date_creation?.startsWith(selectedMonth)
-        );
-        break;
-    }
-
-    // Calculate totals
-    const salesRevenue = filteredSales.reduce((sum: number, b: any) => 
-      sum + Number(b.montant_total || 0), 0
-    );
-    
-    const avoirClientAmount = filteredAvoirsClient.reduce((sum: number, a: any) => 
-      sum + Number(a.montant_total || 0), 0
-    );
-    
-    const avoirComptantAmount = filteredAvoirsComptant.reduce((sum: number, a: any) => 
-      sum + Number(a.montant_total || 0), 0
-    );
-    
-    const commandesRevenue = filteredCommandes.reduce((sum: number, c: any) => 
-      sum + Number(c.montant_total || 0), 0
-    );
-    
-  // Prepare totals for remises
-  let totalRemisesVente = 0; // cumul des remises sur ventes
-  let totalRemisesAvoirClient = 0; // cumul des remises sur avoirs clients
-  let totalRemisesAvoirComptant = 0; // cumul des remises sur avoirs comptant
-
-    // Group by date for detailed view - only show days with activity
-    const dailyData: { [key: string]: ChiffreAffairesData } = {};
-    
-    // Process sales (Sortie + Comptant) - ADD to profit
-    filteredSales.forEach((bon: any) => {
-      const date = bon.date_creation?.split('T')[0] || 'Unknown';
-      if (!dailyData[date]) {
-        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
+    return (
+      chiffreAffairesDataResp || {
+        totalChiffreAffaires: 0,
+        totalChiffreAffairesAchat: 0,
+        totalChiffreAchats: 0,
+        totalBons: 0,
+        dailyData: [] as ChiffreAffairesData[],
+        totalRemisesNet: 0,
+        totalRemisesVente: 0,
+        totalRemisesAvoirClient: 0,
+        totalRemisesAvoirComptant: 0,
       }
-      const { profitNet, profitBrut, totalRemise } = computeMouvementDetail(bon);
-      dailyData[date].chiffreAffaires += Number(bon.montant_total || 0);
-      dailyData[date].chiffreAffairesAchat += profitNet; // ADD profit
-      dailyData[date].chiffreAffairesAchatBrut += profitBrut;
-      dailyData[date].totalRemises += totalRemise;
-      totalRemisesVente += totalRemise;
-    });
-    
-    // Process avoirs clients - SUBTRACT profit
-    filteredAvoirsClient.forEach((avoir: any) => {
-      const date = avoir.date_creation?.split('T')[0] || 'Unknown';
-      if (!dailyData[date]) {
-        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
-      }
-      const { profitNet, profitBrut, totalRemise } = computeMouvementDetail(avoir);
-      dailyData[date].chiffreAffaires -= Number(avoir.montant_total || 0);
-      dailyData[date].chiffreAffairesAchat -= profitNet; // SUBTRACT profit
-      dailyData[date].chiffreAffairesAchatBrut -= profitBrut;
-      dailyData[date].totalRemises -= totalRemise;
-      totalRemisesAvoirClient += totalRemise;
-    });
-    
-    // Process avoirs comptant - SUBTRACT profit
-    filteredAvoirsComptant.forEach((avoir: any) => {
-      const date = avoir.date_creation?.split('T')[0] || 'Unknown';
-      if (!dailyData[date]) {
-        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
-      }
-      const { profitNet, profitBrut, totalRemise } = computeMouvementDetail(avoir);
-      dailyData[date].chiffreAffaires -= Number(avoir.montant_total || 0);
-      dailyData[date].chiffreAffairesAchat -= profitNet; // SUBTRACT profit
-      dailyData[date].chiffreAffairesAchatBrut -= profitBrut;
-      dailyData[date].totalRemises -= totalRemise;
-      totalRemisesAvoirComptant += totalRemise;
-    });
-    
-    // Process bons véhicules - SUBTRACT montant total (not profit, but full amount)
-    filteredVehicules.forEach((vehicule: any) => {
-      const date = vehicule.date_creation?.split('T')[0] || 'Unknown';
-      if (!dailyData[date]) {
-        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
-      }
-      // SUBTRACT full montant_total for vehicles (as requested)
-      dailyData[date].chiffreAffairesAchat -= Number(vehicule.montant_total || 0);
-      dailyData[date].chiffreAffairesAchatBrut -= Number(vehicule.montant_total || 0);
-    });
-    
-    // Process commandes
-    filteredCommandes.forEach((commande: any) => {
-      const date = commande.date_creation?.split('T')[0] || 'Unknown';
-      if (!dailyData[date]) {
-        dailyData[date] = { date, chiffreAffaires: 0, chiffreAffairesAchat: 0, chiffreAffairesAchatBrut: 0, chiffreAchats: 0, totalRemises: 0 };
-      }
-      dailyData[date].chiffreAchats += Number(commande.montant_total || 0);
-    });
-
-    // Filter out days with zero activity
-    const filteredDailyData = Object.values(dailyData).filter(day => 
-      Math.abs(day.chiffreAffaires) > 0.01 || 
-      Math.abs(day.chiffreAffairesAchat) > 0.01 || Math.abs(day.chiffreAchats) > 0.01
     );
-
-    const sortedDailyData = [...filteredDailyData].sort((a: ChiffreAffairesData, b: ChiffreAffairesData) => 
-      b.date.localeCompare(a.date)
-    );
-
-    // Assurer cohérence: recalculer total bénéficiaire à partir des jours (évite dérives d'arrondi)
-    const totalBeneficiaireFromDays = sortedDailyData.reduce((s, d) => s + d.chiffreAffairesAchat, 0);
-    return {
-      totalChiffreAffaires: salesRevenue - avoirClientAmount - avoirComptantAmount,
-      totalChiffreAffairesAchat: totalBeneficiaireFromDays,
-      totalChiffreAchats: commandesRevenue,
-      totalBons: filteredSales.length,
-      dailyData: sortedDailyData,
-      totalRemisesNet: totalRemisesVente - totalRemisesAvoirClient - totalRemisesAvoirComptant,
-      totalRemisesVente,
-      totalRemisesAvoirClient,
-      totalRemisesAvoirComptant
-    };
-  }, [sorties, comptants, avoirsClient, avoirsComptant, bonsVehicule, commandes, products, filterType, selectedDate, startDate, endDate, selectedMonth]);
+  }, [chiffreAffairesDataResp]);
 
   const getFilterLabel = (): string => {
     switch (filterType) {
@@ -308,11 +96,18 @@ const ChiffreAffairesPage: React.FC = () => {
       case 'period':
         return `Période: du ${formatDate(startDate)} au ${formatDate(endDate)}`;
       case 'month': {
-        const monthDate = new Date(selectedMonth + '-01');
+        const monthDate = new Date(`${selectedMonth}-01T00:00:00`);
         return `Mois: ${monthDate.toLocaleDateString('fr-FR', { year: 'numeric', month: 'long' })}`;
       }
     }
   };
+
+  const errorMessage = useMemo(() => {
+    const anyErr = error as any;
+    if (!anyErr) return null;
+    if (anyErr?.status === 401) return "Non autorisé. Veuillez vous reconnecter.";
+    return anyErr?.data?.message || anyErr?.error || 'Erreur lors du chargement des statistiques.';
+  }, [error]);
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -412,6 +207,18 @@ const ChiffreAffairesPage: React.FC = () => {
           {getFilterLabel()}
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4">
+          {errorMessage}
+        </div>
+      )}
+
+      {(isLoading || isFetching) && (
+        <div className="bg-white border rounded-lg p-4 text-sm text-gray-600">
+          Chargement des statistiques...
+        </div>
+      )}
 
       {/* Summary Tab with 3 metrics */}
       <div className="bg-white rounded-lg shadow-sm border">

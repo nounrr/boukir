@@ -1,3 +1,4 @@
+import { usePreviewMouvementMutation } from '../store/api/calcApi';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
 import type { FormikProps } from 'formik';
@@ -382,6 +383,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   initialValues,
   onBonAdded,
 }) => {
+  const [previewMouvement, { data: mouvementPreviewResp, isLoading: mouvementPreviewLoading }] = usePreviewMouvementMutation();
+
   const { user, token } = useAuth();
   const dispatch = useDispatch();
   const formikRef = useRef<FormikProps<any>>(null);
@@ -799,6 +802,40 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const suppressPriceBlurRef = useRef<{ row: number; ts: number } | null>(null);
 // 🆕 Saisie brute par ligne pour "quantite"
 const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
+
+  // Backend mouvement preview (debounced) to keep displayed mouvement aligned with server during edits
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Only meaningful for these types (same as BonsPage column)
+    const type = String((formikRef.current?.values as any)?.type || currentTab || '');
+    if (!['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(type)) return;
+
+    const handle = setTimeout(() => {
+      try {
+        const values = (formikRef.current?.values as any) || {};
+        const items = Array.isArray(values.items) ? values.items : [];
+        const payloadItems = items.map((item: any, idx: number) => {
+          const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+          const pu = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+          const rm = parseFloat(normalizeDecimal(remiseRaw[idx] ?? String(item.remise_montant ?? ''))) || 0;
+          return {
+            ...item,
+            quantite: q,
+            prix_unitaire: pu,
+            remise_montant: rm,
+          };
+        });
+
+        previewMouvement({ type, items: payloadItems });
+      } catch {
+        // ignore preview errors
+      }
+    }, 350);
+
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentTab, qtyRaw, unitPriceRaw, remiseRaw, showRemisePanel]);
   /* ----------------------- Initialisation des valeurs ----------------------- */
   const getInitialValues = () => {
   if (initialValues) {
@@ -3537,21 +3574,24 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 <div className="flex justify-between items-center mt-2">
   <span className="text-md font-semibold text-green-700">Mouvement:</span>
   <span className="text-md font-semibold text-green-700">
-    {formatFull(
-      values.items
-        .reduce((sum: number, item: any, idx: number) => {
-          const q =
-            parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-          const prixVente =
-            parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
-          const crRaw = item.cout_revient ?? item.prix_achat ?? 0;
-          const coutRevient =
-            typeof crRaw === 'string'
-              ? parseFloat(String(crRaw).replace(',', '.')) || 0
-              : Number(crRaw) || 0;
-          return sum + (prixVente - coutRevient) * q;
-        }, 0)
-    )}{' '}
+    {(() => {
+      const backend = (mouvementPreviewResp as any)?.mouvement_calc;
+      if (backend && typeof backend.profit === 'number') {
+        return formatFull(Number(backend.profit || 0));
+      }
+      if (mouvementPreviewLoading) {
+        return '...';
+      }
+      // Fallback local calc if preview not available
+      const local = (values.items || []).reduce((sum: number, item: any, idx: number) => {
+        const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+        const prixVente = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+        const crRaw = item.cout_revient ?? item.prix_achat ?? 0;
+        const coutRevient = typeof crRaw === 'string' ? parseFloat(String(crRaw).replace(',', '.')) || 0 : Number(crRaw) || 0;
+        return sum + (prixVente - coutRevient) * q;
+      }, 0);
+      return formatFull(local);
+    })()}
     DH
   </span>
 </div>
