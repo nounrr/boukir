@@ -3,6 +3,10 @@ import pool from '../../db/pool.js';
 
 const router = Router();
 
+// UI-only limit; prevents abuse and keeps UX consistent.
+// Real stock is still enforced by stock checks.
+const PURCHASE_LIMIT = 20;
+
 function getUserId(req) {
   const rawUserId = req.user?.id ?? req.user?.user_id ?? req.user?.userId;
   if (rawUserId === undefined || rawUserId === null || rawUserId === '') return null;
@@ -174,7 +178,8 @@ router.get('/', async (req, res, next) => {
         },
         stock: {
           in_stock: inStock,
-          is_available: isAvailable
+          is_available: isAvailable,
+          purchase_limit: PURCHASE_LIMIT
         },
         created_at: item.created_at,
         updated_at: item.updated_at
@@ -277,6 +282,14 @@ router.post('/items', async (req, res, next) => {
     const unitId = unit_id ? Number(unit_id) : null;
     const qty = Math.max(1, toSafeNumber(quantity, 1));
 
+    if (qty > PURCHASE_LIMIT) {
+      return res.status(400).json({
+        message: `Quantité max par article: ${PURCHASE_LIMIT}`,
+        code: 'PURCHASE_LIMIT_EXCEEDED',
+        purchase_limit: PURCHASE_LIMIT
+      });
+    }
+
     // Check if product exists and is published
     const [productRows] = await pool.query(`
       SELECT 
@@ -366,6 +379,17 @@ router.post('/items', async (req, res, next) => {
       const existingItem = existingItems[0];
       const newQuantity = Number(existingItem.quantity) + qty;
 
+      if (newQuantity > PURCHASE_LIMIT) {
+        return res.status(400).json({
+          message: `Quantité max par article: ${PURCHASE_LIMIT}`,
+          code: 'PURCHASE_LIMIT_EXCEEDED',
+          product_id: productId,
+          variant_id: variantId,
+          requested_quantity: newQuantity,
+          purchase_limit: PURCHASE_LIMIT
+        });
+      }
+
       // Check stock availability
       if (newQuantity > availableStock) {
         return res.status(400).json({ 
@@ -436,6 +460,14 @@ router.put('/items/:id', async (req, res, next) => {
     }
 
     const qty = Number(quantity);
+
+    if (!Number.isFinite(qty) || qty > PURCHASE_LIMIT) {
+      return res.status(400).json({
+        message: `Quantité max par article: ${PURCHASE_LIMIT}`,
+        code: 'PURCHASE_LIMIT_EXCEEDED',
+        purchase_limit: PURCHASE_LIMIT
+      });
+    }
 
     // First check if cart item exists at all
     const [allItems] = await pool.query(`
@@ -732,6 +764,7 @@ router.get('/suggestions', async (req, res, next) => {
             position: img.position
           })),
           in_stock: toSafeNumber(p.stock_partage_ecom_qty) > 0,
+          purchase_limit: PURCHASE_LIMIT,
           has_variants: !!p.has_variants,
           brand: p.brand_id ? {
             id: p.brand_id,
@@ -816,6 +849,7 @@ router.get('/suggestions', async (req, res, next) => {
             position: img.position
           })),
           in_stock: toSafeNumber(p.stock_partage_ecom_qty) > 0,
+          purchase_limit: PURCHASE_LIMIT,
           has_variants: !!p.has_variants,
           brand: p.brand_id ? {
             id: p.brand_id,

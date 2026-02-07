@@ -4,6 +4,19 @@ import { ensureProductRemiseColumns } from '../../utils/ensureRemiseSchema.js';
 
 const router = Router();
 
+// UI-only limit to avoid leaking real stock while keeping good UX.
+// Real stock is enforced on cart/checkout.
+const PURCHASE_LIMIT = 20;
+
+function toSafeNumber(value, defaultValue = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : defaultValue;
+}
+
+function isInStock(stockQty) {
+  return toSafeNumber(stockQty) > 0;
+}
+
 // Make sure remise fields exist so ecommerce endpoints can always return them.
 ensureProductRemiseColumns().catch(e => console.error('ensureProductRemiseColumns:', e));
 
@@ -185,7 +198,7 @@ router.get('/', async (req, res, next) => {
         p.remise_client,
         p.remise_artisan,
         p.image_url,
-        p.stock_partage_ecom_qty as stock_qty,
+        COALESCE(p.stock_partage_ecom_qty, 0) as stock_qty,
         p.has_variants,
         p.is_obligatoire_variant,
         p.base_unit,
@@ -292,7 +305,7 @@ router.get('/', async (req, res, next) => {
             prix_vente: Number(v.prix_vente),
             remise_client: Number(v.remise_client || 0),
             remise_artisan: Number(v.remise_artisan || 0),
-            available: Number(v.stock_quantity) > 0,
+            available: isInStock(v.stock_quantity),
             image_url: v.image_url
           };
 
@@ -304,20 +317,20 @@ router.get('/', async (req, res, next) => {
               id: v.id,
               name: v.variant_name,
               image_url: v.image_url,
-              available: Number(v.stock_quantity) > 0
+              available: isInStock(v.stock_quantity)
             });
           } else if (v.variant_type === 'Taille' || v.variant_type === 'Dimension') {
             sizes.push({
               id: v.id,
               name: v.variant_name,
-              available: Number(v.stock_quantity) > 0
+              available: isInStock(v.stock_quantity)
             });
           } else {
             otherVariants.push({
               id: v.id,
               name: v.variant_name,
               type: v.variant_type,
-              available: Number(v.stock_quantity) > 0
+              available: isInStock(v.stock_quantity)
             });
           }
         });
@@ -362,7 +375,8 @@ router.get('/', async (req, res, next) => {
           image_url: img.image_url,
           position: img.position
         })),
-        in_stock: Number(r.stock_qty || 0) > 0,
+        in_stock: isInStock(r.stock_qty),
+        purchase_limit: PURCHASE_LIMIT,
         has_variants: !!r.has_variants,
         is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
         isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,
@@ -602,7 +616,7 @@ router.get('/:id', async (req, res, next) => {
           prix_vente: Number(v.prix_vente),
           remise_client: Number(v.remise_client || 0),
           remise_artisan: Number(v.remise_artisan || 0),
-          available: Number(v.stock_quantity) > 0,
+          available: isInStock(v.stock_quantity),
           image_url: v.image_url,
           gallery: variantImages.map(img => ({
             id: img.id,
@@ -745,7 +759,8 @@ router.get('/:id', async (req, res, next) => {
             image_url: img.image_url,
             position: img.position
           })),
-          in_stock: Number(sp.stock_partage_ecom_qty || 0) > 0,
+          in_stock: isInStock(sp.stock_partage_ecom_qty),
+          purchase_limit: PURCHASE_LIMIT,
           has_variants: !!sp.has_variants,
           brand: sp.brand_id ? {
             id: sp.brand_id,
@@ -786,7 +801,8 @@ router.get('/:id', async (req, res, next) => {
       has_promo: promoPercentage > 0,
       
       // Stock
-      in_stock: Number(r.stock_partage_ecom_qty) > 0,
+      in_stock: isInStock(r.stock_partage_ecom_qty),
+      purchase_limit: PURCHASE_LIMIT,
       
       // Images & Media
       image_url: r.image_url,
@@ -874,6 +890,7 @@ router.get('/featured/promo', async (req, res, next) => {
         p.remise_client,
         p.remise_artisan,
         p.image_url,
+        COALESCE(p.stock_partage_ecom_qty, 0) as stock_qty,
         p.has_variants,
         p.is_obligatoire_variant,
         b.nom as brand_nom
@@ -930,6 +947,8 @@ router.get('/featured/promo', async (req, res, next) => {
         pourcentage_promo: promoPercentage,
         remise_client: Number(r.remise_client || 0),
         remise_artisan: Number(r.remise_artisan || 0),
+        in_stock: isInStock(r.stock_qty),
+        purchase_limit: PURCHASE_LIMIT,
         image_url: r.image_url,
         gallery: galleryImages.map(img => ({
           id: img.id,
@@ -968,6 +987,7 @@ router.get('/featured/new', async (req, res, next) => {
         p.remise_client,
         p.remise_artisan,
         p.image_url,
+        COALESCE(p.stock_partage_ecom_qty, 0) as stock_qty,
         p.has_variants,
         p.is_obligatoire_variant,
         b.nom as brand_nom
@@ -1026,6 +1046,8 @@ router.get('/featured/new', async (req, res, next) => {
         remise_client: Number(r.remise_client || 0),
         remise_artisan: Number(r.remise_artisan || 0),
         has_promo: promoPercentage > 0,
+        in_stock: isInStock(r.stock_qty),
+        purchase_limit: PURCHASE_LIMIT,
         image_url: r.image_url,
         gallery: galleryImages.map(img => ({
           id: img.id,

@@ -23,6 +23,25 @@ function rateLimit(req, res, next) {
   next();
 }
 
+function normalizePromoCode(code) {
+  if (code === undefined || code === null) return '';
+  return String(code).trim().toUpperCase();
+}
+
+function parseNumberLike(value) {
+  if (value === undefined || value === null || value === '') return NaN;
+  if (typeof value === 'number') return value;
+  const s = String(value).trim().replace(/\s+/g, '').replace(',', '.');
+  return Number(s);
+}
+
+function toDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  const d = new Date(value);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
 // Require admin/manager roles for CRUD endpoints
 function requireAdmin(req, res, next) {
   // optionalAuth in index.js decodes JWT if present; enforce presence here
@@ -42,41 +61,78 @@ function requireAdmin(req, res, next) {
 // POST /api/ecommerce/promo/validate
 router.post('/validate', rateLimit, async (req, res, next) => {
   try {
-    const { code, subtotal } = req.body || {};
+    const body = req.body || {};
+    const code = normalizePromoCode(body.code);
+    const wantDebug = body.debug === true;
+
     if (!code) {
-      return res.status(400).json({ valid: false, message: 'Code promo requis' });
+      return res.status(400).json({ valid: false, code: 'CODE_REQUIRED', message: 'Code promo requis' });
+    }
+
+    const base = parseNumberLike(body.subtotal);
+    if (!Number.isFinite(base) || base < 0) {
+      return res.status(400).json({
+        valid: false,
+        code: 'INVALID_SUBTOTAL',
+        message: 'Subtotal invalide'
+      });
     }
 
     const [rows] = await pool.query(
-      `SELECT id, code, type, value, max_discount_amount, min_order_amount, max_redemptions, redeemed_count, active, start_date, end_date
+      `SELECT id, code, type, value, max_discount_amount, min_order_amount, max_redemptions, redeemed_count, active, start_date, end_date, deleted_at
        FROM ecommerce_promo_codes
-       WHERE code = ? AND active = 1
+       WHERE UPPER(TRIM(code)) = ? AND active = 1 AND deleted_at IS NULL
        LIMIT 1`,
       [code]
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({ valid: false, message: 'Code promo invalide ou inactif' });
+      return res.status(404).json({ valid: false, code: 'NOT_FOUND', message: 'Code promo invalide ou inactif' });
     }
 
     const promo = rows[0];
     const now = new Date();
-    if (promo.start_date && now < new Date(promo.start_date)) {
-      return res.status(400).json({ valid: false, message: 'Code promo pas encore actif' });
+    const startAt = toDate(promo.start_date);
+    const endAt = toDate(promo.end_date);
+
+    if (startAt && now < startAt) {
+      const payload = { valid: false, code: 'NOT_ACTIVE_YET', message: 'Code promo pas encore actif' };
+      if (wantDebug) {
+        payload.debug = {
+          now: now.toISOString(),
+          start_date: startAt.toISOString(),
+          starts_in_seconds: Math.ceil((startAt.getTime() - now.getTime()) / 1000)
+        };
+      }
+      return res.status(400).json(payload);
     }
-    if (promo.end_date && now > new Date(promo.end_date)) {
-      return res.status(400).json({ valid: false, message: 'Code promo expiré' });
+
+    // Expiry is exclusive after end_date (at the exact end moment it's still valid)
+    if (endAt && now > endAt) {
+      const payload = { valid: false, code: 'EXPIRED', message: 'Code promo expiré' };
+      if (wantDebug) {
+        payload.debug = {
+          now: now.toISOString(),
+          end_date: endAt.toISOString(),
+          expired_since_seconds: Math.floor((now.getTime() - endAt.getTime()) / 1000)
+        };
+      }
+      return res.status(400).json(payload);
     }
-    if (promo.max_redemptions !== null && promo.max_redemptions > 0 && promo.redeemed_count >= promo.max_redemptions) {
-      return res.status(400).json({ valid: false, message: 'Limite d\'utilisation atteinte' });
+
+    const maxRedemptions = promo.max_redemptions !== null ? Number(promo.max_redemptions) : null;
+    const redeemedCount = Number(promo.redeemed_count || 0);
+    if (maxRedemptions !== null && maxRedemptions > 0 && redeemedCount >= maxRedemptions) {
+      return res.status(400).json({ valid: false, code: 'MAX_REDEMPTIONS_REACHED', message: 'Limite d\'utilisation atteinte' });
     }
-    if (promo.min_order_amount && Number(subtotal || 0) < Number(promo.min_order_amount)) {
-      return res.status(400).json({ valid: false, message: 'Montant minimum non atteint' });
+
+    const minOrderAmount = promo.min_order_amount !== null ? Number(promo.min_order_amount) : null;
+    if (minOrderAmount !== null && Number.isFinite(minOrderAmount) && base < minOrderAmount) {
+      return res.status(400).json({ valid: false, code: 'MIN_ORDER_NOT_MET', message: 'Montant minimum non atteint' });
     }
 
     // Compute potential discount
     let discountAmount = 0;
-    const base = Number(subtotal || 0);
     if (promo.type === 'percentage') {
       discountAmount = (Number(promo.value) / 100) * base;
     } else {
@@ -90,14 +146,29 @@ router.post('/validate', rateLimit, async (req, res, next) => {
     // Mask code in response to avoid scraping patterns
     const masked = String(promo.code).slice(0, 3) + '***';
 
-    return res.json({
+    const response = {
       valid: true,
       message: 'Code promo valide',
       code_masked: masked,
       discount_type: promo.type,
       discount_value: Number(promo.value),
       discount_amount: discountAmount
-    });
+    };
+
+    if (wantDebug) {
+      response.debug = {
+        normalized_code: code,
+        now: now.toISOString(),
+        start_date: startAt ? startAt.toISOString() : null,
+        end_date: endAt ? endAt.toISOString() : null,
+        max_redemptions: maxRedemptions,
+        redeemed_count: redeemedCount,
+        min_order_amount: minOrderAmount,
+        subtotal: base
+      };
+    }
+
+    return res.json(response);
   } catch (err) {
     next(err);
   }

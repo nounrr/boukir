@@ -87,12 +87,19 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const fields = ['description','type','value','max_discount_amount','min_order_amount','max_redemptions','active','start_date','end_date'];
+    const numericFields = new Set(['value', 'max_discount_amount', 'min_order_amount', 'max_redemptions']);
     const updates = [];
     const params = [];
     for (const f of fields) {
       if (Object.prototype.hasOwnProperty.call(req.body, f)) {
         updates.push(`${f} = ?`);
-        params.push(req.body[f]);
+        if (f === 'active') {
+          params.push(req.body[f] ? 1 : 0);
+        } else if (numericFields.has(f)) {
+          params.push(req.body[f] === null || req.body[f] === '' ? null : Number(req.body[f]));
+        } else {
+          params.push(req.body[f]);
+        }
       }
     }
     if (updates.length === 0) {
