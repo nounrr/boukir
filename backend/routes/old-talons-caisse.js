@@ -4,6 +4,171 @@ import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// GET /api/old-talons-caisse/paged - Récupérer des anciens talons caisse avec pagination + stats calculées
+router.get('/paged', verifyToken, async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limitRaw = parseInt(req.query.limit, 10);
+    const limit = Math.min(Math.max(limitRaw || 50, 1), 5000);
+    const offset = (page - 1) * limit;
+
+    const q = String(req.query.q || '').trim();
+    const date = String(req.query.date || '').trim();
+    const mode = String(req.query.mode || 'all').trim();
+    const onlyDueSoon = String(req.query.onlyDueSoon || 'false') === 'true';
+    const talonId = String(req.query.talonId || '').trim();
+
+    const statusParam = req.query.status;
+    const statuses = Array.isArray(statusParam)
+      ? statusParam.flatMap((s) => String(s).split(',').map((x) => x.trim()).filter(Boolean))
+      : String(statusParam || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+    const sortField = String(req.query.sortField || '').trim();
+    const sortDir = String(req.query.sortDir || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+
+    const where = [];
+    const params = [];
+
+    // Mode filter: old talons caisse sont tous des chèques
+    if (mode && mode !== 'all' && mode !== 'Chèque') {
+      where.push('0 = 1');
+    }
+
+    if (q) {
+      const term = `%${q.toLowerCase()}%`;
+      where.push(`(
+        LOWER(CONCAT('old', LPAD(otc.id, 2, '0'))) LIKE ? OR
+        CAST(otc.id AS CHAR) LIKE ? OR
+        LOWER(COALESCE(otc.fournisseur, '')) LIKE ? OR
+        LOWER(COALESCE(otc.numero_cheque, '')) LIKE ? OR
+        LOWER(COALESCE(otc.validation, '')) LIKE ? OR
+        LOWER(COALESCE(t.nom, '')) LIKE ? OR
+        CAST(COALESCE(otc.montant_cheque, 0) AS CHAR) LIKE ? OR
+        LOWER(COALESCE(otc.personne, '')) LIKE ? OR
+        LOWER(COALESCE(otc.factures, '')) LIKE ? OR
+        LOWER(COALESCE(otc.disponible, '')) LIKE ?
+      )`);
+      params.push(term, term, term, term, term, term, term, term, term, term);
+    }
+
+    if (date) {
+      where.push('DATE(otc.date_paiement) = ?');
+      params.push(date);
+    }
+
+    if (statuses.length > 0) {
+      where.push(`otc.validation IN (${statuses.map(() => '?').join(', ')})`);
+      params.push(...statuses);
+    }
+
+    if (talonId) {
+      where.push('otc.id_talon = ?');
+      params.push(parseInt(talonId, 10) || talonId);
+    }
+
+    if (onlyDueSoon) {
+      where.push(
+        "otc.validation <> 'Validé' AND otc.date_cheque IS NOT NULL AND DATEDIFF(DATE(otc.date_cheque), CURDATE()) <= 5"
+      );
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const sortMap = {
+      numero: 'otc.id',
+      talon: 't.nom',
+      montant: 'otc.montant_cheque',
+      date: 'otc.date_paiement',
+      echeance: 'otc.date_cheque',
+    };
+
+    let orderBySql = '';
+    if (sortField && sortMap[sortField]) {
+      orderBySql = `ORDER BY ${sortMap[sortField]} ${sortDir}`;
+    } else {
+      // Default sorting: prioriser les échéances proches, puis trier par date d'échéance croissante
+      orderBySql = `ORDER BY
+        (CASE
+          WHEN otc.validation <> 'Validé'
+           AND otc.date_cheque IS NOT NULL
+           AND DATEDIFF(DATE(otc.date_cheque), CURDATE()) <= 5
+          THEN 0 ELSE 1
+        END) ASC,
+        DATE(otc.date_cheque) ASC,
+        DATE(otc.date_paiement) DESC,
+        otc.created_at DESC`;
+    }
+
+    const baseFromSql = `
+      FROM old_talons_caisse otc
+      LEFT JOIN talons t ON t.id = otc.id_talon
+      ${whereSql}
+    `;
+
+    const [countRows] = await pool.execute(
+      `SELECT COUNT(*) AS count ${baseFromSql}`,
+      params
+    );
+    const totalItems = Number(countRows?.[0]?.count || 0);
+    const totalPages = totalItems === 0 ? 1 : Math.ceil(totalItems / limit);
+
+    const [statsRows] = await pool.execute(
+      `
+        SELECT
+          COUNT(*) AS total,
+          SUM(CASE WHEN otc.validation = 'Validé' THEN 1 ELSE 0 END) AS valides,
+          SUM(CASE WHEN otc.validation = 'En attente' THEN 1 ELSE 0 END) AS enAttente,
+          COALESCE(SUM(COALESCE(otc.montant_cheque, 0)), 0) AS montantTotal,
+          SUM(
+            CASE
+              WHEN otc.validation <> 'Validé'
+               AND otc.date_cheque IS NOT NULL
+               AND DATEDIFF(DATE(otc.date_cheque), CURDATE()) <= 5
+              THEN 1 ELSE 0
+            END
+          ) AS echeanceProche
+        ${baseFromSql}
+      `,
+      params
+    );
+
+    const stats = statsRows?.[0] || {};
+
+    // NOTE: certains serveurs MySQL (et/ou mysql2) ont des soucis avec les placeholders
+    // dans LIMIT/OFFSET en prepared statements. On injecte ici des entiers bornés.
+    const [rows] = await pool.execute(
+      `
+        SELECT otc.*, t.nom AS talon_nom
+        ${baseFromSql}
+        ${orderBySql}
+        LIMIT ${Number(limit)} OFFSET ${Number(offset)}
+      `,
+      params
+    );
+
+    res.json({
+      data: rows,
+      pagination: { page, limit, totalItems, totalPages },
+      stats: {
+        total: Number(stats.total || 0),
+        validés: Number(stats.valides || 0),
+        enAttente: Number(stats.enAttente || 0),
+        montantTotal: Number(stats.montantTotal || 0),
+        echeanceProche: Number(stats.echeanceProche || 0),
+      },
+    });
+  } catch (error) {
+    console.error('Erreur lors de la récupération paginée des anciens talons caisse:', error);
+    res.status(500).json({
+      message: 'Erreur lors de la récupération paginée des anciens talons caisse',
+      error: error.message,
+    });
+  }
+});
+
 // GET /api/old-talons-caisse - Récupérer tous les anciens talons caisse
 router.get('/', verifyToken, async (req, res) => {
   try {
