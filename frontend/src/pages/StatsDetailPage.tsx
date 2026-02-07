@@ -39,17 +39,21 @@ const convertDisplayToISO = (displayDate: string) => {
 const getBonSign = (bonType: string): number => {
   // Logique comptable demandée:
   // - Sortie/Comptant: le client paie => +
+  // - Ecommerce: vente e-commerce => +
   // - Commande: je paie le fournisseur => -
   // - Avoir client/comptant: le client retourne => -
+  // - Avoir e-commerce: retour e-commerce => -
   // - Avoir fournisseur: je retourne au fournisseur (annule une dépense) => +
   switch (bonType) {
     case 'Sortie':
     case 'Comptant':
+    case 'Ecommerce':
       return 1;
     case 'Commande':
       return -1;
     case 'Avoir':
     case 'AvoirComptant':
+    case 'AvoirEcommerce':
       return -1;
     case 'AvoirFournisseur':
       return 1;
@@ -62,11 +66,13 @@ const getBonRowBg = (bonType: string): string => {
   switch (bonType) {
     case 'Sortie':
     case 'Comptant':
+    case 'Ecommerce':
       return 'bg-green-50';
     case 'Commande':
       return 'bg-amber-50';
     case 'Avoir':
     case 'AvoirComptant':
+    case 'AvoirEcommerce':
       return 'bg-red-50';
     case 'AvoirFournisseur':
       return 'bg-blue-50';
@@ -86,10 +92,12 @@ const StatsDetailPage: React.FC = () => {
   const { data: clients = [] } = useGetAllClientsQuery();
   const { data: bonsSortie = [] } = useGetBonsByTypeQuery('Sortie');
   const { data: bonsComptant = [] } = useGetBonsByTypeQuery('Comptant');
+  const { data: bonsEcommerce = [] } = useGetBonsByTypeQuery('Ecommerce');
   const { data: bonsCommandes = [] } = useGetBonsByTypeQuery('Commande');
   const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
   const { data: avoirsFournisseur = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
   const { data: avoirsComptant = [] } = useGetBonsByTypeQuery('AvoirComptant');
+  const { data: avoirsEcommerce = [] } = useGetBonsByTypeQuery('AvoirEcommerce');
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -129,6 +137,7 @@ const StatsDetailPage: React.FC = () => {
       ? [
           ...bonsSortie.map((b: any) => ({ ...b, __kind: 'Sortie' })),
           ...bonsComptant.map((b: any) => ({ ...b, __kind: 'Comptant' })),
+          ...bonsEcommerce.map((b: any) => ({ ...b, __kind: 'Ecommerce' })),
         ]
       : [];
 
@@ -141,6 +150,7 @@ const StatsDetailPage: React.FC = () => {
           ...avoirsClient.map((b: any) => ({ ...b, __kind: 'Avoir' })),
           ...avoirsFournisseur.map((b: any) => ({ ...b, __kind: 'AvoirFournisseur' })),
           ...avoirsComptant.map((b: any) => ({ ...b, __kind: 'AvoirComptant' })),
+          ...avoirsEcommerce.map((b: any) => ({ ...b, __kind: 'AvoirEcommerce' })),
         ]
       : [];
 
@@ -153,6 +163,8 @@ const StatsDetailPage: React.FC = () => {
       const bonType = String(b.__kind || b.type || '');
       const inRange = inDateRange(toDisplayDate(b.date || b.date_creation));
 
+      const norm = (v: any) => String(v ?? '').trim().toLowerCase();
+
       // Filtrage statuts: garder large (objectif: afficher tous),
       // mais exclure les états clairement invalides.
       const statut = b.statut;
@@ -161,6 +173,10 @@ const StatsDetailPage: React.FC = () => {
       if (bonType === 'Comptant') {
         // Pour Comptant: exclure Annulé + les lignes déjà converties en Avoir
         validStatus = statut ? !['Annulé', 'Avoir'].includes(statut) : true;
+      } else if (bonType === 'Ecommerce') {
+        // Statuts e-commerce: exclure seulement cancelled/refunded (+ variantes)
+        const s = norm(statut);
+        validStatus = s ? !['cancelled', 'canceled', 'refunded', 'annulé', 'annule'].includes(s) : true;
       } else {
         validStatus = statut ? !['Annulé', 'Refusé', 'Expiré'].includes(statut) : true;
       }
@@ -170,10 +186,12 @@ const StatsDetailPage: React.FC = () => {
   }, [
     bonsSortie,
     bonsComptant,
+    bonsEcommerce,
     bonsCommandes,
     avoirsClient,
     avoirsFournisseur,
     avoirsComptant,
+    avoirsEcommerce,
     dateFrom,
     dateTo,
     includeVentes,
@@ -213,6 +231,15 @@ const StatsDetailPage: React.FC = () => {
         clientId = `comptant_${clientNom}`;
       }
 
+      // Ecommerce / AvoirEcommerce: si pas d'ID, utiliser un identifiant stable basé sur nom/phone/email
+      if (!clientId && (bonType === 'Ecommerce' || bonType === 'AvoirEcommerce')) {
+        const name = (bon.client_nom || bon.customer_name || bon.contact_nom_complet || bon.contact_name || '').toString().trim();
+        const phone = (bon.phone || '').toString().trim();
+        const email = (bon.customer_email || '').toString().trim().toLowerCase();
+        const key = name || phone || email || String(bon.numero || bon.order_number || bon.id || '');
+        clientId = `ecom_${key || 'inconnu'}`;
+      }
+
       // Si on désactive la condition client, on regroupe tout sous un seul "client".
       if (!useClientCondition) {
         clientId = '__all__';
@@ -230,14 +257,14 @@ const StatsDetailPage: React.FC = () => {
       }
 
       for (const it of items) {
-        const productId = String(it.product_id ?? it.id ?? "");
+        const productId = String(it.product_id ?? it.produit_id ?? it.produitId ?? it.id ?? "");
         if (!productId) continue;
-        const rawQty = it.quantite ?? it.qty ?? 0;
+        const rawQty = it.quantite ?? it.qty ?? it.quantity ?? 0;
         const qtySource = it.quantite != null ? 'item.quantite' : (it.qty != null ? 'item.qty' : '0');
         const qty = toNumber(rawQty);
 
         // Prix unitaire : priorité prix_unitaire puis prix / prix_vente / price / prix_achat
-        const rawUnit = it.prix_unitaire ?? it.prix ?? it.prix_vente ?? it.price ?? it.prix_achat;
+        const rawUnit = it.prix_unitaire ?? it.unit_price ?? it.prix ?? it.prix_vente ?? it.price ?? it.prix_achat;
         const unitSource =
           it.prix_unitaire != null
             ? 'item.prix_unitaire'
@@ -251,7 +278,7 @@ const StatsDetailPage: React.FC = () => {
                     ? 'item.prix_achat'
                     : '0';
         const unit = toNumber(rawUnit);
-        const total = toNumber(it.total ?? it.montant ?? unit * qty);
+        const total = toNumber(it.total ?? it.montant ?? it.montant_ligne ?? it.subtotal ?? unit * qty);
         const signedQty = qty * sign;
         const signedTotal = total * sign;
 
@@ -260,6 +287,10 @@ const StatsDetailPage: React.FC = () => {
             ? 'item.total'
             : it.montant != null
               ? 'item.montant'
+              : it.montant_ligne != null
+                ? 'item.montant_ligne'
+                : it.subtotal != null
+                  ? 'item.subtotal'
               : 'prix_unitaire×quantite';
         const baseBeforeSign = total;
 
@@ -344,6 +375,12 @@ const StatsDetailPage: React.FC = () => {
       if (cid.startsWith('comptant_')) {
         const clientNom = cid.replace('comptant_', '');
         return { value: cid, label: `${clientNom} (Comptant)` };
+      }
+
+      // Gérer les clients fictifs pour Ecommerce (quand pas de client_id)
+      if (cid.startsWith('ecom_')) {
+        const key = cid.replace('ecom_', '');
+        return { value: cid, label: `${key} (Ecommerce)` };
       }
       
       const c: any = clients.find((x: any) => String(x.id) === String(cid));
@@ -452,13 +489,13 @@ const StatsDetailPage: React.FC = () => {
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
         <span className="text-gray-600 font-medium mr-1">Clés de couleur :</span>
         <span className="inline-flex items-center px-2 py-1 rounded border border-green-200 bg-green-50 text-green-800">
-          Sortie / Comptant
+          Sortie / Comptant / Ecommerce
         </span>
         <span className="inline-flex items-center px-2 py-1 rounded border border-amber-200 bg-amber-50 text-amber-800">
           Commande
         </span>
         <span className="inline-flex items-center px-2 py-1 rounded border border-red-200 bg-red-50 text-red-800">
-          Avoir (client / comptant)
+          Avoir (client / comptant / ecommerce)
         </span>
         <span className="inline-flex items-center px-2 py-1 rounded border border-blue-200 bg-blue-50 text-blue-800">
           Avoir fournisseur
@@ -475,13 +512,13 @@ const StatsDetailPage: React.FC = () => {
         {/* Indicateur de filtrage par statut */}
         <div className="mb-4">
           {(() => {
-            const totalVentes = bonsSortie.length + bonsComptant.length;
+            const totalVentes = bonsSortie.length + bonsComptant.length + bonsEcommerce.length;
             const totalCommandes = bonsCommandes.length;
-            const totalAvoirs = avoirsClient.length + avoirsFournisseur.length + avoirsComptant.length;
+            const totalAvoirs = avoirsClient.length + avoirsFournisseur.length + avoirsComptant.length + avoirsEcommerce.length;
 
-            const filteredVentes = clientBonsForItems.filter((b: any) => ['Sortie', 'Comptant'].includes(String(b.__kind || b.type))).length;
+            const filteredVentes = clientBonsForItems.filter((b: any) => ['Sortie', 'Comptant', 'Ecommerce'].includes(String(b.__kind || b.type))).length;
             const filteredCommandes = clientBonsForItems.filter((b: any) => String(b.__kind || b.type) === 'Commande').length;
-            const filteredAvoirs = clientBonsForItems.filter((b: any) => ['Avoir', 'AvoirFournisseur', 'AvoirComptant'].includes(String(b.__kind || b.type))).length;
+            const filteredAvoirs = clientBonsForItems.filter((b: any) => ['Avoir', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce'].includes(String(b.__kind || b.type))).length;
 
             const labels: string[] = [];
             if (includeVentes) labels.push('Ventes');
@@ -584,7 +621,7 @@ const StatsDetailPage: React.FC = () => {
               }
               className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
             />
-            <label htmlFor="chkVentes" className="text-sm text-gray-700">Inclure Ventes (Sortie + Comptant)</label>
+            <label htmlFor="chkVentes" className="text-sm text-gray-700">Inclure Ventes (Sortie + Comptant + Ecommerce)</label>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -616,7 +653,7 @@ const StatsDetailPage: React.FC = () => {
               }
               className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
             />
-            <label htmlFor="chkAvoirs" className="text-sm text-gray-700">Inclure Avoirs (client + fournisseur + comptant)</label>
+            <label htmlFor="chkAvoirs" className="text-sm text-gray-700">Inclure Avoirs (client + fournisseur + comptant + ecommerce)</label>
           </div>
           {(!includeVentes && !includeCommandes && !includeAvoirs) && (
             <p className="text-xs text-red-600 font-medium">Sélectionnez au moins un type de bon.</p>
@@ -721,6 +758,8 @@ const StatsDetailPage: React.FC = () => {
                               cname = 'Tous (sans condition client)';
                             } else if (String(cr.clientId).startsWith('comptant_')) {
                               cname = String(cr.clientId).replace('comptant_', '') + ' (Comptant)';
+                            } else if (String(cr.clientId).startsWith('ecom_')) {
+                              cname = String(cr.clientId).replace('ecom_', '') + ' (Ecommerce)';
                             } else {
                               const c = clients.find((x: any) => String(x.id) === String(cr.clientId));
                               cname = c?.nom_complet ?? `Client ${cr.clientId}`;
@@ -839,6 +878,8 @@ const StatsDetailPage: React.FC = () => {
                   cname = 'Tous (sans condition client)';
                 } else if (String(row.clientId).startsWith('comptant_')) {
                   cname = String(row.clientId).replace('comptant_', '') + ' (Comptant)';
+                } else if (String(row.clientId).startsWith('ecom_')) {
+                  cname = String(row.clientId).replace('ecom_', '') + ' (Ecommerce)';
                 } else {
                   const c = clients.find((x: any) => String(x.id) === String(row.clientId));
                   cname = c?.nom_complet ?? `Client ${row.clientId}`;
