@@ -2222,7 +2222,12 @@ const BonsPage = () => {
                           if (nonCalculated) {
                             return <span className="text-gray-400">-</span>;
                           }
-                          const { profit, marginPct } = computeMouvementDetail(bon);
+                          // Prefer backend-calculated mouvement when available
+                          const backendCalc = bAny?.mouvement_calc;
+                          const hasBackend = backendCalc && typeof backendCalc.profit === 'number';
+                          const { profit, marginPct } = hasBackend
+                            ? { profit: Number(backendCalc.profit) || 0, marginPct: typeof backendCalc.marginPct === 'number' ? backendCalc.marginPct : null }
+                            : computeMouvementDetail(bon); // fallback during transition
                           let cls = 'text-gray-600';
                           if (profit > 0) cls = 'text-green-600';
                           else if (profit < 0) cls = 'text-red-600';

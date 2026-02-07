@@ -4,6 +4,7 @@ import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { resolveRemiseTarget } from '../utils/remiseTarget.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import { computeMouvementCalc } from '../utils/mouvementCalc.js';
 
 const router = express.Router();
 
@@ -89,7 +90,8 @@ router.get('/', async (_req, res) => {
         });
         const totalBon = Number(b?.montant_total || 0);
         const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
-        return { ...b, items, calc: { profitBon: profit, totalRemiseBon: totalRemise, netTotalBon: totalBon - totalRemise, marginPct } };
+        const mouvement_calc = computeMouvementCalc({ type: 'Comptant', items });
+        return { ...b, items, calc: { profitBon: profit, totalRemiseBon: totalRemise, netTotalBon: totalBon - totalRemise, marginPct }, mouvement_calc };
       });
     }
 
@@ -117,9 +119,13 @@ router.get('/:id', async (req, res) => {
             JSON_OBJECT(
               'id', ci.id,
               'product_id', ci.product_id,
+              'variant_id', ci.variant_id,
+              'unit_id', ci.unit_id,
               'designation', p.designation,
               'quantite', ci.quantite,
               'prix_unitaire', ci.prix_unitaire,
+              'prix_achat', p.prix_achat,
+              'cout_revient', p.cout_revient,
               'remise_pourcentage', ci.remise_pourcentage,
               'remise_montant', ci.remise_montant,
               'total', ci.total
@@ -153,6 +159,12 @@ router.get('/:id', async (req, res) => {
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
       livraisons: livs
     };
+
+    // Optional: include mouvement calculation when requested
+    const includeCalc = String((req.query?.includeCalc ?? '')).toLowerCase();
+    if (includeCalc === '1' || includeCalc === 'true') {
+      data.mouvement_calc = computeMouvementCalc({ type: 'Comptant', items: data.items });
+    }
 
     res.json(data);
   } catch (error) {

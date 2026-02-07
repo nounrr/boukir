@@ -27,11 +27,11 @@ export const bonsApi = api.injectEndpoints({
           case 'Devis':
             return '/devis';
           case 'Avoir':
-            return '/avoirs_client';
+            return '/avoirs_client?includeCalc=1';
           case 'AvoirFournisseur':
             return '/avoirs_fournisseur';
           case 'AvoirComptant':
-            return '/avoirs_comptant';
+            return '/avoirs_comptant?includeCalc=1';
           case 'AvoirEcommerce':
             return '/avoirs_ecommerce';
           case 'Vehicule':
