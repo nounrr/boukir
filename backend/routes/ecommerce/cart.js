@@ -3,35 +3,51 @@ import pool from '../../db/pool.js';
 
 const router = Router();
 
+function getUserId(req) {
+  const rawUserId = req.user?.id ?? req.user?.user_id ?? req.user?.userId;
+  if (rawUserId === undefined || rawUserId === null || rawUserId === '') return null;
+  const userId = Number(rawUserId);
+  return Number.isFinite(userId) ? userId : null;
+}
+
+function toSafeNumber(value, defaultValue = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : defaultValue;
+}
+
+function isInStock(stockQty) {
+  return toSafeNumber(stockQty) > 0;
+}
+
 // ==================== DEBUG: CHECK USER ====================
 // GET /api/ecommerce/cart/debug/user - Check current authenticated user
 router.get('/debug/user', async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?.user_id || req.user?.userId;
+    const userId = getUserId(req);
 
-    res.json({
-      authenticated: !!req.user,
-      jwtPayload: req.user,
-      extractedUserId: userId,
-      userExists: null
-    });
-
-    if (userId) {
-      const [userRows] = await pool.query(`
-        SELECT id, nom, prenom, email, role FROM contacts WHERE id = ?
-      `, [userId]);
-
+    if (!userId) {
       return res.json({
-        authenticated: true,
+        authenticated: !!req.user,
         jwtPayload: req.user,
         extractedUserId: userId,
-        userExists: userRows.length > 0,
-        userData: userRows.length > 0 ? userRows[0] : null,
-        hint: userRows.length === 0
-          ? 'User ID from JWT does not exist in contacts table'
-          : 'User found successfully'
+        userExists: null
       });
     }
+
+    const [userRows] = await pool.query(`
+      SELECT id, nom, prenom, email, role FROM contacts WHERE id = ?
+    `, [userId]);
+
+    return res.json({
+      authenticated: true,
+      jwtPayload: req.user,
+      extractedUserId: userId,
+      userExists: userRows.length > 0,
+      userData: userRows.length > 0 ? userRows[0] : null,
+      hint: userRows.length === 0
+        ? 'User ID from JWT does not exist in contacts table'
+        : 'User found successfully'
+    });
   } catch (err) {
     next(err);
   }
@@ -41,7 +57,7 @@ router.get('/debug/user', async (req, res, next) => {
 // GET /api/ecommerce/cart - Get current user's cart with all items
 router.get('/', async (req, res, next) => {
   try {
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
@@ -86,42 +102,38 @@ router.get('/', async (req, res, next) => {
     // Process each cart item
     const items = cartItems.map(item => {
       // Determine effective price based on variant/unit
-      let effectivePrice = Number(item.base_price);
-      let effectiveRemiseClient = Number(item.remise_client || 0);
-      let effectiveRemiseArtisan = Number(item.remise_artisan || 0);
+      let effectivePrice = toSafeNumber(item.base_price);
+      let effectiveRemiseClient = toSafeNumber(item.remise_client);
+      let effectiveRemiseArtisan = toSafeNumber(item.remise_artisan);
       
       // If variant is selected, use variant price
       if (item.variant_id && item.variant_price !== null) {
-        effectivePrice = Number(item.variant_price);
-        effectiveRemiseClient = Number(item.variant_remise_client || 0);
-        effectiveRemiseArtisan = Number(item.variant_remise_artisan || 0);
+        effectivePrice = toSafeNumber(item.variant_price);
+        effectiveRemiseClient = toSafeNumber(item.variant_remise_client);
+        effectiveRemiseArtisan = toSafeNumber(item.variant_remise_artisan);
       }
 
       // If unit is selected, adjust price by conversion factor
       if (item.unit_id && item.conversion_factor !== null && item.conversion_factor !== undefined) {
-        effectivePrice = effectivePrice * Number(item.conversion_factor || 1);
+        effectivePrice = effectivePrice * toSafeNumber(item.conversion_factor, 1);
       }
 
       // Apply promo
-      const promoPercentage = Number(item.pourcentage_promo || 0);
+      const promoPercentage = toSafeNumber(item.pourcentage_promo);
       const priceAfterPromo = promoPercentage > 0 
         ? effectivePrice * (1 - promoPercentage / 100)
         : effectivePrice;
 
       // Calculate stock availability
-      let availableStock;
-      if (item.variant_id) {
-        availableStock = Number(item.variant_stock || 0);
-      } else {
-        availableStock = Number(item.stock_partage_ecom_qty || 0);
-      }
+      const availableStock = item.variant_id
+        ? toSafeNumber(item.variant_stock)
+        : toSafeNumber(item.stock_partage_ecom_qty);
 
-      // Check if requested quantity is available
-      const isAvailable = availableStock >= Number(item.quantity);
-      const maxQuantity = availableStock;
+      const quantity = toSafeNumber(item.quantity);
+      const inStock = availableStock > 0;
+      const isAvailable = inStock && availableStock >= quantity;
 
       // Calculate subtotal
-      const quantity = Number(item.quantity);
       const subtotal = priceAfterPromo * quantity;
 
       // Determine primary image
@@ -148,7 +160,7 @@ router.get('/', async (req, res, next) => {
         unit: item.unit_id ? {
           id: item.unit_id,
           name: item.unit_name,
-          conversion_factor: Number(item.conversion_factor)
+          conversion_factor: toSafeNumber(item.conversion_factor)
         } : null,
         pricing: {
           base_price: Number(item.base_price),
@@ -161,9 +173,8 @@ router.get('/', async (req, res, next) => {
           subtotal: subtotal
         },
         stock: {
-          available: availableStock,
-          is_available: isAvailable,
-          max_quantity: maxQuantity
+          in_stock: inStock,
+          is_available: isAvailable
         },
         created_at: item.created_at,
         updated_at: item.updated_at
@@ -197,7 +208,7 @@ router.get('/', async (req, res, next) => {
 // GET /api/ecommerce/cart/summary - Get quick cart summary (lightweight)
 router.get('/summary', async (req, res, next) => {
   try {
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
@@ -226,7 +237,7 @@ router.get('/summary', async (req, res, next) => {
 // POST /api/ecommerce/cart/items - Add item to cart or update quantity
 router.post('/items', async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?.user_id || req.user?.userId;
+    const userId = getUserId(req);
 
     if (!userId) {
       return res.status(401).json({
@@ -264,7 +275,7 @@ router.post('/items', async (req, res, next) => {
     const productId = Number(product_id);
     const variantId = variant_id ? Number(variant_id) : null;
     const unitId = unit_id ? Number(unit_id) : null;
-    const qty = Math.max(1, Number(quantity));
+    const qty = Math.max(1, toSafeNumber(quantity, 1));
 
     // Check if product exists and is published
     const [productRows] = await pool.query(`
@@ -302,7 +313,7 @@ router.post('/items', async (req, res, next) => {
     }
 
     // Validate variant if provided
-    let availableStock = Number(product.stock_partage_ecom_qty);
+    let availableStock = toSafeNumber(product.stock_partage_ecom_qty);
     if (variantId) {
       const [variantRows] = await pool.query(`
         SELECT stock_quantity
@@ -314,7 +325,17 @@ router.post('/items', async (req, res, next) => {
         return res.status(400).json({ message: 'Variante invalide' });
       }
 
-      availableStock = Number(variantRows[0].stock_quantity);
+      availableStock = toSafeNumber(variantRows[0].stock_quantity);
+    }
+
+    // Guard: treat 0/NULL/invalid stock as out of stock (same as products `in_stock`)
+    if (!(availableStock > 0)) {
+      return res.status(400).json({
+        message: 'Produit en rupture de stock',
+        code: 'OUT_OF_STOCK',
+        product_id: productId,
+        variant_id: variantId
+      });
     }
 
     // Validate unit if provided
@@ -349,7 +370,9 @@ router.post('/items', async (req, res, next) => {
       if (newQuantity > availableStock) {
         return res.status(400).json({ 
           message: 'Quantité non disponible en stock',
-          available_stock: availableStock,
+          code: 'INSUFFICIENT_STOCK',
+          product_id: productId,
+          variant_id: variantId,
           requested_quantity: newQuantity
         });
       }
@@ -372,7 +395,9 @@ router.post('/items', async (req, res, next) => {
       if (qty > availableStock) {
         return res.status(400).json({ 
           message: 'Quantité non disponible en stock',
-          available_stock: availableStock,
+          code: 'INSUFFICIENT_STOCK',
+          product_id: productId,
+          variant_id: variantId,
           requested_quantity: qty
         });
       }
@@ -398,7 +423,7 @@ router.post('/items', async (req, res, next) => {
 // PUT /api/ecommerce/cart/items/:id - Update cart item quantity
 router.put('/items/:id', async (req, res, next) => {
   try {
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
@@ -470,14 +495,22 @@ router.put('/items/:id', async (req, res, next) => {
 
     // Determine available stock
     const availableStock = cartItem.variant_id 
-      ? Number(cartItem.variant_stock || 0)
-      : Number(cartItem.stock_partage_ecom_qty || 0);
+      ? toSafeNumber(cartItem.variant_stock)
+      : toSafeNumber(cartItem.stock_partage_ecom_qty);
+
+    if (!(availableStock > 0)) {
+      return res.status(400).json({
+        message: 'Produit en rupture de stock',
+        code: 'OUT_OF_STOCK',
+        requested_quantity: qty
+      });
+    }
 
     // Check stock availability
     if (qty > availableStock) {
       return res.status(400).json({ 
         message: 'Quantité non disponible en stock',
-        available_stock: availableStock,
+        code: 'INSUFFICIENT_STOCK',
         requested_quantity: qty
       });
     }
@@ -504,7 +537,7 @@ router.put('/items/:id', async (req, res, next) => {
 // DELETE /api/ecommerce/cart/items/:id - Remove item from cart
 router.delete('/items/:id', async (req, res, next) => {
   try {
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
@@ -541,7 +574,7 @@ router.delete('/items/:id', async (req, res, next) => {
 // DELETE /api/ecommerce/cart - Clear all items from cart
 router.delete('/', async (req, res, next) => {
   try {
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
@@ -564,7 +597,7 @@ router.delete('/', async (req, res, next) => {
 // GET /api/ecommerce/cart/suggestions - Get personalized product suggestions based on cart
 router.get('/suggestions', async (req, res, next) => {
   try {
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
@@ -698,7 +731,7 @@ router.get('/suggestions', async (req, res, next) => {
             image_url: img.image_url,
             position: img.position
           })),
-          quantite_disponible: Number(p.stock_partage_ecom_qty),
+          in_stock: toSafeNumber(p.stock_partage_ecom_qty) > 0,
           has_variants: !!p.has_variants,
           brand: p.brand_id ? {
             id: p.brand_id,
@@ -782,7 +815,7 @@ router.get('/suggestions', async (req, res, next) => {
             image_url: img.image_url,
             position: img.position
           })),
-          quantite_disponible: Number(p.stock_partage_ecom_qty),
+          in_stock: toSafeNumber(p.stock_partage_ecom_qty) > 0,
           has_variants: !!p.has_variants,
           brand: p.brand_id ? {
             id: p.brand_id,
@@ -812,7 +845,7 @@ router.get('/suggestions', async (req, res, next) => {
 // POST /api/ecommerce/cart/validate - Validate cart before checkout
 router.post('/validate', async (req, res, next) => {
   try {
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
@@ -882,23 +915,37 @@ router.post('/validate', async (req, res, next) => {
       }
 
       // Check stock availability
-      const availableStock = item.variant_id 
-        ? Number(item.variant_stock || 0)
-        : Number(item.stock_partage_ecom_qty || 0);
+      const availableStock = item.variant_id
+        ? toSafeNumber(item.variant_stock)
+        : toSafeNumber(item.stock_partage_ecom_qty);
 
-      if (Number(item.quantity) > availableStock) {
-        const itemName = item.variant_id 
-          ? `${item.designation} (${item.variant_name})`
-          : item.designation;
+      const requestedQty = toSafeNumber(item.quantity);
+      const inStock = availableStock > 0;
 
+      const itemName = item.variant_id
+        ? `${item.designation} (${item.variant_name})`
+        : item.designation;
+
+      if (!inStock) {
+        issues.push({
+          cart_item_id: item.id,
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          issue: 'out_of_stock',
+          message: `${itemName}: produit en rupture de stock`,
+          requested_quantity: requestedQty
+        });
+        continue;
+      }
+
+      if (requestedQty > availableStock) {
         issues.push({
           cart_item_id: item.id,
           product_id: item.product_id,
           variant_id: item.variant_id,
           issue: 'insufficient_stock',
-          message: `${itemName}: seulement ${availableStock} disponible(s)`,
-          requested_quantity: Number(item.quantity),
-          available_stock: availableStock
+          message: `${itemName}: stock insuffisant`,
+          requested_quantity: requestedQty
         });
       }
     }
