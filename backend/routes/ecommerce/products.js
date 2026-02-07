@@ -185,7 +185,7 @@ router.get('/', async (req, res, next) => {
         p.remise_client,
         p.remise_artisan,
         p.image_url,
-        p.stock_partage_ecom_qty as quantite_disponible,
+        p.stock_partage_ecom_qty as stock_qty,
         p.has_variants,
         p.is_obligatoire_variant,
         p.base_unit,
@@ -292,7 +292,6 @@ router.get('/', async (req, res, next) => {
             prix_vente: Number(v.prix_vente),
             remise_client: Number(v.remise_client || 0),
             remise_artisan: Number(v.remise_artisan || 0),
-            stock_quantity: Number(v.stock_quantity),
             available: Number(v.stock_quantity) > 0,
             image_url: v.image_url
           };
@@ -346,6 +345,7 @@ router.get('/', async (req, res, next) => {
 
       return {
         id: r.id,
+        reference: String(r.id),
         designation: r.designation,
         designation_ar: r.designation_ar,
         designation_en: r.designation_en,
@@ -362,7 +362,7 @@ router.get('/', async (req, res, next) => {
           image_url: img.image_url,
           position: img.position
         })),
-        quantite_disponible: Number(r.quantite_disponible),
+        in_stock: Number(r.stock_qty || 0) > 0,
         has_variants: !!r.has_variants,
         is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
         isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,
@@ -399,25 +399,10 @@ router.get('/', async (req, res, next) => {
     }));
 
     // ===== GET FILTER METADATA =====
-    // 1. Get all categories hierarchy (for category filter) - include ALL categories with published products
+    // 1. Get ALL categories hierarchy (for header menu + filters)
     const [allCategories] = await pool.query(`
-      WITH RECURSIVE category_tree AS (
-        -- Get all leaf categories that have published products
-        SELECT DISTINCT c.id, c.nom, c.nom_ar, c.nom_en, c.nom_zh, c.parent_id
-        FROM categories c
-        INNER JOIN products p ON p.categorie_id = c.id
-        WHERE p.ecom_published = 1 
-          AND COALESCE(p.is_deleted, 0) = 0
-        
-        UNION
-        
-        -- Recursively get all parent categories
-        SELECT c.id, c.nom, c.nom_ar, c.nom_en, c.nom_zh, c.parent_id
-        FROM categories c
-        INNER JOIN category_tree ct ON c.id = ct.parent_id
-      )
-      SELECT DISTINCT id, nom, nom_ar, nom_en, nom_zh, parent_id
-      FROM category_tree
+      SELECT id, nom, nom_ar, nom_en, nom_zh, parent_id
+      FROM categories
       ORDER BY parent_id, nom
     `);
 
@@ -468,16 +453,11 @@ router.get('/', async (req, res, next) => {
       ORDER BY pu.unit_name
     `);
 
-    // 4. Get all available brands
-    // NOTE: this list is used for filtering/navigation (e.g. brand_id=23),
-    // so we include brands that have at least one published product even if out of stock.
+    // 4. Get ALL brands (for header nav + filters)
     const [allBrands] = await pool.query(`
-      SELECT DISTINCT b.id, b.nom, b.image_url
-      FROM brands b
-      INNER JOIN products p ON p.brand_id = b.id
-      WHERE p.ecom_published = 1
-        AND COALESCE(p.is_deleted, 0) = 0
-      ORDER BY b.nom
+      SELECT id, nom, image_url
+      FROM brands
+      ORDER BY nom
     `);
 
     // 5. Get price range
@@ -622,7 +602,6 @@ router.get('/:id', async (req, res, next) => {
           prix_vente: Number(v.prix_vente),
           remise_client: Number(v.remise_client || 0),
           remise_artisan: Number(v.remise_artisan || 0),
-          stock_quantity: Number(v.stock_quantity),
           available: Number(v.stock_quantity) > 0,
           image_url: v.image_url,
           gallery: variantImages.map(img => ({
@@ -749,6 +728,7 @@ router.get('/:id', async (req, res, next) => {
 
         return {
           id: sp.id,
+          reference: String(sp.id),
           designation: sp.designation,
           designation_ar: sp.designation_ar,
           designation_en: sp.designation_en,
@@ -765,7 +745,7 @@ router.get('/:id', async (req, res, next) => {
             image_url: img.image_url,
             position: img.position
           })),
-          quantite_disponible: Number(sp.stock_partage_ecom_qty),
+          in_stock: Number(sp.stock_partage_ecom_qty || 0) > 0,
           has_variants: !!sp.has_variants,
           brand: sp.brand_id ? {
             id: sp.brand_id,
@@ -791,6 +771,7 @@ router.get('/:id', async (req, res, next) => {
     // Build complete product response
     const product = {
       id: r.id,
+      reference: String(r.id),
       designation: r.designation,
       designation_ar: r.designation_ar,
       designation_en: r.designation_en,
@@ -805,7 +786,6 @@ router.get('/:id', async (req, res, next) => {
       has_promo: promoPercentage > 0,
       
       // Stock
-      quantite_disponible: Number(r.stock_partage_ecom_qty),
       in_stock: Number(r.stock_partage_ecom_qty) > 0,
       
       // Images & Media
@@ -894,7 +874,6 @@ router.get('/featured/promo', async (req, res, next) => {
         p.remise_client,
         p.remise_artisan,
         p.image_url,
-        p.stock_partage_ecom_qty as quantite_disponible,
         p.has_variants,
         p.is_obligatoire_variant,
         b.nom as brand_nom
@@ -941,6 +920,7 @@ router.get('/featured/promo', async (req, res, next) => {
 
       return {
         id: r.id,
+        reference: String(r.id),
         designation: r.designation,
         designation_ar: r.designation_ar,
         designation_en: r.designation_en,
@@ -956,7 +936,6 @@ router.get('/featured/promo', async (req, res, next) => {
           image_url: img.image_url,
           position: img.position
         })),
-        quantite_disponible: Number(r.quantite_disponible),
         has_variants: !!r.has_variants,
         is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
         isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,
@@ -989,7 +968,6 @@ router.get('/featured/new', async (req, res, next) => {
         p.remise_client,
         p.remise_artisan,
         p.image_url,
-        p.stock_partage_ecom_qty as quantite_disponible,
         p.has_variants,
         p.is_obligatoire_variant,
         b.nom as brand_nom
@@ -1037,6 +1015,7 @@ router.get('/featured/new', async (req, res, next) => {
 
       return {
         id: r.id,
+        reference: String(r.id),
         designation: r.designation,
         designation_ar: r.designation_ar,
         designation_en: r.designation_en,
@@ -1053,7 +1032,6 @@ router.get('/featured/new', async (req, res, next) => {
           image_url: img.image_url,
           position: img.position
         })),
-        quantite_disponible: Number(r.quantite_disponible),
         has_variants: !!r.has_variants,
         is_obligatoire_variant: Number(r.is_obligatoire_variant || 0) === 1,
         isObligatoireVariant: Number(r.is_obligatoire_variant || 0) === 1,

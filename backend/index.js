@@ -23,6 +23,7 @@ import categoriesRouter from './routes/categories.js';
 import brandsRouter from './routes/brands.js';
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
+import ecommerceSearchRouter from './routes/ecommerce/search.js';
 import ecommerceCartRouter from './routes/ecommerce/cart.js';
 import ecommerceWishlistRouter from './routes/ecommerce/wishlist.js';
 import ecommerceOrdersRouter from './routes/ecommerce/orders.js';
@@ -168,6 +169,7 @@ const PUBLIC_PATHS = new Set([
 // E-commerce public routes (no authentication required)
 const ECOMMERCE_PUBLIC_PREFIXES = [
   '/api/ecommerce/products',
+  '/api/ecommerce/search',
   '/api/ecommerce/promo',
   '/api/ecommerce/pickup-locations',
 ];
@@ -274,6 +276,7 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/brands', brandsRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
+app.use('/api/ecommerce/search', optionalAuth, ecommerceSearchRouter); // E-commerce public search (with optional auth)
 app.use('/api/ecommerce/promo', optionalAuth, ecommercePromoRouter); // E-commerce promo validation (public)
 app.use('/api/ecommerce/pickup-locations', optionalAuth, ecommercePickupLocationsRouter); // E-commerce pickup locations (public)
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
