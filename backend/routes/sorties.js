@@ -4,6 +4,7 @@ import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { resolveRemiseTarget } from '../utils/remiseTarget.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import { computeMouvementCalc } from '../utils/mouvementCalc.js';
 
 const router = express.Router();
 
@@ -90,7 +91,9 @@ router.get('/', async (_req, res) => {
         });
         const totalBon = Number(b?.montant_total || 0);
         const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
-        return { ...b, items, calc: { profitBon: profit, totalRemiseBon: totalRemise, netTotalBon: totalBon - totalRemise, marginPct } };
+        // New: mouvement_calc aligned with frontend computeMouvementDetail
+        const mouvement_calc = computeMouvementCalc({ type: 'Sortie', items });
+        return { ...b, items, calc: { profitBon: profit, totalRemiseBon: totalRemise, netTotalBon: totalBon - totalRemise, marginPct }, mouvement_calc };
       });
     }
 
@@ -118,9 +121,13 @@ router.get('/:id', async (req, res) => {
             JSON_OBJECT(
               'id', si.id,
               'product_id', si.product_id,
+              'variant_id', si.variant_id,
+              'unit_id', si.unit_id,
               'designation', p.designation,
               'quantite', si.quantite,
               'prix_unitaire', si.prix_unitaire,
+              'prix_achat', p.prix_achat,
+              'cout_revient', p.cout_revient,
               'remise_pourcentage', si.remise_pourcentage,
               'remise_montant', si.remise_montant,
               'total', si.total,
@@ -156,6 +163,12 @@ router.get('/:id', async (req, res) => {
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
       livraisons: livs
     };
+
+    // Optional: include mouvement calculation when requested
+    const includeCalc = String((req.query?.includeCalc ?? '')).toLowerCase();
+    if (includeCalc === '1' || includeCalc === 'true') {
+      data.mouvement_calc = computeMouvementCalc({ type: 'Sortie', items: data.items });
+    }
 
     res.json(data);
   } catch (error) {

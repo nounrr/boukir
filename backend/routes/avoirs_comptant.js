@@ -3,6 +3,7 @@ import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import { computeMouvementCalc } from '../utils/mouvementCalc.js';
 
 // Avoirs Comptant: similar to avoirs_client but stores a free-text client name (client_nom) instead of client_id.
 // Numero format assumption: AVCC + zero-padded ID (e.g., AVCC01). Adjust if different pattern desired.
@@ -25,6 +26,8 @@ router.get('/', async (_req, res) => {
               'designation', p.designation,
               'quantite', i.quantite,
               'prix_unitaire', i.prix_unitaire,
+              'prix_achat', p.prix_achat,
+              'cout_revient', p.cout_revient,
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
               'total', i.total
@@ -38,11 +41,19 @@ router.get('/', async (_req, res) => {
       ORDER BY ac.created_at DESC
     `);
 
-    const data = rows.map(r => ({
+    let data = rows.map(r => ({
       ...r,
       numero: `AVCC${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
     }));
+
+    const includeCalc = String((_req.query?.includeCalc ?? '')).toLowerCase();
+    if (includeCalc === '1' || includeCalc === 'true') {
+      data = data.map(b => ({
+        ...b,
+        mouvement_calc: computeMouvementCalc({ type: 'AvoirComptant', items: b.items })
+      }));
+    }
 
     res.json(data);
   } catch (error) {
@@ -64,9 +75,13 @@ router.get('/:id', async (req, res) => {
             JSON_OBJECT(
               'id', i.id,
               'product_id', i.product_id,
+              'variant_id', i.variant_id,
+              'unit_id', i.unit_id,
               'designation', p.designation,
               'quantite', i.quantite,
               'prix_unitaire', i.prix_unitaire,
+              'prix_achat', p.prix_achat,
+              'cout_revient', p.cout_revient,
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
               'total', i.total
@@ -89,6 +104,11 @@ router.get('/:id', async (req, res) => {
       numero: `AVCC${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
     };
+
+    const includeCalc = String((req.query?.includeCalc ?? '')).toLowerCase();
+    if (includeCalc === '1' || includeCalc === 'true') {
+      data.mouvement_calc = computeMouvementCalc({ type: 'AvoirComptant', items: data.items });
+    }
 
     res.json(data);
   } catch (error) {

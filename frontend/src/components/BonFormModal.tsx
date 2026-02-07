@@ -1,3 +1,4 @@
+import { usePreviewMouvementMutation } from '../store/api/calcApi';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
 import type { FormikProps } from 'formik';
@@ -382,6 +383,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   initialValues,
   onBonAdded,
 }) => {
+  const [previewMouvement, { data: mouvementPreviewResp, isLoading: mouvementPreviewLoading }] = usePreviewMouvementMutation();
+
   const { user, token } = useAuth();
   const dispatch = useDispatch();
   const formikRef = useRef<FormikProps<any>>(null);
@@ -799,6 +802,40 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const suppressPriceBlurRef = useRef<{ row: number; ts: number } | null>(null);
 // 🆕 Saisie brute par ligne pour "quantite"
 const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
+
+  // Backend mouvement preview (debounced) to keep displayed mouvement aligned with server during edits
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Only meaningful for these types (same as BonsPage column)
+    const type = String((formikRef.current?.values as any)?.type || currentTab || '');
+    if (!['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(type)) return;
+
+    const handle = setTimeout(() => {
+      try {
+        const values = (formikRef.current?.values as any) || {};
+        const items = Array.isArray(values.items) ? values.items : [];
+        const payloadItems = items.map((item: any, idx: number) => {
+          const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+          const pu = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+          const rm = parseFloat(normalizeDecimal(remiseRaw[idx] ?? String(item.remise_montant ?? ''))) || 0;
+          return {
+            ...item,
+            quantite: q,
+            prix_unitaire: pu,
+            remise_montant: rm,
+          };
+        });
+
+        previewMouvement({ type, items: payloadItems });
+      } catch {
+        // ignore preview errors
+      }
+    }, 350);
+
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentTab, qtyRaw, unitPriceRaw, remiseRaw, showRemisePanel]);
   /* ----------------------- Initialisation des valeurs ----------------------- */
   const getInitialValues = () => {
   if (initialValues) {
@@ -2939,9 +2976,25 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const unitIdSel = values.items[index].unit_id;
                                           const unitsForProduct = product?.units ?? [];
 
+                                          const factorSel = unitIdSel
+                                            ? Number(
+                                                (unitsForProduct.find((u: any) => String(u.id) === String(unitIdSel)) || {})
+                                                  .conversion_factor
+                                              ) || 1
+                                            : 1;
+
                                           if (vId) {
                                             const variant = variants.find((v: any) => String(v.id) === vId);
                                             if (variant) {
+                                              // Keep purchase/cost consistent with unit selection (important for margins)
+                                              const baseAchat = Number(variant.prix_achat ?? product?.prix_achat ?? 0) || 0;
+                                              const baseCoutRevient = Number(product?.cout_revient ?? 0) || 0;
+                                              setFieldValue(`items.${index}.prix_achat`, Number((baseAchat * factorSel).toFixed(2)));
+                                              setFieldValue(
+                                                `items.${index}.cout_revient`,
+                                                Number((baseCoutRevient * factorSel).toFixed(2))
+                                              );
+
                                               // Update price based on variant
                                               const variantBasePrice = values.type === 'Commande'
                                                 ? Number(variant.prix_achat || 0)
@@ -2950,8 +3003,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               // If a unit is already selected, apply its conversion factor to the variant price
                                               let effectivePrice = variantBasePrice;
                                               if (unitIdSel) {
-                                                const unitSel = unitsForProduct.find((u: any) => String(u.id) === String(unitIdSel));
-                                                const factorSel = Number(unitSel?.conversion_factor || 1) || 1;
                                                 effectivePrice = Number((variantBasePrice * factorSel).toFixed(2));
                                               }
 
@@ -2969,11 +3020,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           // Variant cleared => revert to base product price (respect unit selection)
                                           const basePriceAchat = Number(product?.prix_achat ?? 0) || 0;
                                           const basePriceVente = Number(product?.prix_vente ?? 0) || 0;
+                                          const baseCoutRevient = Number(product?.cout_revient ?? 0) || 0;
 
                                           let effectivePrice = values.type === 'Commande' ? basePriceAchat : basePriceVente;
                                           if (unitIdSel) {
                                             const unitSel = unitsForProduct.find((u: any) => String(u.id) === String(unitIdSel));
                                             const factorSel = Number(unitSel?.conversion_factor || 1) || 1;
+
+                                            // Always scale purchase/cost with unit factor
+                                            setFieldValue(`items.${index}.prix_achat`, Number((basePriceAchat * factorSel).toFixed(2)));
+                                            setFieldValue(
+                                              `items.${index}.cout_revient`,
+                                              Number((baseCoutRevient * factorSel).toFixed(2))
+                                            );
+
                                             if (values.type === 'Commande') {
                                               effectivePrice = Number((basePriceAchat * factorSel).toFixed(2));
                                             } else {
@@ -2985,6 +3045,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 effectivePrice = Number((basePriceVente * factorSel).toFixed(2));
                                               }
                                             }
+                                          } else {
+                                            // No unit selected => base purchase/cost
+                                            setFieldValue(`items.${index}.prix_achat`, basePriceAchat);
+                                            setFieldValue(`items.${index}.cout_revient`, baseCoutRevient);
                                           }
 
                                           if (values.type === 'Commande') {
@@ -3041,6 +3105,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               const variantsForProduct = product?.variants ?? [];
                                               let baseA = basePriceAchat;
                                               let baseV = basePriceVente;
+                                              let baseCR = Number(product?.cout_revient ?? 0) || 0;
                                               if (selectedVariantId) {
                                                 const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                                 if (v) {
@@ -3048,6 +3113,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                   baseV = Number(v.prix_vente ?? basePriceVente) || 0;
                                                 }
                                               }
+
+                                              // Always keep purchase/cost values aligned with unit conversion (even for sales bons)
+                                              setFieldValue(`items.${index}.prix_achat`, Number((baseA * factor).toFixed(2)));
+                                              setFieldValue(`items.${index}.cout_revient`, Number((baseCR * factor).toFixed(2)));
+
                                               if (values.type === 'Commande') {
                                                 newPrice = Number((baseA * factor).toFixed(2));
                                                 setFieldValue(`items.${index}.prix_achat`, newPrice);
@@ -3072,6 +3142,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             const variantsForProduct = product?.variants ?? [];
                                             let baseA = basePriceAchat;
                                             let baseV = basePriceVente;
+                                            const baseCR = Number(product?.cout_revient ?? 0) || 0;
                                             if (selectedVariantId) {
                                               const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                               if (v) {
@@ -3079,6 +3150,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 baseV = Number(v.prix_vente ?? basePriceVente) || 0;
                                               }
                                             }
+
+                                            // Revert purchase/cost to base unit values
+                                            setFieldValue(`items.${index}.prix_achat`, baseA);
+                                            setFieldValue(`items.${index}.cout_revient`, baseCR);
+
                                             if (values.type === 'Commande') {
                                               newPrice = baseA;
                                               setFieldValue(`items.${index}.prix_achat`, newPrice);
@@ -3498,21 +3574,24 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 <div className="flex justify-between items-center mt-2">
   <span className="text-md font-semibold text-green-700">Mouvement:</span>
   <span className="text-md font-semibold text-green-700">
-    {formatFull(
-      values.items
-        .reduce((sum: number, item: any, idx: number) => {
-          const q =
-            parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-          const prixVente =
-            parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
-          const crRaw = item.cout_revient ?? item.prix_achat ?? 0;
-          const coutRevient =
-            typeof crRaw === 'string'
-              ? parseFloat(String(crRaw).replace(',', '.')) || 0
-              : Number(crRaw) || 0;
-          return sum + (prixVente - coutRevient) * q;
-        }, 0)
-    )}{' '}
+    {(() => {
+      const backend = (mouvementPreviewResp as any)?.mouvement_calc;
+      if (backend && typeof backend.profit === 'number') {
+        return formatFull(Number(backend.profit || 0));
+      }
+      if (mouvementPreviewLoading) {
+        return '...';
+      }
+      // Fallback local calc if preview not available
+      const local = (values.items || []).reduce((sum: number, item: any, idx: number) => {
+        const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+        const prixVente = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+        const crRaw = item.cout_revient ?? item.prix_achat ?? 0;
+        const coutRevient = typeof crRaw === 'string' ? parseFloat(String(crRaw).replace(',', '.')) || 0 : Number(crRaw) || 0;
+        return sum + (prixVente - coutRevient) * q;
+      }, 0);
+      return formatFull(local);
+    })()}
     DH
   </span>
 </div>
