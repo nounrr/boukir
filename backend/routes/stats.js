@@ -146,7 +146,6 @@ router.get('/chiffre-affaires', async (req, res) => {
         LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
         LEFT JOIN products p ON p.id = oi.product_id
         WHERE LOWER(COALESCE(o.status, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}
-          AND COALESCE(o.isNotCalculated, 0) <> 1
           ${buildDateFilter(filterArgs, 'o', 'created_at').sql}
         GROUP BY o.id, day
       ) t
@@ -498,7 +497,6 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
       LEFT JOIN products p ON p.id = oi.product_id
       WHERE LOWER(COALESCE(o.status, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}
-        AND COALESCE(o.isNotCalculated, 0) <> 1
         AND DATE(o.created_at) = ?
     `;
 
