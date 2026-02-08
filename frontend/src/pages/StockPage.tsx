@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category } from '../types';
@@ -5,11 +6,12 @@ import { Plus, Edit, Trash2, Search, Package, Settings } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
-import { useGetProductsQuery, useDeleteProductMutation, useTranslateProductsMutation } from '../store/api/productsApi';
+import { useGetProductsQuery, useDeleteProductMutation, useTranslateProductsMutation, useGenerateSpecsMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
 import * as XLSX from 'xlsx';
+import Swal from 'sweetalert2';
 
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
@@ -37,7 +39,7 @@ const StockPage: React.FC = () => {
   const organizedCategories = useMemo(() => {
     const roots = categories.filter((c: Category) => !c.parent_id);
     const result: { id: number; nom: string; level: number }[] = [];
-    
+
     const traverse = (cats: Category[], level: number) => {
       cats.forEach(c => {
         result.push({ id: c.id, nom: c.nom, level });
@@ -61,8 +63,10 @@ const StockPage: React.FC = () => {
   const [deleteProductMutation] = useDeleteProductMutation();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isTranslating, setIsTranslating] = useState(false);
+  const [isGeneratingSpecs, setIsGeneratingSpecs] = useState(false);
   // translation mutation
   const [translateProducts] = useTranslateProductsMutation();
+  const [generateSpecs] = useGenerateSpecsMutation();
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -138,8 +142,8 @@ const StockPage: React.FC = () => {
   }, [filterCategory, categoryChildrenMap]);
 
   const handleEdit = (product: any) => {
-    const realProduct = product.isVariantRow 
-      ? products.find((p: any) => p.id === product.originalId) 
+    const realProduct = product.isVariantRow
+      ? products.find((p: any) => p.id === product.originalId)
       : product;
     setEditingProduct(realProduct || product);
     setIsModalOpen(true);
@@ -152,7 +156,7 @@ const StockPage: React.FC = () => {
       'Oui, supprimer',
       'Annuler'
     );
-    
+
     if (result.isConfirmed) {
       try {
         await deleteProductMutation({ id }).unwrap();
@@ -204,7 +208,7 @@ const StockPage: React.FC = () => {
     const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
     const designation = String(product.designation ?? '').toLowerCase();
     const matchesSearch = designation.includes(term) || refStr.includes(term);
-    
+
     const matchesCategory = !filterCategory || (() => {
       const ids = categoryFilterIds;
       if (!ids) return true;
@@ -247,7 +251,7 @@ const StockPage: React.FC = () => {
         const rowNum = index + 2; // Excel row number (1-based)
         const qtyCell = `D${rowNum}`; // Colonne Quantité
         const priceCell = `E${rowNum}`; // Colonne Prix Achat
-        
+
         // Formule: Quantité * Prix Achat
         const cellRef = XLSX.utils.encode_cell({ r: index + 1, c: 5 }); // Colonne F (index 5)
         ws[cellRef] = { t: 'n', f: `${qtyCell}*${priceCell}`, v: 0 };
@@ -256,7 +260,7 @@ const StockPage: React.FC = () => {
       // Ajouter la ligne TOTAL
       const totalRowIndex = rows.length + 1; // 0-based index for the new row
       const totalRowNum = totalRowIndex + 1; // 1-based Excel row number
-      
+
       XLSX.utils.sheet_add_json(ws, [{
         'N°': 'TOTAL',
         'Référence': '',
@@ -277,7 +281,7 @@ const StockPage: React.FC = () => {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Stock');
       const suffix = activeTab === 'Services' ? 'services' : 'produits';
-      XLSX.writeFile(wb, `export-${suffix}-${new Date().toISOString().slice(0,10)}.xlsx`);
+      XLSX.writeFile(wb, `export-${suffix}-${new Date().toISOString().slice(0, 10)}.xlsx`);
       showSuccess('Export Excel généré avec formules');
     } catch (e) {
       console.error(e);
@@ -340,11 +344,10 @@ const StockPage: React.FC = () => {
                 setActiveTab('Produits');
                 setSelectedIds(new Set());
               }}
-              className={`px-4 py-2 text-sm font-medium ${
-                activeTab === 'Produits'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
+              className={`px-4 py-2 text-sm font-medium ${activeTab === 'Produits'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
             >
               Produits
             </button>
@@ -354,17 +357,90 @@ const StockPage: React.FC = () => {
                 setActiveTab('Services');
                 setSelectedIds(new Set());
               }}
-              className={`px-4 py-2 text-sm font-medium ${
-                activeTab === 'Services'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
+              className={`px-4 py-2 text-sm font-medium ${activeTab === 'Services'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
             >
               Services
             </button>
           </div>
         </div>
         <div className="flex gap-3">
+          {/* Generate Specs Button */}
+          <button
+            onClick={async () => {
+              if (selectedIds.size === 0) return;
+
+              // We use SwAlert's input feature for the checkbox? 
+              // Or simpler: just ask "Générer + Traduire" vs "Générer seulement" via buttons?
+              // The user said "direcy option de traduire". 
+              // Let's us showConfirmation with distinct confirmButtonText or similar? 
+              // Limitation: showConfirmation is a simple wrapper around Swal.fire.
+              // We can use Swal directly here for more control.
+
+              // We can use Swal directly here for more control.
+
+              const { isConfirmed, value: translate } = await Swal.fire({
+                title: 'Génération Fiche Technique',
+                html: `
+                  <p>Générer la fiche technique et description pour ${selectedIds.size} produit(s) ?</p>
+                  <p class="text-sm text-gray-500 mt-2">Cela utilisera l'IA pour simuler une recherche web.</p>
+                  <div class="mt-4 flex items-center justify-center gap-2">
+                    <input type="checkbox" id="swal-translate-opt" class="w-4 h-4 text-blue-600 rounded">
+                    <label for="swal-translate-opt" class="text-sm font-medium text-gray-700">Traduire automatiquement après génération ?</label>
+                  </div>
+                `,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Démarrer',
+                cancelButtonText: 'Annuler',
+                preConfirm: () => {
+                  return (document.getElementById('swal-translate-opt') as HTMLInputElement)?.checked;
+                }
+              });
+
+              if (!isConfirmed) return;
+
+              setIsGeneratingSpecs(true);
+              try {
+                const ids = Array.from(selectedIds);
+                // Call API
+                const res = await generateSpecs({
+                  ids,
+                  force: true,
+                  translate: !!translate,
+                }).unwrap();
+
+                // Summarize results
+                const ok = res?.results?.filter((r: any) => r.status === 'ok' || r.actions?.length).length ?? 0;
+                const errs = res?.results?.filter((r: any) => r.status === 'error').length ?? 0;
+
+                if (ok > 0) {
+                  showSuccess(`Génération terminée: ${ok} succès${errs ? `, ${errs} échecs` : ''}`);
+                  refetchProducts?.();
+                } else if (errs > 0) {
+                  showError(`Échec de la génération (${errs} erreurs)`);
+                } else {
+                  // Status skipped or no action
+                  showSuccess('Aucune mise à jour nécessaire (déjà existant)');
+                }
+              } catch (e) {
+                console.error(e);
+                showError('Erreur lors de la génération');
+              } finally {
+                setIsGeneratingSpecs(false);
+              }
+            }}
+            disabled={selectedIds.size === 0 || isGeneratingSpecs}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            title="Générer Fiche Technique + Description via IA"
+          >
+            {isGeneratingSpecs ? 'Génération...' : 'Fiche Tech. Auto'}
+          </button>
+
           {/* Traduire button */}
           <button
             onClick={async () => {
@@ -376,7 +452,8 @@ const StockPage: React.FC = () => {
                   ids,
                   commit: true,
                   force: true,
-                  models: { clean: 'gpt-4o-mini', translate: 'gpt-4o-mini' },
+                  includeVariants: true,
+                  models: { clean: 'gpt-5.2', translate: 'gpt-5.2' },
                 }).unwrap();
 
                 // Summarize results
@@ -715,11 +792,10 @@ const StockPage: React.FC = () => {
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      product.est_service
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-green-100 text-green-800'
-                    }`}>
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${product.est_service
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-green-100 text-green-800'
+                      }`}>
                       {product.est_service ? 'Service' : 'Produit'}
                     </span>
                   </td>
@@ -760,7 +836,7 @@ const StockPage: React.FC = () => {
           >
             Précédent
           </button>
-          
+
           <div className="flex gap-1">
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
               let pageNum;
@@ -773,23 +849,22 @@ const StockPage: React.FC = () => {
               } else {
                 pageNum = currentPage - 2 + i;
               }
-              
+
               return (
                 <button
                   key={pageNum}
                   onClick={() => setCurrentPage(pageNum)}
-                  className={`px-3 py-2 border rounded-md ${
-                    currentPage === pageNum
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'border-gray-300 hover:bg-gray-50'
-                  }`}
+                  className={`px-3 py-2 border rounded-md ${currentPage === pageNum
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'border-gray-300 hover:bg-gray-50'
+                    }`}
                 >
                   {pageNum}
                 </button>
               );
             })}
           </div>
-          
+
           <button
             onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage === totalPages}
