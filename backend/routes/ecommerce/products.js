@@ -820,6 +820,8 @@ router.get('/:id', async (req, res, next) => {
       
       // Technical specifications
       fiche_technique: r.fiche_technique,
+      // Backward-compatible alias: French is stored in the base column
+      fiche_technique_fr: r.fiche_technique,
       fiche_technique_ar: r.fiche_technique_ar,
       fiche_technique_en: r.fiche_technique_en,
       fiche_technique_zh: r.fiche_technique_zh,

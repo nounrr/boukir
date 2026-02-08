@@ -64,10 +64,29 @@ const productsApi = api.injectEndpoints({
 
     translateProducts: builder.mutation<
       { ok: boolean; results: any[] },
-      { ids: number[]; commit?: boolean; force?: boolean; models?: { clean?: string; translate?: string } }
+      {
+        ids?: number[];
+        commit?: boolean;
+        force?: boolean;
+        models?: { clean?: string; translate?: string };
+        includeVariants?: boolean;
+        variantIds?: number[];
+      }
     >({
       query: (body) => ({
         url: '/ai/products/translate',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Product'],
+    }),
+
+    generateSpecs: builder.mutation<
+      { ok: boolean; results: any[] },
+      { ids: number[]; force?: boolean; model?: string }
+    >({
+      query: (body) => ({
+        url: '/ai/products/generate-specs',
         method: 'POST',
         body,
       }),
@@ -86,4 +105,5 @@ export const {
   useGetArchivedProductsQuery,
   useRestoreProductMutation,
   useTranslateProductsMutation,
+  useGenerateSpecsMutation,
 } = productsApi;

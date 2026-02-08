@@ -1,11 +1,62 @@
 import { api } from '../api/apiSlice';
 import type { OldTalonCaisse, CreateOldTalonCaisseData } from '../../types';
 
+export interface OldTalonsCaissePagedQueryArgs {
+  page?: number;
+  limit?: number;
+  q?: string;
+  date?: string;
+  status?: string[];
+  mode?: 'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite';
+  talonId?: string;
+  onlyDueSoon?: boolean;
+  sortField?: 'numero' | 'talon' | 'montant' | 'date' | 'echeance' | null;
+  sortDir?: 'asc' | 'desc';
+}
+
+export interface OldTalonsCaissePagedResponse {
+  data: OldTalonCaisse[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  stats: {
+    total: number;
+    validés: number;
+    enAttente: number;
+    montantTotal: number;
+    echeanceProche: number;
+  };
+}
+
 export const oldTalonsCaisseApi = api.injectEndpoints({
   endpoints: (builder) => ({
     // Récupérer tous les anciens talons caisse
     getOldTalonsCaisse: builder.query<OldTalonCaisse[], void>({
       query: () => '/old-talons-caisse',
+      providesTags: ['OldTalonCaisse'],
+    }),
+
+    // Récupérer des anciens talons caisse avec pagination + stats (calculées backend)
+    getOldTalonsCaissePaged: builder.query<OldTalonsCaissePagedResponse, OldTalonsCaissePagedQueryArgs>({
+      query: (args) => {
+        const params = new URLSearchParams();
+        if (args.page) params.set('page', String(args.page));
+        if (args.limit) params.set('limit', String(args.limit));
+        if (args.q) params.set('q', args.q);
+        if (args.date) params.set('date', args.date);
+        if (args.mode && args.mode !== 'all') params.set('mode', args.mode);
+        if (args.talonId) params.set('talonId', args.talonId);
+        if (args.onlyDueSoon) params.set('onlyDueSoon', 'true');
+        if (args.status && args.status.length > 0) params.set('status', args.status.join(','));
+        if (args.sortField) params.set('sortField', args.sortField);
+        if (args.sortDir && args.sortField) params.set('sortDir', args.sortDir);
+
+        const qs = params.toString();
+        return `/old-talons-caisse/paged${qs ? `?${qs}` : ''}`;
+      },
       providesTags: ['OldTalonCaisse'],
     }),
 
@@ -67,6 +118,8 @@ export const oldTalonsCaisseApi = api.injectEndpoints({
 
 export const {
   useGetOldTalonsCaisseQuery,
+  useGetOldTalonsCaissePagedQuery,
+  useLazyGetOldTalonsCaissePagedQuery,
   useGetOldTalonCaisseByIdQuery,
   useCreateOldTalonCaisseMutation,
   useUpdateOldTalonCaisseMutation,

@@ -18,7 +18,7 @@ import {
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 // Payments API not used in this view
 import { useGetTalonsQuery } from '../store/api/talonsApi';
-import { useGetOldTalonsCaisseQuery, useDeleteOldTalonCaisseMutation, useChangeOldTalonCaisseStatusMutation } from '../store/slices/oldTalonsCaisseSlice';
+import { useGetOldTalonsCaissePagedQuery, useLazyGetOldTalonsCaissePagedQuery, useDeleteOldTalonCaisseMutation, useChangeOldTalonCaisseStatusMutation } from '../store/slices/oldTalonsCaisseSlice';
 import type { Payment, Talon, OldTalonCaisse } from '../types';
 import { canModifyPayments, canDeletePayments } from '../utils/permissions';
 import { useSelector } from 'react-redux';
@@ -72,7 +72,7 @@ const TalonCaissePage = () => {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   // État pour la visualisation
   const [selectedUnifiedPayment, setSelectedUnifiedPayment] = useState<UnifiedTalonPayment | null>(null);
@@ -82,32 +82,45 @@ const TalonCaissePage = () => {
   // Désactivé: cette vue n'affiche plus les paiements récents
   // const { data: allPayments = [], isLoading: paymentsLoading } = useGetPaymentsQuery();
   const { data: talons = [], isLoading: talonsLoading } = useGetTalonsQuery(undefined);
-  const { data: oldTalonsCaisse = [], isLoading: oldTalonsLoading } = useGetOldTalonsCaisseQuery();
+  const { data: oldTalonsPaged, isLoading: oldTalonsLoading } = useGetOldTalonsCaissePagedQuery({
+    page: currentPage,
+    limit: itemsPerPage,
+    q: searchTerm,
+    date: dateFilter,
+    status: statusFilter,
+    mode: modeFilter,
+    talonId: selectedTalonFilter,
+    onlyDueSoon,
+    sortField,
+    sortDir: sortDirection,
+  });
+  const [fetchOldTalonsPaged] = useLazyGetOldTalonsCaissePagedQuery();
+
+  const oldTalonsCaisse = oldTalonsPaged?.data ?? [];
   
   const [deleteOldTalonCaisseApi] = useDeleteOldTalonCaisseMutation();
   const [changeOldTalonCaisseStatusApi] = useChangeOldTalonCaisseStatusMutation();
 
-  // Unifier les paiements talon normaux et les anciens talons caisse
+  const mapOldTalonsToUnified = (list: OldTalonCaisse[]): UnifiedTalonPayment[] => {
+    return list.map((oldTalon: OldTalonCaisse) => ({
+      id: `old:${oldTalon.id}`,
+      type: 'old',
+      numero: `OLD${String(oldTalon.id).padStart(2, '0')}`,
+      date_paiement: oldTalon.date_paiement,
+      montant_total: Number(oldTalon.montant_cheque || 0),
+      statut: oldTalon.validation,
+      talon_id: oldTalon.id_talon,
+      fournisseur: oldTalon.fournisseur,
+      numero_cheque: oldTalon.numero_cheque || undefined,
+      date_cheque: oldTalon.date_cheque || undefined,
+      banque: oldTalon.banque,
+      originalOldTalon: oldTalon,
+    }));
+  };
+
+  // Unifier les anciens talons caisse (données déjà filtrées/triées/paginées par le backend)
   const unifiedPayments = useMemo(() => {
-    const unified: UnifiedTalonPayment[] = [];
-    // N'inclure que les anciens talons caisse
-    oldTalonsCaisse.forEach((oldTalon: OldTalonCaisse) => {
-      unified.push({
-        id: `old:${oldTalon.id}`,
-        type: 'old',
-        numero: `OLD${String(oldTalon.id).padStart(2, '0')}`,
-        date_paiement: oldTalon.date_paiement,
-        montant_total: Number(oldTalon.montant_cheque || 0),
-        statut: oldTalon.validation,
-        talon_id: oldTalon.id_talon,
-        fournisseur: oldTalon.fournisseur,
-        numero_cheque: oldTalon.numero_cheque || undefined,
-        date_cheque: oldTalon.date_cheque || undefined,
-        banque: oldTalon.banque,
-        originalOldTalon: oldTalon
-      });
-    });
-    return unified;
+    return mapOldTalonsToUnified(oldTalonsCaisse);
   }, [oldTalonsCaisse]);
 
   // Handle sorting
@@ -154,198 +167,41 @@ const TalonCaissePage = () => {
     return !isNaN(date.getTime());
   };
 
-  // Filtrage des paiements unifiés
-  const filteredPayments = useMemo(() => {
-    let filtered = unifiedPayments;
+  const statistiques = oldTalonsPaged?.stats ?? {
+    total: 0,
+    validés: 0,
+    enAttente: 0,
+    montantTotal: 0,
+    echeanceProche: 0,
+  };
 
-    // Filtre par terme de recherche
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter((payment) => {
-        const numero = payment.numero?.toLowerCase() || '';
-        const talonName = talons.find((t: Talon) => t.id === payment.talon_id)?.nom?.toLowerCase() || '';
-        const statut = payment.statut.toLowerCase();
-        const montant = String(payment.montant_total);
-        
-        // Recherche spécifique selon le type
-        if (payment.type === 'payment') {
-          return numero.includes(term) ||
-                 (payment.mode_paiement || '').toLowerCase().includes(term) ||
-                 statut.includes(term) ||
-                 talonName.includes(term) ||
-                 montant.includes(term) ||
-                 (payment.designation || '').toLowerCase().includes(term) ||
-                 (payment.personnel || '').toLowerCase().includes(term);
-        } else {
-          return numero.includes(term) ||
-                 (payment.fournisseur || '').toLowerCase().includes(term) ||
-                 (payment.numero_cheque || '').toLowerCase().includes(term) ||
-                 statut.includes(term) ||
-                 talonName.includes(term) ||
-                 montant.includes(term) ||
-                 (payment.originalOldTalon?.personne || '').toLowerCase().includes(term) ||
-                 (payment.originalOldTalon?.factures || '').toLowerCase().includes(term) ||
-                 (payment.originalOldTalon?.disponible || '').toLowerCase().includes(term);
-        }
-      });
-    }
-
-    // Filtre par date
-    if (dateFilter) {
-      filtered = filtered.filter((payment) => {
-        const paymentDate = payment.date_paiement ? payment.date_paiement.slice(0, 10) : '';
-        return paymentDate === dateFilter;
-      });
-    }
-
-    // Filtre par statut
-    if (statusFilter.length > 0) {
-      filtered = filtered.filter((payment) => statusFilter.includes(payment.statut));
-    }
-
-    // Filtre par mode de paiement (seulement pour les paiements normaux)
-    if (modeFilter !== 'all') {
-      if (modeFilter === 'Chèque') {
-        // Inclure les paiements mode "Chèque" ET les anciens talons (qui sont tous des chèques)
-        filtered = filtered.filter((payment) => 
-          (payment.type === 'payment' && payment.mode_paiement === 'Chèque') ||
-          payment.type === 'old'
-        );
-      } else {
-        // Autres modes : seulement les paiements normaux
-        filtered = filtered.filter((payment) => 
-          payment.type === 'payment' && payment.mode_paiement === modeFilter
-        );
-      }
-    }
-
-    // Filtre par talon
-    if (selectedTalonFilter) {
-      filtered = filtered.filter((payment) => String(payment.talon_id) === selectedTalonFilter);
-    }
-
-    // Filtre: seulement échéance ≤ 5 jours
-    if (onlyDueSoon) {
-      filtered = filtered.filter((p) => {
-        if (p.type === 'payment' && p.date_echeance) {
-          return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance, statut: p.statut });
-        }
-        if (p.type === 'old' && p.date_cheque) {
-          return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque, statut: p.statut });
-        }
-        return false;
-      });
-    }
-
-    // Apply sorting if specified
-    if (sortField) {
-      filtered = [...filtered].sort((a, b) => {
-        let aValue: any;
-        let bValue: any;
-
-        const getTalonName = (talonId: number) => {
-          const talon = talons.find((t: Talon) => t.id === talonId);
-          return talon ? talon.nom : `Talon #${talonId}`;
-        };
-
-        switch (sortField) {
-          case 'numero':
-            aValue = (a.numero || '').toLowerCase();
-            bValue = (b.numero || '').toLowerCase();
-            break;
-          case 'talon':
-            aValue = getTalonName(a.talon_id).toLowerCase();
-            bValue = getTalonName(b.talon_id).toLowerCase();
-            break;
-          case 'montant':
-            aValue = a.montant_total;
-            bValue = b.montant_total;
-            break;
-          case 'date':
-            aValue = new Date(a.date_paiement || '1900-01-01').getTime();
-            bValue = new Date(b.date_paiement || '1900-01-01').getTime();
-            break;
-          case 'echeance': {
-            const aEcheance = a.type === 'payment' ? a.date_echeance : a.date_cheque;
-            const bEcheance = b.type === 'payment' ? b.date_echeance : b.date_cheque;
-            
-            // Gérer les dates invalides
-            const aValid = aEcheance && isValidDate(aEcheance);
-            const bValid = bEcheance && isValidDate(bEcheance);
-            
-            if (!aValid && !bValid) return 0;
-            if (!aValid) return 1; // Les dates invalides en fin
-            if (!bValid) return -1;
-            
-            aValue = new Date(aEcheance!).getTime();
-            bValue = new Date(bEcheance!).getTime();
-            break;
-          }
-          default:
-            return 0;
-        }
-
-        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-        return 0;
-      });
-    } else {
-      // Default sorting: Prioriser les paiements avec échéance proche, puis trier par date d'échéance croissante
-      filtered = [...filtered].sort((a, b) => {
-        const aEcheance = a.type === 'payment' ? a.date_echeance : a.date_cheque;
-        const bEcheance = b.type === 'payment' ? b.date_echeance : b.date_cheque;
-        
-        const aValid = aEcheance && isValidDate(aEcheance);
-        const bValid = bEcheance && isValidDate(bEcheance);
-        
-        if (!aValid && !bValid) return 0;
-        if (!aValid) return 1; // Les dates invalides en fin
-        if (!bValid) return -1;
-        
-  const aDue = isDueSoon({ date_echeance: aEcheance, statut: a.statut });
-  const bDue = isDueSoon({ date_echeance: bEcheance, statut: b.statut });
-        
-        if (aDue !== bDue) return aDue ? -1 : 1;
-        
-        const aTs = new Date(aEcheance!).getTime();
-        const bTs = new Date(bEcheance!).getTime();
-        return aTs - bTs;
-      });
-    }
-
-    return filtered;
-  }, [unifiedPayments, searchTerm, dateFilter, statusFilter, modeFilter, selectedTalonFilter, onlyDueSoon, sortField, sortDirection, talons]);
-
-  // Statistiques basées sur les données filtrées
-  const statistiques = useMemo(() => {
-    const total = filteredPayments.length;
-    const validés = filteredPayments.filter((p) => p.statut === 'Validé').length;
-    const enAttente = filteredPayments.filter((p) => p.statut === 'En attente').length;
-    const montantTotal = filteredPayments.reduce((sum: number, p) => sum + p.montant_total, 0);
-    const echeanceProche = filteredPayments.filter((p) => {
-      if (p.type === 'payment' && p.date_echeance) {
-        return isValidDate(p.date_echeance) && isDueSoon({ date_echeance: p.date_echeance, statut: p.statut });
-      }
-      if (p.type === 'old' && p.date_cheque) {
-        return isValidDate(p.date_cheque) && isDueSoon({ date_echeance: p.date_cheque, statut: p.statut });
-      }
-      return false;
-    }).length;
-    
-    return { total, validés, enAttente, montantTotal, echeanceProche };
-  }, [filteredPayments]);
-
-  // Pagination
-  const totalItems = filteredPayments.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedPayments = filteredPayments.slice(startIndex, endIndex);
+  // Pagination (déjà appliquée côté backend)
+  const totalItems = oldTalonsPaged?.pagination?.totalItems ?? 0;
+  const totalPages = oldTalonsPaged?.pagination?.totalPages ?? 1;
+  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + unifiedPayments.length;
+  const paginatedPayments = unifiedPayments;
 
   // Réinitialiser la page lors des changements de filtres
   React.useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, dateFilter, statusFilter, modeFilter, selectedTalonFilter, onlyDueSoon]);
+
+  // Si le backend réduit le nombre de pages (après filtres), recaler la page courante
+  React.useEffect(() => {
+    if (!oldTalonsPaged?.pagination) return;
+    const maxPage = Math.max(oldTalonsPaged.pagination.totalPages || 1, 1);
+    if (currentPage > maxPage) setCurrentPage(maxPage);
+  }, [oldTalonsPaged?.pagination?.totalPages, currentPage]);
+
+  // Recaler la page si les filtres réduisent le nombre de pages
+  React.useEffect(() => {
+    if (!oldTalonsPaged?.pagination) return;
+    const safeTotalPages = Math.max(oldTalonsPaged.pagination.totalPages || 1, 1);
+    if (currentPage > safeTotalPages) {
+      setCurrentPage(safeTotalPages);
+    }
+  }, [oldTalonsPaged?.pagination?.totalPages, currentPage]);
 
   // Fonctions utilitaires
   const getModeIcon = (mode: string, type: 'payment' | 'old') => {
@@ -467,43 +323,74 @@ const TalonCaissePage = () => {
           </div>
           <button
             onClick={() => {
-              const printContent = `
-                <html>
-                  <head>
-                    <title>Rapport Talon Caisse</title>
-                    <style>
-                      body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
-                      h1, h2, h3 { color: #333; margin-bottom: 10px; }
-                      table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-                      th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
-                      th { background-color: #f5f5f5; font-weight: bold; }
-                      .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #f97316; padding-bottom: 15px; }
-                    </style>
-                  </head>
-                  <body>
-                    <div class="header">
-                      <h1>💳 RAPPORT TALON CAISSE</h1>
-                      <p>Date: ${new Date().toLocaleDateString('fr-FR')}</p>
-                    </div>
-                    <table>
-                      <tr><th>N° Paiement</th><th>Type</th><th>Talon</th><th>Montant</th><th>Mode/Fournisseur</th><th>Personne</th><th>Factures</th><th>Disponible</th><th>Statut</th><th>Date</th><th>Échéance</th></tr>
-                      ${filteredPayments.map((p: UnifiedTalonPayment) => 
-                        `<tr><td>${p.numero || ''}</td><td>${p.type === 'payment' ? 'Paiement' : 'Ancien Talon'}</td><td>${getTalonName(p.talon_id)}</td><td>${p.montant_total} DH</td><td>${p.type === 'payment' ? p.mode_paiement : p.fournisseur}</td><td>${p.type === 'payment' && p.personnel ? p.personnel : (p.type === 'old' && p.originalOldTalon?.personne ? p.originalOldTalon.personne : '-')}</td><td>${p.type === 'old' && p.originalOldTalon?.factures ? p.originalOldTalon.factures : '-'}</td><td>${p.type === 'old' && p.originalOldTalon?.disponible ? p.originalOldTalon.disponible : '-'}</td><td>${p.statut}</td><td>${formatDateOrText(p.date_paiement)}</td><td>${p.type === 'payment' && p.date_echeance ? formatDateOrText(p.date_echeance) : (p.type === 'old' && p.date_cheque ? formatDateOrText(p.date_cheque) : '')}</td></tr>`
-                      ).join('')}
-                    </table>
-                  </body>
-                </html>
-              `;
-              const printWindow = window.open('', '_blank');
-              if (printWindow) {
-                printWindow.document.body.innerHTML = printContent;
-                printWindow.print();
-              }
+              (async () => {
+                try {
+                  const MAX_PRINT = 5000;
+                  if (totalItems > MAX_PRINT) {
+                    showError(
+                      `Trop de lignes à imprimer (${totalItems}). Veuillez affiner les filtres (max ${MAX_PRINT}).`
+                    );
+                    return;
+                  }
+
+                  const payload = await fetchOldTalonsPaged({
+                    page: 1,
+                    limit: Math.max(totalItems, 1),
+                    q: searchTerm,
+                    date: dateFilter,
+                    status: statusFilter,
+                    mode: modeFilter,
+                    talonId: selectedTalonFilter,
+                    onlyDueSoon,
+                    sortField,
+                    sortDir: sortDirection,
+                  }).unwrap();
+
+                  const allUnified = mapOldTalonsToUnified(payload.data);
+                  const printContent = `
+                    <html>
+                      <head>
+                        <title>Rapport Talon Caisse</title>
+                        <style>
+                          body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+                          h1, h2, h3 { color: #333; margin-bottom: 10px; }
+                          table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+                          th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 11px; }
+                          th { background-color: #f5f5f5; font-weight: bold; }
+                          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #f97316; padding-bottom: 15px; }
+                        </style>
+                      </head>
+                      <body>
+                        <div class="header">
+                          <h1>💳 RAPPORT TALON CAISSE</h1>
+                          <p>Date: ${new Date().toLocaleDateString('fr-FR')}</p>
+                        </div>
+                        <table>
+                          <tr><th>N° Paiement</th><th>Type</th><th>Talon</th><th>Montant</th><th>Mode/Fournisseur</th><th>Personne</th><th>Factures</th><th>Disponible</th><th>Statut</th><th>Date</th><th>Échéance</th></tr>
+                          ${allUnified
+                            .map(
+                              (p: UnifiedTalonPayment) =>
+                                `<tr><td>${p.numero || ''}</td><td>${p.type === 'payment' ? 'Paiement' : 'Ancien Talon'}</td><td>${getTalonName(p.talon_id)}</td><td>${p.montant_total} DH</td><td>${p.type === 'payment' ? p.mode_paiement : p.fournisseur}</td><td>${p.type === 'payment' && p.personnel ? p.personnel : (p.type === 'old' && p.originalOldTalon?.personne ? p.originalOldTalon.personne : '-')}</td><td>${p.type === 'old' && p.originalOldTalon?.factures ? p.originalOldTalon.factures : '-'}</td><td>${p.type === 'old' && p.originalOldTalon?.disponible ? p.originalOldTalon.disponible : '-'}</td><td>${p.statut}</td><td>${formatDateOrText(p.date_paiement)}</td><td>${p.type === 'payment' && p.date_echeance ? formatDateOrText(p.date_echeance) : (p.type === 'old' && p.date_cheque ? formatDateOrText(p.date_cheque) : '')}</td></tr>`
+                            )
+                            .join('')}
+                        </table>
+                      </body>
+                    </html>
+                  `;
+                  const printWindow = window.open('', '_blank');
+                  if (printWindow) {
+                    printWindow.document.body.innerHTML = printContent;
+                    printWindow.print();
+                  }
+                } catch (err: any) {
+                  showError(err?.data?.message || err?.message || 'Erreur lors de la préparation de l\'impression');
+                }
+              })();
             }}
             className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
           >
             <FileText size={16} />
-            Imprimer Rapport ({filteredPayments.length})
+            Imprimer Rapport ({totalItems})
           </button>
         </div>
         {/* Onglets de talons */}
@@ -710,7 +597,7 @@ const TalonCaissePage = () => {
       <div className="mb-4 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-700">
-            Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} paiements
+            Affichage de {totalItems === 0 ? 0 : startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} paiements
           </span>
         </div>
         <div className="flex items-center gap-4">

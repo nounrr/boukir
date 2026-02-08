@@ -95,6 +95,9 @@ export interface ProductVariant {
   id?: number;
   product_id?: number;
   variant_name: string;
+  variant_name_ar?: string | null;
+  variant_name_en?: string | null;
+  variant_name_zh?: string | null;
   variant_type?: string;
   reference?: string;
   prix_achat: number;

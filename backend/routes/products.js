@@ -61,13 +61,13 @@ async function ensureProductsColumns() {
         // Best-effort backfill: if a unit has an explicit price, it's not normal/auto
         try {
           await pool.query(`UPDATE product_units SET facteur_isNormal = 0 WHERE prix_vente IS NOT NULL`);
-        } catch {}
+        } catch { }
       }
     }
   } catch (e) {
     console.log('ensureProductsColumns: product_units.prix_vente check skipped', e?.message || e);
   }
-  
+
   // Check is_deleted
   const [colsDeleted] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -202,7 +202,7 @@ async function ensureProductsColumns() {
   if (!colsCreatedBy.length) {
     await pool.query(`ALTER TABLE products ADD COLUMN created_by INT DEFAULT NULL`);
   }
-  
+
   // Check updated_by
   const [colsUpdatedBy] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -223,11 +223,14 @@ async function ensureProductsColumns() {
 
   // Check fiche_technique
   const [colsFiche] = await pool.query(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    `SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'fiche_technique'`
   );
   if (!colsFiche.length) {
-    await pool.query(`ALTER TABLE products ADD COLUMN fiche_technique TEXT DEFAULT NULL`);
+    await pool.query(`ALTER TABLE products ADD COLUMN fiche_technique LONGTEXT DEFAULT NULL`);
+  } else {
+    // Ensure it is LONGTEXT to avoid "Data too long"
+    await pool.query(`ALTER TABLE products MODIFY COLUMN fiche_technique LONGTEXT DEFAULT NULL`);
   }
 
   // Check fiche_technique multilingual columns
@@ -236,7 +239,9 @@ async function ensureProductsColumns() {
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'fiche_technique_ar'`
   );
   if (!colsFicheAr.length) {
-    await pool.query(`ALTER TABLE products ADD COLUMN fiche_technique_ar TEXT DEFAULT NULL`);
+    await pool.query(`ALTER TABLE products ADD COLUMN fiche_technique_ar LONGTEXT DEFAULT NULL`);
+  } else {
+    await pool.query(`ALTER TABLE products MODIFY COLUMN fiche_technique_ar LONGTEXT DEFAULT NULL`);
   }
   const [colsFicheEn] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -259,7 +264,9 @@ async function ensureProductsColumns() {
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'description'`
   );
   if (!colsDesc.length) {
-    await pool.query(`ALTER TABLE products ADD COLUMN description TEXT DEFAULT NULL`);
+    await pool.query(`ALTER TABLE products ADD COLUMN description LONGTEXT DEFAULT NULL`);
+  } else {
+    await pool.query(`ALTER TABLE products MODIFY COLUMN description LONGTEXT DEFAULT NULL`);
   }
 
   // Check pourcentage_promo
@@ -476,7 +483,7 @@ async function ensureProductsColumns() {
             await pool.query(`UPDATE products SET categorie_id = NULL WHERE id = ?`, [row.id]);
           }
         } catch (e) {
-           await pool.query(`UPDATE products SET categorie_id = NULL WHERE id = ?`, [row.id]);
+          await pool.query(`UPDATE products SET categorie_id = NULL WHERE id = ?`, [row.id]);
         }
       }
     } catch (e) { console.error('Migration of categorie_id failed', e); }
@@ -484,7 +491,7 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE products MODIFY COLUMN categorie_id INT DEFAULT NULL`);
     // Add FK
     try {
-        await pool.query(`ALTER TABLE products ADD CONSTRAINT fk_products_category FOREIGN KEY (categorie_id) REFERENCES categories(id) ON DELETE SET NULL`);
+      await pool.query(`ALTER TABLE products ADD CONSTRAINT fk_products_category FOREIGN KEY (categorie_id) REFERENCES categories(id) ON DELETE SET NULL`);
     } catch (e) { console.log('FK creation failed', e); }
   }
 };
@@ -534,49 +541,49 @@ router.get('/', async (req, res, next) => {
     const data = rows.map((r) => {
       const gallery = typeof r.gallery === 'string' ? JSON.parse(r.gallery) : (r.gallery || []);
       return {
-      id: r.id,
-  // reference is now derived from id for compatibility with frontend displays
-  reference: String(r.id),
-      designation: r.designation,
-      categorie_id: r.categorie_id || 0,
-      categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
-      categories: r.categorie_id ? [{ id: r.categorie_id, nom: r.categorie_nom }] : [],
-      brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
-      quantite: Number(r.quantite),
-    kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
-      prix_achat: Number(r.prix_achat),
-      cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
-      cout_revient: Number(r.cout_revient),
-      prix_gros_pourcentage: Number(r.prix_gros_pourcentage),
-      prix_gros: Number(r.prix_gros),
-      prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
-      prix_vente: Number(r.prix_vente),
-      est_service: !!r.est_service,
-      image_url: r.image_url,
-      remise_client: Number(r.remise_client ?? 0),
-      remise_artisan: Number(r.remise_artisan ?? 0),
-      gallery: gallery,
-      fiche_technique: r.fiche_technique,
-      fiche_technique_ar: r.fiche_technique_ar,
-      fiche_technique_en: r.fiche_technique_en,
-      fiche_technique_zh: r.fiche_technique_zh,
-      description: r.description,
-      pourcentage_promo: Number(r.pourcentage_promo ?? 0),
-      ecom_published: !!r.ecom_published,
-      stock_partage_ecom: !!r.stock_partage_ecom,
-      stock_partage_ecom_qty: Number(r.stock_partage_ecom_qty ?? 0),
-      created_by: r.created_by,
-      updated_by: r.updated_by,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-      has_variants: !!r.has_variants,
-      isObligatoireVariant: !!r.is_obligatoire_variant,
-      base_unit: r.base_unit,
-      categorie_base: r.categorie_base,
-      variants: typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []),
-      units: typeof r.units === 'string' ? JSON.parse(r.units) : (r.units || []),
-    };
-  });
+        id: r.id,
+        // reference is now derived from id for compatibility with frontend displays
+        reference: String(r.id),
+        designation: r.designation,
+        categorie_id: r.categorie_id || 0,
+        categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
+        categories: r.categorie_id ? [{ id: r.categorie_id, nom: r.categorie_nom }] : [],
+        brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
+        quantite: Number(r.quantite),
+        kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
+        prix_achat: Number(r.prix_achat),
+        cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
+        cout_revient: Number(r.cout_revient),
+        prix_gros_pourcentage: Number(r.prix_gros_pourcentage),
+        prix_gros: Number(r.prix_gros),
+        prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
+        prix_vente: Number(r.prix_vente),
+        est_service: !!r.est_service,
+        image_url: r.image_url,
+        remise_client: Number(r.remise_client ?? 0),
+        remise_artisan: Number(r.remise_artisan ?? 0),
+        gallery: gallery,
+        fiche_technique: r.fiche_technique,
+        fiche_technique_ar: r.fiche_technique_ar,
+        fiche_technique_en: r.fiche_technique_en,
+        fiche_technique_zh: r.fiche_technique_zh,
+        description: r.description,
+        pourcentage_promo: Number(r.pourcentage_promo ?? 0),
+        ecom_published: !!r.ecom_published,
+        stock_partage_ecom: !!r.stock_partage_ecom,
+        stock_partage_ecom_qty: Number(r.stock_partage_ecom_qty ?? 0),
+        created_by: r.created_by,
+        updated_by: r.updated_by,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        has_variants: !!r.has_variants,
+        isObligatoireVariant: !!r.is_obligatoire_variant,
+        base_unit: r.base_unit,
+        categorie_base: r.categorie_base,
+        variants: typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []),
+        units: typeof r.units === 'string' ? JSON.parse(r.units) : (r.units || []),
+      };
+    });
     res.json(data);
   } catch (err) { next(err); }
 });
@@ -655,11 +662,11 @@ router.get('/:id', async (req, res, next) => {
   try {
     await ensureProductsColumns();
     const id = Number(req.params.id);
-    
+
     if (isNaN(id)) {
       return res.status(400).json({ message: 'ID invalide' });
     }
-    
+
     const [rows] = await pool.query(`
       SELECT p.*, b.id as b_id, b.nom as b_nom, b.image_url as b_image_url,
       c.id as c_id, c.nom as c_nom
@@ -687,7 +694,7 @@ router.get('/:id', async (req, res, next) => {
     }
     const [units] = await pool.query('SELECT * FROM product_units WHERE product_id = ?', [id]);
     const [gallery] = await pool.query('SELECT * FROM product_images WHERE product_id = ? ORDER BY position ASC', [id]);
-    
+
     const finalCategories = r.c_id ? [{ id: r.c_id, nom: r.c_nom }] : [];
 
     res.json({
@@ -834,7 +841,7 @@ router.post('/', upload.fields([
       try {
         const parsed = typeof units === 'string' ? JSON.parse(units) : units;
         if (Array.isArray(parsed)) parsedUnitsForInsert = parsed;
-      } catch {}
+      } catch { }
     }
 
     const lockVariantPrixVente =
@@ -860,8 +867,8 @@ router.post('/', upload.fields([
     if (catId) {
       const [hasChildren] = await pool.query('SELECT COUNT(*) as count FROM categories WHERE parent_id = ?', [catId]);
       if (hasChildren[0].count > 0) {
-        return res.status(400).json({ 
-          message: 'Impossible: veuillez sélectionner une catégorie finale (sans sous-catégories)' 
+        return res.status(400).json({
+          message: 'Impossible: veuillez sélectionner une catégorie finale (sans sous-catégories)'
         });
       }
     }
@@ -930,19 +937,46 @@ router.post('/', upload.fields([
     // Variants
     if (variants) {
       let parsed = [];
-      try { parsed = typeof variants === 'string' ? JSON.parse(variants) : variants; } catch {}
+      try { parsed = typeof variants === 'string' ? JSON.parse(variants) : variants; } catch { }
       if (Array.isArray(parsed)) {
+        // Ensure multilingual columns exist (created lazily).
+        {
+          const cols = ['variant_name_ar', 'variant_name_en', 'variant_name_zh'];
+          for (const col of cols) {
+            const [rows] = await pool.query(
+              `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = ?`,
+              [col]
+            );
+            if (!rows?.length) {
+              await pool.query(`ALTER TABLE product_variants ADD COLUMN ${col} VARCHAR(255) NULL`);
+            }
+          }
+        }
+
         for (const v of parsed) {
           const variantPrixVentePourcentage = lockVariantPrixVente ? 0 : Number(v.prix_vente_pourcentage ?? 0);
           const variantPrixVente = lockVariantPrixVente
             ? Number(lockedVariantPrixVente ?? 0)
             : Number(v.prix_vente ?? 0);
           await pool.query(
-            `INSERT INTO product_variants (product_id, variant_name, variant_type, reference, prix_achat, cout_revient, cout_revient_pourcentage, prix_gros, prix_gros_pourcentage, prix_vente_pourcentage, prix_vente, remise_client, remise_artisan, stock_quantity, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO product_variants (
+                  product_id,
+                  variant_name, variant_name_ar, variant_name_en, variant_name_zh,
+                  variant_type, reference,
+                  prix_achat, cout_revient, cout_revient_pourcentage,
+                  prix_gros, prix_gros_pourcentage,
+                  prix_vente_pourcentage, prix_vente,
+                  remise_client, remise_artisan, stock_quantity,
+                  created_at, updated_at
+                )
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
             [
               id,
               v.variant_name,
+              v.variant_name_ar || null,
+              v.variant_name_en || null,
+              v.variant_name_zh || null,
               v.variant_type || 'Autre',
               v.reference,
               Number(v.prix_achat ?? 0),
@@ -1170,7 +1204,7 @@ router.put('/:id', upload.fields([
     let lockedVariantPrixVente = null;
     if (unitsJson !== undefined) {
       let parsedUnits = [];
-      try { parsedUnits = typeof unitsJson === 'string' ? JSON.parse(unitsJson) : unitsJson; } catch {}
+      try { parsedUnits = typeof unitsJson === 'string' ? JSON.parse(unitsJson) : unitsJson; } catch { }
       const r = computeVariantPriceLock(parsedUnits);
       lockVariantPrixVente = r.lock;
       lockedVariantPrixVente = r.forcedPrixVente;
@@ -1256,8 +1290,23 @@ router.put('/:id', upload.fields([
     // If the client sends these fields, treat them as the desired state and sync DB accordingly.
     if (variantsJson !== undefined) {
       let parsed = [];
-      try { parsed = typeof variantsJson === 'string' ? JSON.parse(variantsJson) : variantsJson; } catch {}
+      try { parsed = typeof variantsJson === 'string' ? JSON.parse(variantsJson) : variantsJson; } catch { }
       if (Array.isArray(parsed)) {
+        // Ensure multilingual columns exist (created lazily).
+        {
+          const cols = ['variant_name_ar', 'variant_name_en', 'variant_name_zh'];
+          for (const col of cols) {
+            const [rows] = await pool.query(
+              `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = ?`,
+              [col]
+            );
+            if (!rows?.length) {
+              await pool.query(`ALTER TABLE product_variants ADD COLUMN ${col} VARCHAR(255) NULL`);
+            }
+          }
+        }
+
         const desiredIds = parsed
           .map(v => Number(v?.id ?? 0))
           .filter(n => Number.isFinite(n) && n > 0);
@@ -1283,6 +1332,9 @@ router.put('/:id', upload.fields([
               : Number(v?.prix_vente ?? 0);
             const payloadVals = [
               v?.variant_name,
+              v?.variant_name_ar || null,
+              v?.variant_name_en || null,
+              v?.variant_name_zh || null,
               v?.variant_type || 'Autre',
               v?.reference,
               Number(v?.prix_achat ?? 0),
@@ -1300,7 +1352,8 @@ router.put('/:id', upload.fields([
             if (variantId && Number.isFinite(variantId)) {
               const [updated] = await pool.query(
                 `UPDATE product_variants
-                 SET variant_name = ?, variant_type = ?, reference = ?,
+                 SET variant_name = ?, variant_name_ar = ?, variant_name_en = ?, variant_name_zh = ?,
+                     variant_type = ?, reference = ?,
                      prix_achat = ?, cout_revient = ?, cout_revient_pourcentage = ?,
                      prix_gros = ?, prix_gros_pourcentage = ?,
                      prix_vente_pourcentage = ?, prix_vente = ?,
@@ -1314,26 +1367,30 @@ router.put('/:id', upload.fields([
               if (!(updated && updated.affectedRows > 0)) {
                 await pool.query(
                   `INSERT INTO product_variants (
-                    product_id, variant_name, variant_type, reference,
+                    product_id,
+                    variant_name, variant_name_ar, variant_name_en, variant_name_zh,
+                    variant_type, reference,
                     prix_achat, cout_revient, cout_revient_pourcentage,
                     prix_gros, prix_gros_pourcentage,
                     prix_vente_pourcentage, prix_vente,
                     remise_client, remise_artisan, stock_quantity,
                     created_at, updated_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
                   [id, ...payloadVals, now, now]
                 );
               }
             } else {
               await pool.query(
                 `INSERT INTO product_variants (
-                  product_id, variant_name, variant_type, reference,
+                  product_id,
+                  variant_name, variant_name_ar, variant_name_en, variant_name_zh,
+                  variant_type, reference,
                   prix_achat, cout_revient, cout_revient_pourcentage,
                   prix_gros, prix_gros_pourcentage,
                   prix_vente_pourcentage, prix_vente,
                   remise_client, remise_artisan, stock_quantity,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
                 [id, ...payloadVals, now, now]
               );
             }
@@ -1344,7 +1401,7 @@ router.put('/:id', upload.fields([
 
     if (unitsJson !== undefined) {
       let parsed = [];
-      try { parsed = typeof unitsJson === 'string' ? JSON.parse(unitsJson) : unitsJson; } catch {}
+      try { parsed = typeof unitsJson === 'string' ? JSON.parse(unitsJson) : unitsJson; } catch { }
       if (Array.isArray(parsed)) {
         const desiredIds = parsed
           .map(u => Number(u?.id ?? 0))

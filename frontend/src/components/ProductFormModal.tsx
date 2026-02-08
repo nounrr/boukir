@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
-import type { Product, Category, ProductVariant, ProductUnit } from '../types';
+import type { Product, ProductVariant, ProductUnit } from '../types';
 import { useFormik, FieldArray, FormikProvider } from 'formik';
 import * as Yup from 'yup';
-import { Plus, Trash2, Ruler, X } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 // Switch to backend mutations
 import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -27,6 +27,10 @@ const toNum = (v: any) => {
   const s = String(v).replace(',', '.');
   const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
+};
+
+const asStringError = (err: unknown): string | null => {
+  return typeof err === 'string' ? err : null;
 };
 
 // Schema de validation (tous champs optionnels, qte >= 0)
@@ -60,6 +64,9 @@ const validationSchema = Yup.object({
   variants: Yup.array().of(
     Yup.object({
       variant_name: Yup.string().required('Nom requis'),
+      variant_name_ar: Yup.string().nullable().optional(),
+      variant_name_en: Yup.string().nullable().optional(),
+      variant_name_zh: Yup.string().nullable().optional(),
       variant_type: Yup.string().required('Type requis'),
       reference: Yup.string().optional(),
       prix_achat: Yup.number().min(0).required('Prix achat requis'),
@@ -368,7 +375,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       })();
 
       const variantsNormalized = Array.isArray(values.variants)
-        ? values.variants.map((v) => {
+        ? values.variants.map((v: any) => {
             if (!lockVariantPrixVente) return v;
             return {
               ...v,
@@ -799,8 +806,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   placeholder="Ex: 笔记本电脑"
                 />
               )}
-              {activeLang === 'fr' && formik.touched.designation && formik.errors.designation && (
-                <p className="text-red-500 text-sm mt-1">{formik.errors.designation}</p>
+              {activeLang === 'fr' && formik.touched.designation && !!asStringError(formik.errors.designation) && (
+                <p className="text-red-500 text-sm mt-1">{asStringError(formik.errors.designation)}</p>
               )}
             </div>
 
@@ -819,7 +826,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 }}
               />
               {formik.touched.categorie_id && formik.errors.categorie_id && (
-                <p className="text-red-500 text-sm mt-1">{formik.errors.categorie_id}</p>
+                <p className="text-red-500 text-sm mt-1">{asStringError(formik.errors.categorie_id)}</p>
               )}
             </div>
 
@@ -899,8 +906,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
                 placeholder="0"
               />
-              {formik.touched.quantite && formik.errors.quantite && (
-                <p className="text-red-500 text-sm mt-1">{formik.errors.quantite}</p>
+              {formik.touched.quantite && !!asStringError(formik.errors.quantite) && (
+                <p className="text-red-500 text-sm mt-1">{asStringError(formik.errors.quantite)}</p>
               )}
             </div>
 
@@ -1234,8 +1241,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="0.00"
               />
-              {formik.touched.prix_achat && formik.errors.prix_achat && (
-                <p className="text-red-500 text-sm mt-1">{formik.errors.prix_achat}</p>
+              {formik.touched.prix_achat && !!asStringError(formik.errors.prix_achat) && (
+                <p className="text-red-500 text-sm mt-1">{asStringError(formik.errors.prix_achat)}</p>
               )}
             </div>
 
@@ -1514,7 +1521,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 render={arrayHelpers => (
                   <div className="space-y-4">
                     {formik.values.units && formik.values.units.length > 0 ? (
-                      formik.values.units.map((unit, index) => (
+                      formik.values.units.map((unit: any, index: number) => (
                         <div key={index} className="flex gap-4 items-start bg-white p-4 rounded border border-gray-200">
                           <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div>
@@ -1646,7 +1653,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 render={arrayHelpers => (
                   <div className="space-y-4">
                     {formik.values.variants && formik.values.variants.length > 0 ? (
-                      formik.values.variants.map((variant, index) => (
+                      formik.values.variants.map((variant: any, index: number) => (
                         <div key={index} className="flex flex-col gap-4 bg-white p-4 rounded border border-gray-200 relative">
                           <button
                             type="button"
@@ -1709,6 +1716,39 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 onChange={formik.handleChange}
                                 className="w-full px-2 py-1 text-sm border rounded"
                                 placeholder="0"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pr-8">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Nom AR</label>
+                              <input
+                                name={`variants.${index}.variant_name_ar`}
+                                value={(variant as any).variant_name_ar || ''}
+                                onChange={formik.handleChange}
+                                className="w-full px-2 py-1 text-sm border rounded"
+                                placeholder="العربية"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Nom EN</label>
+                              <input
+                                name={`variants.${index}.variant_name_en`}
+                                value={(variant as any).variant_name_en || ''}
+                                onChange={formik.handleChange}
+                                className="w-full px-2 py-1 text-sm border rounded"
+                                placeholder="English"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Nom ZH</label>
+                              <input
+                                name={`variants.${index}.variant_name_zh`}
+                                value={(variant as any).variant_name_zh || ''}
+                                onChange={formik.handleChange}
+                                className="w-full px-2 py-1 text-sm border rounded"
+                                placeholder="中文"
                               />
                             </div>
                           </div>
@@ -2035,6 +2075,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       type="button"
                       onClick={() => arrayHelpers.push({
                         variant_name: '',
+                        variant_name_ar: '',
+                        variant_name_en: '',
+                        variant_name_zh: '',
                         variant_type: 'Couleur',
                         reference: '',
                         prix_achat: 0,
