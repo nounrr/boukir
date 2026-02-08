@@ -5,6 +5,7 @@ import { canManageEmployees } from '../../utils/permissions';
 import {
   Users,
   Package,
+  Languages,
   UserCheck,
   FileText,
   Truck,
@@ -48,6 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Produits',
       items: [
         { name: 'Stock', href: '/stock', icon: Package, show: !isChefChauffeur },
+        { name: 'Produits Translate', href: '/products/translate', icon: Languages, show: !isChefChauffeur },
         { name: 'Inventaire', href: '/inventaire', icon: ClipboardList, show: !isChefChauffeur && user?.role !== undefined },
         { name: 'Catégories', href: '/categories', icon: Tags, show: !isChefChauffeur },
         { name: 'Marques', href: '/brands', icon: Award, show: !isChefChauffeur },

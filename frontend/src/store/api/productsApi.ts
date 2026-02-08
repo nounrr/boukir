@@ -9,6 +9,14 @@ const productsApi = api.injectEndpoints({
       providesTags: ['Product'],
     }),
 
+    getProductsPaginated: builder.query<{ data: Product[]; meta: { total: number; page: number; limit: number; totalPages: number } }, { page: number; limit: number; q?: string; category_id?: number | string; brand_id?: number | string; missing_lang?: string }>({
+      query: (params) => ({
+        url: '/products/search',
+        params,
+      }),
+      providesTags: ['Product'],
+    }),
+
     getProduct: builder.query<Product, number>({
       query: (id) => ({ url: `/products/${id}` }),
       providesTags: (_result, _error, id) => [{ type: 'Product', id }],
@@ -83,7 +91,7 @@ const productsApi = api.injectEndpoints({
 
     generateSpecs: builder.mutation<
       { ok: boolean; results: any[] },
-      { ids: number[]; force?: boolean; model?: string }
+      { ids: number[]; force?: boolean; model?: string; translate?: boolean }
     >({
       query: (body) => ({
         url: '/ai/products/generate-specs',
@@ -97,6 +105,7 @@ const productsApi = api.injectEndpoints({
 
 export const {
   useGetProductsQuery,
+  useGetProductsPaginatedQuery,
   useGetProductQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
