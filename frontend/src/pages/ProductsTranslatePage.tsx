@@ -100,6 +100,7 @@ const ProductsTranslatePage: React.FC = () => {
   const [generateSpecs, { isLoading: isGeneratingSpecs }] = useGenerateSpecsMutation();
 
   const [actionMessage, setActionMessage] = useState<string>('');
+  const [isBatchRunning, setIsBatchRunning] = useState(false);
 
   useEffect(() => {
     // Keep selection simple: selection is per current page/filters.
@@ -133,6 +134,61 @@ const ProductsTranslatePage: React.FC = () => {
 
   const getSelectedIdArray = () => Array.from(selectedIds.values()).sort((a, b) => a - b);
 
+  const formatApiError = (e: any) => String(e?.data?.message || e?.message || 'unknown');
+
+  const asyncPool = async <T, R>(limit: number, array: T[], iteratorFn: (item: T) => Promise<R>) => {
+    const ret: Promise<R>[] = [];
+    const executing: Promise<any>[] = [];
+    for (const item of array) {
+      const p = Promise.resolve().then(() => iteratorFn(item));
+      ret.push(p);
+      if (limit <= array.length) {
+        const e: Promise<any> = p.then(() => executing.splice(executing.indexOf(e), 1));
+        executing.push(e);
+        if (executing.length >= limit) {
+          await Promise.race(executing);
+        }
+      }
+    }
+    return Promise.all(ret);
+  };
+
+  const runGenerateSpecsPerProduct = async (ids: number[], opts?: { concurrency?: number }) => {
+    const concurrency = Math.max(1, Math.min(8, Number(opts?.concurrency ?? 8)));
+    let okCount = 0;
+    const failures: Array<{ id: number; error: string }> = [];
+    let doneCount = 0;
+
+    setIsBatchRunning(true);
+
+    try {
+      setActionMessage(`Fiche+Description+Traduction: 0/${ids.length} (en parallèle, max ${concurrency})...`);
+
+      await asyncPool(concurrency, ids, async (id) => {
+        try {
+          await generateSpecs({ ids: [id], force: false, translate: true }).unwrap();
+          okCount += 1;
+        } catch (e: any) {
+          failures.push({ id, error: formatApiError(e) });
+        } finally {
+          doneCount += 1;
+          setActionMessage(`Fiche+Description+Traduction: ${doneCount}/${ids.length} (en parallèle, max ${concurrency})...`);
+        }
+      });
+    } finally {
+      setIsBatchRunning(false);
+    }
+
+    if (failures.length === 0) {
+      setActionMessage(`Fiche+Description+Traduction: OK (${okCount}/${ids.length} produits)`);
+      return;
+    }
+
+    setActionMessage(
+      `Fiche+Description+Traduction: ${okCount}/${ids.length} OK, ${failures.length} erreur(s) (ex: #${failures[0].id})`
+    );
+  };
+
   const runTranslateTitles = async () => {
     const ids = getSelectedIdArray();
     if (ids.length === 0) return;
@@ -141,7 +197,7 @@ const ProductsTranslatePage: React.FC = () => {
       const res = await translateProducts({ ids, commit: true, force: false }).unwrap();
       setActionMessage(`Titre: ${res?.ok ? 'OK' : 'Erreur'} (${ids.length} produits)`);
     } catch (e: any) {
-      setActionMessage(`Titre: erreur (${String(e?.data?.message || e?.message || 'unknown')})`);
+      setActionMessage(`Titre: erreur (${formatApiError(e)})`);
     }
   };
 
@@ -149,12 +205,7 @@ const ProductsTranslatePage: React.FC = () => {
     const ids = getSelectedIdArray();
     if (ids.length === 0) return;
     setActionMessage('');
-    try {
-      const res = await generateSpecs({ ids, force: false, translate: true }).unwrap();
-      setActionMessage(`Fiche+Description+Traduction: ${res?.ok ? 'OK' : 'Erreur'} (${ids.length} produits)`);
-    } catch (e: any) {
-      setActionMessage(`Fiche+Description+Traduction: erreur (${String(e?.data?.message || e?.message || 'unknown')})`);
-    }
+    await runGenerateSpecsPerProduct(ids, { concurrency: 8 });
   };
 
   const runAll = async () => {
@@ -162,14 +213,15 @@ const ProductsTranslatePage: React.FC = () => {
     if (ids.length === 0) return;
     setActionMessage('');
     try {
-      const [r1, r2] = await Promise.all([
-        translateProducts({ ids, commit: true, force: false }).unwrap(),
-        generateSpecs({ ids, force: false, translate: true }).unwrap(),
-      ]);
-      const ok = Boolean(r1?.ok) && Boolean(r2?.ok);
-      setActionMessage(`Tout: ${ok ? 'OK' : 'Erreur'} (${ids.length} produits)`);
+      const r1 = await translateProducts({ ids, commit: true, force: false }).unwrap();
+      if (!Boolean(r1?.ok)) {
+        setActionMessage(`Tout: Erreur titre (${ids.length} produits)`);
+        return;
+      }
+
+      await runGenerateSpecsPerProduct(ids, { concurrency: 8 });
     } catch (e: any) {
-      setActionMessage(`Tout: erreur (${String(e?.data?.message || e?.message || 'unknown')})`);
+      setActionMessage(`Tout: erreur (${formatApiError(e)})`);
     }
   };
 
@@ -207,7 +259,7 @@ const ProductsTranslatePage: React.FC = () => {
           <button
             type="button"
             className="px-3 py-2 rounded-md text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
-            disabled={selectedCount === 0 || isTranslatingTitles || isGeneratingSpecs}
+            disabled={selectedCount === 0 || isTranslatingTitles || isGeneratingSpecs || isBatchRunning}
             onClick={runTranslateTitles}
           >
             Traduire titre
@@ -215,7 +267,7 @@ const ProductsTranslatePage: React.FC = () => {
           <button
             type="button"
             className="px-3 py-2 rounded-md text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
-            disabled={selectedCount === 0 || isGeneratingSpecs || isTranslatingTitles}
+            disabled={selectedCount === 0 || isGeneratingSpecs || isTranslatingTitles || isBatchRunning}
             onClick={runGenerateSpecsAndTranslate}
           >
             Get fiche + traduire direct
@@ -223,7 +275,7 @@ const ProductsTranslatePage: React.FC = () => {
           <button
             type="button"
             className="px-3 py-2 rounded-md text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:bg-gray-300"
-            disabled={selectedCount === 0 || isGeneratingSpecs || isTranslatingTitles}
+            disabled={selectedCount === 0 || isGeneratingSpecs || isTranslatingTitles || isBatchRunning}
             onClick={runAll}
           >
             Tout (titre + fiche + description)

@@ -1492,6 +1492,45 @@ router.post('/products/generate-specs', async (req, res) => {
     const handleOne = async (id) => {
       const out = { id, status: 'ok', actions: [], message: '' };
 
+      const normalizeFicheToMarkdown = (fiche, fallback) => {
+        if (!fiche) return null;
+        if (typeof fiche === 'string') {
+          const s = fiche.trim();
+          return s.length ? s : null;
+        }
+        if (typeof fiche !== 'object') return null;
+
+        const pick = (...candidates) => {
+          for (const c of candidates) {
+            const v = c;
+            if (v === null || v === undefined) continue;
+            const s = String(v).trim();
+            if (s.length) return s;
+          }
+          return '—';
+        };
+
+        const obj = fiche;
+        const specs = obj?.specs ?? {};
+        const sectionMm = specs?.section_mm ?? specs?.sectionMM ?? specs?.section ?? {};
+
+        const lines = [
+          '- **Désignation (nom produit)**: ' + pick(obj?.designation, fallback?.designation),
+          '- **Catégorie**: ' + pick(obj?.category, fallback?.category),
+          '- **Usage**: ' + pick(obj?.usage?.recommended_applications, obj?.usage, obj?.usage_text),
+          '- **Matériau**: ' + pick(obj?.material, specs?.material),
+          '- **Conditionnement**: ' + pick(obj?.packaging?.unit, obj?.packaging),
+          '- **Unité de base**: ' + pick(obj?.base_unit, obj?.baseUnit, specs?.base_unit),
+          '- **Conformité / norme**: ' + pick(obj?.compliance?.standards, obj?.compliance?.notes, obj?.compliance),
+          '- **Traitement**: ' + pick(obj?.treatment, specs?.treatment),
+          '- **Classe de service**: ' + pick(obj?.service_class, obj?.serviceClass, specs?.service_class),
+          '- **Section — largeur**: ' + pick(sectionMm?.width, specs?.width, specs?.largeur),
+          '- **Section — hauteur**: ' + pick(sectionMm?.height, specs?.height, specs?.hauteur),
+        ];
+
+        return lines.join('\n');
+      };
+
       // 1) Load product details + variants + brand + category
       const [rows] = await pool.query(`
         SELECT p.*, b.nom as brand_nom, c.nom as cat_nom
@@ -1546,30 +1585,31 @@ router.post('/products/generate-specs', async (req, res) => {
               '   - Extract every technical detail available in the description.',
               '   - Use your internal knowledge base to find standard specs if they are missing from the input.',
               '   - If exact data is missing, infer standard specs for this type of product (e.g., standard dimensions for a specific pipe type).',
-              '3. GENERATE a structured JSON "fiche_technique".',
-              '   - The "specs" object MUST include the dimensions found in the title OR description (Diameter, Length, Width, Thickness, etc.).',
+              '3. GENERATE a Markdown "fiche_technique" as a bullet list of key/value fields (NOT JSON).',
               '4. GENERATE a professional "description" (HTML formatted) if the existing one is empty or poor.',
               '',
               'Output Format: JSON ONLY.',
               'Structure:',
               '{',
-              '  "fiche_technique": {',
-              '    "version": 1,',
-              '    "product_id": <ID>,',
-              '    "designation": "...",',
-              '    "category": "...",',
-              '    "material": "...",',
-              '    "specs": { "key": "value", ... },',
-              '    "variants": [ ... ],',
-              '    "compliance": { "standards": [...] },',
-              '    "usage": { "recommended_applications": [...] },',
-              '    "packaging": { "unit": "..." }',
-              '  },',
+              '  "fiche_technique": "<MARKDOWN>",',
               '  "description": "<p>Professional description...</p><ul><li>Feature 1</li>...</ul>"',
               '}',
               'Notes:',
-              '- "specs" should contain detailed technical pairs (Size, Weight, Power, Material, Finish, etc.).',
-              '- CRITICAL: If the title contains a measurement (e.g. "Ø110", "L=3m", "25kg", "40x40"), it MUST appear in "specs".',
+              '- The fiche_technique Markdown MUST be in FRENCH and MUST include ALL the following fields in THIS EXACT ORDER:',
+              '  - Désignation (nom produit)',
+              '  - Catégorie',
+              '  - Usage',
+              '  - Matériau',
+              '  - Conditionnement',
+              '  - Unité de base',
+              '  - Conformité / norme',
+              '  - Traitement',
+              '  - Classe de service',
+              '  - Section — largeur',
+              '  - Section — hauteur',
+              '- Format each line as: - **<Champ>**: <valeur>',
+              '- If a value is unknown, output "—" (do not omit fields).',
+              '- CRITICAL: If the title contains a measurement (e.g. "Ø110", "L=3m", "25kg", "40x40"), it MUST appear in the relevant field(s).',
               '- If dimensions are not in the title, LOOK for them in the description or imply them from standard industry knowledge.',
               '- "description" should be SEO-friendly, highlighting key features and benefits.',
               'IMPORTANT: All text content (designation, specs, description) must be in FRENCH.'
@@ -1608,8 +1648,17 @@ router.post('/products/generate-specs', async (req, res) => {
             parsed = safeJsonParse(txt);
 
             if (parsed && parsed.fiche_technique) {
-              const newFiche = JSON.stringify(parsed.fiche_technique);
+              const newFiche = normalizeFicheToMarkdown(parsed.fiche_technique, {
+                designation: r.designation,
+                category: r.cat_nom || '—',
+              });
               newDesc = parsed.description ? String(parsed.description) : null;
+
+              if (!newFiche) {
+                out.status = 'error';
+                out.message = 'AI fiche_technique is empty';
+                return out;
+              }
 
               // Update DB
               const updates = [];
@@ -1668,11 +1717,11 @@ router.post('/products/generate-specs', async (req, res) => {
               const fresh = freshRows?.[0] || {};
               // Identify source data
               const sourceDesc = trimOrNull(newDesc) || trimOrNull(fresh.description);
-              const sourceFicheObj = (() => {
-                 if (parsed?.fiche_technique && typeof parsed.fiche_technique === 'object') return parsed.fiche_technique;
-                 const fromDb = safeJsonParse(fresh.fiche_technique);
-                 return (fromDb && typeof fromDb === 'object') ? fromDb : null;
-              })();
+              const sourceFicheMd =
+                trimOrNull(normalizeFicheToMarkdown(parsed?.fiche_technique, {
+                  designation: r.designation,
+                  category: r.cat_nom || '—',
+                })) || trimOrNull(fresh.fiche_technique);
 
               const translationTasks = [];
               const modelForTr = TR_MODEL; // Default to fast model
@@ -1748,24 +1797,24 @@ router.post('/products/generate-specs', async (req, res) => {
               // ------------------------------------------
               // Batch Translate Fiche Technique: One call for ALL langs
               // ------------------------------------------
-              if (sourceFicheObj) {
+              if (sourceFicheMd) {
                 translationTasks.push((async () => {
                    try {
-                     const protectedTokens = extractProtectedTokens(JSON.stringify(sourceFicheObj));
+                     const protectedTokens = extractProtectedTokens(sourceFicheMd);
                      const ficheSystem = {
                        role: 'system',
                        content: [
                          'You are an expert technical translator.',
-                         'Translate the values of the provided JSON technical sheet into 3 languages: Arabic (ar), English (en), and Chinese (zh).',
-                         'Return JSON object ONLY: { "ar": <json_object>, "en": <json_object>, "zh": <json_object> }.',
-                         'Preserve keys and structure. Translate only string values.',
+                         'Translate the provided Markdown technical sheet into 3 languages: Arabic (ar), English (en), and Chinese (zh).',
+                         'Return JSON object ONLY: { "ar": "<MARKDOWN>", "en": "<MARKDOWN>", "zh": "<MARKDOWN>" }.',
+                         'Preserve the exact bullet list structure, keep the same field order, and keep **bold** markers.',
                          'Preserve protected tokens, numbers, and units exactly.'
                        ].join(' ')
                      };
                      const ficheUser = {
                        role: 'user',
                        content: JSON.stringify({
-                         fiche_technique: sourceFicheObj,
+                         fiche_technique_markdown: sourceFicheMd,
                          protected_tokens: protectedTokens
                        })
                      };
@@ -1799,10 +1848,10 @@ router.post('/products/generate-specs', async (req, res) => {
                        const updates = [];
                        const params = [];
                        for (const lang of ['ar', 'en', 'zh']) {
-                         const valObj = jsonRes[lang];
-                         if (valObj && typeof valObj === 'object') {
+                         const val = trimOrNull(jsonRes[lang]);
+                         if (val) {
                            updates.push(`fiche_technique_${lang} = ?`);
-                           params.push(JSON.stringify(valObj));
+                           params.push(val);
                            out.actions.push(`translated_fiche_${lang}`);
                          }
                        }

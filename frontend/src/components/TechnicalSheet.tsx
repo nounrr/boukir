@@ -23,6 +23,8 @@ export interface TechnicalSheetProps {
   defaultExpanded?: boolean;
 }
 
+type MarkdownPair = { label: string; value: string };
+
 function formatValue(v: any): string {
   if (v === null || v === undefined || v === '') return '—';
   if (typeof v === 'number') return String(v);
@@ -37,6 +39,56 @@ export const TechnicalSheet: React.FC<TechnicalSheetProps> = ({ fiche, className
   const [activeTab, setActiveTab] = useState<'general' | 'specs' | 'variants' | 'usage'>('general');
   const [isExpanded, setIsExpanded] = useState<boolean>(Boolean(defaultExpanded));
 
+  const markdownPairs = useMemo<MarkdownPair[] | null>(() => {
+    if (!fiche || typeof fiche !== 'string') return null;
+    const raw = fiche.trim();
+    if (!raw) return null;
+
+    // If it parses as JSON, we let the existing JSON renderer handle it.
+    try {
+      JSON.parse(raw);
+      return null;
+    } catch {
+      // continue
+    }
+
+    const clean = (s: string) => s.replace(/^\*\*|\*\*$/g, '').trim();
+
+    const pairs: MarkdownPair[] = [];
+    const lines = raw.split(/\r?\n/);
+    for (const lineRaw of lines) {
+      const line = lineRaw.trim();
+      if (!line) continue;
+
+      // Bullet list: - **Label**: value
+      const bullet = line.match(/^[-*]\s+(.*)$/);
+      if (bullet) {
+        const rest = bullet[1].trim();
+        const m = rest.match(/^(\*\*.+?\*\*|[^:]+)\s*:\s*(.+)$/);
+        if (m) {
+          pairs.push({ label: clean(m[1]), value: m[2].trim() || '—' });
+        }
+        continue;
+      }
+
+      // Markdown table row: | Label | Value |
+      if (line.startsWith('|') && line.endsWith('|')) {
+        const cells = line
+          .split('|')
+          .map((c) => c.trim())
+          .filter((c) => c.length > 0);
+        if (cells.length >= 2) {
+          // Skip separator rows like | --- | --- |
+          if (/^-{3,}$/.test(cells[0]) && /^-+/.test(cells[1])) continue;
+          if (/^-{3,}$/.test(cells[1])) continue;
+          pairs.push({ label: clean(cells[0]), value: cells[1] || '—' });
+        }
+      }
+    }
+
+    return pairs.length ? pairs : [{ label: 'Fiche', value: raw }];
+  }, [fiche]);
+
   const data = useMemo(() => {
     if (!fiche) return null;
     try {
@@ -48,7 +100,42 @@ export const TechnicalSheet: React.FC<TechnicalSheetProps> = ({ fiche, className
 
   const variants: AnyRecord[] = Array.isArray(data?.variants) ? (data!.variants as AnyRecord[]) : [];
 
-  if (!data) return null;
+  if (!data && !markdownPairs) return null;
+
+  if (markdownPairs) {
+    return (
+      <div className={cn('rounded-lg border border-gray-200 bg-white', className)}>
+        <button
+          type="button"
+          onClick={() => setIsExpanded((v) => !v)}
+          className="flex items-center justify-between w-full px-4 py-3 hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="w-4 h-4 text-gray-500" />
+            <h3 className="text-sm font-semibold text-gray-900">Fiche technique</h3>
+          </div>
+          {isExpanded ? (
+            <ChevronUp className="w-4 h-4 text-gray-500" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-gray-500" />
+          )}
+        </button>
+
+        {isExpanded && (
+          <div className="border-t border-gray-200 p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {markdownPairs.map((p, idx) => (
+                <div key={`${p.label}-${idx}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-xs text-gray-500 mb-1">{p.label}</p>
+                  <p className="text-sm font-medium text-gray-900 whitespace-pre-wrap break-words">{formatValue(p.value)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const specs = (data?.specs ?? {}) as AnyRecord;
   const section = (specs?.section_mm ?? {}) as AnyRecord;
