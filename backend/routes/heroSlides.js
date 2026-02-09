@@ -9,6 +9,38 @@ const ALLOWED_LOCALES = new Set(['fr', 'ar', 'en', 'zh']);
 const ALLOWED_TYPES = new Set(['category', 'brand', 'campaign', 'product']);
 const ALLOWED_STATUSES = new Set(['draft', 'published', 'archived']);
 
+function resolveI18nText(i18n, locale) {
+  if (!i18n || typeof i18n !== 'object') return null;
+  const l = String(locale || '').trim().toLowerCase();
+  const byLocale = i18n?.[l];
+  if (byLocale != null && String(byLocale).trim()) return String(byLocale);
+  const fr = i18n?.fr;
+  if (fr != null && String(fr).trim()) return String(fr);
+  for (const key of ['en', 'ar', 'zh']) {
+    const v = i18n?.[key];
+    if (v != null && String(v).trim()) return String(v);
+  }
+  return null;
+}
+
+function resolveCtaLabel(cta, locale) {
+  const l = String(locale || '').trim().toLowerCase();
+  const candidates = [
+    l === 'ar' ? cta?.label_ar : null,
+    l === 'en' ? cta?.label_en : null,
+    l === 'zh' ? cta?.label_zh : null,
+    cta?.label,
+    cta?.label_en,
+    cta?.label_ar,
+    cta?.label_zh,
+  ];
+  for (const v of candidates) {
+    const s = v != null ? String(v).trim() : '';
+    if (s) return s;
+  }
+  return null;
+}
+
 function toIsoOrNull(v) {
   if (!v) return null;
   const d = new Date(v);
@@ -132,6 +164,8 @@ router.get('/', async (req, res, next) => {
       });
     }
 
+    const resolvedLocale = locale || 'fr';
+
     const limitRaw = req.query.limit != null ? String(req.query.limit).trim() : '';
     const limitParsed = limitRaw ? Number.parseInt(limitRaw, 10) : 4;
     const limit = Number.isFinite(limitParsed) && limitParsed > 0 ? Math.min(limitParsed, 8) : 4;
@@ -221,9 +255,39 @@ router.get('/', async (req, res, next) => {
             zh: row.description_zh || null,
           },
         },
+        content_resolved: {
+          locale: resolvedLocale,
+          title: resolveI18nText(
+            { fr: row.title, ar: row.title_ar || null, en: row.title_en || null, zh: row.title_zh || null },
+            resolvedLocale
+          ),
+          subtitle: resolveI18nText(
+            { fr: row.subtitle || null, ar: row.subtitle_ar || null, en: row.subtitle_en || null, zh: row.subtitle_zh || null },
+            resolvedLocale
+          ),
+          description: resolveI18nText(
+            {
+              fr: row.description || null,
+              ar: row.description_ar || null,
+              en: row.description_en || null,
+              zh: row.description_zh || null,
+            },
+            resolvedLocale
+          ),
+        },
         target,
         ctas,
+        ctas_resolved: ctas.map((c) => ({ style: c.style, label: resolveCtaLabel(c, resolvedLocale) })),
         cta: toCtaBundle(ctas),
+        cta_resolved: toCtaBundle(
+          ctas.map((c) => ({
+            ...c,
+            label: resolveCtaLabel(c, resolvedLocale) || c.label,
+            label_ar: null,
+            label_en: null,
+            label_zh: null,
+          }))
+        ),
       });
 
       if (slides.length >= limit) break;
