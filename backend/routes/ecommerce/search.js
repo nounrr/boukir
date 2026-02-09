@@ -4,6 +4,9 @@ import { ensureCategoryColumns } from '../../utils/ensureCategorySchema.js';
 
 const router = Router();
 
+// UI-only limit; do not leak real stock quantities.
+const PURCHASE_LIMIT = 20;
+
 // Avoid schema drift/race: make sure category image + translation fields exist.
 router.use(async (_req, _res, next) => {
   try {
@@ -21,6 +24,16 @@ function normalizeText(input) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ');
+}
+
+function parseReferenceId(qRaw) {
+  const s = String(qRaw || '').trim();
+  if (!s) return null;
+  if (/^\d+$/.test(s)) return Number(s);
+
+  const m = s.match(/(?:^|\b)(?:id|ref|reference)\s*[:#]?\s*(\d+)\b/i);
+  if (m && m[1]) return Number(m[1]);
+  return null;
 }
 
 function scoreCandidate(qNorm, nameNorm) {
@@ -55,6 +68,8 @@ router.get('/suggestions', async (req, res, next) => {
   try {
     const qRaw = String(req.query.q || '');
     const qNorm = normalizeText(qRaw);
+
+    const refId = parseReferenceId(qRaw);
 
     const limitProducts = Math.min(50, Math.max(0, Number(req.query.limit_products || 10)));
     const limitCategories = Math.min(50, Math.max(0, Number(req.query.limit_categories || 6)));
@@ -232,6 +247,74 @@ router.get('/suggestions', async (req, res, next) => {
 
     const whereSql = productWhere.join(' AND ');
 
+    // Optional: if the user typed a product reference/id, fetch it directly.
+    // This helps when reference is numeric and doesn't match text LIKE.
+    let directProductRow = null;
+    if (Number.isFinite(refId) && refId > 0 && limitProducts > 0) {
+      const directWhere = [
+        'p.id = ?',
+        'p.ecom_published = 1',
+        'COALESCE(p.is_deleted, 0) = 0',
+      ];
+      const directParams = [Number(refId)];
+
+      if (inStockOnly) {
+        directWhere.push(
+          `(
+            COALESCE(p.stock_partage_ecom_qty, 0) > 0
+            OR EXISTS (
+              SELECT 1 FROM product_variants pv
+              WHERE pv.product_id = p.id AND COALESCE(pv.stock_quantity, 0) > 0
+            )
+          )`
+        );
+      }
+
+      const [directRows] = await pool.query(
+        `
+        SELECT
+          p.id,
+          p.designation,
+          p.designation_ar,
+          p.designation_en,
+          p.designation_zh,
+          p.prix_vente,
+          p.pourcentage_promo,
+          p.image_url,
+          COALESCE(p.stock_partage_ecom_qty, 0) AS stock_partage_ecom_qty,
+          EXISTS (
+            SELECT 1 FROM product_variants pv
+            WHERE pv.product_id = p.id AND COALESCE(pv.stock_quantity, 0) > 0
+          ) AS has_variant_stock,
+          b.id AS brand_id,
+          b.nom AS brand_nom,
+          b.image_url AS brand_image_url,
+          c.id AS categorie_id,
+          c.nom AS categorie_nom,
+          c.nom_ar AS categorie_nom_ar,
+          c.nom_en AS categorie_nom_en,
+          c.nom_zh AS categorie_nom_zh,
+          c.parent_id AS categorie_parent_id,
+          c.image_url AS categorie_image_url,
+          (
+            SELECT pi.image_url
+            FROM product_images pi
+            WHERE pi.product_id = p.id
+            ORDER BY pi.position ASC
+            LIMIT 1
+          ) AS first_gallery_image_url
+        FROM products p
+        LEFT JOIN brands b ON p.brand_id = b.id
+        LEFT JOIN categories c ON p.categorie_id = c.id
+        WHERE ${directWhere.join(' AND ')}
+        LIMIT 1
+        `,
+        directParams
+      );
+
+      directProductRow = directRows.length > 0 ? directRows[0] : null;
+    }
+
     const [productRows] = await pool.query(
       `
       SELECT
@@ -243,7 +326,11 @@ router.get('/suggestions', async (req, res, next) => {
         p.prix_vente,
         p.pourcentage_promo,
         p.image_url,
-        p.stock_partage_ecom_qty,
+        COALESCE(p.stock_partage_ecom_qty, 0) AS stock_partage_ecom_qty,
+        EXISTS (
+          SELECT 1 FROM product_variants pv
+          WHERE pv.product_id = p.id AND COALESCE(pv.stock_quantity, 0) > 0
+        ) AS has_variant_stock,
         b.id AS brand_id,
         b.nom AS brand_nom,
         b.image_url AS brand_image_url,
@@ -271,15 +358,23 @@ router.get('/suggestions', async (req, res, next) => {
       [...productParams, limitProducts]
     );
 
-    const products = productRows.map(r => {
+    // Prepend direct reference match (if not already present)
+    const mergedProductRows = directProductRow
+      ? [directProductRow, ...productRows.filter(r => Number(r.id) !== Number(directProductRow.id))]
+      : productRows;
+
+    const products = mergedProductRows.slice(0, limitProducts).map(r => {
       const originalPrice = Number(r.prix_vente);
       const promoPercentage = Number(r.pourcentage_promo || 0);
       const promoPrice = promoPercentage > 0 ? originalPrice * (1 - promoPercentage / 100) : null;
 
       const primaryImage = r.first_gallery_image_url || r.image_url || null;
 
+      const inStock = Number(r.stock_partage_ecom_qty || 0) > 0 || Number(r.has_variant_stock || 0) === 1;
+
       return {
         id: r.id,
+        reference: String(r.id),
         designation: r.designation,
         designation_ar: r.designation_ar,
         designation_en: r.designation_en,
@@ -289,7 +384,8 @@ router.get('/suggestions', async (req, res, next) => {
         pourcentage_promo: promoPercentage,
         has_promo: promoPercentage > 0,
         image_url: primaryImage,
-        in_stock: Number(r.stock_partage_ecom_qty || 0) > 0,
+        in_stock: inStock,
+        purchase_limit: PURCHASE_LIMIT,
         brand: r.brand_id
           ? { id: r.brand_id, nom: r.brand_nom, image_url: r.brand_image_url }
           : null,
