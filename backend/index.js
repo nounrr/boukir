@@ -23,6 +23,7 @@ import categoriesRouter from './routes/categories.js';
 import brandsRouter from './routes/brands.js';
 import productsRouter from './routes/products.js';
 import ecommerceProductsRouter from './routes/ecommerce/products.js';
+import ecommerceSearchRouter from './routes/ecommerce/search.js';
 import ecommerceCartRouter from './routes/ecommerce/cart.js';
 import ecommerceWishlistRouter from './routes/ecommerce/wishlist.js';
 import ecommerceOrdersRouter from './routes/ecommerce/orders.js';
@@ -70,8 +71,6 @@ import livraisonsRouter from './routes/livraisons.js';
 import notificationsRouter from './routes/notifications.js';
 import aiRouter from './routes/ai.js';
 import inventoryRouter from './routes/inventory.js';
-import calcRouter from './routes/calc.js';
-import statsRouter from './routes/stats.js';
 
 import {
   ensureContactsRemiseBalance,
@@ -80,6 +79,7 @@ import {
   ensureEcommerceOrdersRemiseColumns,
   ensureProductRemiseColumns,
 } from './utils/ensureRemiseSchema.js';
+import { ensureCategoryColumns } from './utils/ensureCategorySchema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -87,6 +87,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Ensure remise schema exists (safe to call on every boot)
 (async () => {
   try {
+    await ensureCategoryColumns();
     await ensureProductRemiseColumns();
     await ensureContactsRemiseBalance();
     await ensureBonsRemiseTargetColumns();
@@ -168,6 +169,7 @@ const PUBLIC_PATHS = new Set([
 // E-commerce public routes (no authentication required)
 const ECOMMERCE_PUBLIC_PREFIXES = [
   '/api/ecommerce/products',
+  '/api/ecommerce/search',
   '/api/ecommerce/promo',
   '/api/ecommerce/pickup-locations',
 ];
@@ -274,6 +276,7 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/brands', brandsRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/ecommerce/products', optionalAuth, ecommerceProductsRouter); // E-commerce public products (with optional auth)
+app.use('/api/ecommerce/search', optionalAuth, ecommerceSearchRouter); // E-commerce public search (with optional auth)
 app.use('/api/ecommerce/promo', optionalAuth, ecommercePromoRouter); // E-commerce promo validation (public)
 app.use('/api/ecommerce/pickup-locations', optionalAuth, ecommercePickupLocationsRouter); // E-commerce pickup locations (public)
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
@@ -324,8 +327,6 @@ app.use('/api/access-schedules', accessSchedulesDetailedRouter);
 app.use('/api/livraisons', livraisonsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/inventory', inventoryRouter);
-app.use('/api/calc', calcRouter);
-app.use('/api/stats', statsRouter);
 
 // 404
 app.use((req, res) => {
