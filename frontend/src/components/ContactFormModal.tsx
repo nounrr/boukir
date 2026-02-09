@@ -87,7 +87,6 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     rib: '',
     solde: 0,
     plafond: contactType === 'Client' ? 0 : null,
-    isSolde: Boolean((initialValues as any)?.isSolde ?? (initialValues as any)?.is_solde ?? false),
     ...initialValues
   };
 
@@ -130,7 +129,6 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 rib: values.rib || '',
                 type: contactType,
                 solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
-                is_solde: (values as any).isSolde ? 1 : 0,
                 group_id: (values as any).group_id === '' || (values as any).group_id == null ? null : Number((values as any).group_id),
                 ...(contactType === 'Client' && { 
                   plafond: values.plafond != null ? Number(values.plafond as any) : undefined 
@@ -162,6 +160,17 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
               onClose();
             } catch (error: any) {
               console.error('Erreur lors de l\'opération sur le contact:', error);
+              const status = error?.originalStatus ?? error?.status;
+
+              if (typeof error?.data === 'string') {
+                if (Number(status) === 502) {
+                  showError('Erreur lors de la modification: 502 Bad Gateway (backend/nginx indisponible).');
+                  return;
+                }
+                showError(status ? `Erreur serveur (${status}).` : 'Erreur serveur (réponse non-JSON).');
+                return;
+              }
+
               const msg =
                 error?.data?.details?.sqlMessage ||
                 error?.data?.details?.message ||
@@ -173,23 +182,8 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
             }
           }}
         >
-          {({ errors, touched, setFieldValue }) => (
+          {({ errors, touched }) => (
             <Form className="space-y-4">
-              {/* Checkbox isSolde - en haut (clients seulement) */}
-              {contactType === 'Client' && (
-                <div className="flex items-center space-x-2">
-                  <Field
-                    id="isSolde"
-                    name="isSolde"
-                    type="checkbox"
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="isSolde" className="text-sm font-medium text-gray-700">
-                    Autoriser les commandes en solde (crédit)
-                  </label>
-                </div>
-              )}
-
               {/* Nom complet - pleine largeur */}
               <div>
                 <label htmlFor="nom_complet" className="block text-sm font-medium text-gray-700 mb-1">
