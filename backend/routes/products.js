@@ -496,6 +496,98 @@ async function ensureProductsColumns() {
   }
 };
 
+// Search / Filter / Paginate endpoint
+router.get('/search', async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+
+    const { q, category_id, brand_id, missing_lang } = req.query;
+
+    const conditions = ['COALESCE(p.is_deleted, 0) = 0'];
+    const params = [];
+
+    if (q) {
+      conditions.push('(p.designation LIKE ? OR p.id LIKE ?)');
+      const wild = `%${q}%`;
+      params.push(wild, wild);
+    }
+
+    if (category_id) {
+      conditions.push('p.categorie_id = ?');
+      params.push(category_id);
+    }
+
+    if (brand_id) {
+      conditions.push('p.brand_id = ?');
+      params.push(brand_id);
+    }
+
+    if (missing_lang) {
+      if (missing_lang === 'ar') conditions.push("(p.designation_ar IS NULL OR p.designation_ar = '')");
+      else if (missing_lang === 'en') conditions.push("(p.designation_en IS NULL OR p.designation_en = '')");
+      else if (missing_lang === 'zh') conditions.push("(p.designation_zh IS NULL OR p.designation_zh = '')");
+      else if (missing_lang === 'desc') conditions.push("(p.description IS NULL OR p.description = '')");
+      else if (missing_lang === 'fiche') conditions.push("(p.fiche_technique IS NULL OR p.fiche_technique = '')");
+    }
+
+    const whereSql = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    // Count total
+    const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM products p ${whereSql}`, params);
+    const total = countRows[0]?.total || 0;
+
+    // Fetch data
+    const querySql = `
+      SELECT p.*, b.id as b_id, b.nom as b_nom, c.nom as categorie_nom
+      FROM products p
+      LEFT JOIN brands b ON p.brand_id = b.id
+      LEFT JOIN categories c ON p.categorie_id = c.id
+      ${whereSql}
+      ORDER BY p.id DESC
+      LIMIT ? OFFSET ?
+    `;
+    
+    // LIMIT/OFFSET must be integers
+    const [rows] = await pool.query(querySql, [...params, limit, offset]);
+
+    const products = rows.map((r) => ({
+      id: r.id,
+      reference: String(r.id),
+      designation: r.designation,
+      designation_ar: r.designation_ar,
+      designation_en: r.designation_en,
+      designation_zh: r.designation_zh,
+      description: r.description,
+      description_ar: r.description_ar || null,
+      description_en: r.description_en || null,
+      description_zh: r.description_zh || null,
+      fiche_technique: r.fiche_technique,
+      fiche_technique_ar: r.fiche_technique_ar || null,
+      fiche_technique_en: r.fiche_technique_en || null,
+      fiche_technique_zh: r.fiche_technique_zh || null,
+      categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
+      brand: r.b_id ? { id: r.b_id, nom: r.b_nom } : undefined,
+      image_url: r.image_url,
+      has_variants: !!r.has_variants,
+    }));
+
+    res.json({
+      data: products,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     await ensureProductsColumns();
@@ -607,6 +699,114 @@ router.get('/archived/list', async (_req, res, next) => {
       updated_at: r.updated_at,
     })));
   } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------
+// Products Translations (server-side search + pagination)
+// GET /api/products/translations?q=&page=&limit=
+// GET /api/products/translations/:id
+// ---------------------------------------------------------------------
+const clampInt = (v, fallback, min, max) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  const i = Math.floor(n);
+  return Math.max(min, Math.min(max, i));
+};
+
+router.get('/translations', async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+
+    const qRaw = String(req.query.q ?? '').trim();
+    const q = qRaw.length > 100 ? qRaw.slice(0, 100) : qRaw;
+    const page = clampInt(req.query.page, 1, 1, 1000000);
+    const limit = clampInt(req.query.limit, 30, 5, 200);
+    const offset = (page - 1) * limit;
+
+    const qLike = `%${q}%`;
+    const qNum = Number(q);
+    const hasNumeric = q !== '' && Number.isFinite(qNum);
+
+    const where = [
+      'COALESCE(p.is_deleted, 0) = 0',
+      'COALESCE(p.est_service, 0) = 0',
+    ];
+    const params = [];
+
+    if (q) {
+      where.push(
+        `(
+          ${hasNumeric ? 'p.id = ? OR' : ''}
+          p.designation LIKE ? OR p.designation_en LIKE ? OR p.designation_ar LIKE ? OR p.designation_zh LIKE ?
+        )`
+      );
+      if (hasNumeric) params.push(qNum);
+      params.push(qLike, qLike, qLike, qLike);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) as total FROM products p ${whereSql}`,
+      params
+    );
+    const total = Number(countRows?.[0]?.total ?? 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    const [rows] = await pool.query(
+      `
+        SELECT p.id, p.designation, p.designation_en, p.designation_ar, p.designation_zh
+        FROM products p
+        ${whereSql}
+        ORDER BY p.id DESC
+        LIMIT ? OFFSET ?
+      `,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      page,
+      limit,
+      total,
+      totalPages,
+      items: rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/translations/:id', async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: 'ID invalide' });
+
+    const [rows] = await pool.query(
+      `
+        SELECT
+          p.id,
+          p.designation, p.designation_en, p.designation_ar, p.designation_zh,
+          p.description, p.description_en, p.description_ar, p.description_zh,
+          p.fiche_technique, p.fiche_technique_en, p.fiche_technique_ar, p.fiche_technique_zh,
+          p.est_service, COALESCE(p.is_deleted,0) as is_deleted
+        FROM products p
+        WHERE p.id = ?
+        LIMIT 1
+      `,
+      [id]
+    );
+
+    const r = rows?.[0];
+    if (!r || Number(r.is_deleted) === 1) return res.status(404).json({ message: 'Produit introuvable' });
+
+    res.json({
+      ...r,
+      est_service: !!r.est_service,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Restore a soft-deleted product

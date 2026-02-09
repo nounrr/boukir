@@ -79,6 +79,95 @@ const BALANCE_EXPR = `
   END
 `;
 
+// Optimized single-contact query (avoids full-table GROUP BY subqueries).
+// Used for GET /:id and PUT /:id responses to prevent long-running requests.
+const SINGLE_CONTACT_QUERY = `
+  SELECT
+    c.*,
+    cg.name AS group_name,
+    (
+      CASE
+        WHEN c.type = 'Client' THEN
+          COALESCE(c.solde, 0)
+          + COALESCE((
+            SELECT SUM(v.montant_total)
+            FROM (
+              SELECT montant_total, statut FROM bons_sortie WHERE client_id = c.id
+              UNION ALL
+              SELECT montant_total, statut FROM bons_comptant WHERE client_id = c.id
+            ) v
+            WHERE LOWER(TRIM(v.statut)) IN ('validé','valide','en attente','pending')
+          ), 0)
+          + COALESCE((
+            SELECT SUM(o.total_amount)
+            FROM ecommerce_orders o
+            WHERE COALESCE(o.is_solde, 0) = 1
+              AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
+              AND (
+                o.user_id = c.id
+                OR (
+                  c.telephone IS NOT NULL
+                  AND TRIM(c.telephone) <> ''
+                  AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c.telephone')}
+                )
+              )
+          ), 0)
+          - COALESCE((
+            SELECT SUM(p.montant_total)
+            FROM payments p
+            WHERE p.type_paiement = 'Client'
+              AND p.contact_id = c.id
+              AND LOWER(TRIM(p.statut)) IN ('validé','valide','en attente','pending')
+          ), 0)
+          - COALESCE((
+            SELECT SUM(ac.montant_total)
+            FROM avoirs_client ac
+            WHERE ac.client_id = c.id
+              AND LOWER(TRIM(ac.statut)) IN ('validé','valide','en attente','pending')
+          ), 0)
+          - COALESCE((
+            SELECT SUM(ae.montant_total)
+            FROM avoirs_ecommerce ae
+            LEFT JOIN ecommerce_orders o2 ON o2.id = ae.ecommerce_order_id
+            WHERE LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
+              AND (
+                o2.user_id = c.id
+                OR (
+                  c.telephone IS NOT NULL
+                  AND TRIM(c.telephone) <> ''
+                  AND ${phone9Sql('COALESCE(ae.customer_phone, o2.customer_phone)')} = ${phone9Sql('c.telephone')}
+                )
+              )
+          ), 0)
+        WHEN c.type = 'Fournisseur' THEN
+          COALESCE(c.solde, 0)
+          + COALESCE((
+            SELECT SUM(bc.montant_total)
+            FROM bons_commande bc
+            WHERE bc.fournisseur_id = c.id
+              AND LOWER(TRIM(bc.statut)) IN ('validé','valide','en attente','pending')
+          ), 0)
+          - COALESCE((
+            SELECT SUM(pf.montant_total)
+            FROM payments pf
+            WHERE pf.type_paiement = 'Fournisseur'
+              AND pf.contact_id = c.id
+              AND LOWER(TRIM(pf.statut)) IN ('validé','valide','en attente','pending')
+          ), 0)
+          - COALESCE((
+            SELECT SUM(af.montant_total)
+            FROM avoirs_fournisseur af
+            WHERE af.fournisseur_id = c.id
+              AND LOWER(TRIM(af.statut)) IN ('validé','valide','en attente','pending')
+          ), 0)
+        ELSE COALESCE(c.solde, 0)
+      END
+    ) AS solde_cumule
+  FROM contacts c
+  LEFT JOIN contact_groups cg ON cg.id = c.group_id
+  WHERE c.id = ?
+`;
+
 // GET /api/contacts - Get all contacts with optional type filter (avec solde_cumule calculé) et pagination
 router.get('/', async (req, res) => {
   try {
@@ -693,108 +782,7 @@ router.get('/debug-solde', async (req, res) => {
 // GET /api/contacts/:id - Get contact by ID with calculated solde_cumule
 router.get('/:id', async (req, res) => {
   try {
-    const [rows] = await pool.execute(
-      `SELECT 
-        c.*,
-        cg.name AS group_name,
-        ${BALANCE_EXPR} AS solde_cumule
-      FROM contacts c
-
-      LEFT JOIN contact_groups cg ON cg.id = c.group_id
-
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_ventes
-        FROM (
-          SELECT client_id, montant_total, statut FROM bons_sortie
-          UNION ALL
-          SELECT client_id, montant_total, statut FROM bons_comptant
-        ) vc
-        WHERE vc.client_id IS NOT NULL
-          AND LOWER(TRIM(vc.statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY client_id
-      ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT
-          c_link.id AS contact_id,
-          SUM(o.total_amount) AS total_ventes
-        FROM ecommerce_orders o
-        INNER JOIN contacts c_link
-          ON (
-            o.user_id = c_link.id
-            OR (
-              c_link.telephone IS NOT NULL
-              AND TRIM(c_link.telephone) <> ''
-              AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c_link.telephone')}
-            )
-          )
-        WHERE c_link.type = 'Client'
-          AND COALESCE(o.is_solde, 0) = 1
-          AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-        GROUP BY c_link.id
-      ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_achats
-        FROM bons_commande
-        WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY fournisseur_id
-      ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-
-      LEFT JOIN (
-        SELECT contact_id, SUM(montant_total) AS total_paiements
-        FROM payments
-        WHERE type_paiement = 'Client'
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY contact_id
-      ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT contact_id, SUM(montant_total) AS total_paiements
-        FROM payments
-        WHERE type_paiement = 'Fournisseur'
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY contact_id
-      ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
-
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_client
-        WHERE LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY client_id
-      ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT
-          c_link.id AS contact_id,
-          SUM(ae.montant_total) AS total_avoirs
-        FROM avoirs_ecommerce ae
-        LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-        INNER JOIN contacts c_link
-          ON (
-            o.user_id = c_link.id
-            OR (
-              c_link.telephone IS NOT NULL
-              AND TRIM(c_link.telephone) <> ''
-              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ${phone9Sql('c_link.telephone')}
-            )
-          )
-        WHERE c_link.type = 'Client'
-          AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
-        GROUP BY c_link.id
-      ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_fournisseur
-        WHERE LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY fournisseur_id
-      ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-
-      WHERE c.id = ?`,
-      [req.params.id]
-    );
+    const [rows] = await pool.execute(SINGLE_CONTACT_QUERY, [req.params.id]);
 
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Contact not found' });
@@ -1080,101 +1068,12 @@ router.put('/:id', async (req, res) => {
       );
     }
 
-    // Fetch updated contact (reuse GET-by-id shape so group_name + solde_cumule are consistent)
-    const [rows] = await pool.execute(
-      `SELECT 
-        c.*,
-        ${BALANCE_EXPR} AS solde_cumule,
-        cg.name AS group_name
-      FROM contacts c
-      LEFT JOIN contact_groups cg ON cg.id = c.group_id
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_ventes
-        FROM (
-          SELECT client_id, montant_total, statut FROM bons_sortie
-          UNION ALL
-          SELECT client_id, montant_total, statut FROM bons_comptant
-        ) vc
-        WHERE vc.client_id IS NOT NULL
-        AND LOWER(TRIM(vc.statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY client_id
-      ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
+    // Fetch updated contact (fast path; keeps group_name + solde_cumule consistent)
+    const [rows] = await pool.execute(SINGLE_CONTACT_QUERY, [req.params.id]);
 
-      LEFT JOIN (
-        SELECT
-          c_link.id AS contact_id,
-          SUM(o.total_amount) AS total_ventes
-        FROM ecommerce_orders o
-        INNER JOIN contacts c_link
-          ON (
-            o.user_id = c_link.id
-            OR (
-              c_link.telephone IS NOT NULL
-              AND TRIM(c_link.telephone) <> ''
-              AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c_link.telephone')}
-            )
-          )
-        WHERE c_link.type = 'Client'
-          AND COALESCE(o.is_solde, 0) = 1
-          AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-        GROUP BY c_link.id
-      ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_achats
-        FROM bons_commande
-        WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY fournisseur_id
-      ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-      LEFT JOIN (
-        SELECT contact_id, SUM(montant_total) AS total_paiements
-        FROM payments
-        WHERE type_paiement = 'Client'
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY contact_id
-      ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
-      LEFT JOIN (
-        SELECT contact_id, SUM(montant_total) AS total_paiements
-        FROM payments
-        WHERE type_paiement = 'Fournisseur'
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY contact_id
-      ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
-      LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_client
-        WHERE LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY client_id
-      ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
-        SELECT
-          c_link.id AS contact_id,
-          SUM(ae.montant_total) AS total_avoirs
-        FROM avoirs_ecommerce ae
-        LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-        INNER JOIN contacts c_link
-          ON (
-            o.user_id = c_link.id
-            OR (
-              c_link.telephone IS NOT NULL
-              AND TRIM(c_link.telephone) <> ''
-              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ${phone9Sql('c_link.telephone')}
-            )
-          )
-        WHERE c_link.type = 'Client'
-          AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
-        GROUP BY c_link.id
-      ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
-      LEFT JOIN (
-        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
-        FROM avoirs_fournisseur
-        WHERE LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
-        GROUP BY fournisseur_id
-      ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
-      WHERE c.id = ?`,
-      [req.params.id]
-    );
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
 
     res.json({
       ...rows[0],

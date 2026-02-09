@@ -38,7 +38,7 @@ const getClient = () => {
 
 // Models (per your business rules)
 const CLEAN_MODEL = process.env.AI_CLEAN_MODEL || 'gpt-5-mini'; // merge/mixte/clean
-const TR_MODEL = process.env.AI_TR_MODEL || 'gpt-5-mini';       // translate only
+const TR_MODEL = process.env.AI_TR_MODEL || 'gpt-5-nano';       // translate only
 
 // Concurrency
 const CONCURRENCY = Math.max(1, Number(process.env.AI_CONCURRENCY || 6));
@@ -1481,7 +1481,7 @@ router.post('/products/generate-specs', async (req, res) => {
       return res.status(500).json({ message: 'OPENAI_API_KEY non configurée côté serveur' });
     }
 
-    const { ids, force = false, model, translate = false } = req.body || {};
+    const { ids, force = false, model, translate = true } = req.body || {};
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ message: 'Veuillez fournir une liste d\'IDs de produits' });
     }
@@ -1491,6 +1491,45 @@ router.post('/products/generate-specs', async (req, res) => {
 
     const handleOne = async (id) => {
       const out = { id, status: 'ok', actions: [], message: '' };
+
+      const normalizeFicheToMarkdown = (fiche, fallback) => {
+        if (!fiche) return null;
+        if (typeof fiche === 'string') {
+          const s = fiche.trim();
+          return s.length ? s : null;
+        }
+        if (typeof fiche !== 'object') return null;
+
+        const pick = (...candidates) => {
+          for (const c of candidates) {
+            const v = c;
+            if (v === null || v === undefined) continue;
+            const s = String(v).trim();
+            if (s.length) return s;
+          }
+          return '—';
+        };
+
+        const obj = fiche;
+        const specs = obj?.specs ?? {};
+        const sectionMm = specs?.section_mm ?? specs?.sectionMM ?? specs?.section ?? {};
+
+        const lines = [
+          '- **Désignation (nom produit)**: ' + pick(obj?.designation, fallback?.designation),
+          '- **Catégorie**: ' + pick(obj?.category, fallback?.category),
+          '- **Usage**: ' + pick(obj?.usage?.recommended_applications, obj?.usage, obj?.usage_text),
+          '- **Matériau**: ' + pick(obj?.material, specs?.material),
+          '- **Conditionnement**: ' + pick(obj?.packaging?.unit, obj?.packaging),
+          '- **Unité de base**: ' + pick(obj?.base_unit, obj?.baseUnit, specs?.base_unit),
+          '- **Conformité / norme**: ' + pick(obj?.compliance?.standards, obj?.compliance?.notes, obj?.compliance),
+          '- **Traitement**: ' + pick(obj?.treatment, specs?.treatment),
+          '- **Classe de service**: ' + pick(obj?.service_class, obj?.serviceClass, specs?.service_class),
+          '- **Section — largeur**: ' + pick(sectionMm?.width, specs?.width, specs?.largeur),
+          '- **Section — hauteur**: ' + pick(sectionMm?.height, specs?.height, specs?.hauteur),
+        ];
+
+        return lines.join('\n');
+      };
 
       // 1) Load product details + variants + brand + category
       const [rows] = await pool.query(`
@@ -1508,134 +1547,166 @@ router.post('/products/generate-specs', async (req, res) => {
         return out;
       }
 
-      // If description and fiche_technique exist and not forced, skip
-      if (!force && r.fiche_technique && r.description) {
+      let newDesc = null;
+      let parsed = null;
+      const alreadyHasFrench = Boolean(r.fiche_technique && r.description);
+      const shouldGenerateFrench = force || !alreadyHasFrench;
+
+      if (!shouldGenerateFrench && !translate) {
         out.status = 'skipped';
         out.message = 'Already exists';
         return out;
       }
 
-      // Load variants for better context
-      const [vrows] = await pool.query('SELECT variant_name, variant_type, reference FROM product_variants WHERE product_id = ?', [id]);
-      const variantsList = vrows.map(v => `${v.variant_type}: ${v.variant_name} (${v.reference || ''})`).join(', ');
+      if (shouldGenerateFrench) {
+          // Load variants for better context
+          const [vrows] = await pool.query('SELECT variant_name, variant_type, reference FROM product_variants WHERE product_id = ?', [id]);
+          const variantsList = vrows.map(v => `${v.variant_type}: ${v.variant_name} (${v.reference || ''})`).join(', ');
 
-      // Context construction
-      const productContext = {
-        id: r.id,
-        name: r.designation,
-        brand: r.brand_nom || 'Generic',
-        category: r.cat_nom || 'General',
-        reference: r.id, // Using ID as reference fallback if no explicit ref column
-        existing_description: r.description || '',
-        variants_summary: variantsList
-      };
+          // Context construction
+          const productContext = {
+            id: r.id,
+            name: r.designation,
+            brand: r.brand_nom || 'Generic',
+            category: r.cat_nom || 'General',
+            reference: r.id, // Using ID as reference fallback if no explicit ref column
+            existing_description: r.description || '',
+            variants_summary: variantsList
+          };
 
-      // Prompt
-      const systemPrompt = {
-        role: 'system',
-        content: [
-          'You are an expert technical researcher for construction and hardware products (Droguerie/Quincaillerie).',
-          'Your task matches a "Research & Write" workflow:',
-          '1. SIMULATE a web search operation using the product Brand, Name, and Reference to find real technical specifications.',
-          '   - Use your internal knowledge base to reconstruct the likely technical sheet for this specific product.',
-          '   - If exact data is missing, infer standard specs for this type of product (e.g., standard dimensions for a specific pipe type).',
-          '2. GENERATE a structured JSON "fiche_technique".',
-          '3. GENERATE a professional "description" (HTML formatted) if the existing one is empty or poor.',
-          '',
-          'Output Format: JSON ONLY.',
-          'Structure:',
-          '{',
-          '  "fiche_technique": {',
-          '    "version": 1,',
-          '    "product_id": <ID>,',
-          '    "designation": "...",',
-          '    "category": "...",',
-          '    "material": "...",',
-          '    "specs": { "key": "value", ... },',
-          '    "variants": [ ... ],',
-          '    "compliance": { "standards": [...] },',
-          '    "usage": { "recommended_applications": [...] },',
-          '    "packaging": { "unit": "..." }',
-          '  },',
-          '  "description": "<p>Professional description...</p><ul><li>Feature 1</li>...</ul>"',
-          '}',
-          'Notes:',
-          '- "specs" should contain detailed technical pairs (Size, Weight, Power, Material, Finish, etc.).',
-          '- "description" should be SEO-friendly, highlighting key features and benefits.'
-        ].join('\n')
-      };
+          // Prompt
+          const systemPrompt = {
+            role: 'system',
+            content: [
+              'You are an expert technical researcher for construction and hardware products (Droguerie/Quincaillerie).',
+              'Your task matches a "Research & Write" workflow:',
+              '1. CRITICAL: ANALYZE the Product Name and Reference FIRST for explicit dimensions (e.g. "32mm", "40x40", "1/2 inch", "50L"). THESE ARE FACTS.',
+              '2. SEARCH the provided "existing_description" and SIMULATE a web search operation using the product Brand, Name, and Reference.',
+              '   - Extract every technical detail available in the description.',
+              '   - Use your internal knowledge base to find standard specs if they are missing from the input.',
+              '   - If exact data is missing, infer standard specs for this type of product (e.g., standard dimensions for a specific pipe type).',
+              '3. GENERATE a Markdown "fiche_technique" as a bullet list of key/value fields (NOT JSON).',
+              '4. GENERATE a professional "description" (HTML formatted) if the existing one is empty or poor.',
+              '',
+              'Output Format: JSON ONLY.',
+              'Structure:',
+              '{',
+              '  "fiche_technique": "<MARKDOWN>",',
+              '  "description": "<p>Professional description...</p><ul><li>Feature 1</li>...</ul>"',
+              '}',
+              'Notes:',
+              '- The fiche_technique Markdown MUST be in FRENCH and MUST include ALL the following fields in THIS EXACT ORDER:',
+              '  - Désignation (nom produit)',
+              '  - Catégorie',
+              '  - Usage',
+              '  - Matériau',
+              '  - Conditionnement',
+              '  - Unité de base',
+              '  - Conformité / norme',
+              '  - Traitement',
+              '  - Classe de service',
+              '  - Section — largeur',
+              '  - Section — hauteur',
+              '- Format each line as: - **<Champ>**: <valeur>',
+              '- If a value is unknown, output "—" (do not omit fields).',
+              '- CRITICAL: If the title contains a measurement (e.g. "Ø110", "L=3m", "25kg", "40x40"), it MUST appear in the relevant field(s).',
+              '- If dimensions are not in the title, LOOK for them in the description or imply them from standard industry knowledge.',
+              '- "description" should be SEO-friendly, highlighting key features and benefits.',
+              'IMPORTANT: All text content (designation, specs, description) must be in FRENCH.'
+            ].join('\n')
+          };
 
-      const userPrompt = {
-        role: 'user',
-        content: JSON.stringify(productContext)
-      };
+          const userPrompt = {
+            role: 'user',
+            content: JSON.stringify(productContext)
+          };
 
-      try {
-        const temp = sanitizeTemperature(effectiveModel, 0.2);
-        let resp;
-        try {
-          resp = await client.chat.completions.create({
-            model: effectiveModel,
-            messages: [systemPrompt, userPrompt],
-            ...(temp !== undefined ? { temperature: temp } : {}),
-          });
-        } catch (e) {
-          // Defensive retry: some models reject non-default temperature values.
-          const msg = String(e?.message ?? '');
-          if (msg.includes("Unsupported value: 'temperature'") || msg.toLowerCase().includes('temperature')) {
-            out.actions.push('retry_without_temperature');
-            resp = await client.chat.completions.create({
-              model: effectiveModel,
-              messages: [systemPrompt, userPrompt],
-            });
-          } else {
-            throw e;
+          try {
+            const temp = sanitizeTemperature(effectiveModel, 0.2);
+            let resp;
+            try {
+              resp = await client.chat.completions.create({
+                model: effectiveModel,
+                messages: [systemPrompt, userPrompt],
+                ...(temp !== undefined ? { temperature: temp } : {}),
+              });
+            } catch (e) {
+              // Defensive retry: some models reject non-default temperature values.
+              const msg = String(e?.message ?? '');
+              if (msg.includes("Unsupported value: 'temperature'") || msg.toLowerCase().includes('temperature')) {
+                out.actions.push('retry_without_temperature');
+                resp = await client.chat.completions.create({
+                  model: effectiveModel,
+                  messages: [systemPrompt, userPrompt],
+                });
+              } else {
+                throw e;
+              }
+            }
+
+            const txt = resp.choices?.[0]?.message?.content || '';
+            parsed = safeJsonParse(txt);
+
+            if (parsed && parsed.fiche_technique) {
+              const newFiche = normalizeFicheToMarkdown(parsed.fiche_technique, {
+                designation: r.designation,
+                category: r.cat_nom || '—',
+              });
+              newDesc = parsed.description ? String(parsed.description) : null;
+
+              if (!newFiche) {
+                out.status = 'error';
+                out.message = 'AI fiche_technique is empty';
+                return out;
+              }
+
+              // Update DB
+              const updates = [];
+              const params = [];
+
+              if (force || !r.fiche_technique) {
+                updates.push('fiche_technique = ?');
+                params.push(newFiche);
+                out.actions.push('generated_fiche');
+              }
+
+              if (newDesc && (force || !r.description)) {
+                updates.push('description = ?');
+                // If original description existed and we are overwriting, maybe append?
+                // For now, if force=true, we overwrite. If force=false, we only fill if empty.
+                params.push(newDesc);
+                out.actions.push('generated_desc');
+              }
+
+              if (updates.length > 0) {
+                params.push(new Date());
+                params.push(id);
+                await pool.query(`UPDATE products SET ${updates.join(', ')}, updated_at = ? WHERE id = ?`, params);
+                out.actions.push('saved');
+              } else {
+                out.actions.push('no_updates_needed');
+              }
+            } else {
+              out.status = 'error';
+              out.message = 'AI parsing failed';
+            }
+          } catch (e) {
+            out.status = 'error';
+            out.message = e.message;
+            console.error('Spec generation error', e);
           }
-        }
-
-        const txt = resp.choices?.[0]?.message?.content || '';
-        const parsed = safeJsonParse(txt);
-
-        if (parsed && parsed.fiche_technique) {
-          const newFiche = JSON.stringify(parsed.fiche_technique);
-          const newDesc = parsed.description ? String(parsed.description) : null;
-
-          // Update DB
-          const updates = [];
-          const params = [];
-
-          if (force || !r.fiche_technique) {
-            updates.push('fiche_technique = ?');
-            params.push(newFiche);
-            out.actions.push('generated_fiche');
-          }
-
-          if (newDesc && (force || !r.description)) {
-            updates.push('description = ?');
-            // If original description existed and we are overwriting, maybe append?
-            // For now, if force=true, we overwrite. If force=false, we only fill if empty.
-            params.push(newDesc);
-            out.actions.push('generated_desc');
-          }
-
-          if (updates.length > 0) {
-            params.push(new Date());
-            params.push(id);
-            await pool.query(`UPDATE products SET ${updates.join(', ')}, updated_at = ? WHERE id = ?`, params);
-            out.actions.push('saved');
-          } else {
-            out.actions.push('no_updates_needed');
-          }
+      } else {
+        out.actions.push('french_generation_skipped');
+      }
 
           // Trigger translation if requested
           if (translate) {
             try {
-              // 1. Translate variants (if any)
-              // We reuse the existing logic: ensure columns exist
+              // 1. Ensure columns exist
               await ensureVariantTranslationColumns();
               await ensureAiProductColumns();
 
-              // Reload product (so we decide overwrite based on fresh DB state)
+              // Reload fresh data
               const [freshRows] = await pool.query(
                 `SELECT id, description, fiche_technique,
                         description_ar, description_en, description_zh,
@@ -1644,119 +1715,164 @@ router.post('/products/generate-specs', async (req, res) => {
                 [id]
               );
               const fresh = freshRows?.[0] || {};
-
-              // 2. Translate product fields (designation, description, fiche_technique)
-              // We can reuse handleOne from the translate endpoint if checking context?
-              // Or simpler: just run the standard translation logic for these fields.
-              // For fiche_technique, it's JSON text, we might want to translate values inside?
-              // Or just translate the whole text block if it's stored as TEXT (which it is).
-              // Actually, standard translation endpoint handles designation. 
-              // We need specific logic for fiche_technique JSON values translation? 
-              // For now, let's translate Description and Designation using the existing helper.
-
-              // We'll call the internal translation logic manually for this product.
-              const langs = ['ar', 'en', 'zh'];
-
-              const shouldOverwrite = Boolean(force);
-
-              // Helper to translate rich text (HTML)
-              const translateHtmlText = async (text, targetLang) => {
-                const src = trimOrNull(text);
-                if (!src) return null;
-                const prompt = {
-                  role: 'system',
-                  content: `Translate the following text to ${targetLang}. Preserve HTML tags and structure. Preserve codes, SKUs, units, and numbers exactly. Output ONLY the translated text.`
-                };
-                const user = { role: 'user', content: src };
-                const trTemp = sanitizeTemperature(TR_MODEL, 0.3);
-                const trResp = await client.chat.completions.create({
-                  model: TR_MODEL,
-                  messages: [prompt, user],
-                  ...(trTemp !== undefined ? { temperature: trTemp } : {}),
-                });
-                return trimOrNull(trResp.choices?.[0]?.message?.content);
-              };
-
-              const translateFicheTechniqueJson = async (ficheObj, targetLang) => {
-                if (!ficheObj || typeof ficheObj !== 'object') return null;
-                const protectedTokens = extractProtectedTokens(JSON.stringify(ficheObj));
-                const system = {
-                  role: 'system',
-                  content: [
-                    `Translate the following JSON technical sheet values into ${targetLang}.`,
-                    'CRITICAL RULES:',
-                    '- Return JSON only (no markdown).',
-                    '- Keep the JSON structure identical.',
-                    '- Keep all JSON keys identical (do NOT translate keys).',
-                    '- Translate ONLY string values (including strings inside arrays/objects).',
-                    '- Preserve protected tokens EXACTLY and do NOT translate them.',
-                    '- Preserve numbers, dimensions, units, model codes exactly.',
-                    'If a string is already in the target language, keep it as-is.'
-                  ].join('\n')
-                };
-                const user = {
-                  role: 'user',
-                  content: JSON.stringify({
-                    protected_tokens: protectedTokens,
-                    fiche_technique: ficheObj,
-                  })
-                };
-
-                const temp = sanitizeTemperature(TR_MODEL, 0.1);
-                const resp = await client.chat.completions.create({
-                  model: TR_MODEL,
-                  messages: [system, user],
-                  ...(temp !== undefined ? { temperature: temp } : {}),
-                });
-
-                const txt = resp.choices?.[0]?.message?.content || '';
-                const parsed = safeJsonParse(txt);
-                const candidate = parsed?.fiche_technique ?? parsed;
-                if (candidate && typeof candidate === 'object') return candidate;
-                return null;
-              };
-
-              // Sources: if AI didn't create a new description, translate the existing one.
+              // Identify source data
               const sourceDesc = trimOrNull(newDesc) || trimOrNull(fresh.description);
-              const sourceFicheObj = (() => {
-                if (parsed?.fiche_technique && typeof parsed.fiche_technique === 'object') return parsed.fiche_technique;
-                const fromDb = safeJsonParse(fresh.fiche_technique);
-                return (fromDb && typeof fromDb === 'object') ? fromDb : null;
-              })();
+              const sourceFicheMd =
+                trimOrNull(normalizeFicheToMarkdown(parsed?.fiche_technique, {
+                  designation: r.designation,
+                  category: r.cat_nom || '—',
+                })) || trimOrNull(fresh.fiche_technique);
 
-              // Translate Description
+              const translationTasks = [];
+              const modelForTr = TR_MODEL; // Default to fast model
+
+              // ------------------------------------------
+              // Batch Translate Description: One call for ALL langs
+              // ------------------------------------------
               if (sourceDesc) {
-                for (const lang of langs) {
-                  const existing = trimOrNull(fresh[`description_${lang}`]);
-                  if (!shouldOverwrite && existing) continue;
-                  const trDesc = await translateHtmlText(sourceDesc, lang);
-                  if (trDesc) {
-                    await pool.query(
-                      `UPDATE products SET description_${lang} = ?, updated_at = ? WHERE id = ?`,
-                      [trDesc, new Date(), id]
-                    );
-                    out.actions.push(`translated_description_${lang}`);
-                  }
-                }
-                out.actions.push('translated_description');
+                translationTasks.push((async () => {
+                   try {
+                     const descSystem = {
+                       role: 'system',
+                       content: [
+                         'You are an expert technical translator.',
+                         'Translate the given HTML description into 3 languages: Arabic (ar), English (en), and Chinese (zh).',
+                         'Return JSON object ONLY: { "ar": "...", "en": "...", "zh": "..." }.',
+                         'Preserve HTML tags and formatting exactly.',
+                         'Preserve codes, numbers, and units exactly.'
+                       ].join(' ')
+                     };
+                     const descUser = {
+                       role: 'user',
+                       content: JSON.stringify({ text: sourceDesc })
+                     };
+
+                     const temp = sanitizeTemperature(modelForTr, 0.3);
+                     let trResp;
+                     try {
+                       trResp = await client.chat.completions.create({
+                          model: modelForTr,
+                          messages: [descSystem, descUser],
+                          ...(temp !== undefined ? { temperature: temp } : {}),
+                       });
+                     } catch (e) {
+                       // Defensive retry: some models reject non-default temperature values.
+                       const msg = String(e?.message ?? '');
+                       if (msg.includes("Unsupported value: 'temperature'") || msg.toLowerCase().includes('temperature')) {
+                         out.actions.push('retry_desc_translation_without_temperature');
+                         trResp = await client.chat.completions.create({
+                           model: modelForTr,
+                           messages: [descSystem, descUser],
+                         });
+                       } else {
+                         throw e;
+                       }
+                     }
+
+                     const txt = trResp.choices?.[0]?.message?.content || '';
+                     const jsonRes = safeJsonParse(txt);
+                     if (jsonRes) {
+                       const updates = [];
+                       const params = [];
+                       for (const lang of ['ar', 'en', 'zh']) {
+                         const val = trimOrNull(jsonRes[lang]);
+                         if (val) {
+                           updates.push(`description_${lang} = ?`);
+                           params.push(val);
+                           out.actions.push(`translated_description_${lang}`);
+                         }
+                       }
+                       if (updates.length > 0) {
+                         params.push(id);
+                         await pool.query(`UPDATE products SET ${updates.join(', ')} WHERE id = ?`, params);
+                       }
+                     }
+                   } catch (dErr) {
+                     console.error('Batch description translation error', dErr);
+                     out.actions.push('error_translating_description_batch');
+                   }
+                })());
               }
 
-              // Translate Fiche Technique (JSON)
-              if (sourceFicheObj) {
-                for (const lang of langs) {
-                  const existing = trimOrNull(fresh[`fiche_technique_${lang}`]);
-                  if (!shouldOverwrite && existing) continue;
-                  const trFicheObj = await translateFicheTechniqueJson(sourceFicheObj, lang);
-                  if (trFicheObj) {
-                    await pool.query(
-                      `UPDATE products SET fiche_technique_${lang} = ?, updated_at = ? WHERE id = ?`,
-                      [JSON.stringify(trFicheObj), new Date(), id]
-                    );
-                    out.actions.push(`translated_fiche_${lang}`);
-                  }
-                }
-                out.actions.push('translated_fiche');
+              // ------------------------------------------
+              // Batch Translate Fiche Technique: One call for ALL langs
+              // ------------------------------------------
+              if (sourceFicheMd) {
+                translationTasks.push((async () => {
+                   try {
+                     const protectedTokens = extractProtectedTokens(sourceFicheMd);
+                     const ficheSystem = {
+                       role: 'system',
+                       content: [
+                         'You are an expert technical translator.',
+                         'Translate the provided Markdown technical sheet into 3 languages: Arabic (ar), English (en), and Chinese (zh).',
+                         'Return JSON object ONLY: { "ar": "<MARKDOWN>", "en": "<MARKDOWN>", "zh": "<MARKDOWN>" }.',
+                         'Preserve the exact bullet list structure, keep the same field order, and keep **bold** markers.',
+                         'Preserve protected tokens, numbers, and units exactly.'
+                       ].join(' ')
+                     };
+                     const ficheUser = {
+                       role: 'user',
+                       content: JSON.stringify({
+                         fiche_technique_markdown: sourceFicheMd,
+                         protected_tokens: protectedTokens
+                       })
+                     };
+
+                     const temp = sanitizeTemperature(modelForTr, 0.1);
+                     let trResp;
+                     try {
+                       trResp = await client.chat.completions.create({
+                          model: modelForTr,
+                          messages: [ficheSystem, ficheUser],
+                          ...(temp !== undefined ? { temperature: temp } : {}),
+                       });
+                     } catch (e) {
+                       // Defensive retry: some models reject non-default temperature values.
+                       const msg = String(e?.message ?? '');
+                       if (msg.includes("Unsupported value: 'temperature'") || msg.toLowerCase().includes('temperature')) {
+                         out.actions.push('retry_fiche_translation_without_temperature');
+                         trResp = await client.chat.completions.create({
+                           model: modelForTr,
+                           messages: [ficheSystem, ficheUser],
+                         });
+                       } else {
+                         throw e;
+                       }
+                     }
+
+                     const txt = trResp.choices?.[0]?.message?.content || '';
+                     const jsonRes = safeJsonParse(txt);
+                     
+                     if (jsonRes) {
+                       const updates = [];
+                       const params = [];
+                       for (const lang of ['ar', 'en', 'zh']) {
+                         const val = trimOrNull(jsonRes[lang]);
+                         if (val) {
+                           updates.push(`fiche_technique_${lang} = ?`);
+                           params.push(val);
+                           out.actions.push(`translated_fiche_${lang}`);
+                         }
+                       }
+                       if (updates.length > 0) {
+                         params.push(id);
+                         await pool.query(`UPDATE products SET ${updates.join(', ')} WHERE id = ?`, params);
+                       }
+                     }
+                   } catch (fErr) {
+                     console.error('Batch fiche translation error', fErr);
+                     out.actions.push('error_translating_fiche_batch');
+                   }
+                })());
               }
+
+              await Promise.all(translationTasks);
+              out.actions.push('translation_complete');
+
+              // Update timestamp
+              await pool.query('UPDATE products SET updated_at = ? WHERE id = ?', [new Date(), id]);
+
             } catch (trErr) {
               console.error('Translation error during generating specs', trErr);
               out.actions.push('translation_failed');
@@ -1764,15 +1880,6 @@ router.post('/products/generate-specs', async (req, res) => {
               out.message = out.message ? `${out.message} (${msg})` : msg;
             }
           }
-        } else {
-          out.status = 'error';
-          out.message = 'AI parsing failed';
-        }
-      } catch (e) {
-        out.status = 'error';
-        out.message = e.message;
-        console.error('Spec generation error', e);
-      }
 
       return out;
     };

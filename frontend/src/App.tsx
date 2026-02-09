@@ -51,6 +51,7 @@ import ChiffreAffairesDetailPage from './pages/ChiffreAffairesDetailPage';
 import WhatsAppTestPage from './pages/WhatsAppTestPage';
 import InventoryPage from './pages/InventoryPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
+import ProductsTranslatePage from './pages/ProductsTranslatePage';
 
 // Composant Layout avec accès aux fonctions de monitoring
 const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -211,6 +212,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <StockPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/products/translate"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <ProductsTranslatePage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

@@ -407,19 +407,34 @@ const StockPage: React.FC = () => {
               setIsGeneratingSpecs(true);
               try {
                 const ids = Array.from(selectedIds);
-                // Call API
-                const res = await generateSpecs({
-                  ids,
-                  force: true,
-                  translate: !!translate,
-                }).unwrap();
+                let ok = 0;
+                let errs = 0;
+                let skipped = 0;
 
-                // Summarize results
-                const ok = res?.results?.filter((r: any) => r.status === 'ok' || r.actions?.length).length ?? 0;
-                const errs = res?.results?.filter((r: any) => r.status === 'error').length ?? 0;
+                // Send one request per product for better stability
+                for (let i = 0; i < ids.length; i += 1) {
+                  const id = ids[i];
+                  try {
+                    const res = await generateSpecs({
+                      ids: [id],
+                      force: true,
+                      translate: !!translate,
+                    }).unwrap();
+
+                    const r0 = Array.isArray(res?.results) ? res.results[0] : undefined;
+                    if (r0?.status === 'error') errs += 1;
+                    else if (r0?.status === 'skipped') skipped += 1;
+                    else ok += 1;
+                  } catch (e) {
+                    console.error('Erreur génération specs produit:', id, e);
+                    errs += 1;
+                  }
+                }
 
                 if (ok > 0) {
-                  showSuccess(`Génération terminée: ${ok} succès${errs ? `, ${errs} échecs` : ''}`);
+                  showSuccess(
+                    `Génération terminée: ${ok} succès${skipped ? `, ${skipped} ignoré(s)` : ''}${errs ? `, ${errs} échecs` : ''}`
+                  );
                   refetchProducts?.();
                 } else if (errs > 0) {
                   showError(`Échec de la génération (${errs} erreurs)`);
