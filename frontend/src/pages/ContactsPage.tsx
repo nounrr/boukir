@@ -2688,6 +2688,18 @@ const ContactsPage: React.FC = () => {
       } catch (error) {
         console.error('Erreur lors de la sauvegarde:', error);
         const anyErr: any = error;
+        const status = anyErr?.originalStatus ?? anyErr?.status;
+
+        // If server returned HTML/text (e.g. nginx 502), surface the HTTP status instead of a JSON parsing error.
+        if (typeof anyErr?.data === 'string') {
+          if (Number(status) === 502) {
+            showError('Serveur indisponible (502 Bad Gateway). Réessayez ou vérifiez le backend/nginx.');
+            return;
+          }
+          showError(status ? `Erreur serveur (${status}).` : 'Erreur serveur (réponse non-JSON).');
+          return;
+        }
+
         const msg =
           anyErr?.data?.details?.sqlMessage ||
           anyErr?.data?.details?.message ||
