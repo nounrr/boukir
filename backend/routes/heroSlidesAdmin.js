@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url';
 
 const router = Router();
 
-const ALLOWED_LOCALES = new Set(['fr', 'ar']);
+// Locale column still exists in DB, but slides are now multilingual.
+const ALLOWED_LOCALES = new Set(['fr', 'ar', 'en', 'zh']);
 const ALLOWED_TYPES = new Set(['category', 'brand', 'campaign', 'product']);
 const ALLOWED_STATUSES = new Set(['draft', 'published', 'archived']);
 
@@ -92,14 +93,23 @@ function normalizeCtas(ctasRaw) {
   if (ctas.length > 2) throw new Error('CTAS_TOO_MANY');
 
   const normalized = ctas.map((c) => {
-    const label = String(c?.label ?? '').trim();
+    const label = String(c?.label ?? '').trim(); // FR
+    const label_ar = String(c?.label_ar ?? '').trim();
+    const label_en = String(c?.label_en ?? '').trim();
+    const label_zh = String(c?.label_zh ?? '').trim();
     const style = String(c?.style ?? '').trim();
 
     if (!label) throw new Error('CTA_LABEL_REQUIRED');
     if (!['primary', 'secondary'].includes(style)) throw new Error('CTA_STYLE_INVALID');
 
     // Admin no longer stores href/action; ecommerce frontend derives navigation.
-    return { label, style };
+    return {
+      label,
+      label_ar: label_ar || null,
+      label_en: label_en || null,
+      label_zh: label_zh || null,
+      style,
+    };
   });
 
   const hasPrimary = normalized.some((c) => c.style === 'primary');
@@ -152,12 +162,10 @@ router.get('/', requireAdmin, async (req, res, next) => {
     const where = [];
     const params = [];
 
-    if (locale) {
-      if (!ALLOWED_LOCALES.has(locale)) {
-        return res.status(400).json({ message: 'Locale invalide', field: 'locale', allowed: Array.from(ALLOWED_LOCALES) });
-      }
-      where.push('locale = ?');
-      params.push(locale);
+    // Multilingual mode: locale filter is kept for backward compatibility,
+    // but we no longer filter by locale (one slide holds all locales).
+    if (locale && !ALLOWED_LOCALES.has(locale)) {
+      return res.status(400).json({ message: 'Locale invalide', field: 'locale', allowed: Array.from(ALLOWED_LOCALES) });
     }
 
     if (status) {
@@ -175,7 +183,9 @@ router.get('/', requireAdmin, async (req, res, next) => {
          id, type, status, priority, locale,
          starts_at, ends_at,
          image_url, image_alt,
-         title, subtitle,
+        title, title_ar, title_en, title_zh,
+        subtitle, subtitle_ar, subtitle_en, subtitle_zh,
+        description, description_ar, description_en, description_zh,
          category_id, brand_id, product_id, variant_id, campaign_id,
          ctas,
          created_by_employee_id, updated_by_employee_id,
@@ -200,7 +210,7 @@ router.post('/', requirePdg, maybeUploadSingle('image'), async (req, res, next) 
   try {
     const body = req.body || {};
 
-    const locale = String(body.locale || '').trim().toLowerCase();
+    const locale = String(body.locale || 'fr').trim().toLowerCase();
     const type = String(body.type || '').trim().toLowerCase();
     const status = String(body.status || 'draft').trim().toLowerCase();
 
@@ -214,7 +224,7 @@ router.post('/', requirePdg, maybeUploadSingle('image'), async (req, res, next) 
       return res.status(400).json({ message: 'Status invalide', field: 'status', allowed: Array.from(ALLOWED_STATUSES) });
     }
 
-    const title = normalizeNullableText(body.title);
+    const title = normalizeNullableText(body.title); // FR
     const image_url_from_body = normalizeNullableText(body.image_url);
     const image_url_from_upload = req.file ? `/uploads/hero_slides/${req.file.filename}` : null;
     const image_url = image_url_from_upload || image_url_from_body;
@@ -222,7 +232,19 @@ router.post('/', requirePdg, maybeUploadSingle('image'), async (req, res, next) 
     if (!title) return res.status(400).json({ message: 'title requis', field: 'title' });
     if (!image_url) return res.status(400).json({ message: 'image requis (upload) ou image_url', field: 'image' });
 
-    const subtitle = normalizeNullableText(body.subtitle);
+    const title_ar = normalizeNullableText(body.title_ar);
+    const title_en = normalizeNullableText(body.title_en);
+    const title_zh = normalizeNullableText(body.title_zh);
+
+    const subtitle = normalizeNullableText(body.subtitle); // FR
+    const subtitle_ar = normalizeNullableText(body.subtitle_ar);
+    const subtitle_en = normalizeNullableText(body.subtitle_en);
+    const subtitle_zh = normalizeNullableText(body.subtitle_zh);
+
+    const description = normalizeNullableText(body.description); // FR
+    const description_ar = normalizeNullableText(body.description_ar);
+    const description_en = normalizeNullableText(body.description_en);
+    const description_zh = normalizeNullableText(body.description_zh);
     const image_alt = normalizeNullableText(body.image_alt);
 
     const priority = Number.isFinite(Number(body.priority)) ? Number(body.priority) : 0;
@@ -249,10 +271,13 @@ router.post('/', requirePdg, maybeUploadSingle('image'), async (req, res, next) 
 
     const [result] = await pool.query(
       `INSERT INTO ecommerce_hero_slides
-        (type, status, priority, locale, starts_at, ends_at, image_url, image_alt, title, subtitle,
+        (type, status, priority, locale, starts_at, ends_at, image_url, image_alt,
+         title, title_ar, title_en, title_zh,
+         subtitle, subtitle_ar, subtitle_en, subtitle_zh,
+         description, description_ar, description_en, description_zh,
          category_id, brand_id, product_id, variant_id, campaign_id, ctas, created_by_employee_id)
        VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         type,
         status,
@@ -263,7 +288,17 @@ router.post('/', requirePdg, maybeUploadSingle('image'), async (req, res, next) 
         image_url,
         image_alt,
         title,
+        title_ar,
+        title_en,
+        title_zh,
         subtitle,
+        subtitle_ar,
+        subtitle_en,
+        subtitle_zh,
+        description,
+        description_ar,
+        description_en,
+        description_zh,
         targets.category_id,
         targets.brand_id,
         targets.product_id,
@@ -339,9 +374,53 @@ router.put('/:id', requirePdg, maybeUploadSingle('image'), async (req, res, next
       params.push(title);
     }
 
+    if (body.title_ar !== undefined) {
+      updates.push('title_ar = ?');
+      params.push(normalizeNullableText(body.title_ar));
+    }
+    if (body.title_en !== undefined) {
+      updates.push('title_en = ?');
+      params.push(normalizeNullableText(body.title_en));
+    }
+    if (body.title_zh !== undefined) {
+      updates.push('title_zh = ?');
+      params.push(normalizeNullableText(body.title_zh));
+    }
+
     if (body.subtitle !== undefined) {
       updates.push('subtitle = ?');
       params.push(normalizeNullableText(body.subtitle));
+    }
+
+    if (body.description !== undefined) {
+      updates.push('description = ?');
+      params.push(normalizeNullableText(body.description));
+    }
+
+    if (body.subtitle_ar !== undefined) {
+      updates.push('subtitle_ar = ?');
+      params.push(normalizeNullableText(body.subtitle_ar));
+    }
+    if (body.subtitle_en !== undefined) {
+      updates.push('subtitle_en = ?');
+      params.push(normalizeNullableText(body.subtitle_en));
+    }
+    if (body.subtitle_zh !== undefined) {
+      updates.push('subtitle_zh = ?');
+      params.push(normalizeNullableText(body.subtitle_zh));
+    }
+
+    if (body.description_ar !== undefined) {
+      updates.push('description_ar = ?');
+      params.push(normalizeNullableText(body.description_ar));
+    }
+    if (body.description_en !== undefined) {
+      updates.push('description_en = ?');
+      params.push(normalizeNullableText(body.description_en));
+    }
+    if (body.description_zh !== undefined) {
+      updates.push('description_zh = ?');
+      params.push(normalizeNullableText(body.description_zh));
     }
 
     if (body.image_url !== undefined) {

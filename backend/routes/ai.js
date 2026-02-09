@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
 import pool from '../db/pool.js';
+import { verifyToken, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -60,6 +61,19 @@ const pickModelFromBody = (v) => {
 
   const normalized = s.toLowerCase().replace(/\s+/g, '-');
   // Allow friendly aliases from UI/users.
+  if (
+    normalized === 'chatgpt-5-nano' ||
+    normalized === 'chatgpt5-nano' ||
+    normalized === 'chatgpt-5nano' ||
+    normalized === 'chatgpt5nano' ||
+    normalized === 'chat-gpt-5-nano' ||
+    normalized === 'chat-gpt5-nano'
+  ) {
+    return 'gpt-5-nano';
+  }
+  if (normalized === 'gpt5-nano' || normalized === 'gpt-5nano') {
+    return 'gpt-5-nano';
+  }
   if (normalized === 'chatgpt-5.2' || normalized === 'chatgpt5.2' || normalized === 'chatgpt-5-2' || normalized === 'chatgpt5-2') {
     return 'gpt-5.2';
   }
@@ -271,6 +285,25 @@ const asyncPool = async (limit, array, iteratorFn) => {
     }
   }
   return Promise.all(ret);
+};
+
+// Cache for schema checks to avoid repeated information_schema queries
+const schemaCache = {
+  products_old_designation: null,
+};
+
+const hasProductsOldDesignationColumn = async () => {
+  if (schemaCache.products_old_designation !== null) return schemaCache.products_old_designation;
+  const [rows] = await pool.query(
+    `SELECT 1 AS ok
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'products'
+       AND COLUMN_NAME = 'old_designation'
+     LIMIT 1`
+  );
+  schemaCache.products_old_designation = rows?.length > 0;
+  return schemaCache.products_old_designation;
 };
 
 const normalizeVariantKey = (s) => {
@@ -787,6 +820,9 @@ router.post('/products/translate', async (req, res) => {
     const effectiveCleanModel = requestedCleanModel || CLEAN_MODEL;
     const effectiveTranslateModel = requestedTranslateModel || TR_MODEL;
 
+    // Some production DBs may not have old_designation yet. Avoid hard-failing.
+    const hasOldDesignationCol = await hasProductsOldDesignationColumn();
+
     const results = [];
 
     // If caller only provided variantIds, derive product IDs once.
@@ -821,8 +857,8 @@ router.post('/products/translate', async (req, res) => {
 
       const darija = detectDarija(original);
 
-      // Save old_designation if empty
-      const old_designation = trimOrNull(r.old_designation) || original;
+      // Save old_designation if the column exists
+      const old_designation = hasOldDesignationCol ? (trimOrNull(r.old_designation) || original) : null;
 
       // Current targets
       const cur_ar = trimOrNull(r.designation_ar);
@@ -1186,24 +1222,34 @@ router.post('/products/translate', async (req, res) => {
       // 5) Persist (commit)
       if (commit) {
         const now = new Date();
+        const setParts = [];
+        const values = [];
+
+        if (hasOldDesignationCol) {
+          setParts.push('old_designation = ?');
+          values.push(old_designation);
+        }
+
+        setParts.push('designation = ?');
+        values.push(designation_fr_clean);
+
+        setParts.push('designation_ar = ?');
+        values.push(designation_ar);
+
+        setParts.push('designation_en = ?');
+        values.push(designation_en);
+
+        setParts.push('designation_zh = ?');
+        values.push(designation_zh);
+
+        setParts.push('updated_at = ?');
+        values.push(now);
+
+        values.push(id);
+
         await pool.query(
-          `UPDATE products
-           SET old_designation = ?,
-               designation = ?,
-               designation_ar = ?,
-               designation_en = ?,
-               designation_zh = ?,
-               updated_at = ?
-           WHERE id = ?`,
-          [
-            old_designation,
-            designation_fr_clean,
-            designation_ar,
-            designation_en,
-            designation_zh,
-            now,
-            id
-          ]
+          `UPDATE products SET ${setParts.join(', ')} WHERE id = ?`,
+          values
         );
         out.actions.push('saved');
       }
@@ -1436,7 +1482,7 @@ router.post('/products/translate', async (req, res) => {
       if (!out.message) out.message = out.status === 'error' ? out.message : 'done';
       out.models_used = { clean: cleanModelUsed, translate: translateModelUsed };
       out.darija_detected = darija;
-      out.old_designation = old_designation;
+      if (hasOldDesignationCol) out.old_designation = old_designation;
       out.designation = designation_fr_clean;
       out.designation_ar = designation_ar;
       out.designation_en = designation_en;
@@ -1464,6 +1510,356 @@ router.post('/products/translate', async (req, res) => {
   } catch (err) {
     console.error('[AI] products translate error:', err);
     res.status(500).json({ message: err?.message || 'Erreur interne (AI/products/translate)' });
+  }
+});
+
+// ----------------------------
+// Categories batch translate endpoint
+// POST /api/ai/categories/translate
+// Body: { ids: number[], commit?: boolean, force?: boolean }
+// - commit: update DB (default true)
+// - force: overwrite existing target translations (default false)
+// ----------------------------
+router.post('/categories/translate', async (req, res) => {
+  try {
+    if (!requireKey(res)) return;
+
+    const client = getClient();
+    if (!client) {
+      return res.status(500).json({ message: 'OPENAI_API_KEY non configurée côté serveur' });
+    }
+
+    const { ids, commit = true, force = false, models } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'Veuillez fournir une liste d\'IDs (ids)' });
+    }
+
+    const requestedTranslateModel = pickModelFromBody(models?.translate);
+    const effectiveTranslateModel = requestedTranslateModel || TR_MODEL;
+
+    const results = [];
+
+    const translateOne = async (id) => {
+      const out = { id, status: 'ok', actions: [], message: '' };
+      const [rows] = await pool.query('SELECT id, nom, nom_ar, nom_en, nom_zh FROM categories WHERE id = ?', [id]);
+      const r = rows?.[0];
+      if (!r) {
+        out.status = 'error';
+        out.message = 'Catégorie introuvable';
+        return out;
+      }
+
+      const nom = String(r.nom || '').trim();
+      if (!nom) {
+        out.status = 'skipped';
+        out.message = 'nom empty';
+        return out;
+      }
+
+      const cur_ar = trimOrNull(r.nom_ar);
+      const cur_en = trimOrNull(r.nom_en);
+      const cur_zh = trimOrNull(r.nom_zh);
+
+      const needs_ar = force ? true : !cur_ar;
+      const needs_en = force ? true : !cur_en;
+      const needs_zh = force ? true : !cur_zh;
+      if (!needs_ar && !needs_en && !needs_zh) {
+        out.status = 'skipped';
+        out.message = 'already translated';
+        return out;
+      }
+
+      const system = {
+        role: 'system',
+        content: [
+          'You translate e-commerce category names.',
+          'Input is a category name (usually French).',
+          'Return JSON only with keys: nom_ar, nom_en, nom_zh.',
+          'Keep translations short and natural.',
+          'Do not add extra words (no marketing), no punctuation unless required.',
+        ].join(' '),
+      };
+
+      const user = {
+        role: 'user',
+        content: JSON.stringify({ nom, targets: { ar: needs_ar, en: needs_en, zh: needs_zh } }),
+      };
+
+      const temp = sanitizeTemperature(effectiveTranslateModel, 0.2);
+      const reqPayload = {
+        model: effectiveTranslateModel,
+        messages: [system, user],
+        ...(temp === undefined ? {} : { temperature: temp }),
+      };
+
+      const resp = await client.chat.completions.create(reqPayload);
+
+      const txt = resp.choices?.[0]?.message?.content || '';
+      const parsed = safeJsonParse(txt) || {};
+
+      const next_ar = needs_ar ? trimOrNull(parsed?.nom_ar) : cur_ar;
+      const next_en = needs_en ? trimOrNull(parsed?.nom_en) : cur_en;
+      const next_zh = needs_zh ? trimOrNull(parsed?.nom_zh) : cur_zh;
+
+      if (commit) {
+        await pool.query(
+          'UPDATE categories SET nom_ar = ?, nom_en = ?, nom_zh = ?, updated_at = NOW() WHERE id = ?',
+          [next_ar, next_en, next_zh, id]
+        );
+        out.actions.push('saved');
+      }
+
+      out.nom = nom;
+      out.nom_ar = next_ar;
+      out.nom_en = next_en;
+      out.nom_zh = next_zh;
+      return out;
+    };
+
+    const normalizedIds = ids.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0);
+    const batch = await asyncPool(CONCURRENCY, normalizedIds, translateOne);
+    results.push(...batch);
+
+    res.json({ ok: true, model: effectiveTranslateModel, results });
+  } catch (err) {
+    console.error('[AI] categories translate error:', err);
+    res.status(500).json({ message: err?.message || 'Erreur interne (AI/categories/translate)' });
+  }
+});
+
+// ----------------------------
+// Hero slides batch translate endpoint
+// POST /api/ai/hero-slides/translate
+// Body: { ids: number[], commit?: boolean, force?: boolean, models?: { translate?: string } }
+// - commit: update DB (default true)
+// - force: overwrite existing target translations (default false)
+// Notes:
+// - Translates FR fields to ar/en/zh for: title/subtitle/description + CTAs labels.
+// - Only fills missing translations unless force=true.
+// - Protected by JWT + PDG role because /api/ai is public in index.js.
+// ----------------------------
+router.post('/hero-slides/translate', verifyToken, requireRole('PDG'), async (req, res) => {
+  try {
+    if (!requireKey(res)) return;
+
+    const client = getClient();
+    if (!client) {
+      return res.status(500).json({ message: 'OPENAI_API_KEY non configurée côté serveur' });
+    }
+
+    const { ids, commit = true, force = false, models } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'Veuillez fournir une liste d\'IDs (ids)' });
+    }
+
+    const requestedTranslateModel = pickModelFromBody(models?.translate);
+    const effectiveTranslateModel = requestedTranslateModel || TR_MODEL;
+
+    const normalizeCtas = (raw) => {
+      const arr = Array.isArray(raw) ? raw : (typeof raw === 'string' ? (safeJsonParse(raw) || []) : []);
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .filter((c) => c && typeof c === 'object')
+        .slice(0, 2)
+        .map((c) => {
+          const label = String(c.label ?? '').trim();
+          const style = String(c.style ?? '').trim() === 'secondary' ? 'secondary' : 'primary';
+          return {
+            label,
+            label_ar: trimOrNull(c.label_ar),
+            label_en: trimOrNull(c.label_en),
+            label_zh: trimOrNull(c.label_zh),
+            style,
+          };
+        })
+        .filter((c) => c.label);
+    };
+
+    const translateOne = async (id) => {
+      const out = { id, status: 'ok', actions: [], message: '' };
+
+      const [rows] = await pool.query(
+        `SELECT
+           id,
+           title, title_ar, title_en, title_zh,
+           subtitle, subtitle_ar, subtitle_en, subtitle_zh,
+           description, description_ar, description_en, description_zh,
+           ctas
+         FROM ecommerce_hero_slides
+         WHERE id = ?
+         LIMIT 1`,
+        [id]
+      );
+
+      const r = rows?.[0];
+      if (!r) {
+        out.status = 'error';
+        out.message = 'Slide introuvable';
+        return out;
+      }
+
+      const title = String(r.title || '').trim();
+      const subtitle = trimOrNull(r.subtitle);
+      const description = trimOrNull(r.description);
+
+      if (!title) {
+        out.status = 'skipped';
+        out.message = 'title empty';
+        return out;
+      }
+
+      const cur = {
+        title_ar: trimOrNull(r.title_ar),
+        title_en: trimOrNull(r.title_en),
+        title_zh: trimOrNull(r.title_zh),
+        subtitle_ar: trimOrNull(r.subtitle_ar),
+        subtitle_en: trimOrNull(r.subtitle_en),
+        subtitle_zh: trimOrNull(r.subtitle_zh),
+        description_ar: trimOrNull(r.description_ar),
+        description_en: trimOrNull(r.description_en),
+        description_zh: trimOrNull(r.description_zh),
+      };
+
+      const ctas = normalizeCtas(r.ctas);
+
+      const needs = {
+        title_ar: force ? true : !cur.title_ar,
+        title_en: force ? true : !cur.title_en,
+        title_zh: force ? true : !cur.title_zh,
+        subtitle_ar: subtitle ? (force ? true : !cur.subtitle_ar) : false,
+        subtitle_en: subtitle ? (force ? true : !cur.subtitle_en) : false,
+        subtitle_zh: subtitle ? (force ? true : !cur.subtitle_zh) : false,
+        description_ar: description ? (force ? true : !cur.description_ar) : false,
+        description_en: description ? (force ? true : !cur.description_en) : false,
+        description_zh: description ? (force ? true : !cur.description_zh) : false,
+        ctas: ctas.map((c) => ({
+          ar: force ? true : !trimOrNull(c.label_ar),
+          en: force ? true : !trimOrNull(c.label_en),
+          zh: force ? true : !trimOrNull(c.label_zh),
+        })),
+      };
+
+      const needsAnyText =
+        needs.title_ar || needs.title_en || needs.title_zh ||
+        needs.subtitle_ar || needs.subtitle_en || needs.subtitle_zh ||
+        needs.description_ar || needs.description_en || needs.description_zh;
+
+      const needsAnyCta = (needs.ctas || []).some((x) => x.ar || x.en || x.zh);
+
+      if (!needsAnyText && !needsAnyCta) {
+        out.status = 'skipped';
+        out.message = 'already translated';
+        return out;
+      }
+
+      const protectedTokens = extractProtectedTokens([title, subtitle, description, ...ctas.map((c) => c.label)].filter(Boolean).join(' '));
+
+      const system = {
+        role: 'system',
+        content: [
+          'You translate homepage hero slide text for an e-commerce website.',
+          'Source language is French. Targets are Arabic (Modern Standard), English, and Chinese (Simplified).',
+          'Return JSON only. No markdown, no extra keys.',
+          'Keep translations short, natural, and faithful (no extra marketing).',
+          'Preserve protected tokens exactly as given (do not translate/modify them).',
+          'Output keys (when needed):',
+          'title_ar,title_en,title_zh,subtitle_ar,subtitle_en,subtitle_zh,description_ar,description_en,description_zh,ctas.',
+          'For ctas: output an array with the same length/order as input ctas; each item has: label_ar,label_en,label_zh.',
+        ].join(' '),
+      };
+
+      const user = {
+        role: 'user',
+        content: JSON.stringify({
+          input: {
+            title,
+            subtitle,
+            description,
+            ctas: ctas.map((c) => ({ label: c.label, style: c.style })),
+          },
+          needs: {
+            ...needs,
+            protectedTokens,
+          },
+        }),
+      };
+
+      const temp = sanitizeTemperature(effectiveTranslateModel, 0.2);
+      const reqPayload = {
+        model: effectiveTranslateModel,
+        messages: [system, user],
+        ...(temp === undefined ? {} : { temperature: temp }),
+      };
+
+      const resp = await client.chat.completions.create(reqPayload);
+      const txt = resp.choices?.[0]?.message?.content || '';
+      const parsed = safeJsonParse(txt) || {};
+
+      const next = {
+        title_ar: needs.title_ar ? trimOrNull(parsed.title_ar) : cur.title_ar,
+        title_en: needs.title_en ? trimOrNull(parsed.title_en) : cur.title_en,
+        title_zh: needs.title_zh ? trimOrNull(parsed.title_zh) : cur.title_zh,
+        subtitle_ar: needs.subtitle_ar ? trimOrNull(parsed.subtitle_ar) : cur.subtitle_ar,
+        subtitle_en: needs.subtitle_en ? trimOrNull(parsed.subtitle_en) : cur.subtitle_en,
+        subtitle_zh: needs.subtitle_zh ? trimOrNull(parsed.subtitle_zh) : cur.subtitle_zh,
+        description_ar: needs.description_ar ? trimOrNull(parsed.description_ar) : cur.description_ar,
+        description_en: needs.description_en ? trimOrNull(parsed.description_en) : cur.description_en,
+        description_zh: needs.description_zh ? trimOrNull(parsed.description_zh) : cur.description_zh,
+      };
+
+      const parsedCtas = Array.isArray(parsed.ctas) ? parsed.ctas : null;
+      const nextCtas = ctas.map((c, idx) => {
+        const curNeed = needs.ctas?.[idx] || { ar: false, en: false, zh: false };
+        const from = parsedCtas && parsedCtas[idx] && typeof parsedCtas[idx] === 'object' ? parsedCtas[idx] : {};
+        return {
+          ...c,
+          label_ar: curNeed.ar ? (trimOrNull(from.label_ar) ?? c.label_ar ?? null) : (c.label_ar ?? null),
+          label_en: curNeed.en ? (trimOrNull(from.label_en) ?? c.label_en ?? null) : (c.label_en ?? null),
+          label_zh: curNeed.zh ? (trimOrNull(from.label_zh) ?? c.label_zh ?? null) : (c.label_zh ?? null),
+        };
+      });
+
+      if (commit) {
+        await pool.query(
+          `UPDATE ecommerce_hero_slides
+           SET
+             title_ar = ?, title_en = ?, title_zh = ?,
+             subtitle_ar = ?, subtitle_en = ?, subtitle_zh = ?,
+             description_ar = ?, description_en = ?, description_zh = ?,
+             ctas = ?,
+             updated_by_employee_id = ?
+           WHERE id = ?`,
+          [
+            next.title_ar, next.title_en, next.title_zh,
+            next.subtitle_ar, next.subtitle_en, next.subtitle_zh,
+            next.description_ar, next.description_en, next.description_zh,
+            JSON.stringify(nextCtas || []),
+            req.user?.id || null,
+            id,
+          ]
+        );
+        out.actions.push('saved');
+      }
+
+      out.model = resp.model || effectiveTranslateModel;
+      out.title = title;
+      out.result = { ...next, ctas: nextCtas };
+      return out;
+    };
+
+    const normalizedIds = ids.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0);
+    const results = await asyncPool(CONCURRENCY, normalizedIds, translateOne);
+
+    res.json({
+      ok: true,
+      commit: Boolean(commit),
+      force: Boolean(force),
+      model: effectiveTranslateModel,
+      results,
+    });
+  } catch (err) {
+    console.error('[AI] hero-slides translate error:', err);
+    res.status(500).json({ message: err?.message || 'Erreur interne (AI/hero-slides/translate)' });
   }
 });
 

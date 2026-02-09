@@ -3,7 +3,9 @@ import pool from '../db/pool.js';
 
 const router = Router();
 
-const ALLOWED_LOCALES = new Set(['fr', 'ar']);
+// Public endpoint can still accept ?locale=xx for backward compatibility,
+// but slides are now multilingual and returned with all locales.
+const ALLOWED_LOCALES = new Set(['fr', 'ar', 'en', 'zh']);
 const ALLOWED_TYPES = new Set(['category', 'brand', 'campaign', 'product']);
 const ALLOWED_STATUSES = new Set(['draft', 'published', 'archived']);
 
@@ -31,13 +33,22 @@ function normalizeCtas(ctasRaw) {
 
   // Public API no longer exposes href/action. We still accept legacy stored values.
   const normalized = ctas.map((c) => {
-    const label = String(c?.label ?? '').trim();
+    const label = String(c?.label ?? '').trim(); // FR
+    const label_ar = String(c?.label_ar ?? '').trim();
+    const label_en = String(c?.label_en ?? '').trim();
+    const label_zh = String(c?.label_zh ?? '').trim();
     const style = String(c?.style ?? '').trim();
 
     if (!label) throw new Error('CTA_LABEL_REQUIRED');
     if (!['primary', 'secondary'].includes(style)) throw new Error('CTA_STYLE_INVALID');
 
-    return { label, style };
+    return {
+      label,
+      label_ar: label_ar || null,
+      label_en: label_en || null,
+      label_zh: label_zh || null,
+      style,
+    };
   });
 
   const hasPrimary = normalized.some((c) => c.style === 'primary');
@@ -50,8 +61,14 @@ function toCtaBundle(ctas) {
   const out = {};
   for (const c of Array.isArray(ctas) ? ctas : []) {
     if (!c || typeof c !== 'object') continue;
-    if (c.style === 'primary' && !out.primary) out.primary = { label: c.label };
-    if (c.style === 'secondary' && !out.secondary) out.secondary = { label: c.label };
+    const payload = {
+      label: c.label,
+      label_ar: c.label_ar || null,
+      label_en: c.label_en || null,
+      label_zh: c.label_zh || null,
+    };
+    if (c.style === 'primary' && !out.primary) out.primary = payload;
+    if (c.style === 'secondary' && !out.secondary) out.secondary = payload;
   }
   return out;
 }
@@ -108,10 +125,10 @@ async function isProductSlideEligible(row) {
 // Public: GET /api/hero-slides
 router.get('/', async (req, res, next) => {
   try {
-    const locale = String(req.query.locale || '').trim().toLowerCase();
-    if (!ALLOWED_LOCALES.has(locale)) {
+    const locale = req.query.locale != null ? String(req.query.locale || '').trim().toLowerCase() : '';
+    if (locale && !ALLOWED_LOCALES.has(locale)) {
       return res.status(400).json({
-        error: { code: 'INVALID_LOCALE', message: 'locale must be one of: fr, ar' },
+        error: { code: 'INVALID_LOCALE', message: 'locale must be one of: fr, ar, en, zh' },
       });
     }
 
@@ -135,18 +152,19 @@ router.get('/', async (req, res, next) => {
          id, type, status, priority, locale,
          starts_at, ends_at,
          image_url, image_alt,
-         title, subtitle,
+         title, title_ar, title_en, title_zh,
+         subtitle, subtitle_ar, subtitle_en, subtitle_zh,
+         description, description_ar, description_en, description_zh,
          category_id, brand_id, product_id, variant_id, campaign_id,
          ctas,
          updated_at
        FROM ecommerce_hero_slides
-       WHERE locale = ?
-         AND status = 'published'
+       WHERE status = 'published'
          AND (starts_at IS NULL OR starts_at <= ?)
          AND (ends_at IS NULL OR ends_at >= ?)
        ORDER BY priority DESC, updated_at DESC, id DESC
        LIMIT ?`,
-      [locale, now, now, fetchLimit]
+      [now, now, fetchLimit]
     );
 
     const slides = [];
@@ -184,10 +202,27 @@ router.get('/', async (req, res, next) => {
           image_alt: row.image_alt || null,
         },
         content: {
-          title: row.title,
-          subtitle: row.subtitle || null,
+          title: {
+            fr: row.title,
+            ar: row.title_ar || null,
+            en: row.title_en || null,
+            zh: row.title_zh || null,
+          },
+          subtitle: {
+            fr: row.subtitle || null,
+            ar: row.subtitle_ar || null,
+            en: row.subtitle_en || null,
+            zh: row.subtitle_zh || null,
+          },
+          description: {
+            fr: row.description || null,
+            ar: row.description_ar || null,
+            en: row.description_en || null,
+            zh: row.description_zh || null,
+          },
         },
         target,
+        ctas,
         cta: toCtaBundle(ctas),
       });
 
@@ -195,7 +230,7 @@ router.get('/', async (req, res, next) => {
     }
 
     res.json({
-      locale,
+      locale: locale || 'all',
       generated_at: new Date().toISOString(),
       slides,
     });

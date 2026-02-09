@@ -2,12 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Edit3, Plus, Trash2, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
 
-type Locale = 'fr' | 'ar';
+type Locale = 'fr' | 'ar' | 'en' | 'zh';
 type SlideType = 'category' | 'brand' | 'campaign' | 'product';
 type SlideStatus = 'draft' | 'published' | 'archived';
 
 type Cta = {
-  label: string;
+  label: string; // fr
+  label_ar?: string | null;
+  label_en?: string | null;
+  label_zh?: string | null;
   style: 'primary' | 'secondary';
 };
 
@@ -16,13 +19,23 @@ type HeroSlide = {
   type: SlideType;
   status: SlideStatus;
   priority: number;
-  locale: Locale;
+  locale?: Locale;
   starts_at: string | null;
   ends_at: string | null;
   image_url: string;
   image_alt: string | null;
-  title: string;
-  subtitle: string | null;
+  title: string; // fr
+  title_ar?: string | null;
+  title_en?: string | null;
+  title_zh?: string | null;
+  subtitle: string | null; // fr
+  subtitle_ar?: string | null;
+  subtitle_en?: string | null;
+  subtitle_zh?: string | null;
+  description?: string | null; // fr
+  description_ar?: string | null;
+  description_en?: string | null;
+  description_zh?: string | null;
   category_id: number | null;
   brand_id: number | null;
   product_id: number | null;
@@ -33,7 +46,6 @@ type HeroSlide = {
 };
 
 type SlideForm = {
-  locale: Locale;
   status: SlideStatus;
   type: SlideType;
   priority: number;
@@ -41,7 +53,17 @@ type SlideForm = {
   ends_at: string;
   image_alt: string;
   title: string;
+  title_ar: string;
+  title_en: string;
+  title_zh: string;
   subtitle: string;
+  subtitle_ar: string;
+  subtitle_en: string;
+  subtitle_zh: string;
+  description: string;
+  description_ar: string;
+  description_en: string;
+  description_zh: string;
   category_id: string;
   brand_id: string;
   product_id: string;
@@ -56,7 +78,6 @@ type VariantOption = { id: number; name: string; type?: string | null; available
 type ProductOption = { id: number; designation: string; has_variants: boolean; variants: VariantOption[] };
 
 const emptyForm = (): SlideForm => ({
-  locale: 'fr',
   status: 'draft',
   type: 'category',
   priority: 0,
@@ -64,7 +85,17 @@ const emptyForm = (): SlideForm => ({
   ends_at: '',
   image_alt: '',
   title: '',
+  title_ar: '',
+  title_en: '',
+  title_zh: '',
   subtitle: '',
+  subtitle_ar: '',
+  subtitle_en: '',
+  subtitle_zh: '',
+  description: '',
+  description_ar: '',
+  description_en: '',
+  description_zh: '',
   category_id: '',
   brand_id: '',
   product_id: '',
@@ -94,8 +125,9 @@ const HeroSlidesPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [filterLocale, setFilterLocale] = useState<Locale>('fr');
   const [filterStatus, setFilterStatus] = useState<'' | SlideStatus>('');
+
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<HeroSlide | null>(null);
@@ -128,7 +160,6 @@ const HeroSlidesPage: React.FC = () => {
     setError(null);
     try {
       const qs = new URLSearchParams();
-      qs.set('locale', filterLocale);
       if (filterStatus) qs.set('status', filterStatus);
 
       const res = await fetch(`${API_BASE}/admin/hero-slides?${qs.toString()}`, {
@@ -144,7 +175,9 @@ const HeroSlidesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, filterLocale, filterStatus]);
+  }, [API_BASE, filterStatus]);
+
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   const fetchTargets = useCallback(async () => {
     try {
@@ -251,6 +284,9 @@ const HeroSlidesPage: React.FC = () => {
           const label = String(x.label ?? '').trim();
           return {
             label,
+            label_ar: x.label_ar != null ? String(x.label_ar) : null,
+            label_en: x.label_en != null ? String(x.label_en) : null,
+            label_zh: x.label_zh != null ? String(x.label_zh) : null,
             style: (String(x.style ?? '').trim() === 'secondary' ? 'secondary' : 'primary') as Cta['style'],
           };
         })
@@ -259,7 +295,6 @@ const HeroSlidesPage: React.FC = () => {
 
     setEditing(s);
     setForm({
-      locale: s.locale,
       status: s.status,
       type: s.type,
       priority: Number(s.priority || 0),
@@ -267,7 +302,17 @@ const HeroSlidesPage: React.FC = () => {
       ends_at: toInputDateTime(s.ends_at),
       image_alt: s.image_alt || '',
       title: s.title || '',
+      title_ar: String(s.title_ar || ''),
+      title_en: String(s.title_en || ''),
+      title_zh: String(s.title_zh || ''),
       subtitle: s.subtitle || '',
+      subtitle_ar: String(s.subtitle_ar || ''),
+      subtitle_en: String(s.subtitle_en || ''),
+      subtitle_zh: String(s.subtitle_zh || ''),
+      description: s.description || '',
+      description_ar: String(s.description_ar || ''),
+      description_en: String(s.description_en || ''),
+      description_zh: String(s.description_zh || ''),
       category_id: s.category_id != null ? String(s.category_id) : '',
       brand_id: s.brand_id != null ? String(s.brand_id) : '',
       product_id: s.product_id != null ? String(s.product_id) : '',
@@ -334,7 +379,6 @@ const HeroSlidesPage: React.FC = () => {
     };
 
     return {
-      locale: form.locale,
       status: form.status,
       type: form.type,
       priority: Number(form.priority || 0),
@@ -342,7 +386,17 @@ const HeroSlidesPage: React.FC = () => {
       ends_at: form.ends_at ? form.ends_at : null,
       image_alt: form.image_alt.trim() || null,
       title: form.title.trim(),
+      title_ar: form.title_ar.trim() || null,
+      title_en: form.title_en.trim() || null,
+      title_zh: form.title_zh.trim() || null,
       subtitle: form.subtitle.trim() || null,
+      subtitle_ar: form.subtitle_ar.trim() || null,
+      subtitle_en: form.subtitle_en.trim() || null,
+      subtitle_zh: form.subtitle_zh.trim() || null,
+      description: form.description.trim() || null,
+      description_ar: form.description_ar.trim() || null,
+      description_en: form.description_en.trim() || null,
+      description_zh: form.description_zh.trim() || null,
       category_id: numOrNull(form.category_id),
       brand_id: numOrNull(form.brand_id),
       product_id: numOrNull(form.product_id),
@@ -354,14 +408,23 @@ const HeroSlidesPage: React.FC = () => {
 
   const buildFormDataPayload = () => {
     const fd = new FormData();
-    fd.set('locale', form.locale);
     fd.set('status', form.status);
     fd.set('type', form.type);
     fd.set('priority', String(Number(form.priority || 0)));
     fd.set('starts_at', form.starts_at || '');
     fd.set('ends_at', form.ends_at || '');
     fd.set('title', form.title);
+    fd.set('title_ar', form.title_ar || '');
+    fd.set('title_en', form.title_en || '');
+    fd.set('title_zh', form.title_zh || '');
     fd.set('subtitle', form.subtitle || '');
+    fd.set('subtitle_ar', form.subtitle_ar || '');
+    fd.set('subtitle_en', form.subtitle_en || '');
+    fd.set('subtitle_zh', form.subtitle_zh || '');
+    fd.set('description', form.description || '');
+    fd.set('description_ar', form.description_ar || '');
+    fd.set('description_en', form.description_en || '');
+    fd.set('description_zh', form.description_zh || '');
     fd.set('image_alt', form.image_alt || '');
     fd.set('category_id', form.category_id || '');
     fd.set('brand_id', form.brand_id || '');
@@ -437,10 +500,67 @@ const HeroSlidesPage: React.FC = () => {
     });
   }, [slides]);
 
+  const visibleIds = useMemo(() => visibleSlides.map((s) => s.id), [visibleSlides]);
+  const allVisibleSelected = useMemo(() => {
+    if (visibleIds.length === 0) return false;
+    return visibleIds.every((id) => selectedIdSet.has(id));
+  }, [visibleIds, selectedIdSet]);
+
+  const toggleOneSelected = (id: number, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const set = new Set(prev);
+      if (checked) set.add(id);
+      else set.delete(id);
+      return Array.from(set);
+    });
+  };
+
+  const toggleAllVisible = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const set = new Set(prev);
+      if (checked) {
+        visibleIds.forEach((id) => set.add(id));
+      } else {
+        visibleIds.forEach((id) => set.delete(id));
+      }
+      return Array.from(set);
+    });
+  };
+
+  const translateSelected = async () => {
+    if (!isPdg) {
+      setError('Réservé au PDG');
+      return;
+    }
+    if (selectedIds.length === 0) {
+      setError('Sélectionnez au moins un slide à traduire');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/ai/hero-slides/translate`, {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify({ ids: selectedIds, commit: true, force: false }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+
+      setSelectedIds([]);
+      await fetchSlides();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg || 'Erreur traduction');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const setCta = (idx: number, patch: Partial<Cta>) => {
     setForm((prev) => {
       const next = prev.ctas.slice();
-      const cur = next[idx] || { label: '', style: 'primary' };
+      const cur = next[idx] || { label: '', label_ar: '', label_en: '', label_zh: '', style: 'primary' };
       next[idx] = { ...cur, ...patch } as Cta;
       return { ...prev, ctas: next };
     });
@@ -449,7 +569,7 @@ const HeroSlidesPage: React.FC = () => {
   const addCta = () => {
     setForm((prev) => {
       if (prev.ctas.length >= 2) return prev;
-      return { ...prev, ctas: [...prev.ctas, { label: '', style: 'primary' }] };
+      return { ...prev, ctas: [...prev.ctas, { label: '', label_ar: '', label_en: '', label_zh: '', style: 'primary' }] };
     });
   };
 
@@ -491,18 +611,6 @@ const HeroSlidesPage: React.FC = () => {
 
       <div className="flex flex-wrap items-end gap-3 bg-white p-4 border rounded-lg">
         <div>
-          <label className="block text-sm text-gray-600">Locale</label>
-          <select
-            className="mt-1 border rounded-md px-3 py-2"
-            value={filterLocale}
-            onChange={(e) => setFilterLocale(e.target.value as Locale)}
-          >
-            <option value="fr">fr</option>
-            <option value="ar">ar</option>
-          </select>
-        </div>
-
-        <div>
           <label className="block text-sm text-gray-600">Status</label>
           <select
             className="mt-1 border rounded-md px-3 py-2"
@@ -523,6 +631,17 @@ const HeroSlidesPage: React.FC = () => {
         >
           Rafraîchir
         </button>
+
+        <div className="flex-1" />
+
+        <button
+          onClick={translateSelected}
+          className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed"
+          disabled={loading || !isPdg || selectedIds.length === 0}
+          title={!isPdg ? 'Réservé au PDG' : selectedIds.length === 0 ? 'Sélectionnez des slides' : 'Traduire avec IA'}
+        >
+          Traduire (IA){selectedIds.length ? ` (${selectedIds.length})` : ''}
+        </button>
       </div>
 
       {error && (
@@ -530,15 +649,42 @@ const HeroSlidesPage: React.FC = () => {
       )}
 
       <div className="bg-white border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-700">
             <tr>
+              <th className="text-left px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={(e) => toggleAllVisible(e.target.checked)}
+                  disabled={visibleIds.length === 0}
+                />
+              </th>
               <th className="text-left px-4 py-3">ID</th>
-              <th className="text-left px-4 py-3">Locale</th>
               <th className="text-left px-4 py-3">Status</th>
               <th className="text-left px-4 py-3">Type</th>
-              <th className="text-left px-4 py-3">Priority</th>
-              <th className="text-left px-4 py-3">Titre</th>
+
+              <th className="text-left px-4 py-3">Title</th>
+              <th className="text-left px-4 py-3">Title_ar</th>
+              <th className="text-left px-4 py-3">Title_en</th>
+              <th className="text-left px-4 py-3">Title_zh</th>
+
+              <th className="text-left px-4 py-3">Subtitle</th>
+              <th className="text-left px-4 py-3">Subtitle_ar</th>
+              <th className="text-left px-4 py-3">Subtitle_en</th>
+              <th className="text-left px-4 py-3">Subtitle_zh</th>
+
+              <th className="text-left px-4 py-3">Description</th>
+              <th className="text-left px-4 py-3">Description_ar</th>
+              <th className="text-left px-4 py-3">Description_en</th>
+              <th className="text-left px-4 py-3">Description_zh</th>
+
+              <th className="text-left px-4 py-3">Btn</th>
+              <th className="text-left px-4 py-3">Btn_ar</th>
+              <th className="text-left px-4 py-3">Btn_en</th>
+              <th className="text-left px-4 py-3">Btn_zh</th>
+
               <th className="text-left px-4 py-3">Schedule</th>
               <th className="text-right px-4 py-3">Actions</th>
             </tr>
@@ -546,21 +692,68 @@ const HeroSlidesPage: React.FC = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td className="px-4 py-6 text-gray-500" colSpan={8}>Chargement…</td>
+                <td className="px-4 py-6 text-gray-500" colSpan={22}>Chargement…</td>
               </tr>
             ) : visibleSlides.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-gray-500" colSpan={8}>Aucun slide</td>
+                <td className="px-4 py-6 text-gray-500" colSpan={22}>Aucun slide</td>
               </tr>
             ) : (
               visibleSlides.map((s) => (
                 <tr key={s.id} className="border-t">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIdSet.has(s.id)}
+                      onChange={(e) => toggleOneSelected(s.id, e.target.checked)}
+                    />
+                  </td>
                   <td className="px-4 py-3">{s.id}</td>
-                  <td className="px-4 py-3">{s.locale}</td>
                   <td className="px-4 py-3">{s.status}</td>
                   <td className="px-4 py-3">{s.type}</td>
-                  <td className="px-4 py-3">{s.priority}</td>
-                  <td className="px-4 py-3">{s.title}</td>
+                  <td className="px-4 py-3">{s.title || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.title_ar || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.title_en || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.title_zh || '—'}</td>
+
+                  <td className="px-4 py-3 text-gray-600">{s.subtitle || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.subtitle_ar || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.subtitle_en || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.subtitle_zh || '—'}</td>
+
+                  <td className="px-4 py-3 text-gray-600">{s.description || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.description_ar || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.description_en || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.description_zh || '—'}</td>
+
+                  <td className="px-4 py-3 text-gray-600">
+                    {(() => {
+                      const arr = Array.isArray(s.ctas) ? s.ctas : [];
+                      const primary = arr.find((c) => c?.style === 'primary' && String(c.label || '').trim());
+                      return primary?.label || '—';
+                    })()}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {(() => {
+                      const arr = Array.isArray(s.ctas) ? s.ctas : [];
+                      const primary = arr.find((c) => c?.style === 'primary' && String(c.label || '').trim());
+                      return String(primary?.label_ar || '').trim() || '—';
+                    })()}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {(() => {
+                      const arr = Array.isArray(s.ctas) ? s.ctas : [];
+                      const primary = arr.find((c) => c?.style === 'primary' && String(c.label || '').trim());
+                      return String(primary?.label_en || '').trim() || '—';
+                    })()}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {(() => {
+                      const arr = Array.isArray(s.ctas) ? s.ctas : [];
+                      const primary = arr.find((c) => c?.style === 'primary' && String(c.label || '').trim());
+                      return String(primary?.label_zh || '').trim() || '—';
+                    })()}
+                  </td>
                   <td className="px-4 py-3 text-gray-600">
                     <div>start: {s.starts_at ? new Date(s.starts_at).toLocaleString() : '—'}</div>
                     <div>end: {s.ends_at ? new Date(s.ends_at).toLocaleString() : '—'}</div>
@@ -594,36 +787,25 @@ const HeroSlidesPage: React.FC = () => {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-3xl rounded-lg shadow-lg overflow-hidden">
+          <div className="bg-white w-[90vw] max-w-[1400px] max-h-[90vh] rounded-lg shadow-lg overflow-hidden flex flex-col">
             <div className="px-5 py-4 border-b flex items-center justify-between">
               <div className="font-semibold text-gray-900">{editing ? `Modifier #${editing.id}` : 'Nouveau slide'}</div>
               <button onClick={closeModal} className="text-gray-500 hover:text-gray-700">✕</button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto min-h-0">
               {!isPdg && (
                 <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-md">
                   Seul le PDG peut créer / modifier / supprimer des slides.
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-600">Locale</label>
-                  <select
-                    className="mt-1 border rounded-md px-3 py-2 w-full"
-                    value={form.locale}
-                    onChange={(e) => setForm((p) => ({ ...p, locale: e.target.value as Locale }))}
-                  >
-                    <option value="fr">fr</option>
-                    <option value="ar">ar</option>
-                  </select>
-                </div>
-
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600">Status</label>
                   <select
@@ -652,17 +834,7 @@ const HeroSlidesPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-600">Priority</label>
-                  <input
-                    type="number"
-                    className="mt-1 border rounded-md px-3 py-2 w-full"
-                    value={form.priority}
-                    onChange={(e) => setForm((p) => ({ ...p, priority: Number(e.target.value) }))}
-                  />
-                </div>
-
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-gray-600">Starts at</label>
                   <input
@@ -684,9 +856,9 @@ const HeroSlidesPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600">Titre</label>
+                  <label className="block text-sm text-gray-600">Title (fr)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.title}
@@ -694,11 +866,97 @@ const HeroSlidesPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600">Sous-titre</label>
+                  <label className="block text-sm text-gray-600">Title (ar)</label>
+                  <input
+                    className="mt-1 border rounded-md px-3 py-2 w-full"
+                    value={form.title_ar}
+                    onChange={(e) => setForm((p) => ({ ...p, title_ar: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600">Title (en)</label>
+                  <input
+                    className="mt-1 border rounded-md px-3 py-2 w-full"
+                    value={form.title_en}
+                    onChange={(e) => setForm((p) => ({ ...p, title_en: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600">Title (zh)</label>
+                  <input
+                    className="mt-1 border rounded-md px-3 py-2 w-full"
+                    value={form.title_zh}
+                    onChange={(e) => setForm((p) => ({ ...p, title_zh: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600">Subtitle (fr)</label>
                   <input
                     className="mt-1 border rounded-md px-3 py-2 w-full"
                     value={form.subtitle}
                     onChange={(e) => setForm((p) => ({ ...p, subtitle: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600">Subtitle (ar)</label>
+                  <input
+                    className="mt-1 border rounded-md px-3 py-2 w-full"
+                    value={form.subtitle_ar}
+                    onChange={(e) => setForm((p) => ({ ...p, subtitle_ar: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600">Subtitle (en)</label>
+                  <input
+                    className="mt-1 border rounded-md px-3 py-2 w-full"
+                    value={form.subtitle_en}
+                    onChange={(e) => setForm((p) => ({ ...p, subtitle_en: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600">Subtitle (zh)</label>
+                  <input
+                    className="mt-1 border rounded-md px-3 py-2 w-full"
+                    value={form.subtitle_zh}
+                    onChange={(e) => setForm((p) => ({ ...p, subtitle_zh: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600">Description (fr)</label>
+                  <textarea
+                    className="mt-1 border rounded-md px-3 py-2 w-full min-h-[80px]"
+                    value={form.description}
+                    onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600">Description (ar)</label>
+                  <textarea
+                    className="mt-1 border rounded-md px-3 py-2 w-full min-h-[80px]"
+                    value={form.description_ar}
+                    onChange={(e) => setForm((p) => ({ ...p, description_ar: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600">Description (en)</label>
+                  <textarea
+                    className="mt-1 border rounded-md px-3 py-2 w-full min-h-[80px]"
+                    value={form.description_en}
+                    onChange={(e) => setForm((p) => ({ ...p, description_en: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600">Description (zh)</label>
+                  <textarea
+                    className="mt-1 border rounded-md px-3 py-2 w-full min-h-[80px]"
+                    value={form.description_zh}
+                    onChange={(e) => setForm((p) => ({ ...p, description_zh: e.target.value }))}
                   />
                 </div>
               </div>
@@ -914,33 +1172,62 @@ const HeroSlidesPage: React.FC = () => {
                 ) : (
                   <div className="space-y-3">
                     {form.ctas.map((cta, idx) => (
-                      <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
-                        <div className="md:col-span-2">
-                          <label className="block text-sm text-gray-600">Label</label>
-                          <input
-                            className="mt-1 border rounded-md px-3 py-2 w-full"
-                            value={cta.label}
-                            onChange={(e) => setCta(idx, { label: e.target.value })}
-                          />
+                      <div key={idx} className="border rounded-lg p-3">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                          <div>
+                            <label className="block text-sm text-gray-600">Label (fr)</label>
+                            <input
+                              className="mt-1 border rounded-md px-3 py-2 w-full"
+                              value={cta.label}
+                              onChange={(e) => setCta(idx, { label: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-600">Label (ar)</label>
+                            <input
+                              className="mt-1 border rounded-md px-3 py-2 w-full"
+                              value={String(cta.label_ar || '')}
+                              onChange={(e) => setCta(idx, { label_ar: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-600">Label (en)</label>
+                            <input
+                              className="mt-1 border rounded-md px-3 py-2 w-full"
+                              value={String(cta.label_en || '')}
+                              onChange={(e) => setCta(idx, { label_en: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-600">Label (zh)</label>
+                            <input
+                              className="mt-1 border rounded-md px-3 py-2 w-full"
+                              value={String(cta.label_zh || '')}
+                              onChange={(e) => setCta(idx, { label_zh: e.target.value })}
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-sm text-gray-600">Style</label>
-                          <select
-                            className="mt-1 border rounded-md px-3 py-2 w-full"
-                            value={cta.style}
-                            onChange={(e) => setCta(idx, { style: e.target.value as Cta['style'] })}
-                          >
-                            <option value="primary">primary</option>
-                            <option value="secondary">secondary</option>
-                          </select>
-                        </div>
-                        <div>
-                          <button
-                            className="px-3 py-2 border border-red-200 text-red-600 rounded-md hover:bg-red-50 w-full"
-                            onClick={() => removeCta(idx)}
-                          >
-                            Supprimer
-                          </button>
+
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                          <div>
+                            <label className="block text-sm text-gray-600">Style</label>
+                            <select
+                              className="mt-1 border rounded-md px-3 py-2 w-full"
+                              value={cta.style}
+                              onChange={(e) => setCta(idx, { style: e.target.value as Cta['style'] })}
+                            >
+                              <option value="primary">primary</option>
+                              <option value="secondary">secondary</option>
+                            </select>
+                          </div>
+                          <div className="md:col-span-3">
+                            <button
+                              className="px-3 py-2 border border-red-200 text-red-600 rounded-md hover:bg-red-50 w-full"
+                              onClick={() => removeCta(idx)}
+                            >
+                              Supprimer
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}

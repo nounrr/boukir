@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
+import OpenAI from 'openai';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -36,6 +37,108 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+function normalizeModelName(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  const normalized = s.toLowerCase().replace(/\s+/g, '-');
+  if (
+    normalized === 'chatgpt-5-nano' ||
+    normalized === 'chatgpt5-nano' ||
+    normalized === 'chatgpt-5nano' ||
+    normalized === 'chatgpt5nano' ||
+    normalized === 'chat-gpt-5-nano' ||
+    normalized === 'chat-gpt5-nano'
+  ) {
+    return 'gpt-5-nano';
+  }
+  if (normalized === 'gpt5-nano' || normalized === 'gpt-5nano') return 'gpt-5-nano';
+  return s;
+}
+
+const AI_TR_MODEL = normalizeModelName(process.env.AI_TR_MODEL) || 'gpt-5-nano';
+
+function sanitizeTemperature(model, temperature) {
+  if (typeof temperature !== 'number' || !Number.isFinite(temperature)) return undefined;
+  const m = String(model || '').toLowerCase();
+  if (m.startsWith('gpt-5')) return undefined;
+  if (m.startsWith('o1') || m.startsWith('o3')) return undefined;
+  return temperature;
+}
+
+let cachedAiClient = null;
+let cachedAiKey = null;
+
+function getAiClient() {
+  const key = String(process.env.OPENAI_API_KEY || '').trim();
+  if (!key) return null;
+  if (!cachedAiClient || cachedAiKey !== key) {
+    cachedAiKey = key;
+    cachedAiClient = new OpenAI({ apiKey: key, maxRetries: 2 });
+  }
+  return cachedAiClient;
+}
+
+function safeJsonParse(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { /* ignore */ }
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch { /* ignore */ }
+  }
+  return null;
+}
+
+async function translateCategoryNameIfNeeded({ nom, nom_ar, nom_en, nom_zh, forceAll = false }) {
+  const client = getAiClient();
+  if (!client) return { nom_ar, nom_en, nom_zh, translated: false };
+
+  const base = String(nom || '').trim();
+  if (!base) return { nom_ar, nom_en, nom_zh, translated: false };
+
+  const needsAr = forceAll ? true : !String(nom_ar || '').trim();
+  const needsEn = forceAll ? true : !String(nom_en || '').trim();
+  const needsZh = forceAll ? true : !String(nom_zh || '').trim();
+  if (!needsAr && !needsEn && !needsZh) {
+    return { nom_ar, nom_en, nom_zh, translated: false };
+  }
+
+  const system = {
+    role: 'system',
+    content: [
+      'You translate e-commerce category names.',
+      'Return JSON only with keys: nom_ar, nom_en, nom_zh.',
+      'Keep translations short and natural.',
+      'No extra words, no marketing text.',
+    ].join(' '),
+  };
+
+  const user = {
+    role: 'user',
+    content: JSON.stringify({ nom: base, targets: { ar: needsAr, en: needsEn, zh: needsZh } }),
+  };
+
+  const temp = sanitizeTemperature(AI_TR_MODEL, 0.2);
+  const reqPayload = {
+    model: AI_TR_MODEL,
+    messages: [system, user],
+    ...(temp === undefined ? {} : { temperature: temp }),
+  };
+
+  const resp = await client.chat.completions.create(reqPayload);
+
+  const txt = resp.choices?.[0]?.message?.content || '';
+  const parsed = safeJsonParse(txt) || {};
+
+  return {
+    nom_ar: needsAr ? normalizeNullableText(parsed?.nom_ar) : nom_ar,
+    nom_en: needsEn ? normalizeNullableText(parsed?.nom_en) : nom_en,
+    nom_zh: needsZh ? normalizeNullableText(parsed?.nom_zh) : nom_zh,
+    translated: true,
+  };
+}
 
 function maybeUploadSingle(fieldName) {
   const mw = upload.single(fieldName);
@@ -90,6 +193,14 @@ router.post('/', maybeUploadSingle('image'), async (req, res, next) => {
 
     const parentId = toNullableNumber(parent_id);
     const createdBy = toNullableNumber(created_by);
+
+    const tr = await translateCategoryNameIfNeeded({
+      nom,
+      nom_ar: normalizeNullableText(nom_ar) ?? null,
+      nom_en: normalizeNullableText(nom_en) ?? null,
+      nom_zh: normalizeNullableText(nom_zh) ?? null,
+      forceAll: false,
+    });
     
     // Prevent circular references
     if (parentId) {
@@ -104,9 +215,9 @@ router.post('/', maybeUploadSingle('image'), async (req, res, next) => {
       'INSERT INTO categories (nom, nom_ar, nom_en, nom_zh, description, image_url, parent_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         nom.trim(),
-        normalizeNullableText(nom_ar) ?? null,
-        normalizeNullableText(nom_en) ?? null,
-        normalizeNullableText(nom_zh) ?? null,
+        tr.nom_ar ?? null,
+        tr.nom_en ?? null,
+        tr.nom_zh ?? null,
         normalizeNullableText(description) ?? null,
         image_url,
         parentId ?? null,
@@ -159,13 +270,42 @@ router.put('/:id', maybeUploadSingle('image'), async (req, res, next) => {
       }
     }
     
+    // Load current values so we can auto-translate when nom changes
+    const [curRows] = await pool.query('SELECT nom, nom_ar, nom_en, nom_zh FROM categories WHERE id = ?', [id]);
+    const cur = curRows?.[0] || {};
+
+    const nextNom = nom !== undefined ? normalizeNullableText(nom) : normalizeNullableText(cur.nom);
+    const providedAr = nom_ar !== undefined;
+    const providedEn = nom_en !== undefined;
+    const providedZh = nom_zh !== undefined;
+
+    let nextAr = providedAr ? (normalizeNullableText(nom_ar) ?? null) : (normalizeNullableText(cur.nom_ar) ?? null);
+    let nextEn = providedEn ? (normalizeNullableText(nom_en) ?? null) : (normalizeNullableText(cur.nom_en) ?? null);
+    let nextZh = providedZh ? (normalizeNullableText(nom_zh) ?? null) : (normalizeNullableText(cur.nom_zh) ?? null);
+
+    const nomChanged = nextNom !== null && String(nextNom) !== String(normalizeNullableText(cur.nom) ?? '');
+
+    // If user changed nom and did not explicitly provide translations, regenerate all 3.
+    // Otherwise, only fill missing ones.
+    const forceAll = Boolean(nomChanged && !providedAr && !providedEn && !providedZh);
+    const tr = await translateCategoryNameIfNeeded({
+      nom: nextNom,
+      nom_ar: nextAr,
+      nom_en: nextEn,
+      nom_zh: nextZh,
+      forceAll,
+    });
+    nextAr = tr.nom_ar;
+    nextEn = tr.nom_en;
+    nextZh = tr.nom_zh;
+
     const now = new Date();
     const fields = [];
     const values = [];
-    if (nom !== undefined) { fields.push('nom = ?'); values.push(normalizeNullableText(nom)); }
-    if (nom_ar !== undefined) { fields.push('nom_ar = ?'); values.push(normalizeNullableText(nom_ar)); }
-    if (nom_en !== undefined) { fields.push('nom_en = ?'); values.push(normalizeNullableText(nom_en)); }
-    if (nom_zh !== undefined) { fields.push('nom_zh = ?'); values.push(normalizeNullableText(nom_zh)); }
+    if (nom !== undefined) { fields.push('nom = ?'); values.push(nextNom); }
+    if (nom_ar !== undefined || (tr.translated && (forceAll || !String(cur.nom_ar || '').trim()))) { fields.push('nom_ar = ?'); values.push(nextAr); }
+    if (nom_en !== undefined || (tr.translated && (forceAll || !String(cur.nom_en || '').trim()))) { fields.push('nom_en = ?'); values.push(nextEn); }
+    if (nom_zh !== undefined || (tr.translated && (forceAll || !String(cur.nom_zh || '').trim()))) { fields.push('nom_zh = ?'); values.push(nextZh); }
     if (description !== undefined) { fields.push('description = ?'); values.push(normalizeNullableText(description)); }
     if (parentId !== undefined) { fields.push('parent_id = ?'); values.push(parentId); }
     if (updated_by !== undefined) { fields.push('updated_by = ?'); values.push(toNullableNumber(updated_by)); }
