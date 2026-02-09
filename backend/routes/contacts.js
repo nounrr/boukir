@@ -3,6 +3,8 @@ import pool from '../db/pool.js';
 
 const router = express.Router();
 
+const isProd = process.env.NODE_ENV === 'production';
+
 const applyContactsFilters = ({ type, search, clientSubTab, groupId }) => {
   let whereSql = ' WHERE 1=1';
   const params = [];
@@ -944,7 +946,12 @@ router.put('/:id', async (req, res) => {
       updated_by
     } = req.body;
 
-    const isProd = process.env.NODE_ENV === 'production';
+    const normalizeEmptyToNull = (value) => {
+      if (value === undefined) return undefined;
+      if (value === null) return null;
+      if (typeof value === 'string' && value.trim() === '') return null;
+      return value;
+    };
 
     const toNullableNumber = (value) => {
       if (value === undefined) return undefined;
@@ -1001,12 +1008,12 @@ router.put('/:id', async (req, res) => {
       params.push(updated_by ?? null);
     }
   }
-    if (telephone !== undefined) { updates.push('telephone = ?'); params.push(telephone); }
-    if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+    if (telephone !== undefined) { updates.push('telephone = ?'); params.push(normalizeEmptyToNull(telephone)); }
+    if (email !== undefined) { updates.push('email = ?'); params.push(normalizeEmptyToNull(email)); }
   if (password !== undefined) { updates.push('password = ?'); params.push(password); }
-    if (adresse !== undefined) { updates.push('adresse = ?'); params.push(adresse); }
-    if (rib !== undefined) { updates.push('rib = ?'); params.push(rib); }
-    if (ice !== undefined) { updates.push('ice = ?'); params.push(ice); }
+    if (adresse !== undefined) { updates.push('adresse = ?'); params.push(normalizeEmptyToNull(adresse)); }
+    if (rib !== undefined) { updates.push('rib = ?'); params.push(normalizeEmptyToNull(rib)); }
+    if (ice !== undefined) { updates.push('ice = ?'); params.push(normalizeEmptyToNull(ice)); }
     if (solde !== undefined) {
       const soldeNumber = Number(solde);
       if (!Number.isFinite(soldeNumber)) {
@@ -1081,6 +1088,15 @@ router.put('/:id', async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating contact:', error);
+
+    // Better UX for unique ICE conflicts
+    if (error?.code === 'ER_DUP_ENTRY' && String(error?.sqlMessage || error?.message || '').includes('uniq_contacts_ice')) {
+      return res.status(409).json({
+        error: 'ICE déjà utilisé par un autre contact',
+        ...(isProd ? {} : { details: { sqlMessage: error?.sqlMessage } }),
+      });
+    }
+
     res.status(500).json({
       error: 'Failed to update contact',
       ...(isProd
