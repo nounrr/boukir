@@ -9,14 +9,19 @@ import {
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import CategoryFormModal from '../components/CategoryFormModal';
 import { toBackendUrl } from '../utils/url';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../store';
 
 const CategoriesPage: React.FC = () => {
-	const { data: categories = [], isLoading } = useGetCategoriesQuery();
+	const { data: categories = [], isLoading, refetch } = useGetCategoriesQuery();
 	const [deleteCategory] = useDeleteCategoryMutation();
+	const authTokenValue = useSelector((state: RootState) => (state as any).auth?.token);
 
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 	const [search, setSearch] = useState('');
+	const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+	const [translating, setTranslating] = useState(false);
 	const [hoverPreview, setHoverPreview] = useState<null | {
 		url: string;
 		x: number;
@@ -68,6 +73,89 @@ const CategoriesPage: React.FC = () => {
 		}
 	};
 
+	const filteredIds = useMemo(() => filtered.map((c) => c.id), [filtered]);
+	const allFilteredSelected = useMemo(() => {
+		if (filteredIds.length === 0) return false;
+		for (const id of filteredIds) {
+			if (!selectedIds.has(id)) return false;
+		}
+		return true;
+	}, [filteredIds, selectedIds]);
+
+	const toggleSelectAllFiltered = () => {
+		setSelectedIds((prev) => {
+			const next = new Set(prev);
+			if (allFilteredSelected) {
+				for (const id of filteredIds) next.delete(id);
+				return next;
+			}
+			for (const id of filteredIds) next.add(id);
+			return next;
+		});
+	};
+
+	const toggleSelected = (id: number) => {
+		setSelectedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
+	const parseMaybeJson = async (resp: Response) => {
+		const text = await resp.text();
+		if (!text) return null;
+		const ct = resp.headers.get('content-type') || '';
+		const looksJson = ct.toLowerCase().includes('application/json') || /^[\s\r\n]*[\[{]/.test(text);
+		if (!looksJson) return text;
+		try { return JSON.parse(text); } catch { return text; }
+	};
+
+	const handleTranslateSelected = async () => {
+		const ids = Array.from(selectedIds);
+		if (ids.length === 0) return;
+
+		const result = await showConfirmation(
+			"Traduction AI",
+			`Traduire ${ids.length} catégorie(s) (AR/EN/ZH) ?`,
+			'Traduire',
+			'Annuler'
+		);
+		if (!result.isConfirmed) return;
+
+		setTranslating(true);
+		try {
+			const headers: Record<string, string> = { 'content-type': 'application/json' };
+			if (authTokenValue) headers.authorization = `Bearer ${authTokenValue}`;
+
+			const resp = await fetch('/api/ai/categories/translate', {
+				method: 'POST',
+				headers,
+				body: JSON.stringify({ ids, commit: true, force: false }),
+			});
+
+			const data: any = await parseMaybeJson(resp);
+			if (!resp.ok) {
+				const msg = data?.message || data?.error || (typeof data === 'string' ? data : null) || 'Erreur traduction AI';
+				showError(String(msg));
+				return;
+			}
+
+			const results = Array.isArray(data?.results) ? data.results : [];
+			const savedCount = results.filter((r: any) => Array.isArray(r?.actions) && r.actions.includes('saved')).length;
+			const errCount = results.filter((r: any) => r?.status === 'error').length;
+			showSuccess(`Traduction terminée: ${savedCount} mise(s) à jour${errCount ? `, ${errCount} erreur(s)` : ''}`);
+
+			setSelectedIds(new Set());
+			refetch();
+		} catch (e: any) {
+			showError(e?.message || 'Erreur traduction AI');
+		} finally {
+			setTranslating(false);
+		}
+	};
+
 	return (
 		<div className="p-6">
 			{/* Hover image preview (fixed overlay so it isn't clipped by table overflow) */}
@@ -106,6 +194,18 @@ const CategoriesPage: React.FC = () => {
 					<h1 className="text-2xl font-bold text-gray-900">Catégories</h1>
 				</div>
 				<div className="flex gap-2">
+					<button
+						onClick={handleTranslateSelected}
+						disabled={translating || selectedIds.size === 0}
+						className={`flex items-center gap-2 px-4 py-2 rounded-md text-white ${
+							translating || selectedIds.size === 0
+								? 'bg-gray-400 cursor-not-allowed'
+								: 'bg-gray-700 hover:bg-gray-800'
+						}`}
+						title={selectedIds.size === 0 ? 'Sélectionnez des catégories' : 'Traduire (AI) les catégories sélectionnées'}
+					>
+						Traduire (AI) {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+					</button>
 					<Link
 						to="/category-management"
 						className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md"
@@ -139,8 +239,19 @@ const CategoriesPage: React.FC = () => {
 					<table className="min-w-full divide-y divide-gray-200">
 						<thead className="bg-gray-50">
 							<tr>
+								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+									<input
+										type="checkbox"
+										checked={allFilteredSelected}
+										onChange={toggleSelectAllFiltered}
+										aria-label="Sélectionner toutes les catégories filtrées"
+									/>
+								</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
-								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
+								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom (FR)</th>
+								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom (AR)</th>
+								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom (EN)</th>
+								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom (ZH)</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parent</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
 								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -149,17 +260,25 @@ const CategoriesPage: React.FC = () => {
 						<tbody className="bg-white divide-y divide-gray-200">
 											{isLoading && (
 												<tr>
-													<td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">Chargement...</td>
+											<td colSpan={9} className="px-6 py-4 text-center text-sm text-gray-500">Chargement...</td>
 												</tr>
 											)}
 											{!isLoading && filtered.length === 0 && (
 												<tr>
-													<td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">Aucune catégorie</td>
+											<td colSpan={9} className="px-6 py-4 text-center text-sm text-gray-500">Aucune catégorie</td>
 												</tr>
 											)}
 											{!isLoading && filtered.length > 0 && (
 								filtered.map((c) => (
 									<tr key={c.id} className="hover:bg-gray-50">
+									<td className="px-6 py-4 whitespace-nowrap">
+										<input
+											type="checkbox"
+											checked={selectedIds.has(c.id)}
+											onChange={() => toggleSelected(c.id)}
+											aria-label={`Sélectionner catégorie ${c.nom}`}
+										/>
+									</td>
 										<td className="px-6 py-4 whitespace-nowrap">
 											{c.image_url ? (
 												<div
@@ -194,6 +313,15 @@ const CategoriesPage: React.FC = () => {
 										</td>
 										<td className="px-6 py-4 whitespace-nowrap">
 											<div className="text-sm font-medium text-gray-900">{c.nom}</div>
+										</td>
+										<td className="px-6 py-4 whitespace-nowrap">
+											<div className="text-sm text-gray-700" dir="rtl">{c.nom_ar || '-'}</div>
+										</td>
+										<td className="px-6 py-4 whitespace-nowrap">
+											<div className="text-sm text-gray-700">{c.nom_en || '-'}</div>
+										</td>
+										<td className="px-6 py-4 whitespace-nowrap">
+											<div className="text-sm text-gray-700">{c.nom_zh || '-'}</div>
 										</td>
 										<td className="px-6 py-4 whitespace-nowrap">
 											<div className="text-sm text-gray-500">{getParentName(c.parent_id)}</div>
