@@ -9,6 +9,7 @@ import {
   ensureProductRemiseColumns
 } from '../../utils/ensureRemiseSchema.js';
 import { getContactSoldeCumule, phone9Sql } from '../../utils/soldeCumule.js';
+import { calculateEcommerceShipping } from '../../utils/ecommerceShipping.js';
 
 async function ensureRemiseSchema() {
   try {
@@ -256,7 +257,7 @@ router.post('/', async (req, res, next) => {
     if (use_cart && userId) {
       // Get items from user's cart
       const [cartItems] = await connection.query(`
-        SELECT 
+        SELECT
           ci.id as cart_item_id,
           ci.product_id,
           ci.variant_id,
@@ -266,6 +267,9 @@ router.post('/', async (req, res, next) => {
           p.designation_ar,
           p.prix_vente as base_price,
           p.pourcentage_promo,
+          p.prix_achat as product_prix_achat,
+          p.cout_revient as product_cout_revient,
+          p.kg as product_kg,
           p.stock_partage_ecom_qty,
           p.has_variants,
           p.is_obligatoire_variant,
@@ -274,6 +278,8 @@ router.post('/', async (req, res, next) => {
           pv.variant_name,
           pv.variant_type,
           pv.prix_vente as variant_price,
+          pv.prix_achat as variant_prix_achat,
+          pv.cout_revient as variant_cout_revient,
           pv.stock_quantity as variant_stock,
           pu.unit_name,
           pu.conversion_factor
@@ -306,6 +312,9 @@ router.post('/', async (req, res, next) => {
             p.designation_ar,
             p.prix_vente as base_price,
             p.pourcentage_promo,
+            p.prix_achat as product_prix_achat,
+            p.cout_revient as product_cout_revient,
+            p.kg as product_kg,
             p.stock_partage_ecom_qty,
             p.has_variants,
             p.is_obligatoire_variant,
@@ -314,6 +323,8 @@ router.post('/', async (req, res, next) => {
             pv.variant_name,
             pv.variant_type,
             pv.prix_vente as variant_price,
+            pv.prix_achat as variant_prix_achat,
+            pv.cout_revient as variant_cout_revient,
             pv.stock_quantity as variant_stock,
             pu.unit_name,
             pu.conversion_factor
@@ -378,9 +389,27 @@ router.post('/', async (req, res, next) => {
         unitPrice = Number(item.variant_price);
       }
 
+      // Determine cost per unit (for profit/marge calculation)
+      // Preference order: variant cout_revient/prix_achat -> product cout_revient/prix_achat
+      let unitCost = 0;
+      if (item.variant_id) {
+        const vCout = item.variant_cout_revient;
+        const vAchat = item.variant_prix_achat;
+        if (vCout !== undefined && vCout !== null) unitCost = Number(vCout) || 0;
+        else if (vAchat !== undefined && vAchat !== null) unitCost = Number(vAchat) || 0;
+      }
+      if (!unitCost) {
+        const pCout = item.product_cout_revient;
+        const pAchat = item.product_prix_achat;
+        if (pCout !== undefined && pCout !== null) unitCost = Number(pCout) || 0;
+        else if (pAchat !== undefined && pAchat !== null) unitCost = Number(pAchat) || 0;
+      }
+
       // If unit is selected, adjust by conversion factor
       if (item.unit_id && item.conversion_factor !== null && item.conversion_factor !== undefined) {
-        unitPrice = unitPrice * Number(item.conversion_factor || 1);
+        const factor = Number(item.conversion_factor || 1);
+        unitPrice = unitPrice * factor;
+        unitCost = unitCost * factor;
       }
 
       // Apply promo
@@ -423,13 +452,29 @@ router.post('/', async (req, res, next) => {
         quantity: Number(item.quantity),
         subtotal: itemSubtotal,
         discount_percentage: promoPercentage,
-        discount_amount: discountAmount
+        discount_amount: discountAmount,
+
+        // Fields for profit/marge calculation (aligned with backoffice mouvementCalc)
+        prix_unitaire: priceAfterPromo,
+        quantite: Number(item.quantity),
+        cout_revient: unitCost,
+
+        // Keep product KG for phase 2 shipping
+        kg: Number(item.product_kg || 0),
       });
     }
 
     // Calculate totals (you can add tax/shipping calculation here)
     const taxAmount = 0; // TODO: Calculate tax if needed
-    const shippingCost = 0; // TODO: Calculate shipping if needed
+
+    // Shipping (Phase 1): based on order profit (marge/bénéfice), not subtotal.
+    // Rule for non-KG orders: profit >= 200 => free shipping, else 30 DH.
+    // Pickup => 0.
+    const shippingCalc = calculateEcommerceShipping({
+      deliveryMethod: normalizedDeliveryMethod,
+      items: validatedItems,
+    });
+    const shippingCost = Number(shippingCalc?.shippingCost || 0);
     let discountAmount = validatedItems.reduce((sum, item) => sum + item.discount_amount, 0);
 
     // Promo code validation (if provided)
