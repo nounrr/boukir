@@ -40,14 +40,36 @@ Where:
 
 > Note: In e-commerce checkout we use type `Ecommerce` so **no remise subtraction** is applied in `computeMouvementCalc()`.
 
-### 1.3 KG products (Phase 2 not implemented)
+### 1.3 KG products (Phase 2 + Phase 3 implemented)
 
 If the cart contains any item where `kg > 0`:
 
-- Phase 1 free-shipping-by-profit **does not apply**.
-- The backend currently defaults to **30 MAD** for safety.
+- Phase 1 (profit >= 200) **does not apply**.
+- The backend uses **total KG bands** (Phase 2) to decide free shipping.
+- If KG rules do not grant free shipping, the backend uses **distance-based pricing** (Phase 3) using the `distance_km` computed from the submitted coordinates.
 
-This will be replaced by a proper KG-based calculation in Phase 2.
+#### Phase 2 (KG) free-shipping rules
+
+- If `total_kg > 5000` → shipping is **free**.
+- If `total_kg <= 2000` → shipping is **free** if `profit >= 500 MAD`.
+- If `2000 < total_kg <= 5000` → shipping is **free** if `profit >= 1000 MAD`.
+
+#### Phase 3 (Distance) pricing rules (when KG is NOT free)
+
+The backend charges a **per-km rate** based on the total distance tier:
+
+```
+0-2km    => 25 DH / km
+2-4km    => 20 DH / km
+4-6km    => 17 DH / km
+>= 6km   => 12 DH / km
+```
+
+Formula:
+
+$$ shipping\_cost = distance\_km \times rate\_per\_km $$
+
+Example: if `distance_km = 3.807` → rate is `20 DH/km` → shipping is `76.14 DH`.
 
 ---
 
@@ -82,7 +104,7 @@ Reasons:
 - Profit calculation requires product cost (`cout_revient` / `prix_achat`) which should not be exposed to the public frontend.
 - Prevents discrepancies and fraud.
 
-### 3.2 Suggested endpoint: a “quote” endpoint (not yet implemented)
+### 3.2 Quote endpoint (implemented)
 
 To support the UX cleanly, add a dedicated endpoint:
 

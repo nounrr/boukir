@@ -286,6 +286,7 @@ router.post('/quote', async (req, res, next) => {
     const shippingCalc = calculateEcommerceShipping({
       deliveryMethod: normalizedDeliveryMethod,
       items: validatedItems,
+      distanceKm,
     });
     const shippingCost = Number(shippingCalc?.shippingCost || 0);
 
@@ -354,11 +355,6 @@ router.post('/quote', async (req, res, next) => {
       summary: {
         items_count: validatedItems.length,
         shipping_label: shippingLabel,
-        contains_kg: !!shippingCalc?.containsKg,
-        total_kg: Math.round(Number(shippingCalc?.totalKg || 0) * 1000) / 1000,
-        shipping_reason: shippingCalc?.reason || null,
-        distance_km: distanceKm,
-        store_location: storeLocation,
       },
     });
   } catch (err) {
@@ -480,6 +476,19 @@ router.post('/', async (req, res, next) => {
         allowed: Array.from(allowedDeliveryMethods),
       });
     }
+
+    // Optional: compute store<->customer distance for delivery orders (phase 3 shipping).
+    // Frontend can send one of:
+    // - shipping_location: { lat, lng }
+    // - shipping_lat + shipping_lng
+    const storeLocation = getStoreLocation();
+    const customerLocation =
+      normalizeLatLng(shipping_location) ||
+      normalizeLatLng({ lat: finalLat, lng: finalLng });
+    const distanceKmRaw = normalizedDeliveryMethod === 'delivery'
+      ? haversineDistanceKm(storeLocation, customerLocation)
+      : null;
+    const distanceKm = distanceKmRaw == null ? null : Math.round(Number(distanceKmRaw) * 1000) / 1000;
 
     // Validate payment method early.
     const normalizedPaymentMethod = String(payment_method || 'cash_on_delivery').trim();
@@ -827,6 +836,7 @@ router.post('/', async (req, res, next) => {
     const shippingCalc = calculateEcommerceShipping({
       deliveryMethod: normalizedDeliveryMethod,
       items: validatedItems,
+      distanceKm,
     });
     const shippingCost = Number(shippingCalc?.shippingCost || 0);
     let discountAmount = validatedItems.reduce((sum, item) => sum + item.discount_amount, 0);

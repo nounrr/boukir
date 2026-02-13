@@ -9,6 +9,14 @@ const DEFAULTS = {
     band2Max: 5000,
     band2Profit: 1000,
   },
+  distancePricing: {
+    tiers: [
+      { maxKm: 2, ratePerKm: 25 },
+      { maxKm: 4, ratePerKm: 20 },
+      { maxKm: 6, ratePerKm: 17 },
+      { maxKm: Infinity, ratePerKm: 12 },
+    ],
+  },
 };
 
 function toNumber(value, fallback = 0) {
@@ -29,6 +37,35 @@ function computeTotalKg(items = []) {
     if (!(kgPerUnit > 0) || !(quantity > 0)) return sum;
     return sum + kgPerUnit * quantity;
   }, 0);
+}
+
+function roundMoney(value) {
+  return Math.round(toNumber(value, 0) * 100) / 100;
+}
+
+function getDistanceRatePerKm(distanceKm) {
+  const km = toNumber(distanceKm, NaN);
+  if (!Number.isFinite(km) || km < 0) return null;
+
+  for (const tier of DEFAULTS.distancePricing.tiers) {
+    if (km < tier.maxKm || (tier.maxKm === Infinity && km >= 0)) {
+      return toNumber(tier.ratePerKm, null);
+    }
+  }
+
+  return null;
+}
+
+function computeDistanceBasedShippingCost(distanceKm) {
+  const km = toNumber(distanceKm, NaN);
+  if (!Number.isFinite(km) || km < 0) return null;
+
+  const rate = getDistanceRatePerKm(km);
+  if (!(rate > 0)) return null;
+
+  // Business rule: charge "per km" using the tier rate of the total distance.
+  // We keep decimal precision (Leaflet/Haversine returns decimals).
+  return roundMoney(km * rate);
 }
 
 /**
@@ -61,6 +98,7 @@ export function calculateEcommerceShipping({
   items = [],
   freeProfitThreshold = DEFAULTS.freeProfitThreshold,
   flatRate = DEFAULTS.flatRate,
+  distanceKm = null,
 } = {}) {
   const normalizedDeliveryMethod = String(deliveryMethod || 'delivery').trim();
 
@@ -98,10 +136,11 @@ export function calculateEcommerceShipping({
 
     const { profit, costBase } = computeEcommerceProfit(items);
     if (!(costBase > 0)) {
+      const distanceCost = computeDistanceBasedShippingCost(distanceKm);
       return {
-        shippingCost: toNumber(flatRate, DEFAULTS.flatRate),
+        shippingCost: distanceCost != null ? distanceCost : toNumber(flatRate, DEFAULTS.flatRate),
         isFreeShipping: false,
-        reason: 'missing_cost_data',
+        reason: distanceCost != null ? 'missing_cost_data_distance_priced' : 'missing_cost_data',
         profit: null,
         containsKg,
         totalKg,
@@ -124,11 +163,12 @@ export function calculateEcommerceShipping({
       };
     }
 
-    // Distance-based pricing is pending; keep flatRate as a temporary fallback so checkout can proceed.
+    // Phase 3: distance-based per-km pricing when KG profit threshold is not met.
+    const distanceCost = computeDistanceBasedShippingCost(distanceKm);
     return {
-      shippingCost: toNumber(flatRate, DEFAULTS.flatRate),
+      shippingCost: distanceCost != null ? distanceCost : toNumber(flatRate, DEFAULTS.flatRate),
       isFreeShipping: false,
-      reason: 'kg_profit_not_met_distance_pending',
+      reason: distanceCost != null ? 'kg_profit_not_met_distance_priced' : 'kg_profit_not_met_distance_missing',
       profit,
       containsKg,
       totalKg,
