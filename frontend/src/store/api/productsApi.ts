@@ -100,6 +100,18 @@ const productsApi = api.injectEndpoints({
       }),
       invalidatesTags: ['Product'],
     }),
+
+    toggleEcomStock: builder.mutation<
+      { id: number; ecom_published: boolean; stock_partage_ecom: boolean; stock_partage_ecom_qty: number },
+      { id: number; enabled: boolean }
+    >({
+      query: ({ id, enabled }) => ({
+        url: `/products/${id}/ecom-stock`,
+        method: 'PATCH',
+        body: { enabled },
+      }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'Product', id }, 'Product'],
+    }),
   }),
 });
 
@@ -115,4 +127,5 @@ export const {
   useRestoreProductMutation,
   useTranslateProductsMutation,
   useGenerateSpecsMutation,
+  useToggleEcomStockMutation,
 } = productsApi;

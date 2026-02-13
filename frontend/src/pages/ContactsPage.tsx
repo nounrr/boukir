@@ -526,7 +526,13 @@ const ContactsPage: React.FC = () => {
       for (const it of bonItems) {
         const prod = products.find((p) => p.id === it.product_id);
         const ref = prod ? String((prod as any).reference ?? prod.id) : String(it.product_id);
-        const des = prod ? (prod as any).designation : (it.designation || '');
+        let des = prod ? (prod as any).designation : (it.designation || '');
+        // Résoudre le nom de la variante
+        const vId = (it as any).variant_id ?? (it as any).variantId;
+        if (vId && prod) {
+          const variantObj = ((prod as any).variants || []).find((v: any) => String(v.id) === String(vId));
+          if (variantObj?.variant_name) des = `${des} - ${variantObj.variant_name}`;
+        }
         const prixUnit = Number(it.prix_unitaire ?? it.prix ?? 0) || 0;
 
         const remise_pourcentage = parseFloat(String(it.remise_pourcentage ?? (it as any).remise_pct ?? 0)) || 0;
@@ -1597,7 +1603,13 @@ const ContactsPage: React.FC = () => {
           for (const it of bonItems) {
             const prod = products.find((p) => p.id === it.product_id);
             const ref = prod ? String(prod.reference ?? prod.id) : String(it.product_id);
-            const des = prod ? prod.designation : (it.designation || '');
+            let des = prod ? prod.designation : (it.designation || '');
+            // Résoudre le nom de la variante
+            const vId = (it as any).variant_id ?? (it as any).variantId;
+            if (vId && prod) {
+              const variantObj = ((prod as any).variants || []).find((v: any) => String(v.id) === String(vId));
+              if (variantObj?.variant_name) des = `${des} - ${variantObj.variant_name}`;
+            }
             const prixUnit = Number(it.prix_unitaire ?? it.prix ?? 0) || 0;
 
             const remise_pourcentage = parseFloat(String(it.remise_pourcentage ?? it.remise_pct ?? 0)) || 0;
