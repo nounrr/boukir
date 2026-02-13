@@ -281,7 +281,7 @@ app.use('/api/ecommerce/promo', optionalAuth, ecommercePromoRouter); // E-commer
 app.use('/api/ecommerce/pickup-locations', optionalAuth, ecommercePickupLocationsRouter); // E-commerce pickup locations (public)
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
 app.use('/api/ecommerce/wishlist', ecommerceWishlistRouter); // E-commerce wishlist (requires auth)
-app.use('/api/ecommerce/orders', ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
+app.use('/api/ecommerce/orders', optionalAuth, ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
 
 // E-commerce homepage hero slides
 app.use('/api/hero-slides', optionalAuth, heroSlidesRouter); // Public (with optional auth)

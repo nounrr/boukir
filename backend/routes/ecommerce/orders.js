@@ -10,6 +10,7 @@ import {
 } from '../../utils/ensureRemiseSchema.js';
 import { getContactSoldeCumule, phone9Sql } from '../../utils/soldeCumule.js';
 import { calculateEcommerceShipping } from '../../utils/ecommerceShipping.js';
+import { getStoreLocation, haversineDistanceKm, normalizeLatLng } from '../../utils/geo.js';
 
 async function ensureRemiseSchema() {
   try {
@@ -25,6 +26,347 @@ async function ensureRemiseSchema() {
 ensureRemiseSchema();
 
 const router = Router();
+
+// ==================== QUOTE (NO ORDER CREATION) ====================
+// POST /api/ecommerce/orders/quote
+// Purpose: compute totals + shipping for checkout step 1/summary UI.
+// Notes:
+// - Uses the same pricing/validation rules as checkout.
+// - Does NOT create an order and does NOT decrement stock.
+router.post('/quote', async (req, res, next) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const {
+      delivery_method = 'delivery', // 'delivery' | 'pickup'
+      promo_code,
+      use_cart = true,
+      items = [],
+      shipping_location,
+      customer_location,
+      shipping_lat,
+      shipping_lng,
+    } = req.body || {};
+
+    const userId = req.user?.id || null;
+
+    const normalizedDeliveryMethod = String(delivery_method || 'delivery').trim();
+    const allowedDeliveryMethods = new Set(['delivery', 'pickup']);
+    if (!allowedDeliveryMethods.has(normalizedDeliveryMethod)) {
+      return res.status(400).json({
+        message: 'Mode de livraison invalide',
+        field: 'delivery_method',
+        allowed: Array.from(allowedDeliveryMethods),
+      });
+    }
+
+    let orderItems = [];
+
+    // Optional: compute store<->customer distance for delivery quotes.
+    // Frontend can send one of:
+    // - shipping_location: { lat, lng }
+    // - customer_location: { lat, lng }
+    // - shipping_lat + shipping_lng
+    const storeLocation = getStoreLocation();
+    const customerLocation =
+      normalizeLatLng(shipping_location) ||
+      normalizeLatLng(customer_location) ||
+      normalizeLatLng({ lat: shipping_lat, lng: shipping_lng });
+    const distanceKmRaw = normalizedDeliveryMethod === 'delivery'
+      ? haversineDistanceKm(storeLocation, customerLocation)
+      : null;
+    const distanceKm = distanceKmRaw == null ? null : Math.round(Number(distanceKmRaw) * 1000) / 1000;
+
+    if (use_cart) {
+      if (!userId) {
+        return res.status(401).json({
+          message: 'Authentification requise pour utiliser le panier',
+          error_type: 'AUTH_REQUIRED_FOR_CART',
+        });
+      }
+
+      const [cartItems] = await connection.query(`
+        SELECT 
+          ci.id as cart_item_id,
+          ci.product_id,
+          ci.variant_id,
+          ci.unit_id,
+          ci.quantity,
+          p.designation,
+          p.designation_ar,
+          p.prix_vente as base_price,
+          p.pourcentage_promo,
+          p.prix_achat as product_prix_achat,
+          p.cout_revient as product_cout_revient,
+          p.kg as product_kg,
+          p.stock_partage_ecom_qty,
+          p.has_variants,
+          p.is_obligatoire_variant,
+          p.ecom_published,
+          p.is_deleted,
+          pv.variant_name,
+          pv.variant_type,
+          pv.prix_vente as variant_price,
+          pv.prix_achat as variant_prix_achat,
+          pv.cout_revient as variant_cout_revient,
+          pv.stock_quantity as variant_stock,
+          pu.unit_name,
+          pu.conversion_factor
+        FROM cart_items ci
+        INNER JOIN products p ON ci.product_id = p.id
+        LEFT JOIN product_variants pv ON ci.variant_id = pv.id
+        LEFT JOIN product_units pu ON ci.unit_id = pu.id
+        WHERE ci.user_id = ?
+      `, [userId]);
+
+      if (cartItems.length === 0) {
+        return res.status(400).json({ message: 'Panier vide' });
+      }
+
+      orderItems = cartItems;
+    } else {
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: 'Aucun article fourni' });
+      }
+
+      for (const item of items) {
+        const [productRows] = await connection.query(`
+          SELECT 
+            p.id as product_id,
+            p.designation,
+            p.designation_ar,
+            p.prix_vente as base_price,
+            p.pourcentage_promo,
+            p.prix_achat as product_prix_achat,
+            p.cout_revient as product_cout_revient,
+            p.kg as product_kg,
+            p.stock_partage_ecom_qty,
+            p.has_variants,
+            p.is_obligatoire_variant,
+            p.ecom_published,
+            p.is_deleted,
+            pv.variant_name,
+            pv.variant_type,
+            pv.prix_vente as variant_price,
+            pv.prix_achat as variant_prix_achat,
+            pv.cout_revient as variant_cout_revient,
+            pv.stock_quantity as variant_stock,
+            pu.unit_name,
+            pu.conversion_factor
+          FROM products p
+          LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
+          LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
+          WHERE p.id = ?
+        `, [item.variant_id || null, item.unit_id || null, item.product_id]);
+
+        if (productRows.length === 0) {
+          return res.status(400).json({
+            message: `Produit introuvable: ${item.product_id}`
+          });
+        }
+
+        orderItems.push({
+          ...productRows[0],
+          variant_id: item.variant_id || null,
+          unit_id: item.unit_id || null,
+          quantity: item.quantity,
+        });
+      }
+    }
+
+    // Validate items and compute subtotal
+    let subtotal = 0;
+    const validatedItems = [];
+
+    for (const item of orderItems) {
+      if (!item.ecom_published || item.is_deleted) {
+        return res.status(400).json({
+          message: `Produit non disponible: ${item.designation}`
+        });
+      }
+
+      const requiresVariant = Number(item.has_variants || 0) === 1 && Number(item.is_obligatoire_variant || 0) === 1;
+      if (requiresVariant && !item.variant_id) {
+        return res.status(400).json({
+          message: `Variante obligatoire pour ${item.designation}`,
+          error_type: 'VARIANT_REQUIRED',
+          product_id: item.product_id
+        });
+      }
+
+      if (item.variant_id && item.variant_name == null) {
+        return res.status(400).json({
+          message: `Variante invalide pour ${item.designation}`,
+          error_type: 'VARIANT_INVALID',
+          product_id: item.product_id,
+          variant_id: item.variant_id
+        });
+      }
+
+      // Effective selling price
+      let unitPrice = Number(item.base_price);
+      if (item.variant_id && item.variant_price !== null) {
+        unitPrice = Number(item.variant_price);
+      }
+
+      // Unit cost for profit (variant preferred)
+      let unitCost = 0;
+      if (item.variant_id) {
+        const vCout = item.variant_cout_revient;
+        const vAchat = item.variant_prix_achat;
+        if (vCout !== undefined && vCout !== null) unitCost = Number(vCout) || 0;
+        else if (vAchat !== undefined && vAchat !== null) unitCost = Number(vAchat) || 0;
+      }
+      if (!unitCost) {
+        const pCout = item.product_cout_revient;
+        const pAchat = item.product_prix_achat;
+        if (pCout !== undefined && pCout !== null) unitCost = Number(pCout) || 0;
+        else if (pAchat !== undefined && pAchat !== null) unitCost = Number(pAchat) || 0;
+      }
+
+      // Unit conversion
+      let kgPerUnit = Number(item.product_kg || 0);
+      if (item.unit_id && item.conversion_factor !== null && item.conversion_factor !== undefined) {
+        const factor = Number(item.conversion_factor || 1);
+        unitPrice = unitPrice * factor;
+        unitCost = unitCost * factor;
+        kgPerUnit = kgPerUnit * factor;
+      }
+
+      // Apply product promo
+      const promoPercentage = Number(item.pourcentage_promo || 0);
+      const priceAfterPromo = promoPercentage > 0
+        ? unitPrice * (1 - promoPercentage / 100)
+        : unitPrice;
+
+      // Stock validation (quote should match checkout validations)
+      const availableStock = item.variant_id
+        ? Number(item.variant_stock || 0)
+        : Number(item.stock_partage_ecom_qty || 0);
+
+      if (Number(item.quantity) > availableStock) {
+        return res.status(400).json({
+          message: `Stock insuffisant pour ${item.designation}`,
+          available: availableStock,
+          requested: Number(item.quantity)
+        });
+      }
+
+      const itemSubtotal = priceAfterPromo * Number(item.quantity);
+      const discountAmount = promoPercentage > 0
+        ? (unitPrice - priceAfterPromo) * Number(item.quantity)
+        : 0;
+
+      subtotal += itemSubtotal;
+
+      validatedItems.push({
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        unit_id: item.unit_id,
+        product_name: item.designation,
+        product_name_ar: item.designation_ar,
+        variant_name: item.variant_name,
+        variant_type: item.variant_type,
+        unit_name: item.unit_name,
+        unit_price: priceAfterPromo,
+        quantity: Number(item.quantity),
+        subtotal: itemSubtotal,
+        discount_percentage: promoPercentage,
+        discount_amount: discountAmount,
+
+        // profit/shipping inputs (not returned)
+        prix_unitaire: priceAfterPromo,
+        quantite: Number(item.quantity),
+        cout_revient: unitCost > 0 ? unitCost : null,
+        kg: kgPerUnit,
+      });
+    }
+
+    const taxAmount = 0;
+    const shippingCalc = calculateEcommerceShipping({
+      deliveryMethod: normalizedDeliveryMethod,
+      items: validatedItems,
+    });
+    const shippingCost = Number(shippingCalc?.shippingCost || 0);
+
+    let discountAmount = validatedItems.reduce((sum, it) => sum + Number(it.discount_amount || 0), 0);
+
+    // Promo code validation (same rules as checkout)
+    let promoDiscountAmount = 0;
+    let appliedPromoCode = null;
+    if (promo_code) {
+      const [promoRows] = await connection.query(`
+        SELECT id, code, type, value, max_discount_amount, min_order_amount, max_redemptions, redeemed_count, active,
+               start_date, end_date
+        FROM ecommerce_promo_codes
+        WHERE code = ? AND active = 1
+        LIMIT 1
+      `, [promo_code]);
+
+      if (promoRows.length === 0) {
+        return res.status(400).json({ message: 'Code promo invalide ou inactif' });
+      }
+
+      const promo = promoRows[0];
+      const now = new Date();
+      if (promo.start_date && now < new Date(promo.start_date)) {
+        return res.status(400).json({ message: 'Code promo pas encore actif' });
+      }
+      if (promo.end_date && now > new Date(promo.end_date)) {
+        return res.status(400).json({ message: 'Code promo expiré' });
+      }
+      if (promo.max_redemptions !== null && promo.max_redemptions > 0 && promo.redeemed_count >= promo.max_redemptions) {
+        return res.status(400).json({ message: 'Code promo a atteint sa limite d\'utilisation' });
+      }
+      if (promo.min_order_amount && subtotal < Number(promo.min_order_amount)) {
+        return res.status(400).json({ message: 'Montant minimum non atteint pour le code promo' });
+      }
+
+      if (promo.type === 'percentage') {
+        promoDiscountAmount = (Number(promo.value) / 100) * subtotal;
+      } else {
+        promoDiscountAmount = Number(promo.value);
+      }
+      if (promo.max_discount_amount) {
+        promoDiscountAmount = Math.min(promoDiscountAmount, Number(promo.max_discount_amount));
+      }
+      promoDiscountAmount = Math.max(0, Math.min(promoDiscountAmount, subtotal));
+      discountAmount += promoDiscountAmount;
+      appliedPromoCode = promo.code;
+    }
+
+    const totalAmount = Math.max(0, subtotal + taxAmount + shippingCost - promoDiscountAmount);
+
+    const shippingLabel = shippingCost <= 0.000001 ? 'Gratuit' : `${Number(shippingCost).toFixed(2)} MAD`;
+
+    return res.json({
+      delivery_method: normalizedDeliveryMethod,
+      currency: 'MAD',
+      totals: {
+        subtotal: Math.round(Number(subtotal || 0) * 100) / 100,
+        tax_amount: Math.round(Number(taxAmount || 0) * 100) / 100,
+        shipping_cost: Math.round(Number(shippingCost || 0) * 100) / 100,
+        discount_amount: Math.round(Number(discountAmount || 0) * 100) / 100,
+        promo_code: appliedPromoCode,
+        promo_discount_amount: Math.round(Number(promoDiscountAmount || 0) * 100) / 100,
+        total_amount: Math.round(Number(totalAmount || 0) * 100) / 100,
+      },
+      summary: {
+        items_count: validatedItems.length,
+        shipping_label: shippingLabel,
+        contains_kg: !!shippingCalc?.containsKg,
+        total_kg: Math.round(Number(shippingCalc?.totalKg || 0) * 1000) / 1000,
+        shipping_reason: shippingCalc?.reason || null,
+        distance_km: distanceKm,
+        store_location: storeLocation,
+      },
+    });
+  } catch (err) {
+    next(err);
+  } finally {
+    connection.release();
+  }
+});
 
 function splitFullName(fullName) {
   const name = String(fullName || '').trim().replace(/\s+/g, ' ');
@@ -113,10 +455,19 @@ router.post('/', async (req, res, next) => {
 
       // Items can come from cart or be provided directly
       use_cart = true, // If true, use user's cart; if false, use items array
-      items = [] // For guest checkout or direct order: [{product_id, variant_id?, unit_id?, quantity}]
+      items = [], // For guest checkout or direct order: [{product_id, variant_id?, unit_id?, quantity}]
+
+      // Coordinates
+      shipping_location,
+      shipping_lat,
+      shipping_lng,
     } = req.body;
 
     const userId = req.user?.id || null; // NULL for guest orders
+
+    // Normalize coordinates
+    const finalLat = normalizeLatLng(shipping_location)?.lat || shipping_lat || null;
+    const finalLng = normalizeLatLng(shipping_location)?.lng || shipping_lng || null;
 
     // Validate delivery method early.
     const normalizedDeliveryMethod = String(delivery_method || 'delivery').trim();
@@ -406,10 +757,12 @@ router.post('/', async (req, res, next) => {
       }
 
       // If unit is selected, adjust by conversion factor
+      let kgPerUnit = Number(item.product_kg || 0);
       if (item.unit_id && item.conversion_factor !== null && item.conversion_factor !== undefined) {
         const factor = Number(item.conversion_factor || 1);
         unitPrice = unitPrice * factor;
         unitCost = unitCost * factor;
+        kgPerUnit = kgPerUnit * factor;
       }
 
       // Apply promo
@@ -457,19 +810,20 @@ router.post('/', async (req, res, next) => {
         // Fields for profit/marge calculation (aligned with backoffice mouvementCalc)
         prix_unitaire: priceAfterPromo,
         quantite: Number(item.quantity),
-        cout_revient: unitCost,
+        cout_revient: unitCost > 0 ? unitCost : null,
 
         // Keep product KG for phase 2 shipping
-        kg: Number(item.product_kg || 0),
+        kg: kgPerUnit,
       });
     }
 
     // Calculate totals (you can add tax/shipping calculation here)
     const taxAmount = 0; // TODO: Calculate tax if needed
 
-    // Shipping (Phase 1): based on order profit (marge/bénéfice), not subtotal.
-    // Rule for non-KG orders: profit >= 200 => free shipping, else 30 DH.
-    // Pickup => 0.
+    // Shipping (Phase 1 + Phase 2): based on order profit (marge/bénéfice), not subtotal.
+    // - Non-KG orders: profit >= 200 => free, else flat.
+    // - KG orders: thresholds depend on total KG (phase 2).
+    // - Pickup => 0.
     const shippingCalc = calculateEcommerceShipping({
       deliveryMethod: normalizedDeliveryMethod,
       items: validatedItems,
@@ -667,6 +1021,8 @@ router.post('/', async (req, res, next) => {
         shipping_state,
         shipping_postal_code,
         shipping_country,
+        shipping_lat,
+        shipping_lng,
         subtotal,
         tax_amount,
         shipping_cost,
@@ -684,7 +1040,7 @@ router.post('/', async (req, res, next) => {
         pickup_location_id,
         customer_notes,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `, [
       orderNumber,
       userId,
@@ -697,6 +1053,8 @@ router.post('/', async (req, res, next) => {
       effectiveShippingState || null,
       effectiveShippingPostalCode || null,
       effectiveShippingCountry,
+      finalLat, // shipping_lat
+      finalLng, // shipping_lng
       subtotal,
       taxAmount,
       shippingCost,
@@ -1841,6 +2199,12 @@ router.put('/:id/status', async (req, res, next) => {
   const connection = await pool.getConnection();
   
   try {
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const canEdit = role === 'PDG' || role === 'ManagerPlus';
+    if (!canEdit) {
+      return res.status(403).json({ message: 'Permission refusée' });
+    }
+
     const orderId = Number(req.params.id);
     const { status, payment_status, admin_notes } = req.body;
     const userId = req.user?.id; // Admin/employee ID
@@ -2284,6 +2648,14 @@ router.post('/:id/cancel', async (req, res, next) => {
     const orderId = Number(req.params.id);
     const userId = req.user?.id;
     const { email, reason } = req.body;
+
+    if (!userId && (!email || String(email).trim() === '')) {
+      await connection.rollback();
+      return res.status(401).json({
+        message: 'Authentification requise ou email requis pour annuler une commande',
+        error_type: 'AUTH_OR_EMAIL_REQUIRED',
+      });
+    }
 
     // Get order
     const [orders] = await connection.query(`

@@ -3,6 +3,12 @@ import { computeMouvementCalc } from './mouvementCalc.js';
 const DEFAULTS = {
   freeProfitThreshold: 200,
   flatRate: 30,
+  kg: {
+    band1Max: 2000,
+    band1Profit: 500,
+    band2Max: 5000,
+    band2Profit: 1000,
+  },
 };
 
 function toNumber(value, fallback = 0) {
@@ -12,7 +18,17 @@ function toNumber(value, fallback = 0) {
 
 function hasKgItems(items = []) {
   if (!Array.isArray(items)) return false;
-  return items.some((it) => toNumber(it?.kg ?? it?.product_kg ?? 0) > 0);
+  return items.some((it) => toNumber(it?.kg ?? it?.product_kg ?? 0) > 0 && toNumber(it?.quantite ?? it?.quantity ?? it?.qty ?? 0) > 0);
+}
+
+function computeTotalKg(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return 0;
+  return items.reduce((sum, it) => {
+    const kgPerUnit = toNumber(it?.kg ?? it?.product_kg ?? 0);
+    const quantity = toNumber(it?.quantite ?? it?.quantity ?? it?.qty ?? 0);
+    if (!(kgPerUnit > 0) || !(quantity > 0)) return sum;
+    return sum + kgPerUnit * quantity;
+  }, 0);
 }
 
 /**
@@ -24,8 +40,11 @@ function hasKgItems(items = []) {
  * - cout_revient (preferred) or prix_achat
  */
 export function computeEcommerceProfit(items = []) {
-  const { profit } = computeMouvementCalc({ type: 'Ecommerce', items });
-  return toNumber(profit, 0);
+  const { profit, costBase } = computeMouvementCalc({ type: 'Ecommerce', items });
+  return {
+    profit: toNumber(profit, 0),
+    costBase: toNumber(costBase, 0),
+  };
 }
 
 /**
@@ -52,21 +71,84 @@ export function calculateEcommerceShipping({
       reason: 'pickup',
       profit: null,
       containsKg: hasKgItems(items),
+      totalKg: computeTotalKg(items),
     };
   }
 
   const containsKg = hasKgItems(items);
   if (containsKg) {
+    const totalKg = computeTotalKg(items);
+
+    // Phase 2 KG rules (delivery only):
+    // - totalKg <= 2000 => free if profit >= 500
+    // - totalKg <= 5000 => free if profit >= 1000
+    // - totalKg > 5000 => always free
+    // If thresholds not met, the shipping price should be computed from distance (phase 3).
+
+    if (totalKg > DEFAULTS.kg.band2Max) {
+      return {
+        shippingCost: 0,
+        isFreeShipping: true,
+        reason: 'kg_over_5000',
+        profit: null,
+        containsKg,
+        totalKg,
+      };
+    }
+
+    const { profit, costBase } = computeEcommerceProfit(items);
+    if (!(costBase > 0)) {
+      return {
+        shippingCost: toNumber(flatRate, DEFAULTS.flatRate),
+        isFreeShipping: false,
+        reason: 'missing_cost_data',
+        profit: null,
+        containsKg,
+        totalKg,
+      };
+    }
+
+    const requiredProfit = totalKg <= DEFAULTS.kg.band1Max
+      ? DEFAULTS.kg.band1Profit
+      : DEFAULTS.kg.band2Profit;
+
+    const isFreeShipping = profit >= requiredProfit;
+    if (isFreeShipping) {
+      return {
+        shippingCost: 0,
+        isFreeShipping: true,
+        reason: totalKg <= DEFAULTS.kg.band1Max ? 'kg_profit_band1_met' : 'kg_profit_band2_met',
+        profit,
+        containsKg,
+        totalKg,
+      };
+    }
+
+    // Distance-based pricing is pending; keep flatRate as a temporary fallback so checkout can proceed.
     return {
-      shippingCost: toNumber(flatRate, 30),
+      shippingCost: toNumber(flatRate, DEFAULTS.flatRate),
       isFreeShipping: false,
-      reason: 'kg_items_phase2_pending',
-      profit: null,
+      reason: 'kg_profit_not_met_distance_pending',
+      profit,
       containsKg,
+      totalKg,
     };
   }
 
-  const profit = computeEcommerceProfit(items);
+  const { profit, costBase } = computeEcommerceProfit(items);
+  // If we don't have reliable cost data, profit becomes meaningless (it can equal selling price).
+  // In that case, do NOT grant free shipping.
+  if (!(costBase > 0)) {
+    return {
+      shippingCost: toNumber(flatRate, DEFAULTS.flatRate),
+      isFreeShipping: false,
+      reason: 'missing_cost_data',
+      profit: null,
+      containsKg,
+      totalKg: 0,
+    };
+  }
+
   const threshold = toNumber(freeProfitThreshold, DEFAULTS.freeProfitThreshold);
   const isFreeShipping = profit >= threshold;
 
@@ -76,5 +158,6 @@ export function calculateEcommerceShipping({
     reason: isFreeShipping ? 'profit_threshold_met' : 'profit_threshold_not_met',
     profit,
     containsKg,
+    totalKg: 0,
   };
 }
