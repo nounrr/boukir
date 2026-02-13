@@ -4,6 +4,14 @@ import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
+import { getLastBonCommandeMaps } from '../utils/bonCommandeLink.js';
+import {
+  createStockLayer,
+  deleteLayersForSource,
+  ensureNoConsumptionForSource,
+  isFifoEnabled,
+  setLayersCancelledForSource,
+} from '../utils/fifoStock.js';
 
 const router = express.Router();
 
@@ -19,12 +27,25 @@ router.get('/', async (_req, res) => {
             JSON_OBJECT(
               'id', i.id,
               'product_id', i.product_id,
+              'bon_commande_id', i.bon_commande_id,
               'variant_id', i.variant_id,
               'unit_id', i.unit_id,
               'designation', p.designation,
               'quantite', i.quantite,
               'prix_unitaire', i.prix_unitaire,
-              'prix_achat', p.prix_achat,
+              'prix_achat', COALESCE(
+                i.prix_achat_snapshot,
+                (
+                  SELECT ci2.prix_unitaire
+                  FROM commande_items ci2
+                  WHERE ci2.bon_commande_id = i.bon_commande_id
+                    AND ci2.product_id = i.product_id
+                    AND (ci2.variant_id <=> i.variant_id)
+                  ORDER BY ci2.id DESC
+                  LIMIT 1
+                ),
+                p.prix_achat
+              ),
               'cout_revient', p.cout_revient,
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
@@ -76,12 +97,25 @@ router.get('/:id', async (req, res) => {
             JSON_OBJECT(
               'id', i.id,
               'product_id', i.product_id,
+              'bon_commande_id', i.bon_commande_id,
               'variant_id', i.variant_id,
               'unit_id', i.unit_id,
               'designation', p.designation,
               'quantite', i.quantite,
               'prix_unitaire', i.prix_unitaire,
-              'prix_achat', p.prix_achat,
+              'prix_achat', COALESCE(
+                i.prix_achat_snapshot,
+                (
+                  SELECT ci2.prix_unitaire
+                  FROM commande_items ci2
+                  WHERE ci2.bon_commande_id = i.bon_commande_id
+                    AND ci2.product_id = i.product_id
+                    AND (ci2.variant_id <=> i.variant_id)
+                  ORDER BY ci2.id DESC
+                  LIMIT 1
+                ),
+                p.prix_achat
+              ),
               'cout_revient', p.cout_revient,
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
@@ -157,6 +191,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const avoirId = resAvoir.insertId;
     const finalNumero = `AVC${String(avoirId).padStart(2, '0')}`;
 
+    const { productMap, variantMap, prixAchatMap } = await getLastBonCommandeMaps(connection, items);
+    const fifo = await isFifoEnabled(connection);
+
     for (const it of items) {
       const {
         product_id,
@@ -166,7 +203,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         remise_montant = 0,
         total,
         variant_id,
-        unit_id
+        unit_id,
+        bon_commande_id
       } = it;
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -174,12 +212,55 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
 
-      await connection.execute(`
+      const resolvedBonCommandeId =
+        bon_commande_id ??
+        (variant_id != null && variantMap.has(Number(variant_id))
+          ? variantMap.get(Number(variant_id))
+          : (productMap.get(Number(product_id)) ?? null));
+
+      const snapshotPrixAchat = resolvedBonCommandeId == null ? (prixAchatMap.get(Number(product_id)) ?? null) : null;
+      const [insItem] = await connection.execute(`
         INSERT INTO avoir_client_items (
           avoir_client_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, resolvedBonCommandeId, snapshotPrixAchat]);
+
+      // FIFO: Avoir client adds stock back; represent it as a new stock layer.
+      if (fifo && st !== 'Annulé') {
+        let cost = null;
+        if (resolvedBonCommandeId != null) {
+          const [[row]] = await connection.execute(
+            `SELECT ci2.prix_unitaire AS prix
+               FROM commande_items ci2
+              WHERE ci2.bon_commande_id = ?
+                AND ci2.product_id = ?
+                AND (ci2.variant_id <=> ?)
+              ORDER BY ci2.id DESC
+              LIMIT 1`,
+            [resolvedBonCommandeId, product_id, variant_id || null]
+          );
+          cost = row?.prix != null ? Number(row.prix) : null;
+        }
+        if (!(Number.isFinite(Number(cost)) && Number(cost) > 0)) {
+          const fallback = snapshotPrixAchat ?? (prixAchatMap.get(Number(product_id)) ?? null);
+          cost = fallback != null ? Number(fallback) : null;
+        }
+        if (Number.isFinite(Number(cost)) && Number(cost) > 0) {
+          await createStockLayer(connection, {
+            product_id,
+            variant_id: variant_id || null,
+            bon_commande_id: null,
+            source_table: 'avoir_client_items',
+            source_id: avoirId,
+            source_item_id: insItem.insertId,
+            layer_date: date_creation,
+            unit_cost: Number(cost),
+            qty: quantite,
+          });
+        }
+      }
     }
 
     // Stock: AvoirClient => inverse de Sortie/Comptant => ajoute au stock dès la création
@@ -239,6 +320,12 @@ router.put('/:id', async (req, res) => {
       'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant FROM avoir_client_items WHERE avoir_client_id = ? ORDER BY id ASC',
       [id]
     );
+
+    const fifo = await isFifoEnabled(connection);
+    if (fifo) {
+      await ensureNoConsumptionForSource(connection, 'avoir_client_items', id);
+      await deleteLayersForSource(connection, 'avoir_client_items', id);
+    }
 
     if (isChefChauffeur) {
       const incomingItems = Array.isArray(items) ? items : [];
@@ -300,6 +387,8 @@ router.put('/:id', async (req, res) => {
     // ✅ bonne colonne FK pour purge des items
     await connection.execute('DELETE FROM avoir_client_items WHERE avoir_client_id = ?', [id]);
 
+    const { productMap: productMap2, variantMap: variantMap2, prixAchatMap: prixAchatMap2 } = await getLastBonCommandeMaps(connection, items);
+
     for (const it of items) {
       const {
         product_id,
@@ -309,7 +398,8 @@ router.put('/:id', async (req, res) => {
         remise_montant = 0,
         total,
         variant_id,
-        unit_id
+        unit_id,
+        bon_commande_id
       } = it;
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -317,12 +407,54 @@ router.put('/:id', async (req, res) => {
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
 
-      await connection.execute(`
+      const resolvedBonCommandeId =
+        bon_commande_id ??
+        (variant_id != null && variantMap2.has(Number(variant_id))
+          ? variantMap2.get(Number(variant_id))
+          : (productMap2.get(Number(product_id)) ?? null));
+
+      const snapshotPrixAchat2 = resolvedBonCommandeId == null ? (prixAchatMap2.get(Number(product_id)) ?? null) : null;
+      const [insItem] = await connection.execute(`
         INSERT INTO avoir_client_items (
           avoir_client_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, resolvedBonCommandeId, snapshotPrixAchat2]);
+
+      if (fifo && st !== 'Annulé') {
+        let cost = null;
+        if (resolvedBonCommandeId != null) {
+          const [[row]] = await connection.execute(
+            `SELECT ci2.prix_unitaire AS prix
+               FROM commande_items ci2
+              WHERE ci2.bon_commande_id = ?
+                AND ci2.product_id = ?
+                AND (ci2.variant_id <=> ?)
+              ORDER BY ci2.id DESC
+              LIMIT 1`,
+            [resolvedBonCommandeId, product_id, variant_id || null]
+          );
+          cost = row?.prix != null ? Number(row.prix) : null;
+        }
+        if (!(Number.isFinite(Number(cost)) && Number(cost) > 0)) {
+          const fallback = snapshotPrixAchat2 ?? (prixAchatMap2.get(Number(product_id)) ?? null);
+          cost = fallback != null ? Number(fallback) : null;
+        }
+        if (Number.isFinite(Number(cost)) && Number(cost) > 0) {
+          await createStockLayer(connection, {
+            product_id,
+            variant_id: variant_id || null,
+            bon_commande_id: null,
+            source_table: 'avoir_client_items',
+            source_id: Number(id),
+            source_item_id: insItem.insertId,
+            layer_date: date_creation,
+            unit_cost: Number(cost),
+            qty: quantite,
+          });
+        }
+      }
     }
 
     // Stock: AvoirClient => effet = +quantite au stock
@@ -426,6 +558,11 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       );
       const deltas = buildStockDeltaMaps(itemsStock, enteringCancelled ? -1 : +1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+
+      const fifo = await isFifoEnabled(connection);
+      if (fifo) {
+        await setLayersCancelledForSource(connection, 'avoir_client_items', id, enteringCancelled);
+      }
     }
 
     const [rows] = await connection.execute(`
@@ -461,6 +598,12 @@ router.delete('/:id', async (req, res) => {
     }
 
     const oldStatut = exists[0].statut;
+
+    const fifo = await isFifoEnabled(connection);
+    if (fifo) {
+      await ensureNoConsumptionForSource(connection, 'avoir_client_items', id);
+      await deleteLayersForSource(connection, 'avoir_client_items', id);
+    }
     if (oldStatut !== 'Annulé') {
       const [itemsStock] = await connection.execute(
         'SELECT product_id, variant_id, quantite FROM avoir_client_items WHERE avoir_client_id = ?',

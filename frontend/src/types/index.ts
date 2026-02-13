@@ -134,6 +134,27 @@ export interface ProductUnit {
   updated_at?: string;
 }
 
+export interface StockLayer {
+  id: number;
+  product_id: number;
+  variant_id: number | null;
+  bon_commande_id: number | null;
+  source_table: string;
+  source_id: number | null;
+  source_item_id: number | null;
+  layer_date: string;
+  unit_cost: number | string;
+  original_qty: number | string;
+  remaining_qty: number | string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProductFifoLayersResponse {
+  enabled: boolean;
+  layers: StockLayer[];
+}
+
 export interface Brand {
   id: number;
   nom: string;

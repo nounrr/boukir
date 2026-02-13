@@ -3,6 +3,12 @@ import pool from '../db/pool.js';
 import { forbidRoles, verifyToken } from '../middleware/auth.js';
 import { canManageBon, canValidate } from '../utils/permissions.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import {
+  isFifoEnabled,
+  replaceBonCommandeLayers,
+  setBonCommandeLayersCancelled,
+  ensureNoConsumptionForBonCommande,
+} from '../utils/fifoStock.js';
 
 const router = express.Router();
 
@@ -230,7 +236,7 @@ router.post('/', verifyToken, async (req, res) => {
       }
 
       const [productRows] = await connection.execute(
-        'SELECT has_variants, is_obligatoire_variant FROM products WHERE id = ?',
+        'SELECT has_variants, is_obligatoire_variant, prix_vente FROM products WHERE id = ?',
         [product_id]
       );
       const p = Array.isArray(productRows) ? productRows[0] : null;
@@ -238,6 +244,10 @@ router.post('/', verifyToken, async (req, res) => {
         await connection.rollback();
         return res.status(400).json({ message: `Produit introuvable (id=${product_id})` });
       }
+
+      // Attach selling price for FIFO snapshot
+      item.selling_price = p.prix_vente;
+
       const requiresVariant = Number(p.has_variants) === 1 && Number(p.is_obligatoire_variant) === 1;
       if (requiresVariant && !variant_id) {
         await connection.rollback();
@@ -259,6 +269,14 @@ router.post('/', verifyToken, async (req, res) => {
     if (st !== 'Annulé') {
       const deltas = buildStockDeltaMaps(items, +1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+    }
+
+    // FIFO: create purchase layers mirroring the same stock effect.
+    const fifo = await isFifoEnabled(connection);
+    if (fifo) {
+      if (st !== 'Annulé') {
+        await replaceBonCommandeLayers(connection, commandeId, items, date_creation);
+      }
     }
 
   // Désactivé: on ne met plus à jour automatiquement le prix_achat produit (conservation des anciens prix)
@@ -341,6 +359,11 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     const enteringCancelled = oldStatut !== 'Annulé' && statut === 'Annulé';
     const leavingCancelled = oldStatut === 'Annulé' && statut !== 'Annulé';
     if (enteringCancelled || leavingCancelled) {
+      // FIFO: do the same availability change on layers.
+      const fifo = await isFifoEnabled(connection);
+      if (fifo) {
+        await setBonCommandeLayersCancelled(connection, id, enteringCancelled);
+      }
       const [itemsStock] = await connection.execute(
         'SELECT product_id, variant_id, quantite FROM commande_items WHERE bon_commande_id = ?',
         [id]
@@ -355,7 +378,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     if (enteringValidation || leavingValidation) {
       // Récupérer items + produits
       const [items] = await connection.execute(`
-        SELECT ci.id AS ci_id, ci.product_id, ci.variant_id, ci.prix_unitaire, ci.old_prix_achat, ci.price_applied,
+        SELECT ci.id AS ci_id, ci.product_id, ci.variant_id, ci.quantite, ci.prix_unitaire, ci.old_prix_achat, ci.price_applied,
                p.prix_achat AS prod_prix_achat,
                p.prix_vente AS prod_prix_vente,
                p.cout_revient_pourcentage AS prod_cout_revient_pourcentage,
@@ -407,6 +430,20 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
         const currentPg = hasVariantTarget ? var_prix_gros : prod_prix_gros;
 
         if (enteringValidation) {
+          // Always record the latest validated purchase order for this product
+          await connection.execute(
+            `UPDATE products SET last_boncommande_id = ? WHERE id = ?`,
+            [id, product_id]
+          );
+
+          // If the purchase line targets a variant, track last purchase per variant too
+          if (variant_id != null) {
+            await connection.execute(
+              `UPDATE product_variants SET last_boncommande_id = ? WHERE id = ?`,
+              [id, variant_id]
+            );
+          }
+
           if (prix_unitaire > 0 && Number(prix_unitaire) !== Number(currentPrixAchat)) {
             const newPrixAchat = Number(prix_unitaire);
             const oldPrix = Number(currentPrixAchat);
@@ -463,6 +500,176 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
             // Dans tous les cas on remet le flag (on ne peut revert qu'une fois)
             await connection.execute(`UPDATE commande_items SET price_applied = 0 WHERE id = ?`, [ci_id]);
           }
+        }
+      }
+
+      // Create snapshots on validation (if snapshot tables exist).
+      // This records the state of products/variants + purchased quantity at the moment of validation.
+      if (enteringValidation) {
+        const [[snapP]] = await connection.execute(
+          `SELECT COUNT(*) AS cnt
+             FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+              AND table_name = 'products_snapshot'`
+        );
+        const hasProductsSnapshot = Number(snapP?.cnt || 0) > 0;
+
+        const [[snapV]] = await connection.execute(
+          `SELECT COUNT(*) AS cnt
+             FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+              AND table_name IN ('product_variants_snapshot','variants_snapshot')`
+        );
+        const hasVariantSnapshot = Number(snapV?.cnt || 0) > 0;
+        const variantSnapshotTable = hasVariantSnapshot
+          ? (await (async () => {
+              const [[r1]] = await connection.execute(
+                `SELECT COUNT(*) AS cnt FROM information_schema.tables
+                  WHERE table_schema = DATABASE() AND table_name = 'product_variants_snapshot'`
+              );
+              return Number(r1?.cnt || 0) > 0 ? 'product_variants_snapshot' : 'variants_snapshot';
+            })())
+          : null;
+
+        const tableColumnsCache = new Map();
+
+        const getColumns = async (tableName) => {
+          if (tableColumnsCache.has(tableName)) return tableColumnsCache.get(tableName);
+          const [cols] = await connection.execute(
+            `SELECT COLUMN_NAME
+               FROM information_schema.columns
+              WHERE table_schema = DATABASE() AND table_name = ?
+              ORDER BY ORDINAL_POSITION ASC`,
+            [tableName]
+          );
+          const names = (cols || []).map(r => String(r.COLUMN_NAME));
+          tableColumnsCache.set(tableName, names);
+          return names;
+        };
+
+        const getBaseColumnsSet = async (tableName) => {
+          const names = await getColumns(tableName);
+          return new Set(names);
+        };
+
+        const insertSnapshotRow = async ({ snapshotTable, baseTable, baseId, qte }) => {
+          const snapCols = await getColumns(snapshotTable);
+          if (!snapCols.includes('qte')) return;
+
+          // Omit auto-increment PK column if present
+          const insertCols = snapCols.filter(c => c !== 'snapshot_id');
+          const baseColsSet = await getBaseColumnsSet(baseTable);
+
+          const params = [];
+          const selectExprs = insertCols.map((c) => {
+            // Always fill qte
+            if (c === 'qte') {
+              params.push(Number(qte || 0));
+              return '? AS `qte`';
+            }
+            // Common extra NOT NULL metadata columns (may exist only on snapshot tables)
+            if (c === 'snapshot_at') return 'NOW() AS `snapshot_at`';
+            if (c === 'snapshot_date') return 'DATE(NOW()) AS `snapshot_date`';
+            if (c === 'bon_commande_id') {
+              params.push(Number(id));
+              return '? AS `bon_commande_id`';
+            }
+            if (c === 'source_table') {
+              params.push('bons_commande');
+              return '? AS `source_table`';
+            }
+            if (c === 'source_id') {
+              params.push(Number(id));
+              return '? AS `source_id`';
+            }
+
+            if (baseColsSet.has(c)) return `b.\`${c}\``;
+            return `NULL AS \`${c}\``;
+          });
+
+          const sql = `INSERT INTO ${snapshotTable} (${insertCols.map(c => `\`${c}\``).join(', ')})\n` +
+            `SELECT ${selectExprs.join(', ')}\n` +
+            `  FROM ${baseTable} b\n` +
+            ` WHERE b.id = ?`;
+
+          params.push(Number(baseId));
+          await connection.execute(sql, params);
+        };
+
+        if (hasProductsSnapshot) {
+          const [pRows] = await connection.execute(
+            `SELECT product_id, SUM(quantite) AS qte
+               FROM commande_items
+              WHERE bon_commande_id = ?
+                AND variant_id IS NULL
+              GROUP BY product_id`,
+            [id]
+          );
+          for (const r of pRows || []) {
+            if (!r?.product_id) continue;
+            await insertSnapshotRow({
+              snapshotTable: 'products_snapshot',
+              baseTable: 'products',
+              baseId: r.product_id,
+              qte: r.qte,
+            });
+          }
+        }
+
+        if (variantSnapshotTable) {
+          const [vRows] = await connection.execute(
+            `SELECT variant_id, SUM(quantite) AS qte
+               FROM commande_items
+              WHERE bon_commande_id = ?
+                AND variant_id IS NOT NULL
+              GROUP BY variant_id`,
+            [id]
+          );
+          for (const r of vRows || []) {
+            if (!r?.variant_id) continue;
+            await insertSnapshotRow({
+              snapshotTable: variantSnapshotTable,
+              baseTable: 'product_variants',
+              baseId: r.variant_id,
+              qte: r.qte,
+            });
+          }
+        }
+      }
+
+      if (leavingValidation) {
+        // If this bon commande is no longer validated, recompute last_boncommande_id
+        // for impacted products so future docs don't link to an unvalidated purchase.
+        const impactedProductIds = Array.from(new Set((items || []).map(r => Number(r.product_id)).filter(Boolean)));
+        for (const pid of impactedProductIds) {
+          const [[row]] = await connection.execute(
+            `SELECT MAX(ci.bon_commande_id) AS last_id
+               FROM commande_items ci
+               JOIN bons_commande bc ON bc.id = ci.bon_commande_id
+              WHERE ci.product_id = ? AND bc.statut = 'Validé'`,
+            [pid]
+          );
+          await connection.execute(
+            `UPDATE products SET last_boncommande_id = ? WHERE id = ?`,
+            [row?.last_id ?? null, pid]
+          );
+        }
+
+        const impactedVariantIds = Array.from(
+          new Set((items || []).map(r => (r?.variant_id == null ? null : Number(r.variant_id))).filter(Boolean))
+        );
+        for (const vid of impactedVariantIds) {
+          const [[row]] = await connection.execute(
+            `SELECT MAX(ci.bon_commande_id) AS last_id
+               FROM commande_items ci
+               JOIN bons_commande bc ON bc.id = ci.bon_commande_id
+              WHERE ci.variant_id = ? AND bc.statut = 'Validé'`,
+            [vid]
+          );
+          await connection.execute(
+            `UPDATE product_variants SET last_boncommande_id = ? WHERE id = ?`,
+            [row?.last_id ?? null, vid]
+          );
         }
       }
     }
@@ -615,6 +822,12 @@ router.put('/:id', verifyToken, async (req, res) => {
        WHERE id = ?
   `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, isNotCalculated, id]);
 
+    // FIFO: forbid editing a purchase that has already been consumed.
+    const fifo = await isFifoEnabled(connection);
+    if (fifo) {
+      await ensureNoConsumptionForBonCommande(connection, id);
+    }
+
     // On remplace tous les items
     await connection.execute('DELETE FROM commande_items WHERE bon_commande_id = ?', [id]);
     if (Array.isArray(livraisons)) {
@@ -648,7 +861,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       }
 
       const [productRows] = await connection.execute(
-        'SELECT has_variants, is_obligatoire_variant FROM products WHERE id = ?',
+        'SELECT has_variants, is_obligatoire_variant, prix_vente FROM products WHERE id = ?',
         [product_id]
       );
       const p = Array.isArray(productRows) ? productRows[0] : null;
@@ -656,6 +869,10 @@ router.put('/:id', verifyToken, async (req, res) => {
         await connection.rollback();
         return res.status(400).json({ message: `Produit introuvable (id=${product_id})` });
       }
+
+      // Attach selling price for FIFO snapshot (update)
+      item.selling_price = p.prix_vente;
+
       const requiresVariant = Number(p.has_variants) === 1 && Number(p.is_obligatoire_variant) === 1;
       if (requiresVariant && !variant_id) {
         await connection.rollback();
@@ -668,6 +885,14 @@ router.put('/:id', verifyToken, async (req, res) => {
           remise_pourcentage, remise_montant, total, variant_id, unit_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+    }
+
+    // FIFO: rebuild layers from the new items; if cancelled, keep remaining at 0.
+    if (fifo) {
+      await replaceBonCommandeLayers(connection, id, items, date_creation);
+      if (st === 'Annulé') {
+        await setBonCommandeLayersCancelled(connection, id, true);
+      }
     }
 
     // Stock: on annule l'effet des anciens items (si pas Annulé), puis on applique les nouveaux (si pas Annulé)

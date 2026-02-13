@@ -1099,7 +1099,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         const p = Number(it?.remise_pourcentage ?? 0) || 0;
         return m !== 0 || p !== 0;
       });
-      const hasHeaderTarget = Number((initialValues as any)?.remise_is_client ?? 1) === 0;
+      const headerIsOtherClient = Number((initialValues as any)?.remise_is_client ?? 1) === 0;
+      const headerRemiseIdRaw = (initialValues as any)?.remise_id;
+      const headerRemiseId = headerRemiseIdRaw == null || headerRemiseIdRaw === '' ? null : Number(headerRemiseIdRaw);
+      // Only treat header target as meaningful when it points to a real remise client id.
+      const hasHeaderTarget = headerIsOtherClient && Number.isFinite(headerRemiseId as any) && (headerRemiseId as any) > 0;
       const shouldOpen = Boolean(hasItemRemise || hasHeaderTarget);
       setShowRemisePanel(shouldOpen);
       if (shouldOpen && type === 'Comptant') {
@@ -1333,6 +1337,16 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     }, 0);
 
     const requestType = values.type;
+
+    const hasAnyLineRemise = Array.isArray(values?.items)
+      ? values.items.some((item: any, idx: number) => {
+          const rm =
+            parseFloat(normalizeDecimal(remiseRaw[idx] ?? String(item?.remise_montant ?? ''))) || 0;
+          const rp =
+            parseFloat(normalizeDecimal(String(item?.remise_pourcentage ?? ''))) || 0;
+          return rm > 0 || rp > 0;
+        })
+      : false;
     let vehiculeId: number | undefined = undefined;
     if (!['Avoir', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce'].includes(requestType) && values.vehicule_id) {
       vehiculeId = parseInt(values.vehicule_id);
@@ -1352,21 +1366,33 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       : [];
 
     // Remise target validation (Sortie/Comptant)
-    if ((requestType === 'Sortie' || requestType === 'Comptant') && showRemisePanel) {
-      if (requestType === 'Sortie' && remiseTargetIsBonClient && !values.client_id) {
-        const msg = "Choisissez un client pour 'Même client du bon', ou décochez et choisissez un client remise.";
-        showError(msg);
-        setSubmitting(false);
-        return;
-      }
-
-      if (!remiseTargetIsBonClient) {
+    // Only enforce a remise target when there is at least one remise on any line.
+    // This prevents edit-mode Comptant bons from forcing a remise selection when no remise is applied.
+    if ((requestType === 'Sortie' || requestType === 'Comptant') && showRemisePanel && hasAnyLineRemise) {
+      if (requestType === 'Comptant') {
         const hasSelected = typeof selectedRemiseId === 'number';
         if (!hasSelected) {
           const msg = 'Veuillez sélectionner un client remise (ou créer depuis la recherche).';
           showError(msg);
           setSubmitting(false);
           return;
+        }
+      } else {
+        if (remiseTargetIsBonClient && !values.client_id) {
+          const msg = "Choisissez un client pour 'Même client du bon', ou décochez et choisissez un client remise.";
+          showError(msg);
+          setSubmitting(false);
+          return;
+        }
+
+        if (!remiseTargetIsBonClient) {
+          const hasSelected = typeof selectedRemiseId === 'number';
+          if (!hasSelected) {
+            const msg = 'Veuillez sélectionner un client remise (ou créer depuis la recherche).';
+            showError(msg);
+            setSubmitting(false);
+            return;
+          }
         }
       }
     }

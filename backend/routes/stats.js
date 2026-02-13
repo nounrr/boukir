@@ -104,8 +104,20 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(bs.date_creation) AS day,
                bs.id AS bon_id,
                bs.montant_total AS totalBon,
-               COALESCE(SUM((si.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((si.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * si.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((si.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = si.bon_commande_id AND ci2.product_id = si.product_id AND (ci2.variant_id <=> si.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 si.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((si.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = si.bon_commande_id AND ci2.product_id = si.product_id AND (ci2.variant_id <=> si.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 si.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * si.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(si.remise_montant, 0) * si.quantite), 0) AS remiseBon,
                1 AS bonCount
         FROM bons_sortie bs
@@ -121,8 +133,20 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(bc.date_creation) AS day,
                bc.id AS bon_id,
                bc.montant_total AS totalBon,
-               COALESCE(SUM((ci.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ci.quantite - (COALESCE(ci.remise_montant, 0) * ci.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((ci.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ci.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((ci.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ci.bon_commande_id AND ci2.product_id = ci.product_id AND (ci2.variant_id <=> ci.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 ci.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * ci.quantite - (COALESCE(ci.remise_montant, 0) * ci.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((ci.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ci.bon_commande_id AND ci2.product_id = ci.product_id AND (ci2.variant_id <=> ci.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 ci.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * ci.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ci.remise_montant, 0) * ci.quantite), 0) AS remiseBon,
                1 AS bonCount
         FROM bons_comptant bc
@@ -138,8 +162,20 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(o.created_at) AS day,
                o.id AS bon_id,
                o.total_amount AS totalBon,
-               COALESCE(SUM((oi.unit_price - COALESCE(p.cout_revient, p.prix_achat, 0)) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
-               COALESCE(SUM((oi.unit_price - COALESCE(p.cout_revient, p.prix_achat, 0)) * oi.quantity), 0) AS profitBrutBon,
+               COALESCE(SUM((oi.unit_price - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = oi.bon_commande_id AND ci2.product_id = oi.product_id AND (ci2.variant_id <=> oi.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 oi.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
+               COALESCE(SUM((oi.unit_price - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = oi.bon_commande_id AND ci2.product_id = oi.product_id AND (ci2.variant_id <=> oi.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 oi.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * oi.quantity), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(oi.remise_amount, 0)), 0) AS remiseBon,
                1 AS bonCount
         FROM ecommerce_orders o
@@ -163,8 +199,20 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(ac.date_creation) AS day,
                ac.id AS bon_id,
                ac.montant_total AS totalBon,
-               COALESCE(SUM((ai.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai.quantite - (COALESCE(ai.remise_montant, 0) * ai.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((ai.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((ai.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ai.bon_commande_id AND ci2.product_id = ai.product_id AND (ci2.variant_id <=> ai.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 ai.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * ai.quantite - (COALESCE(ai.remise_montant, 0) * ai.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((ai.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ai.bon_commande_id AND ci2.product_id = ai.product_id AND (ci2.variant_id <=> ai.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 ai.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * ai.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ai.remise_montant, 0) * ai.quantite), 0) AS remiseBon
         FROM avoirs_client ac
         LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
@@ -188,8 +236,20 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(ac2.date_creation) AS day,
                ac2.id AS bon_id,
                ac2.montant_total AS totalBon,
-               COALESCE(SUM((ai2.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai2.quantite - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((ai2.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai2.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((ai2.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ai2.bon_commande_id AND ci2.product_id = ai2.product_id AND (ci2.variant_id <=> ai2.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 ai2.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * ai2.quantite - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((ai2.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ai2.bon_commande_id AND ci2.product_id = ai2.product_id AND (ci2.variant_id <=> ai2.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 ai2.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * ai2.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ai2.remise_montant, 0) * ai2.quantite), 0) AS remiseBon
         FROM avoirs_comptant ac2
         LEFT JOIN avoir_comptant_items ai2 ON ai2.avoir_comptant_id = ac2.id
@@ -213,8 +273,20 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(ae.date_creation) AS day,
                ae.id AS bon_id,
                ae.montant_total AS totalBon,
-               COALESCE(SUM((i.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * i.quantite - (COALESCE(i.remise_montant, 0) * i.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((i.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * i.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((i.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = i.bon_commande_id AND ci2.product_id = i.product_id AND (ci2.variant_id <=> i.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 i.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * i.quantite - (COALESCE(i.remise_montant, 0) * i.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((i.prix_unitaire - COALESCE(
+                 p.cout_revient,
+                 (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = i.bon_commande_id AND ci2.product_id = i.product_id AND (ci2.variant_id <=> i.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+                 i.prix_achat_snapshot,
+                 p.prix_achat,
+                 0
+               )) * i.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(i.remise_montant, 0) * i.quantite), 0) AS remiseBon
         FROM avoirs_ecommerce ae
         LEFT JOIN avoir_ecommerce_items i ON i.avoir_ecommerce_id = ae.id
@@ -443,10 +515,22 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
              p.cout_revient AS cout_revient,
              p.prix_achat AS prix_achat,
              (ci.prix_unitaire * ci.quantite) AS montant_ligne,
-             ((ci.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ci.quantite) AS profitBrut,
+             ((ci.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ci.bon_commande_id AND ci2.product_id = ci.product_id AND (ci2.variant_id <=> ci.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               ci.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * ci.quantite) AS profitBrut,
              COALESCE(ci.remise_montant, 0) AS remise_unitaire,
              (COALESCE(ci.remise_montant, 0) * ci.quantite) AS remise_total,
-             (((ci.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ci.quantite) - (COALESCE(ci.remise_montant, 0) * ci.quantite)) AS profit
+             (((ci.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ci.bon_commande_id AND ci2.product_id = ci.product_id AND (ci2.variant_id <=> ci.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               ci.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * ci.quantite) - (COALESCE(ci.remise_montant, 0) * ci.quantite)) AS profit
       FROM bons_comptant bc
       LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
       LEFT JOIN products p ON p.id = ci.product_id
@@ -466,10 +550,22 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
              p.cout_revient AS cout_revient,
              p.prix_achat AS prix_achat,
              (si.prix_unitaire * si.quantite) AS montant_ligne,
-             ((si.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * si.quantite) AS profitBrut,
+             ((si.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = si.bon_commande_id AND ci2.product_id = si.product_id AND (ci2.variant_id <=> si.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               si.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * si.quantite) AS profitBrut,
              COALESCE(si.remise_montant, 0) AS remise_unitaire,
              (COALESCE(si.remise_montant, 0) * si.quantite) AS remise_total,
-             (((si.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
+             (((si.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = si.bon_commande_id AND ci2.product_id = si.product_id AND (ci2.variant_id <=> si.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               si.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
       FROM bons_sortie bs
             LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
       LEFT JOIN products p ON p.id = si.product_id
@@ -489,10 +585,22 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
              p.cout_revient AS cout_revient,
              p.prix_achat AS prix_achat,
              COALESCE(oi.subtotal, (oi.unit_price * oi.quantity)) AS montant_ligne,
-             ((oi.unit_price - COALESCE(p.cout_revient, p.prix_achat, 0)) * oi.quantity) AS profitBrut,
+             ((oi.unit_price - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = oi.bon_commande_id AND ci2.product_id = oi.product_id AND (ci2.variant_id <=> oi.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               oi.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * oi.quantity) AS profitBrut,
              COALESCE(oi.remise_percent_applied, 0) AS remise_unitaire,
              COALESCE(oi.remise_amount, 0) AS remise_total,
-             (((oi.unit_price - COALESCE(p.cout_revient, p.prix_achat, 0)) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
+             (((oi.unit_price - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = oi.bon_commande_id AND ci2.product_id = oi.product_id AND (ci2.variant_id <=> oi.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               oi.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
       FROM ecommerce_orders o
       LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
       LEFT JOIN products p ON p.id = oi.product_id
@@ -511,10 +619,22 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
              p.cout_revient AS cout_revient,
              p.prix_achat AS prix_achat,
              (ai.prix_unitaire * ai.quantite) AS montant_ligne,
-             ((ai.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai.quantite) AS profitBrut,
+             ((ai.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ai.bon_commande_id AND ci2.product_id = ai.product_id AND (ci2.variant_id <=> ai.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               ai.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * ai.quantite) AS profitBrut,
              COALESCE(ai.remise_montant, 0) AS remise_unitaire,
              (COALESCE(ai.remise_montant, 0) * ai.quantite) AS remise_total,
-             (((ai.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
+             (((ai.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ai.bon_commande_id AND ci2.product_id = ai.product_id AND (ci2.variant_id <=> ai.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               ai.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
       FROM avoirs_client ac
       LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
       LEFT JOIN products p ON p.id = ai.product_id
@@ -534,10 +654,22 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
              p.cout_revient AS cout_revient,
              p.prix_achat AS prix_achat,
              (ai2.prix_unitaire * ai2.quantite) AS montant_ligne,
-             ((ai2.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai2.quantite) AS profitBrut,
+             ((ai2.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ai2.bon_commande_id AND ci2.product_id = ai2.product_id AND (ci2.variant_id <=> ai2.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               ai2.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * ai2.quantite) AS profitBrut,
              COALESCE(ai2.remise_montant, 0) AS remise_unitaire,
              (COALESCE(ai2.remise_montant, 0) * ai2.quantite) AS remise_total,
-             (((ai2.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai2.quantite) - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)) AS profit
+             (((ai2.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = ai2.bon_commande_id AND ci2.product_id = ai2.product_id AND (ci2.variant_id <=> ai2.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               ai2.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * ai2.quantite) - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)) AS profit
       FROM avoirs_comptant ac2
             LEFT JOIN avoir_comptant_items ai2 ON ai2.avoir_comptant_id = ac2.id
       LEFT JOIN products p ON p.id = ai2.product_id
@@ -557,10 +689,22 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
              p.cout_revient AS cout_revient,
              p.prix_achat AS prix_achat,
              (i.prix_unitaire * i.quantite) AS montant_ligne,
-             ((i.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * i.quantite) AS profitBrut,
+             ((i.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = i.bon_commande_id AND ci2.product_id = i.product_id AND (ci2.variant_id <=> i.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               i.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * i.quantite) AS profitBrut,
              COALESCE(i.remise_montant, 0) AS remise_unitaire,
              (COALESCE(i.remise_montant, 0) * i.quantite) AS remise_total,
-             (((i.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * i.quantite) - (COALESCE(i.remise_montant, 0) * i.quantite)) AS profit
+             (((i.prix_unitaire - COALESCE(
+               p.cout_revient,
+               (SELECT ci2.prix_unitaire FROM commande_items ci2 WHERE ci2.bon_commande_id = i.bon_commande_id AND ci2.product_id = i.product_id AND (ci2.variant_id <=> i.variant_id) ORDER BY ci2.id DESC LIMIT 1),
+               i.prix_achat_snapshot,
+               p.prix_achat,
+               0
+             )) * i.quantite) - (COALESCE(i.remise_montant, 0) * i.quantite)) AS profit
       FROM avoirs_ecommerce ae
       LEFT JOIN avoir_ecommerce_items i ON i.avoir_ecommerce_id = ae.id
       LEFT JOIN products p ON p.id = i.product_id

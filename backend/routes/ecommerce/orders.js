@@ -9,6 +9,7 @@ import {
   ensureProductRemiseColumns
 } from '../../utils/ensureRemiseSchema.js';
 import { getContactSoldeCumule, phone9Sql } from '../../utils/soldeCumule.js';
+import { getLastBonCommandeMaps } from '../../utils/bonCommandeLink.js';
 
 async function ensureRemiseSchema() {
   try {
@@ -682,7 +683,14 @@ router.post('/', async (req, res, next) => {
     );
 
     // Insert order items and reduce stock
+    const { productMap, variantMap, prixAchatMap } = await getLastBonCommandeMaps(connection, validatedItems);
     for (const item of validatedItems) {
+      const resolvedBonCommandeId =
+        item?.bon_commande_id ??
+        (item?.variant_id != null && variantMap.has(Number(item.variant_id))
+          ? variantMap.get(Number(item.variant_id))
+          : (productMap.get(Number(item.product_id)) ?? null));
+      const snapshotPrixAchat = resolvedBonCommandeId == null ? (prixAchatMap.get(Number(item.product_id)) ?? null) : null;
       // Insert order item
       await connection.query(`
         INSERT INTO ecommerce_order_items (
@@ -699,8 +707,10 @@ router.post('/', async (req, res, next) => {
           quantity,
           subtotal,
           discount_percentage,
-          discount_amount
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          discount_amount,
+          bon_commande_id,
+          prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         orderId,
         item.product_id,
@@ -715,7 +725,9 @@ router.post('/', async (req, res, next) => {
         item.quantity,
         item.subtotal,
         item.discount_percentage,
-        item.discount_amount
+        item.discount_amount,
+        resolvedBonCommandeId,
+        snapshotPrixAchat,
       ]);
 
       // **REDUCE STOCK** - This is where the stock reduction happens
@@ -1029,6 +1041,7 @@ router.get('/', async (req, res, next) => {
           oi.order_id,
           oi.id,
           oi.product_id,
+          oi.bon_commande_id,
           oi.variant_id,
           oi.unit_id,
           oi.product_name,
@@ -1056,6 +1069,7 @@ router.get('/', async (req, res, next) => {
         itemsByOrder.get(it.order_id).push({
           id: it.id,
           product_id: it.product_id,
+          bon_commande_id: it.bon_commande_id ?? null,
           variant_id: it.variant_id,
           unit_id: it.unit_id,
           product_name: it.product_name,
@@ -1498,6 +1512,7 @@ router.get('/solde', async (req, res, next) => {
         `SELECT
            oi.order_id,
            oi.product_id,
+           oi.bon_commande_id,
            oi.variant_id,
            oi.unit_id,
            oi.product_name,
@@ -1522,6 +1537,7 @@ router.get('/solde', async (req, res, next) => {
         if (!itemsByOrderId.has(key)) itemsByOrderId.set(key, []);
         itemsByOrderId.get(key).push({
           product_id: row.product_id,
+          bon_commande_id: row.bon_commande_id ?? null,
           variant_id: row.variant_id,
           unit_id: row.unit_id,
           product_name: row.product_name,

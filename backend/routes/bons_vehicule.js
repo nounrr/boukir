@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
+import { getLastBonCommandeMaps } from '../utils/bonCommandeLink.js';
 
 const router = express.Router();
 
@@ -134,18 +135,23 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
 
     const bonId = ins.insertId;
 
+    const { productMap, prixAchatMap } = await getLastBonCommandeMaps(connection, items);
+
     for (const it of items) {
-      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total } = it;
+      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total, bon_commande_id } = it;
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
+      const resolvedBonCommandeId = bon_commande_id ?? productMap.get(Number(product_id)) ?? null;
+      const snapshotPrixAchat = resolvedBonCommandeId == null ? (prixAchatMap.get(Number(product_id)) ?? null) : null;
       await connection.execute(`
         INSERT INTO vehicule_items (
           bon_vehicule_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [bonId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+          remise_pourcentage, remise_montant, total,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [bonId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, resolvedBonCommandeId, snapshotPrixAchat]);
     }
 
     await connection.commit();
@@ -247,18 +253,23 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute('DELETE FROM vehicule_items WHERE bon_vehicule_id = ?', [id]);
 
+    const { productMap: productMap2, prixAchatMap: prixAchatMap2 } = await getLastBonCommandeMaps(connection, items);
+
     for (const it of items) {
-      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total } = it;
+      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total, bon_commande_id } = it;
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
+      const resolvedBonCommandeId = bon_commande_id ?? productMap2.get(Number(product_id)) ?? null;
+      const snapshotPrixAchat2 = resolvedBonCommandeId == null ? (prixAchatMap2.get(Number(product_id)) ?? null) : null;
       await connection.execute(`
         INSERT INTO vehicule_items (
           bon_vehicule_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total]);
+          remise_pourcentage, remise_montant, total,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, resolvedBonCommandeId, snapshotPrixAchat2]);
     }
 
     await connection.commit();

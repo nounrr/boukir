@@ -4,6 +4,7 @@ import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
+import { getLastBonCommandeMaps } from '../utils/bonCommandeLink.js';
 
 // Avoirs Comptant: similar to avoirs_client but stores a free-text client name (client_nom) instead of client_id.
 // Numero format assumption: AVCC + zero-padded ID (e.g., AVCC01). Adjust if different pattern desired.
@@ -21,12 +22,25 @@ router.get('/', async (_req, res) => {
             JSON_OBJECT(
               'id', i.id,
               'product_id', i.product_id,
+              'bon_commande_id', i.bon_commande_id,
               'variant_id', i.variant_id,
               'unit_id', i.unit_id,
               'designation', p.designation,
               'quantite', i.quantite,
               'prix_unitaire', i.prix_unitaire,
-              'prix_achat', p.prix_achat,
+              'prix_achat', COALESCE(
+                i.prix_achat_snapshot,
+                (
+                  SELECT ci2.prix_unitaire
+                  FROM commande_items ci2
+                  WHERE ci2.bon_commande_id = i.bon_commande_id
+                    AND ci2.product_id = i.product_id
+                    AND (ci2.variant_id <=> i.variant_id)
+                  ORDER BY ci2.id DESC
+                  LIMIT 1
+                ),
+                p.prix_achat
+              ),
               'cout_revient', p.cout_revient,
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
@@ -75,12 +89,25 @@ router.get('/:id', async (req, res) => {
             JSON_OBJECT(
               'id', i.id,
               'product_id', i.product_id,
+              'bon_commande_id', i.bon_commande_id,
               'variant_id', i.variant_id,
               'unit_id', i.unit_id,
               'designation', p.designation,
               'quantite', i.quantite,
               'prix_unitaire', i.prix_unitaire,
-              'prix_achat', p.prix_achat,
+              'prix_achat', COALESCE(
+                i.prix_achat_snapshot,
+                (
+                  SELECT ci2.prix_unitaire
+                  FROM commande_items ci2
+                  WHERE ci2.bon_commande_id = i.bon_commande_id
+                    AND ci2.product_id = i.product_id
+                    AND (ci2.variant_id <=> i.variant_id)
+                  ORDER BY ci2.id DESC
+                  LIMIT 1
+                ),
+                p.prix_achat
+              ),
               'cout_revient', p.cout_revient,
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
@@ -151,6 +178,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const avoirId = resAvoir.insertId;
     const finalNumero = `AVCC${String(avoirId).padStart(2, '0')}`;
 
+    const { productMap, variantMap, prixAchatMap } = await getLastBonCommandeMaps(connection, items);
+
     for (const it of items) {
       const {
         product_id,
@@ -160,7 +189,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         remise_montant = 0,
         total,
         variant_id,
-        unit_id
+        unit_id,
+        bon_commande_id
       } = it;
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -168,12 +198,21 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
 
+      const resolvedBonCommandeId =
+        bon_commande_id ??
+        (variant_id != null && variantMap.has(Number(variant_id))
+          ? variantMap.get(Number(variant_id))
+          : (productMap.get(Number(product_id)) ?? null));
+
+      const snapshotPrixAchat = resolvedBonCommandeId == null ? (prixAchatMap.get(Number(product_id)) ?? null) : null;
+
       await connection.execute(`
         INSERT INTO avoir_comptant_items (
           avoir_comptant_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, resolvedBonCommandeId, snapshotPrixAchat]);
     }
 
     // Stock: AvoirComptant => inverse de Comptant => ajoute au stock dès la création
@@ -289,18 +328,30 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute('DELETE FROM avoir_comptant_items WHERE avoir_comptant_id = ?', [id]);
 
+    const { productMap: productMap2, variantMap: variantMap2, prixAchatMap: prixAchatMap2 } = await getLastBonCommandeMaps(connection, items);
+
     for (const it of items) {
-      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total, variant_id, unit_id } = it;
+      const { product_id, quantite, prix_unitaire, remise_pourcentage = 0, remise_montant = 0, total, variant_id, unit_id, bon_commande_id } = it;
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
+
+      const resolvedBonCommandeId =
+        bon_commande_id ??
+        (variant_id != null && variantMap2.has(Number(variant_id))
+          ? variantMap2.get(Number(variant_id))
+          : (productMap2.get(Number(product_id)) ?? null));
+
+      const snapshotPrixAchat2 = resolvedBonCommandeId == null ? (prixAchatMap2.get(Number(product_id)) ?? null) : null;
+
       await connection.execute(`
         INSERT INTO avoir_comptant_items (
           avoir_comptant_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, resolvedBonCommandeId, snapshotPrixAchat2]);
     }
 
     // Stock: AvoirComptant => effet = +quantite au stock

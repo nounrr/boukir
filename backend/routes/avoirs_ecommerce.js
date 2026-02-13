@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
+import { getLastBonCommandeMaps } from '../utils/bonCommandeLink.js';
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ async function ensureAvoirEcommerceTables(conn) {
         id INT PRIMARY KEY AUTO_INCREMENT,
         avoir_ecommerce_id INT NOT NULL,
         product_id INT NOT NULL,
+        bon_commande_id INT DEFAULT NULL,
         variant_id INT DEFAULT NULL,
         unit_id INT DEFAULT NULL,
         quantite INT NOT NULL,
@@ -43,7 +45,8 @@ async function ensureAvoirEcommerceTables(conn) {
         total DECIMAL(10, 2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_avoir_ecom_id (avoir_ecommerce_id),
-        INDEX idx_avoir_ecom_product_id (product_id)
+        INDEX idx_avoir_ecom_product_id (product_id),
+        INDEX idx_avoir_ecommerce_items_bon_commande_id (bon_commande_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
   } catch (e) {
@@ -72,6 +75,7 @@ function normalizeDateTime(v) {
 
 function normalizeItem(raw) {
   const product_id = normalizeInt(raw?.product_id ?? raw?.produit_id);
+  const bon_commande_id = normalizeInt(raw?.bon_commande_id ?? raw?.bonCommandeId);
   const variant_id = normalizeInt(raw?.variant_id ?? raw?.variantId);
   const unit_id = normalizeInt(raw?.unit_id ?? raw?.unitId);
   const quantite = normalizeInt(raw?.quantite ?? raw?.quantity);
@@ -82,6 +86,7 @@ function normalizeItem(raw) {
 
   return {
     product_id,
+    bon_commande_id,
     variant_id,
     unit_id,
     quantite,
@@ -133,11 +138,25 @@ router.get('/', async (_req, res) => {
             JSON_OBJECT(
               'id', i.id,
               'product_id', i.product_id,
+              'bon_commande_id', i.bon_commande_id,
               'variant_id', i.variant_id,
               'unit_id', i.unit_id,
               'designation', p.designation,
               'quantite', i.quantite,
               'prix_unitaire', i.prix_unitaire,
+              'prix_achat', COALESCE(
+                i.prix_achat_snapshot,
+                (
+                  SELECT ci2.prix_unitaire
+                  FROM commande_items ci2
+                  WHERE ci2.bon_commande_id = i.bon_commande_id
+                    AND ci2.product_id = i.product_id
+                    AND (ci2.variant_id <=> i.variant_id)
+                  ORDER BY ci2.id DESC
+                  LIMIT 1
+                ),
+                p.prix_achat
+              ),
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
               'total', i.total
@@ -186,11 +205,25 @@ router.get('/:id', async (req, res) => {
             JSON_OBJECT(
               'id', i.id,
               'product_id', i.product_id,
+              'bon_commande_id', i.bon_commande_id,
               'variant_id', i.variant_id,
               'unit_id', i.unit_id,
               'designation', p.designation,
               'quantite', i.quantite,
               'prix_unitaire', i.prix_unitaire,
+              'prix_achat', COALESCE(
+                i.prix_achat_snapshot,
+                (
+                  SELECT ci2.prix_unitaire
+                  FROM commande_items ci2
+                  WHERE ci2.bon_commande_id = i.bon_commande_id
+                    AND ci2.product_id = i.product_id
+                    AND (ci2.variant_id <=> i.variant_id)
+                  ORDER BY ci2.id DESC
+                  LIMIT 1
+                ),
+                p.prix_achat
+              ),
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
               'total', i.total
@@ -289,12 +322,21 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
 
     const avoirId = ins.insertId;
 
+    const { productMap, variantMap, prixAchatMap } = await getLastBonCommandeMaps(connection, normalizedItems);
+
     for (const it of normalizedItems) {
+      const resolvedBonCommandeId =
+        it.bon_commande_id ??
+        (it.variant_id != null && variantMap.has(Number(it.variant_id))
+          ? variantMap.get(Number(it.variant_id))
+          : (productMap.get(Number(it.product_id)) ?? null));
+      const snapshotPrixAchat = resolvedBonCommandeId == null ? (prixAchatMap.get(Number(it.product_id)) ?? null) : null;
       await connection.execute(`
         INSERT INTO avoir_ecommerce_items (
           avoir_ecommerce_id, product_id, variant_id, unit_id,
-          quantite, prix_unitaire, remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantite, prix_unitaire, remise_pourcentage, remise_montant, total,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         avoirId,
         it.product_id,
@@ -305,6 +347,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         it.remise_pourcentage ?? 0,
         it.remise_montant ?? 0,
         it.total,
+        resolvedBonCommandeId,
+        snapshotPrixAchat,
       ]);
     }
 
@@ -450,16 +494,26 @@ router.put('/:id', async (req, res) => {
     await connection.execute('DELETE FROM avoir_ecommerce_items WHERE avoir_ecommerce_id = ?', [id]);
 
     const normalizedItems = Array.isArray(items) ? items.map(normalizeItem) : [];
+
+    const { productMap: productMap2, variantMap: variantMap2, prixAchatMap: prixAchatMap2 } = await getLastBonCommandeMaps(connection, normalizedItems);
     for (const it of normalizedItems) {
       if (!it.product_id || it.quantite == null || it.prix_unitaire == null || it.total == null) {
         await connection.rollback();
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
+
+      const resolvedBonCommandeId =
+        it.bon_commande_id ??
+        (it.variant_id != null && variantMap2.has(Number(it.variant_id))
+          ? variantMap2.get(Number(it.variant_id))
+          : (productMap2.get(Number(it.product_id)) ?? null));
+      const snapshotPrixAchat2 = resolvedBonCommandeId == null ? (prixAchatMap2.get(Number(it.product_id)) ?? null) : null;
       await connection.execute(`
         INSERT INTO avoir_ecommerce_items (
           avoir_ecommerce_id, product_id, variant_id, unit_id,
-          quantite, prix_unitaire, remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantite, prix_unitaire, remise_pourcentage, remise_montant, total,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         id,
         it.product_id,
@@ -470,6 +524,8 @@ router.put('/:id', async (req, res) => {
         it.remise_pourcentage ?? 0,
         it.remise_montant ?? 0,
         it.total,
+        resolvedBonCommandeId,
+        snapshotPrixAchat2,
       ]);
     }
 

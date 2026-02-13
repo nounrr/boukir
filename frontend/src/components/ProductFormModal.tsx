@@ -6,7 +6,7 @@ import { useFormik, FieldArray, FormikProvider } from 'formik';
 import * as Yup from 'yup';
 import { Plus, Trash2, X } from 'lucide-react';
 // Switch to backend mutations
-import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery } from '../store/api/productsApi';
+import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useGetProductFifoLayersQuery } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { useGetBrandsQuery } from '../store/api/brandsApi';
 import { showSuccess } from '../utils/notifications';
@@ -115,7 +115,19 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const { data: fullProduct } = useGetProductQuery((editingProduct as any)?.id as number, {
     skip: !editingProduct?.id,
   });
+  const { data: fifoLayersData } = useGetProductFifoLayersQuery((editingProduct as any)?.id as number, {
+    skip: !editingProduct?.id,
+  });
   const authToken = useSelector((s: RootState) => (s as any)?.auth?.token);
+
+  const categoryHasChildren = useMemo(() => {
+    const parentIds = new Set<number>();
+    for (const c of categories as any[]) {
+      const p = c?.parent_id;
+      if (p != null && p !== '') parentIds.add(Number(p));
+    }
+    return (categoryId: number) => parentIds.has(Number(categoryId));
+  }, [categories]);
 
   const [createProduct] = useCreateProductMutation();
   const [updateProductMutation] = useUpdateProductMutation();
@@ -298,6 +310,38 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   const baseEdit = editingProduct ? { ...(editingProduct as any), ...((fullProduct as any) || {}) } : null;
+
+  const fifoLayers = (fifoLayersData as any)?.layers || [];
+  const fifoEnabled = !!(fifoLayersData as any)?.enabled;
+  const fifoProductLayers = useMemo(
+    () => (Array.isArray(fifoLayers) ? fifoLayers.filter((l: any) => l?.variant_id == null) : []),
+    [fifoLayers]
+  );
+  const fifoLayersByVariantId = useMemo(() => {
+    const map = new Map<number, any[]>();
+    if (!Array.isArray(fifoLayers)) return map;
+    for (const l of fifoLayers) {
+      if (l?.variant_id == null) continue;
+      const vid = Number(l.variant_id);
+      if (!Number.isFinite(vid)) continue;
+      const cur = map.get(vid) || [];
+      cur.push(l);
+      map.set(vid, cur);
+    }
+    return map;
+  }, [fifoLayers]);
+  const variantLabelById = useMemo(() => {
+    const map = new Map<number, string>();
+    const variants = (((fullProduct as any)?.variants || (editingProduct as any)?.variants) || []) as any[];
+    for (const v of variants) {
+      const vid = Number(v?.id);
+      if (!Number.isFinite(vid)) continue;
+      const label = [v?.variant_type, v?.variant_name].filter(Boolean).join(': ') || `Variante ${vid}`;
+      map.set(vid, label);
+    }
+    return map;
+  }, [fullProduct, editingProduct]);
+
   const formik = useFormik({
     initialValues: baseEdit
       ? {
@@ -336,6 +380,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     onSubmit: async (values) => {
       console.log('ProductFormModal submit handler called', { values });
       console.debug('Current formik errors before submit:', formik.errors);
+
+      // Backend requires a leaf category (no children). Prevent submit early.
+      const catIdGuard = Number(values.categorie_id || 0);
+      if (catIdGuard && categoryHasChildren(catIdGuard)) {
+        formik.setFieldTouched('categorie_id', true, false);
+        formik.setFieldError('categorie_id', 'Impossible: veuillez sélectionner une catégorie finale (sans sous-catégories)');
+        return;
+      }
+
       // Hard guard: prevent submission if shared qty exceeds total (even if button is force-enabled)
       const totalQtyGuard = values.est_service ? 0 : toNum(values.quantite);
       const shareQtyGuard = toNum(values.stock_partage_ecom_qty);
@@ -910,6 +963,84 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <p className="text-red-500 text-sm mt-1">{asStringError(formik.errors.quantite)}</p>
               )}
             </div>
+
+            {/* Lots FIFO restants (lecture seule) */}
+            {editingProduct && fifoEnabled && (fifoProductLayers.length > 0 || fifoLayersByVariantId.size > 0) && (
+              <div className="md:col-span-2 border rounded-md p-3 bg-gray-50">
+                <div className="text-sm font-semibold text-gray-800 mb-2">Lots FIFO restants</div>
+
+                {/* Produit (sans variante) */}
+                <div className="mb-3">
+                  <div className="text-xs font-medium text-gray-700 mb-1">Produit</div>
+                  {fifoProductLayers.length === 0 ? (
+                    <div className="text-xs text-gray-500">Aucun lot restant</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs">
+                        <thead>
+                          <tr className="text-gray-600">
+                            <th className="text-left py-1 pr-3 font-medium">Date</th>
+                            <th className="text-left py-1 pr-3 font-medium">Bon</th>
+                            <th className="text-left py-1 pr-3 font-medium">Prix achat</th>
+                            <th className="text-left py-1 pr-3 font-medium">Reste</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {fifoProductLayers.map((l: any) => (
+                            <tr key={String(l.id)} className="border-t">
+                              <td className="py-1 pr-3">{String(l.layer_date || '')}</td>
+                              <td className="py-1 pr-3">{l.bon_commande_id ? `BC #${l.bon_commande_id}` : '-'}</td>
+                              <td className="py-1 pr-3">{formatNumber(toNum(l.unit_cost))}</td>
+                              <td className="py-1 pr-3">{formatNumber(toNum(l.remaining_qty))}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Variantes */}
+                {fifoLayersByVariantId.size > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-gray-700 mb-1">Variantes</div>
+                    <div className="space-y-3">
+                      {Array.from(fifoLayersByVariantId.entries())
+                        .sort((a, b) => a[0] - b[0])
+                        .map(([variantId, layers]) => (
+                          <div key={String(variantId)} className="border rounded bg-white p-2">
+                            <div className="text-xs font-semibold text-gray-800 mb-1">
+                              {variantLabelById.get(variantId) || `Variante ${variantId}`}
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full text-xs">
+                                <thead>
+                                  <tr className="text-gray-600">
+                                    <th className="text-left py-1 pr-3 font-medium">Date</th>
+                                    <th className="text-left py-1 pr-3 font-medium">Bon</th>
+                                    <th className="text-left py-1 pr-3 font-medium">Prix achat</th>
+                                    <th className="text-left py-1 pr-3 font-medium">Reste</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {layers.map((l: any) => (
+                                    <tr key={String(l.id)} className="border-t">
+                                      <td className="py-1 pr-3">{String(l.layer_date || '')}</td>
+                                      <td className="py-1 pr-3">{l.bon_commande_id ? `BC #${l.bon_commande_id}` : '-'}</td>
+                                      <td className="py-1 pr-3">{formatNumber(toNum(l.unit_cost))}</td>
+                                      <td className="py-1 pr-3">{formatNumber(toNum(l.remaining_qty))}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Poids (kg) - optionnel */}
             <div>

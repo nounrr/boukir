@@ -1,5 +1,5 @@
 import { api } from './apiSlice';
-import type { Product, CreateProductData } from '../../types';
+import type { Product, CreateProductData, ProductFifoLayersResponse } from '../../types';
 
 // API réelle vers le backend Express (/api/products)
 const productsApi = api.injectEndpoints({
@@ -19,6 +19,11 @@ const productsApi = api.injectEndpoints({
 
     getProduct: builder.query<Product, number>({
       query: (id) => ({ url: `/products/${id}` }),
+      providesTags: (_result, _error, id) => [{ type: 'Product', id }],
+    }),
+
+    getProductFifoLayers: builder.query<ProductFifoLayersResponse, number>({
+      query: (id) => ({ url: `/products/${id}/fifo-layers` }),
       providesTags: (_result, _error, id) => [{ type: 'Product', id }],
     }),
 
@@ -107,6 +112,7 @@ export const {
   useGetProductsQuery,
   useGetProductsPaginatedQuery,
   useGetProductQuery,
+  useGetProductFifoLayersQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
   useDeleteProductMutation,

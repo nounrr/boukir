@@ -3,6 +3,7 @@ import pool from '../db/pool.js';
 import { verifyToken, forbidRoles } from '../middleware/auth.js';
 import { canManageBon, canValidate } from '../utils/permissions.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import { getLastBonCommandeMaps } from '../utils/bonCommandeLink.js';
 
 const router = express.Router();
 
@@ -18,6 +19,7 @@ router.get('/', async (_req, res) => {
             JSON_OBJECT(
               'id', i.id,
               'product_id', i.product_id,
+              'bon_commande_id', i.bon_commande_id,
               'variant_id', i.variant_id,
               'unit_id', i.unit_id,
               'designation', p.designation,
@@ -154,6 +156,8 @@ router.post('/', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) => 
     const avoirId = ins.insertId;
     const finalNumero = `AVF${String(avoirId).padStart(2, '0')}`;
 
+    const { productMap, variantMap, prixAchatMap } = await getLastBonCommandeMaps(connection, items);
+
     for (const it of items) {
       const {
         product_id,
@@ -163,7 +167,8 @@ router.post('/', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) => 
         remise_montant = 0,
         total,
         variant_id,
-        unit_id
+        unit_id,
+        bon_commande_id
       } = it;
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -171,12 +176,21 @@ router.post('/', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) => 
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
 
+      const resolvedBonCommandeId =
+        bon_commande_id ??
+        (variant_id != null && variantMap.has(Number(variant_id))
+          ? variantMap.get(Number(variant_id))
+          : (productMap.get(Number(product_id)) ?? null));
+
+      const snapshotPrixAchat = resolvedBonCommandeId == null ? (prixAchatMap.get(Number(product_id)) ?? null) : null;
+
       await connection.execute(`
         INSERT INTO avoir_fournisseur_items (
           avoir_fournisseur_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, resolvedBonCommandeId, snapshotPrixAchat]);
     }
 
     // Stock (nouvelle règle): AvoirFournisseur => retire du stock dès la création (inverse de commande)
@@ -314,6 +328,8 @@ router.put('/:id', verifyToken, async (req, res) => {
 
     await connection.execute('DELETE FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?', [id]);
 
+    const { productMap: productMap2, variantMap: variantMap2, prixAchatMap: prixAchatMap2 } = await getLastBonCommandeMaps(connection, items);
+
     for (const it of items) {
       const {
         product_id,
@@ -323,7 +339,8 @@ router.put('/:id', verifyToken, async (req, res) => {
         remise_montant = 0,
         total,
         variant_id,
-        unit_id
+        unit_id,
+        bon_commande_id
       } = it;
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -331,12 +348,21 @@ router.put('/:id', verifyToken, async (req, res) => {
         return res.status(400).json({ message: 'Item invalide: champs requis manquants' });
       }
 
+      const resolvedBonCommandeId =
+        bon_commande_id ??
+        (variant_id != null && variantMap2.has(Number(variant_id))
+          ? variantMap2.get(Number(variant_id))
+          : (productMap2.get(Number(product_id)) ?? null));
+
+      const snapshotPrixAchat2 = resolvedBonCommandeId == null ? (prixAchatMap2.get(Number(product_id)) ?? null) : null;
+
       await connection.execute(`
         INSERT INTO avoir_fournisseur_items (
           avoir_fournisseur_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id,
+          bon_commande_id, prix_achat_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, resolvedBonCommandeId, snapshotPrixAchat2]);
     }
 
     // Stock: annuler l'effet des anciens items (si pas Annulé), puis appliquer les nouveaux (si pas Annulé)

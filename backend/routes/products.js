@@ -4,6 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { isFifoEnabled } from '../utils/fifoStock.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -858,6 +859,55 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
+// Remaining FIFO layers for a product (+ variants)
+// GET /api/products/:id/fifo-layers
+router.get('/:id/fifo-layers', async (req, res, next) => {
+  let connection;
+  try {
+    await ensureProductsColumns();
+    const id = Number(req.params.id);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'ID invalide' });
+    }
+
+    connection = await pool.getConnection();
+    const enabled = await isFifoEnabled(connection);
+    if (!enabled) {
+      return res.json({ enabled: false, layers: [] });
+    }
+
+    const [layers] = await connection.execute(
+      `SELECT
+         id,
+         product_id,
+         variant_id,
+         bon_commande_id,
+         source_table,
+         source_id,
+         source_item_id,
+         layer_date,
+         unit_cost,
+         unit_sale_price,
+         original_qty,
+         remaining_qty,
+         created_at,
+         updated_at
+       FROM stock_layers
+      WHERE product_id = ?
+        AND remaining_qty > 0
+      ORDER BY layer_date ASC, id ASC`,
+      [id]
+    );
+
+    return res.json({ enabled: true, layers });
+  } catch (err) {
+    next(err);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     await ensureProductsColumns();
@@ -1304,6 +1354,16 @@ router.put('/:id', upload.fields([
     if (!existRows.length) return res.status(404).json({ message: 'Produit introuvable' });
     const existing = existRows[0];
 
+    // Used for detecting variant prix_achat changes (and syncing last bon commande lines)
+    const [dbVariantsBefore] = await pool.query(
+      'SELECT id, prix_achat, last_boncommande_id FROM product_variants WHERE product_id = ?',
+      [id]
+    );
+    const variantsBeforeMap = new Map((dbVariantsBefore || []).map(v => [Number(v.id), {
+      prix_achat: v.prix_achat == null ? null : Number(v.prix_achat),
+      last_boncommande_id: v.last_boncommande_id == null ? null : Number(v.last_boncommande_id),
+    }]));
+
     const {
       designation,
       designation_ar,
@@ -1486,6 +1546,81 @@ router.put('/:id', upload.fields([
     values.push(id);
     await pool.query(`UPDATE products SET ${setClause} WHERE id = ?`, values);
 
+    const fifoEnabled = await isFifoEnabled(pool);
+
+    const syncCommandeItemPrixAchat = async ({
+      bonCommandeId,
+      productId,
+      variantId,
+      newPrixAchat,
+    }) => {
+      if (!bonCommandeId || !Number.isFinite(Number(bonCommandeId))) return;
+      const paNum = Number(newPrixAchat);
+      if (!Number.isFinite(paNum) || paNum <= 0) return;
+      await pool.query(
+        `UPDATE commande_items
+            SET prix_unitaire = ?,
+                total = ROUND((quantite * ?) * (1 - (remise_pourcentage / 100)) - remise_montant, 2),
+                price_applied = 0
+          WHERE bon_commande_id = ?
+            AND product_id = ?
+            AND (variant_id <=> ?)` ,
+        [paNum, paNum, Number(bonCommandeId), Number(productId), variantId == null ? null : Number(variantId)]
+      );
+    };
+
+    const updateFallbackSnapshots = async ({
+      productId,
+      variantId,
+      newPrixAchat,
+    }) => {
+      const paNum = Number(newPrixAchat);
+      if (!Number.isFinite(paNum) || paNum <= 0) return;
+
+      // Only update rows that use snapshot as the only cost source:
+      // - bon_commande_id IS NULL
+      // - prix_achat_snapshot IS NOT NULL
+      // - and, if FIFO is enabled, do NOT touch rows that have FIFO allocations (those snapshots are historical costs)
+      const tables = [
+        { name: 'sortie_items', hasVariant: true },
+        { name: 'comptant_items', hasVariant: true },
+        { name: 'devis_items', hasVariant: true },
+        { name: 'avoir_client_items', hasVariant: true },
+        { name: 'avoir_comptant_items', hasVariant: true },
+        { name: 'avoir_fournisseur_items', hasVariant: true },
+        { name: 'ecommerce_order_items', hasVariant: true },
+        { name: 'avoir_ecommerce_items', hasVariant: true },
+        { name: 'vehicule_items', hasVariant: false },
+      ];
+
+      for (const t of tables) {
+        const variantClause = t.hasVariant ? 'AND (variant_id <=> ?)' : '';
+        const params = t.hasVariant
+          ? [paNum, Number(productId), variantId == null ? null : Number(variantId)]
+          : [paNum, Number(productId)];
+
+        const fifoExclusion = fifoEnabled
+          ? `AND NOT EXISTS (
+              SELECT 1
+              FROM stock_layer_allocations a
+              WHERE a.target_table = '${t.name}'
+                AND a.target_item_id = ${t.name}.id
+            )`
+          : '';
+
+        await pool.query(
+          `UPDATE ${t.name}
+              SET prix_achat_snapshot = ?
+            WHERE product_id = ?
+              ${variantClause}
+              AND bon_commande_id IS NULL
+              AND prix_achat_snapshot IS NOT NULL
+              ${fifoExclusion}`,
+          params
+        );
+      }
+    };
+
     // Variants + Units (optional sync) 
     // If the client sends these fields, treat them as the desired state and sync DB accordingly.
     if (variantsJson !== undefined) {
@@ -1579,6 +1714,25 @@ router.put('/:id', upload.fields([
                   [id, ...payloadVals, now, now]
                 );
               }
+
+              // If prix_achat changed for an existing variant, also update the last bon commande line for that variant.
+              // This keeps documents that reference last_boncommande_id consistent.
+              const before = variantsBeforeMap.get(Number(variantId)) || null;
+              const beforePa = before?.prix_achat;
+              const incomingPa = Number(v?.prix_achat ?? 0);
+              if (before && Number.isFinite(incomingPa) && beforePa !== null && incomingPa !== beforePa) {
+                await syncCommandeItemPrixAchat({
+                  bonCommandeId: before.last_boncommande_id,
+                  productId: id,
+                  variantId: variantId,
+                  newPrixAchat: incomingPa,
+                });
+                await updateFallbackSnapshots({
+                  productId: id,
+                  variantId: variantId,
+                  newPrixAchat: incomingPa,
+                });
+              }
             } else {
               await pool.query(
                 `INSERT INTO product_variants (
@@ -1596,6 +1750,27 @@ router.put('/:id', upload.fields([
             }
           }
         }
+      }
+    }
+
+    // If product prix_achat was explicitly provided and changed, sync it to last bon commande line and fallback snapshots.
+    {
+      const hasPrixAchatInput = !(prix_achat === undefined || prix_achat === null || prix_achat === '');
+      const newPa = Number(pa);
+      const oldPa = existing.prix_achat == null ? 0 : Number(existing.prix_achat);
+      const lastBon = existing.last_boncommande_id == null ? null : Number(existing.last_boncommande_id);
+      if (hasPrixAchatInput && Number.isFinite(newPa) && newPa > 0 && newPa !== oldPa) {
+        await syncCommandeItemPrixAchat({
+          bonCommandeId: lastBon,
+          productId: id,
+          variantId: null,
+          newPrixAchat: newPa,
+        });
+        await updateFallbackSnapshots({
+          productId: id,
+          variantId: null,
+          newPrixAchat: newPa,
+        });
       }
     }
 
