@@ -6,7 +6,7 @@ import { Plus, Edit, Trash2, Search, Package, Settings } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
-import { useGetProductsQuery, useDeleteProductMutation, useTranslateProductsMutation, useGenerateSpecsMutation } from '../store/api/productsApi';
+import { useGetProductsQuery, useDeleteProductMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
@@ -67,6 +67,7 @@ const StockPage: React.FC = () => {
   // translation mutation
   const [translateProducts] = useTranslateProductsMutation();
   const [generateSpecs] = useGenerateSpecsMutation();
+  const [toggleEcomStock] = useToggleEcomStockMutation();
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -677,6 +678,7 @@ const StockPage: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Ecomm Stock</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Catégorie</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantité</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unité</th>
@@ -752,6 +754,26 @@ const StockPage: React.FC = () => {
                       {product.designation}
                       {product.isVariantRow && <span className="ml-2 text-xs text-blue-600 font-normal">(Variante)</span>}
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                    {!product.isVariantRow && !product.est_service && (
+                      <input
+                        type="checkbox"
+                        checked={!!product.stock_partage_ecom}
+                        onChange={async (e) => {
+                          const enabled = e.target.checked;
+                          try {
+                            await toggleEcomStock({ id: product.id, enabled }).unwrap();
+                            showSuccess(enabled ? 'Publié + Stock max partagé sur E-com' : 'E-com désactivé');
+                          } catch (err) {
+                            console.error('Erreur toggle ecom stock:', err);
+                            showError('Erreur lors de la mise à jour');
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-600 rounded cursor-pointer"
+                        title={product.stock_partage_ecom ? `E-com actif: publié + stock partagé (${product.stock_partage_ecom_qty ?? 0} unités)` : 'Activer E-com (publier + stock max)'}
+                      />
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">

@@ -119,6 +119,8 @@ const BonsPage = () => {
   // Manager full access only for Commande & AvoirFournisseur
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
   const isManager = currentUser?.role === 'Manager';
+  // Employé ID 26: accès complet sur le tab Commande (créer, modifier, changer statut)
+  const isEmployee26CommandeOverride = isEmployee && currentUser?.id === 26 && currentTab === 'Commande';
   // ManagerPlus role value (not needed here currently)
   
   // Feature flag: show WhatsApp button only for PDG and Manager+
@@ -366,7 +368,8 @@ const BonsPage = () => {
       }
 
       // Employé: uniquement Annuler ou En attente, mais pas sur les bons déjà validés
-      if (isEmployee) {
+      // Exception: employé ID 26 a accès complet sur Commande
+      if (isEmployee && !isEmployee26CommandeOverride) {
         if (bon.statut === 'Validé') {
           showError("Permission refusée: l'employé ne peut pas modifier un bon déjà validé.");
           return;
@@ -1491,7 +1494,7 @@ const BonsPage = () => {
   };
 
   const handleDelete = async (bonToDelete: any) => {
-      if (isEmployee) {
+      if (isEmployee && !isEmployee26CommandeOverride) {
         showError("Permission refusée: l'employé ne peut pas supprimer un bon.");
         return;
       }
@@ -1762,9 +1765,9 @@ const BonsPage = () => {
                 );
               })()}
               <span className={`text-xs px-2 py-1 rounded ${
-                canModifyBons(currentUser) || isChefChauffeur ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                canModifyBons(currentUser) || isChefChauffeur || isEmployee26CommandeOverride ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
               }`}>
-                {canModifyBons(currentUser)
+                {canModifyBons(currentUser) || isEmployee26CommandeOverride
                   ? '✅ Peut modifier les bons'
                   : isChefChauffeur
                     ? '📝 Quantité/Statut seulement'
@@ -2471,7 +2474,7 @@ const BonsPage = () => {
                             if (bon.statut === 'Annulé') return null;
                             
                             const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
-                            const canOpenEditModal = canModifyBons(currentUser) || (isChefChauffeur && !isEcom);
+                            const canOpenEditModal = canModifyBons(currentUser) || isEmployee26CommandeOverride || (isChefChauffeur && !isEcom);
                             return canOpenEditModal ? (
                               <button
                                 onClick={() => {
@@ -2654,7 +2657,7 @@ const BonsPage = () => {
                                         </>
                                       );
                                     }
-                                    if (isEmployee) {
+                                    if (isEmployee && !isEmployee26CommandeOverride) {
                                       return (
                                         <>
                                           {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant' || currentTab === 'Devis') && bon.statut !== 'Validé' && (
@@ -3395,7 +3398,7 @@ const BonsPage = () => {
                     )}
                     {selectedBon.statut === 'Validé' && (
                       <>
-                        {(selectedBon.type !== 'Avoir' && selectedBon.type !== 'AvoirFournisseur') && !isEmployee && (
+                        {(selectedBon.type !== 'Avoir' && selectedBon.type !== 'AvoirFournisseur') && (!isEmployee || isEmployee26CommandeOverride) && (
                           <button
                             onClick={() => {
                               showSuccess('Bon marqué comme livré');
@@ -3406,7 +3409,7 @@ const BonsPage = () => {
                             Marquer comme livré
                           </button>
                         )}
-                        {(selectedBon.type === 'Avoir' || selectedBon.type === 'AvoirFournisseur') && !isEmployee && (
+                        {(selectedBon.type === 'Avoir' || selectedBon.type === 'AvoirFournisseur') && (!isEmployee || isEmployee26CommandeOverride) && (
                           <>
                             {/* Do not show cancel on validated bon; only allow putting back to waiting */}
                             <button
