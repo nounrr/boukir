@@ -439,6 +439,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                 <tr>
                   <th className="col-code">Code</th>
                   <th className="col-designation">Désignation</th>
+                  <th className="col-unite" style={{width:'auto', whiteSpace:'nowrap', textAlign:'center', borderLeft:'1px solid #000', fontSize:'12px'}}>Unité</th>
                   <th className="col-qte">Qté</th>
                   {priceMode === 'WITH_PRICES' ? (
                     <>
@@ -466,6 +467,15 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                     <tr key={getItemKey(it)}>
                       <td className="col-code">{it.product_id}</td>
                       <td className="col-designation">{it.designation || it.libelle || it.name || '-'}</td>
+                      <td className="col-unite" style={{textAlign:'center', whiteSpace:'nowrap', borderLeft:'1px solid #000', fontSize:'12px'}}>{(() => {
+                        const uid = it?.unit_id ?? it?.unite_id ?? it?.uniteId;
+                        const prod = findProductById(it?.product_id ?? it?.produit_id);
+                        if (uid && Array.isArray(prod?.units)) {
+                          const mu = prod.units.find((uu: any) => String(uu.id) === String(uid));
+                          if (mu?.unit_name) return mu.unit_name;
+                        }
+                        return prod?.base_unit || '';
+                      })()}</td>
                       <td className="col-qte">{q}</td>
                       {priceMode === 'WITH_PRICES' ? (
                         <>
@@ -483,6 +493,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   <tr key={key}>
                     <td className="col-code">&nbsp;</td>
                     <td className="col-designation">&nbsp;</td>
+                    <td className="col-unite">&nbsp;</td>
                     <td className="col-qte">&nbsp;</td>
                     {priceMode === 'WITH_PRICES' ? (
                       <>

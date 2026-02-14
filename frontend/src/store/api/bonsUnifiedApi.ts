@@ -85,18 +85,26 @@ export const bonsUnifiedApi = apiSlice.injectEndpoints({
         return result.data ? { data: result.data } : { error: result.error };
       },
       invalidatesTags: (_result, _error, { type }) => {
+        const tags: any[] = [
+          { type: 'Bon', id: 'LIST' },
+          { type: 'Product', id: 'LIST' },
+          'Contact',
+        ];
         switch (type) {
           case 'Commande':
-            return ['Commande'];
+            tags.push('Commande', { type: 'Commande', id: 'LIST' });
+            break;
           case 'Sortie':
-            return ['Sortie'];
+            tags.push('Sortie', { type: 'Sortie', id: 'LIST' });
+            break;
           case 'Comptant':
-            return ['Comptant'];
+            tags.push('Comptant', { type: 'Comptant', id: 'LIST' });
+            break;
           case 'Devis':
-            return ['Devis'];
-          default:
-            return [];
+            tags.push('Devis', { type: 'Devis', id: 'LIST' });
+            break;
         }
+        return tags;
       }
     }),
 
@@ -136,7 +144,12 @@ export const bonsUnifiedApi = apiSlice.injectEndpoints({
         return result.data ? { data: result.data } : { error: result.error };
       },
       invalidatesTags: (_result, _error, { id, type }) => {
-        const tags = [];
+        const tags: any[] = [
+          { type: 'Bon', id },
+          { type: 'Bon', id: 'LIST' },
+          { type: 'Product', id: 'LIST' },
+          'Contact',
+        ];
         switch (type) {
           case 'Commande':
             tags.push({ type: 'Commande', id }, 'Commande');
@@ -190,7 +203,12 @@ export const bonsUnifiedApi = apiSlice.injectEndpoints({
         return result.data ? { data: result.data } : { error: result.error };
       },
       invalidatesTags: (_result, _error, { id, type }) => {
-        const tags = [];
+        const tags: any[] = [
+          { type: 'Bon', id },
+          { type: 'Bon', id: 'LIST' },
+          { type: 'Product', id: 'LIST' },
+          'Contact',
+        ];
         switch (type) {
           case 'Commande':
             tags.push({ type: 'Commande', id }, 'Commande');
