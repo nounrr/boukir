@@ -98,48 +98,33 @@ const SINGLE_CONTACT_QUERY = `
               UNION ALL
               SELECT montant_total, statut FROM bons_comptant WHERE client_id = c.id
             ) v
-            WHERE LOWER(TRIM(v.statut)) IN ('validé','valide','en attente','pending')
+            WHERE LOWER(TRIM(v.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           + COALESCE((
             SELECT SUM(o.total_amount)
             FROM ecommerce_orders o
-            WHERE COALESCE(o.is_solde, 0) = 1
-              AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-              AND (
-                o.user_id = c.id
-                OR (
-                  c.telephone IS NOT NULL
-                  AND TRIM(c.telephone) <> ''
-                  AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c.telephone')}
-                )
-              )
+            WHERE LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
+              AND o.user_id = c.id
           ), 0)
           - COALESCE((
             SELECT SUM(p.montant_total)
             FROM payments p
             WHERE p.type_paiement = 'Client'
               AND p.contact_id = c.id
-              AND LOWER(TRIM(p.statut)) IN ('validé','valide','en attente','pending')
+              AND LOWER(TRIM(p.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
             SELECT SUM(ac.montant_total)
             FROM avoirs_client ac
             WHERE ac.client_id = c.id
-              AND LOWER(TRIM(ac.statut)) IN ('validé','valide','en attente','pending')
+            AND LOWER(TRIM(ac.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
             SELECT SUM(ae.montant_total)
             FROM avoirs_ecommerce ae
             LEFT JOIN ecommerce_orders o2 ON o2.id = ae.ecommerce_order_id
-            WHERE LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
-              AND (
-                o2.user_id = c.id
-                OR (
-                  c.telephone IS NOT NULL
-                  AND TRIM(c.telephone) <> ''
-                  AND ${phone9Sql('COALESCE(ae.customer_phone, o2.customer_phone)')} = ${phone9Sql('c.telephone')}
-                )
-              )
+            WHERE LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+              AND o2.user_id = c.id
           ), 0)
         WHEN c.type = 'Fournisseur' THEN
           COALESCE(c.solde, 0)
@@ -147,20 +132,20 @@ const SINGLE_CONTACT_QUERY = `
             SELECT SUM(bc.montant_total)
             FROM bons_commande bc
             WHERE bc.fournisseur_id = c.id
-              AND LOWER(TRIM(bc.statut)) IN ('validé','valide','en attente','pending')
+              AND LOWER(TRIM(bc.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
             SELECT SUM(pf.montant_total)
             FROM payments pf
             WHERE pf.type_paiement = 'Fournisseur'
               AND pf.contact_id = c.id
-              AND LOWER(TRIM(pf.statut)) IN ('validé','valide','en attente','pending')
+              AND LOWER(TRIM(pf.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
             SELECT SUM(af.montant_total)
             FROM avoirs_fournisseur af
             WHERE af.fournisseur_id = c.id
-              AND LOWER(TRIM(af.statut)) IN ('validé','valide','en attente','pending')
+              AND LOWER(TRIM(af.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
         ELSE COALESCE(c.solde, 0)
       END
@@ -187,14 +172,14 @@ router.get('/', async (req, res) => {
       solde_cumule: 'solde_cumule',
     };
     const sortExpr = sortMap[normalizedSortBy] || sortMap.nom_complet;
-    
+
     // Requête pour compter le total
     const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab, groupId });
     const countQuery = `SELECT COUNT(*) as total FROM contacts c${countWhereSql}`;
-    
+
     const [countResult] = await pool.execute(countQuery, countParams);
     const total = countResult[0].total;
-    
+
     let query = `
       SELECT 
         c.*,
@@ -213,11 +198,11 @@ router.get('/', async (req, res) => {
           SELECT client_id, montant_total, statut FROM bons_comptant
         ) vc
         WHERE vc.client_id IS NOT NULL
-        AND LOWER(TRIM(vc.statut)) IN ('validé','valide','en attente','pending')
+        AND LOWER(TRIM(vc.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY client_id
       ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
 
-      -- Ventes e-commerce (bons ecommerce): inclure seulement les commandes en solde (is_solde = 1), même si payées
+      -- Ventes e-commerce (bons ecommerce): inclure toutes les commandes (sauf annulées/remboursées)
       -- Montant pris = total_amount
       LEFT JOIN (
         SELECT
@@ -225,16 +210,8 @@ router.get('/', async (req, res) => {
           SUM(o.total_amount) AS total_ventes
         FROM ecommerce_orders o
         INNER JOIN contacts c_link
-          ON (
-            o.user_id = c_link.id
-            OR (
-              c_link.telephone IS NOT NULL
-              AND TRIM(c_link.telephone) <> ''
-              AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c_link.telephone')}
-            )
-          )
+          ON o.user_id = c_link.id
         WHERE c_link.type = 'Client'
-          AND COALESCE(o.is_solde, 0) = 1
           AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
         GROUP BY c_link.id
       ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
@@ -244,7 +221,7 @@ router.get('/', async (req, res) => {
         SELECT fournisseur_id, SUM(montant_total) AS total_achats
         FROM bons_commande
         WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY fournisseur_id
       ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
 
@@ -253,7 +230,7 @@ router.get('/', async (req, res) => {
         SELECT contact_id, SUM(montant_total) AS total_paiements
         FROM payments
         WHERE type_paiement = 'Client'
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY contact_id
       ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
 
@@ -262,7 +239,7 @@ router.get('/', async (req, res) => {
         SELECT contact_id, SUM(montant_total) AS total_paiements
         FROM payments
         WHERE type_paiement = 'Fournisseur'
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY contact_id
       ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
 
@@ -270,7 +247,7 @@ router.get('/', async (req, res) => {
       LEFT JOIN (
         SELECT client_id, SUM(montant_total) AS total_avoirs
         FROM avoirs_client
-        WHERE LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY client_id
       ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
 
@@ -282,16 +259,9 @@ router.get('/', async (req, res) => {
         FROM avoirs_ecommerce ae
         LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
         INNER JOIN contacts c_link
-          ON (
-            o.user_id = c_link.id
-            OR (
-              c_link.telephone IS NOT NULL
-              AND TRIM(c_link.telephone) <> ''
-              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ${phone9Sql('c_link.telephone')}
-            )
-          )
+          ON o.user_id = c_link.id
         WHERE c_link.type = 'Client'
-          AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
+          AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY c_link.id
       ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
 
@@ -299,7 +269,7 @@ router.get('/', async (req, res) => {
       LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
         FROM avoirs_fournisseur
-        WHERE LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY fournisseur_id
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
     `;
@@ -308,11 +278,15 @@ router.get('/', async (req, res) => {
     query += whereSql;
     // IMPORTANT: ordering must be done in SQL to keep pagination correct.
     // Use a whitelist to prevent SQL injection.
+    // IMPORTANT: always group contacts with the same group_id together so that
+    // paginated results never split a group's members across different pages.
+    // Contacts without a group (group_id IS NULL) sort after grouped ones.
+    const groupPrefix = 'CASE WHEN c.group_id IS NOT NULL THEN 0 ELSE 1 END, c.group_id';
     if (sortExpr === 'solde_cumule') {
-      query += ` ORDER BY solde_cumule ${normalizedSortDir}, c.id ${normalizedSortDir}`;
+      query += ` ORDER BY ${groupPrefix}, solde_cumule ${normalizedSortDir}, c.id ${normalizedSortDir}`;
     } else {
       // Use COALESCE to keep NULLs stable
-      query += ` ORDER BY COALESCE(${sortExpr}, '') ${normalizedSortDir}, c.id ${normalizedSortDir}`;
+      query += ` ORDER BY ${groupPrefix}, COALESCE(${sortExpr}, '') ${normalizedSortDir}, c.id ${normalizedSortDir}`;
     }
     query += ' LIMIT ?, ?';
     params.push(offset, parseInt(limit));
@@ -320,28 +294,28 @@ router.get('/', async (req, res) => {
     // NOTE: MySQL/MariaDB prepared statements may fail with LIMIT placeholders.
     // Use pool.query (text protocol) to allow `LIMIT ?, ?`.
     const [rows] = await pool.query(query, params);
-    
+
     console.log(`=== CONTACTS RÉCUPÉRÉS (PAGINÉS) ===`);
     console.log(`Page: ${page}, Limit: ${limit}, Total: ${total}`);
     console.log(`Résultats: ${rows.length} contacts`);
     console.log(`Type filter: ${type || 'Tous'}`);
-    
+
     // Convertir solde_cumule en nombre pour éviter les problèmes de type
     const processedRows = rows.map(row => ({
       ...row,
       solde_cumule: Number(row.solde_cumule || 0)
     }));
-    
+
     processedRows.forEach((contact, index) => {
       if (index < 10) { // Afficher les 10 premiers pour debug
         console.log(`${index + 1}. ID: ${contact.id}, Nom: ${contact.nom_complet}, Type: ${contact.type}, Solde initial: ${contact.solde}, Solde cumulé: ${contact.solde_cumule}`);
       }
     });
-    
+
     if (processedRows.length > 10) {
       console.log(`... et ${processedRows.length - 10} autres contacts`);
     }
-    
+
     // Retourner les données avec métadonnées de pagination
     res.json({
       data: processedRows,
@@ -387,7 +361,7 @@ router.get('/summary', async (req, res) => {
           SELECT client_id, montant_total, statut FROM bons_comptant
         ) vc
         WHERE vc.client_id IS NOT NULL
-        AND LOWER(TRIM(vc.statut)) IN ('validé','valide','en attente','pending')
+        AND LOWER(TRIM(vc.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY client_id
       ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
 
@@ -397,16 +371,8 @@ router.get('/summary', async (req, res) => {
           SUM(o.total_amount) AS total_ventes
         FROM ecommerce_orders o
         INNER JOIN contacts c_link
-          ON (
-            o.user_id = c_link.id
-            OR (
-              c_link.telephone IS NOT NULL
-              AND TRIM(c_link.telephone) <> ''
-              AND ${phone9Sql('o.customer_phone')} = ${phone9Sql('c_link.telephone')}
-            )
-          )
+          ON o.user_id = c_link.id
         WHERE c_link.type = 'Client'
-          AND COALESCE(o.is_solde, 0) = 1
           AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
         GROUP BY c_link.id
       ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
@@ -415,7 +381,7 @@ router.get('/summary', async (req, res) => {
         SELECT fournisseur_id, SUM(montant_total) AS total_achats
         FROM bons_commande
         WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
         GROUP BY fournisseur_id
       ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
 
@@ -423,7 +389,7 @@ router.get('/summary', async (req, res) => {
         SELECT contact_id, SUM(montant_total) AS total_paiements
         FROM payments
         WHERE type_paiement = 'Client'
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
         GROUP BY contact_id
       ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
 
@@ -431,14 +397,14 @@ router.get('/summary', async (req, res) => {
         SELECT contact_id, SUM(montant_total) AS total_paiements
         FROM payments
         WHERE type_paiement = 'Fournisseur'
-          AND LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
         GROUP BY contact_id
       ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
 
       LEFT JOIN (
         SELECT client_id, SUM(montant_total) AS total_avoirs
         FROM avoirs_client
-        WHERE LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
         GROUP BY client_id
       ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
 
@@ -449,14 +415,7 @@ router.get('/summary', async (req, res) => {
         FROM avoirs_ecommerce ae
         LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
         INNER JOIN contacts c_link
-          ON (
-            o.user_id = c_link.id
-            OR (
-              c_link.telephone IS NOT NULL
-              AND TRIM(c_link.telephone) <> ''
-              AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ${phone9Sql('c_link.telephone')}
-            )
-          )
+          ON o.user_id = c_link.id
         WHERE c_link.type = 'Client'
           AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
         GROUP BY c_link.id
@@ -465,7 +424,7 @@ router.get('/summary', async (req, res) => {
       LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
         FROM avoirs_fournisseur
-        WHERE LOWER(TRIM(statut)) IN ('validé','valide','en attente','pending')
+        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
         GROUP BY fournisseur_id
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
       ${whereSql}
@@ -485,7 +444,7 @@ router.get('/summary', async (req, res) => {
   }
 });
 
-// GET /api/contacts/debug-solde?user_id=477
+// GET /api/contacts/debug-solde?user_id=314
 // Debug endpoint: returns detailed breakdown of what contributes to solde_cumule
 router.get('/debug-solde', async (req, res) => {
   try {
@@ -495,7 +454,7 @@ router.get('/debug-solde', async (req, res) => {
       return res.status(400).json({ error: 'user_id must be a positive number' });
     }
 
-    const allowedStatuts = ['validé', 'valide', 'en attente', 'pending'];
+    const excludedStatuts = ['annulé', 'annule', 'supprimé', 'supprime'];
 
     const [[contact]] = await pool.execute(
       `SELECT id, type, nom_complet, societe, solde, source, telephone, created_at
@@ -521,9 +480,9 @@ router.get('/debug-solde', async (req, res) => {
          FROM bons_comptant
          WHERE client_id = ?
        ) x
-       WHERE LOWER(TRIM(x.statut)) IN (${allowedStatuts.map(() => '?').join(',')})
+       WHERE LOWER(TRIM(x.statut)) NOT IN (${excludedStatuts.map(() => '?').join(',')})
        ORDER BY date_creation`,
-      [userId, userId, ...allowedStatuts]
+      [userId, userId, ...excludedStatuts]
     );
 
     const ventesBoTotal = ventesBoRows.reduce((acc, r) => acc + Number(r.montant_total || 0), 0);
@@ -545,27 +504,19 @@ router.get('/debug-solde', async (req, res) => {
          created_at,
          total_amount AS amount_counted
        FROM ecommerce_orders
-       WHERE (
-         user_id = ?
-         OR (
-           ? <> ''
-           AND ${phone9Sql('customer_phone')} = ?
-         )
-       )
+       WHERE user_id = ?
        ORDER BY created_at`,
-      [userId, contactPhone9, contactPhone9]
+      [userId]
     );
 
     const excludedOrderStatuses = new Set(['cancelled', 'refunded']);
     const allEcomOrdersRows = allEcomOrdersRaw.map((r) => {
       const statusNorm = String(r?.status ?? '').toLowerCase().trim();
-      const isSolde = Number(r?.is_solde || 0) === 1;
       const isExcludedStatus = excludedOrderStatuses.has(statusNorm);
-      const included = isSolde && !isExcludedStatus;
+      const included = !isExcludedStatus;
 
       let reason = 'included';
-      if (!isSolde) reason = 'excluded: is_solde != 1';
-      else if (isExcludedStatus) reason = `excluded: status=${statusNorm}`;
+      if (isExcludedStatus) reason = `excluded: status=${statusNorm}`;
 
       const amountCounted = Number(r?.amount_counted || 0);
       return {
@@ -584,9 +535,9 @@ router.get('/debug-solde', async (req, res) => {
        FROM payments
        WHERE type_paiement = 'Client'
          AND contact_id = ?
-         AND LOWER(TRIM(statut)) IN (${allowedStatuts.map(() => '?').join(',')})
+         AND LOWER(TRIM(statut)) NOT IN (${excludedStatuts.map(() => '?').join(',')})
        ORDER BY date_paiement`,
-      [userId, ...allowedStatuts]
+      [userId, ...excludedStatuts]
     );
 
     const paymentsTotal = paymentsRows.reduce((acc, r) => acc + Number(r.montant_total || 0), 0);
@@ -596,9 +547,9 @@ router.get('/debug-solde', async (req, res) => {
       `SELECT id, montant_total, statut, date_creation
        FROM avoirs_client
        WHERE client_id = ?
-         AND LOWER(TRIM(statut)) IN (${allowedStatuts.map(() => '?').join(',')})
+         AND LOWER(TRIM(statut)) NOT IN (${excludedStatuts.map(() => '?').join(',')})
        ORDER BY date_creation`,
-      [userId, ...allowedStatuts]
+      [userId, ...excludedStatuts]
     );
 
     const avoirsClientTotal = avoirsClientRows.reduce((acc, r) => acc + Number(r.montant_total || 0), 0);
@@ -622,15 +573,9 @@ router.get('/debug-solde', async (req, res) => {
        FROM avoirs_ecommerce ae
        LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
        WHERE LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
-         AND (
-           o.user_id = ?
-           OR (
-             ? <> ''
-             AND ${phone9Sql('COALESCE(ae.customer_phone, o.customer_phone)')} = ?
-           )
-         )
+         AND o.user_id = ?
        ORDER BY ae.created_at`,
-      [userId, contactPhone9, contactPhone9]
+      [userId]
     );
 
     const avoirsEcomTotal = avoirsEcomRows.reduce((acc, r) => acc + Number(r.montant_total || 0), 0);
@@ -740,8 +685,8 @@ router.get('/debug-solde', async (req, res) => {
 
     const soldeFinal = runningBalance;
 
-    if (userId === 477) {
-      console.log('--- DEBUG LEDGER FOR USER 477 ---');
+    if (userId === 314) {
+      console.log('--- DEBUG LEDGER FOR USER 314 ---');
       console.table(ledger.map(i => ({
         DATE: i.date ? new Date(i.date).toISOString().slice(0, 19).replace('T', ' ') : 'N/A',
         TYPE: i.type,
@@ -878,7 +823,7 @@ router.post('/', async (req, res) => {
       `INSERT INTO contacts 
        (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-  [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null)]
+      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null)]
     );
 
     // Optional: persist solde eligibility if column exists.
@@ -986,31 +931,31 @@ router.put('/:id', async (req, res) => {
     const updates = [];
     const params = [];
 
-  if (nom_complet !== undefined) { updates.push('nom_complet = ?'); params.push(nom_complet); }
-  if (prenom !== undefined) { updates.push('prenom = ?'); params.push(prenom); }
-  if (nom !== undefined) { updates.push('nom = ?'); params.push(nom); }
-  if (societe !== undefined) { updates.push('societe = ?'); params.push(societe); }
-    if (type !== undefined) { 
+    if (nom_complet !== undefined) { updates.push('nom_complet = ?'); params.push(nom_complet); }
+    if (prenom !== undefined) { updates.push('prenom = ?'); params.push(prenom); }
+    if (nom !== undefined) { updates.push('nom = ?'); params.push(nom); }
+    if (societe !== undefined) { updates.push('societe = ?'); params.push(societe); }
+    if (type !== undefined) {
       if (!['Client', 'Fournisseur'].includes(type)) {
         return res.status(400).json({ error: 'type must be either Client or Fournisseur' });
       }
-      updates.push('type = ?'); 
-      params.push(type); 
+      updates.push('type = ?');
+      params.push(type);
     }
-  if (type_compte !== undefined) { 
-    updates.push('type_compte = ?'); 
-    params.push(type_compte); 
-    if (type_compte === 'Artisan/Promoteur') {
-      updates.push('artisan_approuve = TRUE');
-      updates.push('demande_artisan = FALSE');
-      updates.push('artisan_approuve_le = NOW()');
-      updates.push('artisan_approuve_par = ?');
-      params.push(updated_by ?? null);
+    if (type_compte !== undefined) {
+      updates.push('type_compte = ?');
+      params.push(type_compte);
+      if (type_compte === 'Artisan/Promoteur') {
+        updates.push('artisan_approuve = TRUE');
+        updates.push('demande_artisan = FALSE');
+        updates.push('artisan_approuve_le = NOW()');
+        updates.push('artisan_approuve_par = ?');
+        params.push(updated_by ?? null);
+      }
     }
-  }
     if (telephone !== undefined) { updates.push('telephone = ?'); params.push(normalizeEmptyToNull(telephone)); }
     if (email !== undefined) { updates.push('email = ?'); params.push(normalizeEmptyToNull(email)); }
-  if (password !== undefined) { updates.push('password = ?'); params.push(password); }
+    if (password !== undefined) { updates.push('password = ?'); params.push(password); }
     if (adresse !== undefined) { updates.push('adresse = ?'); params.push(normalizeEmptyToNull(adresse)); }
     if (rib !== undefined) { updates.push('rib = ?'); params.push(normalizeEmptyToNull(rib)); }
     if (ice !== undefined) { updates.push('ice = ?'); params.push(normalizeEmptyToNull(ice)); }
@@ -1039,24 +984,24 @@ router.put('/:id', async (req, res) => {
         params.push(normalized ? 1 : 0);
       }
     }
-  if (demande_artisan !== undefined) { updates.push('demande_artisan = ?'); params.push(demande_artisan); }
-  if (artisan_approuve !== undefined) { updates.push('artisan_approuve = ?'); params.push(artisan_approuve); }
-  if (artisan_approuve_par !== undefined) { updates.push('artisan_approuve_par = ?'); params.push(artisan_approuve_par); }
-  if (artisan_approuve_le !== undefined) { updates.push('artisan_approuve_le = ?'); params.push(artisan_approuve_le); }
-  if (artisan_note_admin !== undefined) { updates.push('artisan_note_admin = ?'); params.push(artisan_note_admin); }
-  if (auth_provider !== undefined) { updates.push('auth_provider = ?'); params.push(auth_provider); }
-  if (google_id !== undefined) { updates.push('google_id = ?'); params.push(google_id); }
-  if (facebook_id !== undefined) { updates.push('facebook_id = ?'); params.push(facebook_id); }
-  if (provider_access_token !== undefined) { updates.push('provider_access_token = ?'); params.push(provider_access_token); }
-  if (provider_refresh_token !== undefined) { updates.push('provider_refresh_token = ?'); params.push(provider_refresh_token); }
-  if (provider_token_expires_at !== undefined) { updates.push('provider_token_expires_at = ?'); params.push(provider_token_expires_at); }
-  if (avatar_url !== undefined) { updates.push('avatar_url = ?'); params.push(avatar_url); }
-  if (email_verified !== undefined) { updates.push('email_verified = ?'); params.push(email_verified); }
-  if (source !== undefined) { updates.push('source = ?'); params.push(source); }
-  if (group_id !== undefined) {
-    updates.push('group_id = ?');
-    params.push(group_id === null || group_id === '' ? null : Number(group_id));
-  }
+    if (demande_artisan !== undefined) { updates.push('demande_artisan = ?'); params.push(demande_artisan); }
+    if (artisan_approuve !== undefined) { updates.push('artisan_approuve = ?'); params.push(artisan_approuve); }
+    if (artisan_approuve_par !== undefined) { updates.push('artisan_approuve_par = ?'); params.push(artisan_approuve_par); }
+    if (artisan_approuve_le !== undefined) { updates.push('artisan_approuve_le = ?'); params.push(artisan_approuve_le); }
+    if (artisan_note_admin !== undefined) { updates.push('artisan_note_admin = ?'); params.push(artisan_note_admin); }
+    if (auth_provider !== undefined) { updates.push('auth_provider = ?'); params.push(auth_provider); }
+    if (google_id !== undefined) { updates.push('google_id = ?'); params.push(google_id); }
+    if (facebook_id !== undefined) { updates.push('facebook_id = ?'); params.push(facebook_id); }
+    if (provider_access_token !== undefined) { updates.push('provider_access_token = ?'); params.push(provider_access_token); }
+    if (provider_refresh_token !== undefined) { updates.push('provider_refresh_token = ?'); params.push(provider_refresh_token); }
+    if (provider_token_expires_at !== undefined) { updates.push('provider_token_expires_at = ?'); params.push(provider_token_expires_at); }
+    if (avatar_url !== undefined) { updates.push('avatar_url = ?'); params.push(avatar_url); }
+    if (email_verified !== undefined) { updates.push('email_verified = ?'); params.push(email_verified); }
+    if (source !== undefined) { updates.push('source = ?'); params.push(source); }
+    if (group_id !== undefined) {
+      updates.push('group_id = ?');
+      params.push(group_id === null || group_id === '' ? null : Number(group_id));
+    }
     if (updated_by !== undefined) {
       const hasUpdatedBy = await columnExists('contacts', 'updated_by');
       if (hasUpdatedBy) {
@@ -1102,14 +1047,14 @@ router.put('/:id', async (req, res) => {
       ...(isProd
         ? {}
         : {
-            details: {
-              message: error?.message,
-              code: error?.code,
-              errno: error?.errno,
-              sqlState: error?.sqlState,
-              sqlMessage: error?.sqlMessage,
-            },
-          }),
+          details: {
+            message: error?.message,
+            code: error?.code,
+            errno: error?.errno,
+            sqlState: error?.sqlState,
+            sqlMessage: error?.sqlMessage,
+          },
+        }),
     });
   }
 });

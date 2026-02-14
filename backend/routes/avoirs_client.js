@@ -103,7 +103,7 @@ router.get('/:id', async (req, res) => {
     const r = rows[0];
     const data = {
       ...r,
-  numero: `AVC${String(r.id).padStart(2, '0')}`,
+      numero: `AVC${String(r.id).padStart(2, '0')}`,
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || [])
     };
 
@@ -143,9 +143,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       return res.status(400).json({ message: 'Champs requis manquants' });
     }
 
-    const cId  = client_id ?? null;
+    const cId = client_id ?? null;
     const lieu = lieu_chargement ?? null;
-    const st   = statut ?? 'En attente';
+    const st = statut ?? 'En attente';
 
     const [resAvoir] = await connection.execute(`
       INSERT INTO avoirs_client (
@@ -189,8 +189,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await applyStockDeltas(connection, deltas, req.user?.id ?? created_by ?? null);
     }
 
-  await connection.commit();
-  res.status(201).json({ message: 'Avoir client créé avec succès', id: avoirId, numero: finalNumero });
+    await connection.commit();
+    res.status(201).json({ message: 'Avoir client créé avec succès', id: avoirId, numero: finalNumero });
   } catch (error) {
     await connection.rollback();
     console.error('POST /avoirs_client error:', error);
@@ -286,9 +286,14 @@ router.put('/:id', async (req, res) => {
       isNotCalculated = oldBon.isNotCalculated;
     }
 
-    const cId  = client_id ?? null;
+    const cId = client_id ?? null;
     const lieu = lieu_chargement ?? null;
-    const st   = statut ?? null;
+    const st = statut ?? null;
+
+    // Recalculate strict total from items to ensure consistency
+    if (!isChefChauffeur && Array.isArray(items)) {
+      montant_total = items.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
+    }
 
     await connection.execute(`
       UPDATE avoirs_client SET
