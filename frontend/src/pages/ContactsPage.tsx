@@ -65,10 +65,11 @@ const ContactsPage: React.FC = () => {
   // DEV debug: call backend breakdown on page enter.
   // Usage: /contacts?debugSolde=314 (if omitted, defaults to 314 in DEV)
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
-
     const sp = new URLSearchParams(location.search);
-    const raw = sp.get('debugSolde') ?? sp.get('debugSoldeUserId') ?? '314';
+    const raw = sp.get('debugSolde') ?? sp.get('debugSoldeUserId') ?? (import.meta.env.DEV ? '314' : null);
+
+    // Allow debug in PROD only if specifically requested via URL (e.g. ?debugSolde=314)
+    if (!import.meta.env.DEV && !raw) return;
 
     const userId = Number(raw);
     if (!Number.isFinite(userId) || userId <= 0) return;
