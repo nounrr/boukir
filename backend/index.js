@@ -207,6 +207,15 @@ app.use((req, res, next) => {
   // Autoriser l'accès public aux endpoints e-commerce
   if (ECOMMERCE_PUBLIC_PREFIXES.some(prefix => req.path.startsWith(prefix))) return next();
 
+  // E-commerce orders: allow guest quote + guest checkout (POST only)
+  // Other /api/ecommerce/orders/* endpoints remain protected by verifyToken.
+  if (
+    req.method === 'POST' &&
+    (req.path === '/api/ecommerce/orders/quote' || req.path === '/api/ecommerce/orders')
+  ) {
+    return next();
+  }
+
   // Autoriser l'accès public en lecture seule (GET) pour certaines ressources
   if (req.method === 'GET' && PUBLIC_READONLY_PREFIXES.some(prefix => req.path.startsWith(prefix))) {
     return next();
@@ -282,7 +291,7 @@ app.use('/api/ecommerce/promo', optionalAuth, ecommercePromoRouter); // E-commer
 app.use('/api/ecommerce/pickup-locations', optionalAuth, ecommercePickupLocationsRouter); // E-commerce pickup locations (public)
 app.use('/api/ecommerce/cart', ecommerceCartRouter); // E-commerce cart (requires auth)
 app.use('/api/ecommerce/wishlist', ecommerceWishlistRouter); // E-commerce wishlist (requires auth)
-app.use('/api/ecommerce/orders', ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
+app.use('/api/ecommerce/orders', optionalAuth, ecommerceOrdersRouter); // E-commerce orders (supports guest checkout)
 
 // E-commerce homepage hero slides
 app.use('/api/hero-slides', optionalAuth, heroSlidesRouter); // Public (with optional auth)
