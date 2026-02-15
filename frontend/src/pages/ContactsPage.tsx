@@ -63,12 +63,13 @@ const ContactsPage: React.FC = () => {
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
   // DEV debug: call backend breakdown on page enter.
-  // Usage: /contacts?debugSolde=477 (if omitted, defaults to 477 in DEV)
+  // Usage: /contacts?debugSolde=314 (if omitted, defaults to 314 in DEV)
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
-
     const sp = new URLSearchParams(location.search);
-    const raw = sp.get('debugSolde') ?? sp.get('debugSoldeUserId') ?? '477';
+    const raw = sp.get('debugSolde') ?? sp.get('debugSoldeUserId') ?? (import.meta.env.DEV ? '314' : null);
+
+    // Allow debug in PROD only if specifically requested via URL (e.g. ?debugSolde=314)
+    if (!import.meta.env.DEV && !raw) return;
 
     const userId = Number(raw);
     if (!Number.isFinite(userId) || userId <= 0) return;
@@ -415,7 +416,7 @@ const ContactsPage: React.FC = () => {
     });
   }, [groupEditContacts, groupEditSearch, groupEditMode, groupMemberIdSet]);
 
-  // Data: bons + paiements (utilisés dans les calculs et le détail contact)
+  // Data: bons + paiements — RTK Query utilise le cache si déjà chargé, fetch seulement si cache vide
   const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
   const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
   const { data: devis = [] } = useGetBonsByTypeQuery('Devis');
@@ -526,7 +527,13 @@ const ContactsPage: React.FC = () => {
       for (const it of bonItems) {
         const prod = products.find((p) => p.id === it.product_id);
         const ref = prod ? String((prod as any).reference ?? prod.id) : String(it.product_id);
-        const des = prod ? (prod as any).designation : (it.designation || '');
+        let des = prod ? (prod as any).designation : (it.designation || '');
+        // Résoudre le nom de la variante
+        const vId = (it as any).variant_id ?? (it as any).variantId;
+        if (vId && prod) {
+          const variantObj = ((prod as any).variants || []).find((v: any) => String(v.id) === String(vId));
+          if (variantObj?.variant_name) des = `${des} - ${variantObj.variant_name}`;
+        }
         const prixUnit = Number(it.prix_unitaire ?? it.prix ?? 0) || 0;
 
         const remise_pourcentage = parseFloat(String(it.remise_pourcentage ?? (it as any).remise_pct ?? 0)) || 0;
@@ -694,7 +701,11 @@ const ContactsPage: React.FC = () => {
       const ecomAll = (ecommerceOrders || []).filter((b: any) => {
         const raw = (b as any)?.ecommerce_raw ?? (b as any);
         const uid = raw?.user_id != null ? Number(raw.user_id) : NaN;
-        return Number.isFinite(uid) && uid === contactId;
+        if (!(Number.isFinite(uid) && uid === contactId)) return false;
+        // Exclure les commandes annulées/remboursées (cohérent avec le backend)
+        const statusNorm = String(raw?.status ?? b?.statut ?? '').toLowerCase().trim();
+        if (statusNorm === 'cancelled' || statusNorm === 'refunded') return false;
+        return true;
       });
 
       // Bons e-commerce
@@ -881,7 +892,11 @@ const ContactsPage: React.FC = () => {
         const ecomAll = (ecommerceOrders || []).filter((b: any) => {
           const raw = (b as any)?.ecommerce_raw ?? (b as any);
           const uid = raw?.user_id != null ? Number(raw.user_id) : NaN;
-          return Number.isFinite(uid) && uid === contactId;
+          if (!(Number.isFinite(uid) && uid === contactId)) return false;
+          // Exclure les commandes annulées/remboursées (cohérent avec le backend)
+          const statusNorm = String(raw?.status ?? b?.statut ?? '').toLowerCase().trim();
+          if (statusNorm === 'cancelled' || statusNorm === 'refunded') return false;
+          return true;
         });
 
         const getEcomOrderDate = (b: any) => {
@@ -1597,7 +1612,13 @@ const ContactsPage: React.FC = () => {
           for (const it of bonItems) {
             const prod = products.find((p) => p.id === it.product_id);
             const ref = prod ? String(prod.reference ?? prod.id) : String(it.product_id);
-            const des = prod ? prod.designation : (it.designation || '');
+            let des = prod ? prod.designation : (it.designation || '');
+            // Résoudre le nom de la variante
+            const vId = (it as any).variant_id ?? (it as any).variantId;
+            if (vId && prod) {
+              const variantObj = ((prod as any).variants || []).find((v: any) => String(v.id) === String(vId));
+              if (variantObj?.variant_name) des = `${des} - ${variantObj.variant_name}`;
+            }
             const prixUnit = Number(it.prix_unitaire ?? it.prix ?? 0) || 0;
 
             const remise_pourcentage = parseFloat(String(it.remise_pourcentage ?? it.remise_pct ?? 0)) || 0;
@@ -4373,7 +4394,9 @@ const ContactsPage: React.FC = () => {
                       <div className="bg-white rounded-lg p-3 border flex-1">
                         <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
                         {(() => {
-                          const value = Number((selectedContact as any).solde_cumule ?? 0) || 0;
+                          // Utiliser la valeur calculée localement (finalSoldeNet) qui correspond
+                          // au dernier soldeCumulatif du tableau détail produits (source de vérité)
+                          const value = finalSoldeNet;
                           return (
                             <div className="space-y-1">
                               <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(2)} DH</p>

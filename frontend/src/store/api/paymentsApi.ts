@@ -1,7 +1,7 @@
 import { api } from './apiSlice';
 import type { Payment, CreatePaymentData } from '../../types';
 
-const paymentsApi = api.injectEndpoints({
+export const paymentsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getPayments: builder.query<Payment[], void>({
       query: () => ({ url: '/payments' }),

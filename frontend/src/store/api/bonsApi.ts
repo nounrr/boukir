@@ -162,39 +162,16 @@ export const bonsApi = api.injectEndpoints({
       },
       invalidatesTags: (_result, _error, bonData: any) => {
         const type = bonData.type as AnyBonType;
-        const tags: any[] = [{ type: 'Product', id: 'LIST' }]; // Invalider les produits pour mettre à jour le stock
-        
-        switch (type) {
-          case 'Commande':
-            tags.push({ type: 'Commande', id: 'LIST' });
-            break;
-          case 'Sortie':
-            tags.push({ type: 'Sortie', id: 'LIST' });
-            break;
-          case 'Comptant':
-            tags.push({ type: 'Comptant', id: 'LIST' });
-            break;
-          case 'Devis':
-            tags.push({ type: 'Devis', id: 'LIST' });
-            break;
-          case 'Avoir':
-            tags.push({ type: 'AvoirClient', id: 'LIST' });
-            break;
-          case 'AvoirFournisseur':
-            tags.push({ type: 'AvoirFournisseur', id: 'LIST' });
-            break;
-          case 'AvoirComptant':
-            tags.push({ type: 'AvoirComptant', id: 'LIST' });
-            break;
-          case 'AvoirEcommerce':
-            tags.push({ type: 'AvoirEcommerce', id: 'LIST' });
-            break;
-          case 'Vehicule':
-            tags.push({ type: 'Vehicule', id: 'LIST' });
-            break;
-        }
-        
-        return tags;
+        let actualTagType: any = type;
+        if (type === 'Avoir') actualTagType = 'AvoirClient';
+        else if (type === 'AvoirComptant') actualTagType = 'AvoirComptant';
+        else if (type === 'AvoirEcommerce') actualTagType = 'AvoirEcommerce';
+        return [
+          { type: actualTagType, id: 'LIST' },
+          { type: 'Bon', id: 'LIST' },
+          { type: 'Product', id: 'LIST' },
+          'Contact', // Solde cumulé dépend des bons
+        ];
       }
     }),
     
@@ -248,7 +225,8 @@ export const bonsApi = api.injectEndpoints({
           { type: actualTagType, id: 'LIST' },
           { type: 'Bon', id },
           { type: 'Bon', id: 'LIST' },
-          { type: 'Product', id: 'LIST' } // Invalider les produits pour mettre à jour le stock
+          { type: 'Product', id: 'LIST' },
+          'Contact',
         ];
       },
     }),
@@ -293,14 +271,17 @@ export const bonsApi = api.injectEndpoints({
         };
       },
       invalidatesTags: (_result, _error, { id, type }) => {
-  let tagType: any = type || 'Bon';
+        let tagType: any = type || 'Bon';
         if (type === 'Avoir') tagType = 'AvoirClient';
         else if ((type as any) === 'AvoirComptant') tagType = 'AvoirComptant';
         else if ((type as any) === 'AvoirEcommerce') tagType = 'AvoirEcommerce';
         return [
           { type: tagType, id },
           { type: tagType, id: 'LIST' },
-          { type: 'Product', id: 'LIST' } // Invalider les produits pour mettre à jour le stock
+          { type: 'Bon', id },
+          { type: 'Bon', id: 'LIST' },
+          { type: 'Product', id: 'LIST' },
+          'Contact',
         ];
       },
     }),
@@ -356,7 +337,8 @@ export const bonsApi = api.injectEndpoints({
           { type: actualTagType, id: 'LIST' },
           { type: 'Bon', id },
           { type: 'Bon', id: 'LIST' },
-          { type: 'Product', id: 'LIST' } // Invalider les produits pour mettre à jour le stock et prix
+          { type: 'Product', id: 'LIST' },
+          'Contact', // Solde cumulé dépend du statut des bons
         ];
       },
     }),
@@ -374,6 +356,9 @@ export const bonsApi = api.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'Ecommerce', id },
         { type: 'Ecommerce', id: 'LIST' },
+        { type: 'Bon', id: 'LIST' },
+        { type: 'Product', id: 'LIST' },
+        'Contact',
       ],
     }),
 
@@ -390,6 +375,7 @@ export const bonsApi = api.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'Ecommerce', id },
         { type: 'Ecommerce', id: 'LIST' },
+        { type: 'Bon', id: 'LIST' },
       ],
     }),
 
@@ -414,16 +400,17 @@ export const bonsApi = api.injectEndpoints({
       }),
       // Invalidate lists so UI refreshes without full reload
       invalidatesTags: () => [
-        // Object LIST tags for endpoints that use id-based providesTags
         { type: 'Devis', id: 'LIST' },
         { type: 'Sortie', id: 'LIST' },
         { type: 'Comptant', id: 'LIST' },
         { type: 'Commande', id: 'LIST' },
-        // Simple string tags for endpoints that provide only the type
+        { type: 'Bon', id: 'LIST' },
+        { type: 'Product', id: 'LIST' },
         'Devis',
         'Sortie',
         'Comptant',
         'Commande',
+        'Contact',
       ],
     }),
 
@@ -449,12 +436,17 @@ export const bonsApi = api.injectEndpoints({
         }
         return { url: endpoint, method: 'POST', body: { created_by } };
       },
-      invalidatesTags: (_result, _error, { type }) => {
-        const tags: any[] = [];
+      invalidatesTags: (_result, _error, { id, type }) => {
+        const tags: any[] = [
+          { type: 'Bon', id },
+          { type: 'Bon', id: 'LIST' },
+          { type: 'Product', id: 'LIST' },
+          'Contact',
+        ];
         // Invalidate source list and avoirs list
-        if (type === 'Sortie') tags.push({ type: 'Sortie', id: 'LIST' }, { type: 'AvoirClient', id: 'LIST' });
-        if (type === 'Comptant') tags.push({ type: 'Comptant', id: 'LIST' }, { type: 'AvoirClient', id: 'LIST' });
-        if (type === 'Commande') tags.push({ type: 'Commande', id: 'LIST' }, { type: 'AvoirFournisseur', id: 'LIST' });
+        if (type === 'Sortie') tags.push({ type: 'Sortie', id: 'LIST' }, { type: 'Sortie', id }, { type: 'AvoirClient', id: 'LIST' });
+        if (type === 'Comptant') tags.push({ type: 'Comptant', id: 'LIST' }, { type: 'Comptant', id }, { type: 'AvoirClient', id: 'LIST' });
+        if (type === 'Commande') tags.push({ type: 'Commande', id: 'LIST' }, { type: 'Commande', id }, { type: 'AvoirFournisseur', id: 'LIST' });
         return tags;
       },
     }),

@@ -1787,5 +1787,27 @@ router.patch('/:id/stock', async (req, res, next) => {
     res.json({ ...r, categories, gallery, reference: String(r.id) });
   } catch (err) { next(err); }
 });
+// Toggle ecom stock (checkbox from stock page)
+// When enabled: ecom_published = 1, stock_partage_ecom = 1, stock_partage_ecom_qty = quantite (max stock)
+// When disabled: ecom_published = 0, stock_partage_ecom = 0, stock_partage_ecom_qty = 0
+router.patch('/:id/ecom-stock', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { enabled } = req.body;
+    const [exists] = await pool.query('SELECT id, quantite FROM products WHERE id = ? AND is_deleted = 0', [id]);
+    if (exists.length === 0) return res.status(404).json({ message: 'Produit introuvable' });
 
+    const product = exists[0];
+    const isEnabled = enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
+    const shareQty = isEnabled ? Number(product.quantite || 0) : 0;
+    const now = new Date();
+
+    await pool.query(
+      'UPDATE products SET ecom_published = ?, stock_partage_ecom = ?, stock_partage_ecom_qty = ?, updated_at = ? WHERE id = ?',
+      [isEnabled ? 1 : 0, isEnabled ? 1 : 0, shareQty, now, id]
+    );
+
+    res.json({ id, ecom_published: isEnabled, stock_partage_ecom: isEnabled, stock_partage_ecom_qty: shareQty });
+  } catch (err) { next(err); }
+});
 export default router;

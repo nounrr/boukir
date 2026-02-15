@@ -381,6 +381,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
             <tr className="bg-orange-500 text-white">
               <th className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-left font-semibold ${textSizes.tableHeader} whitespace-nowrap w-[1%]`}>CODE</th>
               <th className={`product-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-left font-semibold ${textSizes.tableHeader}`}>Article</th>
+              <th className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center font-semibold ${textSizes.tableHeader} whitespace-nowrap w-[1%]`}>Unité</th>
               {printMode !== 'PRODUCTS_ONLY' && (
                 <th className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center font-semibold ${textSizes.tableHeader}`}>Qté</th>
               )}
@@ -431,6 +432,14 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                 if (vFound && vFound.variant_name) variantName = String(vFound.variant_name);
               }
               const designationText = variantName ? `${item.designation || ''} - ${variantName}` : (item.designation || '');
+              // Resolve unit name
+              const itemUnitId = item?.unit_id ?? item?.unite_id ?? item?.uniteId;
+              const itemProduct = findProductById(productId);
+              let unitLabel = itemProduct?.base_unit || '';
+              if (itemUnitId && Array.isArray(itemProduct?.units)) {
+                const matchedUnit = itemProduct.units.find((uu: any) => String(uu.id) === String(itemUnitId));
+                if (matchedUnit?.unit_name) unitLabel = matchedUnit.unit_name;
+              }
               return (
                 <tr key={rowKey} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                   <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} ${textSizes.tableCell} text-gray-700`}>{productId}</td>
@@ -440,6 +449,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                       <div className={`${textSizes.small} text-gray-600 italic`}>{item.description}</div>
                     )}
                   </td>
+                  <td className={`num-cell border border-gray-300 ${isA5 ? 'px-1 py-1' : 'px-2 py-2'} text-center ${textSizes.tableCell} text-gray-700`}>{unitLabel}</td>
                   {printMode !== 'PRODUCTS_ONLY' && (
                     <td className={`num-cell border border-gray-300 ${isA5 ? 'px-2 py-1' : 'px-3 py-2'} text-center ${textSizes.tableCell}`}>{quantite}</td>
                   )}
