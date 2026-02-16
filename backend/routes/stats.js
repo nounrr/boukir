@@ -430,14 +430,19 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const selectedDate = String(req.params.date || '');
     if (!selectedDate) return res.status(400).json({ message: 'Missing date' });
 
+    // Ensure consistent collations across UNION queries.
+    // Some tables/columns may be utf8mb4 while connection literals default to another collation,
+    // which can trigger: "Illegal mix of collations for operation 'UNION'".
+    const UNION_COLLATION = 'utf8mb4_unicode_ci';
+
     const commonParams = [selectedDate];
 
     const ventesLinesSql = `
-      SELECT 'Comptant' AS bonType,
+          SELECT ('Comptant' COLLATE ${UNION_COLLATION}) AS bonType,
              bc.id AS bonId,
-             CONCAT('COM', LPAD(bc.id, 2, '0')) AS bonNumero,
+            (CONCAT('COM', LPAD(bc.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              bc.montant_total AS totalBon,
-             p.designation AS designation,
+            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              ci.quantite AS quantite,
              ci.prix_unitaire AS prix_unitaire,
              p.cout_revient AS cout_revient,
@@ -456,11 +461,11 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
 
       UNION ALL
 
-      SELECT 'Sortie' AS bonType,
+            SELECT ('Sortie' COLLATE ${UNION_COLLATION}) AS bonType,
              bs.id AS bonId,
-             CONCAT('SOR', LPAD(bs.id, 2, '0')) AS bonNumero,
+              (CONCAT('SOR', LPAD(bs.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              bs.montant_total AS totalBon,
-             p.designation AS designation,
+              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              si.quantite AS quantite,
              si.prix_unitaire AS prix_unitaire,
              p.cout_revient AS cout_revient,
@@ -479,11 +484,11 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
 
       UNION ALL
 
-      SELECT 'Ecommerce' AS bonType,
+            SELECT ('Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
              o.id AS bonId,
-             COALESCE(o.order_number, CONCAT('ECOM', LPAD(o.id, 2, '0'))) AS bonNumero,
+              (COALESCE(o.order_number, CONCAT('ECOM', LPAD(o.id, 2, '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
              o.total_amount AS totalBon,
-             COALESCE(oi.product_name, p.designation) AS designation,
+              (COALESCE(oi.product_name, p.designation) COLLATE ${UNION_COLLATION}) AS designation,
              oi.quantity AS quantite,
              oi.unit_price AS prix_unitaire,
              p.cout_revient AS cout_revient,
@@ -501,11 +506,11 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     `;
 
     const avoirsLinesSql = `
-      SELECT 'Avoir' AS bonType,
+          SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
              ac.id AS bonId,
-             CONCAT('AVC', LPAD(ac.id, 2, '0')) AS bonNumero,
+            (CONCAT('AVC', LPAD(ac.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              ac.montant_total AS totalBon,
-             p.designation AS designation,
+            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              ai.quantite AS quantite,
              ai.prix_unitaire AS prix_unitaire,
              p.cout_revient AS cout_revient,
@@ -524,11 +529,11 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
 
       UNION ALL
 
-      SELECT 'Avoir' AS bonType,
+            SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
              ac2.id AS bonId,
-             CONCAT('AVCC', LPAD(ac2.id, 2, '0')) AS bonNumero,
+              (CONCAT('AVCC', LPAD(ac2.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              ac2.montant_total AS totalBon,
-             p.designation AS designation,
+              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              ai2.quantite AS quantite,
              ai2.prix_unitaire AS prix_unitaire,
              p.cout_revient AS cout_revient,
@@ -547,11 +552,11 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
 
       UNION ALL
 
-      SELECT 'Avoir Ecommerce' AS bonType,
+            SELECT ('Avoir Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
              ae.id AS bonId,
-             COALESCE(ae.order_number, CONCAT('AWE', LPAD(ae.id, 2, '0'))) AS bonNumero,
+              (COALESCE(ae.order_number, CONCAT('AWE', LPAD(ae.id, 2, '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
              ae.montant_total AS totalBon,
-             p.designation AS designation,
+              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              i.quantite AS quantite,
              i.prix_unitaire AS prix_unitaire,
              p.cout_revient AS cout_revient,
@@ -570,11 +575,11 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     `;
 
     const commandesLinesSql = `
-      SELECT 'Commande' AS bonType,
+          SELECT ('Commande' COLLATE ${UNION_COLLATION}) AS bonType,
              bcmd.id AS bonId,
-             CONCAT('CMD', LPAD(bcmd.id, 2, '0')) AS bonNumero,
+            (CONCAT('CMD', LPAD(bcmd.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              bcmd.montant_total AS totalBon,
-             p.designation AS designation,
+            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              ci.quantite AS quantite,
              ci.prix_unitaire AS prix_unitaire,
              NULL AS cout_revient,
@@ -594,7 +599,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
 
     const vehiculeSql = `
       SELECT bv.id AS bonId,
-             CONCAT('VEH', LPAD(bv.id, 2, '0')) AS bonNumero,
+             (CONCAT('VEH', LPAD(bv.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              bv.montant_total AS totalBon
       FROM bons_vehicule bv
             WHERE LOWER(TRIM(COALESCE(bv.statut, ''))) IN ${VALID_STATUSES_SQL}
