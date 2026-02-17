@@ -104,13 +104,15 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(bs.date_creation) AS day,
                bs.id AS bon_id,
                bs.montant_total AS totalBon,
-               COALESCE(SUM((si.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((si.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * si.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(si.remise_montant, 0) * si.quantite), 0) AS remiseBon,
                1 AS bonCount
         FROM bons_sortie bs
         LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
         LEFT JOIN products p ON p.id = si.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
+        LEFT JOIN product_units pu ON pu.id = si.unit_id
         WHERE LOWER(TRIM(COALESCE(bs.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(bs.isNotCalculated, 0) <> 1
           ${sortieFilter.sql}
@@ -121,13 +123,15 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(bc.date_creation) AS day,
                bc.id AS bon_id,
                bc.montant_total AS totalBon,
-               COALESCE(SUM((ci.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ci.quantite - (COALESCE(ci.remise_montant, 0) * ci.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((ci.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ci.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite - (COALESCE(ci.remise_montant, 0) * ci.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ci.remise_montant, 0) * ci.quantite), 0) AS remiseBon,
                1 AS bonCount
         FROM bons_comptant bc
         LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
         LEFT JOIN products p ON p.id = ci.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
+        LEFT JOIN product_units pu ON pu.id = ci.unit_id
         WHERE LOWER(TRIM(COALESCE(bc.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(bc.isNotCalculated, 0) <> 1
           ${comptantFilter.sql}
@@ -138,13 +142,15 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(o.created_at) AS day,
                o.id AS bon_id,
                o.total_amount AS totalBon,
-               COALESCE(SUM((oi.unit_price - COALESCE(p.cout_revient, p.prix_achat, 0)) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
-               COALESCE(SUM((oi.unit_price - COALESCE(p.cout_revient, p.prix_achat, 0)) * oi.quantity), 0) AS profitBrutBon,
+               COALESCE(SUM((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
+               COALESCE(SUM((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(oi.remise_amount, 0)), 0) AS remiseBon,
                1 AS bonCount
         FROM ecommerce_orders o
         LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
         LEFT JOIN products p ON p.id = oi.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = oi.product_snapshot_id
+        LEFT JOIN product_units pu ON pu.id = oi.unit_id
         WHERE LOWER(COALESCE(o.status, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}
           ${buildDateFilter(filterArgs, 'o', 'created_at').sql}
         GROUP BY o.id, day
@@ -163,12 +169,14 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(ac.date_creation) AS day,
                ac.id AS bon_id,
                ac.montant_total AS totalBon,
-               COALESCE(SUM((ai.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai.quantite - (COALESCE(ai.remise_montant, 0) * ai.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((ai.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite - (COALESCE(ai.remise_montant, 0) * ai.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ai.remise_montant, 0) * ai.quantite), 0) AS remiseBon
         FROM avoirs_client ac
         LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
         LEFT JOIN products p ON p.id = ai.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
+        LEFT JOIN product_units pu ON pu.id = ai.unit_id
         WHERE LOWER(TRIM(COALESCE(ac.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(ac.isNotCalculated, 0) <> 1
           ${avoirClientFilter.sql}
@@ -188,12 +196,14 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(ac2.date_creation) AS day,
                ac2.id AS bon_id,
                ac2.montant_total AS totalBon,
-               COALESCE(SUM((ai2.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai2.quantite - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((ai2.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai2.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ai2.remise_montant, 0) * ai2.quantite), 0) AS remiseBon
         FROM avoirs_comptant ac2
         LEFT JOIN avoir_comptant_items ai2 ON ai2.avoir_comptant_id = ac2.id
         LEFT JOIN products p ON p.id = ai2.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = ai2.product_snapshot_id
+        LEFT JOIN product_units pu ON pu.id = ai2.unit_id
         WHERE LOWER(TRIM(COALESCE(ac2.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(ac2.isNotCalculated, 0) <> 1
           ${avoirComptantFilter.sql}
@@ -213,12 +223,14 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(ae.date_creation) AS day,
                ae.id AS bon_id,
                ae.montant_total AS totalBon,
-               COALESCE(SUM((i.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * i.quantite - (COALESCE(i.remise_montant, 0) * i.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((i.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * i.quantite), 0) AS profitBrutBon,
+               COALESCE(SUM((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite - (COALESCE(i.remise_montant, 0) * i.quantite)), 0) AS profitNetBon,
+               COALESCE(SUM((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(i.remise_montant, 0) * i.quantite), 0) AS remiseBon
         FROM avoirs_ecommerce ae
         LEFT JOIN avoir_ecommerce_items i ON i.avoir_ecommerce_id = ae.id
         LEFT JOIN products p ON p.id = i.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = i.product_snapshot_id
+        LEFT JOIN product_units pu ON pu.id = i.unit_id
         WHERE LOWER(TRIM(COALESCE(ae.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(ae.isNotCalculated, 0) <> 1
           ${buildDateFilter(filterArgs, 'ae').sql}
@@ -438,137 +450,149 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const commonParams = [selectedDate];
 
     const ventesLinesSql = `
-          SELECT ('Comptant' COLLATE ${UNION_COLLATION}) AS bonType,
+      SELECT ('Comptant' COLLATE ${UNION_COLLATION}) AS bonType,
              bc.id AS bonId,
-            (CONCAT('COM', LPAD(bc.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+            (CONCAT('COM', LPAD(bc.id, GREATEST(LENGTH(bc.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              bc.montant_total AS totalBon,
             (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              ci.quantite AS quantite,
              ci.prix_unitaire AS prix_unitaire,
-             p.cout_revient AS cout_revient,
-             p.prix_achat AS prix_achat,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
              (ci.prix_unitaire * ci.quantite) AS montant_ligne,
-             ((ci.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ci.quantite) AS profitBrut,
+             ((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite) AS profitBrut,
              COALESCE(ci.remise_montant, 0) AS remise_unitaire,
              (COALESCE(ci.remise_montant, 0) * ci.quantite) AS remise_total,
-             (((ci.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ci.quantite) - (COALESCE(ci.remise_montant, 0) * ci.quantite)) AS profit
+             (((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite) - (COALESCE(ci.remise_montant, 0) * ci.quantite)) AS profit
       FROM bons_comptant bc
       LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
       LEFT JOIN products p ON p.id = ci.product_id
+      LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
+      LEFT JOIN product_units pu ON pu.id = ci.unit_id
       WHERE LOWER(TRIM(COALESCE(bc.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bc.isNotCalculated, 0) <> 1
         AND DATE(bc.date_creation) = ?
 
       UNION ALL
 
-            SELECT ('Sortie' COLLATE ${UNION_COLLATION}) AS bonType,
+      SELECT ('Sortie' COLLATE ${UNION_COLLATION}) AS bonType,
              bs.id AS bonId,
-              (CONCAT('SOR', LPAD(bs.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+            (CONCAT('SOR', LPAD(bs.id, GREATEST(LENGTH(bs.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              bs.montant_total AS totalBon,
-              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
+            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              si.quantite AS quantite,
              si.prix_unitaire AS prix_unitaire,
-             p.cout_revient AS cout_revient,
-             p.prix_achat AS prix_achat,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
              (si.prix_unitaire * si.quantite) AS montant_ligne,
-             ((si.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * si.quantite) AS profitBrut,
+             ((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite) AS profitBrut,
              COALESCE(si.remise_montant, 0) AS remise_unitaire,
              (COALESCE(si.remise_montant, 0) * si.quantite) AS remise_total,
-             (((si.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
+             (((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
       FROM bons_sortie bs
-            LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
+      LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
       LEFT JOIN products p ON p.id = si.product_id
+      LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
+      LEFT JOIN product_units pu ON pu.id = si.unit_id
       WHERE LOWER(TRIM(COALESCE(bs.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bs.isNotCalculated, 0) <> 1
         AND DATE(bs.date_creation) = ?
 
       UNION ALL
 
-            SELECT ('Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
+      SELECT ('Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
              o.id AS bonId,
-              (COALESCE(o.order_number, CONCAT('ECOM', LPAD(o.id, 2, '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
+            (COALESCE(o.order_number, CONCAT('ECOM', LPAD(o.id, GREATEST(LENGTH(o.id), 2), '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
              o.total_amount AS totalBon,
-              (COALESCE(oi.product_name, p.designation) COLLATE ${UNION_COLLATION}) AS designation,
+            (COALESCE(oi.product_name, p.designation) COLLATE ${UNION_COLLATION}) AS designation,
              oi.quantity AS quantite,
              oi.unit_price AS prix_unitaire,
-             p.cout_revient AS cout_revient,
-             p.prix_achat AS prix_achat,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
              COALESCE(oi.subtotal, (oi.unit_price * oi.quantity)) AS montant_ligne,
-             ((oi.unit_price - COALESCE(p.cout_revient, p.prix_achat, 0)) * oi.quantity) AS profitBrut,
+             ((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity) AS profitBrut,
              COALESCE(oi.remise_percent_applied, 0) AS remise_unitaire,
              COALESCE(oi.remise_amount, 0) AS remise_total,
-             (((oi.unit_price - COALESCE(p.cout_revient, p.prix_achat, 0)) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
+             (((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
       FROM ecommerce_orders o
       LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
       LEFT JOIN products p ON p.id = oi.product_id
+      LEFT JOIN product_snapshot ps ON ps.id = oi.product_snapshot_id
+      LEFT JOIN product_units pu ON pu.id = oi.unit_id
       WHERE LOWER(COALESCE(o.status, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}
         AND DATE(o.created_at) = ?
     `;
 
     const avoirsLinesSql = `
-          SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
+      SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
              ac.id AS bonId,
-            (CONCAT('AVC', LPAD(ac.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+            (CONCAT('AVC', LPAD(ac.id, GREATEST(LENGTH(ac.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              ac.montant_total AS totalBon,
             (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              ai.quantite AS quantite,
              ai.prix_unitaire AS prix_unitaire,
-             p.cout_revient AS cout_revient,
-             p.prix_achat AS prix_achat,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
              (ai.prix_unitaire * ai.quantite) AS montant_ligne,
-             ((ai.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai.quantite) AS profitBrut,
+             ((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite) AS profitBrut,
              COALESCE(ai.remise_montant, 0) AS remise_unitaire,
              (COALESCE(ai.remise_montant, 0) * ai.quantite) AS remise_total,
-             (((ai.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
+             (((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
       FROM avoirs_client ac
       LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
       LEFT JOIN products p ON p.id = ai.product_id
+      LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
+      LEFT JOIN product_units pu ON pu.id = ai.unit_id
       WHERE LOWER(TRIM(COALESCE(ac.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ac.isNotCalculated, 0) <> 1
         AND DATE(ac.date_creation) = ?
 
       UNION ALL
 
-            SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
+      SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
              ac2.id AS bonId,
-              (CONCAT('AVCC', LPAD(ac2.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+            (CONCAT('AVCC', LPAD(ac2.id, GREATEST(LENGTH(ac2.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              ac2.montant_total AS totalBon,
-              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
+            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              ai2.quantite AS quantite,
              ai2.prix_unitaire AS prix_unitaire,
-             p.cout_revient AS cout_revient,
-             p.prix_achat AS prix_achat,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
              (ai2.prix_unitaire * ai2.quantite) AS montant_ligne,
-             ((ai2.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai2.quantite) AS profitBrut,
+             ((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite) AS profitBrut,
              COALESCE(ai2.remise_montant, 0) AS remise_unitaire,
              (COALESCE(ai2.remise_montant, 0) * ai2.quantite) AS remise_total,
-             (((ai2.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * ai2.quantite) - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)) AS profit
+             (((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite) - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)) AS profit
       FROM avoirs_comptant ac2
-            LEFT JOIN avoir_comptant_items ai2 ON ai2.avoir_comptant_id = ac2.id
+      LEFT JOIN avoir_comptant_items ai2 ON ai2.avoir_comptant_id = ac2.id
       LEFT JOIN products p ON p.id = ai2.product_id
+      LEFT JOIN product_snapshot ps ON ps.id = ai2.product_snapshot_id
+      LEFT JOIN product_units pu ON pu.id = ai2.unit_id
       WHERE LOWER(TRIM(COALESCE(ac2.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ac2.isNotCalculated, 0) <> 1
         AND DATE(ac2.date_creation) = ?
 
       UNION ALL
 
-            SELECT ('Avoir Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
+      SELECT ('Avoir Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
              ae.id AS bonId,
-              (COALESCE(ae.order_number, CONCAT('AWE', LPAD(ae.id, 2, '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
+            (COALESCE(ae.order_number, CONCAT('AWE', LPAD(ae.id, GREATEST(LENGTH(ae.id), 2), '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
              ae.montant_total AS totalBon,
-              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
+            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              i.quantite AS quantite,
              i.prix_unitaire AS prix_unitaire,
-             p.cout_revient AS cout_revient,
-             p.prix_achat AS prix_achat,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
+             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
              (i.prix_unitaire * i.quantite) AS montant_ligne,
-             ((i.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * i.quantite) AS profitBrut,
+             ((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite) AS profitBrut,
              COALESCE(i.remise_montant, 0) AS remise_unitaire,
              (COALESCE(i.remise_montant, 0) * i.quantite) AS remise_total,
-             (((i.prix_unitaire - COALESCE(p.cout_revient, p.prix_achat, 0)) * i.quantite) - (COALESCE(i.remise_montant, 0) * i.quantite)) AS profit
+             (((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite) - (COALESCE(i.remise_montant, 0) * i.quantite)) AS profit
       FROM avoirs_ecommerce ae
       LEFT JOIN avoir_ecommerce_items i ON i.avoir_ecommerce_id = ae.id
       LEFT JOIN products p ON p.id = i.product_id
+      LEFT JOIN product_snapshot ps ON ps.id = i.product_snapshot_id
+      LEFT JOIN product_units pu ON pu.id = i.unit_id
       WHERE LOWER(TRIM(COALESCE(ae.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ae.isNotCalculated, 0) <> 1
         AND DATE(ae.date_creation) = ?
@@ -577,7 +601,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const commandesLinesSql = `
           SELECT ('Commande' COLLATE ${UNION_COLLATION}) AS bonType,
              bcmd.id AS bonId,
-            (CONCAT('CMD', LPAD(bcmd.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+            (CONCAT('CMD', LPAD(bcmd.id, GREATEST(LENGTH(bcmd.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              bcmd.montant_total AS totalBon,
             (p.designation COLLATE ${UNION_COLLATION}) AS designation,
              ci.quantite AS quantite,
@@ -599,7 +623,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
 
     const vehiculeSql = `
       SELECT bv.id AS bonId,
-             (CONCAT('VEH', LPAD(bv.id, 2, '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+             (CONCAT('VEH', LPAD(bv.id, GREATEST(LENGTH(bv.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
              bv.montant_total AS totalBon
       FROM bons_vehicule bv
             WHERE LOWER(TRIM(COALESCE(bv.statut, ''))) IN ${VALID_STATUSES_SQL}
@@ -613,14 +637,19 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const [vehicules] = await pool.query(vehiculeSql, commonParams);
 
     const buildCalculs = (lines) => {
+      // NOTE: ids can collide across different tables (Comptant/Sortie/Ecommerce/Avoir/etc.).
+      // Use a composite key so each document keeps its own header (bonType/bonNumero).
       const byBon = new Map();
       for (const l of lines || []) {
         const bonId = Number(l.bonId);
-        if (!byBon.has(bonId)) {
-          byBon.set(bonId, {
+        const bonType = String(l.bonType || 'Autre');
+        const mapKey = `${bonType}:${Number.isFinite(bonId) ? bonId : String(l.bonId)}`;
+
+        if (!byBon.has(mapKey)) {
+          byBon.set(mapKey, {
             bonId,
             bonNumero: l.bonNumero,
-            bonType: l.bonType,
+            bonType,
             items: [],
             totalBon: roundSafe(l.totalBon),
             profitBon: 0,
@@ -628,7 +657,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             netTotalBon: null,
           });
         }
-        const rec = byBon.get(bonId);
+        const rec = byBon.get(mapKey);
 
         const hasItemData = !(l.designation == null && l.quantite == null && l.prix_unitaire == null);
         if (!hasItemData) continue;

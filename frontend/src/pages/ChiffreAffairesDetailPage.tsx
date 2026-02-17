@@ -113,7 +113,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
         </thead>
         <tbody className="divide-y divide-gray-200">
           {calcul.items.map((item, itemIndex) => (
-            <tr key={`${calcul.bonId}-${itemIndex}`}>
+            <tr key={`${calcul.bonType}-${calcul.bonId}-${itemIndex}`}>
               <td className="px-4 py-2 text-sm text-gray-900">
                 {item.designation}
               </td>
@@ -162,7 +162,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
   );
 
   const renderCalculCard = (calcul: CalculDetail, isBeneficiaire: boolean) => (
-    <div key={calcul.bonId} className="border border-gray-200 rounded-lg p-4">
+    <div key={`${calcul.bonType}-${calcul.bonId}`} className="border border-gray-200 rounded-lg p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
           <FileText size={16} className="text-gray-400 mr-2" />

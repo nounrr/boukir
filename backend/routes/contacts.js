@@ -87,6 +87,84 @@ const SINGLE_CONTACT_QUERY = `
   SELECT
     c.*,
     cg.name AS group_name,
+    -- Total Ventes
+    (
+      CASE
+        WHEN c.type = 'Client' THEN
+          COALESCE((
+            SELECT SUM(v.montant_total)
+            FROM (
+              SELECT montant_total, statut FROM bons_sortie WHERE client_id = c.id
+              UNION ALL
+              SELECT montant_total, statut FROM bons_comptant WHERE client_id = c.id
+            ) v
+            WHERE LOWER(TRIM(v.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ), 0) + 
+          COALESCE((
+            SELECT SUM(o.total_amount)
+            FROM ecommerce_orders o
+            WHERE LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
+              AND o.user_id = c.id
+          ), 0)
+        WHEN c.type = 'Fournisseur' THEN
+          COALESCE((
+            SELECT SUM(bc.montant_total)
+            FROM bons_commande bc
+            WHERE bc.fournisseur_id = c.id
+              AND LOWER(TRIM(bc.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ), 0)
+        ELSE 0
+      END
+    ) AS total_ventes,
+    -- Total Paiements
+    (
+      CASE
+        WHEN c.type = 'Client' THEN
+          COALESCE((
+            SELECT SUM(p.montant_total)
+            FROM payments p
+            WHERE p.type_paiement = 'Client'
+              AND p.contact_id = c.id
+              AND LOWER(TRIM(p.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ), 0)
+        WHEN c.type = 'Fournisseur' THEN
+          COALESCE((
+            SELECT SUM(pf.montant_total)
+            FROM payments pf
+            WHERE pf.type_paiement = 'Fournisseur'
+              AND pf.contact_id = c.id
+              AND LOWER(TRIM(pf.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ), 0)
+        ELSE 0
+      END
+    ) AS total_paiements,
+    -- Total Avoirs
+    (
+      CASE
+        WHEN c.type = 'Client' THEN
+          COALESCE((
+            SELECT SUM(ac.montant_total)
+            FROM avoirs_client ac
+            WHERE ac.client_id = c.id
+            AND LOWER(TRIM(ac.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ), 0) +
+          COALESCE((
+            SELECT SUM(ae.montant_total)
+            FROM avoirs_ecommerce ae
+            LEFT JOIN ecommerce_orders o2 ON o2.id = ae.ecommerce_order_id
+            WHERE LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+              AND o2.user_id = c.id
+          ), 0)
+        WHEN c.type = 'Fournisseur' THEN
+          COALESCE((
+            SELECT SUM(af.montant_total)
+            FROM avoirs_fournisseur af
+            WHERE af.fournisseur_id = c.id
+              AND LOWER(TRIM(af.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ), 0)
+        ELSE 0
+      END
+    ) AS total_avoirs,
     (
       CASE
         WHEN c.type = 'Client' THEN
@@ -735,10 +813,14 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Contact not found' });
     }
 
-    // Convertir solde_cumule en nombre
+    // Convertir solde_cumule et les totaux en nombres
     const contact = {
       ...rows[0],
-      solde_cumule: Number(rows[0].solde_cumule || 0)
+      solde_cumule: Number(rows[0].solde_cumule || 0),
+      total_ventes: Number(rows[0].total_ventes || 0),
+      total_paiements: Number(rows[0].total_paiements || 0),
+      total_avoirs: Number(rows[0].total_avoirs || 0),
+      solde: Number(rows[0].solde || 0),
     };
 
     res.json(contact);

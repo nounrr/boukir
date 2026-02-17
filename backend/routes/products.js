@@ -29,6 +29,23 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
+// Optional schema support (product_snapshot)
+let cachedHasProductSnapshotTable = null;
+async function hasProductSnapshotTable() {
+  if (cachedHasProductSnapshotTable !== null) return cachedHasProductSnapshotTable;
+  try {
+    const [rows] = await pool.query(
+      `SELECT TABLE_NAME
+       FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_snapshot'`
+    );
+    cachedHasProductSnapshotTable = rows?.length > 0;
+  } catch {
+    cachedHasProductSnapshotTable = false;
+  }
+  return cachedHasProductSnapshotTable;
+}
+
 // Ensure soft-delete and image_url columns exist
 let ensuredProductsColumns = false;
 async function ensureProductsColumns() {
@@ -588,37 +605,263 @@ router.get('/search', async (req, res, next) => {
   }
 });
 
+// GET /products/with-snapshots — returns products with snapshot entries expanded
+// Each snapshot with quantite > 0 becomes a separate selectable entry
+// Used by BonFormModal for Sortie/Comptant/Avoir to select snapshot-based stock
+router.get('/with-snapshots', async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+    const useSnapshot = await hasProductSnapshotTable();
+    if (!useSnapshot) {
+      // Fallback: just return normal product list without snapshot expansion
+      const [rows] = await pool.query(
+        `SELECT p.id, p.designation, p.prix_achat, p.prix_vente, p.cout_revient,
+                p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
+                p.prix_vente_pourcentage, p.quantite, p.est_service, p.image_url,
+                p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
+                p.remise_client, p.remise_artisan
+         FROM products p WHERE COALESCE(p.is_deleted, 0) = 0 ORDER BY p.id DESC`
+      );
+      return res.json(rows.map(r => ({
+        ...r,
+        reference: String(r.id),
+        snapshot_id: null,
+        snapshot_quantite: null,
+        snapshot_prix_achat: null,
+        snapshot_label: null,
+        variants: [],
+        units: [],
+      })));
+    }
+
+    // Get all snapshots with qty > 0, joined with product info
+    const [snapRows] = await pool.query(`
+      SELECT
+        ps.id AS snapshot_id,
+        ps.product_id,
+        ps.variant_id,
+        ps.prix_achat AS snapshot_prix_achat,
+        ps.prix_vente AS snapshot_prix_vente,
+        ps.cout_revient AS snapshot_cout_revient,
+        ps.cout_revient_pourcentage AS snapshot_cout_revient_pourcentage,
+        ps.prix_gros AS snapshot_prix_gros,
+        ps.prix_gros_pourcentage AS snapshot_prix_gros_pourcentage,
+        ps.prix_vente_pourcentage AS snapshot_prix_vente_pourcentage,
+        ps.quantite AS snapshot_quantite,
+        ps.bon_commande_id,
+        ps.created_at AS snapshot_created_at,
+        p.designation,
+        p.image_url,
+        p.est_service,
+        p.kg,
+        p.base_unit,
+        p.has_variants,
+        p.is_obligatoire_variant,
+        p.remise_client,
+        p.remise_artisan,
+        pv.variant_name,
+        pv.prix_achat AS variant_prix_achat,
+        pv.prix_vente AS variant_prix_vente
+      FROM product_snapshot ps
+      JOIN products p ON p.id = ps.product_id
+      LEFT JOIN product_variants pv ON pv.id = ps.variant_id
+      WHERE COALESCE(p.is_deleted, 0) = 0
+      ORDER BY p.id ASC, ps.created_at ASC, ps.id ASC
+    `);
+
+    // Also get all products (for items that don't have snapshots, or services)
+    const [allProducts] = await pool.query(`
+      SELECT p.id, p.designation, p.prix_achat, p.prix_vente, p.cout_revient,
+             p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
+             p.prix_vente_pourcentage, p.quantite, p.est_service, p.image_url,
+             p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
+             p.remise_client, p.remise_artisan,
+             (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+               'id', pv2.id, 'variant_name', pv2.variant_name,
+               'prix_achat', pv2.prix_achat, 'prix_vente', pv2.prix_vente,
+               'stock_quantity', pv2.stock_quantity
+             )) FROM product_variants pv2 WHERE pv2.product_id = p.id) AS variants,
+             (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+               'id', pu.id, 'unit_name', pu.unit_name,
+               'conversion_factor', pu.conversion_factor,
+               'prix_vente', pu.prix_vente,
+               'facteur_isNormal', pu.facteur_isNormal,
+               'is_default', pu.is_default
+             )) FROM product_units pu WHERE pu.product_id = p.id) AS units
+      FROM products p
+      WHERE COALESCE(p.is_deleted, 0) = 0
+      ORDER BY p.id DESC
+    `);
+
+    // Build result: products that have snapshots get one entry per snapshot
+    // Products without snapshots (e.g. services) get a single entry
+    const productIdsWithSnapshots = new Set(snapRows.map(s => s.product_id));
+
+    const result = [];
+
+    // FIFO priority counters per product+variant
+    const fifoCounts = new Map(); // key "productId:variantId" -> counter
+
+    // Add snapshot entries
+    for (const snap of snapRows) {
+      const bonLabel = snap.bon_commande_id ? `Bon #${snap.bon_commande_id}` : `Snap #${snap.snapshot_id}`;
+      const variantLabel = snap.variant_name ? ` - ${snap.variant_name}` : '';
+
+      // Compute FIFO priority: 1 = oldest (should be used first)
+      const fifoKey = `${snap.product_id}:${snap.variant_id || 0}`;
+      const fifoNum = (fifoCounts.get(fifoKey) || 0) + 1;
+      fifoCounts.set(fifoKey, fifoNum);
+
+      result.push({
+        id: snap.product_id,
+        reference: String(snap.product_id),
+        designation: snap.designation,
+        variant_id: snap.variant_id || null,
+        variant_name: snap.variant_name || null,
+        snapshot_id: snap.snapshot_id,
+        snapshot_quantite: Number(snap.snapshot_quantite),
+        snapshot_prix_achat: snap.snapshot_prix_achat !== null ? Number(snap.snapshot_prix_achat) : null,
+        snapshot_prix_vente: snap.snapshot_prix_vente !== null ? Number(snap.snapshot_prix_vente) : null,
+        snapshot_cout_revient: snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : null,
+        snapshot_cout_revient_pourcentage: snap.snapshot_cout_revient_pourcentage !== null ? Number(snap.snapshot_cout_revient_pourcentage) : null,
+        snapshot_prix_gros: snap.snapshot_prix_gros !== null ? Number(snap.snapshot_prix_gros) : null,
+        snapshot_prix_gros_pourcentage: snap.snapshot_prix_gros_pourcentage !== null ? Number(snap.snapshot_prix_gros_pourcentage) : null,
+        snapshot_prix_vente_pourcentage: snap.snapshot_prix_vente_pourcentage !== null ? Number(snap.snapshot_prix_vente_pourcentage) : null,
+        snapshot_label: `${bonLabel}${variantLabel} (Qté: ${Number(snap.snapshot_quantite)})`,
+        fifo_priority: fifoNum,
+        bon_commande_id: snap.bon_commande_id,
+        prix_achat: snap.snapshot_prix_achat !== null ? Number(snap.snapshot_prix_achat) : Number(snap.variant_prix_achat || 0),
+        prix_vente: snap.snapshot_prix_vente !== null ? Number(snap.snapshot_prix_vente) : Number(snap.variant_prix_vente || 0),
+        cout_revient: snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : 0,
+        cout_revient_pourcentage: snap.snapshot_cout_revient_pourcentage !== null ? Number(snap.snapshot_cout_revient_pourcentage) : 0,
+        prix_gros: snap.snapshot_prix_gros !== null ? Number(snap.snapshot_prix_gros) : 0,
+        prix_gros_pourcentage: snap.snapshot_prix_gros_pourcentage !== null ? Number(snap.snapshot_prix_gros_pourcentage) : 0,
+        prix_vente_pourcentage: snap.snapshot_prix_vente_pourcentage !== null ? Number(snap.snapshot_prix_vente_pourcentage) : 0,
+        quantite: Number(snap.snapshot_quantite),
+        est_service: !!snap.est_service,
+        image_url: snap.image_url,
+        kg: snap.kg !== null ? Number(snap.kg) : null,
+        base_unit: snap.base_unit,
+        has_variants: !!snap.has_variants,
+        isObligatoireVariant: !!snap.is_obligatoire_variant,
+        remise_client: Number(snap.remise_client ?? 0),
+        remise_artisan: Number(snap.remise_artisan ?? 0),
+        variants: [],
+        units: [],
+      });
+    }
+
+    // Add products without snapshots (services, or products that were never purchased via bon de commande)
+    for (const p of allProducts) {
+      if (productIdsWithSnapshots.has(p.id)) continue; // Skip: already represented via snapshots
+      const variants = typeof p.variants === 'string' ? JSON.parse(p.variants) : (p.variants || []);
+      const units = typeof p.units === 'string' ? JSON.parse(p.units) : (p.units || []);
+      result.push({
+        id: p.id,
+        reference: String(p.id),
+        designation: p.designation,
+        variant_id: null,
+        variant_name: null,
+        snapshot_id: null,
+        snapshot_quantite: null,
+        snapshot_prix_achat: null,
+        snapshot_prix_vente: null,
+        snapshot_label: null,
+        bon_commande_id: null,
+        prix_achat: Number(p.prix_achat || 0),
+        prix_vente: Number(p.prix_vente || 0),
+        cout_revient: Number(p.cout_revient || 0),
+        cout_revient_pourcentage: Number(p.cout_revient_pourcentage || 0),
+        prix_gros: Number(p.prix_gros || 0),
+        prix_gros_pourcentage: Number(p.prix_gros_pourcentage || 0),
+        prix_vente_pourcentage: Number(p.prix_vente_pourcentage || 0),
+        quantite: Number(p.quantite),
+        est_service: !!p.est_service,
+        image_url: p.image_url,
+        kg: p.kg !== null ? Number(p.kg) : null,
+        base_unit: p.base_unit,
+        has_variants: !!p.has_variants,
+        isObligatoireVariant: !!p.is_obligatoire_variant,
+        remise_client: Number(p.remise_client ?? 0),
+        remise_artisan: Number(p.remise_artisan ?? 0),
+        variants: Array.isArray(variants) ? variants : [],
+        units: Array.isArray(units) ? units : [],
+      });
+    }
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     await ensureProductsColumns();
-    const [rows] = await pool.query(`
+
+    const useSnapshot = await hasProductSnapshotTable();
+    const sql = useSnapshot ? `
       SELECT p.*, b.id as b_id, b.nom as b_nom, b.image_url as b_image_url,
+      (SELECT COALESCE(SUM(ps.quantite), 0)
+         FROM product_snapshot ps
+        WHERE ps.product_id = p.id) as snapshot_quantite_total,
+      (SELECT ps2.prix_achat
+         FROM product_snapshot ps2
+        WHERE ps2.product_id = p.id
+          AND ps2.quantite > 0
+          AND COALESCE(ps2.prix_achat, 0) > 0
+        ORDER BY ps2.created_at ASC, ps2.id ASC
+        LIMIT 1) as snapshot_prix_achat_old,
+      (SELECT ps2.prix_vente
+         FROM product_snapshot ps2
+        WHERE ps2.product_id = p.id
+          AND ps2.quantite > 0
+          AND COALESCE(ps2.prix_vente, 0) > 0
+        ORDER BY ps2.created_at ASC, ps2.id ASC
+        LIMIT 1) as snapshot_prix_vente_old,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
-        'id', pi.id, 
-        'image_url', pi.image_url, 
+        'id', pi.id,
+        'image_url', pi.image_url,
         'position', pi.position
       )) FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.position ASC) as gallery,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
-        'id', pv.id, 
-        'variant_name', pv.variant_name, 
-        'variant_type', pv.variant_type, 
-        'reference', pv.reference, 
-        'prix_achat', pv.prix_achat, 
+        'id', pv.id,
+        'variant_name', pv.variant_name,
+        'variant_type', pv.variant_type,
+        'reference', pv.reference,
+        'prix_achat', pv.prix_achat,
         'cout_revient', pv.cout_revient,
         'cout_revient_pourcentage', pv.cout_revient_pourcentage,
         'prix_gros', pv.prix_gros,
         'prix_gros_pourcentage', pv.prix_gros_pourcentage,
         'prix_vente_pourcentage', pv.prix_vente_pourcentage,
-        'prix_vente', pv.prix_vente, 
+        'prix_vente', pv.prix_vente,
         'image_url', pv.image_url,
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
-        'stock_quantity', pv.stock_quantity
+        'stock_quantity', pv.stock_quantity,
+        'snapshot_quantite_total', (SELECT COALESCE(SUM(psv.quantite), 0)
+           FROM product_snapshot psv
+          WHERE psv.variant_id = pv.id),
+        'snapshot_prix_achat_old', (SELECT ps3.prix_achat
+           FROM product_snapshot ps3
+          WHERE ps3.variant_id = pv.id
+            AND ps3.quantite > 0
+            AND COALESCE(ps3.prix_achat, 0) > 0
+          ORDER BY ps3.created_at ASC, ps3.id ASC
+          LIMIT 1),
+        'snapshot_prix_vente_old', (SELECT ps3.prix_vente
+           FROM product_snapshot ps3
+          WHERE ps3.variant_id = pv.id
+            AND ps3.quantite > 0
+            AND COALESCE(ps3.prix_vente, 0) > 0
+          ORDER BY ps3.created_at ASC, ps3.id ASC
+          LIMIT 1)
       )) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
-        'id', pu.id, 
-        'unit_name', pu.unit_name, 
-        'conversion_factor', pu.conversion_factor, 
+        'id', pu.id,
+        'unit_name', pu.unit_name,
+        'conversion_factor', pu.conversion_factor,
         'prix_vente', pu.prix_vente,
         'facteur_isNormal', pu.facteur_isNormal,
         'is_default', pu.is_default
@@ -629,9 +872,56 @@ router.get('/', async (req, res, next) => {
       LEFT JOIN categories c ON p.categorie_id = c.id
       WHERE COALESCE(p.is_deleted, 0) = 0
       ORDER BY p.id DESC
-    `);
+    ` : `
+      SELECT p.*, b.id as b_id, b.nom as b_nom, b.image_url as b_image_url,
+      (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+        'id', pi.id,
+        'image_url', pi.image_url,
+        'position', pi.position
+      )) FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.position ASC) as gallery,
+      (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+        'id', pv.id,
+        'variant_name', pv.variant_name,
+        'variant_type', pv.variant_type,
+        'reference', pv.reference,
+        'prix_achat', pv.prix_achat,
+        'cout_revient', pv.cout_revient,
+        'cout_revient_pourcentage', pv.cout_revient_pourcentage,
+        'prix_gros', pv.prix_gros,
+        'prix_gros_pourcentage', pv.prix_gros_pourcentage,
+        'prix_vente_pourcentage', pv.prix_vente_pourcentage,
+        'prix_vente', pv.prix_vente,
+        'image_url', pv.image_url,
+        'remise_client', pv.remise_client,
+        'remise_artisan', pv.remise_artisan,
+        'stock_quantity', pv.stock_quantity
+      )) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
+      (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+        'id', pu.id,
+        'unit_name', pu.unit_name,
+        'conversion_factor', pu.conversion_factor,
+        'prix_vente', pu.prix_vente,
+        'facteur_isNormal', pu.facteur_isNormal,
+        'is_default', pu.is_default
+      )) FROM product_units pu WHERE pu.product_id = p.id) as units,
+      c.nom as categorie_nom
+      FROM products p
+      LEFT JOIN brands b ON p.brand_id = b.id
+      LEFT JOIN categories c ON p.categorie_id = c.id
+      WHERE COALESCE(p.is_deleted, 0) = 0
+      ORDER BY p.id DESC
+    `;
+
+    const [rows] = await pool.query(sql);
     const data = rows.map((r) => {
       const gallery = typeof r.gallery === 'string' ? JSON.parse(r.gallery) : (r.gallery || []);
+      const variants = typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []);
+      const variantsWithSnapshot = Array.isArray(variants) ? variants.map((v) => ({
+        ...v,
+        snapshot_quantite_total: v?.snapshot_quantite_total !== null && v?.snapshot_quantite_total !== undefined ? Number(v.snapshot_quantite_total) : null,
+        snapshot_prix_achat_old: v?.snapshot_prix_achat_old !== null && v?.snapshot_prix_achat_old !== undefined ? Number(v.snapshot_prix_achat_old) : null,
+        snapshot_prix_vente_old: v?.snapshot_prix_vente_old !== null && v?.snapshot_prix_vente_old !== undefined ? Number(v.snapshot_prix_vente_old) : null,
+      })) : [];
       return {
         id: r.id,
         // reference is now derived from id for compatibility with frontend displays
@@ -642,14 +932,17 @@ router.get('/', async (req, res, next) => {
         categories: r.categorie_id ? [{ id: r.categorie_id, nom: r.categorie_nom }] : [],
         brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
         quantite: Number(r.quantite),
+        snapshot_quantite_total: useSnapshot ? Number(r.snapshot_quantite_total ?? 0) : null,
         kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
         prix_achat: Number(r.prix_achat),
+        snapshot_prix_achat_old: useSnapshot && r.snapshot_prix_achat_old !== null && r.snapshot_prix_achat_old !== undefined ? Number(r.snapshot_prix_achat_old) : null,
         cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
         cout_revient: Number(r.cout_revient),
         prix_gros_pourcentage: Number(r.prix_gros_pourcentage),
         prix_gros: Number(r.prix_gros),
         prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
         prix_vente: Number(r.prix_vente),
+        snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
         est_service: !!r.est_service,
         image_url: r.image_url,
         remise_client: Number(r.remise_client ?? 0),
@@ -672,7 +965,7 @@ router.get('/', async (req, res, next) => {
         isObligatoireVariant: !!r.is_obligatoire_variant,
         base_unit: r.base_unit,
         categorie_base: r.categorie_base,
-        variants: typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []),
+        variants: variantsWithSnapshot,
         units: typeof r.units === 'string' ? JSON.parse(r.units) : (r.units || []),
       };
     });
@@ -878,6 +1171,8 @@ router.get('/:id', async (req, res, next) => {
     const r = rows[0];
     if (!r) return res.status(404).json({ message: 'Produit introuvable' });
 
+    const useSnapshot = await hasProductSnapshotTable();
+
     // Fetch variants and units
     const [variants] = await pool.query('SELECT * FROM product_variants WHERE product_id = ?', [id]);
     const variantIds = variants.map(v => v.id);
@@ -895,6 +1190,179 @@ router.get('/:id', async (req, res, next) => {
     const [units] = await pool.query('SELECT * FROM product_units WHERE product_id = ?', [id]);
     const [gallery] = await pool.query('SELECT * FROM product_images WHERE product_id = ? ORDER BY position ASC', [id]);
 
+    // Snapshot finance (optional)
+    let snapshot_finance = null;
+    let snapshot_quantite_total = null;
+    let snapshot_rows = null;
+    let variantSnapshotFinanceById = {};
+    let variantSnapshotTotalById = {};
+    let variantSnapshotRowsById = {};
+    if (useSnapshot) {
+      try {
+        const [totRows] = await pool.query(
+          `SELECT COALESCE(SUM(ps.quantite), 0) AS total
+           FROM product_snapshot ps
+           WHERE ps.product_id = ?`,
+          [id]
+        );
+        snapshot_quantite_total = Number(totRows?.[0]?.total ?? 0);
+
+        const [pSnaps] = await pool.query(
+          `SELECT ps.id, ps.prix_achat, ps.prix_vente,
+                  ps.cout_revient, ps.cout_revient_pourcentage,
+                  ps.prix_gros, ps.prix_gros_pourcentage,
+                  ps.prix_vente_pourcentage,
+                  ps.quantite, ps.bon_commande_id, ps.created_at
+           FROM product_snapshot ps
+           WHERE ps.product_id = ?
+             AND ps.variant_id IS NULL
+           ORDER BY ps.created_at DESC, ps.id DESC`,
+          [id]
+        );
+        snapshot_rows = (pSnaps || []).map((s) => ({
+          id: Number(s.id),
+          prix_achat: s.prix_achat === null || s.prix_achat === undefined ? null : Number(s.prix_achat),
+          prix_vente: s.prix_vente === null || s.prix_vente === undefined ? null : Number(s.prix_vente),
+          cout_revient: s.cout_revient === null || s.cout_revient === undefined ? null : Number(s.cout_revient),
+          cout_revient_pourcentage: s.cout_revient_pourcentage === null || s.cout_revient_pourcentage === undefined ? null : Number(s.cout_revient_pourcentage),
+          prix_gros: s.prix_gros === null || s.prix_gros === undefined ? null : Number(s.prix_gros),
+          prix_gros_pourcentage: s.prix_gros_pourcentage === null || s.prix_gros_pourcentage === undefined ? null : Number(s.prix_gros_pourcentage),
+          prix_vente_pourcentage: s.prix_vente_pourcentage === null || s.prix_vente_pourcentage === undefined ? null : Number(s.prix_vente_pourcentage),
+          quantite: Number(s.quantite ?? 0),
+          bon_commande_id: s.bon_commande_id ?? null,
+          created_at: s.created_at,
+        }));
+
+        const [oldRows] = await pool.query(
+          `SELECT ps.id, ps.prix_achat, ps.prix_vente, ps.quantite, ps.bon_commande_id, ps.created_at
+           FROM product_snapshot ps
+           WHERE ps.product_id = ?
+             AND ps.variant_id IS NULL
+             AND ps.quantite > 0
+           ORDER BY ps.created_at ASC, ps.id ASC
+           LIMIT 1`,
+          [id]
+        );
+        const [newRows] = await pool.query(
+          `SELECT ps.id, ps.prix_achat, ps.prix_vente, ps.quantite, ps.bon_commande_id, ps.created_at
+           FROM product_snapshot ps
+           WHERE ps.product_id = ?
+             AND ps.variant_id IS NULL
+             AND ps.quantite > 0
+           ORDER BY ps.created_at DESC, ps.id DESC
+           LIMIT 1`,
+          [id]
+        );
+
+        const oldest = oldRows?.[0] || null;
+        const newest = newRows?.[0] || null;
+        snapshot_finance = {
+          oldest: oldest
+            ? {
+                id: Number(oldest.id),
+                prix_achat: oldest.prix_achat === null || oldest.prix_achat === undefined ? null : Number(oldest.prix_achat),
+                prix_vente: oldest.prix_vente === null || oldest.prix_vente === undefined ? null : Number(oldest.prix_vente),
+                quantite: Number(oldest.quantite ?? 0),
+                bon_commande_id: oldest.bon_commande_id ?? null,
+                created_at: oldest.created_at,
+              }
+            : null,
+          newest: newest
+            ? {
+                id: Number(newest.id),
+                prix_achat: newest.prix_achat === null || newest.prix_achat === undefined ? null : Number(newest.prix_achat),
+                prix_vente: newest.prix_vente === null || newest.prix_vente === undefined ? null : Number(newest.prix_vente),
+                quantite: Number(newest.quantite ?? 0),
+                bon_commande_id: newest.bon_commande_id ?? null,
+                created_at: newest.created_at,
+              }
+            : null,
+        };
+
+        if (variantIds.length > 0) {
+          const [vtot] = await pool.query(
+            `SELECT ps.variant_id, COALESCE(SUM(ps.quantite), 0) AS total
+             FROM product_snapshot ps
+             WHERE ps.variant_id IN (?)
+             GROUP BY ps.variant_id`,
+            [variantIds]
+          );
+          for (const row of vtot) {
+            variantSnapshotTotalById[row.variant_id] = Number(row.total ?? 0);
+          }
+
+          const [vsnapsAsc] = await pool.query(
+            `SELECT ps.id, ps.variant_id, ps.prix_achat, ps.prix_vente,
+                    ps.cout_revient, ps.cout_revient_pourcentage,
+                    ps.prix_gros, ps.prix_gros_pourcentage,
+                    ps.prix_vente_pourcentage,
+                    ps.quantite, ps.bon_commande_id, ps.created_at
+             FROM product_snapshot ps
+             WHERE ps.variant_id IN (?)
+             ORDER BY ps.variant_id ASC, ps.created_at ASC, ps.id ASC`,
+            [variantIds]
+          );
+
+          // oldest/newest + collect list
+          for (const row of vsnapsAsc) {
+            const vid = row.variant_id;
+            if (!variantSnapshotRowsById[vid]) variantSnapshotRowsById[vid] = [];
+            // push later in DESC order; we collect then reverse per-variant after loop
+            variantSnapshotRowsById[vid].push({
+              id: Number(row.id),
+              prix_achat: row.prix_achat === null || row.prix_achat === undefined ? null : Number(row.prix_achat),
+              prix_vente: row.prix_vente === null || row.prix_vente === undefined ? null : Number(row.prix_vente),
+              cout_revient: row.cout_revient === null || row.cout_revient === undefined ? null : Number(row.cout_revient),
+              cout_revient_pourcentage: row.cout_revient_pourcentage === null || row.cout_revient_pourcentage === undefined ? null : Number(row.cout_revient_pourcentage),
+              prix_gros: row.prix_gros === null || row.prix_gros === undefined ? null : Number(row.prix_gros),
+              prix_gros_pourcentage: row.prix_gros_pourcentage === null || row.prix_gros_pourcentage === undefined ? null : Number(row.prix_gros_pourcentage),
+              prix_vente_pourcentage: row.prix_vente_pourcentage === null || row.prix_vente_pourcentage === undefined ? null : Number(row.prix_vente_pourcentage),
+              quantite: Number(row.quantite ?? 0),
+              bon_commande_id: row.bon_commande_id ?? null,
+              created_at: row.created_at,
+            });
+
+            if (!variantSnapshotFinanceById[vid]) {
+              variantSnapshotFinanceById[vid] = { oldest: null, newest: null };
+              variantSnapshotFinanceById[vid].oldest = {
+                id: Number(row.id),
+                prix_achat: row.prix_achat === null || row.prix_achat === undefined ? null : Number(row.prix_achat),
+                prix_vente: row.prix_vente === null || row.prix_vente === undefined ? null : Number(row.prix_vente),
+                quantite: Number(row.quantite ?? 0),
+                bon_commande_id: row.bon_commande_id ?? null,
+                created_at: row.created_at,
+              };
+            }
+            variantSnapshotFinanceById[vid].newest = {
+              id: Number(row.id),
+              prix_achat: row.prix_achat === null || row.prix_achat === undefined ? null : Number(row.prix_achat),
+              prix_vente: row.prix_vente === null || row.prix_vente === undefined ? null : Number(row.prix_vente),
+              quantite: Number(row.quantite ?? 0),
+              bon_commande_id: row.bon_commande_id ?? null,
+              created_at: row.created_at,
+            };
+          }
+
+          // convert variant rows to DESC per variant for UI
+          for (const vid of Object.keys(variantSnapshotRowsById)) {
+            variantSnapshotRowsById[vid] = (variantSnapshotRowsById[vid] || []).slice().sort((a, b) => {
+              const da = new Date(a.created_at).getTime();
+              const db = new Date(b.created_at).getTime();
+              if (da !== db) return db - da;
+              return Number(b.id) - Number(a.id);
+            });
+          }
+        }
+      } catch {
+        snapshot_finance = null;
+        snapshot_quantite_total = null;
+        snapshot_rows = null;
+        variantSnapshotFinanceById = {};
+        variantSnapshotTotalById = {};
+        variantSnapshotRowsById = {};
+      }
+    }
+
     const finalCategories = r.c_id ? [{ id: r.c_id, nom: r.c_nom }] : [];
 
     res.json({
@@ -910,6 +1378,9 @@ router.get('/:id', async (req, res, next) => {
       brand_id: r.brand_id ?? null,
       brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
       quantite: Number(r.quantite),
+      snapshot_quantite_total,
+      snapshot_finance,
+      snapshot_rows,
       kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
       prix_achat: Number(r.prix_achat),
       cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
@@ -953,6 +1424,9 @@ router.get('/:id', async (req, res, next) => {
         image_url: v.image_url,
         remise_client: Number(v.remise_client ?? 0),
         remise_artisan: Number(v.remise_artisan ?? 0),
+        snapshot_quantite_total: useSnapshot ? Number(variantSnapshotTotalById[v.id] ?? 0) : null,
+        snapshot_finance: useSnapshot ? (variantSnapshotFinanceById[v.id] || null) : null,
+        snapshot_rows: useSnapshot ? (variantSnapshotRowsById[v.id] || []) : null,
         gallery: variantGalleriesById[v.id] || []
       })),
       units: units.map(u => ({
@@ -1808,6 +2282,97 @@ router.patch('/:id/ecom-stock', async (req, res, next) => {
     );
 
     res.json({ id, ecom_published: isEnabled, stock_partage_ecom: isEnabled, stock_partage_ecom_qty: shareQty });
+  } catch (err) { next(err); }
+});
+
+// PATCH /products/snapshots - Bulk update snapshot rows
+router.patch('/snapshots', async (req, res, next) => {
+  try {
+    const { snapshots } = req.body || {};
+    if (!Array.isArray(snapshots) || snapshots.length === 0) {
+      return res.status(400).json({ message: 'snapshots array requis' });
+    }
+
+    const hasTable = await hasProductSnapshotTable();
+    if (!hasTable) {
+      return res.status(400).json({ message: 'Table product_snapshot introuvable' });
+    }
+
+    let updated = 0;
+    for (const s of snapshots) {
+      const id = Number(s.id);
+      if (!Number.isFinite(id)) continue;
+
+      const sets = [];
+      const params = [];
+
+      const fields = [
+        'prix_achat', 'prix_vente',
+        'cout_revient', 'cout_revient_pourcentage',
+        'prix_gros', 'prix_gros_pourcentage',
+        'prix_vente_pourcentage',
+        'quantite',
+      ];
+
+      for (const f of fields) {
+        if (s[f] !== undefined && s[f] !== null) {
+          sets.push(`${f} = ?`);
+          params.push(Number(s[f]));
+        }
+      }
+
+      if (sets.length === 0) continue;
+
+      params.push(id);
+      await pool.query(
+        `UPDATE product_snapshot SET ${sets.join(', ')} WHERE id = ?`,
+        params
+      );
+      updated++;
+    }
+
+    res.json({ success: true, updated });
+  } catch (err) { next(err); }
+});
+
+// GET /products/last-commandes
+// Retourne pour chaque product/variant le dernier bon de commande associé
+router.get('/last-commandes', async (_req, res, next) => {
+  try {
+    const sql = `
+      -- For each product + variant (variant NULL treated separately), find the latest bons_commande
+      SELECT
+        t.product_id,
+        NULLIF(t.variant_key, 0) AS variant_id,
+        b.id AS bon_id,
+        b.numero,
+        b.date_creation,
+        ci.quantite AS item_quantite,
+        ci.prix_unitaire AS item_prix_unitaire
+      FROM (
+        SELECT
+          ci.product_id,
+          COALESCE(ci.variant_id, 0) AS variant_key,
+          MAX(CONCAT(b.date_creation, ' ', LPAD(b.id, 10, '0'))) AS max_key
+        FROM commande_items ci
+        JOIN bons_commande b ON ci.bon_commande_id = b.id
+        GROUP BY ci.product_id, COALESCE(ci.variant_id, 0)
+      ) t
+      JOIN commande_items ci ON ci.product_id = t.product_id AND COALESCE(ci.variant_id, 0) = t.variant_key
+      JOIN bons_commande b ON ci.bon_commande_id = b.id AND CONCAT(b.date_creation, ' ', LPAD(b.id, 10, '0')) = t.max_key
+      ORDER BY t.product_id, t.variant_key;
+    `;
+
+    const [rows] = await pool.query(sql);
+    res.json(rows.map(r => ({
+      product_id: r.product_id,
+      variant_id: r.variant_id,
+      bon_id: r.bon_id,
+      numero: r.numero,
+      date_creation: r.date_creation,
+      quantite: Number(r.item_quantite || 0),
+      prix_unitaire: Number(r.item_prix_unitaire || 0)
+    })));
   } catch (err) { next(err); }
 });
 export default router;

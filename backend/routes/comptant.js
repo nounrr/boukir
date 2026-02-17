@@ -32,7 +32,8 @@ router.get('/', async (_req, res) => {
               'cout_revient', p.cout_revient,
               'remise_pourcentage', ci.remise_pourcentage,
               'remise_montant', ci.remise_montant,
-              'total', ci.total
+              'total', ci.total,
+              'product_snapshot_id', ci.product_snapshot_id
             )
           )
           FROM comptant_items ci
@@ -128,7 +129,8 @@ router.get('/:id', async (req, res) => {
               'cout_revient', p.cout_revient,
               'remise_pourcentage', ci.remise_pourcentage,
               'remise_montant', ci.remise_montant,
-              'total', ci.total
+              'total', ci.total,
+              'product_snapshot_id', ci.product_snapshot_id
             )
           )
           FROM comptant_items ci
@@ -300,9 +302,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.execute(`
         INSERT INTO comptant_items (
           bon_comptant_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [comptantId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [comptantId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
     }
 
     // Stock: Comptant => retire du stock dès la création (même "En attente")
@@ -310,6 +312,15 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     if (st !== 'Annulé') {
       const deltas = buildStockDeltaMaps(items, -1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? created_by ?? null);
+      // Deduct snapshot quantities
+      for (const item of items) {
+        if (item.product_snapshot_id) {
+          await connection.execute(
+            'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
+            [Number(item.quantite) || 0, item.product_snapshot_id]
+          );
+        }
+      }
     }
 
   await connection.commit();
@@ -369,7 +380,7 @@ router.put('/:id', async (req, res) => {
     }
 
     const [oldItemsStock] = await connection.execute(
-      'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant FROM comptant_items WHERE bon_comptant_id = ? ORDER BY id ASC',
+      'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, product_snapshot_id FROM comptant_items WHERE bon_comptant_id = ? ORDER BY id ASC',
       [id]
     );
 
@@ -524,9 +535,9 @@ router.put('/:id', async (req, res) => {
       await connection.execute(`
         INSERT INTO comptant_items (
           bon_comptant_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
     }
 
     // Stock: Comptant => effet = -quantite au stock
@@ -535,10 +546,28 @@ router.put('/:id', async (req, res) => {
     if (oldStatut !== 'Annulé') {
       // revert old: add back
       mergeStockDeltaMaps(deltas, buildStockDeltaMaps(oldItemsStock, +1));
+      // Restore old snapshot quantities
+      for (const oldItem of oldItemsStock) {
+        if (oldItem.product_snapshot_id) {
+          await connection.execute(
+            'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?',
+            [Number(oldItem.quantite) || 0, oldItem.product_snapshot_id]
+          );
+        }
+      }
     }
     if (st !== 'Annulé') {
       // apply new: subtract
       mergeStockDeltaMaps(deltas, buildStockDeltaMaps(items, -1));
+      // Deduct new snapshot quantities
+      for (const item of items) {
+        if (item.product_snapshot_id) {
+          await connection.execute(
+            'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
+            [Number(item.quantite) || 0, item.product_snapshot_id]
+          );
+        }
+      }
     }
     await applyStockDeltas(connection, deltas, req.user?.id ?? null);
 
@@ -574,12 +603,18 @@ router.delete('/:id', async (req, res) => {
     const oldStatut = exists[0].statut;
     if (oldStatut !== 'Annulé') {
       const [itemsStock] = await connection.execute(
-        'SELECT product_id, variant_id, quantite FROM comptant_items WHERE bon_comptant_id = ?',
+        'SELECT product_id, variant_id, quantite, product_snapshot_id FROM comptant_items WHERE bon_comptant_id = ?',
         [id]
       );
       // Delete should restore stock
       const deltas = buildStockDeltaMaps(itemsStock, +1);
       await applyStockDeltas(connection, deltas, null);
+      // Restore snapshot quantities
+      for (const sit of itemsStock) {
+        if (sit.product_snapshot_id) {
+          await connection.execute('UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?', [Number(sit.quantite) || 0, sit.product_snapshot_id]);
+        }
+      }
     }
 
     await connection.execute('DELETE FROM livraisons WHERE bon_type = "Comptant" AND bon_id = ?', [id]);
@@ -670,11 +705,21 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     const leavingCancelled = oldStatut === 'Annulé' && statut !== 'Annulé';
     if (enteringCancelled || leavingCancelled) {
       const [itemsStock] = await connection.execute(
-        'SELECT product_id, variant_id, quantite FROM comptant_items WHERE bon_comptant_id = ?',
+        'SELECT product_id, variant_id, quantite, product_snapshot_id FROM comptant_items WHERE bon_comptant_id = ?',
         [id]
       );
       const deltas = buildStockDeltaMaps(itemsStock, enteringCancelled ? +1 : -1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+      // Restore/deduct snapshot quantities on cancel/uncancel
+      for (const sit of itemsStock) {
+        if (sit.product_snapshot_id) {
+          if (enteringCancelled) {
+            await connection.execute('UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?', [Number(sit.quantite) || 0, sit.product_snapshot_id]);
+          } else {
+            await connection.execute('UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?', [Number(sit.quantite) || 0, sit.product_snapshot_id]);
+          }
+        }
+      }
     }
 
     const [rows] = await connection.execute(`
@@ -768,8 +813,8 @@ router.post('/:id/mark-avoir', async (req, res) => {
       await connection.execute(
         `INSERT INTO avoir_client_items (
            avoir_client_id, product_id, quantite, prix_unitaire,
-           remise_pourcentage, remise_montant, total, variant_id, unit_id
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           avoirId,
           it.product_id,
@@ -780,6 +825,7 @@ router.post('/:id/mark-avoir', async (req, res) => {
           it.total,
           it.variant_id || null,
           it.unit_id || null,
+          it.product_snapshot_id || null,
         ]
       );
     }
@@ -787,6 +833,12 @@ router.post('/:id/mark-avoir', async (req, res) => {
     // Stock: création d'un avoir (client) depuis comptant => on remet le stock (+)
     const deltas = buildStockDeltaMaps(items, +1);
     await applyStockDeltas(connection, deltas, created_by ?? null);
+    // Restore snapshot quantities
+    for (const it of items) {
+      if (it.product_snapshot_id) {
+        await connection.execute('UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?', [Number(it.quantite) || 0, it.product_snapshot_id]);
+      }
+    }
 
     await connection.execute('UPDATE bons_comptant SET statut = "Avoir", updated_at = NOW() WHERE id = ?', [id]);
 

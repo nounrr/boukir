@@ -264,6 +264,9 @@ export interface Contact {
   ice?: string | null;
   solde: number;
   solde_cumule?: number; // Solde cumulé calculé côté backend
+  total_ventes?: number;
+  total_paiements?: number;
+  total_avoirs?: number;
   plafond?: number | null; // Plafond de crédit (clients)
   demande_artisan?: boolean;
   artisan_approuve?: boolean;
