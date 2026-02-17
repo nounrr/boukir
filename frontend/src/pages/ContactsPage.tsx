@@ -2814,6 +2814,21 @@ const ContactsPage: React.FC = () => {
       }
     }
 
+    // Trier les membres de chaque groupe par solde cumulé (0 en bas)
+    for (const row of rows) {
+      if (row.kind === 'group') {
+        row.members.sort((a, b) => {
+          const sa = Number((a as any).solde_cumule ?? 0) || 0;
+          const sb = Number((b as any).solde_cumule ?? 0) || 0;
+          // Les contacts avec solde 0 vont en bas
+          if (sa === 0 && sb !== 0) return 1;
+          if (sa !== 0 && sb === 0) return -1;
+          // Sinon trier par solde décroissant (plus gros solde en haut)
+          return sb - sa;
+        });
+      }
+    }
+
     return rows;
   }, [paginatedContacts]);
 
