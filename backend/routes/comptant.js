@@ -234,9 +234,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
         date_creation, client_id, client_nom, phone, vehicule_id,
-        lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated,
+        lieu_chargement, adresse_livraison, montant_total, reste, statut, created_by, isNotCalculated,
         remise_is_client, remise_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       date_creation,
       cId,
@@ -246,6 +246,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       lieu,
       adresse_livraison ?? null,
       montant_total,
+      req.body.reste || 0,
       st,
       created_by,
       isNotCalculated,
@@ -467,7 +468,7 @@ router.put('/:id', async (req, res) => {
     await connection.execute(`
       UPDATE bons_comptant SET
         date_creation = ?, client_id = ?, client_nom = ?, phone = ?,
-        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?,
+        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, reste = ?, statut = ?, isNotCalculated = ?,
         remise_is_client = ?, remise_id = ?
       WHERE id = ?
     `, [
@@ -479,6 +480,7 @@ router.put('/:id', async (req, res) => {
       lieu,
       adresse_livraison ?? null,
       montant_total,
+      req.body.reste || 0,
       st,
       isNotCalculated,
       resolved.remise_is_client,

@@ -1005,6 +1005,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
   phone: initialValues.phone || initialValues.customer_phone || '',
         isNotCalculated: initialValues.isNotCalculated || false,
+        payer_partiellement: (initialValues.reste !== undefined && Number(initialValues.reste) > 0) || false,
+        reste: initialValues.reste || 0,
         statut: initialValues.statut || 'En attente',
       };
     }
@@ -1034,6 +1036,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       montant_ht: 0,
       montant_total: 0,
       isNotCalculated: false,
+      payer_partiellement: false,
+      reste: 0,
       items: [
         {
           _rowId: makeRowId(), // id stable
@@ -1449,6 +1453,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       statut: values.statut || 'Brouillon',
   client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
+  reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
       ...(requestType === 'AvoirEcommerce'
         ? {
@@ -2599,6 +2604,30 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </div>
                   {values.type === 'AvoirEcommerce' && (
                     <ErrorMessage name="client_nom" component="div" className="text-red-500 text-sm mt-1" />
+                  )}
+                </div>
+              )}
+
+              {/* Partial Payment Option for Comptant - Moved outside client block for visibility */}
+              {values.type === 'Comptant' && (
+                <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <Field type="checkbox" name="payer_partiellement" className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300" />
+                    <span className="text-sm font-medium text-gray-800">Payer partiellement</span>
+                  </label>
+                  {values.payer_partiellement && (
+                    <div className="mt-3 flex items-center gap-3 animate-fadeIn pl-6">
+                      <label htmlFor="reste" className="text-sm font-medium text-gray-700">Montant restant (DH):</label>
+                      <Field
+                        type="number"
+                        id="reste"
+                        name="reste"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        className="w-40 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
+                      />
+                    </div>
                   )}
                 </div>
               )}

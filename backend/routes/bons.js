@@ -203,7 +203,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       bon_origine_id,
       items = [],
       created_by,
-      livraisons
+      livraisons,
+      reste,
+      payer_partiellement
     } = req.body;
 
     // Validation des champs requis avec détail
@@ -219,14 +221,17 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     }
 
     // Créer le bon (numero supprimé du schéma/insert)
+    // reste: pour Bon Comptant payé partiellement
+    const resteVal = (type === 'Comptant' && payer_partiellement) ? (Number(reste) || 0) : 0;
+
     const [bonResult] = await connection.execute(`
       INSERT INTO bons (
         type, date_creation, date_echeance, client_id, fournisseur_id,
-        montant_total, statut, vehicule, lieu_chargement, bon_origine_id, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        montant_total, statut, vehicule, lieu_chargement, bon_origine_id, created_by, reste
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       type, date_creation, date_echeance, client_id, fournisseur_id,
-      montant_total, statut, vehicule, lieu_chargement, bon_origine_id, created_by
+      montant_total, statut, vehicule, lieu_chargement, bon_origine_id, created_by, resteVal
     ]);
 
     const bonId = bonResult.insertId;
@@ -338,7 +343,8 @@ router.patch('/:id', async (req, res) => {
       lieu_chargement,
       items = [],
       updated_by,
-      livraisons
+      livraisons,
+      reste
     } = req.body;
 
     // Validation de l'existence du bon
@@ -369,7 +375,7 @@ router.patch('/:id', async (req, res) => {
     
     const fieldsToUpdate = {
   type, date_creation, date_echeance, client_id, fournisseur_id,
-      montant_total, statut, vehicule, lieu_chargement, updated_by
+      montant_total, statut, vehicule, lieu_chargement, updated_by, reste
     };
 
     Object.entries(fieldsToUpdate).forEach(([key, value]) => {

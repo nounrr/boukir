@@ -1,0 +1,3 @@
+
+ALTER TABLE bons_comptant 
+ADD COLUMN reste DECIMAL(15,2) DEFAULT 0.00;
