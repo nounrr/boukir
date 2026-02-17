@@ -71,6 +71,8 @@ const BonsPage = () => {
   const [ecommerceRemiseDraftItems, setEcommerceRemiseDraftItems] = useState<Array<any>>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  // Nouveau filtre: si coché, ne montrer que les bons partiellement payés (reste > 0)
+  const [showPartialOnly, setShowPartialOnly] = useState(false);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
   const [isNewSupplierModalOpen, setIsNewSupplierModalOpen] = useState(false);
   const [isNewVehicleModalOpen, setIsNewVehicleModalOpen] = useState(false);
@@ -914,7 +916,9 @@ const BonsPage = () => {
 
       const matchesStatus = !statusFilter || statusFilter.length === 0 ? true : (bon.statut && statusFilter.includes(String(bon.statut)));
 
-      return matchesSearch && matchesStatus;
+      const matchesPartial = !showPartialOnly || (currentTab === 'Comptant' && Number(bon.reste) > 0);
+
+      return matchesSearch && matchesStatus && matchesPartial;
     });
 
     // Then sort
@@ -1279,9 +1283,12 @@ const BonsPage = () => {
     }
   }, [onMouseMove, onMouseDown]);
 
-  // Réinitialiser la page quand on change d'onglet ou de recherche
+  // Réinitialiser la page quand on change d'onglet ou de recherche, et reset le filtre partiel
   useEffect(() => {
     setCurrentPage(1);
+    if (currentTab !== 'Comptant') {
+      setShowPartialOnly(false);
+    }
   }, [currentTab, searchTerm]);
 
   // Tabs configuration
@@ -1776,35 +1783,13 @@ const BonsPage = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!isChefChauffeur && currentTab !== 'Ecommerce' && currentTab !== 'AvoirEcommerce' && (
+            {!isChefChauffeur && (
               <button
                 onClick={handleAddNew}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
               >
                 <Plus size={20} />
                 Nouveau {currentTab}
-              </button>
-            )}
-            {(currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce') && isPdg && (
-              <button
-                onClick={() => {
-                  openBlankAvoirEcommerceModal();
-                }}
-                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors"
-                title="Créer un avoir e-commerce"
-              >
-                <RotateCcw size={20} />
-                Ajouter Avoir Ecommerce
-              </button>
-            )}
-            {!isChefChauffeur && (
-              <button
-                onClick={() => navigate('/inventaire')}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
-                title="Enregistrer un inventaire (ne modifie pas le stock)"
-              >
-                <Plus size={20} />
-                Enregistrer inventaire
               </button>
             )}
           </div>
@@ -1833,16 +1818,6 @@ const BonsPage = () => {
         {/* Barre de filtres et actions au-dessus du tableau */}
         <div className="bg-white rounded-lg shadow mb-4 p-4">
           <div className="flex flex-wrap items-center gap-3">
-            {/* Bouton Ajouter */}
-            {!isChefChauffeur && currentTab !== 'Ecommerce' && currentTab !== 'AvoirEcommerce' && (
-              <button
-                onClick={handleAddNew}
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
-              >
-                <Plus size={18} className="mr-2" />
-                Ajouter {currentTab}
-              </button>
-            )}
             {(currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce') && isPdg && (
               <button
                 onClick={() => {
@@ -1887,6 +1862,22 @@ const BonsPage = () => {
                 <button type="button" className="px-2 py-0.5 bg-gray-100 rounded text-xs hover:bg-gray-200" onClick={() => setStatusFilter(['En attente','Validé','Refusé','Annulé'])}>Tout</button>
               </div>
             </div>
+
+            {/* Checkbox Partiellement payés (Comptant uniquement) */}
+            {currentTab === 'Comptant' && (
+              <div className="flex items-center gap-2 px-3 py-2 border border-yellow-200 rounded-md bg-yellow-50">
+                <input
+                  type="checkbox"
+                  id="showPartialOnly"
+                  checked={showPartialOnly}
+                  onChange={(e) => setShowPartialOnly(e.target.checked)}
+                  className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
+                />
+                <label htmlFor="showPartialOnly" className="text-sm font-medium text-gray-700 cursor-pointer whitespace-nowrap">
+                  Reste à payer
+                </label>
+              </div>
+            )}
 
             {/* Checkbox WhatsApp automatique */}
             {SHOW_WHATSAPP_BUTTON && (
@@ -2199,6 +2190,12 @@ const BonsPage = () => {
                       <td className="px-4 py-2">
                         <div className="text-sm font-semibold text-gray-900">{computeMontantTotal(bon).toFixed(2)} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
+                        {currentTab === 'Comptant' && (bon.reste > 0) && (
+                          <div className="text-xs font-semibold text-orange-600 mt-1 flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                            Reste: {Number(bon.reste).toFixed(2)} DH
+                          </div>
+                        )}
                         {(() => {
                           const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
                           if (!isEcom) return null;

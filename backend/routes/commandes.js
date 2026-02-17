@@ -352,119 +352,45 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     const enteringValidation = oldStatut !== 'Validé' && statut === 'Validé';
     const leavingValidation = oldStatut === 'Validé' && statut !== 'Validé';
 
-    if (enteringValidation || leavingValidation) {
-      // Récupérer items + produits
-      const [items] = await connection.execute(`
-        SELECT ci.id AS ci_id, ci.product_id, ci.variant_id, ci.prix_unitaire, ci.old_prix_achat, ci.price_applied,
-               p.prix_achat AS prod_prix_achat,
-               p.prix_vente AS prod_prix_vente,
-               p.cout_revient_pourcentage AS prod_cout_revient_pourcentage,
-               p.prix_gros_pourcentage AS prod_prix_gros_pourcentage,
-               p.cout_revient AS prod_cout_revient,
-               p.prix_gros AS prod_prix_gros,
-               pv.prix_achat AS var_prix_achat,
-               pv.prix_vente AS var_prix_vente,
-               pv.cout_revient_pourcentage AS var_cout_revient_pourcentage,
-               pv.prix_gros_pourcentage AS var_prix_gros_pourcentage,
-               pv.cout_revient AS var_cout_revient,
-               pv.prix_gros AS var_prix_gros
+    // Snapshot + cleanup of old snapshot when status changes
+    if (leavingValidation) {
+      // If a validated bon is moved to Annulé/En attente/etc: delete its snapshot.
+      await connection.execute('DELETE FROM product_snapshot WHERE bon_commande_id = ?', [id]);
+      // Defensive: avoid dangling references in items tables.
+      await connection.execute('UPDATE commande_items SET product_snapshot_id = NULL WHERE bon_commande_id = ?', [id]);
+    }
+
+    if (enteringValidation) {
+      // Create snapshot of products/variants of this bon_commande (idempotent)
+      await connection.execute('DELETE FROM product_snapshot WHERE bon_commande_id = ?', [id]);
+      await connection.execute(
+        `INSERT INTO product_snapshot (
+            product_id, variant_id,
+            prix_achat, prix_vente,
+            cout_revient, cout_revient_pourcentage,
+            prix_gros, prix_gros_pourcentage,
+            prix_vente_pourcentage,
+            quantite, bon_commande_id, created_at
+          )
+          SELECT
+            ci.product_id,
+            ci.variant_id,
+            ci.prix_unitaire AS prix_achat,
+            COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+            COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
+            COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
+            COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
+            COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
+            COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
+            ci.quantite,
+            ci.bon_commande_id,
+            NOW() AS created_at
           FROM commande_items ci
           JOIN products p ON p.id = ci.product_id
           LEFT JOIN product_variants pv ON pv.id = ci.variant_id
-         WHERE ci.bon_commande_id = ?
-      `, [id]);
-
-      const computeVentePourcentage = (prixVente, prixAchat) => {
-        const pv = Number(prixVente);
-        const pa = Number(prixAchat);
-        if (!Number.isFinite(pv) || !Number.isFinite(pa) || pa <= 0) return null;
-        // products.js utilise: pv = pa * (1 + pvp/100)
-        const pvp = ((pv / pa) - 1) * 100;
-        return Math.round(pvp * 100) / 100;
-      };
-
-      for (const row of items) {
-        const {
-          ci_id, product_id, variant_id, prix_unitaire, old_prix_achat, price_applied,
-          prod_prix_achat,
-          prod_prix_vente,
-          prod_cout_revient_pourcentage, prod_prix_gros_pourcentage,
-          prod_cout_revient, prod_prix_gros,
-          var_prix_achat,
-          var_prix_vente,
-          var_cout_revient_pourcentage, var_prix_gros_pourcentage,
-          var_cout_revient, var_prix_gros
-        } = row;
-
-        // Si on a une variante valide, on applique les prix sur product_variants.
-        // Sinon, fallback sur products.
-        const hasVariantTarget = variant_id != null && var_prix_achat != null;
-        const currentPrixAchat = hasVariantTarget ? Number(var_prix_achat) : Number(prod_prix_achat);
-        const currentPrixVente = hasVariantTarget ? Number(var_prix_vente) : Number(prod_prix_vente);
-        const crPct = hasVariantTarget ? var_cout_revient_pourcentage : prod_cout_revient_pourcentage;
-        const pgPct = hasVariantTarget ? var_prix_gros_pourcentage : prod_prix_gros_pourcentage;
-        const currentCr = hasVariantTarget ? var_cout_revient : prod_cout_revient;
-        const currentPg = hasVariantTarget ? var_prix_gros : prod_prix_gros;
-
-        if (enteringValidation) {
-          if (prix_unitaire > 0 && Number(prix_unitaire) !== Number(currentPrixAchat)) {
-            const newPrixAchat = Number(prix_unitaire);
-            const oldPrix = Number(currentPrixAchat);
-            const newCoutRevient = crPct != null ? newPrixAchat * (1 + crPct / 100) : currentCr;
-            const newPrixGros = pgPct != null ? newPrixAchat * (1 + pgPct / 100) : currentPg;
-            const newPrixVentePct = computeVentePourcentage(currentPrixVente, newPrixAchat);
-
-            // Sauvegarde old prix dans commande_items et marque applied
-            await connection.execute(`UPDATE commande_items SET old_prix_achat = ?, price_applied = 1 WHERE id = ?`, [oldPrix, ci_id]);
-            if (hasVariantTarget) {
-              // Appliquer à la variante (sans toucher prix_vente, mais mettre à jour le pourcentage)
-              await connection.execute(
-                `UPDATE product_variants
-                    SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente_pourcentage = COALESCE(?, prix_vente_pourcentage)
-                  WHERE id = ?`,
-                [newPrixAchat, newCoutRevient, newPrixGros, newPrixVentePct, variant_id]
-              );
-            } else {
-              // Appliquer au produit (sans toucher prix_vente, mais mettre à jour le pourcentage)
-              await connection.execute(
-                `UPDATE products
-                    SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente_pourcentage = COALESCE(?, prix_vente_pourcentage)
-                  WHERE id = ?`,
-                [newPrixAchat, newCoutRevient, newPrixGros, newPrixVentePct, product_id]
-              );
-            }
-          }
-        } else if (leavingValidation) {
-          // Revert seulement si on avait appliqué et si le prix produit correspond toujours au prix_unitaire (sécurité)
-          if (price_applied === 1 && old_prix_achat != null) {
-            // Vérifier prix courant (produit ou variante)
-            if (Number(currentPrixAchat) === Number(prix_unitaire)) {
-              const revertPrix = Number(old_prix_achat);
-              const newCoutRevient = crPct != null ? revertPrix * (1 + crPct / 100) : currentCr;
-              const newPrixGros = pgPct != null ? revertPrix * (1 + pgPct / 100) : currentPg;
-              const revertPrixVentePct = computeVentePourcentage(currentPrixVente, revertPrix);
-
-              if (hasVariantTarget) {
-                await connection.execute(
-                  `UPDATE product_variants
-                      SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente_pourcentage = COALESCE(?, prix_vente_pourcentage)
-                    WHERE id = ?`,
-                  [revertPrix, newCoutRevient, newPrixGros, revertPrixVentePct, variant_id]
-                );
-              } else {
-                await connection.execute(
-                  `UPDATE products
-                      SET prix_achat = ?, cout_revient = ?, prix_gros = ?, prix_vente_pourcentage = COALESCE(?, prix_vente_pourcentage)
-                    WHERE id = ?`,
-                  [revertPrix, newCoutRevient, newPrixGros, revertPrixVentePct, product_id]
-                );
-              }
-            }
-            // Dans tous les cas on remet le flag (on ne peut revert qu'une fois)
-            await connection.execute(`UPDATE commande_items SET price_applied = 0 WHERE id = ?`, [ci_id]);
-          }
-        }
-      }
+          WHERE ci.bon_commande_id = ?`,
+        [id]
+      );
     }
 
     // Charger la version enrichie pour réponse
@@ -726,6 +652,17 @@ router.delete('/:id', verifyToken, async (req, res) => {
       );
       const deltas = buildStockDeltaMaps(itemsStock, -1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+    }
+
+    // Cleanup snapshots linked to this bon_commande
+    // (important because product_snapshot has no FK cascade by default)
+    await connection.execute('DELETE FROM product_snapshot WHERE bon_commande_id = ?', [id]);
+
+    // Defensive: clear any potential references (even if commande_items will be deleted by FK cascade)
+    try {
+      await connection.execute('UPDATE commande_items SET product_snapshot_id = NULL WHERE bon_commande_id = ?', [id]);
+    } catch {
+      // Column may not exist yet if migration not applied; ignore.
     }
 
     await connection.execute('DELETE FROM livraisons WHERE bon_type = "Commande" AND bon_id = ?', [id]);

@@ -83,6 +83,28 @@ const StockPage: React.FC = () => {
 
   const formatNum = (n: number) => String(parseFloat((Number(n || 0)).toFixed(2)));
 
+  const getSnapshotAwareQuantite = (p: any) => {
+    // Prefer snapshot totals when backend provides them
+    const v = p?.snapshot_quantite_total;
+    if (v === null || v === undefined) return Number(p?.quantite || 0);
+    const n = Number(v);
+    return Number.isFinite(n) ? n : Number(p?.quantite || 0);
+  };
+
+  const getSnapshotAwarePrixAchat = (p: any) => {
+    const v = p?.snapshot_prix_achat_old;
+    const n = v === null || v === undefined ? null : Number(v);
+    if (n !== null && Number.isFinite(n) && n > 0) return n;
+    return Number(p?.prix_achat || 0);
+  };
+
+  const getSnapshotAwarePrixVenteBase = (p: any) => {
+    const v = p?.snapshot_prix_vente_old;
+    const n = v === null || v === undefined ? null : Number(v);
+    if (n !== null && Number.isFinite(n) && n > 0) return n;
+    return Number(p?.prix_vente || 0);
+  };
+
   const unitOptionsForProduct = (prod: any) => {
     const base = prod.base_unit || 'u';
     const opts: Array<{ key: string; label: string; factor: number; prix_vente?: number | null }> = [
@@ -191,6 +213,9 @@ const StockPage: React.FC = () => {
             prix_achat: variant.prix_achat,
             prix_vente: variant.prix_vente,
             quantite: variant.stock_quantity,
+            snapshot_quantite_total: variant.snapshot_quantite_total ?? null,
+            snapshot_prix_achat_old: variant.snapshot_prix_achat_old ?? null,
+            snapshot_prix_vente_old: variant.snapshot_prix_vente_old ?? null,
             isVariantRow: true,
             // Inherit other props
           });
@@ -233,7 +258,7 @@ const StockPage: React.FC = () => {
       const exportableProducts = filteredProducts;
 
       const rows = exportableProducts.map((p: any, index: number) => {
-        const pa = Number(p.prix_achat) || 0;
+        const pa = getSnapshotAwarePrixAchat(p);
         return {
           'N°': index + 1,
           'Référence': p.reference ?? p.id,
@@ -782,7 +807,7 @@ const StockPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {product.est_service ? '-' : (
-                      formatNum((Number(product.quantite || 0)) / getSelectedUnitFactor(product))
+                      formatNum((getSnapshotAwareQuantite(product)) / getSelectedUnitFactor(product))
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -803,7 +828,7 @@ const StockPage: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.prix_achat} DH
+                    {formatNum(getSnapshotAwarePrixAchat(product))} DH
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {product.cout_revient} DH
@@ -815,7 +840,7 @@ const StockPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
-                      const basePv = Number(product.prix_vente || 0);
+                      const basePv = getSnapshotAwarePrixVenteBase(product);
                       const factor = getSelectedUnitFactor(product);
                       const unitPv = getSelectedUnitPrixVenteOverride(product);
                       const converted = unitPv !== null && Number.isFinite(unitPv) ? unitPv : (basePv * factor);

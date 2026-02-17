@@ -16,7 +16,8 @@ import {
   useCreateContactMutation,
   useUpdateContactMutation,
   useDeleteContactMutation,
-  useGetContactsSummaryQuery
+  useGetContactsSummaryQuery,
+  useGetContactQuery // Added this
 } from '../store/api/contactsApi';
 import {
   useAssignContactsToGroupMutation,
@@ -259,6 +260,12 @@ const ContactsPage: React.FC = () => {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  
+  // Fetch detailed contact info from backend when a contact is selected to get fresh stats
+  const { data: detailedContact } = useGetContactQuery(selectedContact?.id!, {
+    skip: !selectedContact?.id
+  });
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -4409,12 +4416,13 @@ const ContactsPage: React.FC = () => {
                       <div className="bg-white rounded-lg p-3 border flex-1">
                         <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
                         {(() => {
-                          // Utiliser la valeur calculée localement (finalSoldeNet) qui correspond
-                          // au dernier soldeCumulatif du tableau détail produits (source de vérité)
-                          const value = finalSoldeNet;
+                          const value = detailedContact?.solde_cumule ?? finalSoldeNet;
                           return (
                             <div className="space-y-1">
                               <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(2)} DH</p>
+                              {detailedContact?.solde_cumule !== undefined && (
+                                <p className="text-xs text-gray-500">Calculé par le serveur</p>
+                              )}
                             </div>
                           );
                         })()}
@@ -4441,6 +4449,33 @@ const ContactsPage: React.FC = () => {
                           })()}
                         </p>
                       </div>
+                    </div>
+                    {/* Backend Stats Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                       <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                         <p className="font-semibold text-blue-800 text-sm">Total Ventes / Achats</p>
+                         <p className="font-bold text-lg text-blue-700">
+                           {detailedContact?.total_ventes !== undefined 
+                             ? `${detailedContact.total_ventes.toFixed(2)} DH` 
+                             : '-'}
+                         </p>
+                       </div>
+                       <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                         <p className="font-semibold text-green-800 text-sm">Total Paiements</p>
+                         <p className="font-bold text-lg text-green-700">
+                           {detailedContact?.total_paiements !== undefined 
+                             ? `${detailedContact.total_paiements.toFixed(2)} DH` 
+                             : '-'}
+                         </p>
+                       </div>
+                       <div className="bg-orange-50 rounded-lg p-3 border border-orange-100">
+                         <p className="font-semibold text-orange-800 text-sm">Total Avoirs</p>
+                         <p className="font-bold text-lg text-orange-700">
+                           {detailedContact?.total_avoirs !== undefined 
+                             ? `${detailedContact.total_avoirs.toFixed(2)} DH` 
+                             : '-'}
+                         </p>
+                       </div>
                     </div>
                   </div>
                 </div>

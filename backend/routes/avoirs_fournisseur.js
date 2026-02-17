@@ -25,7 +25,8 @@ router.get('/', async (_req, res) => {
               'prix_unitaire', i.prix_unitaire,
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
-              'total', i.total
+              'total', i.total,
+              'product_snapshot_id', i.product_snapshot_id
             )
           )
           FROM avoir_fournisseur_items i
@@ -69,7 +70,8 @@ router.get('/:id', async (req, res) => {
               'prix_unitaire', i.prix_unitaire,
               'remise_pourcentage', i.remise_pourcentage,
               'remise_montant', i.remise_montant,
-              'total', i.total
+              'total', i.total,
+              'product_snapshot_id', i.product_snapshot_id
             )
           )
           FROM avoir_fournisseur_items i
@@ -174,9 +176,9 @@ router.post('/', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) => 
       await connection.execute(`
         INSERT INTO avoir_fournisseur_items (
           avoir_fournisseur_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
     }
 
     // Stock (nouvelle règle): AvoirFournisseur => retire du stock dès la création (inverse de commande)
@@ -184,6 +186,15 @@ router.post('/', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) => 
     if (st !== 'Annulé') {
       const deltas = buildStockDeltaMaps(items, -1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+      // Deduct snapshot quantities (returning to supplier)
+      for (const item of items) {
+        if (item.product_snapshot_id) {
+          await connection.execute(
+            'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
+            [Number(item.quantite) || 0, item.product_snapshot_id]
+          );
+        }
+      }
     }
 
   await connection.commit();
@@ -237,7 +248,7 @@ router.put('/:id', verifyToken, async (req, res) => {
     }
 
     const [oldItemsStock] = await connection.execute(
-      'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ? ORDER BY id ASC',
+      'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, product_snapshot_id FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ? ORDER BY id ASC',
       [id]
     );
 
@@ -334,9 +345,9 @@ router.put('/:id', verifyToken, async (req, res) => {
       await connection.execute(`
         INSERT INTO avoir_fournisseur_items (
           avoir_fournisseur_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
     }
 
     // Stock: annuler l'effet des anciens items (si pas Annulé), puis appliquer les nouveaux (si pas Annulé)
@@ -345,10 +356,28 @@ router.put('/:id', verifyToken, async (req, res) => {
     if (oldStatut !== 'Annulé') {
       // On remet le stock (inverse de l'effet appliqué)
       mergeStockDeltaMaps(deltas, buildStockDeltaMaps(oldItemsStock, +1));
+      // Restore old snapshot quantities
+      for (const oldItem of oldItemsStock) {
+        if (oldItem.product_snapshot_id) {
+          await connection.execute(
+            'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?',
+            [Number(oldItem.quantite) || 0, oldItem.product_snapshot_id]
+          );
+        }
+      }
     }
     if (st !== 'Annulé') {
       // On retire le stock selon les nouveaux items
       mergeStockDeltaMaps(deltas, buildStockDeltaMaps(items, -1));
+      // Deduct new snapshot quantities
+      for (const item of items) {
+        if (item.product_snapshot_id) {
+          await connection.execute(
+            'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
+            [Number(item.quantite) || 0, item.product_snapshot_id]
+          );
+        }
+      }
     }
     await applyStockDeltas(connection, deltas, req.user?.id ?? null);
 
@@ -435,11 +464,21 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     const leavingCancelled = oldStatut === 'Annulé' && statut !== 'Annulé';
     if (enteringCancelled || leavingCancelled) {
       const [itemsStock] = await connection.execute(
-        'SELECT product_id, variant_id, quantite FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?',
+        'SELECT product_id, variant_id, quantite, product_snapshot_id FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?',
         [id]
       );
       const deltas = buildStockDeltaMaps(itemsStock, enteringCancelled ? +1 : -1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+      // Snapshot: cancel avoir_fournisseur = restore snapshot (+), uncancel = deduct (-)
+      for (const sit of itemsStock) {
+        if (sit.product_snapshot_id) {
+          if (enteringCancelled) {
+            await connection.execute('UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?', [Number(sit.quantite) || 0, sit.product_snapshot_id]);
+          } else {
+            await connection.execute('UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?', [Number(sit.quantite) || 0, sit.product_snapshot_id]);
+          }
+        }
+      }
     }
 
     const [rows] = await connection.execute(`
@@ -480,12 +519,18 @@ router.delete('/:id', verifyToken, async (req, res) => {
     const oldStatut = exists[0].statut;
     if (oldStatut !== 'Annulé') {
       const [itemsStock] = await connection.execute(
-        'SELECT product_id, variant_id, quantite FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?',
+        'SELECT product_id, variant_id, quantite, product_snapshot_id FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?',
         [id]
       );
       // Reverse: avoir creation removed stock, so delete must add it back
       const deltas = buildStockDeltaMaps(itemsStock, +1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
+      // Restore snapshot quantities
+      for (const sit of itemsStock) {
+        if (sit.product_snapshot_id) {
+          await connection.execute('UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?', [Number(sit.quantite) || 0, sit.product_snapshot_id]);
+        }
+      }
     }
 
     await connection.execute('DELETE FROM avoir_fournisseur_items WHERE avoir_fournisseur_id = ?', [id]);

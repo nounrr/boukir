@@ -11,7 +11,7 @@ const SHOW_WHATSAPP_POPUP = false;
 import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetEmployeesQueryServer as useGetEmployeesQueryServer } from '../store/api/employeesApi.server';
-import { useGetProductsQuery } from '../store/api/productsApi';
+import { useGetProductsQuery, useGetProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
@@ -432,6 +432,11 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     [employeesAll]
   );
   const { data: products = [] } = useGetProductsQuery();
+  // Snapshot-expanded products for Sortie/Comptant/Avoir types
+  const useSnapshotSelection = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
+  const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection });
+  // Effective product list for item selection: use snapshot list for outgoing bons
+  const selectableProducts = useSnapshotSelection && snapshotProducts.length > 0 ? snapshotProducts : products;
   const { data: clients = [] } = useGetAllClientsQuery();
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
@@ -1000,6 +1005,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
   phone: initialValues.phone || initialValues.customer_phone || '',
         isNotCalculated: initialValues.isNotCalculated || false,
+        payer_partiellement: (initialValues.reste !== undefined && Number(initialValues.reste) > 0) || false,
+        reste: initialValues.reste || 0,
         statut: initialValues.statut || 'En attente',
       };
     }
@@ -1029,6 +1036,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       montant_ht: 0,
       montant_total: 0,
       isNotCalculated: false,
+      payer_partiellement: false,
+      reste: 0,
       items: [
         {
           _rowId: makeRowId(), // id stable
@@ -1042,6 +1051,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           kg: 0,
           total: 0,
           unite: 'pièce',
+          product_snapshot_id: null,
         },
       ],
       is_transformed: false,
@@ -1352,7 +1362,13 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       : [];
 
     // Remise target validation (Sortie/Comptant)
-    if ((requestType === 'Sortie' || requestType === 'Comptant') && showRemisePanel) {
+    // Only validate if panel is open AND at least one item actually has a remise applied
+    const hasAnyItemRemise = (values.items || []).some((it: any) => {
+      const m = Number(it?.remise_montant ?? 0) || 0;
+      const p = Number(it?.remise_pourcentage ?? 0) || 0;
+      return m !== 0 || p !== 0;
+    });
+    if ((requestType === 'Sortie' || requestType === 'Comptant') && showRemisePanel && hasAnyItemRemise) {
       if (requestType === 'Sortie' && remiseTargetIsBonClient && !values.client_id) {
         const msg = "Choisissez un client pour 'Même client du bon', ou décochez et choisissez un client remise.";
         showError(msg);
@@ -1437,6 +1453,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       statut: values.statut || 'Brouillon',
   client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
+  reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
       ...(requestType === 'AvoirEcommerce'
         ? {
@@ -1482,6 +1499,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           product_id: parseInt(item.product_id),
           variant_id: item.variant_id ? parseInt(item.variant_id) : null,
           unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+          product_snapshot_id: item.product_snapshot_id ? parseInt(item.product_snapshot_id) : null,
           quantite: q,
           prix_achat: pa,
           prix_unitaire: prixUnitairePourDB,
@@ -2590,6 +2608,30 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 </div>
               )}
 
+              {/* Partial Payment Option for Comptant - Moved outside client block for visibility */}
+              {values.type === 'Comptant' && (
+                <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <Field type="checkbox" name="payer_partiellement" className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300" />
+                    <span className="text-sm font-medium text-gray-800">Payer partiellement</span>
+                  </label>
+                  {values.payer_partiellement && (
+                    <div className="mt-3 flex items-center gap-3 animate-fadeIn pl-6">
+                      <label htmlFor="reste" className="text-sm font-medium text-gray-700">Montant restant (DH):</label>
+                      <Field
+                        type="number"
+                        id="reste"
+                        name="reste"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        className="w-40 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Fournisseur */}
               {(values.type === 'Commande' || values.type === 'AvoirFournisseur') && (
                 <div>
@@ -2705,6 +2747,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                           kg: 0,
                           total: 0,
                           unite: 'pièce',
+                          product_snapshot_id: null,
                         };
                         setFieldValue('items', [...values.items, newItem]);
                         setUnitPriceRaw((prev) => ({ ...prev, [values.items.length]: '0' }));
@@ -2881,15 +2924,88 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 {/* Produit combiné (Réf - Désignation) */}
                                 <td className="px-1 py-2 w-[200px]">
                                   <SearchableSelect
-                                    options={products.map((p: any) => ({
-                                      value: String(p.id),
-                                      label: `${String(p.reference ?? p.id)} - ${p.designation ?? ''}`.trim(),
-                                      data: p,
-                                    }))}
-                                    value={String(values.items[index].product_id || '')}
-                                    onChange={(productId) => {
+                                    options={(() => {
+                                      if (useSnapshotSelection && snapshotProducts.length > 0) {
+                                        // Collect snapshot IDs already used in current bon items (for edit mode)
+                                        const usedSnapIds = new Set(
+                                          values.items
+                                            .map((it: any) => it.product_snapshot_id)
+                                            .filter(Boolean)
+                                            .map(Number)
+                                        );
+                                        // Show snapshots with qty > 0, OR already selected in current bon (edit mode)
+                                        const withStock = snapshotProducts.filter((p: any) =>
+                                          (p.snapshot_id && Number(p.snapshot_quantite ?? 0) > 0) ||
+                                          (p.snapshot_id && usedSnapIds.has(Number(p.snapshot_id)))
+                                        );
+                                        // Sort: FIFO priority 1 first; within same product+variant, oldest snapshot first
+                                        const sorted = [...withStock].sort((a: any, b: any) => {
+                                          // Group by product designation for alphabetical browsing
+                                          const desA = String(a.designation ?? '').toLowerCase();
+                                          const desB = String(b.designation ?? '').toLowerCase();
+                                          if (desA !== desB) return desA.localeCompare(desB);
+                                          // Same product: sort by variant name
+                                          const vA = String(a.variant_name ?? '').toLowerCase();
+                                          const vB = String(b.variant_name ?? '').toLowerCase();
+                                          if (vA !== vB) return vA.localeCompare(vB);
+                                          // Same product+variant: FIFO priority (1 = oldest = first)
+                                          const pA = Number(a.fifo_priority ?? 999);
+                                          const pB = Number(b.fifo_priority ?? 999);
+                                          return pA - pB;
+                                        });
+                                        return sorted.map((p: any, idx: number) => {
+                                          const fifo = p.fifo_priority;
+                                          const priorityTag = fifo === 1 ? '⭐' : fifo ? `#${fifo}` : '';
+                                          const serie = String(p.reference ?? p.id);
+                                          const nom = p.designation ?? '';
+                                          const variant = p.variant_name ? ` - ${p.variant_name}` : '';
+                                          const qte = p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : '';
+                                          const bonInfo = p.bon_commande_id ? `Bon #${p.bon_commande_id}` : p.snapshot_id ? `Snap #${p.snapshot_id}` : '';
+                                          return {
+                                            value: p.snapshot_id ? `snap:${p.snapshot_id}:${p.id}` : `p:${p.id}:${idx}`,
+                                            label: p.snapshot_id
+                                              ? `${priorityTag} ${serie} - ${nom}${variant}${qte} | ${bonInfo}`.trim()
+                                              : `${serie} - ${nom}`.trim(),
+                                            data: p,
+                                          };
+                                        });
+                                      }
+                                      return products.map((p: any) => ({
+                                        value: String(p.id),
+                                        label: `${String(p.reference ?? p.id)} - ${p.designation ?? ''}`.trim(),
+                                        data: p,
+                                      }));
+                                    })()}
+                                    value={(() => {
+                                      const snapId = values.items[index].product_snapshot_id;
+                                      const prodId = values.items[index].product_id;
+                                      if (useSnapshotSelection && snapId) {
+                                        return `snap:${snapId}:${prodId}`;
+                                      }
+                                      return String(prodId || '');
+                                    })()}
+                                    onChange={(selectedValue) => {
                                       if (isQtyOnlyEdit) return;
-                                      const product = products.find((p: any) => String(p.id) === productId);
+                                      let product: any = null;
+
+                                      if (useSnapshotSelection && snapshotProducts.length > 0) {
+                                        // Parse selectedValue: "snap:<snapId>:<productId>" or "p:<productId>:<idx>"
+                                        if (selectedValue.startsWith('snap:')) {
+                                          const parts = selectedValue.split(':');
+                                          const snapId = parseInt(parts[1]);
+                                          product = snapshotProducts.find((p: any) => p.snapshot_id === snapId);
+                                        } else if (selectedValue.startsWith('p:')) {
+                                          const parts = selectedValue.split(':');
+                                          const pId = parseInt(parts[1]);
+                                          const idx2 = parseInt(parts[2]);
+                                          product = snapshotProducts[idx2] ?? snapshotProducts.find((p: any) => p.id === pId && !p.snapshot_id);
+                                        } else {
+                                          product = snapshotProducts.find((p: any) => String(p.id) === selectedValue);
+                                        }
+                                      } else {
+                                        product = products.find((p: any) => String(p.id) === selectedValue);
+                                      }
+
                                       if (product) {
                                         setFieldValue(`items.${index}.product_id`, product.id);
                                         setFieldValue(
@@ -2898,13 +3014,19 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         );
                                         setFieldValue(`items.${index}.designation`, product.designation || '');
                                         
-                                        // Reset variant/unit
-                                        setFieldValue(`items.${index}.variant_id`, '');
+                                        // Set snapshot reference
+                                        setFieldValue(`items.${index}.product_snapshot_id`, product.snapshot_id || null);
+                                        
+                                        // If snapshot has a variant, auto-set it
+                                        if (product.variant_id) {
+                                          setFieldValue(`items.${index}.variant_id`, product.variant_id);
+                                        } else {
+                                          setFieldValue(`items.${index}.variant_id`, '');
+                                        }
                                         setFieldValue(`items.${index}.unit_id`, '');
 
                                         setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
                                         setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
-                                        // Charger les anciens pourcentages du produit par défaut
                                         setFieldValue(
                                           `items.${index}.cout_revient_pourcentage`,
                                           product.cout_revient_pourcentage ?? 0
@@ -2920,7 +3042,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         const unit = product.prix_vente || 0;
                                         const pa = product.prix_achat || 0;
                                         setFieldValue(`items.${index}.prix_unitaire`, unit);
-                                        // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
                                         const priceForDisplay = values.type === 'Commande' ? pa : unit;
                                         setUnitPriceRaw((prev) => ({ ...prev, [index]: String(priceForDisplay) }));
                                         setFieldValue(`items.${index}.kg`, product.kg ?? 0);
@@ -2931,7 +3052,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             )
                                           ) || 0;
                                         setFieldValue(`items.${index}.total`, q * priceForDisplay);
-                                        // After choosing product, focus qty
                                         setTimeout(() => focusCell(index, 'qty'), 0);
                                       }
                                     }}
@@ -3230,6 +3350,69 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         return;
       }
       
+      // --- Auto-split: si qté dépasse le snapshot dispo, caper et créer nouvelle ligne ---
+      if (useSnapshotSelection && snapshotProducts.length > 0) {
+        const currentSnapId = values.items[index].product_snapshot_id;
+        if (currentSnapId) {
+          const currentSnap = snapshotProducts.find((p: any) => p.snapshot_id === currentSnapId);
+          const snapQty = Number(currentSnap?.snapshot_quantite ?? 0);
+          if (snapQty > 0 && q > snapQty) {
+            // Cap current line at snapshot max
+            const excess = q - snapQty;
+            const cappedQ = snapQty;
+            setFieldValue(`items.${index}.quantite`, cappedQ);
+            setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(cappedQ) }));
+            const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+            setFieldValue(`items.${index}.total`, cappedQ * u);
+
+            // Find next FIFO snapshot for same product+variant
+            const prodId = currentSnap.id;
+            const varId = currentSnap.variant_id || 0;
+            const nextSnap = snapshotProducts.find((p: any) =>
+              p.id === prodId &&
+              (p.variant_id || 0) === varId &&
+              p.snapshot_id !== currentSnapId &&
+              Number(p.snapshot_quantite ?? 0) > 0 &&
+              Number(p.fifo_priority ?? 999) > Number(currentSnap.fifo_priority ?? 0)
+            );
+
+            if (nextSnap) {
+              // Create new row with next snapshot and remaining qty
+              const nextPrice = nextSnap.prix_vente || 0;
+              const nextPA = nextSnap.prix_achat || 0;
+              const priceForNew = values.type === 'Commande' ? nextPA : nextPrice;
+              const newRowQty = Math.min(excess, Number(nextSnap.snapshot_quantite ?? 0));
+              const newItem = {
+                _rowId: makeRowId(),
+                product_id: nextSnap.id,
+                product_reference: String(nextSnap.reference ?? nextSnap.id),
+                designation: nextSnap.designation || '',
+                quantite: newRowQty,
+                prix_achat: nextSnap.prix_achat || 0,
+                prix_unitaire: nextPrice,
+                cout_revient: nextSnap.cout_revient || 0,
+                kg: nextSnap.kg ?? 0,
+                total: newRowQty * priceForNew,
+                unite: 'pièce',
+                product_snapshot_id: nextSnap.snapshot_id,
+                variant_id: nextSnap.variant_id || '',
+                cout_revient_pourcentage: nextSnap.cout_revient_pourcentage ?? 0,
+                prix_gros_pourcentage: nextSnap.prix_gros_pourcentage ?? 0,
+                prix_vente_pourcentage: nextSnap.prix_vente_pourcentage ?? 0,
+              };
+              const newIdx = values.items.length;
+              setFieldValue('items', [...values.items, newItem]);
+              setQtyRaw((prev) => ({ ...prev, [newIdx]: formatNumber(newRowQty) }));
+              setUnitPriceRaw((prev) => ({ ...prev, [newIdx]: String(priceForNew) }));
+
+              // If there's still more excess beyond this snapshot, 
+              // user will need to adjust manually on the new line
+            }
+            return; // Already handled
+          }
+        }
+      }
+
       setFieldValue(`items.${index}.quantite`, q);
       setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) }));
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
