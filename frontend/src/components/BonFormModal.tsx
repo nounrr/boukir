@@ -2926,20 +2926,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                   <SearchableSelect
                                     options={(() => {
                                       if (useSnapshotSelection && snapshotProducts.length > 0) {
-                                        // Collect snapshot IDs already used in current bon items (for edit mode)
-                                        const usedSnapIds = new Set(
-                                          values.items
-                                            .map((it: any) => it.product_snapshot_id)
-                                            .filter(Boolean)
-                                            .map(Number)
-                                        );
-                                        // Show snapshots with qty > 0, OR already selected in current bon (edit mode)
-                                        const withStock = snapshotProducts.filter((p: any) =>
-                                          (p.snapshot_id && Number(p.snapshot_quantite ?? 0) > 0) ||
-                                          (p.snapshot_id && usedSnapIds.has(Number(p.snapshot_id)))
-                                        );
-                                        // Sort: FIFO priority 1 first; within same product+variant, oldest snapshot first
-                                        const sorted = [...withStock].sort((a: any, b: any) => {
+                                        // Show ALL snapshots (even qty = 0) so they remain visible.
+                                        // (Snapshots with qty=0 stay selectable per user request.)
+                                        const sorted = [...snapshotProducts].sort((a: any, b: any) => {
                                           // Group by product designation for alphabetical browsing
                                           const desA = String(a.designation ?? '').toLowerCase();
                                           const desB = String(b.designation ?? '').toLowerCase();
