@@ -357,6 +357,15 @@ const ContactsPage: React.FC = () => {
     clientSubTab: activeTab === 'clients' ? clientSubTab : undefined,
   }, { skip: isGroupsTab });
 
+  // Pour la card "Solde cumulé": on veut toujours la somme des soldes cumulés des CLIENTS.
+  // - Si on est déjà sur l'onglet clients, on réutilise contactsSummary.
+  // - Si on est sur fournisseurs, on charge un summary client sans filtre de recherche.
+  const { data: clientsSoldeSummary } = useGetContactsSummaryQuery({
+    type: 'Client',
+    search: activeTab === 'clients' ? searchTerm : undefined,
+    clientSubTab: activeTab === 'clients' ? clientSubTab : 'all',
+  }, { skip: isGroupsTab });
+
   const groupEditQueryGroupId = groupEditMode === 'members' ? (groupEditId ?? undefined) : undefined;
   const groupEditBaseSkip = !isGroupEditModalOpen || (groupEditMode === 'members' && groupEditId == null);
   const { data: groupEditClientsResponse, isLoading: groupsClientsLoading } = useGetClientsQuery({
@@ -3477,7 +3486,11 @@ const ContactsPage: React.FC = () => {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Solde cumulé</p>
                   <p className="text-3xl font-bold text-gray-900">
-                    {(contactsSummary?.totalSoldeCumule ?? 0).toFixed(2)} DH
+                    {(
+                      (activeTab === 'clients'
+                        ? (contactsSummary?.totalSoldeCumule ?? 0)
+                        : (clientsSoldeSummary?.totalSoldeCumule ?? 0))
+                    ).toFixed(2)} DH
                   </p>
                 </div>
               </div>
