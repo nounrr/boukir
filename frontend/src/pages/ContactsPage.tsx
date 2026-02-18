@@ -279,6 +279,8 @@ const ContactsPage: React.FC = () => {
   const [groupEditPage, setGroupEditPage] = useState(1);
   const [groupEditItemsPerPage, setGroupEditItemsPerPage] = useState(20);
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
+  // Filtre d'affichage: 'all' = tout, 'no-groups' = sans groupes (contacts individuels), 'only-groups' = groupes uniquement (fermés) + contacts hors groupe
+  const [groupViewMode, setGroupViewMode] = useState<'all' | 'no-groups' | 'only-groups'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -2865,8 +2867,30 @@ const ContactsPage: React.FC = () => {
 
   const visibleAccordionRows: AccordionRow[] = useMemo(() => {
     if (expandedGroupRowForActiveTab) return [expandedGroupRowForActiveTab];
+
+    if (groupViewMode === 'no-groups') {
+      // Afficher tous les contacts individuellement, sans regroupement
+      const flat: AccordionRow[] = [];
+      for (const row of accordionRows) {
+        if (row.kind === 'contact') {
+          flat.push(row);
+        } else if (row.kind === 'group') {
+          // Éclater le groupe en contacts individuels
+          for (const member of row.members) {
+            flat.push({ kind: 'contact', contact: member });
+          }
+        }
+      }
+      return flat;
+    }
+
+    if (groupViewMode === 'only-groups') {
+      // Afficher uniquement les lignes de groupe (fermées) + contacts hors groupe
+      return accordionRows.filter(row => row.kind === 'group' || row.kind === 'contact');
+    }
+
     return accordionRows;
-  }, [accordionRows, expandedGroupRowForActiveTab]);
+  }, [accordionRows, expandedGroupRowForActiveTab, groupViewMode]);
 
   const expandedGroupTotalSoldeForActiveTab = useMemo(() => {
     if (!expandedGroupRowForActiveTab) return 0;
@@ -2885,6 +2909,8 @@ const ContactsPage: React.FC = () => {
   }, [activeTab]);
 
   const toggleGroupExpanded = React.useCallback((groupId: number) => {
+    // En mode 'only-groups', ne pas ouvrir les groupes
+    if (groupViewMode === 'only-groups') return;
     const key = `${activeTab}:${groupId}`;
     setExpandedGroupKeys((prev) => {
       const next = new Set(prev);
@@ -2898,7 +2924,7 @@ const ContactsPage: React.FC = () => {
       }
       return next;
     });
-  }, [activeTab]);
+  }, [activeTab, groupViewMode]);
 
   React.useEffect(() => {
     if (!expandedGroupIdForActiveTab) return;
@@ -3537,7 +3563,7 @@ const ContactsPage: React.FC = () => {
           )}
 
           {/* Contrôles de pagination */}
-          <div className="mb-4 flex justify-between items-center">
+          <div className="mb-4 flex flex-wrap justify-between items-center gap-3">
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-700">
                 {itemsPerPage === 0
@@ -3546,7 +3572,40 @@ const ContactsPage: React.FC = () => {
                 }
               </span>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Filtres d'affichage groupes */}
+              <div className="flex items-center gap-3 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="groupViewMode"
+                    checked={groupViewMode === 'all'}
+                    onChange={() => setGroupViewMode('all')}
+                    className="accent-blue-600"
+                  />
+                  Tout
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="groupViewMode"
+                    checked={groupViewMode === 'no-groups'}
+                    onChange={() => { setGroupViewMode('no-groups'); clearExpandedGroupsForActiveTab(); }}
+                    className="accent-blue-600"
+                  />
+                  Sans groupes
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="groupViewMode"
+                    checked={groupViewMode === 'only-groups'}
+                    onChange={() => { setGroupViewMode('only-groups'); clearExpandedGroupsForActiveTab(); }}
+                    className="accent-blue-600"
+                  />
+                  Groupes only
+                </label>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-700">Éléments par page:</span>
                 <select
