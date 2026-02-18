@@ -268,7 +268,7 @@ const ContactsPage: React.FC = () => {
   });
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde' | null>(null);
+  const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde_cumule' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [isGroupEditModalOpen, setIsGroupEditModalOpen] = useState(false);
   const [groupEditId, setGroupEditId] = useState<number | null>(null);
@@ -2782,8 +2782,8 @@ const ContactsPage: React.FC = () => {
   // IMPORTANT: le tri doit être fait côté backend, sinon la pagination est fausse.
   const sortedContacts = useMemo(() => filteredContacts, [filteredContacts]);
 
-  // Fonction pour gérer le tri
-  const handleSort = (field: 'nom' | 'societe' | 'solde') => {
+  // Fonction pour gérer le tri (solde_cumule = tri par solde cumulé côté backend)
+  const handleSort = (field: 'nom' | 'societe' | 'solde_cumule') => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
@@ -3656,11 +3656,11 @@ const ContactsPage: React.FC = () => {
                 {/* Solde en premier */}
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
-                  onClick={() => handleSort('solde')}
+                  onClick={() => handleSort('solde_cumule')}
                 >
                   <div className="flex items-center gap-2">
                     {activeTab === 'clients' ? 'Solde à recevoir' : 'Solde à payer'}
-                    {sortField === 'solde' && (
+                    {sortField === 'solde_cumule' && (
                       sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                     )}
                   </div>
