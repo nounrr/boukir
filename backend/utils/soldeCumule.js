@@ -48,6 +48,7 @@ export async function getContactSoldeCumule(db, contactId) {
       SELECT SUM(montant_total) AS total_ventes
       FROM bons_sortie
       WHERE client_id = ?
+        AND statut IN ('En attente','Validé','Livré','Facturé')
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) ventes_client ON c.type = 'Client'
 
@@ -62,6 +63,7 @@ export async function getContactSoldeCumule(db, contactId) {
       WHERE c_link.id = ?
         AND c_link.type = 'Client'
         AND o.is_solde = 1
+        AND o.status IN ('pending','confirmed','processing','shipped','delivered')
         AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
       GROUP BY c_link.id
     ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
@@ -80,6 +82,7 @@ export async function getContactSoldeCumule(db, contactId) {
       FROM payments
       WHERE type_paiement = 'Client'
         AND contact_id = ?
+        AND statut IN ('En attente','Validé')
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) paiements_client ON c.type = 'Client'
 
@@ -97,6 +100,7 @@ export async function getContactSoldeCumule(db, contactId) {
       SELECT SUM(montant_total) AS total_avoirs
       FROM avoirs_client
       WHERE client_id = ?
+        AND statut IN ('En attente','Validé','Appliqué')
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) avoirs_client ON c.type = 'Client'
 

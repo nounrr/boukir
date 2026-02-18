@@ -3493,7 +3493,7 @@ const ContactsPage: React.FC = () => {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-center">
                 <Users className={`${activeTab === 'clients' ? 'text-blue-600' : 'text-gray-600'}`} size={32} />
@@ -3503,14 +3503,16 @@ const ContactsPage: React.FC = () => {
                 </div>
               </div>
             </div>
+           
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-center">
-                <DollarSign className="text-green-600" size={32} />
+                <DollarSign className="text-orange-600" size={32} />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Solde cumulé</p>
+                  <p className="text-sm font-medium text-gray-600">Solde cumulé (Σ contacts)</p>
                   <p className="text-3xl font-bold text-gray-900">
-                    {(Number(soldeCumuleCard?.total_final ?? 0) || 0).toFixed(2)} DH
+                    {(Number(contactsSummary?.totalSoldeCumule ?? 0) || 0).toFixed(2)} DH
                   </p>
+               
                 </div>
               </div>
             </div>
