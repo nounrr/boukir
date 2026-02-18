@@ -19,7 +19,6 @@ const BALANCE_EXPR = `
       + COALESCE(ventes_ecommerce.total_ventes, 0)
       - COALESCE(paiements_client.total_paiements, 0)
       - COALESCE(avoirs_client.total_avoirs, 0)
-      - COALESCE(avoirs_ecommerce.total_avoirs, 0)
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
@@ -44,19 +43,15 @@ export async function getContactSoldeCumule(db, contactId) {
       ${BALANCE_EXPR} AS solde_cumule
     FROM contacts c
 
-    -- Ventes client = bons_sortie + bons_comptant
+    -- Ventes client = bons_sortie uniquement
     LEFT JOIN (
       SELECT SUM(montant_total) AS total_ventes
-      FROM (
-        SELECT client_id, montant_total, statut FROM bons_sortie
-        UNION ALL
-        SELECT client_id, montant_total, statut FROM bons_comptant
-      ) vc
-      WHERE vc.client_id = ?
-        AND LOWER(TRIM(vc.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+      FROM bons_sortie
+      WHERE client_id = ?
+        AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) ventes_client ON c.type = 'Client'
 
-    -- Ventes e-commerce: inclure toutes les commandes (sauf annulées/remboursées)
+    -- Ventes e-commerce: uniquement is_solde = 1 (sauf annulées/remboursées)
     LEFT JOIN (
       SELECT
         c_link.id AS contact_id,
@@ -66,6 +61,7 @@ export async function getContactSoldeCumule(db, contactId) {
         ON o.user_id = c_link.id
       WHERE c_link.id = ?
         AND c_link.type = 'Client'
+        AND o.is_solde = 1
         AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
       GROUP BY c_link.id
     ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
@@ -104,21 +100,6 @@ export async function getContactSoldeCumule(db, contactId) {
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) avoirs_client ON c.type = 'Client'
 
-    -- Avoirs e-commerce (liés par ecommerce_order_id -> ecommerce_orders.user_id)
-    LEFT JOIN (
-      SELECT
-        c_link.id AS contact_id,
-        SUM(ae.montant_total) AS total_avoirs
-      FROM avoirs_ecommerce ae
-      LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-      INNER JOIN contacts c_link
-        ON o.user_id = c_link.id
-      WHERE c_link.id = ?
-        AND c_link.type = 'Client'
-        AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-      GROUP BY c_link.id
-    ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
-
     -- Avoirs fournisseur (avoirs_fournisseur table)
     LEFT JOIN (
       SELECT SUM(montant_total) AS total_avoirs
@@ -138,7 +119,6 @@ export async function getContactSoldeCumule(db, contactId) {
     id, // paiements_client
     id, // paiements_fournisseur
     id, // avoirs_client
-    id, // avoirs_ecommerce
     id, // avoirs_fournisseur
     id, // where c.id
   ];
