@@ -35,9 +35,11 @@ interface SearchableSelectProps {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  valueLabelFallback?: string;
   className?: string;
   disabled?: boolean;
   maxDisplayItems?: number;
+  minSearchChars?: number;
   autoOpenOnFocus?: boolean; // open dropdown when the control gains focus (for fast keyboard entry)
   buttonProps?: React.ButtonHTMLAttributes<HTMLButtonElement> & Record<string, any>; // pass-through for focus/aria/data-attrs
   allowCreate?: boolean;
@@ -50,9 +52,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   value,
   onChange,
   placeholder,
+  valueLabelFallback,
   className = '',
   disabled = false,
   maxDisplayItems = 100,
+  minSearchChars = 2,
   autoOpenOnFocus = false,
   buttonProps,
   allowCreate = false,
@@ -79,6 +83,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const hasMoreItems = allMatches.length > displayCount;
 
   const selectedOption = options.find((opt) => opt.value === value);
+  const displayLabel = selectedOption?.label || valueLabelFallback || placeholder;
   const canCreate = Boolean(
     allowCreate &&
       typeof onCreate === 'function' &&
@@ -104,7 +109,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         className="w-full px-3 py-2 border border-gray-300 rounded-md text-left bg-white disabled:bg-gray-100 min-h-[38px] flex items-center justify-between"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        title={selectedOption ? selectedOption.label : placeholder}
+        title={displayLabel}
         onFocus={(e) => {
           buttonProps?.onFocus?.(e);
           if (!disabled && autoOpenOnFocus) setIsOpen(true);
@@ -125,7 +130,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         }}
         {...buttonProps}
       >
-        <span className="truncate pr-2">{selectedOption ? selectedOption.label : placeholder}</span>
+        <span className="truncate pr-2">{displayLabel}</span>
         <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
       </button>
 
@@ -135,7 +140,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             <input
               type="text"
               className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Rechercher... (minimum 2 caractères)"
+              placeholder={minSearchChars > 0 ? `Rechercher... (minimum ${minSearchChars} caractères)` : 'Rechercher...'}
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -183,7 +188,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
-            {searchTerm.trim().length >= 2 ? (
+            {searchTerm.trim().length >= minSearchChars ? (
               filteredOptions.length === 0 ? (
                 <div className="p-2 text-sm text-gray-500">
                   <div className="mb-2">Aucun résultat trouvé</div>
@@ -263,7 +268,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
               )
             ) : (
               <div className="p-3 text-sm text-gray-500 text-center">
-                <div className="mb-2">Tapez au moins 2 caractères pour rechercher</div>
+                <div className="mb-2">Tapez au moins {minSearchChars} caractères pour rechercher</div>
                 <div className="text-xs text-gray-400">{options.length} éléments disponibles</div>
               </div>
             )}
@@ -2951,7 +2956,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const qte = p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : '';
                                           const bonInfo = p.bon_commande_id ? `Bon #${p.bon_commande_id}` : p.snapshot_id ? `Snap #${p.snapshot_id}` : '';
                                           return {
-                                            value: p.snapshot_id ? `snap:${p.snapshot_id}:${p.id}` : `p:${p.id}:${idx}`,
+                                            value: p.snapshot_id ? `snap:${p.snapshot_id}:${p.id}` : String(p.id),
                                             label: p.snapshot_id
                                               ? `${priorityTag} ${serie} - ${nom}${variant}${qte} | ${bonInfo}`.trim()
                                               : `${serie} - ${nom}`.trim(),
@@ -2971,7 +2976,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       if (useSnapshotSelection && snapId) {
                                         return `snap:${snapId}:${prodId}`;
                                       }
+                                      // product_snapshot_id is null → match directly by product_id
                                       return String(prodId || '');
+                                    })()}
+                                    valueLabelFallback={(() => {
+                                      const prodId = values.items[index].product_id;
+                                      if (!prodId) return '';
+
+                                      const ref = String(values.items[index].product_reference ?? prodId).trim();
+                                      const fromRow = String(values.items[index].designation ?? '').trim();
+                                      if (fromRow) return `${ref} - ${fromRow}`.trim();
+
+                                      const fromCatalog = products.find((p: any) => String(p.id) === String(prodId));
+                                      const des = String(fromCatalog?.designation ?? '').trim();
+                                      return des ? `${ref} - ${des}`.trim() : ref;
                                     })()}
                                     onChange={(selectedValue) => {
                                       if (isQtyOnlyEdit) return;
@@ -2986,8 +3004,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         } else if (selectedValue.startsWith('p:')) {
                                           const parts = selectedValue.split(':');
                                           const pId = parseInt(parts[1]);
-                                          const idx2 = parseInt(parts[2]);
-                                          product = snapshotProducts[idx2] ?? snapshotProducts.find((p: any) => p.id === pId && !p.snapshot_id);
+                                          product = snapshotProducts.find((p: any) => p.id === pId && !p.snapshot_id);
                                         } else {
                                           product = snapshotProducts.find((p: any) => String(p.id) === selectedValue);
                                         }
@@ -3048,6 +3065,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     className="w-full"
                                     disabled={isQtyOnlyEdit}
                                     maxDisplayItems={300}
+                                    minSearchChars={useSnapshotSelection ? 0 : 2}
                                     autoOpenOnFocus
                                     buttonProps={{
                                       'data-row': index as any,
