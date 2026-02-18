@@ -331,17 +331,19 @@ const ContactsPage: React.FC = () => {
   const backendSortBy = sortField || 'nom';
   const backendSortDir = sortDirection;
 
+  const effectiveLimit = itemsPerPage === 0 ? 999999 : itemsPerPage;
+
   const { data: clientsResponse, isLoading: clientsLoading } = useGetClientsQuery({
-    page: currentPage,
-    limit: itemsPerPage,
+    page: itemsPerPage === 0 ? 1 : currentPage,
+    limit: effectiveLimit,
     search: searchTerm,
     clientSubTab,
     sortBy: backendSortBy,
     sortDir: backendSortDir,
   }, { skip: isGroupsTab });
   const { data: fournisseursResponse, isLoading: fournisseursLoading } = useGetFournisseursQuery({
-    page: currentPage,
-    limit: itemsPerPage,
+    page: itemsPerPage === 0 ? 1 : currentPage,
+    limit: effectiveLimit,
     search: searchTerm,
     sortBy: backendSortBy,
     sortDir: backendSortDir,
@@ -3538,7 +3540,10 @@ const ContactsPage: React.FC = () => {
           <div className="mb-4 flex justify-between items-center">
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-700">
-                Affichage de {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, totalItems)} sur {totalItems} éléments
+                {itemsPerPage === 0
+                  ? `Affichage de tous les ${totalItems} éléments`
+                  : `Affichage de ${((currentPage - 1) * itemsPerPage) + 1} à ${Math.min(currentPage * itemsPerPage, totalItems)} sur ${totalItems} éléments`
+                }
               </span>
             </div>
             <div className="flex items-center gap-4">
@@ -3557,6 +3562,7 @@ const ContactsPage: React.FC = () => {
                   <option value={30}>30</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
+                  <option value={0}>Tous</option>
                 </select>
               </div>
             </div>
@@ -4214,7 +4220,7 @@ const ContactsPage: React.FC = () => {
 
       {/* Navigation de pagination */}
       {
-        totalPages > 1 && (
+        totalPages > 1 && itemsPerPage !== 0 && (
           <div className="mt-4 flex justify-center items-center gap-2">
             <button
               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
