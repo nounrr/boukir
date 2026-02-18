@@ -459,7 +459,7 @@ router.get('/summary', async (req, res) => {
         SELECT fournisseur_id, SUM(montant_total) AS total_achats
         FROM bons_commande
         WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY fournisseur_id
       ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
 
@@ -467,7 +467,7 @@ router.get('/summary', async (req, res) => {
         SELECT contact_id, SUM(montant_total) AS total_paiements
         FROM payments
         WHERE type_paiement = 'Client'
-          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY contact_id
       ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
 
@@ -475,14 +475,14 @@ router.get('/summary', async (req, res) => {
         SELECT contact_id, SUM(montant_total) AS total_paiements
         FROM payments
         WHERE type_paiement = 'Fournisseur'
-          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY contact_id
       ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
 
       LEFT JOIN (
         SELECT client_id, SUM(montant_total) AS total_avoirs
         FROM avoirs_client
-        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY client_id
       ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
 
@@ -495,14 +495,14 @@ router.get('/summary', async (req, res) => {
         INNER JOIN contacts c_link
           ON o.user_id = c_link.id
         WHERE c_link.type = 'Client'
-          AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
+          AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY c_link.id
       ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
         FROM avoirs_fournisseur
-        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY fournisseur_id
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
       ${whereSql}

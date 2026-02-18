@@ -11,7 +11,7 @@ export interface PaginatedContactsResponse {
   };
 }
 
-export type ContactsSortBy = 'nom' | 'societe' | 'solde' | 'created_at';
+export type ContactsSortBy = 'nom' | 'societe' | 'solde' | 'solde_cumule' | 'created_at';
 export type SortDirection = 'asc' | 'desc';
 
 export interface ContactsSummaryResponse {
