@@ -606,7 +606,7 @@ router.get('/search', async (req, res, next) => {
 });
 
 // GET /products/with-snapshots — returns products with snapshot entries expanded
-// Each snapshot with quantite > 0 becomes a separate selectable entry
+// Each snapshot becomes a separate selectable entry (including qty <= 0)
 // Used by BonFormModal for Sortie/Comptant/Avoir to select snapshot-based stock
 router.get('/with-snapshots', async (req, res, next) => {
   try {
@@ -634,7 +634,7 @@ router.get('/with-snapshots', async (req, res, next) => {
       })));
     }
 
-    // Get all snapshots with qty > 0, joined with product info
+    // Get all snapshots (including qty <= 0), joined with product info
     const [snapRows] = await pool.query(`
       SELECT
         ps.id AS snapshot_id,
