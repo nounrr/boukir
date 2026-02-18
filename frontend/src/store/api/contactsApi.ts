@@ -21,6 +21,10 @@ export interface ContactsSummaryResponse {
   totalWithICE: number;
 }
 
+export interface SoldeCumuleCardResponse {
+  total_final: number;
+}
+
 const contactsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getContacts: builder.query<PaginatedContactsResponse, { type?: 'Client' | 'Fournisseur'; page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection }>({
@@ -49,6 +53,14 @@ const contactsApi = api.injectEndpoints({
           ...(clientSubTab ? { clientSubTab } : {}),
           ...(groupId ? { groupId } : {}),
         },
+      }),
+      providesTags: ['Contact'],
+    }),
+
+    // Route dédiée pour la card "Solde cumulé" (query globale fixe)
+    getSoldeCumuleCard: builder.query<SoldeCumuleCardResponse, void>({
+      query: () => ({
+        url: '/contacts/solde-cumule-card',
       }),
       providesTags: ['Contact'],
     }),
@@ -150,4 +162,7 @@ export const {
   useGetAllClientsQuery,
   useGetAllFournisseursQuery,
 } = contactsApi;
+
+// Export explicite (plus robuste que le destructuring pour certains outils TS)
+export const useGetSoldeCumuleCardQuery = contactsApi.endpoints.getSoldeCumuleCard.useQuery;
 

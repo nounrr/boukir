@@ -522,6 +522,75 @@ router.get('/summary', async (req, res) => {
   }
 });
 
+// GET /api/contacts/solde-cumule-card - total global pour la card "Solde cumulé"
+// IMPORTANT: cette route applique volontairement une query fixe (sans pagination/filters)
+// pour correspondre exactement au calcul demandé.
+router.get('/solde-cumule-card', async (_req, res) => {
+  try {
+    const sql = `
+      SELECT
+      (
+          -- Bons de sortie
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM bons_sortie
+              WHERE statut IN ('En attente','Validé','Livré','Facturé')
+          ),0)
+
+          -- Avoirs client
+          -
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM avoirs_client
+              WHERE statut IN ('En attente','Validé','Appliqué')
+          ),0)
+
+          -- Paiements clients
+          -
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM payments
+              WHERE statut IN ('En attente','Validé')
+              AND type_paiement = 'Client'
+              AND contact_id IS NOT NULL
+          ),0)
+
+          -- Solde contacts
+          +
+          COALESCE((
+              SELECT SUM(solde)
+              FROM contacts
+          ),0)
+
+          -- Commandes ecommerce
+          +
+          COALESCE((
+              SELECT SUM(total_amount)
+              FROM ecommerce_orders
+              WHERE is_solde = 1
+              AND status IN ('pending','confirmed','processing','shipped','delivered')
+          ),0)
+
+          -- Avoirs ecommerce
+          -
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM avoirs_ecommerce
+              WHERE statut IN ('En attente','Validé','Appliqué')
+          ),0)
+
+      ) AS total_final;
+    `;
+
+    const [rows] = await pool.execute(sql);
+    const row = rows?.[0] || {};
+    res.json({ total_final: Number(row.total_final || 0) });
+  } catch (error) {
+    console.error('Error fetching solde cumule card:', error);
+    res.status(500).json({ error: 'Failed to fetch solde cumule card' });
+  }
+});
+
 // GET /api/contacts/debug-solde?user_id=314
 // Debug endpoint: returns detailed breakdown of what contributes to solde_cumule
 router.get('/debug-solde', async (req, res) => {
