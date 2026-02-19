@@ -18,6 +18,7 @@ import {
   useDeleteContactMutation,
   useGetContactsSummaryQuery,
   useGetSoldeCumuleCardQuery,
+  useGetSoldeCumuleCardFournisseurQuery,
   useGetContactQuery // Added this
 } from '../store/api/contactsApi';
 import {
@@ -362,8 +363,10 @@ const ContactsPage: React.FC = () => {
     clientSubTab: activeTab === 'clients' ? clientSubTab : undefined,
   }, { skip: isGroupsTab });
 
-  // Card "Solde cumulé": route dédiée (query globale fixe) indépendante de la pagination.
+  // Card "Solde cumulé Client": route dédiée (query globale fixe) indépendante de la pagination.
   const { data: soldeCumuleCard } = useGetSoldeCumuleCardQuery(undefined, { skip: isGroupsTab });
+  // Card "Solde cumulé Fournisseur": route dédiée (query globale fixe)
+  const { data: soldeCumuleFournisseurCard } = useGetSoldeCumuleCardFournisseurQuery(undefined, { skip: isGroupsTab });
 
   const groupEditQueryGroupId = groupEditMode === 'members' ? (groupEditId ?? undefined) : undefined;
   const groupEditBaseSkip = !isGroupEditModalOpen || (groupEditMode === 'members' && groupEditId == null);
@@ -3506,16 +3509,28 @@ const ContactsPage: React.FC = () => {
            
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-center">
-                <DollarSign className="text-orange-600" size={32} />
+                <DollarSign className="text-green-600" size={32} />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Solde cumulé (Σ contacts)</p>
+                  <p className="text-sm font-medium text-gray-600">Solde cumulé Client</p>
                   <p className="text-3xl font-bold text-gray-900">
-                    {(Number(contactsSummary?.totalSoldeCumule ?? 0) || 0).toFixed(2)} DH
+                    {(Number(soldeCumuleCard?.total_final ?? 0) || 0).toFixed(2)} DH
                   </p>
-               
                 </div>
               </div>
             </div>
+
+            <div className="bg-white p-6 rounded-lg shadow">
+              <div className="flex items-center">
+                <DollarSign className="text-orange-600" size={32} />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Solde cumulé Fournisseur</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {(Number(soldeCumuleFournisseurCard?.total_final ?? 0) || 0).toFixed(2)} DH
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-center">
                 <Building2 className="text-purple-600" size={32} />
