@@ -523,11 +523,12 @@ router.get('/solde-cumule-card', async (_req, res) => {
                 AND contact_id IS NOT NULL
           ),0)
 
-          -- Solde contacts
+          -- Solde contacts (clients uniquement)
           +
           COALESCE((
               SELECT SUM(solde)
               FROM contacts
+              WHERE type = 'Client'
           ),0)
 
           -- Commandes ecommerce
@@ -558,6 +559,58 @@ router.get('/solde-cumule-card', async (_req, res) => {
   } catch (error) {
     console.error('Error fetching solde cumule card:', error);
     res.status(500).json({ error: 'Failed to fetch solde cumule card' });
+  }
+});
+
+// GET /api/contacts/solde-cumule-card-fournisseur - total global fournisseur
+router.get('/solde-cumule-card-fournisseur', async (_req, res) => {
+  try {
+    const sql = `
+      SELECT
+      (
+          -- Bons de commande (achats fournisseur)
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM bons_commande
+              WHERE fournisseur_id IS NOT NULL
+                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ),0)
+
+          -- Avoirs fournisseur
+          -
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM avoirs_fournisseur
+              WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ),0)
+
+          -- Paiements fournisseur
+          -
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM payments
+              WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+                AND type_paiement = 'Fournisseur'
+                AND contact_id IS NOT NULL
+          ),0)
+
+          -- Solde contacts (fournisseurs uniquement)
+          +
+          COALESCE((
+              SELECT SUM(solde)
+              FROM contacts
+              WHERE type = 'Fournisseur'
+          ),0)
+
+      ) AS total_final;
+    `;
+
+    const [rows] = await pool.execute(sql);
+    const row = rows?.[0] || {};
+    res.json({ total_final: Number(row.total_final || 0) });
+  } catch (error) {
+    console.error('Error fetching solde cumule card fournisseur:', error);
+    res.status(500).json({ error: 'Failed to fetch solde cumule card fournisseur' });
   }
 });
 

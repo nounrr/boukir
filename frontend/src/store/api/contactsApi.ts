@@ -57,10 +57,18 @@ const contactsApi = api.injectEndpoints({
       providesTags: ['Contact'],
     }),
 
-    // Route dédiée pour la card "Solde cumulé" (query globale fixe)
+    // Route dédiée pour la card "Solde cumulé Client" (query globale fixe)
     getSoldeCumuleCard: builder.query<SoldeCumuleCardResponse, void>({
       query: () => ({
         url: '/contacts/solde-cumule-card',
+      }),
+      providesTags: ['Contact'],
+    }),
+
+    // Route dédiée pour la card "Solde cumulé Fournisseur" (query globale fixe)
+    getSoldeCumuleCardFournisseur: builder.query<SoldeCumuleCardResponse, void>({
+      query: () => ({
+        url: '/contacts/solde-cumule-card-fournisseur',
       }),
       providesTags: ['Contact'],
     }),
@@ -165,4 +173,5 @@ export const {
 
 // Export explicite (plus robuste que le destructuring pour certains outils TS)
 export const useGetSoldeCumuleCardQuery = contactsApi.endpoints.getSoldeCumuleCard.useQuery;
+export const useGetSoldeCumuleCardFournisseurQuery = contactsApi.endpoints.getSoldeCumuleCardFournisseur.useQuery;
 
