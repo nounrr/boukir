@@ -42,19 +42,88 @@ router.post('/mouvement', verifyToken, async (req, res) => {
       }, new Map());
     }
 
+    // Also fetch snapshot costs for items that reference product_snapshot_id
+    const snapshotIds = Array.from(
+      new Set(
+        itemsRaw
+          .map((it) => it?.product_snapshot_id ?? it?.snapshot_id)
+          .filter((v) => v !== undefined && v !== null && v !== '')
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n))
+      )
+    );
+    let snapshotCostById = new Map();
+    if (snapshotIds.length) {
+      try {
+        const [snapRows] = await pool.query(
+          'SELECT id, prix_achat, cout_revient, prix_vente FROM product_snapshot WHERE id IN (?)',
+          [snapshotIds]
+        );
+        snapshotCostById = (snapRows || []).reduce((acc, r) => {
+          acc.set(Number(r.id), {
+            prix_achat: Number(r.prix_achat ?? 0) || 0,
+            cout_revient: Number(r.cout_revient ?? 0) || 0,
+            prix_vente: Number(r.prix_vente ?? 0) || 0,
+          });
+          return acc;
+        }, new Map());
+      } catch (e) {
+        // product_snapshot table may not exist
+        console.warn('product_snapshot query failed:', e?.message);
+      }
+    }
+
+    // Also fetch variant costs
+    const variantIds = Array.from(
+      new Set(
+        itemsRaw
+          .map((it) => it?.variant_id ?? it?.variantId)
+          .filter((v) => v !== undefined && v !== null && v !== '')
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n))
+      )
+    );
+    let variantCostById = new Map();
+    if (variantIds.length) {
+      try {
+        const [varRows] = await pool.query(
+          'SELECT id, prix_achat, cout_revient, prix_vente FROM product_variants WHERE id IN (?)',
+          [variantIds]
+        );
+        variantCostById = (varRows || []).reduce((acc, r) => {
+          acc.set(Number(r.id), {
+            prix_achat: Number(r.prix_achat ?? 0) || 0,
+            cout_revient: Number(r.cout_revient ?? 0) || 0,
+            prix_vente: Number(r.prix_vente ?? 0) || 0,
+          });
+          return acc;
+        }, new Map());
+      } catch (e) {
+        console.warn('product_variants query failed:', e?.message);
+      }
+    }
+
     const items = itemsRaw.map((it) => {
       const pid = Number(it?.product_id ?? it?.produit_id);
       const fromCatalog = Number.isFinite(pid) ? productCostById.get(pid) : null;
+      const snapId = Number(it?.product_snapshot_id ?? it?.snapshot_id);
+      const fromSnapshot = Number.isFinite(snapId) ? snapshotCostById.get(snapId) : null;
+      const varId = Number(it?.variant_id ?? it?.variantId);
+      const fromVariant = Number.isFinite(varId) ? variantCostById.get(varId) : null;
 
+      // Priority: snapshot → variant → item → product catalog
       const prix_achat =
-        it?.prix_achat !== undefined && it?.prix_achat !== null
-          ? Number(it.prix_achat) || 0
-          : (fromCatalog?.prix_achat ?? 0);
+        (fromSnapshot?.prix_achat) ||
+        (fromVariant?.prix_achat) ||
+        (Number(it?.prix_achat) || 0) ||
+        (fromCatalog?.prix_achat ?? 0);
 
       const cout_revient =
-        it?.cout_revient !== undefined && it?.cout_revient !== null
-          ? Number(it.cout_revient) || 0
-          : (fromCatalog?.cout_revient ?? 0) || prix_achat;
+        (fromSnapshot?.cout_revient) ||
+        (fromVariant?.cout_revient) ||
+        (Number(it?.cout_revient) || 0) ||
+        (fromCatalog?.cout_revient ?? 0) ||
+        prix_achat;
 
       return {
         ...it,

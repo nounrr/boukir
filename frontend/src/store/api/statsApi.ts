@@ -25,6 +25,12 @@ export interface ChiffreAffairesStatsResponse {
 }
 
 export interface ChiffreDetailCalculItem {
+  product_id?: number;
+  variant_id?: number | null;
+  unit_id?: number | null;
+  variant_name?: string | null;
+  unit_name?: string | null;
+  conversion_factor?: number;
   designation: string;
   quantite: number;
   prix_unitaire: number;
