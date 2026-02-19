@@ -449,170 +449,217 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
 
     const commonParams = [selectedDate];
 
-    const ventesLinesSql = `
-      SELECT ('Comptant' COLLATE ${UNION_COLLATION}) AS bonType,
-             bc.id AS bonId,
-            (CONCAT('COM', LPAD(bc.id, GREATEST(LENGTH(bc.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
-             bc.montant_total AS totalBon,
-            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
-             ci.quantite AS quantite,
-             ci.prix_unitaire AS prix_unitaire,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
-             (ci.prix_unitaire * ci.quantite) AS montant_ligne,
-             ((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite) AS profitBrut,
-             COALESCE(ci.remise_montant, 0) AS remise_unitaire,
-             (COALESCE(ci.remise_montant, 0) * ci.quantite) AS remise_total,
-             (((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite) - (COALESCE(ci.remise_montant, 0) * ci.quantite)) AS profit
-      FROM bons_comptant bc
-      LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
-      LEFT JOIN products p ON p.id = ci.product_id
-      LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
-      LEFT JOIN product_units pu ON pu.id = ci.unit_id
+        const ventesLinesSql = `
+          SELECT ('Comptant' COLLATE ${UNION_COLLATION}) AS bonType,
+            bc.id AS bonId,
+           (CONCAT('COM', LPAD(bc.id, GREATEST(LENGTH(bc.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+            bc.montant_total AS totalBon,
+           (p.designation COLLATE ${UNION_COLLATION}) AS designation,
+            ci.product_id AS product_id,
+            ps.variant_id AS variant_id,
+            ci.unit_id AS unit_id,
+           (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
+            pu.unit_name AS unit_name,
+            ci.quantite AS quantite,
+            ci.prix_unitaire AS prix_unitaire,
+            COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
+            COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+            (ci.prix_unitaire * ci.quantite) AS montant_ligne,
+            COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+            ((ci.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite) AS profitBrut,
+            COALESCE(ci.remise_montant, 0) AS remise_unitaire,
+            (COALESCE(ci.remise_montant, 0) * ci.quantite) AS remise_total,
+            (((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite) - (COALESCE(ci.remise_montant, 0) * ci.quantite)) AS profit
+          FROM bons_comptant bc
+          LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
+          LEFT JOIN products p ON p.id = ci.product_id
+          LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
+          LEFT JOIN product_units pu ON pu.id = ci.unit_id
+          LEFT JOIN product_variants pv ON pv.id = ps.variant_id
       WHERE LOWER(TRIM(COALESCE(bc.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bc.isNotCalculated, 0) <> 1
         AND DATE(bc.date_creation) = ?
 
-      UNION ALL
+            UNION ALL
 
-      SELECT ('Sortie' COLLATE ${UNION_COLLATION}) AS bonType,
-             bs.id AS bonId,
-            (CONCAT('SOR', LPAD(bs.id, GREATEST(LENGTH(bs.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
-             bs.montant_total AS totalBon,
-            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
-             si.quantite AS quantite,
-             si.prix_unitaire AS prix_unitaire,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
-             (si.prix_unitaire * si.quantite) AS montant_ligne,
-             ((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite) AS profitBrut,
-             COALESCE(si.remise_montant, 0) AS remise_unitaire,
-             (COALESCE(si.remise_montant, 0) * si.quantite) AS remise_total,
-             (((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
-      FROM bons_sortie bs
-      LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
-      LEFT JOIN products p ON p.id = si.product_id
-      LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
-      LEFT JOIN product_units pu ON pu.id = si.unit_id
+            SELECT ('Sortie' COLLATE ${UNION_COLLATION}) AS bonType,
+              bs.id AS bonId,
+             (CONCAT('SOR', LPAD(bs.id, GREATEST(LENGTH(bs.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+              bs.montant_total AS totalBon,
+             (p.designation COLLATE ${UNION_COLLATION}) AS designation,
+              si.product_id AS product_id,
+              ps.variant_id AS variant_id,
+              si.unit_id AS unit_id,
+             (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
+              pu.unit_name AS unit_name,
+              si.quantite AS quantite,
+              si.prix_unitaire AS prix_unitaire,
+              COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
+              COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+              (si.prix_unitaire * si.quantite) AS montant_ligne,
+              COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+              ((si.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite) AS profitBrut,
+              COALESCE(si.remise_montant, 0) AS remise_unitaire,
+              (COALESCE(si.remise_montant, 0) * si.quantite) AS remise_total,
+              (((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
+            FROM bons_sortie bs
+            LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
+            LEFT JOIN products p ON p.id = si.product_id
+            LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
+            LEFT JOIN product_units pu ON pu.id = si.unit_id
+            LEFT JOIN product_variants pv ON pv.id = ps.variant_id
       WHERE LOWER(TRIM(COALESCE(bs.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bs.isNotCalculated, 0) <> 1
         AND DATE(bs.date_creation) = ?
 
-      UNION ALL
+            UNION ALL
 
-      SELECT ('Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
-             o.id AS bonId,
-            (COALESCE(o.order_number, CONCAT('ECOM', LPAD(o.id, GREATEST(LENGTH(o.id), 2), '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
-             o.total_amount AS totalBon,
-            (COALESCE(oi.product_name, p.designation) COLLATE ${UNION_COLLATION}) AS designation,
-             oi.quantity AS quantite,
-             oi.unit_price AS prix_unitaire,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
-             COALESCE(oi.subtotal, (oi.unit_price * oi.quantity)) AS montant_ligne,
-             ((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity) AS profitBrut,
-             COALESCE(oi.remise_percent_applied, 0) AS remise_unitaire,
-             COALESCE(oi.remise_amount, 0) AS remise_total,
-             (((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
-      FROM ecommerce_orders o
-      LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
-      LEFT JOIN products p ON p.id = oi.product_id
-      LEFT JOIN product_snapshot ps ON ps.id = oi.product_snapshot_id
-      LEFT JOIN product_units pu ON pu.id = oi.unit_id
+            SELECT ('Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
+              o.id AS bonId,
+             (COALESCE(o.order_number, CONCAT('ECOM', LPAD(o.id, GREATEST(LENGTH(o.id), 2), '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
+              o.total_amount AS totalBon,
+             (COALESCE(oi.product_name, p.designation) COLLATE ${UNION_COLLATION}) AS designation,
+              oi.product_id AS product_id,
+              COALESCE(oi.variant_id, ps.variant_id) AS variant_id,
+              oi.unit_id AS unit_id,
+             (COALESCE(oi.variant_name, pv.variant_name) COLLATE ${UNION_COLLATION}) AS variant_name,
+              COALESCE(oi.unit_name, pu.unit_name) AS unit_name,
+              oi.quantity AS quantite,
+              oi.unit_price AS prix_unitaire,
+              COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
+              COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+              COALESCE(oi.subtotal, (oi.unit_price * oi.quantity)) AS montant_ligne,
+              COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+              ((oi.unit_price - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity) AS profitBrut,
+              COALESCE(oi.remise_percent_applied, 0) AS remise_unitaire,
+              COALESCE(oi.remise_amount, 0) AS remise_total,
+              (((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
+            FROM ecommerce_orders o
+            LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
+            LEFT JOIN products p ON p.id = oi.product_id
+            LEFT JOIN product_snapshot ps ON ps.id = oi.product_snapshot_id
+            LEFT JOIN product_units pu ON pu.id = oi.unit_id
+            LEFT JOIN product_variants pv ON pv.id = ps.variant_id
       WHERE LOWER(COALESCE(o.status, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}
         AND DATE(o.created_at) = ?
     `;
 
-    const avoirsLinesSql = `
-      SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
-             ac.id AS bonId,
-            (CONCAT('AVC', LPAD(ac.id, GREATEST(LENGTH(ac.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
-             ac.montant_total AS totalBon,
-            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
-             ai.quantite AS quantite,
-             ai.prix_unitaire AS prix_unitaire,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
-             (ai.prix_unitaire * ai.quantite) AS montant_ligne,
-             ((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite) AS profitBrut,
-             COALESCE(ai.remise_montant, 0) AS remise_unitaire,
-             (COALESCE(ai.remise_montant, 0) * ai.quantite) AS remise_total,
-             (((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
-      FROM avoirs_client ac
-      LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
-      LEFT JOIN products p ON p.id = ai.product_id
-      LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
-      LEFT JOIN product_units pu ON pu.id = ai.unit_id
+        const avoirsLinesSql = `
+          SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
+            ac.id AS bonId,
+           (CONCAT('AVC', LPAD(ac.id, GREATEST(LENGTH(ac.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+            ac.montant_total AS totalBon,
+           (p.designation COLLATE ${UNION_COLLATION}) AS designation,
+            ai.product_id AS product_id,
+            ps.variant_id AS variant_id,
+            ai.unit_id AS unit_id,
+           (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
+            pu.unit_name AS unit_name,
+            ai.quantite AS quantite,
+            ai.prix_unitaire AS prix_unitaire,
+            COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
+            COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+            (ai.prix_unitaire * ai.quantite) AS montant_ligne,
+            COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+            ((ai.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite) AS profitBrut,
+            COALESCE(ai.remise_montant, 0) AS remise_unitaire,
+            (COALESCE(ai.remise_montant, 0) * ai.quantite) AS remise_total,
+            (((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
+          FROM avoirs_client ac
+          LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
+          LEFT JOIN products p ON p.id = ai.product_id
+          LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
+          LEFT JOIN product_units pu ON pu.id = ai.unit_id
+          LEFT JOIN product_variants pv ON pv.id = ps.variant_id
       WHERE LOWER(TRIM(COALESCE(ac.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ac.isNotCalculated, 0) <> 1
         AND DATE(ac.date_creation) = ?
 
-      UNION ALL
+            UNION ALL
 
-      SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
-             ac2.id AS bonId,
-            (CONCAT('AVCC', LPAD(ac2.id, GREATEST(LENGTH(ac2.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
-             ac2.montant_total AS totalBon,
-            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
-             ai2.quantite AS quantite,
-             ai2.prix_unitaire AS prix_unitaire,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
-             (ai2.prix_unitaire * ai2.quantite) AS montant_ligne,
-             ((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite) AS profitBrut,
-             COALESCE(ai2.remise_montant, 0) AS remise_unitaire,
-             (COALESCE(ai2.remise_montant, 0) * ai2.quantite) AS remise_total,
-             (((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite) - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)) AS profit
-      FROM avoirs_comptant ac2
-      LEFT JOIN avoir_comptant_items ai2 ON ai2.avoir_comptant_id = ac2.id
-      LEFT JOIN products p ON p.id = ai2.product_id
-      LEFT JOIN product_snapshot ps ON ps.id = ai2.product_snapshot_id
-      LEFT JOIN product_units pu ON pu.id = ai2.unit_id
+            SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
+              ac2.id AS bonId,
+             (CONCAT('AVCC', LPAD(ac2.id, GREATEST(LENGTH(ac2.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+              ac2.montant_total AS totalBon,
+             (p.designation COLLATE ${UNION_COLLATION}) AS designation,
+              ai2.product_id AS product_id,
+              ps.variant_id AS variant_id,
+              ai2.unit_id AS unit_id,
+             (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
+              pu.unit_name AS unit_name,
+              ai2.quantite AS quantite,
+              ai2.prix_unitaire AS prix_unitaire,
+              COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
+              COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+              (ai2.prix_unitaire * ai2.quantite) AS montant_ligne,
+              COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+              ((ai2.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite) AS profitBrut,
+              COALESCE(ai2.remise_montant, 0) AS remise_unitaire,
+              (COALESCE(ai2.remise_montant, 0) * ai2.quantite) AS remise_total,
+              (((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite) - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)) AS profit
+            FROM avoirs_comptant ac2
+            LEFT JOIN avoir_comptant_items ai2 ON ai2.avoir_comptant_id = ac2.id
+            LEFT JOIN products p ON p.id = ai2.product_id
+            LEFT JOIN product_snapshot ps ON ps.id = ai2.product_snapshot_id
+            LEFT JOIN product_units pu ON pu.id = ai2.unit_id
+            LEFT JOIN product_variants pv ON pv.id = ps.variant_id
       WHERE LOWER(TRIM(COALESCE(ac2.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ac2.isNotCalculated, 0) <> 1
         AND DATE(ac2.date_creation) = ?
 
-      UNION ALL
+            UNION ALL
 
-      SELECT ('Avoir Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
-             ae.id AS bonId,
-            (COALESCE(ae.order_number, CONCAT('AWE', LPAD(ae.id, GREATEST(LENGTH(ae.id), 2), '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
-             ae.montant_total AS totalBon,
-            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
-             i.quantite AS quantite,
-             i.prix_unitaire AS prix_unitaire,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS cout_revient,
-             COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) AS prix_achat,
-             (i.prix_unitaire * i.quantite) AS montant_ligne,
-             ((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite) AS profitBrut,
-             COALESCE(i.remise_montant, 0) AS remise_unitaire,
-             (COALESCE(i.remise_montant, 0) * i.quantite) AS remise_total,
-             (((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite) - (COALESCE(i.remise_montant, 0) * i.quantite)) AS profit
-      FROM avoirs_ecommerce ae
-      LEFT JOIN avoir_ecommerce_items i ON i.avoir_ecommerce_id = ae.id
-      LEFT JOIN products p ON p.id = i.product_id
-      LEFT JOIN product_snapshot ps ON ps.id = i.product_snapshot_id
-      LEFT JOIN product_units pu ON pu.id = i.unit_id
+            SELECT ('Avoir Ecommerce' COLLATE ${UNION_COLLATION}) AS bonType,
+              ae.id AS bonId,
+             (COALESCE(ae.order_number, CONCAT('AWE', LPAD(ae.id, GREATEST(LENGTH(ae.id), 2), '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
+              ae.montant_total AS totalBon,
+             (p.designation COLLATE ${UNION_COLLATION}) AS designation,
+              i.product_id AS product_id,
+                    COALESCE(i.variant_id, ps.variant_id) AS variant_id,
+              i.unit_id AS unit_id,
+                   (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
+                    pu.unit_name AS unit_name,
+              i.quantite AS quantite,
+              i.prix_unitaire AS prix_unitaire,
+              COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
+              COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+              (i.prix_unitaire * i.quantite) AS montant_ligne,
+              COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+              ((i.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite) AS profitBrut,
+              COALESCE(i.remise_montant, 0) AS remise_unitaire,
+              (COALESCE(i.remise_montant, 0) * i.quantite) AS remise_total,
+              (((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite) - (COALESCE(i.remise_montant, 0) * i.quantite)) AS profit
+            FROM avoirs_ecommerce ae
+            LEFT JOIN avoir_ecommerce_items i ON i.avoir_ecommerce_id = ae.id
+            LEFT JOIN products p ON p.id = i.product_id
+            LEFT JOIN product_snapshot ps ON ps.id = i.product_snapshot_id
+            LEFT JOIN product_units pu ON pu.id = i.unit_id
+            LEFT JOIN product_variants pv ON pv.id = ps.variant_id
       WHERE LOWER(TRIM(COALESCE(ae.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ae.isNotCalculated, 0) <> 1
         AND DATE(ae.date_creation) = ?
     `;
 
-    const commandesLinesSql = `
+        const commandesLinesSql = `
           SELECT ('Commande' COLLATE ${UNION_COLLATION}) AS bonType,
-             bcmd.id AS bonId,
-            (CONCAT('CMD', LPAD(bcmd.id, GREATEST(LENGTH(bcmd.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
-             bcmd.montant_total AS totalBon,
-            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
-             ci.quantite AS quantite,
-             ci.prix_unitaire AS prix_unitaire,
-             NULL AS cout_revient,
-             NULL AS prix_achat,
-             COALESCE(ci.total, (ci.prix_unitaire * ci.quantite)) AS montant_ligne,
-             NULL AS profitBrut,
-             COALESCE(ci.remise_montant, 0) AS remise_unitaire,
-             (COALESCE(ci.remise_montant, 0) * ci.quantite) AS remise_total,
-             NULL AS profit
+         bcmd.id AS bonId,
+        (CONCAT('CMD', LPAD(bcmd.id, GREATEST(LENGTH(bcmd.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+         bcmd.montant_total AS totalBon,
+        (p.designation COLLATE ${UNION_COLLATION}) AS designation,
+         ci.product_id AS product_id,
+         ci.variant_id AS variant_id,
+         ci.unit_id AS unit_id,
+         NULL AS variant_name,
+         NULL AS unit_name,
+         ci.quantite AS quantite,
+         ci.prix_unitaire AS prix_unitaire,
+         NULL AS cout_revient,
+         NULL AS prix_achat,
+         COALESCE(ci.total, (ci.prix_unitaire * ci.quantite)) AS montant_ligne,
+         NULL AS profitBrut,
+         COALESCE(ci.remise_montant, 0) AS remise_unitaire,
+         (COALESCE(ci.remise_montant, 0) * ci.quantite) AS remise_total,
+         NULL AS profit
       FROM bons_commande bcmd
       LEFT JOIN commande_items ci ON ci.bon_commande_id = bcmd.id
       LEFT JOIN products p ON p.id = ci.product_id
@@ -676,6 +723,12 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
           remise_unitaire: roundSafe(l.remise_unitaire),
           remise_total: itemRemiseTotal,
           profitBrut: l.profitBrut == null ? undefined : roundSafe(l.profitBrut),
+          product_id: l.product_id == null ? undefined : Number(l.product_id),
+          variant_id: l.variant_id == null ? undefined : Number(l.variant_id),
+          unit_id: l.unit_id == null ? undefined : Number(l.unit_id),
+          variant_name: l.variant_name || null,
+          unit_name: l.unit_name || null,
+          conversion_factor: l.conversion_factor == null ? undefined : roundSafe(l.conversion_factor),
         });
 
         if (itemProfit != null) rec.profitBon += itemProfit;

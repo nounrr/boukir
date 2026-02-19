@@ -897,6 +897,28 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
   const productFound = findProductInCatalog();
 
+        // Also try to find the snapshot product for accurate historic prices
+        const snapshotFound = (() => {
+          try {
+            const snapId = it.product_snapshot_id ?? it.snapshot_id;
+            if (snapId && snapshotProducts?.length) {
+              return (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId)) || null;
+            }
+            return null;
+          } catch { return null; }
+        })();
+
+        // Also look up variant from the base product catalog
+        const variantFound = (() => {
+          try {
+            const vId = it.variant_id ?? it.variantId ?? it.variant?.id;
+            if (vId && productFound?.variants?.length) {
+              return (productFound.variants as any[]).find((v: any) => String(v.id) === String(vId)) || null;
+            }
+            return null;
+          } catch { return null; }
+        })();
+
         let prix_achat =
           Number(it.prix_achat ?? it.pa ?? it.prixA ?? it.product?.prix_achat ?? it.produit?.prix_achat ?? 0) || 0;
         let cout_revient =
@@ -921,25 +943,50 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
   const kg = Number(it.kg ?? it.kg_value ?? it.product_kg ?? it.product?.kg ?? it.produit?.kg ?? 0) || 0;
 
+        // Resolve unit conversion factor
+        const unitId = it.unit_id ?? it.unitId ?? it.unit?.id;
+        let convFactor = 1;
+        if (unitId && productFound?.units?.length) {
+          const unitObj = (productFound.units as any[]).find((u: any) => String(u.id) === String(unitId));
+          if (unitObj) {
+            const isBase = unitObj.is_default || unitObj.facteur_isNormal;
+            if (!isBase) {
+              const f = Number(unitObj.conversion_factor) || 1;
+              if (f > 0) convFactor = f;
+            }
+          }
+        }
+
+        // Priority: snapshot → variant → item → product catalog
+        // When snapshot or variant exists, ALWAYS use their values (they are authoritative)
+        if (snapshotFound || variantFound) {
+          // Snapshot/variant are the authoritative source for COST only (PA/CR)
+          // prix_unitaire (selling price) comes from the bon items table, NOT from snapshot
+          const bestPA = Number(snapshotFound?.prix_achat) || Number(variantFound?.prix_achat);
+          const bestCR = Number(snapshotFound?.cout_revient) || Number(variantFound?.cout_revient);
+          if (bestPA) prix_achat = Number((bestPA * convFactor).toFixed(2));
+          if (bestCR) cout_revient = Number((bestCR * convFactor).toFixed(2));
+        } else {
+          // No snapshot/variant — use item values or fallback to product catalog
+          if (!prix_achat || prix_achat === 0) {
+            if (initialValues?.type === 'Commande' && prix_unitaire > 0) {
+              prix_achat = prix_unitaire;
+            } else {
+              const basePA = Number((productFound as any)?.prix_achat) || 0;
+              prix_achat = basePA ? Number((basePA * convFactor).toFixed(2)) : prix_achat;
+            }
+          }
+          if (!cout_revient || cout_revient === 0) {
+            const baseCR = Number((productFound as any)?.cout_revient) || 0;
+            cout_revient = baseCR ? Number((baseCR * convFactor).toFixed(2)) : cout_revient;
+          }
+          if (!prix_unitaire || prix_unitaire === 0) {
+            prix_unitaire = Number((productFound as any)?.prix_vente) || prix_unitaire;
+          }
+        }
+
         if (productFound) {
           try {
-            // Pour Commande en édition : si pas de prix_achat mais prix_unitaire (stocké) existe, l'utiliser.
-            if ((!prix_achat || prix_achat === 0) && initialValues?.type === 'Commande' && prix_unitaire > 0) {
-              prix_achat = prix_unitaire;
-            } else if (!prix_achat || prix_achat === 0) {
-              // Sinon fallback sur le prix_achat du produit.
-              prix_achat = Number((productFound as any).prix_achat ?? (productFound as any).pa ?? 0) || prix_achat;
-            }
-            if (!cout_revient || cout_revient === 0) {
-              cout_revient =
-                Number((productFound as any).cout_revient ?? (productFound as any).cr ?? (productFound as any).cout ?? 0) ||
-                cout_revient;
-            }
-            if (!prix_unitaire || prix_unitaire === 0) {
-              prix_unitaire =
-                Number((productFound as any).prix_vente ?? (productFound as any).prix_unitaire ?? (productFound as any).price ?? 0) ||
-                prix_unitaire;
-            }
             it.product_id = it.product_id ?? it.produit_id ?? it.product?.id ?? it.productId ?? productFound.id;
             it.product_reference =
               it.product_reference ??
@@ -1185,6 +1232,66 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       setPdgApprovedOverLimit(null);
     }
   }, [isOpen]);
+
+  // 🔧 Patch item prices from snapshot data when snapshotProducts finishes loading
+  // This handles the case where getInitialValues() ran before the async query completed
+  useEffect(() => {
+    if (!isOpen || !formikRef.current || !snapshotProducts?.length) return;
+    const items = formikRef.current.values?.items || [];
+    let anyPatched = false;
+    items.forEach((item: any, idx: number) => {
+      const snapId = item.product_snapshot_id;
+      if (!snapId) return;
+      const snap = (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId));
+      if (!snap) return;
+
+      const currentPA = Number(item.prix_achat) || 0;
+      const currentCR = Number(item.cout_revient) || 0;
+      const snapPA = Number(snap.prix_achat) || 0;
+      const snapCR = Number(snap.cout_revient) || 0;
+
+      // Also check variant from base product catalog
+      const prod = (products as any[]).find((p: any) => String(p.id) === String(item.product_id));
+      const variant = item.variant_id && prod?.variants
+        ? (prod.variants as any[]).find((v: any) => String(v.id) === String(item.variant_id))
+        : null;
+      const varPA = Number(variant?.prix_achat) || 0;
+      const varCR = Number(variant?.cout_revient) || 0;
+
+      const bestPA = snapPA || varPA;
+      const bestCR = snapCR || varCR;
+
+      // Resolve unit conversion factor
+      let convFactor = 1;
+      if (item.unit_id && prod?.units) {
+        const unitObj = (prod.units as any[]).find((u: any) => String(u.id) === String(item.unit_id));
+        if (unitObj) {
+          const isBase = unitObj.is_default || unitObj.facteur_isNormal;
+          if (!isBase) {
+            const f = Number(unitObj.conversion_factor) || 1;
+            if (f > 0) convFactor = f;
+          }
+        }
+      }
+
+      // ALWAYS override PA/CR with snapshot/variant values (× unit factor) when they exist
+      // prix_unitaire is NOT patched — it comes from the bon items table (actual selling price)
+      const finalPA = Number((bestPA * convFactor).toFixed(2));
+      const finalCR = Number((bestCR * convFactor).toFixed(2));
+      if (finalPA > 0 && currentPA !== finalPA) {
+        formikRef.current!.setFieldValue(`items.${idx}.prix_achat`, finalPA);
+        anyPatched = true;
+      }
+      if (finalCR > 0 && currentCR !== finalCR) {
+        formikRef.current!.setFieldValue(`items.${idx}.cout_revient`, finalCR);
+        anyPatched = true;
+      }
+    });
+    if (anyPatched) {
+      console.log('🔧 [SNAPSHOT PATCH] Patched item prices from snapshot/variant data after async load');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotProducts, isOpen]);
 
   // Focus manager for arrow navigation between cells
   const focusCell = (rowIndex: number, colKey: string) => {
@@ -2146,8 +2253,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-1 sm:p-2">
-      <div className="bg-white rounded-lg w-[98vw] max-w-7xl max-h-[96vh] flex flex-col shadow-lg">
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-1 sm:p-2">
+    <div className="bg-white rounded-lg w-[90vw] max-h-[96vh] flex flex-col shadow-lg">
         {/* Header */}
         <div className="bg-blue-600 px-4 sm:px-6 py-3 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
           <h2 className="text-base sm:text-lg font-semibold text-white truncate">
@@ -2928,6 +3035,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               Total
                             </th>
+                            {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
+                              <th className="px-2 py-2 text-left text-xs font-medium text-green-600 uppercase tracking-wider w-[80px]">
+                                Profit
+                              </th>
+                            )}
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">
                               Actions
                             </th>
@@ -3030,6 +3142,19 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       }
 
                                       if (product) {
+                                        // 🔍 DEBUG: Product selection
+                                        console.log('🟢 [PRODUCT SELECT]', {
+                                          row: index,
+                                          product_id: product.id,
+                                          designation: product.designation,
+                                          snapshot_id: product.snapshot_id || null,
+                                          variant_id: product.variant_id || null,
+                                          isSnapshot: !!product.snapshot_id,
+                                          'product.prix_achat': product.prix_achat,
+                                          'product.cout_revient': product.cout_revient,
+                                          'product.prix_vente': product.prix_vente,
+                                          allProductKeys: Object.keys(product),
+                                        });
                                         setFieldValue(`items.${index}.product_id`, product.id);
                                         setFieldValue(
                                           `items.${index}.product_reference`,
@@ -3127,12 +3252,51 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               ) || 1
                                             : 1;
 
+                                          // Try to resolve snapshot product for more accurate historic prices
+                                          let snapshotProd: any = null;
+                                          const snapIdForRow = values.items[index].product_snapshot_id;
+                                          if (snapIdForRow && useSnapshotSelection && snapshotProducts.length > 0) {
+                                            snapshotProd = snapshotProducts.find((p: any) => p.snapshot_id === snapIdForRow) || null;
+                                          }
+
                                           if (vId) {
                                             const variant = variants.find((v: any) => String(v.id) === vId);
                                             if (variant) {
-                                              // Keep purchase/cost consistent with unit selection (important for margins)
-                                              const baseAchat = Number(variant.prix_achat ?? product?.prix_achat ?? 0) || 0;
-                                              const baseCoutRevient = Number(product?.cout_revient ?? 0) || 0;
+                                              // Keep purchase/cost consistent avec variante + snapshot + unité
+                                              // Use || (not ??) so that 0 values fall through to snapshot/product
+                                              const baseAchat =
+                                                Number(variant.prix_achat) ||
+                                                Number(snapshotProd?.prix_achat) ||
+                                                Number(product?.prix_achat) ||
+                                                0;
+                                              const baseCoutRevient: number =
+                                                Number((variant as any).cout_revient) ||
+                                                Number(snapshotProd?.cout_revient) ||
+                                                Number(product?.cout_revient) ||
+                                                baseAchat ||
+                                                0;
+                                              // 🔍 DEBUG: Variant selected
+                                              console.log('🟡 [VARIANT SELECT]', {
+                                                row: index,
+                                                variant_id: vId,
+                                                variant_name: variant.variant_name,
+                                                'variant.prix_achat': variant.prix_achat,
+                                                'variant.cout_revient': (variant as any).cout_revient,
+                                                'variant.prix_vente': variant.prix_vente,
+                                                snapshotProd_found: !!snapshotProd,
+                                                snapIdForRow: values.items[index].product_snapshot_id,
+                                                'snapshotProd?.prix_achat': snapshotProd?.prix_achat,
+                                                'snapshotProd?.cout_revient': snapshotProd?.cout_revient,
+                                                'snapshotProd?.prix_vente': snapshotProd?.prix_vente,
+                                                'product.prix_achat': product?.prix_achat,
+                                                'product.cout_revient': product?.cout_revient,
+                                                'product.prix_vente': product?.prix_vente,
+                                                resolved_baseAchat: baseAchat,
+                                                resolved_baseCoutRevient: baseCoutRevient,
+                                                unitFactor: factorSel,
+                                                final_prix_achat: Number((baseAchat * factorSel).toFixed(2)),
+                                                final_cout_revient: Number((baseCoutRevient * factorSel).toFixed(2)),
+                                              });
                                               setFieldValue(`items.${index}.prix_achat`, Number((baseAchat * factorSel).toFixed(2)));
                                               setFieldValue(
                                                 `items.${index}.cout_revient`,
@@ -3141,8 +3305,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                               // Update price based on variant
                                               const variantBasePrice = values.type === 'Commande'
-                                                ? Number(variant.prix_achat || 0)
-                                                : Number(variant.prix_vente || 0);
+                                                ? Number(variant.prix_achat || snapshotProd?.prix_achat || product?.prix_achat || 0)
+                                                : Number(variant.prix_vente || snapshotProd?.prix_vente || product?.prix_vente || 0);
 
                                               // If a unit is already selected, apply its conversion factor to the variant price
                                               let effectivePrice = variantBasePrice;
@@ -3161,10 +3325,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             return;
                                           }
 
-                                          // Variant cleared => revert to base product price (respect unit selection)
-                                          const basePriceAchat = Number(product?.prix_achat ?? 0) || 0;
-                                          const basePriceVente = Number(product?.prix_vente ?? 0) || 0;
-                                          const baseCoutRevient = Number(product?.cout_revient ?? 0) || 0;
+                                          // Variant cleared => revert to base snapshot/product price (respect unit selection)
+                                          const snapIdForRow2 = values.items[index].product_snapshot_id;
+                                          let snapshotProd2: any = null;
+                                          if (snapIdForRow2 && useSnapshotSelection && snapshotProducts.length > 0) {
+                                            snapshotProd2 = snapshotProducts.find((p: any) => p.snapshot_id === snapIdForRow2) || null;
+                                          }
+
+                                          const basePriceAchat = Number(snapshotProd2?.prix_achat) || Number(product?.prix_achat) || 0;
+                                          const basePriceVente = Number(snapshotProd2?.prix_vente) || Number(product?.prix_vente) || 0;
+                                          const baseCoutRevient = Number(snapshotProd2?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
 
                                           let effectivePrice = values.type === 'Commande' ? basePriceAchat : basePriceVente;
                                           if (unitIdSel) {
@@ -3221,8 +3391,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
                                     const units = product?.units ?? [];
                                     const baseUnit = product?.base_unit || 'u';
-                                    const basePriceAchat = Number(product?.prix_achat ?? 0) || 0;
-                                    const basePriceVente = Number(product?.prix_vente ?? 0) || 0;
+                                    // Resolve snapshot product if available for this row
+                                    let snapshotProd: any = null;
+                                    const snapIdForRow = values.items[index].product_snapshot_id;
+                                    if (snapIdForRow && useSnapshotSelection && snapshotProducts.length > 0) {
+                                      snapshotProd = snapshotProducts.find((p: any) => p.snapshot_id === snapIdForRow) || null;
+                                    }
+
+                                    const basePriceAchat = Number(snapshotProd?.prix_achat) || Number(product?.prix_achat) || 0;
+                                    const basePriceVente = Number(snapshotProd?.prix_vente) || Number(product?.prix_vente) || 0;
                                     if (!product || units.length === 0) {
                                       return <span className="text-xs text-gray-400">{baseUnit}</span>;
                                     }
@@ -3249,18 +3426,47 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               const variantsForProduct = product?.variants ?? [];
                                               let baseA = basePriceAchat;
                                               let baseV = basePriceVente;
-                                              let baseCR = Number(product?.cout_revient ?? 0) || 0;
+                                              let baseCR = Number(snapshotProd?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
+                                              // 🔍 DEBUG: Unit selected (before variant override)
+                                              console.log('🔵 [UNIT SELECT] base values', {
+                                                row: index,
+                                                unit_id: uId,
+                                                unit_name: unit.unit_name,
+                                                factor,
+                                                snapshotProd_found: !!snapshotProd,
+                                                snapIdForRow: values.items[index].product_snapshot_id,
+                                                'snapshotProd?.prix_achat': snapshotProd?.prix_achat,
+                                                'snapshotProd?.cout_revient': snapshotProd?.cout_revient,
+                                                'snapshotProd?.prix_vente': snapshotProd?.prix_vente,
+                                                'product.prix_achat': product?.prix_achat,
+                                                'product.cout_revient': product?.cout_revient,
+                                                'product.prix_vente': product?.prix_vente,
+                                                basePriceAchat,
+                                                basePriceVente,
+                                                baseCR_initial: baseCR,
+                                                selectedVariantId: selectedVariantId || 'none',
+                                              });
                                               if (selectedVariantId) {
                                                 const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                                 if (v) {
-                                                  baseA = Number(v.prix_achat ?? basePriceAchat) || 0;
-                                                  baseV = Number(v.prix_vente ?? basePriceVente) || 0;
+                                                  baseA = Number(v.prix_achat) || basePriceAchat || 0;
+                                                  baseV = Number(v.prix_vente) || basePriceVente || 0;
+                                                  baseCR = Number((v as any).cout_revient) || baseCR;
                                                 }
                                               }
 
                                               // Always keep purchase/cost values aligned with unit conversion (even for sales bons)
                                               setFieldValue(`items.${index}.prix_achat`, Number((baseA * factor).toFixed(2)));
                                               setFieldValue(`items.${index}.cout_revient`, Number((baseCR * factor).toFixed(2)));
+                                              // 🔍 DEBUG: Unit selected (after variant override)
+                                              console.log('🔵 [UNIT SELECT] final values', {
+                                                row: index,
+                                                baseA_afterVariant: baseA,
+                                                baseV_afterVariant: baseV,
+                                                baseCR_afterVariant: baseCR,
+                                                final_prix_achat: Number((baseA * factor).toFixed(2)),
+                                                final_cout_revient: Number((baseCR * factor).toFixed(2)),
+                                              });
 
                                               if (values.type === 'Commande') {
                                                 newPrice = Number((baseA * factor).toFixed(2));
@@ -3286,12 +3492,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             const variantsForProduct = product?.variants ?? [];
                                             let baseA = basePriceAchat;
                                             let baseV = basePriceVente;
-                                            const baseCR = Number(product?.cout_revient ?? 0) || 0;
+                                            let baseCR = Number(snapshotProd?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
                                             if (selectedVariantId) {
                                               const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                               if (v) {
-                                                baseA = Number(v.prix_achat ?? basePriceAchat) || 0;
-                                                baseV = Number(v.prix_vente ?? basePriceVente) || 0;
+                                                baseA = Number(v.prix_achat) || basePriceAchat || 0;
+                                                baseV = Number(v.prix_vente) || basePriceVente || 0;
+                                                baseCR = Number((v as any).cout_revient) || baseCR;
                                               }
                                             }
 
@@ -3499,11 +3706,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 </td>
 
 
-                                {/* SERIE / Info rapide */}
+                                {/* SERIE / Info rapide + debug snapshot */}
                                 <td className="px-1 py-2 text-sm text-gray-700">
-                                  {`PA${values.items[index].prix_achat ?? 0}CR${
+                                  <div>{`PA${values.items[index].prix_achat ?? 0} CR${
                                     values.items[index].cout_revient ?? 0
-                                  }`}
+                                  }`}</div>
+                                  <div className="text-[9px] text-orange-600">
+                                    snap:{String(values.items[index].product_snapshot_id || '-')}
+                                    {' '}v:{String(values.items[index].variant_id || '-')}
+                                    {' '}u:{String(values.items[index].unit_id || '-')}
+                                  </div>
                                 </td>
 
                                 {/* Prix unitaire / Prix d'achat selon le type */}
@@ -3583,32 +3795,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       <div className="text-xs text-blue-600 font-medium mt-1">Dernier prix client: {formatFull(Number(last))} DH</div>
     ) : null;
   })()}
-  {/* Prix fréquemment utilisé (>=6) pour ce produit, option d'application */}
-  {values.type !== 'Commande' && values.items[index].product_id && (() => {
-    const freq = getFrequentUnitPriceForProduct(values.items[index].product_id, 6);
-    if (!freq || !Number.isFinite(freq.price)) return null;
-    const suggested = Number(freq.price);
-    return (
-      <label className="mt-1 flex items-center gap-2 text-[11px] text-gray-700">
-        <input
-          type="checkbox"
-          disabled={isQtyOnlyEdit}
-          onChange={(e) => {
-            if (isQtyOnlyEdit) return;
-            if (!e.target.checked) return;
-            const p = suggested;
-            setUnitPriceRaw((prev) => ({ ...prev, [index]: formatFull(p) }));
-            setFieldValue(`items.${index}.prix_unitaire`, p);
-            const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
-            setFieldValue(`items.${index}.total`, q * p);
-          }}
-        />
-        <span>
-          Utiliser ce prix: <span className="font-semibold">{formatFull(suggested)} DH</span> (×{freq.count})
-        </span>
-      </label>
-    );
-  })()}
   {values.client_id && values.items[index].product_id && (() => {
     const lastQty = getLastQuantityForClientProduct(
       values.client_id,
@@ -3670,6 +3856,25 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     DH
   </div>
 </td>
+
+                                {/* Profit par ligne */}
+                                {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
+<td className="px-1 py-2 w-[80px]">
+  {(() => {
+    const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+    const pv = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+    const cr = Number(values.items[index].cout_revient) || Number(values.items[index].prix_achat) || 0;
+    const remise = Number(values.items[index].remise_montant || 0);
+    const profit = (pv - cr) * q - remise * q;
+    const cls = profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-400';
+    return (
+      <div className={`text-sm font-semibold ${cls}`} title={`PV=${pv} CR=${cr} Q=${q} R=${remise}`}>
+        {profit.toFixed(2)}
+      </div>
+    );
+  })()}
+</td>
+                                )}
 
 
                                 {/* Actions */}
@@ -3738,6 +3943,104 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       </table>
                     )}
                   </FieldArray>
+                </div>
+
+                {/* 🔍 DEBUG PANEL - Résolution prix_achat / cout_revient par ligne */}
+                <div className="mt-4 bg-red-50 border-2 border-red-300 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                  <div className="font-bold text-red-700 text-sm mb-2">🔍 DEBUG: Résolution PA / CR par ligne</div>
+                  <table className="w-full text-[10px] border-collapse">
+                    <thead>
+                      <tr className="bg-red-100">
+                        <th className="border px-1 py-0.5 text-left">#</th>
+                        <th className="border px-1 py-0.5 text-left">Produit</th>
+                        <th className="border px-1 py-0.5 text-left">snap_id</th>
+                        <th className="border px-1 py-0.5 text-left">variant_id</th>
+                        <th className="border px-1 py-0.5 text-left">unit_id</th>
+                        <th className="border px-1 py-0.5 text-left">item.PA</th>
+                        <th className="border px-1 py-0.5 text-left">item.CR</th>
+                        <th className="border px-1 py-0.5 text-left">snap.PA</th>
+                        <th className="border px-1 py-0.5 text-left">snap.CR</th>
+                        <th className="border px-1 py-0.5 text-left">snap.PV</th>
+                        <th className="border px-1 py-0.5 text-left">variant.PA</th>
+                        <th className="border px-1 py-0.5 text-left">variant.CR</th>
+                        <th className="border px-1 py-0.5 text-left">variant.PV</th>
+                        <th className="border px-1 py-0.5 text-left">product.PA</th>
+                        <th className="border px-1 py-0.5 text-left">product.CR</th>
+                        <th className="border px-1 py-0.5 text-left">product.PV</th>
+                        <th className="border px-1 py-0.5 text-left">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(values.items || []).map((item: any, idx: number) => {
+                        const pid = item.product_id;
+                        const prod = pid ? (products as any[]).find((p: any) => String(p.id) === String(pid)) : null;
+                        const snapId = item.product_snapshot_id;
+                        const snap = snapId && snapshotProducts?.length
+                          ? (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId))
+                          : null;
+                        const varId = item.variant_id;
+                        const variant = varId && prod?.variants
+                          ? (prod.variants as any[]).find((v: any) => String(v.id) === String(varId))
+                          : null;
+                        const unitId = item.unit_id;
+                        const unit = unitId && prod?.units
+                          ? (prod.units as any[]).find((u: any) => String(u.id) === String(unitId))
+                          : null;
+                        // Determine source — check in reverse priority: product FIRST, then variant, then snapshot
+                        // Last match wins = most authoritative source
+                        let source = '?';
+                        const nPA = Number(item.prix_achat) || 0;
+                        const nCR = Number(item.cout_revient) || 0;
+                        if (!nPA && !nCR) {
+                          source = '❌ AUCUN';
+                        } else {
+                          // Start with product (least priority)
+                          if (prod) {
+                            const pPA = Number(prod.prix_achat) || 0;
+                            const pCR = Number(prod.cout_revient) || 0;
+                            if (nPA === pPA || nCR === pCR) source = '⚠️ PRODUIT';
+                          }
+                          // Variant overrides product
+                          if (variant) {
+                            const vPA = Number(variant.prix_achat) || 0;
+                            const vCR = Number((variant as any).cout_revient) || 0;
+                            if (nPA === vPA || nCR === vCR) source = '✅ VARIANT';
+                          }
+                          // Snapshot overrides all (highest priority)
+                          if (snap) {
+                            const sPA = Number(snap.prix_achat) || 0;
+                            const sCR = Number(snap.cout_revient) || 0;
+                            if (nPA === sPA || nCR === sCR) source = '✅ SNAPSHOT';
+                          }
+                        }
+                        // Append variant/unit names for clarity
+                        const variantLabel = variant ? ` | V: ${variant.variant_name || varId}` : (varId ? ` | V: ${varId}` : '');
+                        const unitLabel = unit ? ` | U: ${unit.unit_name || unitId} (×${unit.conversion_factor || 1})` : (unitId ? ` | U: ${unitId}` : '');
+                        const sourceDisplay = source + variantLabel + unitLabel;
+                        return (
+                          <tr key={idx} className={source.includes('PRODUIT') ? 'bg-yellow-100' : source.includes('AUCUN') ? 'bg-red-100' : ''}>
+                            <td className="border px-1 py-0.5">{idx}</td>
+                            <td className="border px-1 py-0.5 max-w-[100px] truncate">{item.designation || pid || '-'}</td>
+                            <td className="border px-1 py-0.5">{snapId || '-'}</td>
+                            <td className="border px-1 py-0.5">{varId || '-'}</td>
+                            <td className="border px-1 py-0.5">{item.unit_id || '-'}</td>
+                            <td className="border px-1 py-0.5 font-bold">{nPA}</td>
+                            <td className="border px-1 py-0.5 font-bold">{nCR}</td>
+                            <td className="border px-1 py-0.5 text-blue-700">{snap ? (Number(snap.prix_achat) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-blue-700">{snap ? (Number(snap.cout_revient) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-blue-700">{snap ? (Number(snap.prix_vente) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-purple-700">{variant ? (Number(variant.prix_achat) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-purple-700">{variant ? (Number((variant as any).cout_revient) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-purple-700">{variant ? (Number(variant.prix_vente) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-gray-500">{prod ? (Number(prod.prix_achat) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-gray-500">{prod ? (Number(prod.cout_revient) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-gray-500">{prod ? (Number(prod.prix_vente) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 font-bold">{sourceDisplay}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
 
                 {/* Récapitulatif */}
