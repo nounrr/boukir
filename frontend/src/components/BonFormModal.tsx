@@ -1110,16 +1110,24 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     const type = String((initialValues as any)?.type || currentTab || '');
     if ((type === 'Sortie' || type === 'Comptant') && initialValues) {
       const hasItemRemise = (items || []).some((it: any) => {
-        const m = Number(it?.remise_montant ?? 0) || 0;
-        const p = Number(it?.remise_pourcentage ?? 0) || 0;
-        return m !== 0 || p !== 0;
+        const m = Number(it?.remise_montant ?? 0);
+        const p = Number(it?.remise_pourcentage ?? 0);
+        // Use a small epsilon for float comparison to avoid false positives on 0
+        return Math.abs(m) > 0.001 || Math.abs(p) > 0.001;
       });
       const hasHeaderTarget = Number((initialValues as any)?.remise_is_client ?? 1) === 0;
+      // Only auto-open if there is an ACTUAL non-zero remise
       const shouldOpen = Boolean(hasItemRemise || hasHeaderTarget);
-      setShowRemisePanel(shouldOpen);
-      if (shouldOpen && type === 'Comptant') {
-        // Comptant has no client_id in most cases
-        setRemiseTargetIsBonClient(false);
+      
+      // Force panel CLOSED if no actual remise exists, even if previously open
+      if (!shouldOpen) {
+        setShowRemisePanel(false);
+      } else {
+        setShowRemisePanel(true);
+        if (type === 'Comptant') {
+          // Comptant has no client_id in most cases
+          setRemiseTargetIsBonClient(false);
+        }
       }
     } else {
       setShowRemisePanel(false);
@@ -1831,18 +1839,27 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     let bestTime = -1;
 
     const scan = (bon: any, itemsField: any) => {
-      // Ne considérer que les bons VALIDÉS
+      // Pour l'historique de prix, inclure "Validé" ET "En attente" (selon besoin utilisateur)
       const statut = String(bon.statut || '').toLowerCase();
-      if (statut !== 'validé' && statut !== 'valide' && statut !== 'validée') return;
+      // On accepte 'en attente' aussi pour voir le dernier prix PROPOSÉ/NÉGOCIÉ même si pas encore validé
+      const accepted = ['validé', 'valide', 'validée', 'en attente', 'livré', 'livre']; 
+      if (!accepted.includes(statut)) return;
+
       const items = parseItems(itemsField);
+      // Comparaison flexible (string vs number)
       const bonClientId = String(bon.client_id ?? bon.contact_id ?? '');
-      if (bonClientId !== cid) return;
+      // Si on cherche pour un client précis, on filtre
+      if (cid && bonClientId !== cid) return;
+      
       const bonTime = toTime(bon.date_creation || bon.date);
+
       for (const it of items as HistItem[]) {
         const itPid = String((it as any).product_id ?? (it as any).id ?? '');
         if (itPid !== pid) continue;
         const price = Number((it as any).prix_unitaire ?? (it as any).price ?? 0);
         if (!Number.isFinite(price) || price <= 0) continue;
+        
+        // On veut le dernier en date
         if (bonTime > bestTime) {
           bestTime = bonTime;
           bestPrice = price;
@@ -3563,7 +3580,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       values.items[index].product_id
     );
     return last && Number.isFinite(last) ? (
-      <div className="text-xs text-gray-500 mt-1">Dernier (Validé): {formatFull(Number(last))} DH</div>
+      <div className="text-xs text-blue-600 font-medium mt-1">Dernier prix client: {formatFull(Number(last))} DH</div>
     ) : null;
   })()}
   {/* Prix fréquemment utilisé (>=6) pour ce produit, option d'application */}

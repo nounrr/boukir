@@ -240,7 +240,11 @@ const StatsDetailPage: React.FC = () => {
         clientId = `ecom_${key || 'inconnu'}`;
       }
 
-      // Si on désactive la condition client, on regroupe tout sous un seul "client".
+      // Conserver l'ID réel pour les stats par client (pour que la liste déroulante fonctionne)
+      const realClientId = clientId;
+
+      // Si on désactive la condition client, on regroupe tout sous un seul "client" POUR L'AFFICHAGE PRODUIT
+      // Mais on doit quand même alimenter cps avec les vrais clients pour la vue "Par client"
       if (!useClientCondition) {
         clientId = '__all__';
       }
@@ -367,9 +371,14 @@ const StatsDetailPage: React.FC = () => {
           profit: profitItem,
         });
 
-        // Pour les produits : calculer les statistiques des clients
-        if (!cps[clientId]) cps[clientId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, products: {} };
-        const cpEntry = cps[clientId];
+        // Pour les produits (vue PAR CLIENT) : calculer les statistiques des clients
+        // IMPORTANT: On utilise realClientId ici pour que la liste des clients soit complète dans le filtre
+        // même si la vue produit est en mode "global" (__all__)
+        const targetClientId = realClientId;
+        if (!targetClientId) continue;
+
+        if (!cps[targetClientId]) cps[targetClientId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, products: {} };
+        const cpEntry = cps[targetClientId];
         if (!cpEntry.products[productId]) cpEntry.products[productId] = { ventes: 0, quantite: 0, montant: 0, profit: 0 };
         cpEntry.products[productId].ventes += 1;
         cpEntry.products[productId].quantite += signedQty;
