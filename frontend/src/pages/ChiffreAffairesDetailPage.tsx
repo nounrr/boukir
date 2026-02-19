@@ -38,6 +38,8 @@ interface ChiffreDetail {
     remise_unitaire?: number;
       remise_total?: number;
       profitBrut?: number; // Profit avant remise
+      variant?: string;
+      unite?: string;
     }>;
     totalBon: number;
     profitBon?: number;
@@ -115,7 +117,13 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           {calcul.items.map((item, itemIndex) => (
             <tr key={`${calcul.bonType}-${calcul.bonId}-${itemIndex}`}>
               <td className="px-4 py-2 text-sm text-gray-900">
-                {item.designation}
+                <div className="font-medium">{item.designation}</div>
+                {item.variant && (
+                  <div className="text-xs text-indigo-600 mt-0.5">{item.variant}</div>
+                )}
+                {item.unite && (
+                  <div className="text-xs text-gray-400 mt-0.5">{item.unite}</div>
+                )}
               </td>
               <td className="px-4 py-2 text-sm text-gray-900 text-right">
                 {item.quantite}
