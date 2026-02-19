@@ -762,23 +762,42 @@ const BonsPage = () => {
   const getDisplayNumero = (bon: any) => getBonNumeroDisplay({ id: bon?.id, type: bon?.type, numero: bon?.numero });
 
   // Compute mouvement (profit) and margin% for a bon EXACTLY comme dans BonFormModal :
-  // FORMULE: profit = Σ ( (prix_unitaire - (cout_revient || prix_achat)) * quantite )
-  // (Ne pas soustraire la remise unitaire ici – le modal n'intègre pas la remise dans Mouvement.)
-  // margin% = profit / Σ( (cout_revient || prix_achat) * quantite ) * 100
+  // FORMULE: profit = Σ ( (prix_unitaire - adjustedCost) * quantite )
+  // adjustedCost = (variant.cout_revient || variant.prix_achat || item.cout_revient || item.prix_achat || product.cout_revient || product.prix_achat) × conversion_factor
+  // margin% = profit / Σ( adjustedCost * quantite ) * 100
   const parseItemsSafe = (raw: any): any[] => {
     if (Array.isArray(raw)) return raw;
     if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return []; } }
     return [];
   };
-  const resolveCost = (it: any): number => {
-    if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
-    if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
+  const resolveCostWithVariantUnit = (it: any): number => {
     const pid = it.product_id || it.produit_id;
-    if (pid) {
-      const prod = (products as any[]).find(p => String(p.id) === String(pid));
-      if (prod) return Number(prod.cout_revient ?? prod.prix_achat ?? 0) || 0;
+    const prod = pid ? (products as any[]).find(p => String(p.id) === String(pid)) : null;
+
+    // 1. Variant-level cost (priority)
+    let baseCost = 0;
+    if (it.variant_id && prod?.variants) {
+      const v = (prod.variants as any[]).find((vr: any) => String(vr.id) === String(it.variant_id));
+      if (v) baseCost = Number(v.cout_revient) || Number(v.prix_achat) || 0;
     }
-    return 0;
+    // 2. Item-level cost
+    if (!baseCost) {
+      if (it.cout_revient !== undefined && it.cout_revient !== null) baseCost = Number(it.cout_revient) || 0;
+      else if (it.prix_achat !== undefined && it.prix_achat !== null) baseCost = Number(it.prix_achat) || 0;
+    }
+    // 3. Product-level cost
+    if (!baseCost && prod) {
+      baseCost = Number(prod.cout_revient ?? prod.prix_achat ?? 0) || 0;
+    }
+
+    // Apply unit conversion factor
+    let convFactor = 1;
+    if (it.unit_id && prod?.units) {
+      const u = (prod.units as any[]).find((un: any) => String(un.id) === String(it.unit_id));
+      if (u) convFactor = Number(u.conversion_factor) || 1;
+    }
+
+    return baseCost * convFactor;
   };
   const computeMouvementDetail = (bon: any): { profit: number; costBase: number; marginPct: number | null } => {
     const items = parseItemsSafe(bon?.items);
@@ -789,10 +808,7 @@ const BonsPage = () => {
       const q = Number(it.quantite ?? it.qty ?? 0) || 0;
       if (!q) continue;
       const prixVente = Number(it.prix_unitaire ?? 0) || 0;
-      let cost = 0;
-      if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
-      else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
-      else cost = resolveCost(it);
+      const cost = resolveCostWithVariantUnit(it);
       const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0; // support legacy key
       const remiseTotale = remiseUnitaire * q;
       // Profit net si types concernés, sinon brut
@@ -1607,7 +1623,7 @@ const BonsPage = () => {
           const mapped = itemsToDuplicate.map((it: any) => {
             const q = Number(it.quantite ?? it.qty ?? 0) || 0;
             // Prix d'achat / coût de revient depuis l'item ou le produit
-            const purchaseUnit = resolveCost(it);
+            const purchaseUnit = resolveCostWithVariantUnit(it);
             const total = Number(purchaseUnit) * q;
             return {
               product_id: it.product_id || it.produit_id || it.id,

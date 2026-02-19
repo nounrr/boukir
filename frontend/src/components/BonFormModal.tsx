@@ -3364,17 +3364,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           const currentSnap = snapshotProducts.find((p: any) => p.snapshot_id === currentSnapId);
           const snapQty = Number(currentSnap?.snapshot_quantite ?? 0);
           if (snapQty > 0 && q > snapQty) {
-            // Cap current line at snapshot max
-            const excess = q - snapQty;
-            const cappedQ = snapQty;
-            setFieldValue(`items.${index}.quantite`, cappedQ);
-            setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(cappedQ) }));
-            const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-            setFieldValue(`items.${index}.total`, cappedQ * u);
-
-            // Find next FIFO snapshot for same product+variant
             const prodId = currentSnap.id;
             const varId = currentSnap.variant_id || 0;
+
+            // Find next FIFO snapshot for same product+variant with qty > 0
             const nextSnap = snapshotProducts.find((p: any) =>
               p.id === prodId &&
               (p.variant_id || 0) === varId &&
@@ -3383,12 +3376,36 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               Number(p.fifo_priority ?? 999) > Number(currentSnap.fifo_priority ?? 0)
             );
 
-            if (nextSnap) {
-              // Create new row with next snapshot and remaining qty
+            // If no other snapshot has qty > 0, allow the qty freely without splitting
+            if (!nextSnap) {
+              // fall through to normal setFieldValue below
+            } else {
+              // Cap current line at snapshot max
+              const excess = q - snapQty;
+              const cappedQ = snapQty;
+              setFieldValue(`items.${index}.quantite`, cappedQ);
+              setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(cappedQ) }));
+              const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+              setFieldValue(`items.${index}.total`, cappedQ * u);
+
+              // Check if there is yet another snapshot after nextSnap (to know if nextSnap is the last)
+              const snapAfterNext = snapshotProducts.find((p: any) =>
+                p.id === prodId &&
+                (p.variant_id || 0) === varId &&
+                p.snapshot_id !== currentSnapId &&
+                p.snapshot_id !== nextSnap.snapshot_id &&
+                Number(p.snapshot_quantite ?? 0) > 0 &&
+                Number(p.fifo_priority ?? 999) > Number(nextSnap.fifo_priority ?? 0)
+              );
+
+              // Create new row with next snapshot and remaining qty.
+              // If nextSnap is the last available snapshot (nothing after it), allow full excess.
               const nextPrice = nextSnap.prix_vente || 0;
               const nextPA = nextSnap.prix_achat || 0;
               const priceForNew = values.type === 'Commande' ? nextPA : nextPrice;
-              const newRowQty = Math.min(excess, Number(nextSnap.snapshot_quantite ?? 0));
+              const newRowQty = snapAfterNext
+                ? Math.min(excess, Number(nextSnap.snapshot_quantite ?? 0))
+                : excess; // last snapshot: accept any qty without capping
               const newItem = {
                 _rowId: makeRowId(),
                 product_id: nextSnap.id,
@@ -3411,11 +3428,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               setFieldValue('items', [...values.items, newItem]);
               setQtyRaw((prev) => ({ ...prev, [newIdx]: formatNumber(newRowQty) }));
               setUnitPriceRaw((prev) => ({ ...prev, [newIdx]: String(priceForNew) }));
-
-              // If there's still more excess beyond this snapshot, 
-              // user will need to adjust manually on the new line
+              return; // Already handled
             }
-            return; // Already handled
           }
         }
       }
