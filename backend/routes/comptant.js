@@ -303,9 +303,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.execute(`
         INSERT INTO comptant_items (
           bon_comptant_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [comptantId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id, is_indisponible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [comptantId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
 
     // Stock: Comptant => retire du stock dès la création (même "En attente")
@@ -537,9 +537,9 @@ router.put('/:id', async (req, res) => {
       await connection.execute(`
         INSERT INTO comptant_items (
           bon_comptant_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id, is_indisponible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
 
     // Stock: Comptant => effet = -quantite au stock
@@ -815,8 +815,8 @@ router.post('/:id/mark-avoir', async (req, res) => {
       await connection.execute(
         `INSERT INTO avoir_client_items (
            avoir_client_id, product_id, quantite, prix_unitaire,
-           remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id, is_indisponible
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           avoirId,
           it.product_id,
@@ -828,6 +828,7 @@ router.post('/:id/mark-avoir', async (req, res) => {
           it.variant_id || null,
           it.unit_id || null,
           it.product_snapshot_id || null,
+          it.is_indisponible ? 1 : 0,
         ]
       );
     }

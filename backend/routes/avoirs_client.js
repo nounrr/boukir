@@ -179,9 +179,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.execute(`
         INSERT INTO avoir_client_items (
           avoir_client_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id, is_indisponible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
 
     // Stock: AvoirClient => inverse de Sortie/Comptant => ajoute au stock dès la création
@@ -336,9 +336,9 @@ router.put('/:id', async (req, res) => {
       await connection.execute(`
         INSERT INTO avoir_client_items (
           avoir_client_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id, is_indisponible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
 
     // Stock: AvoirClient => effet = +quantite au stock

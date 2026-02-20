@@ -1112,8 +1112,9 @@ router.post('/', async (req, res, next) => {
           quantity,
           subtotal,
           discount_percentage,
-          discount_amount
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          discount_amount,
+          is_indisponible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         orderId,
         item.product_id,
@@ -1128,7 +1129,8 @@ router.post('/', async (req, res, next) => {
         item.quantity,
         item.subtotal,
         item.discount_percentage,
-        item.discount_amount
+        item.discount_amount,
+        item.is_indisponible ? 1 : 0
       ]);
 
       // **REDUCE STOCK** - This is where the stock reduction happens
