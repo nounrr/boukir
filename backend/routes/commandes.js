@@ -391,6 +391,71 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
           WHERE ci.bon_commande_id = ?`,
         [id]
       );
+
+      // ── Resolve is_indisponible items across all tables ──
+      // Fetch the newly created snapshots for this bon commande
+      const [newSnapshots] = await connection.execute(
+        'SELECT id, product_id, variant_id, quantite FROM product_snapshot WHERE bon_commande_id = ?',
+        [id]
+      );
+
+      // Tables that can have is_indisponible items referencing products
+      // ecommerce_order_items uses 'quantity' instead of 'quantite'
+      const indispoTables = [
+        { name: 'sortie_items', qtyCol: 'quantite' },
+        { name: 'comptant_items', qtyCol: 'quantite' },
+        { name: 'ecommerce_order_items', qtyCol: 'quantity' },
+        { name: 'avoir_client_items', qtyCol: 'quantite' },
+        { name: 'avoir_comptant_items', qtyCol: 'quantite' },
+        { name: 'avoir_fournisseur_items', qtyCol: 'quantite' },
+        { name: 'avoir_ecommerce_items', qtyCol: 'quantite' },
+      ];
+
+      for (const snap of newSnapshots) {
+        let remainingQty = Number(snap.quantite);
+        if (remainingQty <= 0) continue;
+
+        const variantMatch = snap.variant_id
+          ? 'AND variant_id = ?'
+          : 'AND variant_id IS NULL';
+        const variantParams = snap.variant_id ? [snap.variant_id] : [];
+
+        for (const { name: table, qtyCol } of indispoTables) {
+          if (remainingQty <= 0) break;
+
+          // Find is_indisponible items matching this product+variant (oldest first)
+          const [indispoItems] = await connection.execute(
+            `SELECT id, ${qtyCol} AS quantite FROM ${table}
+             WHERE product_id = ? ${variantMatch}
+               AND is_indisponible = 1
+             ORDER BY id ASC`,
+            [snap.product_id, ...variantParams]
+          );
+
+          for (const item of indispoItems) {
+            if (remainingQty <= 0) break;
+
+            const itemQty = Number(item.quantite);
+            // Deduct this item's qty from remaining snapshot qty
+            remainingQty -= itemQty;
+
+            // Link the item to the snapshot and mark as available
+            await connection.execute(
+              `UPDATE ${table} SET product_snapshot_id = ?, is_indisponible = 0 WHERE id = ?`,
+              [snap.id, item.id]
+            );
+          }
+        }
+
+        // Update the snapshot quantity to reflect remaining stock after fulfilling indisponible items
+        const finalQty = Math.max(remainingQty, 0);
+        if (finalQty !== Number(snap.quantite)) {
+          await connection.execute(
+            'UPDATE product_snapshot SET quantite = ? WHERE id = ?',
+            [finalQty, snap.id]
+          );
+        }
+      }
     }
 
     // Charger la version enrichie pour réponse

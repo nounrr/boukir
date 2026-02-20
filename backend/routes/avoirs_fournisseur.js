@@ -176,9 +176,9 @@ router.post('/', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) => 
       await connection.execute(`
         INSERT INTO avoir_fournisseur_items (
           avoir_fournisseur_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id, is_indisponible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [avoirId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
 
     // Stock (nouvelle règle): AvoirFournisseur => retire du stock dès la création (inverse de commande)
@@ -345,9 +345,9 @@ router.put('/:id', verifyToken, async (req, res) => {
       await connection.execute(`
         INSERT INTO avoir_fournisseur_items (
           avoir_fournisseur_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id, product_snapshot_id, is_indisponible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
 
     // Stock: annuler l'effet des anciens items (si pas Annulé), puis appliquer les nouveaux (si pas Annulé)

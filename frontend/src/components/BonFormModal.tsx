@@ -440,8 +440,56 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Snapshot-expanded products for Sortie/Comptant/Avoir types
   const useSnapshotSelection = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
   const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection });
+
+  // Smart filtering for snapshot products (add mode only):
+  // - If a product+variant has snapshots with qty > 0, only show those (hide qty <= 0 snapshots)
+  // - If ALL snapshots of a product+variant have qty <= 0, show only the latest snapshot
+  // In edit mode, show all snapshots so already-selected items remain visible
+  const filteredSnapshotProducts = useMemo(() => {
+    if (!snapshotProducts?.length || isEditMode) return snapshotProducts;
+
+    // Group by product_id + variant_id (chaque variante est traitée indépendamment)
+    const grouped = new Map<string, any[]>();
+    for (const snap of snapshotProducts as any[]) {
+      const key = `${snap.id}:${snap.variant_id || 0}`; // product_id:variant_id
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(snap);
+    }
+
+    const result: any[] = [];
+    for (const [, entries] of grouped) {
+      // Séparer les entrées snapshot vs non-snapshot (services, produits sans snapshot)
+      const snapshotEntries = entries.filter((s: any) => !!s.snapshot_id);
+      const nonSnapshotEntries = entries.filter((s: any) => !s.snapshot_id);
+
+      if (snapshotEntries.length === 0) {
+        // Pas de snapshots → garder les entrées produit normales
+        result.push(...nonSnapshotEntries);
+        continue;
+      }
+
+      // Snapshots avec qte > 0
+      const withStock = snapshotEntries.filter((s: any) => {
+        const qty = Number(s.snapshot_quantite);
+        return Number.isFinite(qty) && qty > 0;
+      });
+
+      if (withStock.length > 0) {
+        // Produit+variante a des snapshots avec stock > 0 → afficher seulement ceux-là
+        result.push(...withStock);
+      } else {
+        // TOUS les snapshots de cette variante ont qte <= 0 → afficher seulement le dernier
+        const latest = snapshotEntries.reduce((a: any, b: any) => {
+          return Number(b.snapshot_id) > Number(a.snapshot_id) ? b : a;
+        });
+        result.push(latest);
+      }
+    }
+    return result;
+  }, [snapshotProducts, isEditMode]);
+
   // Effective product list for item selection: use snapshot list for outgoing bons
-  const selectableProducts = useSnapshotSelection && snapshotProducts.length > 0 ? snapshotProducts : products;
+  const selectableProducts = useSnapshotSelection && snapshotProducts.length > 0 ? filteredSnapshotProducts : products;
   const { data: clients = [] } = useGetAllClientsQuery();
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
@@ -1592,7 +1640,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       created_by: user?.id || 1,
       // N'envoyer livraisons que si au moins un véhicule est défini
       livraisons: livraisonsClean.length ? livraisonsClean : undefined,
-      items: values.items.map((item: any, idx: number) => {
+      items: values.items.flatMap((item: any, idx: number) => {
         const q =
           parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
         const pa =
@@ -1615,19 +1663,91 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         // On utilise la valeur de prix_achat comme prix_unitaire envoyé au backend
         // (la table conserve uniquement la colonne prix_unitaire pour Commande items).
         const prixUnitairePourDB = values.type === 'Commande' ? pa : pu;
-        return {
+        const priceForTotal = values.type === 'Commande' ? pa : pu;
+
+        // Déterminer si le produit est indisponible et gérer le split de quantité
+        const snapId = item.product_snapshot_id ? parseInt(item.product_snapshot_id) : null;
+        let availableQty = Infinity; // par défaut, pas de limite
+
+        if (snapId && useSnapshotSelection && snapshotProducts?.length) {
+          const snap = (snapshotProducts as any[]).find((s: any) => s.snapshot_id === snapId);
+          if (snap) {
+            availableQty = Number(snap.snapshot_quantite ?? 0);
+          }
+        } else if (!snapId && item.product_id) {
+          const prod = products.find((p: any) => String(p.id) === String(item.product_id));
+          if (prod) {
+            availableQty = Number((prod as any).quantite ?? (prod as any).stock ?? 0);
+          }
+        }
+
+        // Cas 1: Tout est indisponible (stock <= 0)
+        if (availableQty <= 0) {
+          return [{
+            product_id: parseInt(item.product_id),
+            variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+            unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+            product_snapshot_id: snapId,
+            quantite: q,
+            prix_achat: pa,
+            prix_unitaire: prixUnitairePourDB,
+            remise_pourcentage: rp,
+            remise_montant: rm,
+            is_indisponible: true,
+            total: q * priceForTotal,
+          }];
+        }
+
+        // Cas 2: Quantité demandée > stock disponible → split en 2 items
+        if (q > availableQty && availableQty < Infinity) {
+          const qtyDispo = availableQty;
+          const qtyIndispo = q - availableQty;
+          return [
+            // Item disponible (quantité couverte par le stock)
+            {
+              product_id: parseInt(item.product_id),
+              variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+              unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+              product_snapshot_id: snapId,
+              quantite: qtyDispo,
+              prix_achat: pa,
+              prix_unitaire: prixUnitairePourDB,
+              remise_pourcentage: rp,
+              remise_montant: rm,
+              is_indisponible: false,
+              total: qtyDispo * priceForTotal,
+            },
+            // Item indisponible (quantité restante non couverte)
+            {
+              product_id: parseInt(item.product_id),
+              variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+              unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+              product_snapshot_id: snapId,
+              quantite: qtyIndispo,
+              prix_achat: pa,
+              prix_unitaire: prixUnitairePourDB,
+              remise_pourcentage: rp,
+              remise_montant: rm,
+              is_indisponible: true,
+              total: qtyIndispo * priceForTotal,
+            },
+          ];
+        }
+
+        // Cas 3: Stock suffisant → tout disponible
+        return [{
           product_id: parseInt(item.product_id),
           variant_id: item.variant_id ? parseInt(item.variant_id) : null,
           unit_id: item.unit_id ? parseInt(item.unit_id) : null,
-          product_snapshot_id: item.product_snapshot_id ? parseInt(item.product_snapshot_id) : null,
+          product_snapshot_id: snapId,
           quantite: q,
           prix_achat: pa,
           prix_unitaire: prixUnitairePourDB,
           remise_pourcentage: rp,
           remise_montant: rm,
-          // Pour bon Commande, utiliser prix_achat pour le total; pour autres types, prix_unitaire
-          total: q * (values.type === 'Commande' ? pa : pu),
-        };
+          is_indisponible: false,
+          total: q * priceForTotal,
+        }];
       }),
     };
 
@@ -3059,10 +3179,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 <td className="px-1 py-2 w-[200px]">
                                   <SearchableSelect
                                     options={(() => {
-                                      if (useSnapshotSelection && snapshotProducts.length > 0) {
-                                        // Show ALL snapshots (even qty = 0) so they remain visible.
-                                        // (Snapshots with qty=0 stay selectable per user request.)
-                                        const sorted = [...snapshotProducts].sort((a: any, b: any) => {
+                                      if (useSnapshotSelection && filteredSnapshotProducts.length > 0) {
+                                        // Smart filtered: qty>0 snapshots shown, or latest snapshot if all qty<=0
+                                        const sorted = [...filteredSnapshotProducts].sort((a: any, b: any) => {
                                           // Group by product designation for alphabetical browsing
                                           const desA = String(a.designation ?? '').toLowerCase();
                                           const desB = String(b.designation ?? '').toLowerCase();
@@ -3946,7 +4065,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 </div>
 
                 {/* 🔍 DEBUG PANEL - Résolution prix_achat / cout_revient par ligne */}
-                <div className="mt-4 bg-red-50 border-2 border-red-300 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                {/* <div className="mt-4 bg-red-50 border-2 border-red-300 rounded-md p-3 text-xs font-mono overflow-x-auto">
                   <div className="font-bold text-red-700 text-sm mb-2">🔍 DEBUG: Résolution PA / CR par ligne</div>
                   <table className="w-full text-[10px] border-collapse">
                     <thead>
@@ -4041,7 +4160,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </div> */}
 
                 {/* Récapitulatif */}
                 <div className="mt-4 bg-gray-50 p-4 rounded-md">
