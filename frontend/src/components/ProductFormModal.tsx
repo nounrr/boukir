@@ -10,6 +10,7 @@ import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery,
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { useGetBrandsQuery } from '../store/api/brandsApi';
 import { showSuccess } from '../utils/notifications';
+import { toBackendUrl } from '../utils/url';
 import { CategoryTreeSelect } from './CategoryTreeSelect';
 
 const VARIANT_SUGGESTIONS: Record<string, string[]> = {
@@ -981,8 +982,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     formik.setFieldError('stock_partage_ecom_qty', undefined);
                   }
                 }}
-                disabled={formik.values.est_service || !editingProduct}
-                title={!editingProduct ? "La quantité initiale est gérée par la création d'un bon de commande." : ""}
+                disabled={true}
+                title="La quantité est gérée automatiquement par les snapshots et bons de commande."
                 className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:bg-gray-100/80 disabled:text-gray-500 placeholder:text-gray-400"
                 placeholder="0"
               />
@@ -1054,7 +1055,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   editingProduct && (editingProduct as any).image_url ? (
                     <div className="inline-block border rounded p-1">
                       <img
-                        src={`http://localhost:3001${(editingProduct as any).image_url}`}
+                        src={toBackendUrl((editingProduct as any).image_url)}
                         alt="image principale"
                         className="w-24 h-24 object-cover rounded"
                       />
@@ -1077,7 +1078,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     {editingProduct && (editingProduct as any).image_url && (
                       <div className="relative border rounded p-1">
                         <img
-                          src={`http://localhost:3001${(editingProduct as any).image_url}`}
+                          src={toBackendUrl((editingProduct as any).image_url)}
                           alt="image principale"
                           className="w-24 h-24 object-cover rounded"
                         />
@@ -1089,7 +1090,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       return (
                         <div key={img.id} className={`relative border rounded p-1 ${isMarked ? 'opacity-50' : ''}`}>
                           <img
-                            src={`http://localhost:3001${img.image_url}`}
+                            src={toBackendUrl(img.image_url)}
                             alt="product"
                             className="w-24 h-24 object-cover rounded"
                           />
@@ -2239,7 +2240,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   ) : (
                                     variant.image_url ? (
                                       <img
-                                        src={`http://localhost:3001${variant.image_url}`}
+                                        src={toBackendUrl(variant.image_url)}
                                         alt="variant"
                                         className="w-16 h-16 object-cover rounded border"
                                       />
@@ -2261,7 +2262,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   <div className="flex flex-wrap gap-2 mb-2">
                                     {variant.image_url && (
                                       <div className="relative border rounded p-1">
-                                        <img src={`http://localhost:3001${variant.image_url}`} alt="v-principale" className="w-16 h-16 object-cover rounded" />
+                                        <img src={toBackendUrl(variant.image_url)} alt="v-principale" className="w-16 h-16 object-cover rounded" />
                                         <div className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white rounded px-1">Principale</div>
                                       </div>
                                     )}
@@ -2269,7 +2270,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                       const marked = (variantDeletedGalleryIdsMap[variant.id as number] || []).includes(img.id);
                                       return (
                                         <div key={img.id} className={`relative border rounded p-1 ${marked ? 'opacity-50' : ''}`}>
-                                          <img src={`http://localhost:3001${img.image_url}`} alt="v-img" className="w-16 h-16 object-cover rounded" />
+                                          <img src={toBackendUrl(img.image_url)} alt="v-img" className="w-16 h-16 object-cover rounded" />
                                           <button
                                             type="button"
                                             onClick={() => toggleDeleteExistingVariantGallery(variant.id as number, img.id)}
