@@ -4,9 +4,43 @@ import { ensureProductRemiseColumns } from '../../utils/ensureRemiseSchema.js';
 
 const router = Router();
 
+let _hasProductSnapshotTableCache = null;
+async function hasProductSnapshotTable(db) {
+  if (_hasProductSnapshotTableCache !== null) return _hasProductSnapshotTableCache;
+  try {
+    const [rows] = await db.query(
+      `SELECT COUNT(*) AS cnt
+       FROM information_schema.tables
+       WHERE table_schema = DATABASE()
+         AND table_name = 'product_snapshot'`
+    );
+    _hasProductSnapshotTableCache = Number(rows?.[0]?.cnt || 0) > 0;
+  } catch (e) {
+    _hasProductSnapshotTableCache = false;
+  }
+  return _hasProductSnapshotTableCache;
+}
 // UI-only limit to avoid leaking real stock while keeping good UX.
 // Real stock is enforced on cart/checkout.
 const PURCHASE_LIMIT = 20;
+
+const UTILITY_TYPES = ['Professionel', 'Maison'];
+
+function normalizeUtilityType(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  // Accept exact DB values.
+  if (UTILITY_TYPES.includes(raw)) return raw;
+
+  // Accept common aliases (FR/EN) and normalize to DB enum values.
+  const key = raw.toLowerCase();
+  if (['professionel', 'professionnel', 'professional', 'pro', 'profession'].includes(key)) return 'Professionel';
+  if (['maison', 'home', 'house', 'domestic'].includes(key)) return 'Maison';
+
+  return null;
+}
 
 function toSafeNumber(value, defaultValue = 0) {
   const num = Number(value);
@@ -24,9 +58,37 @@ ensureProductRemiseColumns().catch(e => console.error('ensureProductRemiseColumn
 // GET /api/ecommerce/products - List all published products with images, variants preview, and filter metadata
 router.get('/', async (req, res, next) => {
   try {
+    const snapshotEnabled = await hasProductSnapshotTable(pool);
+    const priceExpr = snapshotEnabled
+      ? `COALESCE((
+          SELECT ps.prix_vente
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+          ORDER BY ps.created_at DESC, ps.id DESC
+          LIMIT 1
+        ), p.prix_vente)`
+      : 'p.prix_vente';
+    const anyStockExpr = snapshotEnabled
+      ? `(
+          SELECT COALESCE(SUM(ps.quantite), 0)
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id
+        )`
+      : 'COALESCE(p.stock_partage_ecom_qty, 0)';
+    const anyInStockWhereExpr = snapshotEnabled
+      ? `EXISTS (
+          SELECT 1
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id
+            AND ps.quantite > 0
+        )`
+      : 'p.stock_partage_ecom_qty > 0';
+
     const { 
       category_id,  // Single or comma-separated IDs
       brand_id,     // Single or comma-separated IDs
+      categorie_base, // Single or comma-separated values (Professionel, Maison)
+      utility_type,   // Alias for categorie_base
       search, 
       min_price, 
       max_price,
@@ -52,7 +114,7 @@ router.get('/', async (req, res, next) => {
 
     // Stock filter
     if (in_stock_only === 'true' || in_stock_only === true) {
-      whereConditions.push('p.stock_partage_ecom_qty > 0');
+      whereConditions.push(anyInStockWhereExpr);
     }
 
     // Category filter (includes subcategories) - supports multiple categories
@@ -100,6 +162,24 @@ router.get('/', async (req, res, next) => {
       }
     }
 
+    // Utility type filter (categorie_base) - supports multiple values
+    const utilityTypeInput = categorie_base ?? utility_type;
+    if (utilityTypeInput) {
+      const rawValues = Array.isArray(utilityTypeInput)
+        ? utilityTypeInput
+        : String(utilityTypeInput).split(',').map(v => v.trim()).filter(Boolean);
+
+      const normalizedUtilityTypes = rawValues
+        .map(normalizeUtilityType)
+        .filter(Boolean);
+
+      const uniqueUtilityTypes = [...new Set(normalizedUtilityTypes)];
+      if (uniqueUtilityTypes.length > 0) {
+        whereConditions.push(`p.categorie_base IN (${uniqueUtilityTypes.map(() => '?').join(',')})`);
+        params.push(...uniqueUtilityTypes);
+      }
+    }
+
     // Color filter - supports multiple colors
     if (color) {
       const colors = Array.isArray(color)
@@ -144,11 +224,11 @@ router.get('/', async (req, res, next) => {
 
     // Price range filter
     if (min_price) {
-      whereConditions.push('p.prix_vente >= ?');
+      whereConditions.push(`${priceExpr} >= ?`);
       params.push(Number(min_price));
     }
     if (max_price) {
-      whereConditions.push('p.prix_vente <= ?');
+      whereConditions.push(`${priceExpr} <= ?`);
       params.push(Number(max_price));
     }
 
@@ -156,10 +236,10 @@ router.get('/', async (req, res, next) => {
     let orderBy = 'p.created_at DESC'; // Default: newest first
     switch (sort) {
       case 'price_asc':
-        orderBy = 'p.prix_vente ASC';
+        orderBy = `${priceExpr} ASC`;
         break;
       case 'price_desc':
-        orderBy = 'p.prix_vente DESC';
+        orderBy = `${priceExpr} DESC`;
         break;
       case 'promo':
         orderBy = 'p.pourcentage_promo DESC, p.created_at DESC';
@@ -193,12 +273,12 @@ router.get('/', async (req, res, next) => {
         p.designation_ar,
         p.designation_en,
         p.designation_zh,
-        p.prix_vente,
+        ${priceExpr} as prix_vente,
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
         p.image_url,
-        COALESCE(p.stock_partage_ecom_qty, 0) as stock_qty,
+        ${anyStockExpr} as stock_qty,
         p.has_variants,
         p.is_obligatoire_variant,
         p.base_unit,
@@ -282,20 +362,47 @@ router.get('/', async (req, res, next) => {
       let otherVariants = [];
 
       if (r.has_variants) {
-        const [variantsData] = await pool.query(`
-          SELECT 
-            id,
-            variant_name,
-            variant_type,
-            prix_vente,
-            remise_client,
-            remise_artisan,
-            stock_quantity,
-            image_url
-          FROM product_variants
-          WHERE product_id = ?
-          ORDER BY variant_type, variant_name
-        `, [r.id]);
+        const variantsQuery = snapshotEnabled
+          ? `
+            SELECT 
+              pv.id,
+              pv.variant_name,
+              pv.variant_type,
+              COALESCE((
+                SELECT ps.prix_vente
+                FROM product_snapshot ps
+                WHERE ps.variant_id = pv.id
+                ORDER BY ps.created_at DESC, ps.id DESC
+                LIMIT 1
+              ), pv.prix_vente) as prix_vente,
+              pv.remise_client,
+              pv.remise_artisan,
+              COALESCE((
+                SELECT COALESCE(SUM(ps.quantite), 0)
+                FROM product_snapshot ps
+                WHERE ps.variant_id = pv.id
+              ), pv.stock_quantity) as stock_quantity,
+              pv.image_url
+            FROM product_variants pv
+            WHERE pv.product_id = ?
+            ORDER BY pv.variant_type, pv.variant_name
+          `
+          : `
+            SELECT 
+              id,
+              variant_name,
+              variant_type,
+              prix_vente,
+              remise_client,
+              remise_artisan,
+              stock_quantity,
+              image_url
+            FROM product_variants
+            WHERE product_id = ?
+            ORDER BY variant_type, variant_name
+          `;
+
+        const [variantsData] = await pool.query(variantsQuery, [r.id]);
 
         variantsData.forEach(v => {
           const variantObj = {
@@ -452,7 +559,14 @@ router.get('/', async (req, res, next) => {
       WHERE pv.variant_type = 'Couleur'
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
-        AND (p.stock_partage_ecom_qty > 0 OR pv.stock_quantity > 0)
+        AND (${snapshotEnabled
+        ? `EXISTS (
+              SELECT 1
+              FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id
+                AND ps.quantite > 0
+            )`
+        : '(p.stock_partage_ecom_qty > 0 OR pv.stock_quantity > 0)'})
       ORDER BY pv.variant_name
     `);
 
@@ -463,7 +577,14 @@ router.get('/', async (req, res, next) => {
       INNER JOIN products p ON p.id = pu.product_id
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
-        AND (p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)
+        AND (${snapshotEnabled
+        ? `EXISTS (
+              SELECT 1
+              FROM product_snapshot ps
+              WHERE ps.product_id = p.id
+                AND ps.quantite > 0
+            ) OR p.has_variants = 1`
+        : '(p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)'})
       ORDER BY pu.unit_name
     `);
 
@@ -474,15 +595,57 @@ router.get('/', async (req, res, next) => {
       ORDER BY nom
     `);
 
+    // 4b. Get available utility types (categorie_base)
+    const [allUtilityTypes] = await pool.query(`
+      SELECT DISTINCT p.categorie_base as utility_type
+      FROM products p
+      WHERE p.ecom_published = 1
+        AND COALESCE(p.is_deleted, 0) = 0
+        AND p.categorie_base IS NOT NULL
+        AND p.categorie_base IN ('Professionel', 'Maison')
+        AND (${snapshotEnabled
+        ? `EXISTS (
+              SELECT 1
+              FROM product_snapshot ps
+              WHERE ps.product_id = p.id
+                AND ps.quantite > 0
+            ) OR p.has_variants = 1`
+        : '(p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)'})
+      ORDER BY FIELD(p.categorie_base, 'Professionel', 'Maison'), p.categorie_base
+    `);
+
     // 5. Get price range
     const [priceRange] = await pool.query(`
       SELECT 
-        MIN(prix_vente) as min_price,
-        MAX(prix_vente) as max_price
+        MIN(${snapshotEnabled
+        ? `COALESCE((
+              SELECT ps.prix_vente
+              FROM product_snapshot ps
+              WHERE ps.product_id = products.id AND ps.variant_id IS NULL
+              ORDER BY ps.created_at DESC, ps.id DESC
+              LIMIT 1
+            ), products.prix_vente)`
+        : 'prix_vente'}) as min_price,
+        MAX(${snapshotEnabled
+        ? `COALESCE((
+              SELECT ps.prix_vente
+              FROM product_snapshot ps
+              WHERE ps.product_id = products.id AND ps.variant_id IS NULL
+              ORDER BY ps.created_at DESC, ps.id DESC
+              LIMIT 1
+            ), products.prix_vente)`
+        : 'prix_vente'}) as max_price
       FROM products
       WHERE ecom_published = 1
         AND COALESCE(is_deleted, 0) = 0
-        AND (stock_partage_ecom_qty > 0 OR has_variants = 1)
+        AND (${snapshotEnabled
+        ? `EXISTS (
+              SELECT 1
+              FROM product_snapshot ps
+              WHERE ps.product_id = products.id
+                AND ps.quantite > 0
+            ) OR has_variants = 1`
+        : '(stock_partage_ecom_qty > 0 OR has_variants = 1)'})
     `);
 
     // Calculate pagination metadata
@@ -513,6 +676,7 @@ router.get('/', async (req, res, next) => {
         colors: allColors.map(c => c.color),
         units: allUnits.map(u => u.unit),
         brands,
+        utility_types: allUtilityTypes.map(u => u.utility_type),
         price_range: {
           min: priceRange[0].min_price ? Number(priceRange[0].min_price) : 0,
           max: priceRange[0].max_price ? Number(priceRange[0].max_price) : 0
@@ -529,6 +693,7 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const snapshotEnabled = await hasProductSnapshotTable(pool);
 
     // Get main product with full details
     const [rows] = await pool.query(`
@@ -550,6 +715,31 @@ router.get('/:id', async (req, res, next) => {
     }
 
     const r = rows[0];
+
+    let effectiveBasePrice = Number(r.prix_vente);
+    let effectiveAnyStockQty = Number(r.stock_partage_ecom_qty || 0);
+
+    if (snapshotEnabled) {
+      const [snapRows] = await pool.query(
+        `SELECT
+          (
+            SELECT ps.prix_vente
+            FROM product_snapshot ps
+            WHERE ps.product_id = ? AND ps.variant_id IS NULL
+            ORDER BY ps.created_at DESC, ps.id DESC
+            LIMIT 1
+          ) as snapshot_base_price,
+          (
+            SELECT COALESCE(SUM(ps.quantite), 0)
+            FROM product_snapshot ps
+            WHERE ps.product_id = ?
+          ) as snapshot_stock_any`,
+        [id, id]
+      );
+
+      effectiveBasePrice = Number(snapRows?.[0]?.snapshot_base_price ?? effectiveBasePrice);
+      effectiveAnyStockQty = Number(snapRows?.[0]?.snapshot_stock_any ?? effectiveAnyStockQty);
+    }
 
     // Check if product is wishlisted for authenticated users
     const userId = req.user?.id;
@@ -583,21 +773,49 @@ router.get('/:id', async (req, res, next) => {
     // Get product variants (only if has_variants is true)
     let variants = [];
     if (r.has_variants) {
-      const [variantsResult] = await pool.query(`
-        SELECT 
-          id,
-          variant_name,
-          variant_type,
-          reference,
-          prix_vente,
-          remise_client,
-          remise_artisan,
-          stock_quantity,
-          image_url
-        FROM product_variants
-        WHERE product_id = ?
-        ORDER BY variant_name
-      `, [id]);
+      const variantsQuery = snapshotEnabled
+        ? `
+          SELECT 
+            pv.id,
+            pv.variant_name,
+            pv.variant_type,
+            pv.reference,
+            COALESCE((
+              SELECT ps.prix_vente
+              FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id
+              ORDER BY ps.created_at DESC, ps.id DESC
+              LIMIT 1
+            ), pv.prix_vente) as prix_vente,
+            pv.remise_client,
+            pv.remise_artisan,
+            COALESCE((
+              SELECT COALESCE(SUM(ps.quantite), 0)
+              FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id
+            ), pv.stock_quantity) as stock_quantity,
+            pv.image_url
+          FROM product_variants pv
+          WHERE pv.product_id = ?
+          ORDER BY pv.variant_name
+        `
+        : `
+          SELECT 
+            id,
+            variant_name,
+            variant_type,
+            reference,
+            prix_vente,
+            remise_client,
+            remise_artisan,
+            stock_quantity,
+            image_url
+          FROM product_variants
+          WHERE product_id = ?
+          ORDER BY variant_name
+        `;
+
+      const [variantsResult] = await pool.query(variantsQuery, [id]);
       
       // Get variant images for each variant
       for (const v of variantsResult) {
@@ -628,7 +846,7 @@ router.get('/:id', async (req, res, next) => {
     }
 
     // Calculate promo price
-    const originalPrice = Number(r.prix_vente);
+    const originalPrice = Number(effectiveBasePrice);
     const promoPercentage = Number(r.pourcentage_promo || 0);
     const promoPrice = promoPercentage > 0 
       ? originalPrice * (1 - promoPercentage / 100) 
@@ -672,12 +890,26 @@ router.get('/:id', async (req, res, next) => {
           p.designation_ar,
           p.designation_en,
           p.designation_zh,
-          p.prix_vente,
+          ${snapshotEnabled
+          ? `COALESCE((
+                SELECT ps.prix_vente
+                FROM product_snapshot ps
+                WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+                ORDER BY ps.created_at DESC, ps.id DESC
+                LIMIT 1
+              ), p.prix_vente) as prix_vente,`
+          : 'p.prix_vente,'}
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
           p.image_url,
-          p.stock_partage_ecom_qty,
+          ${snapshotEnabled
+          ? `(
+                SELECT COALESCE(SUM(ps.quantite), 0)
+                FROM product_snapshot ps
+                WHERE ps.product_id = p.id
+              ) as stock_qty,`
+          : 'p.stock_partage_ecom_qty as stock_qty,'}
           p.has_variants,
           p.categorie_id,
           p.brand_id,
@@ -696,7 +928,14 @@ router.get('/:id', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
-          AND p.stock_partage_ecom_qty > 0
+          AND ${snapshotEnabled
+          ? `EXISTS (
+                SELECT 1
+                FROM product_snapshot ps
+                WHERE ps.product_id = p.id
+                  AND ps.quantite > 0
+              )`
+          : 'p.stock_partage_ecom_qty > 0'}
           AND p.id != ?
         ORDER BY relevance_score DESC, p.created_at DESC
         LIMIT 8
@@ -759,7 +998,7 @@ router.get('/:id', async (req, res, next) => {
             image_url: img.image_url,
             position: img.position
           })),
-          in_stock: isInStock(sp.stock_partage_ecom_qty),
+          in_stock: isInStock(sp.stock_qty),
           purchase_limit: PURCHASE_LIMIT,
           has_variants: !!sp.has_variants,
           brand: sp.brand_id ? {
@@ -801,7 +1040,7 @@ router.get('/:id', async (req, res, next) => {
       has_promo: promoPercentage > 0,
       
       // Stock
-      in_stock: isInStock(r.stock_partage_ecom_qty),
+      in_stock: isInStock(effectiveAnyStockQty),
       purchase_limit: PURCHASE_LIMIT,
       
       // Images & Media
@@ -880,6 +1119,32 @@ router.get('/featured/promo', async (req, res, next) => {
   try {
     const { limit = 12 } = req.query;
 
+    const snapshotEnabled = await hasProductSnapshotTable(pool);
+    const priceExpr = snapshotEnabled
+      ? `COALESCE((
+          SELECT ps.prix_vente
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+          ORDER BY ps.created_at DESC, ps.id DESC
+          LIMIT 1
+        ), p.prix_vente)`
+      : 'p.prix_vente';
+    const anyStockExpr = snapshotEnabled
+      ? `(
+          SELECT COALESCE(SUM(ps.quantite), 0)
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id
+        )`
+      : 'COALESCE(p.stock_partage_ecom_qty, 0)';
+    const inStockWhereExpr = snapshotEnabled
+      ? `EXISTS (
+          SELECT 1
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id
+            AND ps.quantite > 0
+        )`
+      : 'p.stock_partage_ecom_qty > 0';
+
     const [rows] = await pool.query(`
       SELECT 
         p.id,
@@ -887,12 +1152,12 @@ router.get('/featured/promo', async (req, res, next) => {
         p.designation_ar,
         p.designation_en,
         p.designation_zh,
-        p.prix_vente,
+        ${priceExpr} as prix_vente,
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
         p.image_url,
-        COALESCE(p.stock_partage_ecom_qty, 0) as stock_qty,
+        ${anyStockExpr} as stock_qty,
         p.has_variants,
         p.is_obligatoire_variant,
         b.nom as brand_nom
@@ -900,7 +1165,7 @@ router.get('/featured/promo', async (req, res, next) => {
       LEFT JOIN brands b ON p.brand_id = b.id
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
-        AND p.stock_partage_ecom_qty > 0
+        AND ${inStockWhereExpr}
         AND p.pourcentage_promo > 0
       ORDER BY p.pourcentage_promo DESC, p.created_at DESC
       LIMIT ?
@@ -977,6 +1242,32 @@ router.get('/featured/new', async (req, res, next) => {
   try {
     const { limit = 12 } = req.query;
 
+    const snapshotEnabled = await hasProductSnapshotTable(pool);
+    const priceExpr = snapshotEnabled
+      ? `COALESCE((
+          SELECT ps.prix_vente
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+          ORDER BY ps.created_at DESC, ps.id DESC
+          LIMIT 1
+        ), p.prix_vente)`
+      : 'p.prix_vente';
+    const anyStockExpr = snapshotEnabled
+      ? `(
+          SELECT COALESCE(SUM(ps.quantite), 0)
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id
+        )`
+      : 'COALESCE(p.stock_partage_ecom_qty, 0)';
+    const inStockWhereExpr = snapshotEnabled
+      ? `EXISTS (
+          SELECT 1
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id
+            AND ps.quantite > 0
+        )`
+      : 'p.stock_partage_ecom_qty > 0';
+
     const [rows] = await pool.query(`
       SELECT 
         p.id,
@@ -984,12 +1275,12 @@ router.get('/featured/new', async (req, res, next) => {
         p.designation_ar,
         p.designation_en,
         p.designation_zh,
-        p.prix_vente,
+        ${priceExpr} as prix_vente,
         p.pourcentage_promo,
         p.remise_client,
         p.remise_artisan,
         p.image_url,
-        COALESCE(p.stock_partage_ecom_qty, 0) as stock_qty,
+        ${anyStockExpr} as stock_qty,
         p.has_variants,
         p.is_obligatoire_variant,
         b.nom as brand_nom
@@ -997,7 +1288,7 @@ router.get('/featured/new', async (req, res, next) => {
       LEFT JOIN brands b ON p.brand_id = b.id
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
-        AND p.stock_partage_ecom_qty > 0
+        AND ${inStockWhereExpr}
       ORDER BY p.created_at DESC
       LIMIT ?
     `, [Number(limit)]);
