@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, FileText, TrendingUp, DollarSign, Package, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
 import { useGetChiffreAffairesDetailQuery } from '../store/api/statsApi';
+import { useGetProductsQuery } from '../store/api/productsApi';
 
 // Types
 interface BonDetail {
@@ -38,6 +39,8 @@ interface ChiffreDetail {
     remise_unitaire?: number;
       remise_total?: number;
       profitBrut?: number; // Profit avant remise
+      variant?: string;
+      unite?: string;
     }>;
     totalBon: number;
     profitBon?: number;
@@ -52,6 +55,8 @@ const ChiffreAffairesDetailPage: React.FC = () => {
   const { date } = useParams<{ date: string }>();
   const [searchParams] = useSearchParams();
   const selectedDate = date || searchParams.get('date') || '';
+
+  const { data: products = [] } = useGetProductsQuery(undefined); // Fetch products for name resolution
 
   // État pour les accordéons (fermés par défaut)
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
@@ -79,6 +84,47 @@ const ChiffreAffairesDetailPage: React.FC = () => {
 
   type CalculDetail = ChiffreDetail['calculs'][number];
 
+  // Résoudre variante, unité et facteur de conversion à partir de l'item + catalogue produits
+  const resolveVariantAndUnit = (item: any) => {
+    const productId = item.product_id ?? item.produit_id ?? item.produitId ?? item.id;
+    const product = products.find((p: any) => String(p.id) === String(productId));
+
+    // Variante
+    let variantName: string = item.variant_name || '';
+    if (!variantName && item.variant_id && product?.variants) {
+      const v = (product.variants as any[]).find((vr: any) => String(vr.id) === String(item.variant_id));
+      if (v) variantName = v.variant_name || '';
+    }
+
+    // Unité + facteur de conversion
+    let unitName: string = item.unit_name || '';
+    let factor = 1;
+
+    // 1) Facteur éventuel déjà renvoyé par l'API (peut être string)
+    if (item.conversion_factor != null) {
+      const parsed = Number(item.conversion_factor);
+      if (!Number.isNaN(parsed) && parsed > 0) factor = parsed;
+    }
+
+    // 2) Compléter via catalogue produits si besoin
+    if (item.unit_id && product?.units) {
+      const u = (product.units as any[]).find((un: any) => String(un.id) === String(item.unit_id));
+      if (u) {
+        if (!unitName && u.unit_name) unitName = u.unit_name;
+        const parsedConv = Number(u.conversion_factor);
+        if (!Number.isNaN(parsedConv) && parsedConv > 0) factor = parsedConv;
+      }
+    }
+
+    if (!factor || Number.isNaN(factor)) factor = 1;
+
+    return {
+      variantLabel: variantName && String(variantName).trim() ? String(variantName).trim() : '-',
+      unitLabel: unitName && String(unitName).trim() ? String(unitName).trim() : '-',
+      conversionFactor: factor,
+    };
+  };
+
   const renderItemsTable = (calcul: CalculDetail, isBeneficiaire: boolean) => (
     <div className="overflow-x-auto">
       <table className="min-w-full">
@@ -86,6 +132,12 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           <tr>
             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
               Produit
+            </th>
+            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+              Variante
+            </th>
+            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+              Unité
             </th>
             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
               Qté
@@ -95,6 +147,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
             </th>
             {isBeneficiaire && (
               <>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
+                  Prix Achat
+                </th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                   Coût
                 </th>
@@ -112,10 +167,23 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200">
-          {calcul.items.map((item, itemIndex) => (
+          {calcul.items.map((item, itemIndex) => {
+            const { variantLabel, unitLabel, conversionFactor } = resolveVariantAndUnit(item);
+            const factor = conversionFactor || 1;
+            const rawCout = typeof item.cout_revient === 'number' ? item.cout_revient : (typeof item.prix_achat === 'number' ? item.prix_achat : 0);
+            const rawAchat = typeof item.prix_achat === 'number' ? item.prix_achat : (typeof item.cout_revient === 'number' ? item.cout_revient : 0);
+            const coutParUnite = rawCout * factor;
+            const prixAchatParUnite = rawAchat * factor;
+            return (
             <tr key={`${calcul.bonType}-${calcul.bonId}-${itemIndex}`}>
-              <td className="px-4 py-2 text-sm text-gray-900">
+              <td className="px-4 py-2 text-sm text-gray-900 font-medium">
                 {item.designation}
+              </td>
+              <td className="px-4 py-2 text-sm text-indigo-600">
+                {variantLabel}
+              </td>
+              <td className="px-4 py-2 text-sm text-gray-500">
+                {unitLabel}
               </td>
               <td className="px-4 py-2 text-sm text-gray-900 text-right">
                 {item.quantite}
@@ -126,7 +194,10 @@ const ChiffreAffairesDetailPage: React.FC = () => {
               {isBeneficiaire && (
                 <>
                   <td className="px-4 py-2 text-sm text-gray-900 text-right">
-                    {formatAmount(item.cout_revient || item.prix_achat || 0)} DH
+                    {formatAmount(prixAchatParUnite)} DH
+                  </td>
+                  <td className="px-4 py-2 text-sm text-gray-900 text-right">
+                    {formatAmount(coutParUnite)} DH
                   </td>
                   <td className="px-4 py-2 text-sm text-amber-600 text-right">
                     {formatAmount(item.remise_total || 0)} DH
@@ -140,7 +211,8 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                 {formatAmount(item.montant_ligne)} DH
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
       {isBeneficiaire && (

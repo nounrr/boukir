@@ -240,7 +240,11 @@ const StatsDetailPage: React.FC = () => {
         clientId = `ecom_${key || 'inconnu'}`;
       }
 
-      // Si on désactive la condition client, on regroupe tout sous un seul "client".
+      // Conserver l'ID réel pour les stats par client (pour que la liste déroulante fonctionne)
+      const realClientId = clientId;
+
+      // Si on désactive la condition client, on regroupe tout sous un seul "client" POUR L'AFFICHAGE PRODUIT
+      // Mais on doit quand même alimenter cps avec les vrais clients pour la vue "Par client"
       if (!useClientCondition) {
         clientId = '__all__';
       }
@@ -294,15 +298,55 @@ const StatsDetailPage: React.FC = () => {
               : 'prix_unitaire×quantite';
         const baseBeforeSign = total;
 
-        if (!pcs[productId]) pcs[productId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, clients: {} };
+        // ── Résoudre variant_name, unit_name, cost depuis le catalogue produits ──
+        const productData: any = products.find((p: any) => String(p.id) === String(productId));
+
+        // variant_name : item snapshot (ecommerce) → catalogue
+        let variantName = it.variant_name || '';
+        if (!variantName && it.variant_id && productData?.variants) {
+          const v = productData.variants.find((vr: any) => String(vr.id) === String(it.variant_id));
+          if (v) variantName = v.variant_name || '';
+        }
+
+        // unit_name : item snapshot (ecommerce) → catalogue
+        let unitName = it.unit_name || '';
+        let conversionFactor = 1;
+        if (!unitName && it.unit_id && productData?.units) {
+          const u = productData.units.find((un: any) => String(un.id) === String(it.unit_id));
+          if (u) {
+            unitName = u.unit_name || '';
+            conversionFactor = toNumber(u.conversion_factor) || 1;
+          }
+        } else if (it.unit_id && productData?.units) {
+          const u = productData.units.find((un: any) => String(un.id) === String(it.unit_id));
+          if (u) conversionFactor = toNumber(u.conversion_factor) || 1;
+        }
+
+        // Cost : variant-level → item-level → product-level
+        let costUnit = 0;
+        if (it.variant_id && productData?.variants) {
+          const v = productData.variants.find((vr: any) => String(vr.id) === String(it.variant_id));
+          if (v) costUnit = toNumber(v.cout_revient) || toNumber(v.prix_achat) || 0;
+        }
+        if (!costUnit) {
+          costUnit = toNumber(it.cout_revient) || toNumber(it.prix_achat)
+            || toNumber(productData?.cout_revient) || toNumber(productData?.prix_achat) || 0;
+        }
+        // Ajuster le coût par le facteur de conversion de l'unité
+        const adjustedCost = costUnit * conversionFactor;
+        const profitItem = (unit - adjustedCost) * qty * sign;
+
+        if (!pcs[productId]) pcs[productId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, clients: {} };
         const pcEntry = pcs[productId];
-        if (!pcEntry.clients[clientId]) pcEntry.clients[clientId] = { ventes: 0, quantite: 0, montant: 0, details: [] };
+        if (!pcEntry.clients[clientId]) pcEntry.clients[clientId] = { ventes: 0, quantite: 0, montant: 0, profit: 0, details: [] };
         pcEntry.clients[clientId].ventes += 1;
         pcEntry.clients[clientId].quantite += signedQty;
         pcEntry.clients[clientId].montant += signedTotal;
+        pcEntry.clients[clientId].profit += profitItem;
         pcEntry.totalVentes += 1;
         pcEntry.totalQuantite += signedQty;
         pcEntry.totalMontant += signedTotal;
+        pcEntry.totalProfit += profitItem;
 
         // Détails par bon pour l'accordéon (vue produits)
         pcEntry.clients[clientId].details.push({
@@ -321,25 +365,36 @@ const StatsDetailPage: React.FC = () => {
           sign,
           statut: bon.statut,
           type: bonType,
+          variantName,
+          unitName,
+          costUnit: adjustedCost,
+          profit: profitItem,
         });
 
-        // Pour les produits : calculer les statistiques des clients
-        if (!cps[clientId]) cps[clientId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, products: {} };
-        const cpEntry = cps[clientId];
-        if (!cpEntry.products[productId]) cpEntry.products[productId] = { ventes: 0, quantite: 0, montant: 0 };
+        // Pour les produits (vue PAR CLIENT) : calculer les statistiques des clients
+        // IMPORTANT: On utilise realClientId ici pour que la liste des clients soit complète dans le filtre
+        // même si la vue produit est en mode "global" (__all__)
+        const targetClientId = realClientId;
+        if (!targetClientId) continue;
+
+        if (!cps[targetClientId]) cps[targetClientId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, products: {} };
+        const cpEntry = cps[targetClientId];
+        if (!cpEntry.products[productId]) cpEntry.products[productId] = { ventes: 0, quantite: 0, montant: 0, profit: 0 };
         cpEntry.products[productId].ventes += 1;
         cpEntry.products[productId].quantite += signedQty;
         cpEntry.products[productId].montant += signedTotal;
+        cpEntry.products[productId].profit += profitItem;
         cpEntry.totalVentes += 1;
         cpEntry.totalQuantite += signedQty;
         cpEntry.totalMontant += signedTotal;
+        cpEntry.totalProfit += profitItem;
       }
     }
 
     // Les statistiques des contacts sont déjà calculées dans la boucle ci-dessus
     // puisque clientBonsForItems contient les bons filtrés par statut
     return { productClientStats: pcs, clientProductStats: cps };
-  }, [clientBonsForItems, useClientCondition]);
+  }, [clientBonsForItems, useClientCondition, products]);
 
   // Options recherchables (produits & clients)
   const productOptions = useMemo(() => {
@@ -688,7 +743,7 @@ const StatsDetailPage: React.FC = () => {
               // Ensure we include all products (even those with zero ventes)
               const allProductIds = new Set<string>([...Object.keys(productClientStats), ...products.map((p:any) => String(p.id))]);
               const entries = Array.from(allProductIds).map((pid) => {
-                const data = productClientStats[pid] || { totalVentes: 0, totalQuantite: 0, totalMontant: 0, clients: {} };
+                const data = productClientStats[pid] || { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, clients: {} };
                 return { productId: pid, ...data };
               });
               const filtered = selectedProductId
@@ -734,6 +789,7 @@ const StatsDetailPage: React.FC = () => {
                         <p className="text-sm text-gray-600">Quantité totale</p>
                         <p className="text-lg font-semibold text-gray-900">{toNumber(row.totalQuantite)}</p>
                         <p className="text-xs text-gray-500">{toNumber(row.totalMontant).toFixed(2)} DH</p>
+                        <p className={`text-xs font-semibold ${toNumber(row.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>Profit: {toNumber(row.totalProfit).toFixed(2)} DH</p>
                       </div>
                     </div>
                     <div className="overflow-x-auto w-full">
@@ -744,12 +800,13 @@ const StatsDetailPage: React.FC = () => {
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ventes</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Quantité</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {clientRows.length === 0 ? (
                             <tr>
-                              <td colSpan={4} className="px-4 py-4 text-center text-sm text-gray-500">Aucune vente pour ce produit</td>
+                              <td colSpan={5} className="px-4 py-4 text-center text-sm text-gray-500">Aucune vente pour ce produit</td>
                             </tr>
                           ) : clientRows.map((cr: any) => {
                             // Gérer l'affichage du nom client pour les bons Comptant
@@ -781,10 +838,11 @@ const StatsDetailPage: React.FC = () => {
                                   <td className="px-4 py-2 text-sm text-right text-gray-900">{cr.ventes}</td>
                                   <td className="px-4 py-2 text-sm text-right text-gray-900">{toNumber(cr.quantite)}</td>
                                   <td className="px-4 py-2 text-sm text-right font-semibold text-gray-900">{toNumber(cr.montant).toFixed(2)} DH</td>
+                                  <td className={`px-4 py-2 text-sm text-right font-semibold ${toNumber(cr.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{toNumber(cr.profit).toFixed(2)} DH</td>
                                 </tr>
                                 {isOpen && cr.details && cr.details.length > 0 && (
                                   <tr className="bg-gray-50/60">
-                                    <td colSpan={4} className="px-4 pb-4 pt-0">
+                                    <td colSpan={5} className="px-4 pb-4 pt-0">
                                       <div className="mt-2 border border-gray-200 rounded-md bg-white w-full overflow-x-auto">
                                         <table className="w-full text-xs">
                                           <thead className="bg-gray-100">
@@ -792,9 +850,13 @@ const StatsDetailPage: React.FC = () => {
                                               <th className="px-2 py-1 text-left font-medium text-gray-600">Bon</th>
                                               <th className="px-2 py-1 text-left font-medium text-gray-600">Type</th>
                                               <th className="px-2 py-1 text-left font-medium text-gray-600">Date</th>
+                                              <th className="px-2 py-1 text-left font-medium text-gray-600">Variante</th>
+                                              <th className="px-2 py-1 text-left font-medium text-gray-600">Unité</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">Qté</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">P.Unit</th>
+                                              <th className="px-2 py-1 text-right font-medium text-gray-600">Coût</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">Total</th>
+                                              <th className="px-2 py-1 text-right font-medium text-gray-600">Profit</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">Solde</th>
                                               <th className="px-2 py-1 text-left font-medium text-gray-600">Statut</th>
                                             </tr>
@@ -812,17 +874,23 @@ const StatsDetailPage: React.FC = () => {
                                               });
 
                                               let solde = 0;
+                                              let profitCumul = 0;
                                               const rows = detailsSorted.map((d: any, idx: number) => {
                                                 solde += toNumber(d.total);
+                                                profitCumul += toNumber(d.profit);
                                                 const rowSolde = solde;
                                                 return (
                                                   <tr key={idx} className={`border-t last:border-b-0 ${getBonRowBg(String(d.type || ''))}`}>
                                                     <td className="px-2 py-1">{d.bonNumero}</td>
                                                     <td className="px-2 py-1">{d.type}</td>
                                                     <td className="px-2 py-1">{d.date}</td>
+                                                    <td className="px-2 py-1 text-left">{d.variantName || <span className="text-gray-300">—</span>}</td>
+                                                    <td className="px-2 py-1 text-left">{d.unitName || <span className="text-gray-300">—</span>}</td>
                                                     <td className="px-2 py-1 text-right">{toNumber(d.quantite)}</td>
                                                     <td className="px-2 py-1 text-right">{toNumber(d.prix_unitaire).toFixed(2)} DH</td>
+                                                    <td className="px-2 py-1 text-right text-gray-500">{toNumber(d.costUnit).toFixed(2)} DH</td>
                                                     <td className="px-2 py-1 text-right font-medium">{toNumber(d.total).toFixed(2)} DH</td>
+                                                    <td className={`px-2 py-1 text-right font-medium ${toNumber(d.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{toNumber(d.profit).toFixed(2)} DH</td>
                                                     <td className="px-2 py-1 text-right font-semibold text-gray-900">{toNumber(rowSolde).toFixed(2)} DH</td>
                                                     <td className="px-2 py-1">{d.statut}</td>
                                                   </tr>
@@ -830,14 +898,14 @@ const StatsDetailPage: React.FC = () => {
                                               });
 
                                               const soldeFinal = solde;
+                                              const profitFinal = profitCumul;
                                               rows.push(
                                                 <tr key="__solde_final__" className="border-t bg-gray-100">
-                                                  <td className="px-2 py-1 font-semibold text-gray-900" colSpan={5}>Solde final</td>
+                                                  <td className="px-2 py-1 font-semibold text-gray-900" colSpan={8}>Solde final</td>
                                                   <td className="px-2 py-1 text-right font-semibold text-gray-900">{toNumber(soldeFinal).toFixed(2)} DH</td>
+                                                  <td className={`px-2 py-1 text-right font-semibold ${profitFinal >= 0 ? 'text-green-600' : 'text-red-600'}`}>{toNumber(profitFinal).toFixed(2)} DH</td>
                                                   <td className="px-2 py-1 text-right font-semibold text-gray-900">{toNumber(soldeFinal).toFixed(2)} DH</td>
-                                                  <td className="px-2 py-1 text-gray-700">
-                                                    <span className="text-[11px]">Montant client: {toNumber(cr.montant).toFixed(2)} DH</span>
-                                                  </td>
+                                                  <td className="px-2 py-1"></td>
                                                 </tr>
                                               );
 
@@ -906,6 +974,7 @@ const StatsDetailPage: React.FC = () => {
                         <p className="text-sm text-gray-600">Quantité totale</p>
                         <p className="text-lg font-semibold text-gray-900">{toNumber(row.totalQuantite)}</p>
                         <p className="text-xs text-gray-500">{toNumber(row.totalMontant).toFixed(2)} DH</p>
+                        <p className={`text-xs font-semibold ${toNumber(row.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>Profit: {toNumber(row.totalProfit).toFixed(2)} DH</p>
                       </div>
                     </div>
                     <div className="overflow-x-auto w-full">
@@ -916,6 +985,7 @@ const StatsDetailPage: React.FC = () => {
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ventes</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Quantité</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -928,6 +998,7 @@ const StatsDetailPage: React.FC = () => {
                                 <td className="px-4 py-2 text-sm text-right text-gray-900">{pr.ventes}</td>
                                 <td className="px-4 py-2 text-sm text-right text-gray-900">{toNumber(pr.quantite)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-semibold text-gray-900">{toNumber(pr.montant).toFixed(2)} DH</td>
+                                <td className={`px-4 py-2 text-sm text-right font-semibold ${toNumber(pr.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{toNumber(pr.profit).toFixed(2)} DH</td>
                               </tr>
                             );
                           })}

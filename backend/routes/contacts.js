@@ -71,7 +71,6 @@ const BALANCE_EXPR = `
       + COALESCE(ventes_ecommerce.total_ventes, 0)
       - COALESCE(paiements_client.total_paiements, 0)
       - COALESCE(avoirs_client.total_avoirs, 0)
-      - COALESCE(avoirs_ecommerce.total_avoirs, 0)
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
@@ -92,18 +91,18 @@ const SINGLE_CONTACT_QUERY = `
       CASE
         WHEN c.type = 'Client' THEN
           COALESCE((
-            SELECT SUM(v.montant_total)
-            FROM (
-              SELECT montant_total, statut FROM bons_sortie WHERE client_id = c.id
-              UNION ALL
-              SELECT montant_total, statut FROM bons_comptant WHERE client_id = c.id
-            ) v
-            WHERE LOWER(TRIM(v.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+            SELECT SUM(bs.montant_total)
+            FROM bons_sortie bs
+            WHERE bs.client_id = c.id
+              AND bs.statut IN ('En attente','Validé','Livré','Facturé')
+              AND LOWER(TRIM(bs.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0) + 
           COALESCE((
             SELECT SUM(o.total_amount)
             FROM ecommerce_orders o
-            WHERE LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
+            WHERE o.is_solde = 1
+              AND o.status IN ('pending','confirmed','processing','shipped','delivered')
+              AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
               AND o.user_id = c.id
           ), 0)
         WHEN c.type = 'Fournisseur' THEN
@@ -125,6 +124,7 @@ const SINGLE_CONTACT_QUERY = `
             FROM payments p
             WHERE p.type_paiement = 'Client'
               AND p.contact_id = c.id
+              AND p.statut IN ('En attente','Validé')
               AND LOWER(TRIM(p.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
         WHEN c.type = 'Fournisseur' THEN
@@ -146,14 +146,8 @@ const SINGLE_CONTACT_QUERY = `
             SELECT SUM(ac.montant_total)
             FROM avoirs_client ac
             WHERE ac.client_id = c.id
-            AND LOWER(TRIM(ac.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-          ), 0) +
-          COALESCE((
-            SELECT SUM(ae.montant_total)
-            FROM avoirs_ecommerce ae
-            LEFT JOIN ecommerce_orders o2 ON o2.id = ae.ecommerce_order_id
-            WHERE LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-              AND o2.user_id = c.id
+              AND ac.statut IN ('En attente','Validé','Appliqué')
+              AND LOWER(TRIM(ac.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
         WHEN c.type = 'Fournisseur' THEN
           COALESCE((
@@ -170,18 +164,18 @@ const SINGLE_CONTACT_QUERY = `
         WHEN c.type = 'Client' THEN
           COALESCE(c.solde, 0)
           + COALESCE((
-            SELECT SUM(v.montant_total)
-            FROM (
-              SELECT montant_total, statut FROM bons_sortie WHERE client_id = c.id
-              UNION ALL
-              SELECT montant_total, statut FROM bons_comptant WHERE client_id = c.id
-            ) v
-            WHERE LOWER(TRIM(v.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+            SELECT SUM(bs.montant_total)
+            FROM bons_sortie bs
+            WHERE bs.client_id = c.id
+              AND bs.statut IN ('En attente','Validé','Livré','Facturé')
+              AND LOWER(TRIM(bs.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           + COALESCE((
             SELECT SUM(o.total_amount)
             FROM ecommerce_orders o
-            WHERE LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
+            WHERE o.is_solde = 1
+              AND o.status IN ('pending','confirmed','processing','shipped','delivered')
+              AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
               AND o.user_id = c.id
           ), 0)
           - COALESCE((
@@ -189,20 +183,15 @@ const SINGLE_CONTACT_QUERY = `
             FROM payments p
             WHERE p.type_paiement = 'Client'
               AND p.contact_id = c.id
+              AND p.statut IN ('En attente','Validé')
               AND LOWER(TRIM(p.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
             SELECT SUM(ac.montant_total)
             FROM avoirs_client ac
             WHERE ac.client_id = c.id
-            AND LOWER(TRIM(ac.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-          ), 0)
-          - COALESCE((
-            SELECT SUM(ae.montant_total)
-            FROM avoirs_ecommerce ae
-            LEFT JOIN ecommerce_orders o2 ON o2.id = ae.ecommerce_order_id
-            WHERE LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-              AND o2.user_id = c.id
+              AND ac.statut IN ('En attente','Validé','Appliqué')
+              AND LOWER(TRIM(ac.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
         WHEN c.type = 'Fournisseur' THEN
           COALESCE(c.solde, 0)
@@ -267,21 +256,17 @@ router.get('/', async (req, res) => {
 
       LEFT JOIN contact_groups cg ON cg.id = c.group_id
 
-      -- Ventes client = bons_sortie + bons_comptant
+      -- Ventes client = bons_sortie uniquement
       LEFT JOIN (
         SELECT client_id, SUM(montant_total) AS total_ventes
-        FROM (
-          SELECT client_id, montant_total, statut FROM bons_sortie
-          UNION ALL
-          SELECT client_id, montant_total, statut FROM bons_comptant
-        ) vc
-        WHERE vc.client_id IS NOT NULL
-        AND LOWER(TRIM(vc.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+        FROM bons_sortie
+        WHERE client_id IS NOT NULL
+          AND statut IN ('En attente','Validé','Livré','Facturé')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY client_id
       ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
 
-      -- Ventes e-commerce (bons ecommerce): inclure toutes les commandes (sauf annulées/remboursées)
-      -- Montant pris = total_amount
+      -- Ventes e-commerce: uniquement les commandes is_solde = 1 (sauf annulées/remboursées)
       LEFT JOIN (
         SELECT
           c_link.id AS contact_id,
@@ -290,6 +275,8 @@ router.get('/', async (req, res) => {
         INNER JOIN contacts c_link
           ON o.user_id = c_link.id
         WHERE c_link.type = 'Client'
+          AND o.is_solde = 1
+          AND o.status IN ('pending','confirmed','processing','shipped','delivered')
           AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
         GROUP BY c_link.id
       ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
@@ -308,6 +295,7 @@ router.get('/', async (req, res) => {
         SELECT contact_id, SUM(montant_total) AS total_paiements
         FROM payments
         WHERE type_paiement = 'Client'
+          AND statut IN ('En attente','Validé')
           AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY contact_id
       ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
@@ -325,23 +313,10 @@ router.get('/', async (req, res) => {
       LEFT JOIN (
         SELECT client_id, SUM(montant_total) AS total_avoirs
         FROM avoirs_client
-        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+        WHERE statut IN ('En attente','Validé','Appliqué')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY client_id
       ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
-
-      -- Avoirs e-commerce (liés par ecommerce_order_id -> ecommerce_orders.user_id)
-      LEFT JOIN (
-        SELECT
-          c_link.id AS contact_id,
-          SUM(ae.montant_total) AS total_avoirs
-        FROM avoirs_ecommerce ae
-        LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-        INNER JOIN contacts c_link
-          ON o.user_id = c_link.id
-        WHERE c_link.type = 'Client'
-          AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-        GROUP BY c_link.id
-      ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
 
       -- Avoirs fournisseur (avoirs_fournisseur table)
       LEFT JOIN (
@@ -433,13 +408,10 @@ router.get('/summary', async (req, res) => {
 
       LEFT JOIN (
         SELECT client_id, SUM(montant_total) AS total_ventes
-        FROM (
-          SELECT client_id, montant_total, statut FROM bons_sortie
-          UNION ALL
-          SELECT client_id, montant_total, statut FROM bons_comptant
-        ) vc
-        WHERE vc.client_id IS NOT NULL
-        AND LOWER(TRIM(vc.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+        FROM bons_sortie
+        WHERE client_id IS NOT NULL
+          AND statut IN ('En attente','Validé','Livré','Facturé')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY client_id
       ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
 
@@ -451,6 +423,8 @@ router.get('/summary', async (req, res) => {
         INNER JOIN contacts c_link
           ON o.user_id = c_link.id
         WHERE c_link.type = 'Client'
+          AND o.is_solde = 1
+          AND o.status IN ('pending','confirmed','processing','shipped','delivered')
           AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
         GROUP BY c_link.id
       ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
@@ -459,7 +433,7 @@ router.get('/summary', async (req, res) => {
         SELECT fournisseur_id, SUM(montant_total) AS total_achats
         FROM bons_commande
         WHERE fournisseur_id IS NOT NULL
-          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY fournisseur_id
       ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
 
@@ -467,7 +441,8 @@ router.get('/summary', async (req, res) => {
         SELECT contact_id, SUM(montant_total) AS total_paiements
         FROM payments
         WHERE type_paiement = 'Client'
-          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+          AND statut IN ('En attente','Validé')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY contact_id
       ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
 
@@ -475,34 +450,22 @@ router.get('/summary', async (req, res) => {
         SELECT contact_id, SUM(montant_total) AS total_paiements
         FROM payments
         WHERE type_paiement = 'Fournisseur'
-          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY contact_id
       ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
 
       LEFT JOIN (
         SELECT client_id, SUM(montant_total) AS total_avoirs
         FROM avoirs_client
-        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+        WHERE statut IN ('En attente','Validé','Appliqué')
+          AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY client_id
       ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
-        SELECT
-          c_link.id AS contact_id,
-          SUM(ae.montant_total) AS total_avoirs
-        FROM avoirs_ecommerce ae
-        LEFT JOIN ecommerce_orders o ON o.id = ae.ecommerce_order_id
-        INNER JOIN contacts c_link
-          ON o.user_id = c_link.id
-        WHERE c_link.type = 'Client'
-          AND LOWER(COALESCE(ae.statut, '')) NOT IN ('annulé','annule')
-        GROUP BY c_link.id
-      ) avoirs_ecommerce ON avoirs_ecommerce.contact_id = c.id AND c.type = 'Client'
-
-      LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
         FROM avoirs_fournisseur
-        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime')
+        WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
         GROUP BY fournisseur_id
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
       ${whereSql}
@@ -534,7 +497,9 @@ router.get('/solde-cumule-card', async (_req, res) => {
           COALESCE((
               SELECT SUM(montant_total)
               FROM bons_sortie
-              WHERE statut IN ('En attente','Validé','Livré','Facturé')
+              WHERE client_id IS NOT NULL
+                AND statut IN ('En attente','Validé','Livré','Facturé')
+                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ),0)
 
           -- Avoirs client
@@ -542,7 +507,9 @@ router.get('/solde-cumule-card', async (_req, res) => {
           COALESCE((
               SELECT SUM(montant_total)
               FROM avoirs_client
-              WHERE statut IN ('En attente','Validé','Appliqué')
+              WHERE client_id IS NOT NULL
+                AND statut IN ('En attente','Validé','Appliqué')
+                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ),0)
 
           -- Paiements clients
@@ -551,15 +518,17 @@ router.get('/solde-cumule-card', async (_req, res) => {
               SELECT SUM(montant_total)
               FROM payments
               WHERE statut IN ('En attente','Validé')
-              AND type_paiement = 'Client'
-              AND contact_id IS NOT NULL
+                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+                AND type_paiement = 'Client'
+                AND contact_id IS NOT NULL
           ),0)
 
-          -- Solde contacts
+          -- Solde contacts (clients uniquement)
           +
           COALESCE((
               SELECT SUM(solde)
               FROM contacts
+              WHERE type = 'Client'
           ),0)
 
           -- Commandes ecommerce
@@ -568,7 +537,8 @@ router.get('/solde-cumule-card', async (_req, res) => {
               SELECT SUM(total_amount)
               FROM ecommerce_orders
               WHERE is_solde = 1
-              AND status IN ('pending','confirmed','processing','shipped','delivered')
+                AND status IN ('pending','confirmed','processing','shipped','delivered')
+                AND LOWER(COALESCE(status, '')) NOT IN ('cancelled','refunded')
           ),0)
 
           -- Avoirs ecommerce
@@ -577,6 +547,7 @@ router.get('/solde-cumule-card', async (_req, res) => {
               SELECT SUM(montant_total)
               FROM avoirs_ecommerce
               WHERE statut IN ('En attente','Validé','Appliqué')
+                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ),0)
 
       ) AS total_final;
@@ -588,6 +559,58 @@ router.get('/solde-cumule-card', async (_req, res) => {
   } catch (error) {
     console.error('Error fetching solde cumule card:', error);
     res.status(500).json({ error: 'Failed to fetch solde cumule card' });
+  }
+});
+
+// GET /api/contacts/solde-cumule-card-fournisseur - total global fournisseur
+router.get('/solde-cumule-card-fournisseur', async (_req, res) => {
+  try {
+    const sql = `
+      SELECT
+      (
+          -- Bons de commande (achats fournisseur)
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM bons_commande
+              WHERE fournisseur_id IS NOT NULL
+                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ),0)
+
+          -- Avoirs fournisseur
+          -
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM avoirs_fournisseur
+              WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ),0)
+
+          -- Paiements fournisseur
+          -
+          COALESCE((
+              SELECT SUM(montant_total)
+              FROM payments
+              WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+                AND type_paiement = 'Fournisseur'
+                AND contact_id IS NOT NULL
+          ),0)
+
+          -- Solde contacts (fournisseurs uniquement)
+          +
+          COALESCE((
+              SELECT SUM(solde)
+              FROM contacts
+              WHERE type = 'Fournisseur'
+          ),0)
+
+      ) AS total_final;
+    `;
+
+    const [rows] = await pool.execute(sql);
+    const row = rows?.[0] || {};
+    res.json({ total_final: Number(row.total_final || 0) });
+  } catch (error) {
+    console.error('Error fetching solde cumule card fournisseur:', error);
+    res.status(500).json({ error: 'Failed to fetch solde cumule card fournisseur' });
   }
 });
 

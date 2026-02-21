@@ -293,8 +293,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.execute(`
         INSERT INTO avoir_ecommerce_items (
           avoir_ecommerce_id, product_id, variant_id, unit_id,
-          quantite, prix_unitaire, remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantite, prix_unitaire, remise_pourcentage, remise_montant, total, is_indisponible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         avoirId,
         it.product_id,
@@ -305,6 +305,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         it.remise_pourcentage ?? 0,
         it.remise_montant ?? 0,
         it.total,
+        it.is_indisponible ? 1 : 0,
       ]);
     }
 
@@ -458,8 +459,8 @@ router.put('/:id', async (req, res) => {
       await connection.execute(`
         INSERT INTO avoir_ecommerce_items (
           avoir_ecommerce_id, product_id, variant_id, unit_id,
-          quantite, prix_unitaire, remise_pourcentage, remise_montant, total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantite, prix_unitaire, remise_pourcentage, remise_montant, total, is_indisponible
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         id,
         it.product_id,
@@ -470,6 +471,7 @@ router.put('/:id', async (req, res) => {
         it.remise_pourcentage ?? 0,
         it.remise_montant ?? 0,
         it.total,
+        it.is_indisponible ? 1 : 0,
       ]);
     }
 

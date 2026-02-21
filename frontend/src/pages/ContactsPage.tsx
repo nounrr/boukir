@@ -18,6 +18,7 @@ import {
   useDeleteContactMutation,
   useGetContactsSummaryQuery,
   useGetSoldeCumuleCardQuery,
+  useGetSoldeCumuleCardFournisseurQuery,
   useGetContactQuery // Added this
 } from '../store/api/contactsApi';
 import {
@@ -268,7 +269,7 @@ const ContactsPage: React.FC = () => {
   });
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde' | null>(null);
+  const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde_cumule' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [isGroupEditModalOpen, setIsGroupEditModalOpen] = useState(false);
   const [groupEditId, setGroupEditId] = useState<number | null>(null);
@@ -279,6 +280,8 @@ const ContactsPage: React.FC = () => {
   const [groupEditPage, setGroupEditPage] = useState(1);
   const [groupEditItemsPerPage, setGroupEditItemsPerPage] = useState(20);
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
+  // Filtre d'affichage: 'all' = tout, 'no-groups' = sans groupes (contacts individuels), 'only-groups' = groupes uniquement (fermés) + contacts hors groupe
+  const [groupViewMode, setGroupViewMode] = useState<'all' | 'no-groups' | 'only-groups'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -331,17 +334,19 @@ const ContactsPage: React.FC = () => {
   const backendSortBy = sortField || 'nom';
   const backendSortDir = sortDirection;
 
+  const effectiveLimit = itemsPerPage === 0 ? 999999 : itemsPerPage;
+
   const { data: clientsResponse, isLoading: clientsLoading } = useGetClientsQuery({
-    page: currentPage,
-    limit: itemsPerPage,
+    page: itemsPerPage === 0 ? 1 : currentPage,
+    limit: effectiveLimit,
     search: searchTerm,
     clientSubTab,
     sortBy: backendSortBy,
     sortDir: backendSortDir,
   }, { skip: isGroupsTab });
   const { data: fournisseursResponse, isLoading: fournisseursLoading } = useGetFournisseursQuery({
-    page: currentPage,
-    limit: itemsPerPage,
+    page: itemsPerPage === 0 ? 1 : currentPage,
+    limit: effectiveLimit,
     search: searchTerm,
     sortBy: backendSortBy,
     sortDir: backendSortDir,
@@ -358,8 +363,10 @@ const ContactsPage: React.FC = () => {
     clientSubTab: activeTab === 'clients' ? clientSubTab : undefined,
   }, { skip: isGroupsTab });
 
-  // Card "Solde cumulé": route dédiée (query globale fixe) indépendante de la pagination.
+  // Card "Solde cumulé Client": route dédiée (query globale fixe) indépendante de la pagination.
   const { data: soldeCumuleCard } = useGetSoldeCumuleCardQuery(undefined, { skip: isGroupsTab });
+  // Card "Solde cumulé Fournisseur": route dédiée (query globale fixe)
+  const { data: soldeCumuleFournisseurCard } = useGetSoldeCumuleCardFournisseurQuery(undefined, { skip: isGroupsTab });
 
   const groupEditQueryGroupId = groupEditMode === 'members' ? (groupEditId ?? undefined) : undefined;
   const groupEditBaseSkip = !isGroupEditModalOpen || (groupEditMode === 'members' && groupEditId == null);
@@ -2778,8 +2785,8 @@ const ContactsPage: React.FC = () => {
   // IMPORTANT: le tri doit être fait côté backend, sinon la pagination est fausse.
   const sortedContacts = useMemo(() => filteredContacts, [filteredContacts]);
 
-  // Fonction pour gérer le tri
-  const handleSort = (field: 'nom' | 'societe' | 'solde') => {
+  // Fonction pour gérer le tri (solde_cumule = tri par solde cumulé côté backend)
+  const handleSort = (field: 'nom' | 'societe' | 'solde_cumule') => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
@@ -2863,8 +2870,30 @@ const ContactsPage: React.FC = () => {
 
   const visibleAccordionRows: AccordionRow[] = useMemo(() => {
     if (expandedGroupRowForActiveTab) return [expandedGroupRowForActiveTab];
+
+    if (groupViewMode === 'no-groups') {
+      // Afficher tous les contacts individuellement, sans regroupement
+      const flat: AccordionRow[] = [];
+      for (const row of accordionRows) {
+        if (row.kind === 'contact') {
+          flat.push(row);
+        } else if (row.kind === 'group') {
+          // Éclater le groupe en contacts individuels
+          for (const member of row.members) {
+            flat.push({ kind: 'contact', contact: member });
+          }
+        }
+      }
+      return flat;
+    }
+
+    if (groupViewMode === 'only-groups') {
+      // Afficher uniquement les lignes de groupe (fermées) + contacts hors groupe
+      return accordionRows.filter(row => row.kind === 'group' || row.kind === 'contact');
+    }
+
     return accordionRows;
-  }, [accordionRows, expandedGroupRowForActiveTab]);
+  }, [accordionRows, expandedGroupRowForActiveTab, groupViewMode]);
 
   const expandedGroupTotalSoldeForActiveTab = useMemo(() => {
     if (!expandedGroupRowForActiveTab) return 0;
@@ -2883,6 +2912,8 @@ const ContactsPage: React.FC = () => {
   }, [activeTab]);
 
   const toggleGroupExpanded = React.useCallback((groupId: number) => {
+    // En mode 'only-groups', ne pas ouvrir les groupes
+    if (groupViewMode === 'only-groups') return;
     const key = `${activeTab}:${groupId}`;
     setExpandedGroupKeys((prev) => {
       const next = new Set(prev);
@@ -2896,7 +2927,7 @@ const ContactsPage: React.FC = () => {
       }
       return next;
     });
-  }, [activeTab]);
+  }, [activeTab, groupViewMode]);
 
   React.useEffect(() => {
     if (!expandedGroupIdForActiveTab) return;
@@ -3465,7 +3496,7 @@ const ContactsPage: React.FC = () => {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-center">
                 <Users className={`${activeTab === 'clients' ? 'text-blue-600' : 'text-gray-600'}`} size={32} />
@@ -3475,17 +3506,31 @@ const ContactsPage: React.FC = () => {
                 </div>
               </div>
             </div>
+           
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-center">
                 <DollarSign className="text-green-600" size={32} />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Solde cumulé</p>
+                  <p className="text-sm font-medium text-gray-600">Solde cumulé Client</p>
                   <p className="text-3xl font-bold text-gray-900">
                     {(Number(soldeCumuleCard?.total_final ?? 0) || 0).toFixed(2)} DH
                   </p>
                 </div>
               </div>
             </div>
+
+            <div className="bg-white p-6 rounded-lg shadow">
+              <div className="flex items-center">
+                <DollarSign className="text-orange-600" size={32} />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Solde cumulé Fournisseur</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {(Number(soldeCumuleFournisseurCard?.total_final ?? 0) || 0).toFixed(2)} DH
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-center">
                 <Building2 className="text-purple-600" size={32} />
@@ -3535,13 +3580,49 @@ const ContactsPage: React.FC = () => {
           )}
 
           {/* Contrôles de pagination */}
-          <div className="mb-4 flex justify-between items-center">
+          <div className="mb-4 flex flex-wrap justify-between items-center gap-3">
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-700">
-                Affichage de {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, totalItems)} sur {totalItems} éléments
+                {itemsPerPage === 0
+                  ? `Affichage de tous les ${totalItems} éléments`
+                  : `Affichage de ${((currentPage - 1) * itemsPerPage) + 1} à ${Math.min(currentPage * itemsPerPage, totalItems)} sur ${totalItems} éléments`
+                }
               </span>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Filtres d'affichage groupes */}
+              <div className="flex items-center gap-3 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="groupViewMode"
+                    checked={groupViewMode === 'all'}
+                    onChange={() => setGroupViewMode('all')}
+                    className="accent-blue-600"
+                  />
+                  Tout
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="groupViewMode"
+                    checked={groupViewMode === 'no-groups'}
+                    onChange={() => { setGroupViewMode('no-groups'); clearExpandedGroupsForActiveTab(); }}
+                    className="accent-blue-600"
+                  />
+                  Sans groupes
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="groupViewMode"
+                    checked={groupViewMode === 'only-groups'}
+                    onChange={() => { setGroupViewMode('only-groups'); clearExpandedGroupsForActiveTab(); }}
+                    className="accent-blue-600"
+                  />
+                  Groupes only
+                </label>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-700">Éléments par page:</span>
                 <select
@@ -3557,6 +3638,7 @@ const ContactsPage: React.FC = () => {
                   <option value={30}>30</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
+                  <option value={0}>Tous</option>
                 </select>
               </div>
             </div>
@@ -3591,11 +3673,11 @@ const ContactsPage: React.FC = () => {
                 {/* Solde en premier */}
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
-                  onClick={() => handleSort('solde')}
+                  onClick={() => handleSort('solde_cumule')}
                 >
                   <div className="flex items-center gap-2">
                     {activeTab === 'clients' ? 'Solde à recevoir' : 'Solde à payer'}
-                    {sortField === 'solde' && (
+                    {sortField === 'solde_cumule' && (
                       sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                     )}
                   </div>
@@ -4214,7 +4296,7 @@ const ContactsPage: React.FC = () => {
 
       {/* Navigation de pagination */}
       {
-        totalPages > 1 && (
+        totalPages > 1 && itemsPerPage !== 0 && (
           <div className="mt-4 flex justify-center items-center gap-2">
             <button
               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}

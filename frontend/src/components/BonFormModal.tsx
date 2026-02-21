@@ -35,9 +35,11 @@ interface SearchableSelectProps {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  valueLabelFallback?: string;
   className?: string;
   disabled?: boolean;
   maxDisplayItems?: number;
+  minSearchChars?: number;
   autoOpenOnFocus?: boolean; // open dropdown when the control gains focus (for fast keyboard entry)
   buttonProps?: React.ButtonHTMLAttributes<HTMLButtonElement> & Record<string, any>; // pass-through for focus/aria/data-attrs
   allowCreate?: boolean;
@@ -50,9 +52,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   value,
   onChange,
   placeholder,
+  valueLabelFallback,
   className = '',
   disabled = false,
   maxDisplayItems = 100,
+  minSearchChars = 2,
   autoOpenOnFocus = false,
   buttonProps,
   allowCreate = false,
@@ -79,6 +83,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const hasMoreItems = allMatches.length > displayCount;
 
   const selectedOption = options.find((opt) => opt.value === value);
+  const displayLabel = selectedOption?.label || valueLabelFallback || placeholder;
   const canCreate = Boolean(
     allowCreate &&
       typeof onCreate === 'function' &&
@@ -104,7 +109,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         className="w-full px-3 py-2 border border-gray-300 rounded-md text-left bg-white disabled:bg-gray-100 min-h-[38px] flex items-center justify-between"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        title={selectedOption ? selectedOption.label : placeholder}
+        title={displayLabel}
         onFocus={(e) => {
           buttonProps?.onFocus?.(e);
           if (!disabled && autoOpenOnFocus) setIsOpen(true);
@@ -125,7 +130,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         }}
         {...buttonProps}
       >
-        <span className="truncate pr-2">{selectedOption ? selectedOption.label : placeholder}</span>
+        <span className="truncate pr-2">{displayLabel}</span>
         <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
       </button>
 
@@ -135,7 +140,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             <input
               type="text"
               className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Rechercher... (minimum 2 caractères)"
+              placeholder={minSearchChars > 0 ? `Rechercher... (minimum ${minSearchChars} caractères)` : 'Rechercher...'}
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -183,7 +188,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
-            {searchTerm.trim().length >= 2 ? (
+            {searchTerm.trim().length >= minSearchChars ? (
               filteredOptions.length === 0 ? (
                 <div className="p-2 text-sm text-gray-500">
                   <div className="mb-2">Aucun résultat trouvé</div>
@@ -263,7 +268,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
               )
             ) : (
               <div className="p-3 text-sm text-gray-500 text-center">
-                <div className="mb-2">Tapez au moins 2 caractères pour rechercher</div>
+                <div className="mb-2">Tapez au moins {minSearchChars} caractères pour rechercher</div>
                 <div className="text-xs text-gray-400">{options.length} éléments disponibles</div>
               </div>
             )}
@@ -435,8 +440,56 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Snapshot-expanded products for Sortie/Comptant/Avoir types
   const useSnapshotSelection = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
   const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection });
+
+  // Smart filtering for snapshot products (add mode only):
+  // - If a product+variant has snapshots with qty > 0, only show those (hide qty <= 0 snapshots)
+  // - If ALL snapshots of a product+variant have qty <= 0, show only the latest snapshot
+  // In edit mode, show all snapshots so already-selected items remain visible
+  const filteredSnapshotProducts = useMemo(() => {
+    if (!snapshotProducts?.length || isEditMode) return snapshotProducts;
+
+    // Group by product_id + variant_id (chaque variante est traitée indépendamment)
+    const grouped = new Map<string, any[]>();
+    for (const snap of snapshotProducts as any[]) {
+      const key = `${snap.id}:${snap.variant_id || 0}`; // product_id:variant_id
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(snap);
+    }
+
+    const result: any[] = [];
+    for (const [, entries] of grouped) {
+      // Séparer les entrées snapshot vs non-snapshot (services, produits sans snapshot)
+      const snapshotEntries = entries.filter((s: any) => !!s.snapshot_id);
+      const nonSnapshotEntries = entries.filter((s: any) => !s.snapshot_id);
+
+      if (snapshotEntries.length === 0) {
+        // Pas de snapshots → garder les entrées produit normales
+        result.push(...nonSnapshotEntries);
+        continue;
+      }
+
+      // Snapshots avec qte > 0
+      const withStock = snapshotEntries.filter((s: any) => {
+        const qty = Number(s.snapshot_quantite);
+        return Number.isFinite(qty) && qty > 0;
+      });
+
+      if (withStock.length > 0) {
+        // Produit+variante a des snapshots avec stock > 0 → afficher seulement ceux-là
+        result.push(...withStock);
+      } else {
+        // TOUS les snapshots de cette variante ont qte <= 0 → afficher seulement le dernier
+        const latest = snapshotEntries.reduce((a: any, b: any) => {
+          return Number(b.snapshot_id) > Number(a.snapshot_id) ? b : a;
+        });
+        result.push(latest);
+      }
+    }
+    return result;
+  }, [snapshotProducts, isEditMode]);
+
   // Effective product list for item selection: use snapshot list for outgoing bons
-  const selectableProducts = useSnapshotSelection && snapshotProducts.length > 0 ? snapshotProducts : products;
+  const selectableProducts = useSnapshotSelection && snapshotProducts.length > 0 ? filteredSnapshotProducts : products;
   const { data: clients = [] } = useGetAllClientsQuery();
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
@@ -892,6 +945,28 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
   const productFound = findProductInCatalog();
 
+        // Also try to find the snapshot product for accurate historic prices
+        const snapshotFound = (() => {
+          try {
+            const snapId = it.product_snapshot_id ?? it.snapshot_id;
+            if (snapId && snapshotProducts?.length) {
+              return (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId)) || null;
+            }
+            return null;
+          } catch { return null; }
+        })();
+
+        // Also look up variant from the base product catalog
+        const variantFound = (() => {
+          try {
+            const vId = it.variant_id ?? it.variantId ?? it.variant?.id;
+            if (vId && productFound?.variants?.length) {
+              return (productFound.variants as any[]).find((v: any) => String(v.id) === String(vId)) || null;
+            }
+            return null;
+          } catch { return null; }
+        })();
+
         let prix_achat =
           Number(it.prix_achat ?? it.pa ?? it.prixA ?? it.product?.prix_achat ?? it.produit?.prix_achat ?? 0) || 0;
         let cout_revient =
@@ -916,25 +991,50 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
   const kg = Number(it.kg ?? it.kg_value ?? it.product_kg ?? it.product?.kg ?? it.produit?.kg ?? 0) || 0;
 
+        // Resolve unit conversion factor
+        const unitId = it.unit_id ?? it.unitId ?? it.unit?.id;
+        let convFactor = 1;
+        if (unitId && productFound?.units?.length) {
+          const unitObj = (productFound.units as any[]).find((u: any) => String(u.id) === String(unitId));
+          if (unitObj) {
+            const isBase = unitObj.is_default || unitObj.facteur_isNormal;
+            if (!isBase) {
+              const f = Number(unitObj.conversion_factor) || 1;
+              if (f > 0) convFactor = f;
+            }
+          }
+        }
+
+        // Priority: snapshot → variant → item → product catalog
+        // When snapshot or variant exists, ALWAYS use their values (they are authoritative)
+        if (snapshotFound || variantFound) {
+          // Snapshot/variant are the authoritative source for COST only (PA/CR)
+          // prix_unitaire (selling price) comes from the bon items table, NOT from snapshot
+          const bestPA = Number(snapshotFound?.prix_achat) || Number(variantFound?.prix_achat);
+          const bestCR = Number(snapshotFound?.cout_revient) || Number(variantFound?.cout_revient);
+          if (bestPA) prix_achat = Number((bestPA * convFactor).toFixed(2));
+          if (bestCR) cout_revient = Number((bestCR * convFactor).toFixed(2));
+        } else {
+          // No snapshot/variant — use item values or fallback to product catalog
+          if (!prix_achat || prix_achat === 0) {
+            if (initialValues?.type === 'Commande' && prix_unitaire > 0) {
+              prix_achat = prix_unitaire;
+            } else {
+              const basePA = Number((productFound as any)?.prix_achat) || 0;
+              prix_achat = basePA ? Number((basePA * convFactor).toFixed(2)) : prix_achat;
+            }
+          }
+          if (!cout_revient || cout_revient === 0) {
+            const baseCR = Number((productFound as any)?.cout_revient) || 0;
+            cout_revient = baseCR ? Number((baseCR * convFactor).toFixed(2)) : cout_revient;
+          }
+          if (!prix_unitaire || prix_unitaire === 0) {
+            prix_unitaire = Number((productFound as any)?.prix_vente) || prix_unitaire;
+          }
+        }
+
         if (productFound) {
           try {
-            // Pour Commande en édition : si pas de prix_achat mais prix_unitaire (stocké) existe, l'utiliser.
-            if ((!prix_achat || prix_achat === 0) && initialValues?.type === 'Commande' && prix_unitaire > 0) {
-              prix_achat = prix_unitaire;
-            } else if (!prix_achat || prix_achat === 0) {
-              // Sinon fallback sur le prix_achat du produit.
-              prix_achat = Number((productFound as any).prix_achat ?? (productFound as any).pa ?? 0) || prix_achat;
-            }
-            if (!cout_revient || cout_revient === 0) {
-              cout_revient =
-                Number((productFound as any).cout_revient ?? (productFound as any).cr ?? (productFound as any).cout ?? 0) ||
-                cout_revient;
-            }
-            if (!prix_unitaire || prix_unitaire === 0) {
-              prix_unitaire =
-                Number((productFound as any).prix_vente ?? (productFound as any).prix_unitaire ?? (productFound as any).price ?? 0) ||
-                prix_unitaire;
-            }
             it.product_id = it.product_id ?? it.produit_id ?? it.product?.id ?? it.productId ?? productFound.id;
             it.product_reference =
               it.product_reference ??
@@ -1105,16 +1205,24 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     const type = String((initialValues as any)?.type || currentTab || '');
     if ((type === 'Sortie' || type === 'Comptant') && initialValues) {
       const hasItemRemise = (items || []).some((it: any) => {
-        const m = Number(it?.remise_montant ?? 0) || 0;
-        const p = Number(it?.remise_pourcentage ?? 0) || 0;
-        return m !== 0 || p !== 0;
+        const m = Number(it?.remise_montant ?? 0);
+        const p = Number(it?.remise_pourcentage ?? 0);
+        // Use a small epsilon for float comparison to avoid false positives on 0
+        return Math.abs(m) > 0.001 || Math.abs(p) > 0.001;
       });
       const hasHeaderTarget = Number((initialValues as any)?.remise_is_client ?? 1) === 0;
+      // Only auto-open if there is an ACTUAL non-zero remise
       const shouldOpen = Boolean(hasItemRemise || hasHeaderTarget);
-      setShowRemisePanel(shouldOpen);
-      if (shouldOpen && type === 'Comptant') {
-        // Comptant has no client_id in most cases
-        setRemiseTargetIsBonClient(false);
+      
+      // Force panel CLOSED if no actual remise exists, even if previously open
+      if (!shouldOpen) {
+        setShowRemisePanel(false);
+      } else {
+        setShowRemisePanel(true);
+        if (type === 'Comptant') {
+          // Comptant has no client_id in most cases
+          setRemiseTargetIsBonClient(false);
+        }
       }
     } else {
       setShowRemisePanel(false);
@@ -1172,6 +1280,66 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       setPdgApprovedOverLimit(null);
     }
   }, [isOpen]);
+
+  // 🔧 Patch item prices from snapshot data when snapshotProducts finishes loading
+  // This handles the case where getInitialValues() ran before the async query completed
+  useEffect(() => {
+    if (!isOpen || !formikRef.current || !snapshotProducts?.length) return;
+    const items = formikRef.current.values?.items || [];
+    let anyPatched = false;
+    items.forEach((item: any, idx: number) => {
+      const snapId = item.product_snapshot_id;
+      if (!snapId) return;
+      const snap = (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId));
+      if (!snap) return;
+
+      const currentPA = Number(item.prix_achat) || 0;
+      const currentCR = Number(item.cout_revient) || 0;
+      const snapPA = Number(snap.prix_achat) || 0;
+      const snapCR = Number(snap.cout_revient) || 0;
+
+      // Also check variant from base product catalog
+      const prod = (products as any[]).find((p: any) => String(p.id) === String(item.product_id));
+      const variant = item.variant_id && prod?.variants
+        ? (prod.variants as any[]).find((v: any) => String(v.id) === String(item.variant_id))
+        : null;
+      const varPA = Number(variant?.prix_achat) || 0;
+      const varCR = Number(variant?.cout_revient) || 0;
+
+      const bestPA = snapPA || varPA;
+      const bestCR = snapCR || varCR;
+
+      // Resolve unit conversion factor
+      let convFactor = 1;
+      if (item.unit_id && prod?.units) {
+        const unitObj = (prod.units as any[]).find((u: any) => String(u.id) === String(item.unit_id));
+        if (unitObj) {
+          const isBase = unitObj.is_default || unitObj.facteur_isNormal;
+          if (!isBase) {
+            const f = Number(unitObj.conversion_factor) || 1;
+            if (f > 0) convFactor = f;
+          }
+        }
+      }
+
+      // ALWAYS override PA/CR with snapshot/variant values (× unit factor) when they exist
+      // prix_unitaire is NOT patched — it comes from the bon items table (actual selling price)
+      const finalPA = Number((bestPA * convFactor).toFixed(2));
+      const finalCR = Number((bestCR * convFactor).toFixed(2));
+      if (finalPA > 0 && currentPA !== finalPA) {
+        formikRef.current!.setFieldValue(`items.${idx}.prix_achat`, finalPA);
+        anyPatched = true;
+      }
+      if (finalCR > 0 && currentCR !== finalCR) {
+        formikRef.current!.setFieldValue(`items.${idx}.cout_revient`, finalCR);
+        anyPatched = true;
+      }
+    });
+    if (anyPatched) {
+      console.log('🔧 [SNAPSHOT PATCH] Patched item prices from snapshot/variant data after async load');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotProducts, isOpen]);
 
   // Focus manager for arrow navigation between cells
   const focusCell = (rowIndex: number, colKey: string) => {
@@ -1472,7 +1640,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       created_by: user?.id || 1,
       // N'envoyer livraisons que si au moins un véhicule est défini
       livraisons: livraisonsClean.length ? livraisonsClean : undefined,
-      items: values.items.map((item: any, idx: number) => {
+      items: values.items.flatMap((item: any, idx: number) => {
         const q =
           parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
         const pa =
@@ -1495,19 +1663,91 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         // On utilise la valeur de prix_achat comme prix_unitaire envoyé au backend
         // (la table conserve uniquement la colonne prix_unitaire pour Commande items).
         const prixUnitairePourDB = values.type === 'Commande' ? pa : pu;
-        return {
+        const priceForTotal = values.type === 'Commande' ? pa : pu;
+
+        // Déterminer si le produit est indisponible et gérer le split de quantité
+        const snapId = item.product_snapshot_id ? parseInt(item.product_snapshot_id) : null;
+        let availableQty = Infinity; // par défaut, pas de limite
+
+        if (snapId && useSnapshotSelection && snapshotProducts?.length) {
+          const snap = (snapshotProducts as any[]).find((s: any) => s.snapshot_id === snapId);
+          if (snap) {
+            availableQty = Number(snap.snapshot_quantite ?? 0);
+          }
+        } else if (!snapId && item.product_id) {
+          const prod = products.find((p: any) => String(p.id) === String(item.product_id));
+          if (prod) {
+            availableQty = Number((prod as any).quantite ?? (prod as any).stock ?? 0);
+          }
+        }
+
+        // Cas 1: Tout est indisponible (stock <= 0)
+        if (availableQty <= 0) {
+          return [{
+            product_id: parseInt(item.product_id),
+            variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+            unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+            product_snapshot_id: snapId,
+            quantite: q,
+            prix_achat: pa,
+            prix_unitaire: prixUnitairePourDB,
+            remise_pourcentage: rp,
+            remise_montant: rm,
+            is_indisponible: true,
+            total: q * priceForTotal,
+          }];
+        }
+
+        // Cas 2: Quantité demandée > stock disponible → split en 2 items
+        if (q > availableQty && availableQty < Infinity) {
+          const qtyDispo = availableQty;
+          const qtyIndispo = q - availableQty;
+          return [
+            // Item disponible (quantité couverte par le stock)
+            {
+              product_id: parseInt(item.product_id),
+              variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+              unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+              product_snapshot_id: snapId,
+              quantite: qtyDispo,
+              prix_achat: pa,
+              prix_unitaire: prixUnitairePourDB,
+              remise_pourcentage: rp,
+              remise_montant: rm,
+              is_indisponible: false,
+              total: qtyDispo * priceForTotal,
+            },
+            // Item indisponible (quantité restante non couverte)
+            {
+              product_id: parseInt(item.product_id),
+              variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+              unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+              product_snapshot_id: snapId,
+              quantite: qtyIndispo,
+              prix_achat: pa,
+              prix_unitaire: prixUnitairePourDB,
+              remise_pourcentage: rp,
+              remise_montant: rm,
+              is_indisponible: true,
+              total: qtyIndispo * priceForTotal,
+            },
+          ];
+        }
+
+        // Cas 3: Stock suffisant → tout disponible
+        return [{
           product_id: parseInt(item.product_id),
           variant_id: item.variant_id ? parseInt(item.variant_id) : null,
           unit_id: item.unit_id ? parseInt(item.unit_id) : null,
-          product_snapshot_id: item.product_snapshot_id ? parseInt(item.product_snapshot_id) : null,
+          product_snapshot_id: snapId,
           quantite: q,
           prix_achat: pa,
           prix_unitaire: prixUnitairePourDB,
           remise_pourcentage: rp,
           remise_montant: rm,
-          // Pour bon Commande, utiliser prix_achat pour le total; pour autres types, prix_unitaire
-          total: q * (values.type === 'Commande' ? pa : pu),
-        };
+          is_indisponible: false,
+          total: q * priceForTotal,
+        }];
       }),
     };
 
@@ -1826,18 +2066,27 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     let bestTime = -1;
 
     const scan = (bon: any, itemsField: any) => {
-      // Ne considérer que les bons VALIDÉS
+      // Pour l'historique de prix, inclure "Validé" ET "En attente" (selon besoin utilisateur)
       const statut = String(bon.statut || '').toLowerCase();
-      if (statut !== 'validé' && statut !== 'valide' && statut !== 'validée') return;
+      // On accepte 'en attente' aussi pour voir le dernier prix PROPOSÉ/NÉGOCIÉ même si pas encore validé
+      const accepted = ['validé', 'valide', 'validée', 'en attente', 'livré', 'livre']; 
+      if (!accepted.includes(statut)) return;
+
       const items = parseItems(itemsField);
+      // Comparaison flexible (string vs number)
       const bonClientId = String(bon.client_id ?? bon.contact_id ?? '');
-      if (bonClientId !== cid) return;
+      // Si on cherche pour un client précis, on filtre
+      if (cid && bonClientId !== cid) return;
+      
       const bonTime = toTime(bon.date_creation || bon.date);
+
       for (const it of items as HistItem[]) {
         const itPid = String((it as any).product_id ?? (it as any).id ?? '');
         if (itPid !== pid) continue;
         const price = Number((it as any).prix_unitaire ?? (it as any).price ?? 0);
         if (!Number.isFinite(price) || price <= 0) continue;
+        
+        // On veut le dernier en date
         if (bonTime > bestTime) {
           bestTime = bonTime;
           bestPrice = price;
@@ -2124,8 +2373,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-1 sm:p-2">
-      <div className="bg-white rounded-lg w-[98vw] max-w-7xl max-h-[96vh] flex flex-col shadow-lg">
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-1 sm:p-2">
+    <div className="bg-white rounded-lg w-[90vw] max-h-[96vh] flex flex-col shadow-lg">
         {/* Header */}
         <div className="bg-blue-600 px-4 sm:px-6 py-3 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
           <h2 className="text-base sm:text-lg font-semibold text-white truncate">
@@ -2906,6 +3155,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               Total
                             </th>
+                            {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
+                              <th className="px-2 py-2 text-left text-xs font-medium text-green-600 uppercase tracking-wider w-[80px]">
+                                Profit
+                              </th>
+                            )}
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">
                               Actions
                             </th>
@@ -2925,10 +3179,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 <td className="px-1 py-2 w-[200px]">
                                   <SearchableSelect
                                     options={(() => {
-                                      if (useSnapshotSelection && snapshotProducts.length > 0) {
-                                        // Show ALL snapshots (even qty = 0) so they remain visible.
-                                        // (Snapshots with qty=0 stay selectable per user request.)
-                                        const sorted = [...snapshotProducts].sort((a: any, b: any) => {
+                                      if (useSnapshotSelection && filteredSnapshotProducts.length > 0) {
+                                        // Smart filtered: qty>0 snapshots shown, or latest snapshot if all qty<=0
+                                        const sorted = [...filteredSnapshotProducts].sort((a: any, b: any) => {
                                           // Group by product designation for alphabetical browsing
                                           const desA = String(a.designation ?? '').toLowerCase();
                                           const desB = String(b.designation ?? '').toLowerCase();
@@ -2951,7 +3204,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const qte = p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : '';
                                           const bonInfo = p.bon_commande_id ? `Bon #${p.bon_commande_id}` : p.snapshot_id ? `Snap #${p.snapshot_id}` : '';
                                           return {
-                                            value: p.snapshot_id ? `snap:${p.snapshot_id}:${p.id}` : `p:${p.id}:${idx}`,
+                                            value: p.snapshot_id ? `snap:${p.snapshot_id}:${p.id}` : String(p.id),
                                             label: p.snapshot_id
                                               ? `${priorityTag} ${serie} - ${nom}${variant}${qte} | ${bonInfo}`.trim()
                                               : `${serie} - ${nom}`.trim(),
@@ -2971,7 +3224,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       if (useSnapshotSelection && snapId) {
                                         return `snap:${snapId}:${prodId}`;
                                       }
+                                      // product_snapshot_id is null → match directly by product_id
                                       return String(prodId || '');
+                                    })()}
+                                    valueLabelFallback={(() => {
+                                      const prodId = values.items[index].product_id;
+                                      if (!prodId) return '';
+
+                                      const ref = String(values.items[index].product_reference ?? prodId).trim();
+                                      const fromRow = String(values.items[index].designation ?? '').trim();
+                                      if (fromRow) return `${ref} - ${fromRow}`.trim();
+
+                                      const fromCatalog = products.find((p: any) => String(p.id) === String(prodId));
+                                      const des = String(fromCatalog?.designation ?? '').trim();
+                                      return des ? `${ref} - ${des}`.trim() : ref;
                                     })()}
                                     onChange={(selectedValue) => {
                                       if (isQtyOnlyEdit) return;
@@ -2986,8 +3252,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         } else if (selectedValue.startsWith('p:')) {
                                           const parts = selectedValue.split(':');
                                           const pId = parseInt(parts[1]);
-                                          const idx2 = parseInt(parts[2]);
-                                          product = snapshotProducts[idx2] ?? snapshotProducts.find((p: any) => p.id === pId && !p.snapshot_id);
+                                          product = snapshotProducts.find((p: any) => p.id === pId && !p.snapshot_id);
                                         } else {
                                           product = snapshotProducts.find((p: any) => String(p.id) === selectedValue);
                                         }
@@ -2996,6 +3261,19 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       }
 
                                       if (product) {
+                                        // 🔍 DEBUG: Product selection
+                                        console.log('🟢 [PRODUCT SELECT]', {
+                                          row: index,
+                                          product_id: product.id,
+                                          designation: product.designation,
+                                          snapshot_id: product.snapshot_id || null,
+                                          variant_id: product.variant_id || null,
+                                          isSnapshot: !!product.snapshot_id,
+                                          'product.prix_achat': product.prix_achat,
+                                          'product.cout_revient': product.cout_revient,
+                                          'product.prix_vente': product.prix_vente,
+                                          allProductKeys: Object.keys(product),
+                                        });
                                         setFieldValue(`items.${index}.product_id`, product.id);
                                         setFieldValue(
                                           `items.${index}.product_reference`,
@@ -3048,6 +3326,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     className="w-full"
                                     disabled={isQtyOnlyEdit}
                                     maxDisplayItems={300}
+                                    minSearchChars={useSnapshotSelection ? 0 : 2}
                                     autoOpenOnFocus
                                     buttonProps={{
                                       'data-row': index as any,
@@ -3092,12 +3371,51 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               ) || 1
                                             : 1;
 
+                                          // Try to resolve snapshot product for more accurate historic prices
+                                          let snapshotProd: any = null;
+                                          const snapIdForRow = values.items[index].product_snapshot_id;
+                                          if (snapIdForRow && useSnapshotSelection && snapshotProducts.length > 0) {
+                                            snapshotProd = snapshotProducts.find((p: any) => p.snapshot_id === snapIdForRow) || null;
+                                          }
+
                                           if (vId) {
                                             const variant = variants.find((v: any) => String(v.id) === vId);
                                             if (variant) {
-                                              // Keep purchase/cost consistent with unit selection (important for margins)
-                                              const baseAchat = Number(variant.prix_achat ?? product?.prix_achat ?? 0) || 0;
-                                              const baseCoutRevient = Number(product?.cout_revient ?? 0) || 0;
+                                              // Keep purchase/cost consistent avec variante + snapshot + unité
+                                              // Use || (not ??) so that 0 values fall through to snapshot/product
+                                              const baseAchat =
+                                                Number(variant.prix_achat) ||
+                                                Number(snapshotProd?.prix_achat) ||
+                                                Number(product?.prix_achat) ||
+                                                0;
+                                              const baseCoutRevient: number =
+                                                Number((variant as any).cout_revient) ||
+                                                Number(snapshotProd?.cout_revient) ||
+                                                Number(product?.cout_revient) ||
+                                                baseAchat ||
+                                                0;
+                                              // 🔍 DEBUG: Variant selected
+                                              console.log('🟡 [VARIANT SELECT]', {
+                                                row: index,
+                                                variant_id: vId,
+                                                variant_name: variant.variant_name,
+                                                'variant.prix_achat': variant.prix_achat,
+                                                'variant.cout_revient': (variant as any).cout_revient,
+                                                'variant.prix_vente': variant.prix_vente,
+                                                snapshotProd_found: !!snapshotProd,
+                                                snapIdForRow: values.items[index].product_snapshot_id,
+                                                'snapshotProd?.prix_achat': snapshotProd?.prix_achat,
+                                                'snapshotProd?.cout_revient': snapshotProd?.cout_revient,
+                                                'snapshotProd?.prix_vente': snapshotProd?.prix_vente,
+                                                'product.prix_achat': product?.prix_achat,
+                                                'product.cout_revient': product?.cout_revient,
+                                                'product.prix_vente': product?.prix_vente,
+                                                resolved_baseAchat: baseAchat,
+                                                resolved_baseCoutRevient: baseCoutRevient,
+                                                unitFactor: factorSel,
+                                                final_prix_achat: Number((baseAchat * factorSel).toFixed(2)),
+                                                final_cout_revient: Number((baseCoutRevient * factorSel).toFixed(2)),
+                                              });
                                               setFieldValue(`items.${index}.prix_achat`, Number((baseAchat * factorSel).toFixed(2)));
                                               setFieldValue(
                                                 `items.${index}.cout_revient`,
@@ -3106,8 +3424,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                               // Update price based on variant
                                               const variantBasePrice = values.type === 'Commande'
-                                                ? Number(variant.prix_achat || 0)
-                                                : Number(variant.prix_vente || 0);
+                                                ? Number(variant.prix_achat || snapshotProd?.prix_achat || product?.prix_achat || 0)
+                                                : Number(variant.prix_vente || snapshotProd?.prix_vente || product?.prix_vente || 0);
 
                                               // If a unit is already selected, apply its conversion factor to the variant price
                                               let effectivePrice = variantBasePrice;
@@ -3126,10 +3444,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             return;
                                           }
 
-                                          // Variant cleared => revert to base product price (respect unit selection)
-                                          const basePriceAchat = Number(product?.prix_achat ?? 0) || 0;
-                                          const basePriceVente = Number(product?.prix_vente ?? 0) || 0;
-                                          const baseCoutRevient = Number(product?.cout_revient ?? 0) || 0;
+                                          // Variant cleared => revert to base snapshot/product price (respect unit selection)
+                                          const snapIdForRow2 = values.items[index].product_snapshot_id;
+                                          let snapshotProd2: any = null;
+                                          if (snapIdForRow2 && useSnapshotSelection && snapshotProducts.length > 0) {
+                                            snapshotProd2 = snapshotProducts.find((p: any) => p.snapshot_id === snapIdForRow2) || null;
+                                          }
+
+                                          const basePriceAchat = Number(snapshotProd2?.prix_achat) || Number(product?.prix_achat) || 0;
+                                          const basePriceVente = Number(snapshotProd2?.prix_vente) || Number(product?.prix_vente) || 0;
+                                          const baseCoutRevient = Number(snapshotProd2?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
 
                                           let effectivePrice = values.type === 'Commande' ? basePriceAchat : basePriceVente;
                                           if (unitIdSel) {
@@ -3186,8 +3510,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
                                     const units = product?.units ?? [];
                                     const baseUnit = product?.base_unit || 'u';
-                                    const basePriceAchat = Number(product?.prix_achat ?? 0) || 0;
-                                    const basePriceVente = Number(product?.prix_vente ?? 0) || 0;
+                                    // Resolve snapshot product if available for this row
+                                    let snapshotProd: any = null;
+                                    const snapIdForRow = values.items[index].product_snapshot_id;
+                                    if (snapIdForRow && useSnapshotSelection && snapshotProducts.length > 0) {
+                                      snapshotProd = snapshotProducts.find((p: any) => p.snapshot_id === snapIdForRow) || null;
+                                    }
+
+                                    const basePriceAchat = Number(snapshotProd?.prix_achat) || Number(product?.prix_achat) || 0;
+                                    const basePriceVente = Number(snapshotProd?.prix_vente) || Number(product?.prix_vente) || 0;
                                     if (!product || units.length === 0) {
                                       return <span className="text-xs text-gray-400">{baseUnit}</span>;
                                     }
@@ -3214,18 +3545,47 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               const variantsForProduct = product?.variants ?? [];
                                               let baseA = basePriceAchat;
                                               let baseV = basePriceVente;
-                                              let baseCR = Number(product?.cout_revient ?? 0) || 0;
+                                              let baseCR = Number(snapshotProd?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
+                                              // 🔍 DEBUG: Unit selected (before variant override)
+                                              console.log('🔵 [UNIT SELECT] base values', {
+                                                row: index,
+                                                unit_id: uId,
+                                                unit_name: unit.unit_name,
+                                                factor,
+                                                snapshotProd_found: !!snapshotProd,
+                                                snapIdForRow: values.items[index].product_snapshot_id,
+                                                'snapshotProd?.prix_achat': snapshotProd?.prix_achat,
+                                                'snapshotProd?.cout_revient': snapshotProd?.cout_revient,
+                                                'snapshotProd?.prix_vente': snapshotProd?.prix_vente,
+                                                'product.prix_achat': product?.prix_achat,
+                                                'product.cout_revient': product?.cout_revient,
+                                                'product.prix_vente': product?.prix_vente,
+                                                basePriceAchat,
+                                                basePriceVente,
+                                                baseCR_initial: baseCR,
+                                                selectedVariantId: selectedVariantId || 'none',
+                                              });
                                               if (selectedVariantId) {
                                                 const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                                 if (v) {
-                                                  baseA = Number(v.prix_achat ?? basePriceAchat) || 0;
-                                                  baseV = Number(v.prix_vente ?? basePriceVente) || 0;
+                                                  baseA = Number(v.prix_achat) || basePriceAchat || 0;
+                                                  baseV = Number(v.prix_vente) || basePriceVente || 0;
+                                                  baseCR = Number((v as any).cout_revient) || baseCR;
                                                 }
                                               }
 
                                               // Always keep purchase/cost values aligned with unit conversion (even for sales bons)
                                               setFieldValue(`items.${index}.prix_achat`, Number((baseA * factor).toFixed(2)));
                                               setFieldValue(`items.${index}.cout_revient`, Number((baseCR * factor).toFixed(2)));
+                                              // 🔍 DEBUG: Unit selected (after variant override)
+                                              console.log('🔵 [UNIT SELECT] final values', {
+                                                row: index,
+                                                baseA_afterVariant: baseA,
+                                                baseV_afterVariant: baseV,
+                                                baseCR_afterVariant: baseCR,
+                                                final_prix_achat: Number((baseA * factor).toFixed(2)),
+                                                final_cout_revient: Number((baseCR * factor).toFixed(2)),
+                                              });
 
                                               if (values.type === 'Commande') {
                                                 newPrice = Number((baseA * factor).toFixed(2));
@@ -3251,12 +3611,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             const variantsForProduct = product?.variants ?? [];
                                             let baseA = basePriceAchat;
                                             let baseV = basePriceVente;
-                                            const baseCR = Number(product?.cout_revient ?? 0) || 0;
+                                            let baseCR = Number(snapshotProd?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
                                             if (selectedVariantId) {
                                               const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                               if (v) {
-                                                baseA = Number(v.prix_achat ?? basePriceAchat) || 0;
-                                                baseV = Number(v.prix_vente ?? basePriceVente) || 0;
+                                                baseA = Number(v.prix_achat) || basePriceAchat || 0;
+                                                baseV = Number(v.prix_vente) || basePriceVente || 0;
+                                                baseCR = Number((v as any).cout_revient) || baseCR;
                                               }
                                             }
 
@@ -3346,17 +3707,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           const currentSnap = snapshotProducts.find((p: any) => p.snapshot_id === currentSnapId);
           const snapQty = Number(currentSnap?.snapshot_quantite ?? 0);
           if (snapQty > 0 && q > snapQty) {
-            // Cap current line at snapshot max
-            const excess = q - snapQty;
-            const cappedQ = snapQty;
-            setFieldValue(`items.${index}.quantite`, cappedQ);
-            setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(cappedQ) }));
-            const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-            setFieldValue(`items.${index}.total`, cappedQ * u);
-
-            // Find next FIFO snapshot for same product+variant
             const prodId = currentSnap.id;
             const varId = currentSnap.variant_id || 0;
+
+            // Find next FIFO snapshot for same product+variant with qty > 0
             const nextSnap = snapshotProducts.find((p: any) =>
               p.id === prodId &&
               (p.variant_id || 0) === varId &&
@@ -3365,12 +3719,36 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               Number(p.fifo_priority ?? 999) > Number(currentSnap.fifo_priority ?? 0)
             );
 
-            if (nextSnap) {
-              // Create new row with next snapshot and remaining qty
+            // If no other snapshot has qty > 0, allow the qty freely without splitting
+            if (!nextSnap) {
+              // fall through to normal setFieldValue below
+            } else {
+              // Cap current line at snapshot max
+              const excess = q - snapQty;
+              const cappedQ = snapQty;
+              setFieldValue(`items.${index}.quantite`, cappedQ);
+              setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(cappedQ) }));
+              const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+              setFieldValue(`items.${index}.total`, cappedQ * u);
+
+              // Check if there is yet another snapshot after nextSnap (to know if nextSnap is the last)
+              const snapAfterNext = snapshotProducts.find((p: any) =>
+                p.id === prodId &&
+                (p.variant_id || 0) === varId &&
+                p.snapshot_id !== currentSnapId &&
+                p.snapshot_id !== nextSnap.snapshot_id &&
+                Number(p.snapshot_quantite ?? 0) > 0 &&
+                Number(p.fifo_priority ?? 999) > Number(nextSnap.fifo_priority ?? 0)
+              );
+
+              // Create new row with next snapshot and remaining qty.
+              // If nextSnap is the last available snapshot (nothing after it), allow full excess.
               const nextPrice = nextSnap.prix_vente || 0;
               const nextPA = nextSnap.prix_achat || 0;
               const priceForNew = values.type === 'Commande' ? nextPA : nextPrice;
-              const newRowQty = Math.min(excess, Number(nextSnap.snapshot_quantite ?? 0));
+              const newRowQty = snapAfterNext
+                ? Math.min(excess, Number(nextSnap.snapshot_quantite ?? 0))
+                : excess; // last snapshot: accept any qty without capping
               const newItem = {
                 _rowId: makeRowId(),
                 product_id: nextSnap.id,
@@ -3393,11 +3771,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               setFieldValue('items', [...values.items, newItem]);
               setQtyRaw((prev) => ({ ...prev, [newIdx]: formatNumber(newRowQty) }));
               setUnitPriceRaw((prev) => ({ ...prev, [newIdx]: String(priceForNew) }));
-
-              // If there's still more excess beyond this snapshot, 
-              // user will need to adjust manually on the new line
+              return; // Already handled
             }
-            return; // Already handled
           }
         }
       }
@@ -3450,11 +3825,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 </td>
 
 
-                                {/* SERIE / Info rapide */}
+                                {/* SERIE / Info rapide + debug snapshot */}
                                 <td className="px-1 py-2 text-sm text-gray-700">
-                                  {`PA${values.items[index].prix_achat ?? 0}CR${
+                                  <div>{`PA${values.items[index].prix_achat ?? 0} CR${
                                     values.items[index].cout_revient ?? 0
-                                  }`}
+                                  }`}</div>
+                                  <div className="text-[9px] text-orange-600">
+                                    snap:{String(values.items[index].product_snapshot_id || '-')}
+                                    {' '}v:{String(values.items[index].variant_id || '-')}
+                                    {' '}u:{String(values.items[index].unit_id || '-')}
+                                  </div>
                                 </td>
 
                                 {/* Prix unitaire / Prix d'achat selon le type */}
@@ -3531,34 +3911,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       values.items[index].product_id
     );
     return last && Number.isFinite(last) ? (
-      <div className="text-xs text-gray-500 mt-1">Dernier (Validé): {formatFull(Number(last))} DH</div>
+      <div className="text-xs text-blue-600 font-medium mt-1">Dernier prix client: {formatFull(Number(last))} DH</div>
     ) : null;
-  })()}
-  {/* Prix fréquemment utilisé (>=6) pour ce produit, option d'application */}
-  {values.type !== 'Commande' && values.items[index].product_id && (() => {
-    const freq = getFrequentUnitPriceForProduct(values.items[index].product_id, 6);
-    if (!freq || !Number.isFinite(freq.price)) return null;
-    const suggested = Number(freq.price);
-    return (
-      <label className="mt-1 flex items-center gap-2 text-[11px] text-gray-700">
-        <input
-          type="checkbox"
-          disabled={isQtyOnlyEdit}
-          onChange={(e) => {
-            if (isQtyOnlyEdit) return;
-            if (!e.target.checked) return;
-            const p = suggested;
-            setUnitPriceRaw((prev) => ({ ...prev, [index]: formatFull(p) }));
-            setFieldValue(`items.${index}.prix_unitaire`, p);
-            const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
-            setFieldValue(`items.${index}.total`, q * p);
-          }}
-        />
-        <span>
-          Utiliser ce prix: <span className="font-semibold">{formatFull(suggested)} DH</span> (×{freq.count})
-        </span>
-      </label>
-    );
   })()}
   {values.client_id && values.items[index].product_id && (() => {
     const lastQty = getLastQuantityForClientProduct(
@@ -3621,6 +3975,25 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     DH
   </div>
 </td>
+
+                                {/* Profit par ligne */}
+                                {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
+<td className="px-1 py-2 w-[80px]">
+  {(() => {
+    const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+    const pv = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+    const cr = Number(values.items[index].cout_revient) || Number(values.items[index].prix_achat) || 0;
+    const remise = Number(values.items[index].remise_montant || 0);
+    const profit = (pv - cr) * q - remise * q;
+    const cls = profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-400';
+    return (
+      <div className={`text-sm font-semibold ${cls}`} title={`PV=${pv} CR=${cr} Q=${q} R=${remise}`}>
+        {profit.toFixed(2)}
+      </div>
+    );
+  })()}
+</td>
+                                )}
 
 
                                 {/* Actions */}
@@ -3690,6 +4063,104 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     )}
                   </FieldArray>
                 </div>
+
+                {/* 🔍 DEBUG PANEL - Résolution prix_achat / cout_revient par ligne */}
+                {/* <div className="mt-4 bg-red-50 border-2 border-red-300 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                  <div className="font-bold text-red-700 text-sm mb-2">🔍 DEBUG: Résolution PA / CR par ligne</div>
+                  <table className="w-full text-[10px] border-collapse">
+                    <thead>
+                      <tr className="bg-red-100">
+                        <th className="border px-1 py-0.5 text-left">#</th>
+                        <th className="border px-1 py-0.5 text-left">Produit</th>
+                        <th className="border px-1 py-0.5 text-left">snap_id</th>
+                        <th className="border px-1 py-0.5 text-left">variant_id</th>
+                        <th className="border px-1 py-0.5 text-left">unit_id</th>
+                        <th className="border px-1 py-0.5 text-left">item.PA</th>
+                        <th className="border px-1 py-0.5 text-left">item.CR</th>
+                        <th className="border px-1 py-0.5 text-left">snap.PA</th>
+                        <th className="border px-1 py-0.5 text-left">snap.CR</th>
+                        <th className="border px-1 py-0.5 text-left">snap.PV</th>
+                        <th className="border px-1 py-0.5 text-left">variant.PA</th>
+                        <th className="border px-1 py-0.5 text-left">variant.CR</th>
+                        <th className="border px-1 py-0.5 text-left">variant.PV</th>
+                        <th className="border px-1 py-0.5 text-left">product.PA</th>
+                        <th className="border px-1 py-0.5 text-left">product.CR</th>
+                        <th className="border px-1 py-0.5 text-left">product.PV</th>
+                        <th className="border px-1 py-0.5 text-left">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(values.items || []).map((item: any, idx: number) => {
+                        const pid = item.product_id;
+                        const prod = pid ? (products as any[]).find((p: any) => String(p.id) === String(pid)) : null;
+                        const snapId = item.product_snapshot_id;
+                        const snap = snapId && snapshotProducts?.length
+                          ? (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId))
+                          : null;
+                        const varId = item.variant_id;
+                        const variant = varId && prod?.variants
+                          ? (prod.variants as any[]).find((v: any) => String(v.id) === String(varId))
+                          : null;
+                        const unitId = item.unit_id;
+                        const unit = unitId && prod?.units
+                          ? (prod.units as any[]).find((u: any) => String(u.id) === String(unitId))
+                          : null;
+                        // Determine source — check in reverse priority: product FIRST, then variant, then snapshot
+                        // Last match wins = most authoritative source
+                        let source = '?';
+                        const nPA = Number(item.prix_achat) || 0;
+                        const nCR = Number(item.cout_revient) || 0;
+                        if (!nPA && !nCR) {
+                          source = '❌ AUCUN';
+                        } else {
+                          // Start with product (least priority)
+                          if (prod) {
+                            const pPA = Number(prod.prix_achat) || 0;
+                            const pCR = Number(prod.cout_revient) || 0;
+                            if (nPA === pPA || nCR === pCR) source = '⚠️ PRODUIT';
+                          }
+                          // Variant overrides product
+                          if (variant) {
+                            const vPA = Number(variant.prix_achat) || 0;
+                            const vCR = Number((variant as any).cout_revient) || 0;
+                            if (nPA === vPA || nCR === vCR) source = '✅ VARIANT';
+                          }
+                          // Snapshot overrides all (highest priority)
+                          if (snap) {
+                            const sPA = Number(snap.prix_achat) || 0;
+                            const sCR = Number(snap.cout_revient) || 0;
+                            if (nPA === sPA || nCR === sCR) source = '✅ SNAPSHOT';
+                          }
+                        }
+                        // Append variant/unit names for clarity
+                        const variantLabel = variant ? ` | V: ${variant.variant_name || varId}` : (varId ? ` | V: ${varId}` : '');
+                        const unitLabel = unit ? ` | U: ${unit.unit_name || unitId} (×${unit.conversion_factor || 1})` : (unitId ? ` | U: ${unitId}` : '');
+                        const sourceDisplay = source + variantLabel + unitLabel;
+                        return (
+                          <tr key={idx} className={source.includes('PRODUIT') ? 'bg-yellow-100' : source.includes('AUCUN') ? 'bg-red-100' : ''}>
+                            <td className="border px-1 py-0.5">{idx}</td>
+                            <td className="border px-1 py-0.5 max-w-[100px] truncate">{item.designation || pid || '-'}</td>
+                            <td className="border px-1 py-0.5">{snapId || '-'}</td>
+                            <td className="border px-1 py-0.5">{varId || '-'}</td>
+                            <td className="border px-1 py-0.5">{item.unit_id || '-'}</td>
+                            <td className="border px-1 py-0.5 font-bold">{nPA}</td>
+                            <td className="border px-1 py-0.5 font-bold">{nCR}</td>
+                            <td className="border px-1 py-0.5 text-blue-700">{snap ? (Number(snap.prix_achat) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-blue-700">{snap ? (Number(snap.cout_revient) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-blue-700">{snap ? (Number(snap.prix_vente) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-purple-700">{variant ? (Number(variant.prix_achat) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-purple-700">{variant ? (Number((variant as any).cout_revient) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-purple-700">{variant ? (Number(variant.prix_vente) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-gray-500">{prod ? (Number(prod.prix_achat) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-gray-500">{prod ? (Number(prod.cout_revient) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 text-gray-500">{prod ? (Number(prod.prix_vente) || 0) : '-'}</td>
+                            <td className="border px-1 py-0.5 font-bold">{sourceDisplay}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div> */}
 
                 {/* Récapitulatif */}
                 <div className="mt-4 bg-gray-50 p-4 rounded-md">

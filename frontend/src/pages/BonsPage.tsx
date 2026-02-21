@@ -24,7 +24,7 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
     useGetAllClientsQuery, 
   useGetAllFournisseursQuery
   } from '../store/api/contactsApi';
-  import { useGetProductsQuery } from '../store/api/productsApi';
+  import { useGetProductsQuery, useGetProductsWithSnapshotsQuery } from '../store/api/productsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
@@ -208,6 +208,8 @@ const BonsPage = () => {
   const { data: clients = [], isLoading: clientsLoading } = useGetAllClientsQuery();
   const { data: suppliers = [], isLoading: suppliersLoading } = useGetAllFournisseursQuery();
   const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery();
+  // Snapshot-expanded products (with historic prix_achat/cout_revient per bon de commande)
+  const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery();
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
   const [updateEcommerceOrderStatus] = useUpdateEcommerceOrderStatusMutation();
@@ -762,23 +764,90 @@ const BonsPage = () => {
   const getDisplayNumero = (bon: any) => getBonNumeroDisplay({ id: bon?.id, type: bon?.type, numero: bon?.numero });
 
   // Compute mouvement (profit) and margin% for a bon EXACTLY comme dans BonFormModal :
-  // FORMULE: profit = Σ ( (prix_unitaire - (cout_revient || prix_achat)) * quantite )
-  // (Ne pas soustraire la remise unitaire ici – le modal n'intègre pas la remise dans Mouvement.)
-  // margin% = profit / Σ( (cout_revient || prix_achat) * quantite ) * 100
+  // FORMULE: profit = Σ ( (prix_unitaire - adjustedCost) * quantite )
+  // adjustedCost = (variant.cout_revient || variant.prix_achat || item.cout_revient || item.prix_achat || product.cout_revient || product.prix_achat) × conversion_factor
+  // margin% = profit / Σ( adjustedCost * quantite ) * 100
   const parseItemsSafe = (raw: any): any[] => {
     if (Array.isArray(raw)) return raw;
     if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return []; } }
     return [];
   };
-  const resolveCost = (it: any): number => {
-    if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
-    if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
+
+  const resolveCostWithVariantUnit = (it: any): number => {
     const pid = it.product_id || it.produit_id;
-    if (pid) {
-      const prod = (products as any[]).find(p => String(p.id) === String(pid));
-      if (prod) return Number(prod.cout_revient ?? prod.prix_achat ?? 0) || 0;
+    const prod = pid ? (products as any[]).find((p) => String(p.id) === String(pid)) : null;
+
+    const toNum = (v: any): number => {
+      if (v == null || v === '') return 0;
+      const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // 1) Snapshot-level cost (priorité absolue: données historiques gelées)
+    let baseCost = 0;
+    let usedItemLevel = false;
+    if (it.product_snapshot_id && (snapshotProducts as any[])?.length) {
+      const snap = (snapshotProducts as any[]).find((p: any) => String(p.snapshot_id) === String(it.product_snapshot_id));
+      if (snap) {
+        baseCost = toNum((snap as any).cout_revient) || toNum((snap as any).prix_achat);
+      }
     }
-    return 0;
+
+    // 2) Variant-level cost
+    if (!baseCost && it.variant_id && prod?.variants) {
+      const v = (prod.variants as any[]).find((vr: any) => String(vr.id) === String(it.variant_id));
+      if (v) {
+        baseCost = toNum((v as any).cout_revient) || toNum((v as any).prix_achat);
+      }
+    }
+
+    // 3) Item-level cost (snapshot / historique) avec toutes les clés possibles
+    if (!baseCost) {
+      const itemCostCandidates = [
+        it.cout_revient,
+        it.cout_rev,
+        it.cout,
+        it.prix_achat,
+        it.pa,
+        it.prixA,
+        it.product?.cout_revient,
+        it.produit?.cout_revient,
+        it.product?.prix_achat,
+        it.produit?.prix_achat,
+      ];
+      for (const c of itemCostCandidates) {
+        const n = toNum(c);
+        if (n > 0) {
+          baseCost = n;
+          usedItemLevel = true;
+          break;
+        }
+      }
+    }
+
+    // 4) Product-level cost
+    if (!baseCost && prod) {
+      const pAny: any = prod;
+      baseCost =
+        toNum(pAny.cout_revient) ||
+        toNum(pAny.cr) ||
+        toNum(pAny.cout) ||
+        toNum(pAny.prix_achat);
+    }
+
+    if (!baseCost) return 0;
+
+    // 5) Facteur de conversion unité : uniquement si on a utilisé un coût base snapshot/variant/produit
+    let convFactor = 1;
+    if (!usedItemLevel && it.unit_id && prod?.units) {
+      const u = (prod.units as any[]).find((un: any) => String(un.id) === String(it.unit_id));
+      if (u) {
+        const f = toNum((u as any).conversion_factor);
+        if (f > 0) convFactor = f;
+      }
+    }
+
+    return baseCost * convFactor;
   };
   const computeMouvementDetail = (bon: any): { profit: number; costBase: number; marginPct: number | null } => {
     const items = parseItemsSafe(bon?.items);
@@ -789,10 +858,7 @@ const BonsPage = () => {
       const q = Number(it.quantite ?? it.qty ?? 0) || 0;
       if (!q) continue;
       const prixVente = Number(it.prix_unitaire ?? 0) || 0;
-      let cost = 0;
-      if (it.cout_revient !== undefined && it.cout_revient !== null) cost = Number(it.cout_revient) || 0;
-      else if (it.prix_achat !== undefined && it.prix_achat !== null) cost = Number(it.prix_achat) || 0;
-      else cost = resolveCost(it);
+      const cost = resolveCostWithVariantUnit(it);
       const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0; // support legacy key
       const remiseTotale = remiseUnitaire * q;
       // Profit net si types concernés, sinon brut
@@ -1607,7 +1673,7 @@ const BonsPage = () => {
           const mapped = itemsToDuplicate.map((it: any) => {
             const q = Number(it.quantite ?? it.qty ?? 0) || 0;
             // Prix d'achat / coût de revient depuis l'item ou le produit
-            const purchaseUnit = resolveCost(it);
+            const purchaseUnit = resolveCostWithVariantUnit(it);
             const total = Number(purchaseUnit) * q;
             return {
               product_id: it.product_id || it.produit_id || it.id,
@@ -2222,17 +2288,23 @@ const BonsPage = () => {
                           if (nonCalculated) {
                             return <span className="text-gray-400">-</span>;
                           }
-                          // Prefer backend-calculated mouvement when available
-                          const backendCalc = bAny?.mouvement_calc;
-                          const hasBackend = backendCalc && typeof backendCalc.profit === 'number';
-                          const { profit, marginPct } = hasBackend
-                            ? { profit: Number(backendCalc.profit) || 0, marginPct: typeof backendCalc.marginPct === 'number' ? backendCalc.marginPct : null }
-                            : computeMouvementDetail(bon); // fallback during transition
+                          // Always use frontend snapshot-aware computation (backend mouvement_calc doesn't use snapshots)
+                          const { profit, marginPct } = computeMouvementDetail(bon);
+                          // Build debug tooltip showing per-item cost resolution
+                          const debugItems = parseItemsSafe(bon?.items);
+                          const debugLines = debugItems.map((it: any, idx: number) => {
+                            const snapId = it.product_snapshot_id;
+                            const cost = resolveCostWithVariantUnit(it);
+                            const pv = Number(it.prix_unitaire ?? 0) || 0;
+                            const q = Number(it.quantite ?? 0) || 0;
+                            return `#${idx} ${(it.designation || '').slice(0,20)} | snap:${snapId||'-'} var:${it.variant_id||'-'} u:${it.unit_id||'-'} | PA/CR=${cost} PV=${pv} Q=${q} => ${((pv-cost)*q).toFixed(2)}`;
+                          });
+                          const debugTitle = debugLines.join('\n');
                           let cls = 'text-gray-600';
                           if (profit > 0) cls = 'text-green-600';
                           else if (profit < 0) cls = 'text-red-600';
                           return (
-                            <span className={`font-semibold ${cls}`}> 
+                            <span className={`font-semibold ${cls} cursor-help`} title={debugTitle}> 
                               {profit.toFixed(2)} DH{marginPct !== null && (
                                 <span className="text-xs font-normal ml-1">({marginPct.toFixed(1)}%)</span>
                               )}
@@ -3318,6 +3390,7 @@ const BonsPage = () => {
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qté</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Kg/U</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Poids</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">PA/CR</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">PU</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                           </tr>
@@ -3325,7 +3398,7 @@ const BonsPage = () => {
                         <tbody className="divide-y divide-gray-200">
                           {parseItemsSafe(selectedBon.items).length === 0 ? (
                             <tr>
-                              <td colSpan={6} className="px-4 py-3 text-sm text-gray-500">
+                              <td colSpan={7} className="px-4 py-3 text-sm text-gray-500">
                                 Aucun produit
                               </td>
                             </tr>
@@ -3345,12 +3418,22 @@ const BonsPage = () => {
                               kgUnit = Number(rawKgCandidate) || 0; // si 0 => reste 0
                             }
                             const poids = kgUnit * q;
+                            const resolvedCost = resolveCostWithVariantUnit(item);
                             return (
                               <tr key={item.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-2 text-sm text-gray-700">{designation}</td>
+                                <td className="px-4 py-2 text-sm text-gray-700">
+                                  {designation}
+                                  {item.product_snapshot_id && (
+                                    <span className="ml-1 text-[10px] text-blue-500">snap:{item.product_snapshot_id}</span>
+                                  )}
+                                  {item.variant_id && (
+                                    <span className="ml-1 text-[10px] text-purple-500">v:{item.variant_id}</span>
+                                  )}
+                                </td>
                                 <td className="px-4 py-2 text-sm text-right">{q}</td>
                                 <td className="px-4 py-2 text-sm text-right">{kgUnit.toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-medium">{poids.toFixed(2)}</td>
+                                <td className="px-4 py-2 text-sm text-right text-orange-600" title={`item.pa=${item.prix_achat} item.cr=${item.cout_revient} resolved=${resolvedCost}`}>{resolvedCost.toFixed(2)} DH</td>
                                 <td className="px-4 py-2 text-sm text-right">{Number(item.prix_unitaire || 0).toFixed(2)} DH</td>
                                 <td className="px-4 py-2 text-sm text-right font-semibold">{Number(item.montant_ligne || item.total || 0).toFixed(2)} DH</td>
                               </tr>

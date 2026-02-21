@@ -4,11 +4,11 @@
 export const getBackendBaseUrl = (): string => {
   try {
     const env: any = (import.meta as any)?.env || {};
-    const raw = env.VITE_BACKEND_URL || env.VITE_API_BASE_URL || 'http://boukirdiamond.com/';
+    const raw = env.VITE_BACKEND_URL || env.VITE_API_BASE_URL || 'http://backoffice.boukirdiamond.com/';
     // const raw = env.VITE_BACKEND_URL || env.VITE_API_BASE_URL || 'http://localhost:3001';
     return String(raw).replace(/\/$/, '');
   } catch {
-    return 'http://boukirdiamond.com/';
+    return 'http://backoffice.boukirdiamond.com/';
     // return 'http://localhost:3001';
   }
 };
