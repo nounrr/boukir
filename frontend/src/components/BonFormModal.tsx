@@ -350,9 +350,27 @@ const AutoCheckNonCalculatedForAwatif: React.FC<{ isOpen: boolean; clients: any[
   clients,
 }) => {
   const { values, setFieldValue } = useFormikContext<any>();
+  // Track whether auto-check was already applied so user can manually uncheck
+  const autoAppliedRef = useRef(false);
+  // Reset when modal closes or client changes
+  const prevClientRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      autoAppliedRef.current = false;
+      prevClientRef.current = null;
+      return;
+    }
+
+    // Reset auto-applied flag when client changes
+    const currentClientKey = String(values?.client_id || '') + '|' + String(values?.client_nom || '');
+    if (prevClientRef.current !== null && prevClientRef.current !== currentClientKey) {
+      autoAppliedRef.current = false;
+    }
+    prevClientRef.current = currentClientKey;
+
+    // Don't re-apply if already auto-checked once (user may have manually unchecked)
+    if (autoAppliedRef.current) return;
     if (values?.isNotCalculated) return;
 
     let contactName = '';
@@ -366,6 +384,7 @@ const AutoCheckNonCalculatedForAwatif: React.FC<{ isOpen: boolean; clients: any[
 
     if (isKhezinAwatifName(contactName)) {
       setFieldValue('isNotCalculated', true, false);
+      autoAppliedRef.current = true;
     }
   }, [isOpen, clients, values?.client_id, values?.client_nom, values?.isNotCalculated, setFieldValue]);
 
@@ -1104,7 +1123,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         fournisseur_societe: initialValues.fournisseur_societe || '',
   adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
   phone: initialValues.phone || initialValues.customer_phone || '',
-        isNotCalculated: initialValues.isNotCalculated || false,
+        isNotCalculated: initialValues.isNotCalculated === true || initialValues.isNotCalculated === 1 ? true : false,
         payer_partiellement: (initialValues.reste !== undefined && Number(initialValues.reste) > 0) || false,
         reste: initialValues.reste || 0,
         statut: initialValues.statut || 'En attente',
@@ -2465,7 +2484,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   <Field type="text" id="phone" name="phone" disabled={isQtyOnlyEdit} className="w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="Numéro de téléphone lié à ce bon (facultatif)" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <Field type="checkbox" id="isNotCalculated" name="isNotCalculated" className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+                  <input
+                    type="checkbox"
+                    id="isNotCalculated"
+                    checked={!!values.isNotCalculated}
+                    onChange={(e) => setFieldValue('isNotCalculated', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
                   <label htmlFor="isNotCalculated" className="text-sm font-medium text-gray-700">
                     Non calculé
                   </label>

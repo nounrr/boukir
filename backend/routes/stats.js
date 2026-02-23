@@ -454,6 +454,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             bc.id AS bonId,
            (CONCAT('COM', LPAD(bc.id, GREATEST(LENGTH(bc.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
             bc.montant_total AS totalBon,
+           (COALESCE(ct_bc.nom_complet, bc.client_nom, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
             ci.product_id AS product_id,
             ps.variant_id AS variant_id,
@@ -471,6 +472,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             (COALESCE(ci.remise_montant, 0) * ci.quantite) AS remise_total,
             (((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite) - (COALESCE(ci.remise_montant, 0) * ci.quantite)) AS profit
           FROM bons_comptant bc
+          LEFT JOIN contacts ct_bc ON ct_bc.id = bc.client_id
           LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
           LEFT JOIN products p ON p.id = ci.product_id
           LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
@@ -486,6 +488,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
               bs.id AS bonId,
              (CONCAT('SOR', LPAD(bs.id, GREATEST(LENGTH(bs.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
               bs.montant_total AS totalBon,
+             (COALESCE(ct_bs.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
               si.product_id AS product_id,
               ps.variant_id AS variant_id,
@@ -503,6 +506,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
               (COALESCE(si.remise_montant, 0) * si.quantite) AS remise_total,
               (((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
             FROM bons_sortie bs
+            LEFT JOIN contacts ct_bs ON ct_bs.id = bs.client_id
             LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
             LEFT JOIN products p ON p.id = si.product_id
             LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
@@ -518,6 +522,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
               o.id AS bonId,
              (COALESCE(o.order_number, CONCAT('ECOM', LPAD(o.id, GREATEST(LENGTH(o.id), 2), '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
               o.total_amount AS totalBon,
+             (COALESCE(o.customer_name, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
              (COALESCE(oi.product_name, p.designation) COLLATE ${UNION_COLLATION}) AS designation,
               oi.product_id AS product_id,
               COALESCE(oi.variant_id, ps.variant_id) AS variant_id,
@@ -549,6 +554,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             ac.id AS bonId,
            (CONCAT('AVC', LPAD(ac.id, GREATEST(LENGTH(ac.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
             ac.montant_total AS totalBon,
+           (COALESCE(ct_ac.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
             ai.product_id AS product_id,
             ps.variant_id AS variant_id,
@@ -566,6 +572,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             (COALESCE(ai.remise_montant, 0) * ai.quantite) AS remise_total,
             (((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
           FROM avoirs_client ac
+          LEFT JOIN contacts ct_ac ON ct_ac.id = ac.client_id
           LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
           LEFT JOIN products p ON p.id = ai.product_id
           LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
@@ -581,6 +588,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
               ac2.id AS bonId,
              (CONCAT('AVCC', LPAD(ac2.id, GREATEST(LENGTH(ac2.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
               ac2.montant_total AS totalBon,
+             (COALESCE(ac2.client_nom, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
               ai2.product_id AS product_id,
               ps.variant_id AS variant_id,
@@ -613,6 +621,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
               ae.id AS bonId,
              (COALESCE(ae.order_number, CONCAT('AWE', LPAD(ae.id, GREATEST(LENGTH(ae.id), 2), '0'))) COLLATE ${UNION_COLLATION}) AS bonNumero,
               ae.montant_total AS totalBon,
+             (COALESCE(ae.customer_name, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
               i.product_id AS product_id,
                     COALESCE(i.variant_id, ps.variant_id) AS variant_id,
@@ -645,6 +654,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
          bcmd.id AS bonId,
         (CONCAT('CMD', LPAD(bcmd.id, GREATEST(LENGTH(bcmd.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
          bcmd.montant_total AS totalBon,
+        (COALESCE(ct_cmd.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
         (p.designation COLLATE ${UNION_COLLATION}) AS designation,
          ci.product_id AS product_id,
          ci.variant_id AS variant_id,
@@ -661,6 +671,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
          (COALESCE(ci.remise_montant, 0) * ci.quantite) AS remise_total,
          NULL AS profit
       FROM bons_commande bcmd
+      LEFT JOIN contacts ct_cmd ON ct_cmd.id = bcmd.fournisseur_id
       LEFT JOIN commande_items ci ON ci.bon_commande_id = bcmd.id
       LEFT JOIN products p ON p.id = ci.product_id
       WHERE LOWER(TRIM(COALESCE(bcmd.statut, ''))) IN ${VALID_STATUSES_SQL}
@@ -697,6 +708,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             bonId,
             bonNumero: l.bonNumero,
             bonType,
+            contact_nom: l.contact_nom || null,
             items: [],
             totalBon: roundSafe(l.totalBon),
             profitBon: 0,
