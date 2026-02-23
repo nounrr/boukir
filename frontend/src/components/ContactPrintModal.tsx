@@ -22,9 +22,12 @@ interface ContactPrintModalProps {
   totalQty?: number;
   totalAmount?: number;
   finalSolde?: number;
+  // Débit / Crédit totals
+  totalDebit?: number;
+  totalCredit?: number;
 }
 
-const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde }) => {
+const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, contact, mode, transactions = [], productHistory, dateFrom, dateTo, skipInitialRow = false, hideCumulative = false, totalQty, totalAmount, finalSolde, totalDebit, totalCredit }) => {
   const size = 'A4'; // Taille fixe A4
   const [company, setCompany] = useState<CompanyType>('DIAMOND');
   const [priceMode, setPriceMode] = useState<PriceMode>('WITH_PRICES');
@@ -129,6 +132,8 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
                 totalQty={totalQty}
                 totalAmount={totalAmount}
                 finalSolde={finalSolde}
+                totalDebit={totalDebit}
+                totalCredit={totalCredit}
               />
             </div>
           </div>

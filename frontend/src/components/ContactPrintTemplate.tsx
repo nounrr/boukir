@@ -23,6 +23,9 @@ interface ContactPrintTemplateProps {
   totalQty?: number;
   totalAmount?: number;
   finalSolde?: number;
+  // Débit / Crédit totals from backend
+  totalDebit?: number;
+  totalCredit?: number;
 }
 
 const fmt = (n: any) => Number(n || 0).toFixed(2);
@@ -75,6 +78,8 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   totalQty,
   totalAmount,
   finalSolde,
+  totalDebit,
+  totalCredit,
 }) => {
   // hideCumulative: when true, don't render the 'Solde Cumulé' column (for selected/compact prints)
   const showPrices = priceMode === 'WITH_PRICES';
@@ -453,10 +458,41 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
             )}
           </table>
 
-          <div className="mt-3 flex justify-end">
-            <div className="border border-gray-300 bg-gray-50 px-3 py-2 rounded">
-              <div className="text-xs font-semibold text-gray-700">Solde final</div>
-              <div className="text-base font-bold text-gray-900">{fmtNoDecimalsIfInt(finalSoldeProducts)} DH</div>
+          <div className="mt-3 flex justify-end gap-3 flex-wrap">
+            {totalDebit !== undefined && (
+              <div className="border-2 border-blue-400 bg-blue-50 px-3 py-2 rounded-lg text-center min-w-[140px]">
+                <div className="text-xs font-semibold text-blue-800">Total Débit</div>
+                <div className="text-[10px] text-gray-500">(Ventes/Achats + Solde initial)</div>
+                <div className="text-base font-bold text-blue-900">{fmt(totalDebit)} DH</div>
+              </div>
+            )}
+            {totalCredit !== undefined && (
+              <div className="border-2 border-green-400 bg-green-50 px-3 py-2 rounded-lg text-center min-w-[140px]">
+                <div className="text-xs font-semibold text-green-800">Total Crédit</div>
+                <div className="text-[10px] text-gray-500">(Paiements + Avoirs)</div>
+                <div className="text-base font-bold text-green-900">{fmt(totalCredit)} DH</div>
+              </div>
+            )}
+            <div className={`border-2 px-3 py-2 rounded-lg text-center min-w-[140px] ${
+              totalDebit !== undefined && totalCredit !== undefined
+                ? (totalDebit - totalCredit) > 0
+                  ? 'border-red-400 bg-red-50'
+                  : 'border-green-400 bg-green-50'
+                : 'border-gray-300 bg-gray-50'
+            }`}>
+              <div className="text-xs font-semibold text-gray-700">Solde Final</div>
+              {totalDebit !== undefined && totalCredit !== undefined && (
+                <div className="text-[10px] text-gray-500">(Débit - Crédit)</div>
+              )}
+              <div className={`text-base font-bold ${
+                totalDebit !== undefined && totalCredit !== undefined
+                  ? (totalDebit - totalCredit) > 0 ? 'text-red-700' : 'text-green-700'
+                  : 'text-gray-900'
+              }`}>{fmtNoDecimalsIfInt(
+                totalDebit !== undefined && totalCredit !== undefined
+                  ? totalDebit - totalCredit
+                  : finalSoldeProducts
+              )} DH</div>
             </div>
           </div>
         </div>
