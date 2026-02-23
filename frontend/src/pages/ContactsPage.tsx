@@ -131,6 +131,8 @@ const ContactsPage: React.FC = () => {
     return !(
       norm === 'annulé' ||
       norm === 'annule' ||
+      norm === 'supprimé' ||
+      norm === 'supprime' ||
       norm === 'brouillon' ||
       norm === 'refusé' ||
       norm === 'refuse' ||
@@ -146,10 +148,12 @@ const ContactsPage: React.FC = () => {
   const isActiveBonStatut = (s: any) => {
     if (!s) return false;
     const norm = String(s).toLowerCase();
-    // On ignore les bons non confirmés / annulés
+    // On ignore les bons non confirmés / annulés / supprimés
     return !(
       norm === 'annulé' ||
       norm === 'annule' ||
+      norm === 'supprimé' ||
+      norm === 'supprime' ||
       norm === 'brouillon' ||
       norm === 'refusé' ||
       norm === 'refuse' ||
@@ -2327,6 +2331,24 @@ const ContactsPage: React.FC = () => {
                 ${printHasSelection ? '' : `<td class="numeric-col"><strong>${filteredProductsForDisplay2.length > 0 ? (filteredProductsForDisplay2[filteredProductsForDisplay2.length - 1].soldeCumulatif || 0).toFixed(2) : '0.00'} DH</strong></td>`}
               </tr>
             </table>
+            <!-- Bloc Débit / Crédit / Solde Final -->
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px; flex-wrap: wrap;">
+              <div style="background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
+                <p style="margin: 0; font-size: 9px; color: #1e40af; font-weight: 600;">Total Débit</p>
+                <p style="margin: 0; font-size: 8px; color: #6b7280;">(Ventes/Achats + Solde initial)</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #1e3a8a;">${((detailedContact?.total_ventes || 0) + (detailedContact?.solde || 0)).toFixed(2)} DH</p>
+              </div>
+              <div style="background: #dcfce7; border: 2px solid #22c55e; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
+                <p style="margin: 0; font-size: 9px; color: #166534; font-weight: 600;">Total Crédit</p>
+                <p style="margin: 0; font-size: 8px; color: #6b7280;">(Paiements + Avoirs)</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #14532d;">${((detailedContact?.total_paiements || 0) + (detailedContact?.total_avoirs || 0)).toFixed(2)} DH</p>
+              </div>
+              <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
+                <p style="margin: 0; font-size: 9px; color: #92400e; font-weight: 600;">Solde Final</p>
+                <p style="margin: 0; font-size: 8px; color: #6b7280;">(Débit - Crédit)</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: ${(() => { const s = ((detailedContact?.total_ventes || 0) + (detailedContact?.solde || 0)) - ((detailedContact?.total_paiements || 0) + (detailedContact?.total_avoirs || 0)); return s > 0 ? '#dc2626' : '#16a34a'; })()};">${(((detailedContact?.total_ventes || 0) + (detailedContact?.solde || 0)) - ((detailedContact?.total_paiements || 0) + (detailedContact?.total_avoirs || 0))).toFixed(2)} DH</p>
+              </div>
+            </div>
           </div>
 
           <div class="section">
@@ -4542,7 +4564,7 @@ const ContactsPage: React.FC = () => {
                          <p className="font-semibold text-blue-800 text-sm">Total Ventes / Achats</p>
                          <p className="font-bold text-lg text-blue-700">
                            {detailedContact?.total_ventes !== undefined 
-                             ? `${detailedContact.total_ventes.toFixed(2)} DH` 
+                             ? `${(detailedContact.total_ventes + (detailedContact.solde || 0)).toFixed(2)} DH` 
                              : '-'}
                          </p>
                        </div>
@@ -4838,6 +4860,8 @@ const ContactsPage: React.FC = () => {
                             // (sans addition du solde initial)
                             return totalAmount;
                           })()}
+                          totalDebit={detailedContact ? (detailedContact.total_ventes || 0) + (detailedContact.solde || 0) : undefined}
+                          totalCredit={detailedContact ? (detailedContact.total_paiements || 0) + (detailedContact.total_avoirs || 0) : undefined}
                         />
                       )}
                     </div>
