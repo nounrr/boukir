@@ -509,6 +509,49 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
   // Effective product list for item selection: use snapshot list for outgoing bons
   const selectableProducts = useSnapshotSelection && snapshotProducts.length > 0 ? filteredSnapshotProducts : products;
+
+  // For Commande: flatten products + variants into a single selectable list
+  // If prix_achat == prix_vente → single option; if different → show each variant separately
+  const commandeProductOptions = useMemo(() => {
+    if (!products?.length) return [];
+    const options: { value: string; label: string; data: any }[] = [];
+
+    for (const p of products as any[]) {
+      const ref = String(p.reference ?? p.id);
+      const nom = p.designation ?? '';
+      const pa = Number(p.prix_achat || 0);
+      const pv = Number(p.prix_vente || 0);
+      const variants: any[] = p.variants ?? [];
+
+      // Base product option
+      const priceLabel = pa === pv
+        ? (pa ? `${pa} DH` : '')
+        : `PA: ${pa} | PV: ${pv}`;
+      options.push({
+        value: String(p.id),
+        label: `${ref} - ${nom}${priceLabel ? ` | ${priceLabel}` : ''}`.trim(),
+        data: p,
+      });
+
+      // Show each variant as separate option
+      for (const v of variants) {
+        const vpa = Number(v.prix_achat ?? pa);
+        const vpv = Number(v.prix_vente ?? pv);
+        // If single variant with same pricing as parent, skip duplicate
+        if (variants.length === 1 && vpa === pa && vpv === pv) continue;
+        const varPriceLabel = vpa === vpv
+          ? (vpa ? `${vpa} DH` : '')
+          : `PA: ${vpa} | PV: ${vpv}`;
+        options.push({
+          value: `var:${v.id}:${p.id}`,
+          label: `${ref} - ${nom} - ${v.variant_name}${varPriceLabel ? ` | ${varPriceLabel}` : ''}`.trim(),
+          data: { ...p, _selectedVariant: v },
+        });
+      }
+    }
+
+    return options;
+  }, [products]);
   const { data: clients = [] } = useGetAllClientsQuery();
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
@@ -3237,6 +3280,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           };
                                         });
                                       }
+                                      // For Commande: use flattened product+variant list
+                                      if (values.type === 'Commande') {
+                                        return commandeProductOptions;
+                                      }
                                       return products.map((p: any) => ({
                                         value: String(p.id),
                                         label: `${String(p.reference ?? p.id)} - ${p.designation ?? ''}`.trim(),
@@ -3249,6 +3296,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       if (useSnapshotSelection && snapId) {
                                         return `snap:${snapId}:${prodId}`;
                                       }
+                                      // For Commande: if a variant is selected, use var: prefix
+                                      if (values.type === 'Commande' && values.items[index].variant_id) {
+                                        return `var:${values.items[index].variant_id}:${prodId}`;
+                                      }
                                       // product_snapshot_id is null → match directly by product_id
                                       return String(prodId || '');
                                     })()}
@@ -3258,17 +3309,35 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                       const ref = String(values.items[index].product_reference ?? prodId).trim();
                                       const fromRow = String(values.items[index].designation ?? '').trim();
-                                      if (fromRow) return `${ref} - ${fromRow}`.trim();
+                                      const variantId = values.items[index].variant_id;
+                                      // For Commande with variant selected, show variant name in label
+                                      let variantSuffix = '';
+                                      if (values.type === 'Commande' && variantId) {
+                                        const fromCatalog = products.find((p: any) => String(p.id) === String(prodId));
+                                        const v = (fromCatalog?.variants ?? []).find((vv: any) => String(vv.id) === String(variantId));
+                                        if (v) variantSuffix = ` - ${v.variant_name}`;
+                                      }
+                                      if (fromRow) return `${ref} - ${fromRow}${variantSuffix}`.trim();
 
                                       const fromCatalog = products.find((p: any) => String(p.id) === String(prodId));
                                       const des = String(fromCatalog?.designation ?? '').trim();
-                                      return des ? `${ref} - ${des}`.trim() : ref;
+                                      return des ? `${ref} - ${des}${variantSuffix}`.trim() : ref;
                                     })()}
                                     onChange={(selectedValue) => {
                                       if (isQtyOnlyEdit) return;
                                       let product: any = null;
+                                      let selectedVariant: any = null;
 
-                                      if (useSnapshotSelection && snapshotProducts.length > 0) {
+                                      // Handle Commande variant selection: "var:<variantId>:<productId>"
+                                      if (selectedValue.startsWith('var:')) {
+                                        const parts = selectedValue.split(':');
+                                        const variantId = parseInt(parts[1]);
+                                        const productId = parseInt(parts[2]);
+                                        product = products.find((p: any) => p.id === productId);
+                                        if (product) {
+                                          selectedVariant = (product.variants ?? []).find((v: any) => v.id === variantId);
+                                        }
+                                      } else if (useSnapshotSelection && snapshotProducts.length > 0) {
                                         // Parse selectedValue: "snap:<snapId>:<productId>" or "p:<productId>:<idx>"
                                         if (selectedValue.startsWith('snap:')) {
                                           const parts = selectedValue.split(':');
@@ -3292,11 +3361,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           product_id: product.id,
                                           designation: product.designation,
                                           snapshot_id: product.snapshot_id || null,
-                                          variant_id: product.variant_id || null,
+                                          variant_id: selectedVariant?.id || product.variant_id || null,
                                           isSnapshot: !!product.snapshot_id,
                                           'product.prix_achat': product.prix_achat,
                                           'product.cout_revient': product.cout_revient,
                                           'product.prix_vente': product.prix_vente,
+                                          selectedVariant: selectedVariant ? selectedVariant.variant_name : null,
                                           allProductKeys: Object.keys(product),
                                         });
                                         setFieldValue(`items.${index}.product_id`, product.id);
@@ -3309,32 +3379,43 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         // Set snapshot reference
                                         setFieldValue(`items.${index}.product_snapshot_id`, product.snapshot_id || null);
                                         
-                                        // If snapshot has a variant, auto-set it
-                                        if (product.variant_id) {
+                                        // Handle variant: from flat Commande selection or from snapshot
+                                        if (selectedVariant) {
+                                          setFieldValue(`items.${index}.variant_id`, selectedVariant.id);
+                                        } else if (product.variant_id) {
                                           setFieldValue(`items.${index}.variant_id`, product.variant_id);
                                         } else {
                                           setFieldValue(`items.${index}.variant_id`, '');
                                         }
                                         setFieldValue(`items.${index}.unit_id`, '');
 
-                                        setFieldValue(`items.${index}.prix_achat`, product.prix_achat || 0);
-                                        setFieldValue(`items.${index}.cout_revient`, product.cout_revient || 0);
+                                        // Use variant pricing if a variant was selected
+                                        const effectivePA = selectedVariant
+                                          ? Number(selectedVariant.prix_achat ?? product.prix_achat ?? 0)
+                                          : Number(product.prix_achat || 0);
+                                        const effectivePV = selectedVariant
+                                          ? Number(selectedVariant.prix_vente ?? product.prix_vente ?? 0)
+                                          : Number(product.prix_vente || 0);
+                                        const effectiveCR = selectedVariant
+                                          ? Number(selectedVariant.cout_revient ?? product.cout_revient ?? 0)
+                                          : Number(product.cout_revient || 0);
+
+                                        setFieldValue(`items.${index}.prix_achat`, effectivePA);
+                                        setFieldValue(`items.${index}.cout_revient`, effectiveCR);
                                         setFieldValue(
                                           `items.${index}.cout_revient_pourcentage`,
-                                          product.cout_revient_pourcentage ?? 0
+                                          selectedVariant?.cout_revient_pourcentage ?? product.cout_revient_pourcentage ?? 0
                                         );
                                         setFieldValue(
                                           `items.${index}.prix_gros_pourcentage`,
-                                          product.prix_gros_pourcentage ?? 0
+                                          selectedVariant?.prix_gros_pourcentage ?? product.prix_gros_pourcentage ?? 0
                                         );
                                         setFieldValue(
                                           `items.${index}.prix_vente_pourcentage`,
-                                          product.prix_vente_pourcentage ?? 0
+                                          selectedVariant?.prix_vente_pourcentage ?? product.prix_vente_pourcentage ?? 0
                                         );
-                                        const unit = product.prix_vente || 0;
-                                        const pa = product.prix_achat || 0;
-                                        setFieldValue(`items.${index}.prix_unitaire`, unit);
-                                        const priceForDisplay = values.type === 'Commande' ? pa : unit;
+                                        setFieldValue(`items.${index}.prix_unitaire`, effectivePV);
+                                        const priceForDisplay = values.type === 'Commande' ? effectivePA : effectivePV;
                                         setUnitPriceRaw((prev) => ({ ...prev, [index]: String(priceForDisplay) }));
                                         setFieldValue(`items.${index}.kg`, product.kg ?? 0);
                                         const q =
