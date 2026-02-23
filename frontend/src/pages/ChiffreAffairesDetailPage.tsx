@@ -27,6 +27,7 @@ interface ChiffreDetail {
   bonId: number;
   bonNumero: string;
   bonType: string;
+  contact_nom?: string;
   items: Array<{
   designation: string;
   quantite: number;
@@ -241,6 +242,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           <span className="font-medium text-gray-900">
             {calcul.bonType} {calcul.bonNumero}
           </span>
+          {calcul.contact_nom && calcul.contact_nom.trim() !== '' && (
+            <span className="ml-2 text-sm text-gray-500">— {calcul.contact_nom}</span>
+          )}
         </div>
         <div className="text-right">
           <div className="text-lg font-semibold text-gray-900">
