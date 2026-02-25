@@ -40,16 +40,43 @@ const ContactPrintModal: React.FC<ContactPrintModalProps> = ({ isOpen, onClose, 
     if (!printRef.current) return;
     setIsGenerating(true);
     try {
-      const canvas = await html2canvas(printRef.current, { scale: 1.5, backgroundColor: '#ffffff', useCORS: true, allowTaint: true });
+      // html2canvas can truncate very tall content when the canvas exceeds browser limits.
+      // We dynamically reduce scale for tall pages and generate a multi-page PDF.
+      const el = printRef.current;
+      const baseScale = 1.5;
+      const MAX_CANVAS_PX = 16384; // conservative (varies by browser/GPU)
+      const elHeight = Math.max(el.scrollHeight, el.offsetHeight);
+      const safeScale = Math.max(0.6, Math.min(baseScale, MAX_CANVAS_PX / Math.max(1, elHeight)));
+
+      const canvas = await html2canvas(el, {
+        scale: safeScale,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+      });
+
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: size.toLowerCase() as 'a4' | 'a5', compress: true });
       const pdfW = pdf.internal.pageSize.getWidth();
       const pdfH = pdf.internal.pageSize.getHeight();
-      const ratio = Math.min(pdfW / canvas.width, pdfH / canvas.height);
-      const imgW = canvas.width * ratio;
-      const imgH = canvas.height * ratio;
-      const x = (pdfW - imgW) / 2; const y = (pdfH - imgH) / 2;
-      const imgData = canvas.toDataURL('image/jpeg', 0.75);
-      pdf.addImage(imgData, 'JPEG', x, y, imgW, imgH, undefined, 'MEDIUM');
+
+      // Fit to page width; paginate vertically if needed
+      const imgData = canvas.toDataURL('image/jpeg', 0.80);
+      const imgW = pdfW;
+      const imgH = (canvas.height * imgW) / canvas.width;
+
+      let y = 0;
+      pdf.addImage(imgData, 'JPEG', 0, y, imgW, imgH, undefined, 'MEDIUM');
+
+      // Add pages while there is still content below the current page
+      let heightLeft = imgH - pdfH;
+      while (heightLeft > 1) {
+        y -= pdfH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, y, imgW, imgH, undefined, 'MEDIUM');
+        heightLeft -= pdfH;
+      }
+
       const fileName = `Contact_${contact?.nom_complet || contact?.id}_${mode}_${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);
     } catch (e) {

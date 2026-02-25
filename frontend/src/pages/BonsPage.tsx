@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, MoreHorizontal, Send, Package, Truck, RotateCcw } from 'lucide-react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, Truck, RotateCcw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
   import { Formik, Form, Field } from 'formik';
@@ -291,6 +291,7 @@ const BonsPage = () => {
     isResizing: false
   });
   const menuRef = useRef<HTMLDivElement>(null);
+  const tabsNavRef = useRef<HTMLElement>(null);
 
   // Calculer la largeur minimale basée sur le contenu de la colonne
   // (column measurement helper removed - unused)
@@ -1861,14 +1862,39 @@ const BonsPage = () => {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="border-b border-gray-200 mb-6">
-          <nav className="-mb-px flex space-x-8">
+        {/* Tabs Slider */}
+        <div className="border-b border-gray-200 mb-6 relative flex items-center">
+          {/* Left Arrow */}
+          <button
+            type="button"
+            onClick={() => {
+              const el = tabsNavRef.current;
+              if (el) el.scrollBy({ left: -150, behavior: 'smooth' });
+            }}
+            className="flex-shrink-0 p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors z-10"
+            aria-label="Scroll tabs left"
+          >
+            <ChevronLeft size={20} />
+          </button>
+
+          {/* Scrollable tabs container */}
+          <nav
+            ref={tabsNavRef}
+            className="-mb-px flex space-x-2 overflow-x-auto scrollbar-hide scroll-smooth flex-1 px-1"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            onWheel={(e) => {
+              // Convert vertical mouse wheel to horizontal scroll
+              if (tabsNavRef.current && e.deltaY !== 0) {
+                e.preventDefault();
+                tabsNavRef.current.scrollBy({ left: e.deltaY, behavior: 'smooth' });
+              }
+            }}
+          >
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setCurrentTab(tab.key as any)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                className={`py-2 px-3 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
                   currentTab === tab.key
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -1878,6 +1904,19 @@ const BonsPage = () => {
               </button>
             ))}
           </nav>
+
+          {/* Right Arrow */}
+          <button
+            type="button"
+            onClick={() => {
+              const el = tabsNavRef.current;
+              if (el) el.scrollBy({ left: 150, behavior: 'smooth' });
+            }}
+            className="flex-shrink-0 p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors z-10"
+            aria-label="Scroll tabs right"
+          >
+            <ChevronRight size={20} />
+          </button>
         </div>
         
   {/* Contenu standard */}

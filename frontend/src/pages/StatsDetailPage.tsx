@@ -36,6 +36,14 @@ const convertDisplayToISO = (displayDate: string) => {
   return `${fullYear.padStart(4, "0")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 };
 
+const displayDMYToTime = (displayDate: string): number => {
+  const iso = convertDisplayToISO(displayDate);
+  if (!iso) return Number.NaN;
+  // Use local midnight to avoid UTC shifting issues
+  const t = new Date(`${iso}T00:00:00`).getTime();
+  return Number.isFinite(t) ? t : Number.NaN;
+};
+
 const getBonSign = (bonType: string): number => {
   // Logique comptable demandée:
   // - Sortie/Comptant: le client paie => +
@@ -864,9 +872,13 @@ const StatsDetailPage: React.FC = () => {
                                           <tbody>
                                             {(() => {
                                               const detailsSorted = [...(cr.details || [])].sort((a: any, b: any) => {
-                                                const da = String(a.date || '');
-                                                const db = String(b.date || '');
-                                                if (da !== db) return da.localeCompare(db);
+                                                const da = displayDMYToTime(String(a.date || ''));
+                                                const db = displayDMYToTime(String(b.date || ''));
+                                                const hasDa = Number.isFinite(da);
+                                                const hasDb = Number.isFinite(db);
+                                                if (hasDa && hasDb && da !== db) return da - db;
+                                                if (hasDa && !hasDb) return -1;
+                                                if (!hasDa && hasDb) return 1;
                                                 const na = String(a.bonNumero || '');
                                                 const nb = String(b.bonNumero || '');
                                                 if (na !== nb) return na.localeCompare(nb);
