@@ -507,9 +507,6 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     return result;
   }, [snapshotProducts, isEditMode]);
 
-  // Effective product list for item selection: use snapshot list for outgoing bons
-  const selectableProducts = useSnapshotSelection && snapshotProducts.length > 0 ? filteredSnapshotProducts : products;
-
   // For Commande: flatten products + variants into a single selectable list
   // If prix_achat == prix_vente → single option; if different → show each variant separately
   const commandeProductOptions = useMemo(() => {
@@ -2234,66 +2231,6 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     return bestPrice;
   };
 
-  // Prix fréquemment utilisé pour ce produit (global), sélectionne le dernier prix
-  // qui a été répété au moins minCount fois (statut Validé uniquement).
-  const getFrequentUnitPriceForProduct = (
-    productId: string | number | undefined,
-    minCount: number = 5
-  ): { price: number; count: number } | null => {
-    if (!productId) return null;
-    const pid = String(productId);
-
-    const normalizeMoneyKey = (value: any): number | null => {
-      if (value == null) return null;
-      const n = typeof value === 'number' ? value : Number(String(value).replace(',', '.'));
-      if (!Number.isFinite(n) || n <= 0) return null;
-      return Math.round(n * 100); // cents key
-    };
-
-    type Stat = { count: number; lastTime: number; price: number };
-    const map = new Map<number, Stat>();
-
-    const accepted = new Set(['validé', 'valide', 'validée', 'en attente']);
-    const scan = (bon: any) => {
-      const statut = String(bon.statut || '').toLowerCase();
-      if (!accepted.has(statut)) return;
-      const items = parseItems(bon.items);
-      const bonTime = toTime(bon.date_creation || bon.date);
-      for (const it of items as any[]) {
-        const itPid = String((it as any).product_id ?? (it as any).id ?? '');
-        if (itPid !== pid) continue;
-        const priceRaw = (it as any).prix_unitaire ?? (it as any).prix ?? (it as any).price ?? 0;
-        const key = normalizeMoneyKey(priceRaw);
-        if (key == null) continue;
-        const price = Number(typeof priceRaw === 'number' ? priceRaw : String(priceRaw).replace(',', '.')) || 0;
-        const prev = map.get(key);
-        if (prev) {
-          const newCount = prev.count + 1;
-          const newLast = Math.max(prev.lastTime, bonTime);
-          map.set(key, { count: newCount, lastTime: newLast, price });
-        } else {
-          map.set(key, { count: 1, lastTime: bonTime, price });
-        }
-      }
-    };
-
-    for (const b of sortiesHistory as any[]) scan(b);
-    for (const b of comptantHistory as any[]) scan(b);
-
-    let best: Stat | null = null;
-    for (const stat of map.values()) {
-      if (stat.count >= minCount) {
-        if (!best || stat.lastTime > best.lastTime) best = stat;
-      }
-    }
-    return best ? { price: statNumber(best.price), count: best.count } : null;
-  };
-
-  const statNumber = (n: any): number => {
-    const v = typeof n === 'number' ? n : Number(String(n).replace(',', '.'));
-    return Number.isFinite(v) ? v : 0;
-  };
-
     // (Removed local cumulative balance calculations; using backend provided solde_cumule)
 
   // Fonction utilitaire pour vérifier le plafond en temps réel
@@ -3263,7 +3200,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const pB = Number(b.fifo_priority ?? 999);
                                           return pA - pB;
                                         });
-                                        return sorted.map((p: any, idx: number) => {
+                                        const snapshotOptions = sorted.map((p: any) => {
                                           const fifo = p.fifo_priority;
                                           const priorityTag = fifo === 1 ? '⭐' : fifo ? `#${fifo}` : '';
                                           const serie = String(p.reference ?? p.id);
@@ -3279,6 +3216,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             data: p,
                                           };
                                         });
+
+                                        // IMPORTANT: if a product doesn't exist in snapshotProducts API payload
+                                        // (no snapshot row), but exists in the base products catalog, still allow selecting it.
+                                        const presentProductIds = new Set<string>(sorted.map((p: any) => String(p?.id)));
+                                        const extraProductOptions = (products as any[])
+                                          .filter((p: any) => !presentProductIds.has(String(p?.id)))
+                                          .sort((a: any, b: any) => String(a?.designation ?? '').localeCompare(String(b?.designation ?? ''), 'fr', { sensitivity: 'base' }))
+                                          .map((p: any) => ({
+                                            value: String(p.id),
+                                            label: `${String(p.reference ?? p.id)} - ${p.designation ?? ''}`.trim(),
+                                            data: p,
+                                          }));
+
+                                        return [...snapshotOptions, ...extraProductOptions];
                                       }
                                       // For Commande: use flattened product+variant list
                                       if (values.type === 'Commande') {
@@ -3343,12 +3294,26 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const parts = selectedValue.split(':');
                                           const snapId = parseInt(parts[1]);
                                           product = snapshotProducts.find((p: any) => p.snapshot_id === snapId);
+                                          // If snapshot row is missing (deleted/not returned), fallback to base product table
+                                          if (!product) {
+                                            const productIdFromValue = parts[2];
+                                            if (productIdFromValue) {
+                                              product = (products as any[]).find((p: any) => String(p.id) === String(productIdFromValue)) || null;
+                                            }
+                                          }
                                         } else if (selectedValue.startsWith('p:')) {
                                           const parts = selectedValue.split(':');
                                           const pId = parseInt(parts[1]);
                                           product = snapshotProducts.find((p: any) => p.id === pId && !p.snapshot_id);
+                                          if (!product) {
+                                            product = (products as any[]).find((p: any) => String(p.id) === String(pId)) || null;
+                                          }
                                         } else {
                                           product = snapshotProducts.find((p: any) => String(p.id) === selectedValue);
+                                          if (!product) {
+                                            // Base product selected from fallback list
+                                            product = (products as any[]).find((p: any) => String(p.id) === String(selectedValue)) || null;
+                                          }
                                         }
                                       } else {
                                         product = products.find((p: any) => String(p.id) === selectedValue);
