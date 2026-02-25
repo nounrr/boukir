@@ -2335,6 +2335,113 @@ router.patch('/snapshots', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ==================== VARIANT IMAGE ROUTES ====================
+
+// POST /products/:id/variants/:variantId/image — Upload / replace variant main image
+router.post('/:id/variants/:variantId/image', upload.single('image'), async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+    const productId = Number(req.params.id);
+    const variantId = Number(req.params.variantId);
+    if (isNaN(productId) || isNaN(variantId)) {
+      return res.status(400).json({ message: 'IDs invalides' });
+    }
+
+    // Verify the variant belongs to the product
+    const [rows] = await pool.query(
+      'SELECT * FROM product_variants WHERE id = ? AND product_id = ?',
+      [variantId, productId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Variante introuvable pour ce produit' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Aucune image fournie' });
+    }
+
+    const imageUrl = `/uploads/products/${req.file.filename}`;
+
+    // Delete old image file if exists
+    const oldImageUrl = rows[0].image_url;
+    if (oldImageUrl) {
+      const oldPath = path.join(__dirname, '..', oldImageUrl);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    await pool.query('UPDATE product_variants SET image_url = ? WHERE id = ?', [imageUrl, variantId]);
+
+    res.json({ success: true, image_url: imageUrl });
+  } catch (err) { next(err); }
+});
+
+// PUT /products/:id/variants/:variantId/gallery — Upload new gallery images & delete specified ones
+router.put('/:id/variants/:variantId/gallery', upload.array('gallery', 10), async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+    const productId = Number(req.params.id);
+    const variantId = Number(req.params.variantId);
+    if (isNaN(productId) || isNaN(variantId)) {
+      return res.status(400).json({ message: 'IDs invalides' });
+    }
+
+    // Verify the variant belongs to the product
+    const [rows] = await pool.query(
+      'SELECT * FROM product_variants WHERE id = ? AND product_id = ?',
+      [variantId, productId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Variante introuvable pour ce produit' });
+    }
+
+    // Handle deletions
+    const deletedIdsRaw = req.body?.deleted_gallery_ids;
+    if (deletedIdsRaw) {
+      let deletedIds;
+      try { deletedIds = JSON.parse(deletedIdsRaw); } catch { deletedIds = []; }
+      if (Array.isArray(deletedIds) && deletedIds.length > 0) {
+        const [oldImages] = await pool.query(
+          'SELECT id, image_url FROM variant_images WHERE id IN (?) AND variant_id = ?',
+          [deletedIds, variantId]
+        );
+        for (const img of oldImages) {
+          const filePath = path.join(__dirname, '..', img.image_url);
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        }
+        await pool.query('DELETE FROM variant_images WHERE id IN (?) AND variant_id = ?', [deletedIds, variantId]);
+      }
+    }
+
+    // Handle new gallery uploads
+    const files = req.files || [];
+    const [maxPos] = await pool.query(
+      'SELECT COALESCE(MAX(position), 0) AS maxPos FROM variant_images WHERE variant_id = ?',
+      [variantId]
+    );
+    let pos = (maxPos[0]?.maxPos || 0) + 1;
+
+    const inserted = [];
+    for (const f of files) {
+      const imageUrl = `/uploads/products/${f.filename}`;
+      const [result] = await pool.query(
+        'INSERT INTO variant_images (variant_id, image_url, position) VALUES (?, ?, ?)',
+        [variantId, imageUrl, pos++]
+      );
+      inserted.push({ id: result.insertId, image_url: imageUrl });
+    }
+
+    // Return updated gallery
+    const [gallery] = await pool.query(
+      'SELECT * FROM variant_images WHERE variant_id = ? ORDER BY position ASC',
+      [variantId]
+    );
+
+    res.json({ success: true, gallery, inserted });
+  } catch (err) { next(err); }
+});
+
 // GET /products/last-commandes
 // Retourne pour chaque product/variant le dernier bon de commande associé
 router.get('/last-commandes', async (_req, res, next) => {
