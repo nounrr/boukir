@@ -982,9 +982,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     formik.setFieldError('stock_partage_ecom_qty', undefined);
                   }
                 }}
-                disabled={true}
-                title="La quantité est gérée automatiquement par les snapshots et bons de commande."
-                className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:bg-gray-100/80 disabled:text-gray-500 placeholder:text-gray-400"
+                disabled={false}
+                title="Saisir la quantité en stock"
+                className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                 placeholder="0"
               />
               {formik.touched.quantite && !!asStringError(formik.errors.quantite) && (
@@ -1872,9 +1872,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 name={`variants.${index}.stock_quantity`}
                                 value={variant.stock_quantity}
                                 onChange={formik.handleChange}
-                                disabled={!editingProduct}
-                                title={!editingProduct ? "La quantité initiale est gérée par la création d'un bon de commande." : ""}
-                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:bg-gray-100/80 disabled:text-gray-500"
+                                disabled={false}
+                                title="Saisir la quantité en stock de la variante"
+                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="0"
                               />
                             </div>
