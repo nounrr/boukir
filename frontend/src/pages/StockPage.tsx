@@ -217,7 +217,7 @@ const StockPage: React.FC = () => {
             snapshot_prix_achat_old: variant.snapshot_prix_achat_old ?? null,
             snapshot_prix_vente_old: variant.snapshot_prix_vente_old ?? null,
             isVariantRow: true,
-            // Inherit other props
+            variant_image_url: variant.image_url || null,
           });
         });
       }
@@ -733,43 +733,50 @@ const StockPage: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {product.isVariantRow ? (
-                      <div className="flex items-center justify-center h-10 w-10 text-gray-400">
-                        <span className="text-xl">↳</span>
-                      </div>
-                    ) : (
-                      product.image_url ? (
-                        <div
-                          className="inline-block"
-                          onMouseEnter={(e) => {
-                            setHoverPreview({
-                              url: product.image_url,
-                              x: e.clientX,
-                              y: e.clientY,
-                              alt: String(product.designation ?? 'Image produit'),
-                            });
-                          }}
-                          onMouseMove={(e) => {
-                            setHoverPreview((prev) => {
-                              if (!prev) return prev;
-                              if (prev.url !== product.image_url) return prev;
-                              return { ...prev, x: e.clientX, y: e.clientY };
-                            });
-                          }}
-                          onMouseLeave={() => setHoverPreview(null)}
-                        >
-                          <img
-                            src={product.image_url}
-                            alt={product.designation}
-                            className="h-10 w-10 object-cover rounded"
-                          />
-                        </div>
-                      ) : (
+                    {(() => {
+                      const imgUrl = product.isVariantRow ? product.variant_image_url : product.image_url;
+                      if (imgUrl) {
+                        return (
+                          <div
+                            className={`inline-block ${product.isVariantRow ? 'ml-2' : ''}`}
+                            onMouseEnter={(e) => {
+                              setHoverPreview({
+                                url: imgUrl,
+                                x: e.clientX,
+                                y: e.clientY,
+                                alt: String(product.designation ?? 'Image'),
+                              });
+                            }}
+                            onMouseMove={(e) => {
+                              setHoverPreview((prev) => {
+                                if (!prev) return prev;
+                                if (prev.url !== imgUrl) return prev;
+                                return { ...prev, x: e.clientX, y: e.clientY };
+                              });
+                            }}
+                            onMouseLeave={() => setHoverPreview(null)}
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={product.designation}
+                              className={`object-cover rounded ${product.isVariantRow ? 'h-8 w-8' : 'h-10 w-10'}`}
+                            />
+                          </div>
+                        );
+                      }
+                      if (product.isVariantRow) {
+                        return (
+                          <div className="flex items-center justify-center h-8 w-8 text-gray-400 ml-2">
+                            <span className="text-lg">↳</span>
+                          </div>
+                        );
+                      }
+                      return (
                         <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
                           <Package size={20} />
                         </div>
-                      )
-                    )}
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{product.reference ?? product.id}</div>
