@@ -62,7 +62,7 @@ async function ensureEcommerceSnapshotAllocationsTable(db) {
   `);
 }
 
-async function consumeSnapshotStockFIFO(connection, { productId, variantId, quantity }) {
+async function consumeSnapshotStockFIFO(connection, { productId, variantId, quantity, allowPartial = false }) {
   const qtyRequested = Number(quantity);
   if (!Number.isFinite(qtyRequested) || qtyRequested <= 0) return [];
 
@@ -78,7 +78,7 @@ async function consumeSnapshotStockFIFO(connection, { productId, variantId, quan
   );
 
   const available = snapshotRows.reduce((sum, r) => sum + Number(r.quantite || 0), 0);
-  if (available < qtyRequested) {
+  if (available < qtyRequested && !allowPartial) {
     const err = new Error('INSUFFICIENT_SNAPSHOT_STOCK');
     err.code = 'INSUFFICIENT_SNAPSHOT_STOCK';
     err.available = available;
@@ -87,7 +87,10 @@ async function consumeSnapshotStockFIFO(connection, { productId, variantId, quan
   }
 
   const allocations = [];
-  let remaining = qtyRequested;
+  const qtyToConsume = allowPartial ? Math.min(qtyRequested, available) : qtyRequested;
+  if (!(qtyToConsume > 0)) return [];
+
+  let remaining = qtyToConsume;
 
   for (const row of snapshotRows) {
     if (remaining <= 0) break;
@@ -129,7 +132,11 @@ router.post('/quote', async (req, res, next) => {
       shipping_lng,
     } = req.body || {};
 
-    const userId = req.user?.id || null;
+    const rawUserId = req.user?.id || null;
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const allowBackorder = role.length > 0;
+    const isEmployeeToken = allowBackorder && req.user?.cin != null && req.user?.type_compte == null;
+    const userId = isEmployeeToken ? null : rawUserId;
 
     const normalizedDeliveryMethod = String(delivery_method || 'delivery').trim();
     const allowedDeliveryMethods = new Set(['delivery', 'pickup']);
@@ -449,7 +456,7 @@ router.post('/quote', async (req, res, next) => {
           ? Number(item.snapshot_stock ?? item.stock_partage_ecom_qty ?? 0)
           : Number(item.stock_partage_ecom_qty || 0));
 
-      if (Number(item.quantity) > availableStock) {
+      if (!allowBackorder && Number(item.quantity) > availableStock) {
         return res.status(400).json({
           message: `Stock insuffisant pour ${item.designation}`,
           available: availableStock,
@@ -669,7 +676,11 @@ router.post('/', async (req, res, next) => {
       shipping_lng,
     } = req.body;
 
-    const userId = req.user?.id || null; // NULL for guest orders
+    const rawUserId = req.user?.id || null; // NULL for guest orders
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const allowBackorder = role.length > 0;
+    const isEmployeeToken = allowBackorder && req.user?.cin != null && req.user?.type_compte == null;
+    const userId = isEmployeeToken ? null : rawUserId;
 
     // Normalize coordinates
     const finalLat = normalizeLatLng(shipping_location)?.lat || shipping_lat || null;
@@ -1119,7 +1130,8 @@ router.post('/', async (req, res, next) => {
           ? Number(item.snapshot_stock ?? item.stock_partage_ecom_qty ?? 0)
           : Number(item.stock_partage_ecom_qty || 0));
 
-      if (Number(item.quantity) > availableStock) {
+      const isIndisponible = Number(item.quantity) > availableStock;
+      if (!allowBackorder && isIndisponible) {
         await connection.rollback();
         return res.status(400).json({ 
           message: `Stock insuffisant pour ${item.designation}`,
@@ -1146,9 +1158,13 @@ router.post('/', async (req, res, next) => {
         unit_name: item.unit_name,
         unit_price: priceAfterPromo,
         quantity: Number(item.quantity),
+        available_stock: availableStock,
         subtotal: itemSubtotal,
         discount_percentage: promoPercentage,
         discount_amount: discountAmount,
+
+        // Backoffice/staff orders may intentionally include out-of-stock items.
+        is_indisponible: allowBackorder ? isIndisponible : false,
 
         // Fields for profit/marge calculation (aligned with backoffice mouvementCalc)
         prix_unitaire: priceAfterPromo,
@@ -1475,6 +1491,7 @@ router.post('/', async (req, res, next) => {
           productId: item.product_id,
           variantId: item.variant_id || null,
           quantity: item.quantity,
+          allowPartial: allowBackorder,
         });
 
         for (const alloc of allocations) {
@@ -1499,19 +1516,27 @@ router.post('/', async (req, res, next) => {
         }
       } else {
         // Legacy stock reduction (fallback)
+        const qtyToDecrement = allowBackorder
+          ? Math.max(0, Math.min(Number(item.quantity) || 0, Number(item.available_stock) || 0))
+          : item.quantity;
+
+        if (!(Number(qtyToDecrement) > 0)) {
+          continue;
+        }
+
         if (item.variant_id) {
           await connection.query(
             `UPDATE product_variants
              SET stock_quantity = stock_quantity - ?
              WHERE id = ?`,
-            [item.quantity, item.variant_id]
+            [qtyToDecrement, item.variant_id]
           );
         } else {
           await connection.query(
             `UPDATE products
              SET stock_partage_ecom_qty = stock_partage_ecom_qty - ?
              WHERE id = ?`,
-            [item.quantity, item.product_id]
+            [qtyToDecrement, item.product_id]
           );
         }
       }

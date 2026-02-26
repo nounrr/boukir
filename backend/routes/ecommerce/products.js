@@ -59,6 +59,8 @@ ensureProductRemiseColumns().catch(e => console.error('ensureProductRemiseColumn
 router.get('/', async (req, res, next) => {
   try {
     const snapshotEnabled = await hasProductSnapshotTable(pool);
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const isBackoffice = role.length > 0;
     const priceExpr = snapshotEnabled
       ? `COALESCE((
           SELECT ps.prix_vente
@@ -101,6 +103,23 @@ router.get('/', async (req, res, next) => {
       per_page      // Alternative to limit
     } = req.query;
 
+    const hasInStockOnlyParam = Object.prototype.hasOwnProperty.call(req.query || {}, 'in_stock_only');
+    const parseBooleanish = (value, defaultValue) => {
+      if (value === true || value === false) return value;
+      if (value == null) return defaultValue;
+      const s = String(value).trim().toLowerCase();
+      if (['true', '1', 'yes', 'y'].includes(s)) return true;
+      if (['false', '0', 'no', 'n'].includes(s)) return false;
+      return defaultValue;
+    };
+
+    // Default behavior:
+    // - Public shoppers: only in-stock products (legacy behavior)
+    // - Backoffice/staff token: include out-of-stock products by default
+    const inStockOnly = !hasInStockOnlyParam && isBackoffice
+      ? false
+      : parseBooleanish(in_stock_only, true);
+
     // Calculate pagination
     const currentPage = Math.max(1, Number(page));
     const itemsPerPage = Number(per_page || limit);
@@ -113,7 +132,7 @@ router.get('/', async (req, res, next) => {
     const params = [];
 
     // Stock filter
-    if (in_stock_only === 'true' || in_stock_only === true) {
+    if (inStockOnly) {
       whereConditions.push(anyInStockWhereExpr);
     }
 
@@ -552,6 +571,16 @@ router.get('/', async (req, res, next) => {
     });
 
     // 2. Get all available colors (from variants)
+    const colorsStockClause = inStockOnly
+      ? `AND (${snapshotEnabled
+        ? `EXISTS (
+              SELECT 1
+              FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id
+                AND ps.quantite > 0
+            )`
+        : '(p.stock_partage_ecom_qty > 0 OR pv.stock_quantity > 0)'})`
+      : '';
     const [allColors] = await pool.query(`
       SELECT DISTINCT pv.variant_name as color
       FROM product_variants pv
@@ -559,32 +588,28 @@ router.get('/', async (req, res, next) => {
       WHERE pv.variant_type = 'Couleur'
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
-        AND (${snapshotEnabled
-        ? `EXISTS (
-              SELECT 1
-              FROM product_snapshot ps
-              WHERE ps.variant_id = pv.id
-                AND ps.quantite > 0
-            )`
-        : '(p.stock_partage_ecom_qty > 0 OR pv.stock_quantity > 0)'})
+        ${colorsStockClause}
       ORDER BY pv.variant_name
     `);
 
     // 3. Get all available units
-    const [allUnits] = await pool.query(`
-      SELECT DISTINCT pu.unit_name as unit
-      FROM product_units pu
-      INNER JOIN products p ON p.id = pu.product_id
-      WHERE p.ecom_published = 1
-        AND COALESCE(p.is_deleted, 0) = 0
-        AND (${snapshotEnabled
+    const unitsStockClause = inStockOnly
+      ? `AND (${snapshotEnabled
         ? `EXISTS (
               SELECT 1
               FROM product_snapshot ps
               WHERE ps.product_id = p.id
                 AND ps.quantite > 0
             ) OR p.has_variants = 1`
-        : '(p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)'})
+        : '(p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)'})`
+      : '';
+    const [allUnits] = await pool.query(`
+      SELECT DISTINCT pu.unit_name as unit
+      FROM product_units pu
+      INNER JOIN products p ON p.id = pu.product_id
+      WHERE p.ecom_published = 1
+        AND COALESCE(p.is_deleted, 0) = 0
+        ${unitsStockClause}
       ORDER BY pu.unit_name
     `);
 
@@ -596,6 +621,16 @@ router.get('/', async (req, res, next) => {
     `);
 
     // 4b. Get available utility types (categorie_base)
+    const utilityTypesStockClause = inStockOnly
+      ? `AND (${snapshotEnabled
+        ? `EXISTS (
+              SELECT 1
+              FROM product_snapshot ps
+              WHERE ps.product_id = p.id
+                AND ps.quantite > 0
+            ) OR p.has_variants = 1`
+        : '(p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)'})`
+      : '';
     const [allUtilityTypes] = await pool.query(`
       SELECT DISTINCT p.categorie_base as utility_type
       FROM products p
@@ -603,18 +638,21 @@ router.get('/', async (req, res, next) => {
         AND COALESCE(p.is_deleted, 0) = 0
         AND p.categorie_base IS NOT NULL
         AND p.categorie_base IN ('Professionel', 'Maison')
-        AND (${snapshotEnabled
-        ? `EXISTS (
-              SELECT 1
-              FROM product_snapshot ps
-              WHERE ps.product_id = p.id
-                AND ps.quantite > 0
-            ) OR p.has_variants = 1`
-        : '(p.stock_partage_ecom_qty > 0 OR p.has_variants = 1)'})
+        ${utilityTypesStockClause}
       ORDER BY FIELD(p.categorie_base, 'Professionel', 'Maison'), p.categorie_base
     `);
 
     // 5. Get price range
+    const priceRangeStockClause = inStockOnly
+      ? `AND (${snapshotEnabled
+        ? `EXISTS (
+              SELECT 1
+              FROM product_snapshot ps
+              WHERE ps.product_id = products.id
+                AND ps.quantite > 0
+            ) OR has_variants = 1`
+        : '(stock_partage_ecom_qty > 0 OR has_variants = 1)'})`
+      : '';
     const [priceRange] = await pool.query(`
       SELECT 
         MIN(${snapshotEnabled
@@ -638,14 +676,7 @@ router.get('/', async (req, res, next) => {
       FROM products
       WHERE ecom_published = 1
         AND COALESCE(is_deleted, 0) = 0
-        AND (${snapshotEnabled
-        ? `EXISTS (
-              SELECT 1
-              FROM product_snapshot ps
-              WHERE ps.product_id = products.id
-                AND ps.quantite > 0
-            ) OR has_variants = 1`
-        : '(stock_partage_ecom_qty > 0 OR has_variants = 1)'})
+        ${priceRangeStockClause}
     `);
 
     // Calculate pagination metadata

@@ -40,6 +40,11 @@ function isInStock(stockQty) {
   return toSafeNumber(stockQty) > 0;
 }
 
+function isBackofficeRequest(req) {
+  const role = req.user?.role != null ? String(req.user.role).trim() : '';
+  return role.length > 0;
+}
+
 // ==================== DEBUG: CHECK USER ====================
 // GET /api/ecommerce/cart/debug/user - Check current authenticated user
 router.get('/debug/user', async (req, res, next) => {
@@ -82,6 +87,8 @@ router.get('/', async (req, res, next) => {
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
+
+    const backoffice = isBackofficeRequest(req);
 
     const snapshotEnabled = await hasProductSnapshotTable(pool);
 
@@ -224,7 +231,7 @@ router.get('/', async (req, res, next) => {
 
       const quantity = toSafeNumber(item.quantity);
       const inStock = availableStock > 0;
-      const isAvailable = inStock && availableStock >= quantity;
+      const isAvailable = backoffice ? true : (inStock && availableStock >= quantity);
 
       // Calculate subtotal
       const subtotal = priceAfterPromo * quantity;
@@ -373,6 +380,8 @@ router.post('/items', async (req, res, next) => {
     const unitId = unit_id ? Number(unit_id) : null;
     const qty = Math.max(1, toSafeNumber(quantity, 1));
 
+    const backoffice = isBackofficeRequest(req);
+
     if (qty > PURCHASE_LIMIT) {
       return res.status(400).json({
         message: `Quantité max par article: ${PURCHASE_LIMIT}`,
@@ -453,7 +462,8 @@ router.post('/items', async (req, res, next) => {
     }
 
     // Guard: treat 0/NULL/invalid stock as out of stock (same as products `in_stock`)
-    if (!(availableStock > 0)) {
+    // Backoffice/staff can still add to cart to create a manual/client order.
+    if (!(availableStock > 0) && !backoffice) {
       return res.status(400).json({
         message: 'Produit en rupture de stock',
         code: 'OUT_OF_STOCK',
@@ -501,8 +511,8 @@ router.post('/items', async (req, res, next) => {
         });
       }
 
-      // Check stock availability
-      if (newQuantity > availableStock) {
+      // Check stock availability (skip for backoffice/staff)
+      if (!backoffice && newQuantity > availableStock) {
         return res.status(400).json({ 
           message: 'Quantité non disponible en stock',
           code: 'INSUFFICIENT_STOCK',
@@ -526,8 +536,8 @@ router.post('/items', async (req, res, next) => {
       });
     } else {
       // Add new item to cart
-      // Check stock availability
-      if (qty > availableStock) {
+      // Check stock availability (skip for backoffice/staff)
+      if (!backoffice && qty > availableStock) {
         return res.status(400).json({ 
           message: 'Quantité non disponible en stock',
           code: 'INSUFFICIENT_STOCK',
@@ -562,6 +572,8 @@ router.put('/items/:id', async (req, res, next) => {
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
+
+    const backoffice = isBackofficeRequest(req);
 
     const cartItemId = Number(req.params.id);
     const { quantity } = req.body;
@@ -663,7 +675,7 @@ router.put('/items/:id', async (req, res, next) => {
       }
     }
 
-    if (!(availableStock > 0)) {
+    if (!(availableStock > 0) && !backoffice) {
       return res.status(400).json({
         message: 'Produit en rupture de stock',
         code: 'OUT_OF_STOCK',
@@ -671,8 +683,8 @@ router.put('/items/:id', async (req, res, next) => {
       });
     }
 
-    // Check stock availability
-    if (qty > availableStock) {
+    // Check stock availability (skip for backoffice/staff)
+    if (!backoffice && qty > availableStock) {
       return res.status(400).json({ 
         message: 'Quantité non disponible en stock',
         code: 'INSUFFICIENT_STOCK',
@@ -1043,6 +1055,8 @@ router.post('/validate', async (req, res, next) => {
       return res.status(401).json({ message: 'Authentification requise' });
     }
 
+    const backoffice = isBackofficeRequest(req);
+
     const snapshotEnabled = await hasProductSnapshotTable(pool);
 
     // Get all cart items with stock info
@@ -1165,15 +1179,19 @@ router.post('/validate', async (req, res, next) => {
       }
     }
 
-    const isValid = issues.length === 0;
+    // Backoffice/staff can proceed even if stock is insufficient.
+    const blockingIssues = backoffice
+      ? issues.filter((i) => i.issue !== 'out_of_stock' && i.issue !== 'insufficient_stock')
+      : issues;
+    const isValid = blockingIssues.length === 0;
 
     res.json({
       valid: isValid,
       total_items: cartItems.length,
       issues: issues,
-      message: isValid 
-        ? 'Panier valide' 
-        : `${issues.length} problème(s) détecté(s)`
+      message: isValid
+        ? 'Panier valide'
+        : `${blockingIssues.length} problème(s) détecté(s)`
     });
   } catch (err) {
     next(err);
