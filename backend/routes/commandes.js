@@ -305,6 +305,22 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     }
     const oldStatut = oldRows[0].statut;
 
+    // Detect optional schema feature: product_snapshot.en_validation
+    // Avoid information_schema (privileges can be restricted). We just probe the column.
+    let hasEnValidationColumn = false;
+    try {
+      await connection.execute('SELECT en_validation FROM product_snapshot LIMIT 1');
+      hasEnValidationColumn = true;
+    } catch (e) {
+      const msg = String(e?.sqlMessage || e?.message || '');
+      // If the column/table doesn't exist, we keep legacy behavior.
+      if (msg.toLowerCase().includes('unknown column') || msg.toLowerCase().includes('doesn\'t exist')) {
+        hasEnValidationColumn = false;
+      } else {
+        throw e;
+      }
+    }
+
     // ChefChauffeur: allow only secondary status actions (En attente / Annulé) and never on Validé
     if (isChefChauffeur) {
       const allowed = new Set(['En attente', 'Annulé']);
@@ -354,48 +370,89 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 
     // Snapshot + cleanup of old snapshot when status changes
     if (leavingValidation) {
-      // If a validated bon is moved to Annulé/En attente/etc: delete its snapshot.
-      await connection.execute('DELETE FROM product_snapshot WHERE bon_commande_id = ?', [id]);
-      // Defensive: avoid dangling references in items tables.
-      await connection.execute('UPDATE commande_items SET product_snapshot_id = NULL WHERE bon_commande_id = ?', [id]);
+      if (hasEnValidationColumn) {
+        // Do NOT delete snapshots anymore. Just mark them as not in validation.
+        await connection.execute('UPDATE product_snapshot SET en_validation = 0 WHERE bon_commande_id = ?', [id]);
+      } else {
+        // Legacy fallback if migration hasn't been applied.
+        await connection.execute('DELETE FROM product_snapshot WHERE bon_commande_id = ?', [id]);
+        await connection.execute('UPDATE commande_items SET product_snapshot_id = NULL WHERE bon_commande_id = ?', [id]);
+      }
     }
 
     if (enteringValidation) {
-      // Create snapshot of products/variants of this bon_commande (idempotent)
-      await connection.execute('DELETE FROM product_snapshot WHERE bon_commande_id = ?', [id]);
-      await connection.execute(
-        `INSERT INTO product_snapshot (
-            product_id, variant_id,
-            prix_achat, prix_vente,
-            cout_revient, cout_revient_pourcentage,
-            prix_gros, prix_gros_pourcentage,
-            prix_vente_pourcentage,
-            quantite, bon_commande_id, created_at
-          )
-          SELECT
-            ci.product_id,
-            ci.variant_id,
-            ci.prix_unitaire AS prix_achat,
-            COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
-            COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
-            COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
-            COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
-            COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
-            COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
-            ci.quantite,
-            ci.bon_commande_id,
-            NOW() AS created_at
-          FROM commande_items ci
-          JOIN products p ON p.id = ci.product_id
-          LEFT JOIN product_variants pv ON pv.id = ci.variant_id
-          WHERE ci.bon_commande_id = ?`,
-        [id]
-      );
+      // Create snapshot of products/variants of this bon_commande.
+      // New behavior: never delete old snapshots; we mark old ones en_validation=0 and insert a new active set.
+      if (hasEnValidationColumn) {
+        await connection.execute('UPDATE product_snapshot SET en_validation = 0 WHERE bon_commande_id = ?', [id]);
+        await connection.execute(
+          `INSERT INTO product_snapshot (
+              product_id, variant_id,
+              prix_achat, prix_vente,
+              cout_revient, cout_revient_pourcentage,
+              prix_gros, prix_gros_pourcentage,
+              prix_vente_pourcentage,
+              quantite, bon_commande_id, en_validation, created_at
+            )
+            SELECT
+              ci.product_id,
+              ci.variant_id,
+              ci.prix_unitaire AS prix_achat,
+              COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+              COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
+              COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
+              COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
+              COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
+              COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
+              ci.quantite,
+              ci.bon_commande_id,
+              1 AS en_validation,
+              NOW() AS created_at
+            FROM commande_items ci
+            JOIN products p ON p.id = ci.product_id
+            LEFT JOIN product_variants pv ON pv.id = ci.variant_id
+            WHERE ci.bon_commande_id = ?`,
+          [id]
+        );
+      } else {
+        // Legacy behavior if migration hasn't been applied.
+        await connection.execute('DELETE FROM product_snapshot WHERE bon_commande_id = ?', [id]);
+        await connection.execute(
+          `INSERT INTO product_snapshot (
+              product_id, variant_id,
+              prix_achat, prix_vente,
+              cout_revient, cout_revient_pourcentage,
+              prix_gros, prix_gros_pourcentage,
+              prix_vente_pourcentage,
+              quantite, bon_commande_id, created_at
+            )
+            SELECT
+              ci.product_id,
+              ci.variant_id,
+              ci.prix_unitaire AS prix_achat,
+              COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+              COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
+              COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
+              COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
+              COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
+              COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
+              ci.quantite,
+              ci.bon_commande_id,
+              NOW() AS created_at
+            FROM commande_items ci
+            JOIN products p ON p.id = ci.product_id
+            LEFT JOIN product_variants pv ON pv.id = ci.variant_id
+            WHERE ci.bon_commande_id = ?`,
+          [id]
+        );
+      }
 
       // ── Resolve is_indisponible items across all tables ──
       // Fetch the newly created snapshots for this bon commande
       const [newSnapshots] = await connection.execute(
-        'SELECT id, product_id, variant_id, quantite FROM product_snapshot WHERE bon_commande_id = ?',
+        hasEnValidationColumn
+          ? 'SELECT id, product_id, variant_id, quantite FROM product_snapshot WHERE bon_commande_id = ? AND en_validation = 1'
+          : 'SELECT id, product_id, variant_id, quantite FROM product_snapshot WHERE bon_commande_id = ?',
         [id]
       );
 

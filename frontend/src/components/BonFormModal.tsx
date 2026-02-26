@@ -487,8 +487,16 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         continue;
       }
 
-      // Snapshots avec qte > 0
-      const withStock = snapshotEntries.filter((s: any) => {
+      // Prefer snapshots that are currently active in validation workflow
+      const activeSnapshots = snapshotEntries.filter((s: any) => {
+        const flag = (s as any).snapshot_en_validation;
+        // When the backend doesn't expose it, treat as active
+        return flag == null ? true : Number(flag) !== 0;
+      });
+      const candidateSnapshots = activeSnapshots.length > 0 ? activeSnapshots : snapshotEntries;
+
+      // Snapshots avec qte > 0 (sur candidats)
+      const withStock = candidateSnapshots.filter((s: any) => {
         const qty = Number(s.snapshot_quantite);
         return Number.isFinite(qty) && qty > 0;
       });
@@ -498,7 +506,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         result.push(...withStock);
       } else {
         // TOUS les snapshots de cette variante ont qte <= 0 → afficher seulement le dernier
-        const latest = snapshotEntries.reduce((a: any, b: any) => {
+        const latest = candidateSnapshots.reduce((a: any, b: any) => {
           return Number(b.snapshot_id) > Number(a.snapshot_id) ? b : a;
         });
         result.push(latest);
@@ -1731,7 +1739,10 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         if (snapId && useSnapshotSelection && snapshotProducts?.length) {
           const snap = (snapshotProducts as any[]).find((s: any) => s.snapshot_id === snapId);
           if (snap) {
-            availableQty = Number(snap.snapshot_quantite ?? 0);
+            // If snapshot is not active (en_validation=0), treat it as out of stock
+            const flag = (snap as any).snapshot_en_validation;
+            const isActive = flag == null ? true : Number(flag) !== 0;
+            availableQty = isActive ? Number(snap.snapshot_quantite ?? 0) : 0;
           }
         } else if (!snapId && item.product_id) {
           const prod = products.find((p: any) => String(p.id) === String(item.product_id));

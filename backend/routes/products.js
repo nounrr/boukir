@@ -46,6 +46,24 @@ async function hasProductSnapshotTable() {
   return cachedHasProductSnapshotTable;
 }
 
+// Optional column support (product_snapshot.en_validation)
+let cachedHasProductSnapshotEnValidationColumn = null;
+async function hasProductSnapshotEnValidationColumn() {
+  if (cachedHasProductSnapshotEnValidationColumn !== null) return cachedHasProductSnapshotEnValidationColumn;
+  try {
+    await pool.query('SELECT en_validation FROM product_snapshot LIMIT 1');
+    cachedHasProductSnapshotEnValidationColumn = true;
+  } catch (e) {
+    const msg = String(e?.sqlMessage || e?.message || '').toLowerCase();
+    if (msg.includes('unknown column') || msg.includes("doesn't exist") || msg.includes('does not exist')) {
+      cachedHasProductSnapshotEnValidationColumn = false;
+    } else {
+      cachedHasProductSnapshotEnValidationColumn = false;
+    }
+  }
+  return cachedHasProductSnapshotEnValidationColumn;
+}
+
 // Ensure soft-delete and image_url columns exist
 let ensuredProductsColumns = false;
 async function ensureProductsColumns() {
@@ -634,12 +652,15 @@ router.get('/with-snapshots', async (req, res, next) => {
       })));
     }
 
+    const hasEnValidation = await hasProductSnapshotEnValidationColumn();
+
     // Get all snapshots (including qty <= 0), joined with product info
     const [snapRows] = await pool.query(`
       SELECT
         ps.id AS snapshot_id,
         ps.product_id,
         ps.variant_id,
+        ${hasEnValidation ? 'ps.en_validation' : '1'} AS snapshot_en_validation,
         ps.prix_achat AS snapshot_prix_achat,
         ps.prix_vente AS snapshot_prix_vente,
         ps.cout_revient AS snapshot_cout_revient,
@@ -719,6 +740,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         variant_id: snap.variant_id || null,
         variant_name: snap.variant_name || null,
         snapshot_id: snap.snapshot_id,
+        snapshot_en_validation: Number(snap.snapshot_en_validation ?? 1),
         snapshot_quantite: Number(snap.snapshot_quantite),
         snapshot_prix_achat: snap.snapshot_prix_achat !== null ? Number(snap.snapshot_prix_achat) : null,
         snapshot_prix_vente: snap.snapshot_prix_vente !== null ? Number(snap.snapshot_prix_vente) : null,
