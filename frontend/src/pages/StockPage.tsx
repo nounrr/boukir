@@ -83,6 +83,14 @@ const StockPage: React.FC = () => {
 
   const formatNum = (n: number) => String(parseFloat((Number(n || 0)).toFixed(2)));
 
+  // Dynamically compute percentage from actual prices: pct = ((price / prix_achat) - 1) * 100
+  const computePct = (price: any, prixAchat: number): string => {
+    const p = Number(price);
+    if (!Number.isFinite(p) || prixAchat <= 0) return '0';
+    const pct = ((p / prixAchat) - 1) * 100;
+    return parseFloat(pct.toFixed(2)).toString();
+  };
+
   const getSnapshotAwareQuantite = (p: any) => {
     // Prefer snapshot totals when backend provides them
     const v = p?.snapshot_quantite_total;
@@ -838,15 +846,16 @@ const StockPage: React.FC = () => {
                     {formatNum(getSnapshotAwarePrixAchat(product))} DH
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.cout_revient} DH
-                    <span className="text-xs text-gray-500 ml-1">({product.cout_revient_pourcentage}%)</span>
+                    {formatNum(Number(product.cout_revient || 0))} DH
+                    <span className="text-xs text-gray-500 ml-1">({computePct(product.cout_revient, getSnapshotAwarePrixAchat(product))}%)</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.prix_gros} DH
-                    <span className="text-xs text-gray-500 ml-1">({product.prix_gros_pourcentage}%)</span>
+                    {formatNum(Number(product.prix_gros || 0))} DH
+                    <span className="text-xs text-gray-500 ml-1">({computePct(product.prix_gros, getSnapshotAwarePrixAchat(product))}%)</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
+                      const pa = getSnapshotAwarePrixAchat(product);
                       const basePv = getSnapshotAwarePrixVenteBase(product);
                       const factor = getSelectedUnitFactor(product);
                       const unitPv = getSelectedUnitPrixVenteOverride(product);
@@ -855,7 +864,7 @@ const StockPage: React.FC = () => {
                         <>
                           {formatNum(converted)} DH
                           <span className="text-[10px] text-gray-500 ml-1">/ {getSelectedUnitLabel(product)}</span>
-                          <span className="text-xs text-gray-500 ml-1">({product.prix_vente_pourcentage}%)</span>
+                          <span className="text-xs text-gray-500 ml-1">({computePct(basePv, pa)}%)</span>
                         </>
                       );
                     })()}
