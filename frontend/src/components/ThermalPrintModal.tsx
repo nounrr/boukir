@@ -216,7 +216,25 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return () => { alive = false; };
   }, [logoCurrent]);
 
-  const parsedItems: any[] = useMemo(() => parseBonItems(bon, items), [bon, items]);
+  const parsedItems: any[] = useMemo(() => {
+    const raw = parseBonItems(bon, items);
+    // Merge items with same product + variant + prix_unitaire into single lines
+    const map = new Map<string, any>();
+    const result: any[] = [];
+    for (const it of raw) {
+      const pu = parseFloat(it.prix_unitaire ?? it.prix ?? it.price ?? 0);
+      const key = `${it.product_id ?? it.produit_id ?? it.id ?? ''}:${it.variant_id ?? it.variantId ?? ''}:${pu}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.quantite = (parseFloat(existing.quantite ?? existing.qty ?? 0) || 0) + (parseFloat(it.quantite ?? it.qty ?? 0) || 0);
+      } else {
+        const merged = { ...it };
+        map.set(key, merged);
+        result.push(merged);
+      }
+    }
+    return result;
+  }, [bon, items]);
 
   const totals = useMemo(() => {
     let total = 0;
