@@ -381,39 +381,109 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     }
 
     if (enteringValidation) {
-      // Create snapshot of products/variants of this bon_commande.
-      // New behavior: never delete old snapshots; we mark old ones en_validation=0 and insert a new active set.
+      // Re-validation behavior: if snapshots already exist for this bon, UPDATE them instead of creating duplicates.
       if (hasEnValidationColumn) {
-        await connection.execute('UPDATE product_snapshot SET en_validation = 0 WHERE bon_commande_id = ?', [id]);
-        await connection.execute(
-          `INSERT INTO product_snapshot (
-              product_id, variant_id,
-              prix_achat, prix_vente,
-              cout_revient, cout_revient_pourcentage,
-              prix_gros, prix_gros_pourcentage,
-              prix_vente_pourcentage,
-              quantite, bon_commande_id, en_validation, created_at
-            )
-            SELECT
-              ci.product_id,
-              ci.variant_id,
-              ci.prix_unitaire AS prix_achat,
-              COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
-              COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
-              COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
-              COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
-              COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
-              COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
-              ci.quantite,
-              ci.bon_commande_id,
-              1 AS en_validation,
-              NOW() AS created_at
-            FROM commande_items ci
-            JOIN products p ON p.id = ci.product_id
-            LEFT JOIN product_variants pv ON pv.id = ci.variant_id
-            WHERE ci.bon_commande_id = ?`,
+        // Check if snapshots already exist for this bon_commande
+        const [existingSnaps] = await connection.execute(
+          'SELECT COUNT(*) AS cnt FROM product_snapshot WHERE bon_commande_id = ?',
           [id]
         );
+        const existingCount = existingSnaps?.[0]?.cnt || 0;
+
+        if (existingCount > 0) {
+          // Snapshots exist → re-activate them; only update prix_achat + quantite from commande_items.
+          // KEEP existing snapshot prices (prix_vente, cout_revient, prix_gros) untouched.
+          await connection.execute(
+            `UPDATE product_snapshot ps
+              JOIN commande_items ci
+                ON ci.bon_commande_id = ps.bon_commande_id
+               AND ci.product_id = ps.product_id
+               AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR ci.variant_id = ps.variant_id)
+             SET
+               ps.en_validation = 1,
+               ps.prix_achat = ci.prix_unitaire,
+               ps.quantite = ci.quantite
+             WHERE ps.bon_commande_id = ?`,
+            [id]
+          );
+
+          // Remove snapshots for products that were removed from the bon
+          await connection.execute(
+            `DELETE ps FROM product_snapshot ps
+             LEFT JOIN commande_items ci
+               ON ci.bon_commande_id = ps.bon_commande_id
+              AND ci.product_id = ps.product_id
+              AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR ci.variant_id = ps.variant_id)
+             WHERE ps.bon_commande_id = ? AND ci.id IS NULL`,
+            [id]
+          );
+
+          // Insert snapshots for NEW products added to the bon that don't have a snapshot yet
+          await connection.execute(
+            `INSERT INTO product_snapshot (
+                product_id, variant_id,
+                prix_achat, prix_vente,
+                cout_revient, cout_revient_pourcentage,
+                prix_gros, prix_gros_pourcentage,
+                prix_vente_pourcentage,
+                quantite, bon_commande_id, en_validation, created_at
+              )
+              SELECT
+                ci.product_id,
+                ci.variant_id,
+                ci.prix_unitaire AS prix_achat,
+                COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+                COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
+                COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
+                COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
+                COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
+                COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
+                ci.quantite,
+                ci.bon_commande_id,
+                1 AS en_validation,
+                NOW() AS created_at
+              FROM commande_items ci
+              JOIN products p ON p.id = ci.product_id
+              LEFT JOIN product_variants pv ON pv.id = ci.variant_id
+              LEFT JOIN product_snapshot ps
+                ON ps.bon_commande_id = ci.bon_commande_id
+               AND ps.product_id = ci.product_id
+               AND ((ps.variant_id IS NULL AND ci.variant_id IS NULL) OR ps.variant_id = ci.variant_id)
+              WHERE ci.bon_commande_id = ? AND ps.id IS NULL`,
+            [id]
+          );
+        } else {
+          // No existing snapshots → first-time validation, insert fresh
+          await connection.execute(
+            `INSERT INTO product_snapshot (
+                product_id, variant_id,
+                prix_achat, prix_vente,
+                cout_revient, cout_revient_pourcentage,
+                prix_gros, prix_gros_pourcentage,
+                prix_vente_pourcentage,
+                quantite, bon_commande_id, en_validation, created_at
+              )
+              SELECT
+                ci.product_id,
+                ci.variant_id,
+                ci.prix_unitaire AS prix_achat,
+                COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+                COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
+                COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
+                COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
+                COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
+                COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
+                ci.quantite,
+                ci.bon_commande_id,
+                1 AS en_validation,
+                NOW() AS created_at
+              FROM commande_items ci
+              JOIN products p ON p.id = ci.product_id
+              LEFT JOIN product_variants pv ON pv.id = ci.variant_id
+              WHERE ci.bon_commande_id = ?`,
+            [id]
+          );
+        }
       } else {
         // Legacy behavior if migration hasn't been applied.
         await connection.execute('DELETE FROM product_snapshot WHERE bon_commande_id = ?', [id]);
@@ -446,6 +516,37 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
           [id]
         );
       }
+
+      // After snapshot insertion, recompute percentage fields so they stay coherent
+      // with the bon's prix_achat (ci.prix_unitaire) while keeping snapshot prices unchanged.
+      await connection.execute(
+        `UPDATE product_snapshot ps
+           JOIN (
+             SELECT bon_commande_id, product_id, variant_id, AVG(prix_unitaire) AS prix_unitaire
+               FROM commande_items
+              WHERE bon_commande_id = ?
+              GROUP BY bon_commande_id, product_id, variant_id
+           ) ci
+             ON ci.bon_commande_id = ps.bon_commande_id
+            AND ci.product_id = ps.product_id
+            AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR (ci.variant_id = ps.variant_id))
+          SET
+            ps.prix_achat = ci.prix_unitaire,
+            ps.cout_revient_pourcentage = CASE
+              WHEN ps.cout_revient IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient_pourcentage
+              ELSE ROUND(((ps.cout_revient / ci.prix_unitaire) - 1) * 100, 2)
+            END,
+            ps.prix_gros_pourcentage = CASE
+              WHEN ps.prix_gros IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_gros_pourcentage
+              ELSE ROUND(((ps.prix_gros / ci.prix_unitaire) - 1) * 100, 2)
+            END,
+            ps.prix_vente_pourcentage = CASE
+              WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_vente_pourcentage
+              ELSE ROUND(((ps.prix_vente / ci.prix_unitaire) - 1) * 100, 2)
+            END
+          WHERE ps.bon_commande_id = ?${hasEnValidationColumn ? ' AND ps.en_validation = 1' : ''}`,
+        [id, id]
+      );
 
       // ── Resolve is_indisponible items across all tables ──
       // Fetch the newly created snapshots for this bon commande
@@ -729,7 +830,52 @@ router.put('/:id', verifyToken, async (req, res) => {
     }
     await applyStockDeltas(connection, deltas, req.user?.id ?? null);
 
-  // Désactivé: pas de synchronisation automatique des prix d'achat lors d'un PUT.
+    // Sync existing product_snapshot rows of this bon_commande (if the table exists).
+    // Requirement: when prix_achat changes in the bon, update the corresponding snapshot prix_achat,
+    // but keep snapshot prices (prix_vente/prix_gros/cout_revient) unchanged and only recompute % fields.
+    let hasSnapshotTable = false;
+    try {
+      await connection.execute('SELECT id FROM product_snapshot LIMIT 1');
+      hasSnapshotTable = true;
+    } catch (e) {
+      const msg = String(e?.sqlMessage || e?.message || '');
+      if (msg.toLowerCase().includes("doesn't exist") || msg.toLowerCase().includes('does not exist')) {
+        hasSnapshotTable = false;
+      } else {
+        throw e;
+      }
+    }
+    if (hasSnapshotTable) {
+      // NOTE: percentages are defined relative to prix_achat (same formula as ProductModal: price = prix_achat * (1 + pct/100)).
+      await connection.execute(
+        `UPDATE product_snapshot ps
+           JOIN (
+             SELECT bon_commande_id, product_id, variant_id, AVG(prix_unitaire) AS prix_unitaire
+               FROM commande_items
+              WHERE bon_commande_id = ?
+              GROUP BY bon_commande_id, product_id, variant_id
+           ) ci
+             ON ci.bon_commande_id = ps.bon_commande_id
+            AND ci.product_id = ps.product_id
+            AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR (ci.variant_id = ps.variant_id))
+          SET
+            ps.prix_achat = ci.prix_unitaire,
+            ps.cout_revient_pourcentage = CASE
+              WHEN ps.cout_revient IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient_pourcentage
+              ELSE ROUND(((ps.cout_revient / ci.prix_unitaire) - 1) * 100, 2)
+            END,
+            ps.prix_gros_pourcentage = CASE
+              WHEN ps.prix_gros IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_gros_pourcentage
+              ELSE ROUND(((ps.prix_gros / ci.prix_unitaire) - 1) * 100, 2)
+            END,
+            ps.prix_vente_pourcentage = CASE
+              WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_vente_pourcentage
+              ELSE ROUND(((ps.prix_vente / ci.prix_unitaire) - 1) * 100, 2)
+            END
+          WHERE ps.bon_commande_id = ?`,
+        [id, id]
+      );
+    }
 
     await connection.commit();
     res.json({ message: 'Bon de commande mis à jour avec succès' });
