@@ -824,7 +824,7 @@ router.get('/', async (req, res, next) => {
     const useSnapshot = await hasProductSnapshotTable();
     const sql = useSnapshot ? `
       SELECT p.*, b.id as b_id, b.nom as b_nom, b.image_url as b_image_url,
-      (SELECT COALESCE(SUM(ps.quantite), 0)
+      (SELECT CASE WHEN COUNT(*) > 0 THEN SUM(ps.quantite) ELSE NULL END
          FROM product_snapshot ps
         WHERE ps.product_id = p.id) as snapshot_quantite_total,
       (SELECT ps2.prix_achat
@@ -862,7 +862,7 @@ router.get('/', async (req, res, next) => {
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
         'stock_quantity', pv.stock_quantity,
-        'snapshot_quantite_total', (SELECT COALESCE(SUM(psv.quantite), 0)
+        'snapshot_quantite_total', (SELECT CASE WHEN COUNT(*) > 0 THEN SUM(psv.quantite) ELSE NULL END
            FROM product_snapshot psv
           WHERE psv.variant_id = pv.id),
         'snapshot_prix_achat_old', (SELECT ps3.prix_achat
@@ -954,7 +954,7 @@ router.get('/', async (req, res, next) => {
         categories: r.categorie_id ? [{ id: r.categorie_id, nom: r.categorie_nom }] : [],
         brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
         quantite: Number(r.quantite),
-        snapshot_quantite_total: useSnapshot ? Number(r.snapshot_quantite_total ?? 0) : null,
+        snapshot_quantite_total: useSnapshot && r.snapshot_quantite_total !== null && r.snapshot_quantite_total !== undefined ? Number(r.snapshot_quantite_total) : null,
         kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
         prix_achat: Number(r.prix_achat),
         snapshot_prix_achat_old: useSnapshot && r.snapshot_prix_achat_old !== null && r.snapshot_prix_achat_old !== undefined ? Number(r.snapshot_prix_achat_old) : null,
@@ -1222,12 +1222,13 @@ router.get('/:id', async (req, res, next) => {
     if (useSnapshot) {
       try {
         const [totRows] = await pool.query(
-          `SELECT COALESCE(SUM(ps.quantite), 0) AS total
+          `SELECT COUNT(*) AS cnt, SUM(ps.quantite) AS total
            FROM product_snapshot ps
            WHERE ps.product_id = ?`,
           [id]
         );
-        snapshot_quantite_total = Number(totRows?.[0]?.total ?? 0);
+        const hasProdSnapshots = Number(totRows?.[0]?.cnt ?? 0) > 0;
+        snapshot_quantite_total = hasProdSnapshots ? Number(totRows?.[0]?.total ?? 0) : null;
 
         const [pSnaps] = await pool.query(
           `SELECT ps.id, ps.prix_achat, ps.prix_vente,
@@ -1446,7 +1447,7 @@ router.get('/:id', async (req, res, next) => {
         image_url: v.image_url,
         remise_client: Number(v.remise_client ?? 0),
         remise_artisan: Number(v.remise_artisan ?? 0),
-        snapshot_quantite_total: useSnapshot ? Number(variantSnapshotTotalById[v.id] ?? 0) : null,
+        snapshot_quantite_total: useSnapshot && variantSnapshotTotalById[v.id] !== null && variantSnapshotTotalById[v.id] !== undefined ? Number(variantSnapshotTotalById[v.id]) : null,
         snapshot_finance: useSnapshot ? (variantSnapshotFinanceById[v.id] || null) : null,
         snapshot_rows: useSnapshot ? (variantSnapshotRowsById[v.id] || []) : null,
         gallery: variantGalleriesById[v.id] || []

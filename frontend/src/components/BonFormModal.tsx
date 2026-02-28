@@ -91,11 +91,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       allMatches.length === 0
   );
 
-  // Focus search input when opening
+  // Focus search input when opening (preventScroll avoids page/modal jumping)
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => {
-        searchInputRef.current?.focus();
+        searchInputRef.current?.focus({ preventScroll: true });
         // reset highlight on open
         setHighlightIndex(filteredOptions.length > 0 ? 0 : -1);
       }, 0);
@@ -148,7 +148,6 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 setHighlightIndex(0);
               }}
               ref={searchInputRef}
-              autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
                   setIsOpen(false);
@@ -382,7 +381,7 @@ const AutoCheckNonCalculatedForAwatif: React.FC<{ isOpen: boolean; clients: any[
       contactName = String(values?.client_nom || '');
     }
 
-    if (isKhezinAwatifName(contactName)) {
+    if (isKhezinAwatifName(contactName) || String(values?.client_id) === '568') {
       setFieldValue('isNotCalculated', true, false);
       autoAppliedRef.current = true;
     }
@@ -413,6 +412,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const dispatch = useDispatch();
   const formikRef = useRef<FormikProps<any>>(null);
   const isEditMode = Boolean((initialValues as any)?.id);
+  const isPDG = user?.role === 'PDG';
   const isChefChauffeur = user?.role === 'ChefChauffeur';
   const isQtyOnlyEdit = isChefChauffeur && isEditMode;
   // Container ref to detect when Enter is pressed within the products area
@@ -460,12 +460,13 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const useSnapshotSelection = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
   const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection });
 
-  // Smart filtering for snapshot products (add mode only):
-  // - If a product+variant has snapshots with qty > 0, only show those (hide qty <= 0 snapshots)
-  // - If ALL snapshots of a product+variant have qty <= 0, show only the latest snapshot
-  // In edit mode, show all snapshots so already-selected items remain visible
+  // Smart filtering for snapshot products:
+  // - Add mode: If a product+variant has snapshots with qty > 0, only show those (hide qty <= 0 snapshots)
+  //             If ALL snapshots of a product+variant have qty <= 0, show only the latest snapshot
+  // - Edit mode: show all snapshots (no qty filtering) so already-selected items remain visible
+  // Then merge: non-PDG always merge, PDG merge only when same cout_revient + prix_vente
   const filteredSnapshotProducts = useMemo(() => {
-    if (!snapshotProducts?.length || isEditMode) return snapshotProducts;
+    if (!snapshotProducts?.length) return snapshotProducts;
 
     // Group by product_id + variant_id (chaque variante est traitée indépendamment)
     const grouped = new Map<string, any[]>();
@@ -477,6 +478,12 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
     const result: any[] = [];
     for (const [, entries] of grouped) {
+      // In edit mode, keep ALL entries (no qty filtering) so existing items can be found
+      if (isEditMode) {
+        result.push(...entries);
+        continue;
+      }
+
       // Séparer les entrées snapshot vs non-snapshot (services, produits sans snapshot)
       const snapshotEntries = entries.filter((s: any) => !!s.snapshot_id);
       const nonSnapshotEntries = entries.filter((s: any) => !s.snapshot_id);
@@ -512,8 +519,51 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         result.push(latest);
       }
     }
-    return result;
-  }, [snapshotProducts, isEditMode]);
+    
+    // Merge snapshots of same product+variant into ONE entry per distinct prix_vente.
+    // ALL roles: same prix_vente → merge into one line. Different prix_vente → separate lines.
+    const grouped2 = new Map<string, any[]>();
+    for (const snap of result) {
+      // Group by product_id + variant_id + prix_vente so different prices stay separate
+      const pv = Number(snap.prix_vente ?? 0);
+      const key = `${snap.id}:${snap.variant_id || 0}:${pv}`;
+      if (!grouped2.has(key)) grouped2.set(key, []);
+      grouped2.get(key)!.push(snap);
+    }
+
+    const finalResult: any[] = [];
+    for (const [, entries] of grouped2) {
+      const snapshotEntries = entries.filter((s: any) => !!s.snapshot_id);
+      const nonSnapshotEntries = entries.filter((s: any) => !s.snapshot_id);
+
+      if (snapshotEntries.length > 1) {
+        // Multiple snapshots with same prix_vente → merge into single entry
+        const sortedSnaps = [...snapshotEntries].sort((a: any, b: any) =>
+          (Number(a.fifo_priority) || 999) - (Number(b.fifo_priority) || 999)
+        );
+        const oldest = sortedSnaps[0];
+        const totalQty = snapshotEntries.reduce((sum: number, s: any) => {
+          const qty = Number(s.snapshot_quantite ?? 0);
+          return sum + (qty > 0 ? qty : 0);
+        }, 0);
+        finalResult.push({
+          ...oldest,
+          snapshot_id: null,
+          _isMerged: true,
+          _mergedSnapshots: sortedSnaps,
+          snapshot_quantite: totalQty,
+          prix_achat: oldest.prix_achat,
+          prix_vente: oldest.prix_vente,
+          cout_revient: oldest.cout_revient,
+        });
+        finalResult.push(...nonSnapshotEntries);
+      } else {
+        // Single snapshot or non-snapshot → keep as-is
+        finalResult.push(...entries);
+      }
+    }
+    return finalResult;
+  }, [snapshotProducts, isEditMode, isPDG]);
 
   // For Commande: flatten products + variants into a single selectable list
   // If prix_achat == prix_vente → single option; if different → show each variant separately
@@ -1146,6 +1196,30 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         };
       });
 
+      // ── Merge items with same product_id + variant_id + prix_unitaire into a single row ──
+      // This collapses FIFO-split rows back into one visible line.
+      // On re-submit, the FIFO logic will re-split them to the correct snapshots.
+      const mergedItems: any[] = [];
+      const mergeMap = new Map<string, any>();
+      for (const item of normalizedItems) {
+        const pu = Number(item.prix_unitaire ?? 0);
+        const key = `${item.product_id}:${item.variant_id || ''}:${pu}`;
+        if (mergeMap.has(key)) {
+          const existing = mergeMap.get(key)!;
+          existing.quantite = Number(existing.quantite) + Number(item.quantite || 0);
+          existing.total = Number(existing.total) + Number(item.total || 0);
+          // Clear snapshot_id so FIFO allocation re-runs on submit
+          existing.product_snapshot_id = null;
+        } else {
+          const merged = {
+            ...item,
+            product_snapshot_id: null, // will be re-allocated by FIFO on submit
+          };
+          mergeMap.set(key, merged);
+          mergedItems.push(merged);
+        }
+      }
+
       return {
         ...initialValues,
         client_id: (initialValues.client_id || '').toString(),
@@ -1160,7 +1234,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           : [],
         lieu_charge: initialValues.lieu_chargement || initialValues.lieu_charge || '',
         date_bon: formatMySQLToDateTimeInput(initialValues.date_creation || initialValues.date_bon || '') || getCurrentDateTimeInput(),
-        items: normalizedItems,
+        items: mergedItems,
         montant_ht: initialValues.montant_ht || 0,
         montant_total: initialValues.montant_total || 0,
         client_nom: initialValues.client_nom || '',
@@ -1734,6 +1808,66 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
         // Déterminer si le produit est indisponible et gérer le split de quantité
         const snapId = item.product_snapshot_id ? parseInt(item.product_snapshot_id) : null;
+
+        // ── FIFO allocation for merged items (no specific snapshot_id) ──
+        // Applies to all roles when snapshots were merged (same prix_vente)
+        if (!snapId && useSnapshotSelection && snapshotProducts?.length && item.product_id) {
+          const itemPV = Number(pu) || 0;
+          const allSnaps = (snapshotProducts as any[])
+            .filter((s: any) =>
+              String(s.id) === String(item.product_id) &&
+              String(s.variant_id || '') === String(item.variant_id || '') &&
+              s.snapshot_id &&
+              Number(s.snapshot_quantite) > 0 &&
+              Number(s.prix_vente ?? 0) === itemPV // match same prix_vente group
+            )
+            .sort((a: any, b: any) => (Number(a.fifo_priority) || 999) - (Number(b.fifo_priority) || 999));
+
+          if (allSnaps.length > 0) {
+            const fifoItems: any[] = [];
+            let remaining = q;
+
+            for (const snap of allSnaps) {
+              if (remaining <= 0) break;
+              const snapAvail = Number(snap.snapshot_quantite) || 0;
+              const take = Math.min(remaining, snapAvail);
+              fifoItems.push({
+                product_id: parseInt(item.product_id),
+                variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+                unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+                product_snapshot_id: snap.snapshot_id,
+                quantite: take,
+                prix_achat: pa,
+                prix_unitaire: prixUnitairePourDB,
+                remise_pourcentage: rp,
+                remise_montant: rm,
+                is_indisponible: false,
+                total: take * priceForTotal,
+              });
+              remaining -= take;
+            }
+
+            // Remaining qty after all snapshots exhausted → is_indisponible
+            if (remaining > 0) {
+              fifoItems.push({
+                product_id: parseInt(item.product_id),
+                variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+                unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+                product_snapshot_id: allSnaps[allSnaps.length - 1]?.snapshot_id || null,
+                quantite: remaining,
+                prix_achat: pa,
+                prix_unitaire: prixUnitairePourDB,
+                remise_pourcentage: rp,
+                remise_montant: rm,
+                is_indisponible: true,
+                total: remaining * priceForTotal,
+              });
+            }
+            return fifoItems;
+          }
+        }
+        // ── End FIFO allocation ──
+
         let availableQty = Infinity; // par défaut, pas de limite
 
         if (snapId && useSnapshotSelection && snapshotProducts?.length) {
@@ -3212,6 +3346,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           return pA - pB;
                                         });
                                         const snapshotOptions = sorted.map((p: any) => {
+                                          // Merged entry: single line per product+variant+prix_vente
+                                          if (p._isMerged) {
+                                            const serie = String(p.reference ?? p.id);
+                                            const nom = p.designation ?? '';
+                                            const variant = p.variant_name ? ` - ${p.variant_name}` : '';
+                                            const qte = p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : '';
+                                            const pv = Number(p.prix_vente ?? 0);
+                                            return {
+                                              value: `merged:${p.id}:${p.variant_id || 0}:${pv}`,
+                                              label: `${serie} - ${nom}${variant}${qte}`.trim(),
+                                              data: p,
+                                            };
+                                          }
+                                          // Individual snapshot lines (different prix_vente)
                                           const fifo = p.fifo_priority;
                                           const priorityTag = fifo === 1 ? '⭐' : fifo ? `#${fifo}` : '';
                                           const serie = String(p.reference ?? p.id);
@@ -3258,6 +3406,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       if (useSnapshotSelection && snapId) {
                                         return `snap:${snapId}:${prodId}`;
                                       }
+                                      // For merged items (all roles): return merged value format with prix_vente
+                                      if (useSnapshotSelection && prodId && !snapId) {
+                                        const varId = values.items[index].variant_id;
+                                        const pv = Number(values.items[index].prix_unitaire ?? 0);
+                                        return `merged:${prodId}:${varId || 0}:${pv}`;
+                                      }
                                       // For Commande: if a variant is selected, use var: prefix
                                       if (values.type === 'Commande' && values.items[index].variant_id) {
                                         return `var:${values.items[index].variant_id}:${prodId}`;
@@ -3298,6 +3452,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         product = products.find((p: any) => p.id === productId);
                                         if (product) {
                                           selectedVariant = (product.variants ?? []).find((v: any) => v.id === variantId);
+                                        }
+                                      } else if (selectedValue.startsWith('merged:')) {
+                                        // Merged product selection: "merged:<productId>:<variantId>:<prixVente>"
+                                        const parts = selectedValue.split(':');
+                                        const productId = parseInt(parts[1]);
+                                        const variantId = parseInt(parts[2]) || null;
+                                        const pvMatch = parseFloat(parts[3]) || 0;
+                                        product = (filteredSnapshotProducts as any[]).find(
+                                          (p: any) => p._isMerged && p.id === productId &&
+                                            (String(p.variant_id || 0) === String(variantId || 0)) &&
+                                            Number(p.prix_vente ?? 0) === pvMatch
+                                        );
+                                        if (!product) {
+                                          product = (products as any[]).find((p: any) => String(p.id) === String(productId)) || null;
                                         }
                                       } else if (useSnapshotSelection && snapshotProducts.length > 0) {
                                         // Parse selectedValue: "snap:<snapId>:<productId>" or "p:<productId>:<idx>"
@@ -3873,8 +4041,26 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
     if (!product) return null;
     const variantId = values.items[index].variant_id;
+    const snapIdForStock = values.items[index].product_snapshot_id;
     let availableStock = 0;
-    if (variantId && Array.isArray(product.variants)) {
+
+    if (useSnapshotSelection && snapshotProducts?.length) {
+      // Use snapshot quantities from product_snapshot table
+      if (snapIdForStock) {
+        // Specific snapshot selected (PDG) → use that snapshot's qty
+        const snap = (snapshotProducts as any[]).find((s: any) => s.snapshot_id === Number(snapIdForStock));
+        availableStock = Number(snap?.snapshot_quantite ?? 0);
+      } else {
+        // Merged selection → sum all snapshot quantities for this product+variant
+        const matchingSnaps = (snapshotProducts as any[]).filter((s: any) =>
+          String(s.id) === String(values.items[index].product_id) &&
+          String(s.variant_id || '') === String(variantId || '') &&
+          s.snapshot_id &&
+          Number(s.snapshot_quantite) > 0
+        );
+        availableStock = matchingSnaps.reduce((sum: number, s: any) => sum + Number(s.snapshot_quantite ?? 0), 0);
+      }
+    } else if (variantId && Array.isArray(product.variants)) {
       const variant = product.variants.find((v: any) => String(v.id) === String(variantId));
       availableStock = Number(variant?.stock_quantity || 0);
     } else {

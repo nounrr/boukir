@@ -128,6 +128,20 @@ const BonsPage = () => {
   // Feature flag: show WhatsApp button only for PDG and Manager+
   const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
 
+  // Lock body scroll when any modal is open so only modal content scrolls
+  const anyModalOpen = isCreateModalOpen || isViewModalOpen || isEcommerceRemiseModalOpen ||
+    isNewClientModalOpen || isNewSupplierModalOpen || isNewVehicleModalOpen ||
+    isCreateAvoirModalOpen || isCreateAvoirClientModalOpen || isProductModalOpen ||
+    isDevisTransformModalOpen || isThermalPrintModalOpen || isPrintModalOpen || isDuplicateModalOpen;
+  useEffect(() => {
+    if (anyModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [anyModalOpen]);
+
   // UI restrictions:
   // - Ecommerce + AvoirEcommerce: allowed for PDG and ChefChauffeur
   // - Devis: not allowed for ChefChauffeur
@@ -2606,6 +2620,17 @@ const BonsPage = () => {
                             ) : null;
                           })()}
                           
+                          {/* Eye icon - visible directly for non-PDG/non-ManagerPlus roles */}
+                          {currentUser?.role !== 'PDG' && currentUser?.role !== 'ManagerPlus' && (
+                            <button
+                              onClick={() => { setSelectedBon(bon); setIsViewModalOpen(true); }}
+                              className="text-gray-600 hover:text-gray-800"
+                              title="Voir"
+                            >
+                              <Eye size={ACTION_ICON_SIZE} />
+                            </button>
+                          )}
+
                           {/* 3-dot menu for other actions */}
                           <div className="relative" ref={openMenuBonId === String(bon.id) ? menuRef : null}>
                             <button
@@ -2890,8 +2915,8 @@ const BonsPage = () => {
                                       </button>
                                     )}
                                     
-                                    {/* View */}
-                                    {currentUser?.role !== 'Employé' && (
+                                    {/* View - only in menu for PDG/ManagerPlus (others have it directly visible) */}
+                                    {(currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (
                                       <button
                                         onClick={() => { setSelectedBon(bon); setIsViewModalOpen(true); setOpenMenuBonId(null); }}
                                         className="p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-800 rounded"

@@ -406,7 +406,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   const baseEdit = editingProduct ? { ...(editingProduct as any), ...((fullProduct as any) || {}) } : null;
-  const productSnapshotRows = (baseEdit as any)?.snapshot_rows || null;
+  const productSnapshotRowsRaw = (baseEdit as any)?.snapshot_rows || null;
+  // Filter out snapshots with quantity 0
+  const productSnapshotRows = Array.isArray(productSnapshotRowsRaw)
+    ? productSnapshotRowsRaw.filter((s: any) => Number(s.quantite || 0) !== 0)
+    : productSnapshotRowsRaw;
 
   // Reverse-compute percentages from actual stored prices so they are always in sync.
   // Formula: price = prix_achat * (1 + pct/100)  =>  pct = ((price / prix_achat) - 1) * 100
@@ -620,6 +624,24 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             } catch (e) {
               console.warn('Variant media upload failed (update)', e);
               // Non-bloquant: on poursuit l'enregistrement produit
+            }
+          }
+
+          // Also save snapshot edits if any
+          if (Object.keys(snapshotEdits).length > 0) {
+            try {
+              const snapshotEntries = Object.entries(snapshotEdits);
+              const snapshots = snapshotEntries.map(([idStr, edits]) => {
+                const obj: any = { id: Number(idStr) };
+                for (const [k, v] of Object.entries(edits as Record<string, string>)) {
+                  obj[k] = v === '' ? 0 : Number(String(v).replace(',', '.')) || 0;
+                }
+                return obj;
+              });
+              await updateSnapshots({ snapshots }).unwrap();
+              setSnapshotEdits({});
+            } catch (e) {
+              console.error('Snapshot save failed during product update', e);
             }
           }
 
@@ -1385,22 +1407,67 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             {/* Snapshot accordion produit — masqué si variantes obligatoires */}
             {editingProduct && !(formik.values as any).isObligatoireVariant && (
                 <div className="mt-4 md:col-span-2 w-full rounded-xl border-2 border-blue-300 bg-gradient-to-b from-blue-50 to-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h4 className="text-base font-bold text-blue-900 flex items-center gap-2">
                       <Package size={18} />
                       Historique des achats <span className="text-sm font-normal text-blue-600">({Array.isArray(productSnapshotRows) ? productSnapshotRows.length : 0})</span>
                     </h4>
-                    {hasSnapshotChanges && (
-                      <button
-                        type="button"
-                        onClick={handleSaveSnapshots}
-                        disabled={savingSnapshots}
-                        className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm transition-colors disabled:opacity-50"
-                      >
-                        <Save size={14} />
-                        {savingSnapshots ? 'Enregistrement...' : 'Sauvegarder'}
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Bulk prix vente input — visible when multiple visible snapshots */}
+                      {Array.isArray(productSnapshotRows) && productSnapshotRows.length > 1 && (
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">Prix vente tous:</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0"
+                            className="w-24 px-2.5 py-1.5 text-sm font-medium border-2 border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const rawValue = (e.target as HTMLInputElement).value;
+                                const val = parseFloat(String(rawValue).replace(',', '.'));
+                                if (!Number.isFinite(val) || val <= 0) return;
+                                // Apply prix_vente to all visible snapshots
+                                const updates: Record<number, any> = {};
+                                productSnapshotRows!.forEach((snap: any) => {
+                                  const pa = parseFloat(String(
+                                    snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
+                                  ).replace(',', '.')) || 0;
+                                  const pctVal = pa > 0 ? parseFloat(((val / pa - 1) * 100).toFixed(2)) : 0;
+                                  updates[snap.id] = {
+                                    ...(snapshotEdits[snap.id] || {}),
+                                    prix_vente: String(val),
+                                    prix_vente_pourcentage: String(pctVal),
+                                  };
+                                });
+                                setSnapshotEdits(prev => ({ ...prev, ...updates }));
+                              }
+                            }}
+                            onChange={(e) => {
+                              // Also apply on change (live) for better UX
+                              const rawValue = e.target.value;
+                              const val = parseFloat(String(rawValue).replace(',', '.'));
+                              if (!Number.isFinite(val) || val <= 0) return;
+                              const updates: Record<number, any> = {};
+                              productSnapshotRows!.forEach((snap: any) => {
+                                const pa = parseFloat(String(
+                                  snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
+                                ).replace(',', '.')) || 0;
+                                const pctVal = pa > 0 ? parseFloat(((val / pa - 1) * 100).toFixed(2)) : 0;
+                                updates[snap.id] = {
+                                  ...(snapshotEdits[snap.id] || {}),
+                                  prix_vente: String(val),
+                                  prix_vente_pourcentage: String(pctVal),
+                                };
+                              });
+                              setSnapshotEdits(prev => ({ ...prev, ...updates }));
+                            }}
+                          />
+                          <span className="text-xs text-gray-500">DH</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {Array.isArray(productSnapshotRows) && productSnapshotRows.length > 0 ? productSnapshotRows.map((s: any) => {
@@ -1995,17 +2062,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   <Package size={16} />
                                   Historique achats variante <span className="text-xs font-normal text-indigo-600">({(variant as any).snapshot_rows.length})</span>
                                 </h4>
-                                {hasSnapshotChanges && (
-                                  <button
-                                    type="button"
-                                    onClick={handleSaveSnapshots}
-                                    disabled={savingSnapshots}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm transition-colors disabled:opacity-50"
-                                  >
-                                    <Save size={12} />
-                                    {savingSnapshots ? '...' : 'Sauvegarder'}
-                                  </button>
-                                )}
                               </div>
                               <div className="space-y-2">
                                 {(variant as any).snapshot_rows.map((s: any) => {
