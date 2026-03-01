@@ -1422,37 +1422,39 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     }
   }, [isOpen]);
 
-  // 🔧 Patch item prices from snapshot data when snapshotProducts finishes loading
-  // This handles the case where getInitialValues() ran before the async query completed
+  // 🔧 Patch item prices from snapshot/product data when async queries finish loading
+  // This handles the case where getInitialValues() ran before products/snapshots were available
+  // Also ensures cout_revient & prix_achat are always unit-adjusted when a unit is selected
   useEffect(() => {
-    if (!isOpen || !formikRef.current || !snapshotProducts?.length) return;
+    if (!isOpen || !formikRef.current) return;
+    if (!(products as any[])?.length && !(snapshotProducts as any[])?.length) return;
     const items = formikRef.current.values?.items || [];
     let anyPatched = false;
     items.forEach((item: any, idx: number) => {
-      const snapId = item.product_snapshot_id;
-      if (!snapId) return;
-      const snap = (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId));
-      if (!snap) return;
+      if (!item.product_id) return;
 
-      const currentPA = Number(item.prix_achat) || 0;
-      const currentCR = Number(item.cout_revient) || 0;
-      const snapPA = Number(snap.prix_achat) || 0;
-      const snapCR = Number(snap.cout_revient) || 0;
-
-      // Also check variant from base product catalog
       const prod = (products as any[]).find((p: any) => String(p.id) === String(item.product_id));
+
+      // Resolve snapshot if available
+      const snapId = item.product_snapshot_id;
+      const snap = snapId && (snapshotProducts as any[])?.length
+        ? (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId))
+        : null;
+
+      // Resolve variant
       const variant = item.variant_id && prod?.variants
         ? (prod.variants as any[]).find((v: any) => String(v.id) === String(item.variant_id))
         : null;
-      const varPA = Number(variant?.prix_achat) || 0;
-      const varCR = Number(variant?.cout_revient) || 0;
 
-      const bestPA = snapPA || varPA;
-      const bestCR = snapCR || varCR;
+      // Base PA/CR from best source: snapshot → variant → product catalog
+      const bestPA = Number(snap?.prix_achat) || Number(variant?.prix_achat) || Number(prod?.prix_achat) || 0;
+      const bestCR = Number(snap?.cout_revient) || Number(variant?.cout_revient) || Number(prod?.cout_revient) || bestPA || 0;
+
+      if (!bestPA && !bestCR) return;
 
       // Resolve unit conversion factor
       let convFactor = 1;
-      if (item.unit_id && prod?.units) {
+      if (item.unit_id && prod?.units?.length) {
         const unitObj = (prod.units as any[]).find((u: any) => String(u.id) === String(item.unit_id));
         if (unitObj) {
           const isBase = unitObj.is_default || unitObj.facteur_isNormal;
@@ -1463,8 +1465,10 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         }
       }
 
-      // ALWAYS override PA/CR with snapshot/variant values (× unit factor) when they exist
+      // ALWAYS apply: base value × unit conversion factor
       // prix_unitaire is NOT patched — it comes from the bon items table (actual selling price)
+      const currentPA = Number(item.prix_achat) || 0;
+      const currentCR = Number(item.cout_revient) || 0;
       const finalPA = Number((bestPA * convFactor).toFixed(2));
       const finalCR = Number((bestCR * convFactor).toFixed(2));
       if (finalPA > 0 && currentPA !== finalPA) {
@@ -1477,10 +1481,10 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       }
     });
     if (anyPatched) {
-      console.log('🔧 [SNAPSHOT PATCH] Patched item prices from snapshot/variant data after async load');
+      console.log('🔧 [UNIT/SNAPSHOT PATCH] Patched item PA/CR with unit conversion factor');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshotProducts, isOpen]);
+  }, [snapshotProducts, products, isOpen]);
 
   // Focus manager for arrow navigation between cells
   const focusCell = (rowIndex: number, colKey: string) => {
@@ -4250,8 +4254,30 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   {(() => {
     const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
     const pv = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-    const cr = Number(values.items[index].cout_revient) || Number(values.items[index].prix_achat) || 0;
     const remise = Number(values.items[index].remise_montant || 0);
+
+    // Compute CR with unit conversion factor applied (safety net for edit mode initial load)
+    const itemRow = values.items[index];
+    const profitProduct = (products as any[]).find((p: any) => String(p.id) === String(itemRow.product_id));
+    let profitSnap: any = null;
+    if (itemRow.product_snapshot_id && (snapshotProducts as any[])?.length) {
+      profitSnap = (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(itemRow.product_snapshot_id));
+    }
+    let profitVariant: any = null;
+    if (itemRow.variant_id && profitProduct?.variants?.length) {
+      profitVariant = (profitProduct.variants as any[]).find((v: any) => String(v.id) === String(itemRow.variant_id));
+    }
+    const baseCR = Number(profitSnap?.cout_revient) || Number(profitVariant?.cout_revient) || Number(profitProduct?.cout_revient) || Number(profitProduct?.prix_achat) || 0;
+    let profitConvFactor = 1;
+    if (itemRow.unit_id && profitProduct?.units?.length) {
+      const profitUnit = (profitProduct.units as any[]).find((u: any) => String(u.id) === String(itemRow.unit_id));
+      if (profitUnit && !profitUnit.is_default && !profitUnit.facteur_isNormal) {
+        const f = Number(profitUnit.conversion_factor) || 1;
+        if (f > 0) profitConvFactor = f;
+      }
+    }
+    const cr = baseCR > 0 ? Number((baseCR * profitConvFactor).toFixed(2)) : (Number(itemRow.cout_revient) || Number(itemRow.prix_achat) || 0);
+
     const profit = (pv - cr) * q - remise * q;
     const cls = profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-400';
     return (
@@ -4493,12 +4519,30 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       if (mouvementPreviewLoading) {
         return '...';
       }
-      // Fallback local calc if preview not available
+      // Fallback local calc if preview not available (with unit conversion)
       const local = (values.items || []).reduce((sum: number, item: any, idx: number) => {
         const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
         const prixVente = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
-        const crRaw = item.cout_revient ?? item.prix_achat ?? 0;
-        const coutRevient = typeof crRaw === 'string' ? parseFloat(String(crRaw).replace(',', '.')) || 0 : Number(crRaw) || 0;
+        // Compute CR with unit conversion factor
+        const mvProd = (products as any[]).find((p: any) => String(p.id) === String(item.product_id));
+        let mvSnap: any = null;
+        if (item.product_snapshot_id && (snapshotProducts as any[])?.length) {
+          mvSnap = (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(item.product_snapshot_id));
+        }
+        let mvVar: any = null;
+        if (item.variant_id && mvProd?.variants?.length) {
+          mvVar = (mvProd.variants as any[]).find((v: any) => String(v.id) === String(item.variant_id));
+        }
+        const mvBaseCR = Number(mvSnap?.cout_revient) || Number(mvVar?.cout_revient) || Number(mvProd?.cout_revient) || Number(mvProd?.prix_achat) || 0;
+        let mvFactor = 1;
+        if (item.unit_id && mvProd?.units?.length) {
+          const mvUnit = (mvProd.units as any[]).find((u: any) => String(u.id) === String(item.unit_id));
+          if (mvUnit && !mvUnit.is_default && !mvUnit.facteur_isNormal) {
+            const f = Number(mvUnit.conversion_factor) || 1;
+            if (f > 0) mvFactor = f;
+          }
+        }
+        const coutRevient = mvBaseCR > 0 ? Number((mvBaseCR * mvFactor).toFixed(2)) : (Number(item.cout_revient) || Number(item.prix_achat) || 0);
         return sum + (prixVente - coutRevient) * q;
       }, 0);
       return formatFull(local);

@@ -800,7 +800,6 @@ const BonsPage = () => {
 
     // 1) Snapshot-level cost (priorité absolue: données historiques gelées)
     let baseCost = 0;
-    let usedItemLevel = false;
     if (it.product_snapshot_id && (snapshotProducts as any[])?.length) {
       const snap = (snapshotProducts as any[]).find((p: any) => String(p.snapshot_id) === String(it.product_snapshot_id));
       if (snap) {
@@ -816,7 +815,7 @@ const BonsPage = () => {
       }
     }
 
-    // 3) Item-level cost (snapshot / historique) avec toutes les clés possibles
+    // 3) Item-level cost (from backend GET which fetches from products table = base unit value)
     if (!baseCost) {
       const itemCostCandidates = [
         it.cout_revient,
@@ -834,7 +833,6 @@ const BonsPage = () => {
         const n = toNum(c);
         if (n > 0) {
           baseCost = n;
-          usedItemLevel = true;
           break;
         }
       }
@@ -852,13 +850,18 @@ const BonsPage = () => {
 
     if (!baseCost) return 0;
 
-    // 5) Facteur de conversion unité : uniquement si on a utilisé un coût base snapshot/variant/produit
+    // 5) Facteur de conversion unité : TOUJOURS appliquer quand un unit_id est sélectionné
+    // car le cout_revient vient de la table products (valeur de base par unité),
+    // jamais stocké par item — il faut donc multiplier par le facteur de conversion
     let convFactor = 1;
-    if (!usedItemLevel && it.unit_id && prod?.units) {
+    if (it.unit_id && prod?.units) {
       const u = (prod.units as any[]).find((un: any) => String(un.id) === String(it.unit_id));
       if (u) {
-        const f = toNum((u as any).conversion_factor);
-        if (f > 0) convFactor = f;
+        const isBase = u.is_default || u.facteur_isNormal;
+        if (!isBase) {
+          const f = toNum((u as any).conversion_factor);
+          if (f > 0) convFactor = f;
+        }
       }
     }
 

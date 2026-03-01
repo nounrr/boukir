@@ -103,6 +103,31 @@ router.post('/mouvement', verifyToken, async (req, res) => {
       }
     }
 
+    // Fetch unit conversion factors for items that have a unit_id
+    const unitIds = Array.from(
+      new Set(
+        itemsRaw
+          .map((it) => Number(it?.unit_id))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      )
+    );
+    let unitFactorById = new Map();
+    if (unitIds.length) {
+      try {
+        const [unitRows] = await pool.query(
+          'SELECT id, conversion_factor, is_default FROM product_units WHERE id IN (?)',
+          [unitIds]
+        );
+        unitFactorById = (unitRows || []).reduce((acc, r) => {
+          const isBase = Number(r.is_default) === 1;
+          acc.set(Number(r.id), isBase ? 1 : (Number(r.conversion_factor) || 1));
+          return acc;
+        }, new Map());
+      } catch (e) {
+        console.warn('product_units query failed:', e?.message);
+      }
+    }
+
     const items = itemsRaw.map((it) => {
       const pid = Number(it?.product_id ?? it?.produit_id);
       const fromCatalog = Number.isFinite(pid) ? productCostById.get(pid) : null;
@@ -111,19 +136,25 @@ router.post('/mouvement', verifyToken, async (req, res) => {
       const varId = Number(it?.variant_id ?? it?.variantId);
       const fromVariant = Number.isFinite(varId) ? variantCostById.get(varId) : null;
 
-      // Priority: snapshot → variant → item → product catalog
-      const prix_achat =
+      // Priority: snapshot → variant → item → product catalog (base values)
+      const basePrixAchat =
         (fromSnapshot?.prix_achat) ||
         (fromVariant?.prix_achat) ||
         (Number(it?.prix_achat) || 0) ||
         (fromCatalog?.prix_achat ?? 0);
 
-      const cout_revient =
+      const baseCoutRevient =
         (fromSnapshot?.cout_revient) ||
         (fromVariant?.cout_revient) ||
         (Number(it?.cout_revient) || 0) ||
         (fromCatalog?.cout_revient ?? 0) ||
-        prix_achat;
+        basePrixAchat;
+
+      // Apply unit conversion factor to cost fields
+      const unitId = Number(it?.unit_id);
+      const convFactor = (Number.isFinite(unitId) && unitId > 0) ? (unitFactorById.get(unitId) || 1) : 1;
+      const prix_achat = Number((basePrixAchat * convFactor).toFixed(2));
+      const cout_revient = Number((baseCoutRevient * convFactor).toFixed(2));
 
       return {
         ...it,
