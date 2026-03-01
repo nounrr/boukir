@@ -149,7 +149,28 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     return [];
   };
 
-  const items = parseItemsArray(bon.items);
+  const rawItems = parseItemsArray(bon.items);
+
+  // Merge items with same product + variant + prix_unitaire into a single line
+  const mergeItems = (src: any[]): any[] => {
+    const map = new Map<string, any>();
+    const result: any[] = [];
+    for (const it of src) {
+      const pu = parseFloat(it.prix_unitaire || 0);
+      const key = `${it.product_id ?? it.produit_id ?? it.id ?? ''}:${it.variant_id ?? it.variantId ?? ''}:${pu}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.quantite = parseFloat(existing.quantite || 0) + parseFloat(it.quantite || 0);
+      } else {
+        const merged = { ...it };
+        map.set(key, merged);
+        result.push(merged);
+      }
+    }
+    return result;
+  };
+  const items = mergeItems(rawItems);
+
   const sousTotal = items.reduce(
     (sum: number, item: any) => sum + (parseFloat(item.quantite || 0) * parseFloat(item.prix_unitaire || 0)),
     0

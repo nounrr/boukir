@@ -148,6 +148,58 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     }));
   };
 
+  // Bidirectional price↔percentage sync for snapshot fields
+  const pricePctPairs: Record<string, string> = {
+    cout_revient: 'cout_revient_pourcentage',
+    cout_revient_pourcentage: 'cout_revient',
+    prix_gros: 'prix_gros_pourcentage',
+    prix_gros_pourcentage: 'prix_gros',
+    prix_vente: 'prix_vente_pourcentage',
+    prix_vente_pourcentage: 'prix_vente',
+  };
+
+  const handleSnapshotFieldChange = (snap: any, field: string, rawValue: string) => {
+    const val = parseFloat(String(rawValue).replace(',', '.')) || 0;
+    const prixAchat = parseFloat(String(
+      snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
+    ).replace(',', '.')) || 0;
+
+    const updates: Record<string, string> = { [field]: rawValue };
+
+    const linkedField = pricePctPairs[field];
+
+    if (field === 'prix_achat' && prixAchat !== val) {
+      // prix_achat changed → recalc all 3 percentages from their current prices
+      const newPa = val;
+      if (newPa > 0) {
+        ['cout_revient', 'prix_gros', 'prix_vente'].forEach(priceKey => {
+          const pctKey = priceKey + '_pourcentage';
+          const curPrice = parseFloat(String(
+            snapshotEdits[snap.id]?.[priceKey] !== undefined ? snapshotEdits[snap.id][priceKey] : snap[priceKey]
+          ).replace(',', '.')) || 0;
+          updates[pctKey] = String(parseFloat(((curPrice / newPa - 1) * 100).toFixed(2)));
+        });
+      }
+    } else if (linkedField && field.includes('pourcentage')) {
+      // percentage changed → compute price = prix_achat * (1 + pct/100)
+      if (prixAchat > 0) {
+        const newPrice = parseFloat((prixAchat * (1 + val / 100)).toFixed(2));
+        updates[linkedField] = String(newPrice);
+      }
+    } else if (linkedField && !field.includes('pourcentage')) {
+      // price changed → compute percentage = ((price / prix_achat) - 1) * 100
+      if (prixAchat > 0) {
+        const newPct = parseFloat(((val / prixAchat - 1) * 100).toFixed(2));
+        updates[linkedField] = String(newPct);
+      }
+    }
+
+    setSnapshotEdits(prev => ({
+      ...prev,
+      [snap.id]: { ...(prev[snap.id] || {}), ...updates }
+    }));
+  };
+
   const hasSnapshotChanges = Object.keys(snapshotEdits).length > 0;
 
   const handleSaveSnapshots = async () => {
@@ -303,6 +355,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     prix_vente: '',
   });
 
+  // Track which price field is being actively edited to prevent useEffect from overwriting user input
+  const priceEditingRef = React.useRef<string | null>(null);
+
   const calculatePrices = (prixAchat: number, coutPct: number, grosPct: number, ventePct: number) => {
     const round2 = (v: number) => Number(parseFloat((v || 0).toFixed(2)));
     return {
@@ -351,7 +406,21 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   const baseEdit = editingProduct ? { ...(editingProduct as any), ...((fullProduct as any) || {}) } : null;
-  const productSnapshotRows = (baseEdit as any)?.snapshot_rows || null;
+  const productSnapshotRowsRaw = (baseEdit as any)?.snapshot_rows || null;
+  // Filter out snapshots with quantity 0
+  const productSnapshotRows = Array.isArray(productSnapshotRowsRaw)
+    ? productSnapshotRowsRaw.filter((s: any) => Number(s.quantite || 0) !== 0)
+    : productSnapshotRowsRaw;
+
+  // Reverse-compute percentages from actual stored prices so they are always in sync.
+  // Formula: price = prix_achat * (1 + pct/100)  =>  pct = ((price / prix_achat) - 1) * 100
+  const derivePct = (price: any, prixAchat: any, fallback: number): number => {
+    const pa = Number(prixAchat) || 0;
+    const p = Number(price);
+    if (pa > 0 && Number.isFinite(p) && p > 0) return Number(((p / pa - 1) * 100).toFixed(4));
+    return fallback;
+  };
+
   const formik = useFormik({
     initialValues: baseEdit
       ? {
@@ -364,9 +433,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           quantite: (baseEdit as any).quantite ?? 0,
           kg: (baseEdit as any).kg ?? undefined,
           prix_achat: (baseEdit as any).prix_achat ?? 0,
-          cout_revient_pourcentage: (baseEdit as any).cout_revient_pourcentage ?? 2,
-          prix_gros_pourcentage: (baseEdit as any).prix_gros_pourcentage ?? 10,
-          prix_vente_pourcentage: (baseEdit as any).prix_vente_pourcentage ?? 25,
+          cout_revient_pourcentage: derivePct((baseEdit as any).cout_revient, (baseEdit as any).prix_achat, (baseEdit as any).cout_revient_pourcentage ?? 2),
+          prix_gros_pourcentage: derivePct((baseEdit as any).prix_gros, (baseEdit as any).prix_achat, (baseEdit as any).prix_gros_pourcentage ?? 10),
+          prix_vente_pourcentage: derivePct((baseEdit as any).prix_vente, (baseEdit as any).prix_achat, (baseEdit as any).prix_vente_pourcentage ?? 25),
           est_service: (baseEdit as any).est_service ?? false,
           remise_client: (baseEdit as any).remise_client ?? 0,
           remise_artisan: (baseEdit as any).remise_artisan ?? 0,
@@ -558,6 +627,24 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             }
           }
 
+          // Also save snapshot edits if any
+          if (Object.keys(snapshotEdits).length > 0) {
+            try {
+              const snapshotEntries = Object.entries(snapshotEdits);
+              const snapshots = snapshotEntries.map(([idStr, edits]) => {
+                const obj: any = { id: Number(idStr) };
+                for (const [k, v] of Object.entries(edits as Record<string, string>)) {
+                  obj[k] = v === '' ? 0 : Number(String(v).replace(',', '.')) || 0;
+                }
+                return obj;
+              });
+              await updateSnapshots({ snapshots }).unwrap();
+              setSnapshotEdits({});
+            } catch (e) {
+              console.error('Snapshot save failed during product update', e);
+            }
+          }
+
           showSuccess('Produit mis à jour avec succès !');
           if (onProductUpdated) onProductUpdated(res);
         } else {
@@ -738,13 +825,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     formik.values.prix_vente_pourcentage,
   ]);
 
-  // Quand les valeurs calculées changent, on met à jour l'affichage brut (sans casser la saisie)
+  // Quand les valeurs calculées changent, on met à jour l'affichage brut (sauf le champ en cours de saisie)
   useEffect(() => {
-    setPriceRaw({
-      cout_revient: formatNumber(dynamicPrices.cout_revient),
-      prix_gros: formatNumber(dynamicPrices.prix_gros),
-      prix_vente: formatNumber(dynamicPrices.prix_vente),
-    });
+    setPriceRaw((prev) => ({
+      cout_revient: priceEditingRef.current === 'cout_revient' ? prev.cout_revient : formatNumber(dynamicPrices.cout_revient),
+      prix_gros: priceEditingRef.current === 'prix_gros' ? prev.prix_gros : formatNumber(dynamicPrices.prix_gros),
+      prix_vente: priceEditingRef.current === 'prix_vente' ? prev.prix_vente : formatNumber(dynamicPrices.prix_vente),
+    }));
   }, [dynamicPrices.cout_revient, dynamicPrices.prix_gros, dynamicPrices.prix_vente]);
 
   // (Retiré) Le prix de vente par unité n'est plus stocké; affichage calculé côté liste
@@ -1320,22 +1407,67 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             {/* Snapshot accordion produit — masqué si variantes obligatoires */}
             {editingProduct && !(formik.values as any).isObligatoireVariant && (
                 <div className="mt-4 md:col-span-2 w-full rounded-xl border-2 border-blue-300 bg-gradient-to-b from-blue-50 to-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h4 className="text-base font-bold text-blue-900 flex items-center gap-2">
                       <Package size={18} />
                       Historique des achats <span className="text-sm font-normal text-blue-600">({Array.isArray(productSnapshotRows) ? productSnapshotRows.length : 0})</span>
                     </h4>
-                    {hasSnapshotChanges && (
-                      <button
-                        type="button"
-                        onClick={handleSaveSnapshots}
-                        disabled={savingSnapshots}
-                        className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm transition-colors disabled:opacity-50"
-                      >
-                        <Save size={14} />
-                        {savingSnapshots ? 'Enregistrement...' : 'Sauvegarder'}
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Bulk prix vente input — visible when multiple visible snapshots */}
+                      {Array.isArray(productSnapshotRows) && productSnapshotRows.length > 1 && (
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">Prix vente tous:</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0"
+                            className="w-24 px-2.5 py-1.5 text-sm font-medium border-2 border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const rawValue = (e.target as HTMLInputElement).value;
+                                const val = parseFloat(String(rawValue).replace(',', '.'));
+                                if (!Number.isFinite(val) || val <= 0) return;
+                                // Apply prix_vente to all visible snapshots
+                                const updates: Record<number, any> = {};
+                                productSnapshotRows!.forEach((snap: any) => {
+                                  const pa = parseFloat(String(
+                                    snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
+                                  ).replace(',', '.')) || 0;
+                                  const pctVal = pa > 0 ? parseFloat(((val / pa - 1) * 100).toFixed(2)) : 0;
+                                  updates[snap.id] = {
+                                    ...(snapshotEdits[snap.id] || {}),
+                                    prix_vente: String(val),
+                                    prix_vente_pourcentage: String(pctVal),
+                                  };
+                                });
+                                setSnapshotEdits(prev => ({ ...prev, ...updates }));
+                              }
+                            }}
+                            onChange={(e) => {
+                              // Also apply on change (live) for better UX
+                              const rawValue = e.target.value;
+                              const val = parseFloat(String(rawValue).replace(',', '.'));
+                              if (!Number.isFinite(val) || val <= 0) return;
+                              const updates: Record<number, any> = {};
+                              productSnapshotRows!.forEach((snap: any) => {
+                                const pa = parseFloat(String(
+                                  snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
+                                ).replace(',', '.')) || 0;
+                                const pctVal = pa > 0 ? parseFloat(((val / pa - 1) * 100).toFixed(2)) : 0;
+                                updates[snap.id] = {
+                                  ...(snapshotEdits[snap.id] || {}),
+                                  prix_vente: String(val),
+                                  prix_vente_pourcentage: String(pctVal),
+                                };
+                              });
+                              setSnapshotEdits(prev => ({ ...prev, ...updates }));
+                            }}
+                          />
+                          <span className="text-xs text-gray-500">DH</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {Array.isArray(productSnapshotRows) && productSnapshotRows.length > 0 ? productSnapshotRows.map((s: any) => {
@@ -1382,7 +1514,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                       type="text"
                                       inputMode="decimal"
                                       value={getSnapshotEditValue(s, key)}
-                                      onChange={(e) => setSnapshotEditField(s.id, key, e.target.value)}
+                                      onChange={(e) => handleSnapshotFieldChange(s, key, e.target.value)}
                                       className={`w-full px-3 py-2 text-sm font-medium border-2 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors ${
                                         snapshotEdits[s.id]?.[key] !== undefined ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white'
                                       }`}
@@ -1539,19 +1671,22 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     type="text"
                     inputMode="decimal"
                     value={priceRaw.cout_revient}
+                    onFocus={() => { priceEditingRef.current = 'cout_revient'; }}
                     onChange={(e) => {
                       const v = e.target.value;
                       if (!isDecimalLike(v)) return;
                       setPriceRaw((prev) => ({ ...prev, cout_revient: v }));
-                    }}
-                    onBlur={() => {
-                      const val = parseFloat(normalizeDecimal(priceRaw.cout_revient)) || 0;
+                      const val = parseFloat(normalizeDecimal(v)) || 0;
                       const prixA = toNum(formik.values.prix_achat) || 0;
                       if (prixA > 0) {
                         const pct = (val / prixA - 1) * 100;
                         formik.setFieldValue('cout_revient_pourcentage', Number(pct.toFixed(4)));
                       }
                       setDynamicPrices((prev) => ({ ...prev, cout_revient: val }));
+                    }}
+                    onBlur={() => {
+                      priceEditingRef.current = null;
+                      const val = parseFloat(normalizeDecimal(priceRaw.cout_revient)) || 0;
                       setPriceRaw((prev) => ({ ...prev, cout_revient: formatNumber(val) }));
                     }}
                     className="w-full text-right bg-transparent border-0 focus:outline-none"
@@ -1583,19 +1718,22 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     type="text"
                     inputMode="decimal"
                     value={priceRaw.prix_gros}
+                    onFocus={() => { priceEditingRef.current = 'prix_gros'; }}
                     onChange={(e) => {
                       const v = e.target.value;
                       if (!isDecimalLike(v)) return;
                       setPriceRaw((prev) => ({ ...prev, prix_gros: v }));
-                    }}
-                    onBlur={() => {
-                      const val = parseFloat(normalizeDecimal(priceRaw.prix_gros)) || 0;
+                      const val = parseFloat(normalizeDecimal(v)) || 0;
                       const prixA = toNum(formik.values.prix_achat) || 0;
                       if (prixA > 0) {
                         const pct = (val / prixA - 1) * 100;
                         formik.setFieldValue('prix_gros_pourcentage', Number(pct.toFixed(4)));
                       }
                       setDynamicPrices((prev) => ({ ...prev, prix_gros: val }));
+                    }}
+                    onBlur={() => {
+                      priceEditingRef.current = null;
+                      const val = parseFloat(normalizeDecimal(priceRaw.prix_gros)) || 0;
                       setPriceRaw((prev) => ({ ...prev, prix_gros: formatNumber(val) }));
                     }}
                     className="w-full text-right bg-transparent border-0 focus:outline-none"
@@ -1627,19 +1765,22 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     type="text"
                     inputMode="decimal"
                     value={priceRaw.prix_vente}
+                    onFocus={() => { priceEditingRef.current = 'prix_vente'; }}
                     onChange={(e) => {
                       const v = e.target.value;
                       if (!isDecimalLike(v)) return;
                       setPriceRaw((prev) => ({ ...prev, prix_vente: v }));
-                    }}
-                    onBlur={() => {
-                      const val = parseFloat(normalizeDecimal(priceRaw.prix_vente)) || 0;
+                      const val = parseFloat(normalizeDecimal(v)) || 0;
                       const prixA = toNum(formik.values.prix_achat) || 0;
                       if (prixA > 0) {
                         const pct = (val / prixA - 1) * 100;
                         formik.setFieldValue('prix_vente_pourcentage', Number(pct.toFixed(4)));
                       }
                       setDynamicPrices((prev) => ({ ...prev, prix_vente: val }));
+                    }}
+                    onBlur={() => {
+                      priceEditingRef.current = null;
+                      const val = parseFloat(normalizeDecimal(priceRaw.prix_vente)) || 0;
                       setPriceRaw((prev) => ({ ...prev, prix_vente: formatNumber(val) }));
                     }}
                     className="w-full text-right bg-transparent border-0 focus:outline-none"
@@ -1921,17 +2062,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   <Package size={16} />
                                   Historique achats variante <span className="text-xs font-normal text-indigo-600">({(variant as any).snapshot_rows.length})</span>
                                 </h4>
-                                {hasSnapshotChanges && (
-                                  <button
-                                    type="button"
-                                    onClick={handleSaveSnapshots}
-                                    disabled={savingSnapshots}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm transition-colors disabled:opacity-50"
-                                  >
-                                    <Save size={12} />
-                                    {savingSnapshots ? '...' : 'Sauvegarder'}
-                                  </button>
-                                )}
                               </div>
                               <div className="space-y-2">
                                 {(variant as any).snapshot_rows.map((s: any) => {
