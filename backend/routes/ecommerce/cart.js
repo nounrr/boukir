@@ -231,7 +231,7 @@ router.get('/', async (req, res, next) => {
 
       const quantity = toSafeNumber(item.quantity);
       const inStock = availableStock > 0;
-      const isAvailable = backoffice ? true : (inStock && availableStock >= quantity);
+      const isAvailable = true;
 
       // Calculate subtotal
       const subtotal = priceAfterPromo * quantity;
@@ -250,7 +250,7 @@ router.get('/', async (req, res, next) => {
           image_url: primaryImage,
           has_variants: !!item.has_variants,
           is_obligatoire_variant: Number(item.is_obligatoire_variant || 0) === 1,
-          isObligatoireVariant: Number(item.is_obligatoire_variant || 0) === 1
+          isObligatoireVariant: Number(item.is_obligatoire_variant || 0) === 1,
         },
         variant: item.variant_id ? {
           id: item.variant_id,
@@ -418,6 +418,7 @@ router.post('/items', async (req, res, next) => {
       return res.status(400).json({ message: 'Ce produit n\'est pas disponible' });
     }
 
+
     const requiresVariant = Number(product.has_variants || 0) === 1 && Number(product.is_obligatoire_variant || 0) === 1;
     if (requiresVariant && !variantId) {
       return res.status(400).json({
@@ -462,15 +463,7 @@ router.post('/items', async (req, res, next) => {
     }
 
     // Guard: treat 0/NULL/invalid stock as out of stock (same as products `in_stock`)
-    // Backoffice/staff can still add to cart to create a manual/client order.
-    if (!(availableStock > 0) && !backoffice) {
-      return res.status(400).json({
-        message: 'Produit en rupture de stock',
-        code: 'OUT_OF_STOCK',
-        product_id: productId,
-        variant_id: variantId
-      });
-    }
+    // Global feature: do not block cart actions on stock.
 
     // Validate unit if provided
     if (unitId) {
@@ -511,16 +504,7 @@ router.post('/items', async (req, res, next) => {
         });
       }
 
-      // Check stock availability (skip for backoffice/staff)
-      if (!backoffice && newQuantity > availableStock) {
-        return res.status(400).json({ 
-          message: 'Quantité non disponible en stock',
-          code: 'INSUFFICIENT_STOCK',
-          product_id: productId,
-          variant_id: variantId,
-          requested_quantity: newQuantity
-        });
-      }
+      // Global feature: do not block cart actions on stock.
 
       await pool.query(`
         UPDATE cart_items
@@ -536,16 +520,7 @@ router.post('/items', async (req, res, next) => {
       });
     } else {
       // Add new item to cart
-      // Check stock availability (skip for backoffice/staff)
-      if (!backoffice && qty > availableStock) {
-        return res.status(400).json({ 
-          message: 'Quantité non disponible en stock',
-          code: 'INSUFFICIENT_STOCK',
-          product_id: productId,
-          variant_id: variantId,
-          requested_quantity: qty
-        });
-      }
+      // Global feature: do not block cart actions on stock.
 
       const [result] = await pool.query(`
         INSERT INTO cart_items (user_id, product_id, variant_id, unit_id, quantity, created_at, updated_at)
@@ -675,22 +650,7 @@ router.put('/items/:id', async (req, res, next) => {
       }
     }
 
-    if (!(availableStock > 0) && !backoffice) {
-      return res.status(400).json({
-        message: 'Produit en rupture de stock',
-        code: 'OUT_OF_STOCK',
-        requested_quantity: qty
-      });
-    }
-
-    // Check stock availability (skip for backoffice/staff)
-    if (!backoffice && qty > availableStock) {
-      return res.status(400).json({ 
-        message: 'Quantité non disponible en stock',
-        code: 'INSUFFICIENT_STOCK',
-        requested_quantity: qty
-      });
-    }
+    // Global feature: do not block cart actions on stock.
 
     // Update quantity
     await pool.query(`
@@ -1148,35 +1108,7 @@ router.post('/validate', async (req, res, next) => {
         }
       }
 
-      const requestedQty = toSafeNumber(item.quantity);
-      const inStock = availableStock > 0;
-
-      const itemName = item.variant_id
-        ? `${item.designation} (${item.variant_name})`
-        : item.designation;
-
-      if (!inStock) {
-        issues.push({
-          cart_item_id: item.id,
-          product_id: item.product_id,
-          variant_id: item.variant_id,
-          issue: 'out_of_stock',
-          message: `${itemName}: produit en rupture de stock`,
-          requested_quantity: requestedQty
-        });
-        continue;
-      }
-
-      if (requestedQty > availableStock) {
-        issues.push({
-          cart_item_id: item.id,
-          product_id: item.product_id,
-          variant_id: item.variant_id,
-          issue: 'insufficient_stock',
-          message: `${itemName}: stock insuffisant`,
-          requested_quantity: requestedQty
-        });
-      }
+      // Global feature: never fail validation due to stock.
     }
 
     // Backoffice/staff can proceed even if stock is insufficient.

@@ -44,6 +44,26 @@ async function hasProductSnapshotTable(db) {
   return _hasProductSnapshotTableCache;
 }
 
+let _hasEcommerceOrderItemsIsIndisponibleColumnCache = null;
+async function hasEcommerceOrderItemsIsIndisponibleColumn(db) {
+  if (_hasEcommerceOrderItemsIsIndisponibleColumnCache !== null) {
+    return _hasEcommerceOrderItemsIsIndisponibleColumnCache;
+  }
+  try {
+    const [rows] = await db.query(
+      `SELECT COUNT(*) AS cnt
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'ecommerce_order_items'
+         AND COLUMN_NAME = 'is_indisponible'`
+    );
+    _hasEcommerceOrderItemsIsIndisponibleColumnCache = Number(rows?.[0]?.cnt || 0) > 0;
+  } catch (e) {
+    _hasEcommerceOrderItemsIsIndisponibleColumnCache = false;
+  }
+  return _hasEcommerceOrderItemsIsIndisponibleColumnCache;
+}
+
 async function ensureEcommerceSnapshotAllocationsTable(db) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS ecommerce_order_item_snapshot_allocations (
@@ -134,8 +154,8 @@ router.post('/quote', async (req, res, next) => {
 
     const rawUserId = req.user?.id || null;
     const role = req.user?.role != null ? String(req.user.role).trim() : '';
-    const allowBackorder = role.length > 0;
-    const isEmployeeToken = allowBackorder && req.user?.cin != null && req.user?.type_compte == null;
+    const allowBackorder = true;
+    const isEmployeeToken = role.length > 0 && req.user?.cin != null && req.user?.type_compte == null;
     const userId = isEmployeeToken ? null : rawUserId;
 
     const normalizedDeliveryMethod = String(delivery_method || 'delivery').trim();
@@ -678,8 +698,8 @@ router.post('/', async (req, res, next) => {
 
     const rawUserId = req.user?.id || null; // NULL for guest orders
     const role = req.user?.role != null ? String(req.user.role).trim() : '';
-    const allowBackorder = role.length > 0;
-    const isEmployeeToken = allowBackorder && req.user?.cin != null && req.user?.type_compte == null;
+    const allowBackorder = true;
+    const isEmployeeToken = role.length > 0 && req.user?.cin != null && req.user?.type_compte == null;
     const userId = isEmployeeToken ? null : rawUserId;
 
     // Normalize coordinates
@@ -1435,6 +1455,8 @@ router.post('/', async (req, res, next) => {
 
     const orderId = orderResult.insertId;
 
+    const hasIsIndisponibleColumn = await hasEcommerceOrderItemsIsIndisponibleColumn(connection);
+
     // Safety net: always persist computed solde flags/amount server-side.
     // This also helps when older running code created orders with defaults.
     await connection.query(
@@ -1447,25 +1469,23 @@ router.post('/', async (req, res, next) => {
     // Insert order items and reduce stock
     for (const item of validatedItems) {
       // Insert order item
-      const [orderItemResult] = await connection.query(`
-        INSERT INTO ecommerce_order_items (
-          order_id,
-          product_id,
-          variant_id,
-          unit_id,
-          product_name,
-          product_name_ar,
-          variant_name,
-          variant_type,
-          unit_name,
-          unit_price,
-          quantity,
-          subtotal,
-          discount_percentage,
-          discount_amount,
-          is_indisponible
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
+      const insertColumns = [
+        'order_id',
+        'product_id',
+        'variant_id',
+        'unit_id',
+        'product_name',
+        'product_name_ar',
+        'variant_name',
+        'variant_type',
+        'unit_name',
+        'unit_price',
+        'quantity',
+        'subtotal',
+        'discount_percentage',
+        'discount_amount',
+      ];
+      const insertValues = [
         orderId,
         item.product_id,
         item.variant_id,
@@ -1480,8 +1500,19 @@ router.post('/', async (req, res, next) => {
         item.subtotal,
         item.discount_percentage,
         item.discount_amount,
-        item.is_indisponible ? 1 : 0
-      ]);
+      ];
+
+      if (hasIsIndisponibleColumn) {
+        insertColumns.push('is_indisponible');
+        insertValues.push(item.is_indisponible ? 1 : 0);
+      }
+
+      const placeholders = insertColumns.map(() => '?').join(', ');
+      const [orderItemResult] = await connection.query(
+        `INSERT INTO ecommerce_order_items (${insertColumns.join(', ')})
+         VALUES (${placeholders})`,
+        insertValues
+      );
 
       const orderItemId = orderItemResult.insertId;
 
@@ -1491,7 +1522,7 @@ router.post('/', async (req, res, next) => {
           productId: item.product_id,
           variantId: item.variant_id || null,
           quantity: item.quantity,
-          allowPartial: allowBackorder,
+          allowPartial: true,
         });
 
         for (const alloc of allocations) {
@@ -1516,9 +1547,7 @@ router.post('/', async (req, res, next) => {
         }
       } else {
         // Legacy stock reduction (fallback)
-        const qtyToDecrement = allowBackorder
-          ? Math.max(0, Math.min(Number(item.quantity) || 0, Number(item.available_stock) || 0))
-          : item.quantity;
+        const qtyToDecrement = Math.max(0, Math.min(Number(item.quantity) || 0, Number(item.available_stock) || 0));
 
         if (!(Number(qtyToDecrement) > 0)) {
           continue;

@@ -96,14 +96,13 @@ router.get('/', async (req, res, next) => {
       max_price,
       color,        // Single or comma-separated colors
       unit,         // Single or comma-separated units
-      in_stock_only = 'true', // Filter only in-stock products
+      in_stock_only, // Filter only in-stock products
       sort = 'newest', // newest, price_asc, price_desc, popular, promo
       page = 1,     // Page number (starts from 1)
       limit = 50,   // Items per page
       per_page      // Alternative to limit
     } = req.query;
 
-    const hasInStockOnlyParam = Object.prototype.hasOwnProperty.call(req.query || {}, 'in_stock_only');
     const parseBooleanish = (value, defaultValue) => {
       if (value === true || value === false) return value;
       if (value == null) return defaultValue;
@@ -114,11 +113,9 @@ router.get('/', async (req, res, next) => {
     };
 
     // Default behavior:
-    // - Public shoppers: only in-stock products (legacy behavior)
-    // - Backoffice/staff token: include out-of-stock products by default
-    const inStockOnly = !hasInStockOnlyParam && isBackoffice
-      ? false
-      : parseBooleanish(in_stock_only, true);
+    // - Global feature: include out-of-stock products by default.
+    // - Frontend can still force legacy behavior with `in_stock_only=true`.
+    const inStockOnly = parseBooleanish(in_stock_only, false);
 
     // Calculate pagination
     const currentPage = Math.max(1, Number(page));
@@ -133,7 +130,7 @@ router.get('/', async (req, res, next) => {
 
     // Stock filter
     if (inStockOnly) {
-      whereConditions.push(anyInStockWhereExpr);
+      whereConditions.push(`(${anyInStockWhereExpr})`);
     }
 
     // Category filter (includes subcategories) - supports multiple categories
@@ -1167,14 +1164,6 @@ router.get('/featured/promo', async (req, res, next) => {
           WHERE ps.product_id = p.id
         )`
       : 'COALESCE(p.stock_partage_ecom_qty, 0)';
-    const inStockWhereExpr = snapshotEnabled
-      ? `EXISTS (
-          SELECT 1
-          FROM product_snapshot ps
-          WHERE ps.product_id = p.id
-            AND ps.quantite > 0
-        )`
-      : 'p.stock_partage_ecom_qty > 0';
 
     const [rows] = await pool.query(`
       SELECT 
@@ -1196,7 +1185,6 @@ router.get('/featured/promo', async (req, res, next) => {
       LEFT JOIN brands b ON p.brand_id = b.id
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
-        AND ${inStockWhereExpr}
         AND p.pourcentage_promo > 0
       ORDER BY p.pourcentage_promo DESC, p.created_at DESC
       LIMIT ?
@@ -1290,14 +1278,6 @@ router.get('/featured/new', async (req, res, next) => {
           WHERE ps.product_id = p.id
         )`
       : 'COALESCE(p.stock_partage_ecom_qty, 0)';
-    const inStockWhereExpr = snapshotEnabled
-      ? `EXISTS (
-          SELECT 1
-          FROM product_snapshot ps
-          WHERE ps.product_id = p.id
-            AND ps.quantite > 0
-        )`
-      : 'p.stock_partage_ecom_qty > 0';
 
     const [rows] = await pool.query(`
       SELECT 
@@ -1319,7 +1299,6 @@ router.get('/featured/new', async (req, res, next) => {
       LEFT JOIN brands b ON p.brand_id = b.id
       WHERE p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
-        AND ${inStockWhereExpr}
       ORDER BY p.created_at DESC
       LIMIT ?
     `, [Number(limit)]);
