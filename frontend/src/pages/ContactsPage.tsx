@@ -1240,6 +1240,38 @@ const ContactsPage: React.FC = () => {
     return [initRow, ...filteredTransactions];
   }, [searchedProductHistory, selectedContact, allProductHistory]);
 
+  // Totaux Débit / Crédit filtrés (respectent dateFrom, dateTo, productSearch)
+  // Utilisés dans les cartes frontend, le PDF modal et le handlePrint
+  const filteredDebitCredit = useMemo(() => {
+    if (!selectedContact) return { totalDebit: 0, totalCredit: 0, totalVentes: 0, totalPaiements: 0, totalAvoirs: 0 };
+    const initialSolde = Number(selectedContact?.solde ?? 0);
+    const rows = (displayedProductHistory || []).filter((r: any) => !r?.syntheticInitial);
+    
+    let totalVentes = 0;
+    let totalPaiements = 0;
+    let totalAvoirs = 0;
+
+    for (const row of rows) {
+      const t = String(row.type || '').toLowerCase();
+      const amount = Number(row.total) || 0;
+      if (t === 'produit') {
+        totalVentes += amount;
+      } else if (t === 'paiement') {
+        totalPaiements += amount;
+      } else if (t.includes('avoir')) {
+        totalAvoirs += amount;
+      }
+    }
+
+    return {
+      totalDebit: totalVentes + initialSolde,
+      totalCredit: totalPaiements + totalAvoirs,
+      totalVentes,
+      totalPaiements,
+      totalAvoirs,
+    };
+  }, [displayedProductHistory, selectedContact]);
+
   const newSystemRemiseDisplayed = useMemo(() => {
     const rows = (displayedProductHistory || []).filter((r: any) => r && !r.syntheticInitial);
 
@@ -2336,17 +2368,17 @@ const ContactsPage: React.FC = () => {
               <div style="background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #1e40af; font-weight: 600;">Total Débit</p>
                 <p style="margin: 0; font-size: 8px; color: #6b7280;">(Ventes/Achats + Solde initial)</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #1e3a8a;">${((detailedContact?.total_ventes || 0) + (detailedContact?.solde || 0)).toFixed(2)} DH</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #1e3a8a;">${filteredDebitCredit.totalDebit.toFixed(2)} DH</p>
               </div>
               <div style="background: #dcfce7; border: 2px solid #22c55e; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #166534; font-weight: 600;">Total Crédit</p>
                 <p style="margin: 0; font-size: 8px; color: #6b7280;">(Paiements + Avoirs)</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #14532d;">${((detailedContact?.total_paiements || 0) + (detailedContact?.total_avoirs || 0)).toFixed(2)} DH</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #14532d;">${filteredDebitCredit.totalCredit.toFixed(2)} DH</p>
               </div>
               <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #92400e; font-weight: 600;">Solde Final</p>
                 <p style="margin: 0; font-size: 8px; color: #6b7280;">(Débit - Crédit)</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: ${(() => { const s = ((detailedContact?.total_ventes || 0) + (detailedContact?.solde || 0)) - ((detailedContact?.total_paiements || 0) + (detailedContact?.total_avoirs || 0)); return s > 0 ? '#dc2626' : '#16a34a'; })()};">${(((detailedContact?.total_ventes || 0) + (detailedContact?.solde || 0)) - ((detailedContact?.total_paiements || 0) + (detailedContact?.total_avoirs || 0))).toFixed(2)} DH</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: ${filteredDebitCredit.totalDebit - filteredDebitCredit.totalCredit > 0 ? '#dc2626' : '#16a34a'};">${(filteredDebitCredit.totalDebit - filteredDebitCredit.totalCredit).toFixed(2)} DH</p>
               </div>
             </div>
           </div>
@@ -4558,30 +4590,27 @@ const ContactsPage: React.FC = () => {
                         </p>
                       </div>
                     </div>
-                    {/* Backend Stats Cards */}
+                    {/* Stats Cards — filtrées par période / recherche */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                        <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                         <p className="font-semibold text-blue-800 text-sm">Total Ventes / Achats</p>
+                         <p className="font-semibold text-blue-800 text-sm">Total Débit (Ventes + Solde init.)</p>
                          <p className="font-bold text-lg text-blue-700">
-                           {detailedContact?.total_ventes !== undefined 
-                             ? `${(detailedContact.total_ventes + (detailedContact.solde || 0)).toFixed(2)} DH` 
-                             : '-'}
+                           {filteredDebitCredit.totalDebit.toFixed(2)} DH
                          </p>
+                         {(dateFrom || dateTo || productSearch) && (
+                           <p className="text-xs text-blue-500 mt-1">Filtré par période/recherche</p>
+                         )}
                        </div>
                        <div className="bg-green-50 rounded-lg p-3 border border-green-100">
                          <p className="font-semibold text-green-800 text-sm">Total Paiements</p>
                          <p className="font-bold text-lg text-green-700">
-                           {detailedContact?.total_paiements !== undefined 
-                             ? `${detailedContact.total_paiements.toFixed(2)} DH` 
-                             : '-'}
+                           {filteredDebitCredit.totalPaiements.toFixed(2)} DH
                          </p>
                        </div>
                        <div className="bg-orange-50 rounded-lg p-3 border border-orange-100">
                          <p className="font-semibold text-orange-800 text-sm">Total Avoirs</p>
                          <p className="font-bold text-lg text-orange-700">
-                           {detailedContact?.total_avoirs !== undefined 
-                             ? `${detailedContact.total_avoirs.toFixed(2)} DH` 
-                             : '-'}
+                           {filteredDebitCredit.totalAvoirs.toFixed(2)} DH
                          </p>
                        </div>
                     </div>
@@ -4853,7 +4882,10 @@ const ContactsPage: React.FC = () => {
                           })()}
                           finalSolde={(() => {
                             const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
-                            if (!hasSelection) return finalSoldeNet;
+                            if (!hasSelection) {
+                              // Utiliser le solde filtré (Débit - Crédit) pour correspondre aux blocs Débit/Crédit
+                              return filteredDebitCredit.totalDebit - filteredDebitCredit.totalCredit;
+                            }
                             const rows = (printProducts.length > 0 ? printProducts : displayedProductHistory) as any[];
                             const { totalAmount } = computeTotalsForRows(rows);
                             // Mode sélection: le “Solde final” affiché doit être le total sélectionné uniquement
@@ -4863,12 +4895,12 @@ const ContactsPage: React.FC = () => {
                           totalDebit={(() => {
                             const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
                             if (hasSelection) return undefined;
-                            return detailedContact ? (detailedContact.total_ventes || 0) + (detailedContact.solde || 0) : undefined;
+                            return filteredDebitCredit.totalDebit;
                           })()}
                           totalCredit={(() => {
                             const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
                             if (hasSelection) return undefined;
-                            return detailedContact ? (detailedContact.total_paiements || 0) + (detailedContact.total_avoirs || 0) : undefined;
+                            return filteredDebitCredit.totalCredit;
                           })()}
                         />
                       )}
@@ -5329,44 +5361,6 @@ const ContactsPage: React.FC = () => {
                   {/* Résumés */}
                   {searchedProductHistory.length > 0 && (
                     <>
-                      <div className="mt-6 bg-purple-50 rounded-lg p-4">
-                        <h4 className="font-bold text-lg mb-3">Résumé par Produit</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {Object.entries(
-                            searchedProductHistory
-                              .filter((i: any) => i.type === 'produit')
-                              .reduce((acc: any, i: any) => {
-                                if (!acc[i.product_reference]) {
-                                  acc[i.product_reference] = { designation: i.product_designation, totalQuantite: 0, totalMontant: 0, nombreBons: 0 };
-                                }
-                                acc[i.product_reference].totalQuantite += i.quantite;
-                                acc[i.product_reference].totalMontant += i.total;
-                                acc[i.product_reference].nombreBons += 1;
-                                return acc;
-                              }, {})
-                          ).map(([reference, data]: [string, any]) => (
-                            <div key={reference} className="bg-white rounded-lg p-3 border">
-                              <h5 className="font-semibold text-gray-800">{reference}</h5>
-                              <p className="text-sm text-gray-600 mb-2">{data.designation}</p>
-                              <div className="space-y-1 text-xs">
-                                <div className="flex justify-between">
-                                  <span>Quantité totale:</span>
-                                  <span className="font-semibold">{data.totalQuantite}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Montant total:</span>
-                                  <span className="font-semibold text-blue-600">{data.totalMontant.toFixed(2)} DH</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Nombre de bons:</span>
-                                  <span className="font-semibold">{data.nombreBons}</span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
                       <div className="mt-4 bg-gray-50 rounded-lg p-4">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                           <div>
