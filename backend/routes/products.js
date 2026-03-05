@@ -991,6 +991,81 @@ router.get('/', async (req, res, next) => {
         units: typeof r.units === 'string' ? JSON.parse(r.units) : (r.units || []),
       };
     });
+
+    // ── Compute snapshot_display for each product & variant ──
+    if (useSnapshot) {
+      const allProductIds = data.map(d => d.id);
+      if (allProductIds.length > 0) {
+        const [allSnaps] = await pool.query(
+          `SELECT ps.id, ps.product_id, ps.variant_id,
+                  ps.prix_achat, ps.prix_vente, ps.cout_revient, ps.prix_gros,
+                  ps.quantite, ps.bon_commande_id, ps.created_at
+           FROM product_snapshot ps
+           WHERE ps.product_id IN (?)
+           ORDER BY ps.created_at DESC, ps.id DESC`,
+          [allProductIds]
+        );
+
+        // Group snapshots by "productId:variantId"
+        const snapGrouped = {};
+        for (const snap of allSnaps) {
+          const key = `${snap.product_id}:${snap.variant_id || 0}`;
+          if (!snapGrouped[key]) snapGrouped[key] = [];
+          snapGrouped[key].push({
+            id: Number(snap.id),
+            prix_achat: snap.prix_achat !== null && snap.prix_achat !== undefined ? Number(snap.prix_achat) : null,
+            prix_vente: snap.prix_vente !== null && snap.prix_vente !== undefined ? Number(snap.prix_vente) : null,
+            cout_revient: snap.cout_revient !== null && snap.cout_revient !== undefined ? Number(snap.cout_revient) : null,
+            prix_gros: snap.prix_gros !== null && snap.prix_gros !== undefined ? Number(snap.prix_gros) : null,
+            quantite: Number(snap.quantite ?? 0),
+            bon_commande_id: snap.bon_commande_id ?? null,
+            created_at: snap.created_at,
+          });
+        }
+
+        /**
+         * Determine display mode:
+         *   'product'          – no snapshots → use product table data
+         *   'last_snapshot'    – all snapshots qty ≤ 0 → use newest snapshot
+         *   'single_positive'  – exactly one snapshot qty > 0 → use it
+         *   'uniform_positive' – multiple positive, same prix_achat+prix_vente → use first
+         *   'multi_different'  – multiple positive, different prices → hover icon
+         */
+        const computeSnapshotDisplay = (snaps) => {
+          if (!snaps || snaps.length === 0) {
+            return { mode: 'product', data: null, rows: null };
+          }
+          const positiveSnaps = snaps.filter(s => s.quantite > 0);
+          if (positiveSnaps.length === 0) {
+            // All qty ≤ 0 → newest snapshot (index 0, sorted DESC)
+            return { mode: 'last_snapshot', data: snaps[0], rows: null };
+          }
+          if (positiveSnaps.length === 1) {
+            return { mode: 'single_positive', data: positiveSnaps[0], rows: null };
+          }
+          // Multiple positive → check price uniformity
+          const fPA = positiveSnaps[0].prix_achat;
+          const fPV = positiveSnaps[0].prix_vente;
+          const allSame = positiveSnaps.every(s => s.prix_achat === fPA && s.prix_vente === fPV);
+          if (allSame) {
+            return { mode: 'uniform_positive', data: positiveSnaps[0], rows: null };
+          }
+          return { mode: 'multi_different', data: null, rows: positiveSnaps };
+        };
+
+        for (const product of data) {
+          const mainKey = `${product.id}:0`;
+          product.snapshot_display = computeSnapshotDisplay(snapGrouped[mainKey]);
+          if (product.variants && Array.isArray(product.variants)) {
+            for (const variant of product.variants) {
+              const varKey = `${product.id}:${variant.id}`;
+              variant.snapshot_display = computeSnapshotDisplay(snapGrouped[varKey]);
+            }
+          }
+        }
+      }
+    }
+
     res.json(data);
   } catch (err) { next(err); }
 });

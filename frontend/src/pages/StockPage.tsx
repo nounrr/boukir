@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category } from '../types';
-import { Plus, Edit, Trash2, Search, Package, Settings } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Package, Settings, Eye } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -80,6 +80,12 @@ const StockPage: React.FC = () => {
     y: number;
     alt: string;
   }>(null);
+  const [snapshotHover, setSnapshotHover] = useState<null | {
+    rows: any[];
+    x: number;
+    y: number;
+    designation: string;
+  }>(null);
 
   const formatNum = (n: number) => String(parseFloat((Number(n || 0)).toFixed(2)));
 
@@ -106,11 +112,56 @@ const StockPage: React.FC = () => {
     return Number(p?.prix_achat || 0);
   };
 
-  const getSnapshotAwarePrixVenteBase = (p: any) => {
-    const v = p?.snapshot_prix_vente_old;
-    const n = v === null || v === undefined ? null : Number(v);
-    if (n !== null && Number.isFinite(n) && n > 0) return n;
-    return Number(p?.prix_vente || 0);
+  // ── Snapshot display logic ──
+  // Returns the prices to show based on snapshot_display mode from backend
+  const getSnapshotDisplayPrices = (p: any): {
+    mode: string;
+    prix_achat: number | null;
+    cout_revient: number | null;
+    prix_gros: number | null;
+    prix_vente: number | null;
+    rows: any[] | null;
+  } => {
+    const sd = p.snapshot_display;
+    if (!sd || sd.mode === 'product') {
+      return {
+        mode: 'product',
+        prix_achat: Number(p.prix_achat || 0),
+        cout_revient: Number(p.cout_revient || 0),
+        prix_gros: Number(p.prix_gros || 0),
+        prix_vente: Number(p.prix_vente || 0),
+        rows: null,
+      };
+    }
+    if (sd.mode === 'last_snapshot' || sd.mode === 'single_positive' || sd.mode === 'uniform_positive') {
+      const d = sd.data;
+      return {
+        mode: sd.mode,
+        prix_achat: d?.prix_achat != null ? Number(d.prix_achat) : Number(p.prix_achat || 0),
+        cout_revient: d?.cout_revient != null ? Number(d.cout_revient) : Number(p.cout_revient || 0),
+        prix_gros: d?.prix_gros != null ? Number(d.prix_gros) : Number(p.prix_gros || 0),
+        prix_vente: d?.prix_vente != null ? Number(d.prix_vente) : Number(p.prix_vente || 0),
+        rows: null,
+      };
+    }
+    if (sd.mode === 'multi_different') {
+      return {
+        mode: 'multi_different',
+        rows: sd.rows || [],
+        prix_achat: null,
+        cout_revient: null,
+        prix_gros: null,
+        prix_vente: null,
+      };
+    }
+    return {
+      mode: 'product',
+      prix_achat: Number(p.prix_achat || 0),
+      cout_revient: Number(p.cout_revient || 0),
+      prix_gros: Number(p.prix_gros || 0),
+      prix_vente: Number(p.prix_vente || 0),
+      rows: null,
+    };
   };
 
   const unitOptionsForProduct = (prod: any) => {
@@ -224,6 +275,7 @@ const StockPage: React.FC = () => {
             snapshot_quantite_total: variant.snapshot_quantite_total ?? null,
             snapshot_prix_achat_old: variant.snapshot_prix_achat_old ?? null,
             snapshot_prix_vente_old: variant.snapshot_prix_vente_old ?? null,
+            snapshot_display: variant.snapshot_display ?? null,
             isVariantRow: true,
             variant_image_url: variant.image_url || null,
           });
@@ -362,6 +414,75 @@ const StockPage: React.FC = () => {
                 alt={hoverPreview.alt}
                 className="block max-w-full max-h-[304px] object-contain bg-white"
               />
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Multi-snapshot hover popup */}
+      {snapshotHover && snapshotHover.rows.length > 0 && typeof window !== 'undefined' && (() => {
+        const maxW = 500;
+        const maxH = 400;
+        const pad = 16;
+        const left = Math.max(pad, Math.min(snapshotHover.x + 18, window.innerWidth - maxW - pad));
+        const top = Math.max(pad, Math.min(snapshotHover.y + 18, window.innerHeight - maxH - pad));
+        return (
+          <div
+            className="fixed z-[9999] pointer-events-none"
+            style={{ left, top, maxWidth: maxW, maxHeight: maxH }}
+          >
+            <div className="w-fit h-fit max-w-[500px] max-h-[400px] rounded-lg border border-gray-200 bg-white shadow-2xl overflow-auto p-3">
+              <div className="text-xs font-bold text-gray-800 mb-2 truncate max-w-[460px]">
+                {snapshotHover.designation} — Snapshots multiples
+              </div>
+              <table className="text-xs w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="px-2 py-1 text-left font-semibold">Bon</th>
+                    <th className="px-2 py-1 text-right font-semibold">Qté</th>
+                    <th className="px-2 py-1 text-right font-semibold">P.Achat</th>
+                    <th className="px-2 py-1 text-right font-semibold">P.Vente</th>
+                    <th className="px-2 py-1 text-right font-semibold">C.Revient</th>
+                    <th className="px-2 py-1 text-right font-semibold">P.Gros</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    // Group rows with identical prices, sum their quantities
+                    const grouped: Array<{ key: string; prix_achat: number | null; prix_vente: number | null; cout_revient: number | null; prix_gros: number | null; quantite: number; bons: string[] }> = [];
+                    const keyMap = new Map<string, number>();
+                    for (const r of snapshotHover.rows) {
+                      const k = `${r.prix_achat ?? ''}|${r.prix_vente ?? ''}|${r.cout_revient ?? ''}|${r.prix_gros ?? ''}`;
+                      const idx = keyMap.get(k);
+                      if (idx !== undefined) {
+                        grouped[idx].quantite += Number(r.quantite || 0);
+                        grouped[idx].bons.push(r.bon_commande_id ? `Bon #${r.bon_commande_id}` : `#${r.id}`);
+                      } else {
+                        keyMap.set(k, grouped.length);
+                        grouped.push({
+                          key: k,
+                          prix_achat: r.prix_achat,
+                          prix_vente: r.prix_vente,
+                          cout_revient: r.cout_revient,
+                          prix_gros: r.prix_gros,
+                          quantite: Number(r.quantite || 0),
+                          bons: [r.bon_commande_id ? `Bon #${r.bon_commande_id}` : `#${r.id}`],
+                        });
+                      }
+                    }
+                    return grouped.map((g, i) => (
+                      <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
+                        <td className="px-2 py-1 text-gray-600 max-w-[120px] truncate" title={g.bons.join(', ')}>{g.bons.length > 1 ? `${g.bons.length} bons` : g.bons[0]}</td>
+                        <td className="px-2 py-1 text-right font-semibold">{formatNum(g.quantite)}</td>
+                        <td className="px-2 py-1 text-right">{g.prix_achat != null ? `${formatNum(g.prix_achat)} DH` : '—'}</td>
+                        <td className="px-2 py-1 text-right">{g.prix_vente != null ? `${formatNum(g.prix_vente)} DH` : '—'}</td>
+                        <td className="px-2 py-1 text-right">{g.cout_revient != null ? `${formatNum(g.cout_revient)} DH` : '—'}</td>
+                        <td className="px-2 py-1 text-right">{g.prix_gros != null ? `${formatNum(g.prix_gros)} DH` : '—'}</td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
             </div>
           </div>
         );
@@ -741,50 +862,78 @@ const StockPage: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {(() => {
-                      const imgUrl = product.isVariantRow ? product.variant_image_url : product.image_url;
-                      if (imgUrl) {
+                    <div className="flex items-center gap-1">
+                      {(() => {
+                        const imgUrl = product.isVariantRow ? product.variant_image_url : product.image_url;
+                        if (imgUrl) {
+                          return (
+                            <div
+                              className={`inline-block ${product.isVariantRow ? 'ml-2' : ''}`}
+                              onMouseEnter={(e) => {
+                                setHoverPreview({
+                                  url: imgUrl,
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                  alt: String(product.designation ?? 'Image'),
+                                });
+                              }}
+                              onMouseMove={(e) => {
+                                setHoverPreview((prev) => {
+                                  if (!prev) return prev;
+                                  if (prev.url !== imgUrl) return prev;
+                                  return { ...prev, x: e.clientX, y: e.clientY };
+                                });
+                              }}
+                              onMouseLeave={() => setHoverPreview(null)}
+                            >
+                              <img
+                                src={imgUrl}
+                                alt={product.designation}
+                                className={`object-cover rounded ${product.isVariantRow ? 'h-8 w-8' : 'h-10 w-10'}`}
+                              />
+                            </div>
+                          );
+                        }
+                        if (product.isVariantRow) {
+                          return (
+                            <div className="flex items-center justify-center h-8 w-8 text-gray-400 ml-2">
+                              <span className="text-lg">↳</span>
+                            </div>
+                          );
+                        }
                         return (
-                          <div
-                            className={`inline-block ${product.isVariantRow ? 'ml-2' : ''}`}
-                            onMouseEnter={(e) => {
-                              setHoverPreview({
-                                url: imgUrl,
-                                x: e.clientX,
-                                y: e.clientY,
-                                alt: String(product.designation ?? 'Image'),
-                              });
-                            }}
-                            onMouseMove={(e) => {
-                              setHoverPreview((prev) => {
-                                if (!prev) return prev;
-                                if (prev.url !== imgUrl) return prev;
-                                return { ...prev, x: e.clientX, y: e.clientY };
-                              });
-                            }}
-                            onMouseLeave={() => setHoverPreview(null)}
-                          >
-                            <img
-                              src={imgUrl}
-                              alt={product.designation}
-                              className={`object-cover rounded ${product.isVariantRow ? 'h-8 w-8' : 'h-10 w-10'}`}
-                            />
+                          <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
+                            <Package size={20} />
                           </div>
                         );
-                      }
-                      if (product.isVariantRow) {
-                        return (
-                          <div className="flex items-center justify-center h-8 w-8 text-gray-400 ml-2">
-                            <span className="text-lg">↳</span>
+                      })()}
+                      {/* Eye icon for multi-snapshot with different prices */}
+                      {product.snapshot_display?.mode === 'multi_different' && (
+                        <div
+                          className="cursor-pointer"
+                          onMouseEnter={(e) => {
+                            setSnapshotHover({
+                              rows: product.snapshot_display.rows || [],
+                              x: e.clientX,
+                              y: e.clientY,
+                              designation: String(product.designation ?? ''),
+                            });
+                          }}
+                          onMouseMove={(e) => {
+                            setSnapshotHover(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : prev);
+                          }}
+                          onMouseLeave={() => setSnapshotHover(null)}
+                          title="Plusieurs snapshots avec prix différents"
+                        >
+                          <div className="relative flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 border border-amber-300 shadow-sm">
+                            <Eye size={14} className="text-amber-600" />
+                            <span className="absolute -top-1 -right-1 flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold leading-none">
+                              {product.snapshot_display.rows?.length ?? 0}
+                            </span>
                           </div>
-                        );
-                      }
-                      return (
-                        <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center text-gray-400">
-                          <Package size={20} />
                         </div>
-                      );
-                    })()}
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{product.reference ?? product.id}</div>
@@ -843,20 +992,42 @@ const StockPage: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatNum(getSnapshotAwarePrixAchat(product))} DH
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatNum(Number(product.cout_revient || 0))} DH
-                    <span className="text-xs text-gray-500 ml-1">({computePct(product.cout_revient, getSnapshotAwarePrixAchat(product))}%)</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatNum(Number(product.prix_gros || 0))} DH
-                    <span className="text-xs text-gray-500 ml-1">({computePct(product.prix_gros, getSnapshotAwarePrixAchat(product))}%)</span>
+                    {(() => {
+                      const dp = getSnapshotDisplayPrices(product);
+                      if (dp.mode === 'multi_different') return <span className="text-gray-400">—</span>;
+                      return <>{formatNum(dp.prix_achat!)} DH</>;
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
-                      const pa = getSnapshotAwarePrixAchat(product);
-                      const basePv = getSnapshotAwarePrixVenteBase(product);
+                      const dp = getSnapshotDisplayPrices(product);
+                      if (dp.mode === 'multi_different') return <span className="text-gray-400">—</span>;
+                      return (
+                        <>
+                          {formatNum(dp.cout_revient!)} DH
+                          <span className="text-xs text-gray-500 ml-1">({computePct(dp.cout_revient!, dp.prix_achat!)}%)</span>
+                        </>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {(() => {
+                      const dp = getSnapshotDisplayPrices(product);
+                      if (dp.mode === 'multi_different') return <span className="text-gray-400">—</span>;
+                      return (
+                        <>
+                          {formatNum(dp.prix_gros!)} DH
+                          <span className="text-xs text-gray-500 ml-1">({computePct(dp.prix_gros!, dp.prix_achat!)}%)</span>
+                        </>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {(() => {
+                      const dp = getSnapshotDisplayPrices(product);
+                      if (dp.mode === 'multi_different') return <span className="text-gray-400">—</span>;
+                      const pa = dp.prix_achat!;
+                      const basePv = dp.prix_vente!;
                       const factor = getSelectedUnitFactor(product);
                       const unitPv = getSelectedUnitPrixVenteOverride(product);
                       const converted = unitPv !== null && Number.isFinite(unitPv) ? unitPv : (basePv * factor);
