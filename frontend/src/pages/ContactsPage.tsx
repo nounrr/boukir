@@ -1040,7 +1040,7 @@ const ContactsPage: React.FC = () => {
     });
   }, [filteredProductHistory, productSearch]);
 
-  // Historique complet des produits (sans filtre de date) - utilisé pour les calculs
+  // Historique complet des produits (SANS filtre de date) - utilisé pour les calculs de solde final et bénéfice
   const allProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
@@ -1062,9 +1062,94 @@ const ContactsPage: React.FC = () => {
       syntheticInitial: true,
     } as any;
 
-    // Toujours inclure toutes les transactions pour les calculs complets
-    return [initRow, ...filteredProductHistory];
-  }, [filteredProductHistory, selectedContact]);
+    // Construire l'historique COMPLET (toutes les transactions, sans filtre de date)
+    // pour que finalSoldeNet et bénéfice total soient toujours corrects
+    const isClient = selectedContact.type === 'Client';
+    const id = selectedContact.id;
+    const allBons: any[] = [];
+    if (isClient) {
+      for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Sortie' });
+      for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Comptant' });
+      for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Avoir' });
+    } else {
+      for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Commande' });
+      for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'AvoirFournisseur' });
+    }
+
+    const items: any[] = [];
+    for (const b of allBons) {
+      const bonItems = Array.isArray(b.items) ? b.items : [];
+      for (const it of bonItems) {
+        const prod = products.find((p) => p.id === it.product_id);
+        const ref = prod ? String((prod as any).reference ?? prod.id) : String(it.product_id);
+        let des = prod ? (prod as any).designation : (it.designation || '');
+        const vId = (it as any).variant_id ?? (it as any).variantId;
+        if (vId && prod) {
+          const variantObj = ((prod as any).variants || []).find((v: any) => String(v.id) === String(vId));
+          if (variantObj?.variant_name) des = `${des} - ${variantObj.variant_name}`;
+        }
+        const prixUnit = Number(it.prix_unitaire ?? it.prix ?? 0) || 0;
+        const remise_pourcentage = parseFloat(String(it.remise_pourcentage ?? (it as any).remise_pct ?? 0)) || 0;
+        const remise_montant_val = parseFloat(String((it as any).remise_montant ?? (it as any).remise_valeur ?? 0)) || 0;
+        let total = Number((it as any).total ?? (it as any).montant_ligne);
+        if (!Number.isFinite(total) || total === 0) {
+          total = (Number(it.quantite) || 0) * prixUnit;
+          if (remise_pourcentage > 0) total = total * (1 - remise_pourcentage / 100);
+          if (remise_montant_val > 0) total = total - remise_montant_val;
+        }
+        const q = Number(it.quantite) || 0;
+        const cost = (() => {
+          if (it.cout_revient != null) return Number(it.cout_revient) || 0;
+          if (it.prix_achat != null) return Number(it.prix_achat) || 0;
+          const pid = it.product_id || it.produit_id;
+          if (pid) {
+            const p2 = (products as any[]).find((p) => String(p.id) === String(pid));
+            if (p2) return Number(p2.cout_revient ?? p2.prix_achat ?? 0) || 0;
+          }
+          return 0;
+        })();
+        const mouvement = (prixUnit - cost) * q;
+        const remiseUnitaire = Number((it as any).remise_montant || (it as any).remise_valeur || 0) || 0;
+        const remiseTotale = remiseUnitaire * q;
+        const applyRemise = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(b.type);
+        const benefice = mouvement - (applyRemise ? remiseTotale : 0);
+        const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
+        items.push({
+          id: `${b.id}-${it.product_id}-${it.id ?? `${items.length}`}`,
+          bon_id: b.id, bon_numero: b.numero, bon_type: b.type,
+          bon_date: formatDateDMY(b.date_creation), bon_date_iso: b.date_creation, bon_statut: b.statut,
+          product_id: it.product_id, product_reference: ref, product_designation: des,
+          quantite: q, prix_unitaire: prixUnit, total, mouvement,
+          remise_unitaire: remiseUnitaire, remise_totale: remiseTotale, benefice,
+          type: itemType, created_at: b.created_at, remise_pourcentage, remise_montant: remise_montant_val,
+        });
+      }
+    }
+    // Paiements (sans filtre de date)
+    const paymentsForContact = payments.filter(
+      (p: any) => String(p.contact_id) === String(selectedContact.id) && isAllowedStatut(p.statut)
+    );
+    for (const p of paymentsForContact) {
+      items.push({
+        id: `payment-${p.id}`, bon_numero: getDisplayNumeroPayment(p), bon_type: 'Paiement',
+        bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()),
+        bon_date_iso: p.date_paiement || p.created_at, bon_statut: p.statut ? String(p.statut) : 'Paiement',
+        product_reference: 'PAIEMENT', product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,
+        quantite: 1, prix_unitaire: Number(p.montant ?? p.montant_total ?? 0) || 0,
+        total: Number(p.montant ?? p.montant_total ?? 0) || 0, type: 'paiement', created_at: p.created_at,
+      });
+    }
+    // Tri + soldeCumulatif
+    items.sort((a, b) => new Date(a.bon_date_iso || a.bon_date).getTime() - new Date(b.bon_date_iso || b.bon_date).getTime());
+    let soldeCumulatif = initialSolde;
+    const withSolde = items.map((item) => {
+      const montant = Number(item.total) || 0;
+      if (item.type === 'produit') soldeCumulatif += montant;
+      else if (item.type === 'paiement' || item.type === 'avoir') soldeCumulatif -= montant;
+      return { ...item, soldeCumulatif };
+    });
+    return [initRow, ...withSolde];
+  }, [selectedContact, sorties, comptants, avoirsClient, commandes, avoirsFournisseur, products, payments]);
 
   // Solde net final (solde cumulé après la dernière ligne) pour le bloc récapitulatif
   const finalSoldeNet = useMemo(() => {
@@ -1240,6 +1325,14 @@ const ContactsPage: React.FC = () => {
     return [initRow, ...filteredTransactions];
   }, [searchedProductHistory, selectedContact, allProductHistory]);
 
+  // Solde final affiché dans le tableau = dernière valeur soldeCumulatif de displayedProductHistory
+  const tableSoldeFinal = useMemo(() => {
+    const arr = displayedProductHistory;
+    if (!arr || arr.length === 0) return finalSoldeNet;
+    const last = arr[arr.length - 1];
+    return Number(last.soldeCumulatif ?? finalSoldeNet);
+  }, [displayedProductHistory, finalSoldeNet]);
+
   // Totaux Débit / Crédit filtrés (respectent dateFrom, dateTo, productSearch)
   // Utilisés dans les cartes frontend, le PDF modal et le handlePrint
   const filteredDebitCredit = useMemo(() => {
@@ -1263,14 +1356,17 @@ const ContactsPage: React.FC = () => {
       }
     }
 
+    // Quand un filtre de date est actif, ne pas ajouter le solde initial au débit
+    // (on montre seulement les mouvements de la période filtrée)
+    const hasDateFilter = !!(dateFrom || dateTo);
     return {
-      totalDebit: totalVentes + initialSolde,
+      totalDebit: hasDateFilter ? totalVentes : totalVentes + initialSolde,
       totalCredit: totalPaiements + totalAvoirs,
       totalVentes,
       totalPaiements,
       totalAvoirs,
     };
-  }, [displayedProductHistory, selectedContact]);
+  }, [displayedProductHistory, selectedContact, dateFrom, dateTo]);
 
   const newSystemRemiseDisplayed = useMemo(() => {
     const rows = (displayedProductHistory || []).filter((r: any) => r && !r.syntheticInitial);
@@ -1767,7 +1863,7 @@ const ContactsPage: React.FC = () => {
         reportTotals = {
           totalQty: displayedTotals.totalQty,
           totalAmount: displayedTotals.totalAmount,
-          finalSolde: finalSoldeNet,
+          finalSolde: tableSoldeFinal,
         };
       } else {
         reportRows = buildProductHistoryNoFilters();
@@ -2367,7 +2463,7 @@ const ContactsPage: React.FC = () => {
             <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px; flex-wrap: wrap;">
               <div style="background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #1e40af; font-weight: 600;">Total Débit</p>
-                <p style="margin: 0; font-size: 8px; color: #6b7280;">(Ventes/Achats + Solde initial)</p>
+                <p style="margin: 0; font-size: 8px; color: #6b7280;">${(dateFrom || dateTo) ? '(Ventes/Achats période)' : '(Ventes/Achats + Solde initial)'}</p>
                 <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #1e3a8a;">${filteredDebitCredit.totalDebit.toFixed(2)} DH</p>
               </div>
               <div style="background: #dcfce7; border: 2px solid #22c55e; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
@@ -2377,8 +2473,8 @@ const ContactsPage: React.FC = () => {
               </div>
               <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #92400e; font-weight: 600;">Solde Final</p>
-                <p style="margin: 0; font-size: 8px; color: #6b7280;">(Débit - Crédit)</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: ${filteredDebitCredit.totalDebit - filteredDebitCredit.totalCredit > 0 ? '#dc2626' : '#16a34a'};">${(filteredDebitCredit.totalDebit - filteredDebitCredit.totalCredit).toFixed(2)} DH</p>
+                <p style="margin: 0; font-size: 8px; color: #6b7280;">(Dernier solde cumulé du tableau)</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: ${tableSoldeFinal > 0 ? '#dc2626' : '#16a34a'};">${tableSoldeFinal.toFixed(2)} DH</p>
               </div>
             </div>
           </div>
@@ -2407,7 +2503,7 @@ const ContactsPage: React.FC = () => {
       })()} DH</p>
                 ${printHasSelection
                   ? `<p><strong>Solde final (sélection uniquement):</strong> ${selectedTotal.toFixed(2)} DH</p>`
-                  : `<p><strong>Solde actuel (calculé sur toutes les transactions):</strong> ${finalSoldeNet.toFixed(2)} DH</p>`}
+                  : `<p><strong>Solde final (dernier solde cumulé du tableau):</strong> ${tableSoldeFinal.toFixed(2)} DH</p>`}
               </div>
             </div>
           </div>
@@ -4593,7 +4689,7 @@ const ContactsPage: React.FC = () => {
                     {/* Stats Cards — filtrées par période / recherche */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                        <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                         <p className="font-semibold text-blue-800 text-sm">Total Débit (Ventes + Solde init.)</p>
+                         <p className="font-semibold text-blue-800 text-sm">{(dateFrom || dateTo) ? 'Total Débit (Ventes période)' : 'Total Débit (Ventes + Solde init.)'}</p>
                          <p className="font-bold text-lg text-blue-700">
                            {filteredDebitCredit.totalDebit.toFixed(2)} DH
                          </p>
@@ -4883,8 +4979,8 @@ const ContactsPage: React.FC = () => {
                           finalSolde={(() => {
                             const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
                             if (!hasSelection) {
-                              // Utiliser le solde filtré (Débit - Crédit) pour correspondre aux blocs Débit/Crédit
-                              return filteredDebitCredit.totalDebit - filteredDebitCredit.totalCredit;
+                              // Utiliser le dernier solde cumulé du tableau affiché
+                              return tableSoldeFinal;
                             }
                             const rows = (printProducts.length > 0 ? printProducts : displayedProductHistory) as any[];
                             const { totalAmount } = computeTotalsForRows(rows);
@@ -5400,10 +5496,13 @@ const ContactsPage: React.FC = () => {
                             </p>
                           </div>
                           <div>
-                            <p className="font-semibold text-gray-600">Solde Net (Cumulé):</p>
-                            <p className={`text-lg font-bold ${finalSoldeNet > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                              {finalSoldeNet.toFixed(2)} DH
+                            <p className="font-semibold text-gray-600">Solde Final:</p>
+                            <p className={`text-lg font-bold ${tableSoldeFinal > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                              {tableSoldeFinal.toFixed(2)} DH
                             </p>
+                            {(dateFrom || dateTo) && (
+                              <p className="text-xs text-gray-500">Dernier solde cumulé du tableau</p>
+                            )}
                           </div>
                         </div>
                       </div>
