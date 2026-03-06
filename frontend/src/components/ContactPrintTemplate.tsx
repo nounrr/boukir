@@ -473,27 +473,23 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                 <div className="text-base font-bold text-green-900">{fmt(totalCredit)} DH</div>
               </div>
             )}
-            <div className={`border-2 px-3 py-2 rounded-lg text-center min-w-[140px] ${
-              totalDebit !== undefined && totalCredit !== undefined
-                ? (totalDebit - totalCredit) > 0
+            {hideCumulative ? (
+              <div className="border-2 border-orange-400 bg-orange-50 px-3 py-2 rounded-lg text-center min-w-[140px]">
+                <div className="text-xs font-semibold text-orange-800">Total</div>
+                <div className="text-base font-bold text-orange-900">{fmtNoDecimalsIfInt(totalAmountProducts)} DH</div>
+              </div>
+            ) : (
+              <div className={`border-2 px-3 py-2 rounded-lg text-center min-w-[140px] ${
+                finalSoldeProducts > 0
                   ? 'border-red-400 bg-red-50'
                   : 'border-green-400 bg-green-50'
-                : 'border-gray-300 bg-gray-50'
-            }`}>
-              <div className="text-xs font-semibold text-gray-700">Solde Final</div>
-              {totalDebit !== undefined && totalCredit !== undefined && (
-                <div className="text-[10px] text-gray-500">(Débit - Crédit)</div>
-              )}
-              <div className={`text-base font-bold ${
-                totalDebit !== undefined && totalCredit !== undefined
-                  ? (totalDebit - totalCredit) > 0 ? 'text-red-700' : 'text-green-700'
-                  : 'text-gray-900'
-              }`}>{fmtNoDecimalsIfInt(
-                totalDebit !== undefined && totalCredit !== undefined
-                  ? totalDebit - totalCredit
-                  : finalSoldeProducts
-              )} DH</div>
-            </div>
+              }`}>
+                <div className="text-xs font-semibold text-gray-700">Solde Final</div>
+                <div className={`text-base font-bold ${
+                  finalSoldeProducts > 0 ? 'text-red-700' : 'text-green-700'
+                }`}>{fmtNoDecimalsIfInt(finalSoldeProducts)} DH</div>
+              </div>
+            )}
           </div>
         </div>
       )}
