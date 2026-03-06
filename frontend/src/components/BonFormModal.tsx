@@ -1647,11 +1647,13 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
       
       // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
-  const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
-      const u =
-        typeof item[priceField] === 'string'
+      // Lire depuis unitPriceRaw en priorité (valeur saisie) pour éviter le décalage avec onBlur async
+      const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
+      const u = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
+        ? parseFloat(normalizeDecimal(unitPriceRaw[idx])) || 0
+        : (typeof item[priceField] === 'string'
           ? parseFloat(String(item[priceField]).replace(',', '.')) || 0
-          : Number(item[priceField]) || 0;
+          : Number(item[priceField]) || 0);
       return sum + q * u;
     }, 0);
 
@@ -1788,14 +1790,17 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       items: values.items.flatMap((item: any, idx: number) => {
         const q =
           parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-        const pa =
-          typeof item.prix_achat === 'string'
+        // Lire depuis unitPriceRaw en priorité (valeur saisie) pour éviter le décalage avec onBlur async
+        const pa = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== '' && values.type === 'Commande'
+          ? parseFloat(normalizeDecimal(unitPriceRaw[idx])) || 0
+          : (typeof item.prix_achat === 'string'
             ? parseFloat(String(item.prix_achat).replace(',', '.')) || 0
-            : Number(item.prix_achat) || 0;
-        const pu =
-          typeof item.prix_unitaire === 'string'
+            : Number(item.prix_achat) || 0);
+        const pu = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== '' && values.type !== 'Commande'
+          ? parseFloat(normalizeDecimal(unitPriceRaw[idx])) || 0
+          : (typeof item.prix_unitaire === 'string'
             ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
-            : Number(item.prix_unitaire) || 0;
+            : Number(item.prix_unitaire) || 0);
         const rp =
           typeof item.remise_pourcentage === 'string'
             ? parseFloat(String(item.remise_pourcentage).replace(',', '.')) || 0
@@ -4126,6 +4131,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       setUnitPriceRaw((prev) => ({ ...prev, [index]: raw }));
 
       const unit = parseFloat(normalizeDecimal(raw)) || 0;
+      // Sync Formik immédiatement pour que handleSubmit ait la bonne valeur
+      if (values.type === 'Commande') {
+        setFieldValue(`items.${index}.prix_achat`, unit);
+      } else {
+        setFieldValue(`items.${index}.prix_unitaire`, unit);
+      }
       const q =
         parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
       setFieldValue(`items.${index}.total`, q * unit);
