@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Plus, Edit, Trash2, Search, Users, Truck, Phone, Mail, MapPin,
@@ -4976,18 +4976,7 @@ const ContactsPage: React.FC = () => {
                             const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
                             return hasSelection ? computeTotalsForRows(rows).totalAmount : displayedTotals.totalAmount;
                           })()}
-                          finalSolde={(() => {
-                            const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
-                            if (!hasSelection) {
-                              // Utiliser le dernier solde cumulé du tableau affiché
-                              return tableSoldeFinal;
-                            }
-                            const rows = (printProducts.length > 0 ? printProducts : displayedProductHistory) as any[];
-                            const { totalAmount } = computeTotalsForRows(rows);
-                            // Mode sélection: le “Solde final” affiché doit être le total sélectionné uniquement
-                            // (sans addition du solde initial)
-                            return totalAmount;
-                          })()}
+                          finalSolde={tableSoldeFinal}
                           totalDebit={(() => {
                             const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
                             if (hasSelection) return undefined;
