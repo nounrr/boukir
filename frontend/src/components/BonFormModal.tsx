@@ -611,11 +611,12 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined);
+  const shouldFetchCommandesHistory = isOpen && (currentTab === 'AvoirFournisseur' || String((initialValues as any)?.type || '') === 'AvoirFournisseur');
+  const { data: commandesHistory = [] } = useGetBonsByTypeQuery('Commande', { skip: !shouldFetchCommandesHistory });
   const shouldFetchEcommerceOrders = isOpen && (currentTab === 'AvoirEcommerce' || String((initialValues as any)?.type || '') === 'AvoirEcommerce');
   const { data: ecommerceOrders = [] } = useGetBonsByTypeQuery('Ecommerce', { skip: !shouldFetchEcommerceOrders });
   // For cumulative balances
   // Removed unused aggregated queries to reduce unnecessary re-renders / warnings
-  // const { data: commandesAll = [] } = useGetBonsByTypeQuery('Commande');
   // const { data: avoirsClientAll = [] } = useGetBonsByTypeQuery('Avoir');
   // const { data: avoirsFournisseurAll = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
   // const { data: payments = [] } = useGetPaymentsQuery();
@@ -2382,6 +2383,48 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     };
 
     for (const b of comptantHistory as any[]) scan(b);
+    return bestPrice;
+  };
+
+  const getLastPurchasePriceForSupplierProduct = (
+    fournisseurId: string | number | undefined,
+    productId: string | number | undefined
+  ): number | null => {
+    if (!fournisseurId || !productId) return null;
+    const fid = String(fournisseurId);
+    const pid = String(productId);
+
+    type HistItem = { prix_achat?: number; prix_unitaire?: number; price?: number };
+    let bestPrice: number | null = null;
+    let bestTime = -1;
+
+    const accepted = new Set(['validé', 'valide', 'validée', 'en attente', 'livré', 'livre']);
+
+    const scan = (bon: any, itemsField: any) => {
+      const statut = String(bon.statut || '').toLowerCase();
+      if (!accepted.has(statut)) return;
+
+      const bonSupplierId = String(bon.fournisseur_id ?? bon.contact_id ?? '');
+      if (bonSupplierId !== fid) return;
+
+      const items = parseItems(itemsField);
+      const bonTime = toTime(bon.date_creation || bon.date);
+
+      for (const it of items as HistItem[]) {
+        const itPid = String((it as any).product_id ?? (it as any).id ?? '');
+        if (itPid !== pid) continue;
+
+        const price = Number((it as any).prix_achat ?? (it as any).prix_unitaire ?? (it as any).price ?? 0);
+        if (!Number.isFinite(price) || price <= 0) continue;
+
+        if (bonTime > bestTime) {
+          bestTime = bonTime;
+          bestPrice = price;
+        }
+      }
+    };
+
+    for (const b of commandesHistory as any[]) scan(b, (b as any).items);
     return bestPrice;
   };
 
@@ -4211,6 +4254,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     const lastC = getLastUnitPriceForComptantProduct(values.items[index].product_id);
     return lastC && Number.isFinite(lastC) ? (
       <div className="text-xs text-gray-500 mt-1">Dernier (Comptant): {formatFull(Number(lastC))} DH</div>
+    ) : null;
+  })()}
+  {(values.fournisseur_id && values.items[index].product_id && values.type === 'AvoirFournisseur') && (() => {
+    const lastPurchase = getLastPurchasePriceForSupplierProduct(
+      values.fournisseur_id,
+      values.items[index].product_id
+    );
+    return lastPurchase && Number.isFinite(lastPurchase) ? (
+      <div className="text-xs text-amber-700 font-medium mt-1">Dernier prix achat fournisseur: {formatFull(Number(lastPurchase))} DH</div>
     ) : null;
   })()}
 </td>
