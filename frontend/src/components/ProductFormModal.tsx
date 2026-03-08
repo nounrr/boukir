@@ -113,7 +113,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const { data: categories = [] } = useGetCategoriesQuery();
   const { data: brands = [] } = useGetBrandsQuery();
   // When editing, fetch full product to include variant galleries
-  const { data: fullProduct } = useGetProductQuery((editingProduct as any)?.id as number, {
+  const { data: fullProduct, refetch: refetchFullProduct } = useGetProductQuery((editingProduct as any)?.id as number, {
     skip: !editingProduct?.id,
   });
   const authToken = useSelector((s: RootState) => (s as any)?.auth?.token);
@@ -217,6 +217,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       await updateSnapshots({ snapshots }).unwrap();
       showSuccess(`${snapshots.length} snapshot(s) mis à jour`);
       setSnapshotEdits({});
+      if (editingProduct?.id) {
+        await refetchFullProduct();
+      }
     } catch (e) {
       console.error('Snapshot save failed', e);
       alert('Erreur lors de la mise à jour des snapshots');
@@ -2108,7 +2111,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                                   type="text"
                                                   inputMode="decimal"
                                                   value={getSnapshotEditValue(s, key)}
-                                                  onChange={(e) => setSnapshotEditField(s.id, key, e.target.value)}
+                                                  onChange={(e) => handleSnapshotFieldChange(s, key, e.target.value)}
                                                   className={`w-full px-3 py-2 text-sm font-medium border-2 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-colors ${
                                                     snapshotEdits[s.id]?.[key] !== undefined ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white'
                                                   }`}
