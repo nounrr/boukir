@@ -879,7 +879,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
     if (hasSnapshotChanges) {
       await handleSaveSnapshots();
-      alert('Les snapshots ont été enregistrés, mais le produit contient encore des champs invalides.');
       return;
     }
 
