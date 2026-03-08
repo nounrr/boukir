@@ -34,6 +34,14 @@ const asStringError = (err: unknown): string | null => {
   return typeof err === 'string' ? err : null;
 };
 
+const hasNestedErrors = (value: unknown): boolean => {
+  if (!value) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.some(hasNestedErrors);
+  if (typeof value === 'object') return Object.values(value as Record<string, unknown>).some(hasNestedErrors);
+  return false;
+};
+
 // Schema de validation (tous champs optionnels, qte >= 0)
 const validationSchema = Yup.object({
   designation: Yup.string().optional(),
@@ -860,6 +868,24 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     });
   }, [ (formik.values as any)?.remise_client, (formik.values as any)?.remise_artisan, variantUseProductRemise ]);
 
+  const handlePrimarySubmit = async () => {
+    const errors = await formik.validateForm();
+    const formHasErrors = hasNestedErrors(errors);
+
+    if (!formHasErrors) {
+      await formik.submitForm();
+      return;
+    }
+
+    if (hasSnapshotChanges) {
+      await handleSaveSnapshots();
+      alert('Les snapshots ont été enregistrés, mais le produit contient encore des champs invalides.');
+      return;
+    }
+
+    alert('Le formulaire contient des champs invalides. Veuillez corriger les erreurs avant de mettre à jour le produit.');
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -880,7 +906,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={formik.handleSubmit} className="p-6 space-y-6">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handlePrimarySubmit();
+          }}
+          className="p-6 space-y-6"
+        >
           {/* Language Tabs */}
           <div className="flex space-x-1 mb-0 border-b-2 border-gray-200 pb-0 overflow-x-auto">
             <button
@@ -2489,11 +2521,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               Annuler
             </button>
             <button
-              type="submit"
-              disabled={formik.isSubmitting}
+              type="button"
+              onClick={() => {
+                void handlePrimarySubmit();
+              }}
+              disabled={formik.isSubmitting || savingSnapshots}
               className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all"
             >
-              {editingProduct ? 'Mettre à jour' : 'Ajouter'}
+              {formik.isSubmitting ? (editingProduct ? 'Mise à jour...' : 'Ajout...') : savingSnapshots ? 'Enregistrement...' : (editingProduct ? 'Mettre à jour' : 'Ajouter')}
             </button>
           </div>
         </form>
