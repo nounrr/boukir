@@ -517,8 +517,9 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
         );
       }
 
-      // After snapshot insertion, recompute percentage fields so they stay coherent
-      // with the bon's prix_achat (ci.prix_unitaire) while keeping snapshot prices unchanged.
+      // After snapshot insertion, apply pricing rules for a changed purchase price:
+      // - cout_revient and prix_gros keep their percentages and recompute their prices
+      // - prix_vente stays fixed and only its percentage is recomputed
       await connection.execute(
         `UPDATE product_snapshot ps
            JOIN (
@@ -532,13 +533,13 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
             AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR (ci.variant_id = ps.variant_id))
           SET
             ps.prix_achat = ci.prix_unitaire,
-            ps.cout_revient_pourcentage = CASE
-              WHEN ps.cout_revient IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient_pourcentage
-              ELSE ROUND(((ps.cout_revient / ci.prix_unitaire) - 1) * 100, 2)
+            ps.cout_revient = CASE
+              WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient
+              ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100)), 2)
             END,
-            ps.prix_gros_pourcentage = CASE
-              WHEN ps.prix_gros IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_gros_pourcentage
-              ELSE ROUND(((ps.prix_gros / ci.prix_unitaire) - 1) * 100, 2)
+            ps.prix_gros = CASE
+              WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_gros
+              ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.prix_gros_pourcentage, 0) / 100)), 2)
             END,
             ps.prix_vente_pourcentage = CASE
               WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_vente_pourcentage
@@ -847,6 +848,9 @@ router.put('/:id', verifyToken, async (req, res) => {
     }
     if (hasSnapshotTable) {
       // NOTE: percentages are defined relative to prix_achat (same formula as ProductModal: price = prix_achat * (1 + pct/100)).
+      // Business rule when purchase price changes:
+      // - keep cout_revient_pourcentage and prix_gros_pourcentage fixed, recompute their prices
+      // - keep prix_vente fixed, recompute only prix_vente_pourcentage
       await connection.execute(
         `UPDATE product_snapshot ps
            JOIN (
@@ -860,13 +864,13 @@ router.put('/:id', verifyToken, async (req, res) => {
             AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR (ci.variant_id = ps.variant_id))
           SET
             ps.prix_achat = ci.prix_unitaire,
-            ps.cout_revient_pourcentage = CASE
-              WHEN ps.cout_revient IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient_pourcentage
-              ELSE ROUND(((ps.cout_revient / ci.prix_unitaire) - 1) * 100, 2)
+            ps.cout_revient = CASE
+              WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient
+              ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100)), 2)
             END,
-            ps.prix_gros_pourcentage = CASE
-              WHEN ps.prix_gros IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_gros_pourcentage
-              ELSE ROUND(((ps.prix_gros / ci.prix_unitaire) - 1) * 100, 2)
+            ps.prix_gros = CASE
+              WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_gros
+              ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.prix_gros_pourcentage, 0) / 100)), 2)
             END,
             ps.prix_vente_pourcentage = CASE
               WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_vente_pourcentage
