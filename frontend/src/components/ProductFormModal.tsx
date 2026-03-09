@@ -30,6 +30,26 @@ const toNum = (v: any) => {
   return isNaN(n) ? 0 : n;
 };
 
+const normalizeNumericInput = (
+  originalValue: unknown,
+  emptyValue: undefined | null = undefined,
+) => {
+  if (originalValue === '' || originalValue === undefined) return emptyValue;
+  if (originalValue === null) return emptyValue;
+  if (typeof originalValue === 'number') return Number.isFinite(originalValue) ? originalValue : NaN;
+
+  const normalized = String(originalValue).trim().replace(',', '.');
+  if (!normalized) return emptyValue;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+const numberTransform = (emptyValue: undefined | null = undefined) => (
+  _value: unknown,
+  originalValue: unknown,
+) => normalizeNumericInput(originalValue, emptyValue);
+
 const asStringError = (err: unknown): string | null => {
   return typeof err === 'string' ? err : null;
 };
@@ -42,21 +62,34 @@ const hasNestedErrors = (value: unknown): boolean => {
   return false;
 };
 
+const buildTouchedFromErrors = (value: unknown): any => {
+  if (!value) return true;
+  if (typeof value === 'string') return true;
+  if (Array.isArray(value)) return value.map((entry) => buildTouchedFromErrors(entry));
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [key, buildTouchedFromErrors(nested)])
+    );
+  }
+  return true;
+};
+
 // Schema de validation (tous champs optionnels, qte >= 0)
 const validationSchema = Yup.object({
   designation: Yup.string().optional(),
-  categorie_id: Yup.number().optional(),
-  brand_id: Yup.number().nullable().optional(),
-  quantite: Yup.number().min(0, 'La quantité ne peut pas être négative').optional(),
-  kg: Yup.number().min(0, 'Le poids ne peut pas être négatif').optional(),
-  prix_achat: Yup.number().min(0, 'Le prix ne peut pas être négatif').optional(),
-  cout_revient_pourcentage: Yup.number().min(0, 'Le pourcentage ne peut pas être négatif').optional(),
-  prix_gros_pourcentage: Yup.number().min(0, 'Le pourcentage ne peut pas être négatif').optional(),
-  prix_vente_pourcentage: Yup.number().min(0, 'Le pourcentage ne peut pas être négatif').optional(),
+  categorie_id: Yup.number().transform(numberTransform()).optional(),
+  brand_id: Yup.number().transform(numberTransform(null)).nullable().optional(),
+  quantite: Yup.number().transform(numberTransform()).min(0, 'La quantité ne peut pas être négative').optional(),
+  kg: Yup.number().transform(numberTransform()).min(0, 'Le poids ne peut pas être négatif').optional(),
+  prix_achat: Yup.number().transform(numberTransform()).min(0, 'Le prix ne peut pas être négatif').optional(),
+  cout_revient_pourcentage: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage ne peut pas être négatif').optional(),
+  prix_gros_pourcentage: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage ne peut pas être négatif').optional(),
+  prix_vente_pourcentage: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage ne peut pas être négatif').optional(),
   est_service: Yup.boolean(),
   ecom_published: Yup.boolean().optional(),
   stock_partage_ecom: Yup.boolean().optional(),
   stock_partage_ecom_qty: Yup.number()
+    .transform(numberTransform())
     .optional()
     .test(
       'not-greater-than-quantite',
@@ -78,26 +111,26 @@ const validationSchema = Yup.object({
       variant_name_zh: Yup.string().nullable().optional(),
       variant_type: Yup.string().required('Type requis'),
       reference: Yup.string().optional(),
-      prix_achat: Yup.number().min(0).required('Prix achat requis'),
-      cout_revient: Yup.number().min(0).optional(),
-      cout_revient_pourcentage: Yup.number().min(0).optional(),
-      prix_gros: Yup.number().min(0).optional(),
-      prix_gros_pourcentage: Yup.number().min(0).optional(),
-      prix_vente_pourcentage: Yup.number().min(0).optional(),
-      prix_vente: Yup.number().min(0).required('Prix vente requis'),
-      stock_quantity: Yup.number().min(0).required('Quantité requise'),
+      prix_achat: Yup.number().transform(numberTransform()).typeError('Prix achat requis').min(0).required('Prix achat requis'),
+      cout_revient: Yup.number().transform(numberTransform()).min(0).optional(),
+      cout_revient_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
+      prix_gros: Yup.number().transform(numberTransform()).min(0).optional(),
+      prix_gros_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
+      prix_vente_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
+      prix_vente: Yup.number().transform(numberTransform()).typeError('Prix vente requis').min(0).required('Prix vente requis'),
+      stock_quantity: Yup.number().transform(numberTransform()).typeError('Quantité requise').min(0).required('Quantité requise'),
     })
   ).optional(),
   units: Yup.array().of(
     Yup.object({
       unit_name: Yup.string().required('Nom requis'),
-      conversion_factor: Yup.number().min(0.0001, 'Facteur > 0').required('Facteur requis'),
+      conversion_factor: Yup.number().transform(numberTransform()).typeError('Facteur requis').min(0.0001, 'Facteur > 0').required('Facteur requis'),
       prix_vente: Yup.number()
         .nullable()
-        .transform((val, originalVal) => (originalVal === '' || originalVal === null || originalVal === undefined ? null : val))
+        .transform(numberTransform(null))
         .min(0, 'Prix vente >= 0')
         .optional(),
-      facteur_isNormal: Yup.number().oneOf([0, 1]).optional(),
+      facteur_isNormal: Yup.number().transform(numberTransform()).oneOf([0, 1]).optional(),
       is_default: Yup.boolean().optional(),
     })
   ).optional(),
@@ -440,6 +473,45 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     return fallback;
   };
 
+  const normalizedVariants = Array.isArray((baseEdit as any)?.variants)
+    ? ((baseEdit as any).variants as any[]).map((variant: any) => {
+        const prixAchat = toNum(variant?.prix_achat);
+        return {
+          ...variant,
+          variant_name: variant?.variant_name ?? '',
+          variant_name_ar: variant?.variant_name_ar ?? '',
+          variant_name_en: variant?.variant_name_en ?? '',
+          variant_name_zh: variant?.variant_name_zh ?? '',
+          variant_type: variant?.variant_type || 'Autre',
+          reference: variant?.reference ?? '',
+          prix_achat: prixAchat,
+          cout_revient: toNum(variant?.cout_revient),
+          cout_revient_pourcentage: derivePct(variant?.cout_revient, prixAchat, toNum(variant?.cout_revient_pourcentage)),
+          prix_gros: toNum(variant?.prix_gros),
+          prix_gros_pourcentage: derivePct(variant?.prix_gros, prixAchat, toNum(variant?.prix_gros_pourcentage)),
+          prix_vente: toNum(variant?.prix_vente),
+          prix_vente_pourcentage: derivePct(variant?.prix_vente, prixAchat, toNum(variant?.prix_vente_pourcentage)),
+          stock_quantity: toNum(variant?.stock_quantity),
+          remise_client: toNum(variant?.remise_client ?? 0),
+          remise_artisan: toNum(variant?.remise_artisan ?? 0),
+        };
+      })
+    : [];
+
+  const normalizedUnits = Array.isArray((baseEdit as any)?.units)
+    ? ((baseEdit as any).units as any[]).map((unit: any) => {
+        const hasManualPrice = !(unit?.prix_vente === '' || unit?.prix_vente === null || unit?.prix_vente === undefined);
+        return {
+          ...unit,
+          unit_name: unit?.unit_name ?? '',
+          conversion_factor: toNum(unit?.conversion_factor) || 1,
+          prix_vente: hasManualPrice ? toNum(unit?.prix_vente) : '',
+          facteur_isNormal: Number(unit?.facteur_isNormal ?? (hasManualPrice ? 0 : 1)) === 0 ? 0 : 1,
+          is_default: Boolean(unit?.is_default),
+        };
+      })
+    : [];
+
   const formik = useFormik({
     initialValues: baseEdit
       ? {
@@ -467,8 +539,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           stock_partage_ecom: (baseEdit as any).stock_partage_ecom ?? false,
           stock_partage_ecom_qty: (baseEdit as any).stock_partage_ecom_qty ?? 0,
           isObligatoireVariant: (baseEdit as any).isObligatoireVariant ?? (baseEdit as any).is_obligatoire_variant ?? false,
-          variants: (baseEdit as any).variants ?? [],
-          units: (baseEdit as any).units ?? [],
+          variants: normalizedVariants,
+          units: normalizedUnits,
           base_unit: (baseEdit as any).base_unit ?? 'u',
           categorie_base: (baseEdit as any).categorie_base ?? 'Maison',
         }
@@ -884,6 +956,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       await formik.submitForm();
       return;
     }
+
+    formik.setTouched(buildTouchedFromErrors(errors), true);
 
     if (hasSnapshotChanges) {
       await handleSaveSnapshots();
