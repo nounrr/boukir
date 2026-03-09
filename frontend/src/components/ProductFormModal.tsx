@@ -131,7 +131,7 @@ const validationSchema = Yup.object({
       prix_gros_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
       prix_vente_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
       prix_vente: Yup.number().transform(numberTransform()).typeError('Prix vente requis').min(0).required('Prix vente requis'),
-      stock_quantity: Yup.number().transform(numberTransform()).typeError('Quantité requise').min(0).required('Quantité requise'),
+      stock_quantity: Yup.number().transform(numberTransform()).typeError('Quantité requise').required('Quantité requise'),
     })
   ).optional(),
   units: Yup.array().of(
