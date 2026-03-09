@@ -74,6 +74,19 @@ const buildTouchedFromErrors = (value: unknown): any => {
   return true;
 };
 
+const flattenErrorMessages = (value: unknown, path = ''): string[] => {
+  if (!value) return [];
+  if (typeof value === 'string') return path ? [`${path}: ${value}`] : [value];
+  if (Array.isArray(value)) return value.flatMap((entry, index) => flattenErrorMessages(entry, `${path}[${index}]`));
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, nested]) => {
+      const nextPath = path ? `${path}.${key}` : key;
+      return flattenErrorMessages(nested, nextPath);
+    });
+  }
+  return [];
+};
+
 // Schema de validation (tous champs optionnels, qte >= 0)
 const validationSchema = Yup.object({
   designation: Yup.string().optional(),
@@ -167,6 +180,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [snapshotEdits, setSnapshotEdits] = useState<Record<number, any>>({});
   const [expandedSnapshots, setExpandedSnapshots] = useState<Set<number>>(new Set());
   const [savingSnapshots, setSavingSnapshots] = useState(false);
+  const [submitErrorMessages, setSubmitErrorMessages] = useState<string[]>([]);
 
   const toggleSnapshotExpanded = (id: number) => {
     setExpandedSnapshots(prev => {
@@ -953,18 +967,18 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     const formHasErrors = hasNestedErrors(errors);
 
     if (!formHasErrors) {
+      setSubmitErrorMessages([]);
       await formik.submitForm();
       return;
     }
 
     formik.setTouched(buildTouchedFromErrors(errors), true);
+    setSubmitErrorMessages(flattenErrorMessages(errors));
 
     if (hasSnapshotChanges) {
       await handleSaveSnapshots();
       return;
     }
-
-    alert('Le formulaire contient des champs invalides. Veuillez corriger les erreurs avant de mettre à jour le produit.');
   };
 
   if (!isOpen) return null;
@@ -994,6 +1008,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           }}
           className="p-6 space-y-6"
         >
+          {submitErrorMessages.length > 0 && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="mb-1 font-semibold">Le formulaire contient encore des champs invalides.</div>
+              <div className="space-y-1">
+                {submitErrorMessages.slice(0, 8).map((message, index) => (
+                  <div key={`${message}-${index}`}>{message}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Language Tabs */}
           <div className="flex space-x-1 mb-0 border-b-2 border-gray-200 pb-0 overflow-x-auto">
             <button
@@ -1948,6 +1973,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="Nom de l'unité"
                               />
+                              {asStringError((formik.errors.units?.[index] as any)?.unit_name) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.units?.[index] as any)?.unit_name)}</p>
+                              )}
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -1962,6 +1990,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 placeholder="1.0"
                                 step="0.0001"
                               />
+                              {asStringError((formik.errors.units?.[index] as any)?.conversion_factor) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.units?.[index] as any)?.conversion_factor)}</p>
+                              )}
                             </div>
 
                             <div>
@@ -2007,6 +2038,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                       />
                                       <span className="text-xs text-gray-500">DH</span>
                                     </div>
+                                    {asStringError((formik.errors.units?.[index] as any)?.prix_vente) && (
+                                      <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.units?.[index] as any)?.prix_vente)}</p>
+                                    )}
                                   </div>
                                 );
                               })()}
@@ -2095,6 +2129,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 <option value="Unité">Unité</option>
                                 <option value="Autre">Autre</option>
                               </select>
+                              {asStringError((formik.errors.variants?.[index] as any)?.variant_type) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.variant_type)}</p>
+                              )}
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Nom (ex: Rouge, XL)</label>
@@ -2106,6 +2143,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="Nom"
                               />
+                              {asStringError((formik.errors.variants?.[index] as any)?.variant_name) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.variant_name)}</p>
+                              )}
                               <datalist id={`suggestions-${index}`}>
                                 {(VARIANT_SUGGESTIONS[variant.variant_type || 'Autre'] || []).map((s) => (
                                   <option key={s} value={s} />
@@ -2134,6 +2174,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="0"
                               />
+                              {asStringError((formik.errors.variants?.[index] as any)?.stock_quantity) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.stock_quantity)}</p>
+                              )}
                             </div>
                           </div>
 
@@ -2307,6 +2350,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="0.00"
                               />
+                              {asStringError((formik.errors.variants?.[index] as any)?.prix_achat) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_achat)}</p>
+                              )}
                             </div>
 
                             {/* Coût Revient */}
@@ -2394,6 +2440,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                   placeholder="%"
                                 />
+                                {asStringError((formik.errors.variants?.[index] as any)?.prix_vente_pourcentage) && (
+                                  <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente_pourcentage)}</p>
+                                )}
                               </div>
                               <div className="w-2/3">
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Prix Vente</label>
@@ -2406,6 +2455,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                   placeholder="0.00"
                                 />
+                                {asStringError((formik.errors.variants?.[index] as any)?.prix_vente) && (
+                                  <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente)}</p>
+                                )}
                               </div>
                             </div>
                           </div>
