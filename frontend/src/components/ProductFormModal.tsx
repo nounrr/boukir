@@ -177,15 +177,23 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     const linkedField = pricePctPairs[field];
 
     if (field === 'prix_achat' && prixAchat !== val) {
-      // prix_achat changed → recalc all 3 percentages from their current prices
+      // prix_achat changed:
+      // - prix_vente stays fixed, only its percentage changes
+      // - cout_revient and prix_gros keep their percentages, so their prices change
       const newPa = val;
       if (newPa > 0) {
-        ['cout_revient', 'prix_gros', 'prix_vente'].forEach(priceKey => {
+        const fixedSellingPrice = parseFloat(String(
+          snapshotEdits[snap.id]?.prix_vente !== undefined ? snapshotEdits[snap.id].prix_vente : snap.prix_vente
+        ).replace(',', '.')) || 0;
+        updates.prix_vente_pourcentage = String(parseFloat(((fixedSellingPrice / newPa - 1) * 100).toFixed(2)));
+
+        ['cout_revient', 'prix_gros'].forEach((priceKey) => {
           const pctKey = priceKey + '_pourcentage';
-          const curPrice = parseFloat(String(
-            snapshotEdits[snap.id]?.[priceKey] !== undefined ? snapshotEdits[snap.id][priceKey] : snap[priceKey]
+          const curPct = parseFloat(String(
+            snapshotEdits[snap.id]?.[pctKey] !== undefined ? snapshotEdits[snap.id][pctKey] : snap[pctKey]
           ).replace(',', '.')) || 0;
-          updates[pctKey] = String(parseFloat(((curPrice / newPa - 1) * 100).toFixed(2)));
+          const newPrice = parseFloat((newPa * (1 + curPct / 100)).toFixed(2));
+          updates[priceKey] = String(newPrice);
         });
       }
     } else if (linkedField && field.includes('pourcentage')) {
