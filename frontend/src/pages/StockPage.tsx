@@ -1135,10 +1135,12 @@ const StockPage: React.FC = () => {
         onProductAdded={(newProduct) => {
           console.log('Nouveau produit ajouté:', newProduct);
           showSuccess('Produit ajouté avec succès !');
+          refetchProducts?.();
         }}
         onProductUpdated={(updatedProduct) => {
           console.log('Produit mis à jour:', updatedProduct);
           showSuccess('Produit mis à jour avec succès !');
+          refetchProducts?.();
         }}
       />
 
