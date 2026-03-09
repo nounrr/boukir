@@ -9,7 +9,7 @@ import { Plus, Trash2, X, Save, ChevronDown, ChevronRight, Package } from 'lucid
 import { useCreateProductMutation, useUpdateProductMutation, useGetProductQuery, useUpdateSnapshotsMutation } from '../store/api/productsApi';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 import { useGetBrandsQuery } from '../store/api/brandsApi';
-import { showSuccess } from '../utils/notifications';
+import { showError, showSuccess } from '../utils/notifications';
 import { toBackendUrl } from '../utils/url';
 import { CategoryTreeSelect } from './CategoryTreeSelect';
 
@@ -835,7 +835,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         }
       } catch (err: any) {
         console.error('Product save failed', err);
-        alert(err?.data?.message || err?.message || "Erreur lors de l'enregistrement du produit");
+        showError(err?.data?.message || err?.message || "Erreur lors de l'enregistrement du produit");
         return;
       }
 
