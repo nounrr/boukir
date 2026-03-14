@@ -608,6 +608,58 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
     return options;
   }, [products]);
+
+  const variantCatalogMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const p of products as any[]) {
+      const productReference = String(p?.reference ?? p?.id ?? '').trim();
+      for (const v of p?.variants ?? []) {
+        map.set(`${p.id}:${v.id}`, {
+          productId: p.id,
+          productReference,
+          productDesignation: String(p?.designation ?? '').trim(),
+          variantId: v.id,
+          variantName: String(v?.variant_name ?? '').trim(),
+          variantReference: String(v?.reference ?? '').trim(),
+          product: p,
+          variant: v,
+        });
+      }
+    }
+    return map;
+  }, [products]);
+
+  const catalogProductVariantOptions = useMemo(() => {
+    if (!products?.length) return [];
+    const options: { value: string; label: string; data: any }[] = [];
+
+    for (const p of products as any[]) {
+      const productReference = String(p?.reference ?? p?.id ?? '').trim();
+      const productDesignation = String(p?.designation ?? '').trim();
+      options.push({
+        value: String(p.id),
+        label: `${productReference} - ${productDesignation}`.trim(),
+        data: p,
+      });
+
+      for (const v of p?.variants ?? []) {
+        const variantReference = String(v?.reference ?? '').trim();
+        const variantName = String(v?.variant_name ?? '').trim();
+        const displayReference = variantReference || productReference;
+        const extraParentRef =
+          variantReference && productReference && variantReference !== productReference
+            ? ` | Ref produit: ${productReference}`
+            : '';
+        options.push({
+          value: `catalogvar:${v.id}:${p.id}`,
+          label: `${displayReference} - ${productDesignation}${variantName ? ` - ${variantName}` : ''}${extraParentRef}`.trim(),
+          data: { ...p, _selectedVariant: v },
+        });
+      }
+    }
+
+    return options;
+  }, [products]);
   const { data: clients = [] } = useGetAllClientsQuery();
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
@@ -3449,47 +3501,59 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           return pA - pB;
                                         });
                                         const snapshotOptions = sorted.map((p: any) => {
+                                          const variantMeta = p.variant_id
+                                            ? variantCatalogMap.get(`${p.id}:${p.variant_id}`)
+                                            : null;
+                                          const displayReference = String(
+                                            variantMeta?.variantReference || (p.reference ?? p.id)
+                                          ).trim();
+                                          const variantLabel = String(
+                                            p.variant_name ?? variantMeta?.variantName ?? ''
+                                          ).trim();
+                                          const parentRefSuffix =
+                                            variantMeta?.variantReference &&
+                                            variantMeta?.productReference &&
+                                            variantMeta.variantReference !== variantMeta.productReference
+                                              ? ` | Ref produit: ${variantMeta.productReference}`
+                                              : '';
                                           // Merged entry: single line per product+variant+prix_vente
                                           if (p._isMerged) {
-                                            const serie = String(p.reference ?? p.id);
                                             const nom = p.designation ?? '';
-                                            const variant = p.variant_name ? ` - ${p.variant_name}` : '';
+                                            const variant = variantLabel ? ` - ${variantLabel}` : '';
                                             const qte = p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : '';
                                             const pv = Number(p.prix_vente ?? 0);
                                             return {
                                               value: `merged:${p.id}:${p.variant_id || 0}:${pv}`,
-                                              label: `${serie} - ${nom}${variant}${qte}`.trim(),
+                                              label: `${displayReference} - ${nom}${variant}${qte}${parentRefSuffix}`.trim(),
                                               data: p,
                                             };
                                           }
                                           // Individual snapshot lines (different prix_vente)
                                           const fifo = p.fifo_priority;
                                           const priorityTag = fifo === 1 ? '⭐' : fifo ? `#${fifo}` : '';
-                                          const serie = String(p.reference ?? p.id);
                                           const nom = p.designation ?? '';
-                                          const variant = p.variant_name ? ` - ${p.variant_name}` : '';
+                                          const variant = variantLabel ? ` - ${variantLabel}` : '';
                                           const qte = p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : '';
                                           const bonInfo = p.bon_commande_id ? `Bon #${p.bon_commande_id}` : p.snapshot_id ? `Snap #${p.snapshot_id}` : '';
                                           return {
                                             value: p.snapshot_id ? `snap:${p.snapshot_id}:${p.id}` : String(p.id),
                                             label: p.snapshot_id
-                                              ? `${priorityTag} ${serie} - ${nom}${variant}${qte} | ${bonInfo}`.trim()
-                                              : `${serie} - ${nom}`.trim(),
+                                              ? `${priorityTag} ${displayReference} - ${nom}${variant}${qte}${parentRefSuffix} | ${bonInfo}`.trim()
+                                              : `${displayReference} - ${nom}${variant}${parentRefSuffix}`.trim(),
                                             data: p,
                                           };
                                         });
 
-                                        // IMPORTANT: if a product doesn't exist in snapshotProducts API payload
-                                        // (no snapshot row), but exists in the base products catalog, still allow selecting it.
-                                        const presentProductIds = new Set<string>(sorted.map((p: any) => String(p?.id)));
-                                        const extraProductOptions = (products as any[])
-                                          .filter((p: any) => !presentProductIds.has(String(p?.id)))
-                                          .sort((a: any, b: any) => String(a?.designation ?? '').localeCompare(String(b?.designation ?? ''), 'fr', { sensitivity: 'base' }))
-                                          .map((p: any) => ({
-                                            value: String(p.id),
-                                            label: `${String(p.reference ?? p.id)} - ${p.designation ?? ''}`.trim(),
-                                            data: p,
-                                          }));
+                                        const presentKeys = new Set<string>(
+                                          sorted.map((p: any) => `${String(p?.id)}:${String(p?.variant_id || 0)}`)
+                                        );
+                                        const extraProductOptions = catalogProductVariantOptions.filter((option) => {
+                                          if (String(option.value).startsWith('catalogvar:')) {
+                                            const [, variantId, productId] = String(option.value).split(':');
+                                            return !presentKeys.has(`${productId}:${variantId}`);
+                                          }
+                                          return !presentKeys.has(`${String(option.value)}:0`);
+                                        });
 
                                         return [...snapshotOptions, ...extraProductOptions];
                                       }
@@ -3497,27 +3561,38 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       if (values.type === 'Commande') {
                                         return commandeProductOptions;
                                       }
-                                      return products.map((p: any) => ({
-                                        value: String(p.id),
-                                        label: `${String(p.reference ?? p.id)} - ${p.designation ?? ''}`.trim(),
-                                        data: p,
-                                      }));
+                                      return catalogProductVariantOptions;
                                     })()}
                                     value={(() => {
                                       const snapId = values.items[index].product_snapshot_id;
                                       const prodId = values.items[index].product_id;
+                                      const varId = values.items[index].variant_id;
                                       if (useSnapshotSelection && snapId) {
                                         return `snap:${snapId}:${prodId}`;
                                       }
                                       // For merged items (all roles): return merged value format with prix_vente
                                       if (useSnapshotSelection && prodId && !snapId) {
-                                        const varId = values.items[index].variant_id;
                                         const pv = Number(values.items[index].prix_unitaire ?? 0);
-                                        return `merged:${prodId}:${varId || 0}:${pv}`;
+                                        const hasMergedSnapshot = (filteredSnapshotProducts as any[]).some(
+                                          (p: any) =>
+                                            p._isMerged &&
+                                            String(p.id) === String(prodId) &&
+                                            String(p.variant_id || 0) === String(varId || 0) &&
+                                            Number(p.prix_vente ?? 0) === pv
+                                        );
+                                        if (hasMergedSnapshot) {
+                                          return `merged:${prodId}:${varId || 0}:${pv}`;
+                                        }
+                                        if (varId) {
+                                          return `catalogvar:${varId}:${prodId}`;
+                                        }
                                       }
                                       // For Commande: if a variant is selected, use var: prefix
-                                      if (values.type === 'Commande' && values.items[index].variant_id) {
-                                        return `var:${values.items[index].variant_id}:${prodId}`;
+                                      if (values.type === 'Commande' && varId) {
+                                        return `var:${varId}:${prodId}`;
+                                      }
+                                      if (values.type !== 'Commande' && varId) {
+                                        return `catalogvar:${varId}:${prodId}`;
                                       }
                                       // product_snapshot_id is null → match directly by product_id
                                       return String(prodId || '');
@@ -3529,9 +3604,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       const ref = String(values.items[index].product_reference ?? prodId).trim();
                                       const fromRow = String(values.items[index].designation ?? '').trim();
                                       const variantId = values.items[index].variant_id;
-                                      // For Commande with variant selected, show variant name in label
                                       let variantSuffix = '';
-                                      if (values.type === 'Commande' && variantId) {
+                                      if (variantId) {
                                         const fromCatalog = products.find((p: any) => String(p.id) === String(prodId));
                                         const v = (fromCatalog?.variants ?? []).find((vv: any) => String(vv.id) === String(variantId));
                                         if (v) variantSuffix = ` - ${v.variant_name}`;
@@ -3549,6 +3623,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                       // Handle Commande variant selection: "var:<variantId>:<productId>"
                                       if (selectedValue.startsWith('var:')) {
+                                        const parts = selectedValue.split(':');
+                                        const variantId = parseInt(parts[1]);
+                                        const productId = parseInt(parts[2]);
+                                        product = products.find((p: any) => p.id === productId);
+                                        if (product) {
+                                          selectedVariant = (product.variants ?? []).find((v: any) => v.id === variantId);
+                                        }
+                                      } else if (selectedValue.startsWith('catalogvar:')) {
                                         const parts = selectedValue.split(':');
                                         const variantId = parseInt(parts[1]);
                                         const productId = parseInt(parts[2]);
@@ -3618,7 +3700,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         setFieldValue(`items.${index}.product_id`, product.id);
                                         setFieldValue(
                                           `items.${index}.product_reference`,
-                                          String(product.reference ?? product.id)
+                                          String(selectedVariant?.reference ?? product.reference ?? product.id)
                                         );
                                         setFieldValue(`items.${index}.designation`, product.designation || '');
                                         
