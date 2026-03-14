@@ -424,6 +424,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Remises UI state
   const [showRemisePanel, setShowRemisePanel] = useState(false); // panel application des remises (affiche colonnes)
   const [selectedRemiseId, setSelectedRemiseId] = useState<number | ''>('');
+  const [bulkLineCount, setBulkLineCount] = useState('30');
   // New remise target (bon header)
   const [remiseTargetIsBonClient, setRemiseTargetIsBonClient] = useState(true);
   const { data: remiseClients = [] } = useGetClientRemisesQuery();
@@ -768,6 +769,58 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       });
       return next;
     });
+  };
+
+
+  const createEmptyItem = () => ({
+    _rowId: makeRowId(),
+    product_id: '',
+    product_reference: '',
+    designation: '',
+    quantite: 0,
+    prix_achat: 0,
+    prix_unitaire: 0,
+    cout_revient: 0,
+    kg: 0,
+    total: 0,
+    unite: 'pièce',
+    product_snapshot_id: null,
+  });
+
+  const appendEmptyItems = (requestedCount: number, focusLastRow = false) => {
+    const count = Math.max(1, Math.min(100, Math.floor(requestedCount || 0)));
+    const current = formikRef.current?.values ?? { items: [] };
+    const currentItems = Array.isArray(current.items) ? current.items : [];
+    const startIndex = currentItems.length;
+    const newItems = Array.from({ length: count }, () => createEmptyItem());
+
+    formikRef.current?.setFieldValue('items', [...currentItems, ...newItems]);
+    setUnitPriceRaw((prev) => {
+      const next = { ...prev };
+      for (let i = 0; i < count; i += 1) {
+        next[startIndex + i] = '0';
+      }
+      return next;
+    });
+    setQtyRaw((prev) => {
+      const next = { ...prev };
+      for (let i = 0; i < count; i += 1) {
+        next[startIndex + i] = '0';
+      }
+      return next;
+    });
+
+    if (focusLastRow) {
+      setTimeout(() => {
+        const idx = startIndex + count - 1;
+        const btn = document.querySelector(
+          `[data-row="${idx}"][data-col="product"]`
+        ) as HTMLElement | null;
+        if (btn) (btn as any).focus?.();
+      }, 50);
+    }
+
+    return startIndex;
   };
 
   const sanitizeFileSegment = (value: string | number | null | undefined, fallback = 'bon') => {
@@ -3186,62 +3239,44 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       disabled={isQtyOnlyEdit}
                       onClick={() => {
                         if (isQtyOnlyEdit) return;
-                        const newItem = {
-                          _rowId: makeRowId(),
-                          product_id: '',
-                          product_reference: '',
-                          designation: '',
-                          quantite: 0,
-                          prix_achat: 0,
-                          prix_unitaire: 0,
-                          cout_revient: 0,
-                          kg: 0,
-                          total: 0,
-                          unite: 'pièce',
-                          product_snapshot_id: null,
-                        };
-                        setFieldValue('items', [...values.items, newItem]);
-                        setUnitPriceRaw((prev) => ({ ...prev, [values.items.length]: '0' }));
-                        setQtyRaw((prev) => ({ ...prev, [values.items.length]: '0' })); // ou [newIndex]
-
-                        // Focus the new row's product selector and auto-open search
-                        setTimeout(() => {
-                          const idx = values.items.length; // new index after push
-                          const btn = document.querySelector(
-                            `[data-row="${idx}"][data-col="product"]`
-                          ) as HTMLElement | null;
-                          if (btn) (btn as any).focus?.();
-                        }, 50);
-
+                        appendEmptyItems(1, true);
                       }}
                       className="flex items-center text-blue-600 hover:text-blue-800 disabled:opacity-60"
                     >
                       <Plus size={16} className="mr-1" /> Ajouter ligne
                     </button>
 
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        inputMode="numeric"
+                        value={bulkLineCount}
+                        disabled={isQtyOnlyEdit}
+                        onChange={(e) => setBulkLineCount(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                        className="w-20 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                        aria-label="Nombre de lignes à ajouter"
+                      />
+                      <button
+                        type="button"
+                        disabled={isQtyOnlyEdit}
+                        onClick={() => {
+                          if (isQtyOnlyEdit) return;
+                          appendEmptyItems(Number(bulkLineCount || 0), false);
+                        }}
+                        className="flex items-center text-indigo-600 hover:text-indigo-800 disabled:opacity-60"
+                      >
+                        <Plus size={16} className="mr-1" /> Ajouter plusieurs
+                      </button>
+                    </div>
+
                     <button
                       type="button"
                       disabled={isQtyOnlyEdit}
                       onClick={() => {
                         if (isQtyOnlyEdit) return;
-                        const current = formikRef.current?.values ?? { items: [] };
-                        const emptyRow = {
-                          _rowId: makeRowId(),
-                          product_id: '',
-                          product_reference: '',
-                          designation: '',
-                          quantite: 0,
-                          prix_achat: 0,
-                          prix_unitaire: 0,
-                          cout_revient: 0,
-                          kg: 0,
-                          total: 0,
-                          unite: 'pièce',
-                        };
-
-                        const rowIndex = current.items?.length ?? 0;
-                        formikRef.current?.setFieldValue('items', [...(current.items ?? []), emptyRow]);
-                        setUnitPriceRaw((prev) => ({ ...prev, [rowIndex]: '0' }));
+                        const rowIndex = appendEmptyItems(1, false);
                         setTargetRowIndex(rowIndex);
                         setIsProductModalOpen(true);
                       }}
@@ -3325,11 +3360,26 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </div>
                 )}
 
-                <div className="responsive-table-container">
-                  <FieldArray name="items">
-                    {({ remove }) => (
-                      <table className="min-w-full divide-y divide-gray-200 table-mobile-compact">
-                        <thead className="bg-gray-50">
+                {(() => {
+                  const showProfitColumn = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type);
+                  const showRemiseColumn = showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant');
+                  const emptyColSpan = 8 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0);
+
+                  return (
+                    <>
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                        <div className="text-gray-700">
+                          {values.items.length === 0
+                            ? 'Aucune ligne produit'
+                            : `${values.items.length} lignes produit dans le bon`}
+                        </div>
+                      </div>
+
+                      <div className="responsive-table-container max-h-[58vh] rounded-lg border border-gray-200 bg-white shadow-sm">
+                        <FieldArray name="items">
+                          {({ remove }) => (
+                            <table className="min-w-full divide-y divide-gray-200 table-mobile-compact">
+                              <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm">
                           <tr>
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[200px]">
                               Produit (Réf - Désignation)
@@ -3366,16 +3416,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                               Actions
                             </th>
                           </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
+                              </thead>
+                              <tbody className="bg-white divide-y divide-gray-200">
                           {values.items.length === 0 ? (
                             <tr>
-                              <td colSpan={7} className="px-4 py-4 text-center text-sm text-gray-500">
+                              <td colSpan={emptyColSpan} className="px-4 py-4 text-center text-sm text-gray-500">
                                 Aucun produit ajouté. Cliquez sur "Ajouter un produit" pour commencer.
                               </td>
                             </tr>
                           ) : (
-                            values.items.map((row: any, index: number) => (
+                            values.items.map((row: any, index: number) => {
+                              return (
                               <tr key={row._rowId || `item-${index}`}>
                                 {/* Produit combiné (Réf - Désignation) */}
                                 <td className="px-1 py-2 w-[200px]">
@@ -3542,7 +3593,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         } else {
                                           product = snapshotProducts.find((p: any) => String(p.id) === selectedValue);
                                           if (!product) {
-                                            // Base product selected from fallback list
                                             product = (products as any[]).find((p: any) => String(p.id) === String(selectedValue)) || null;
                                           }
                                         }
@@ -3550,11 +3600,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         product = products.find((p: any) => String(p.id) === selectedValue);
                                       }
 
-                                      if (product) {
-                                        // 🔍 DEBUG: Product selection
-                                        console.log('🟢 [PRODUCT SELECT]', {
-                                          row: index,
-                                          product_id: product.id,
+                                        if (product) {
+                                          // 🔍 DEBUG: Product selection
+                                          console.log('🟢 [PRODUCT SELECT]', {
+                                            row: index,
+                                            product_id: product.id,
                                           designation: product.designation,
                                           snapshot_id: product.snapshot_id || null,
                                           variant_id: selectedVariant?.id || product.variant_id || null,
@@ -4413,13 +4463,18 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 </td>
 
                               </tr>
-                            ))
+                              );
+                            })
                           )}
-                        </tbody>
-                      </table>
-                    )}
-                  </FieldArray>
-                </div>
+                              </tbody>
+                            </table>
+                          )}
+                        </FieldArray>
+                      </div>
+
+                    </>
+                  );
+                })()}
 
                 {/* 🔍 DEBUG PANEL - Résolution prix_achat / cout_revient par ligne */}
                 {/* <div className="mt-4 bg-red-50 border-2 border-red-300 rounded-md p-3 text-xs font-mono overflow-x-auto">
@@ -4731,41 +4786,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           if (!formikRef.current) return;
 
           const values = formikRef.current.values;
-          let rowIndex = targetRowIndex;
-
-          const emptyRow = {
-            _rowId: makeRowId(),
-            product_id: '',
-            product_reference: '',
-            designation: '',
-            quantite: 0,
-            prix_achat: 0,
-            prix_unitaire: 0,
-            cout_revient: 0,
-            kg: 0,
-            total: 0,
-            unite: 'pièce',
+          const inject = (rowIndex: number) => {
+            void applyProductToRow(rowIndex, newProduct);
+            setTargetRowIndex(null);
           };
 
-          const inject = (idx: number) => {
-            requestAnimationFrame(() => {
-              applyProductToRow(idx, {
-                id: newProduct.id,
-                reference: newProduct.reference,
-                designation: newProduct.designation,
-                prix_vente: Number(newProduct.prix_vente ?? 0),
-                prix_achat: Number(newProduct.prix_achat ?? 0),
-                cout_revient: Number(newProduct.cout_revient ?? 0),
-                kg: Number(newProduct.kg ?? 0),
-              });
-              setTargetRowIndex(null);
-            });
-          };
-
-          if (rowIndex == null) {
+          const rowIndex = targetRowIndex;
+          if (rowIndex === null || rowIndex === undefined || !values.items?.[rowIndex]) {
             const newIndex = values.items?.length ?? 0;
-            formikRef.current.setFieldValue('items', [...(values.items ?? []), emptyRow]);
+            formikRef.current.setFieldValue('items', [...(values.items ?? []), createEmptyItem()]);
             setUnitPriceRaw((prev) => ({ ...prev, [newIndex]: '0' }));
+            setQtyRaw((prev) => ({ ...prev, [newIndex]: '0' }));
             inject(newIndex);
           } else {
             inject(rowIndex);
