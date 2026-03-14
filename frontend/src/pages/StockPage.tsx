@@ -263,12 +263,18 @@ const StockPage: React.FC = () => {
       // Add variants
       if (product.variants && Array.isArray(product.variants)) {
         product.variants.forEach((variant: any) => {
+          const variantReference = String(
+            variant.reference ?? variant.ref ?? variant.reference_variante ?? ''
+          ).trim();
+          const parentReference = String(product.reference ?? product.id ?? '').trim();
           rows.push({
             ...product,
             id: `var-${variant.id}`,
             originalId: product.id,
             designation: `${product.designation} - ${variant.variant_name}`,
-            reference: variant.reference || product.reference,
+            reference: variantReference || parentReference,
+            variant_reference: variantReference,
+            parent_reference: parentReference,
             prix_achat: variant.prix_achat,
             prix_vente: variant.prix_vente,
             quantite: variant.stock_quantity,
@@ -292,8 +298,16 @@ const StockPage: React.FC = () => {
 
     const term = (searchTerm ?? '').toLowerCase();
     const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
+    const variantRefStr = String(product.variant_reference ?? '').toLowerCase();
+    const parentRefStr = String(product.parent_reference ?? '').toLowerCase();
     const designation = String(product.designation ?? '').toLowerCase();
-    const matchesSearch = designation.includes(term) || refStr.includes(term);
+    const variantName = String(product.variant_name ?? '').toLowerCase();
+    const matchesSearch =
+      designation.includes(term) ||
+      refStr.includes(term) ||
+      variantRefStr.includes(term) ||
+      parentRefStr.includes(term) ||
+      variantName.includes(term);
 
     const matchesCategory = !filterCategory || (() => {
       const ids = categoryFilterIds;

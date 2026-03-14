@@ -30,6 +30,8 @@ const toNum = (v: any) => {
   return isNaN(n) ? 0 : n;
 };
 
+const toNonNegativeNum = (v: any) => Math.max(0, toNum(v));
+
 const normalizeNumericInput = (
   originalValue: unknown,
   emptyValue: undefined | null = undefined,
@@ -98,11 +100,15 @@ const validationSchema = Yup.object({
   cout_revient_pourcentage: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage ne peut pas être négatif').optional(),
   prix_gros_pourcentage: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage ne peut pas être négatif').optional(),
   prix_vente_pourcentage: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage ne peut pas être négatif').optional(),
+  remise_client: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
+  remise_artisan: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
+  pourcentage_promo: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage promo ne peut pas être négatif').optional(),
   est_service: Yup.boolean(),
   ecom_published: Yup.boolean().optional(),
   stock_partage_ecom: Yup.boolean().optional(),
   stock_partage_ecom_qty: Yup.number()
     .transform(numberTransform())
+    .min(0, 'La quantité partagée ne peut pas être négative')
     .optional()
     .test(
       'not-greater-than-quantite',
@@ -131,7 +137,9 @@ const validationSchema = Yup.object({
       prix_gros_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
       prix_vente_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
       prix_vente: Yup.number().transform(numberTransform()).typeError('Prix vente requis').min(0).required('Prix vente requis'),
-      stock_quantity: Yup.number().transform(numberTransform()).typeError('Quantité requise').required('Quantité requise'),
+      stock_quantity: Yup.number().transform(numberTransform()).typeError('Quantité requise').min(0, 'Quantité >= 0').required('Quantité requise'),
+      remise_client: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
+      remise_artisan: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
     })
   ).optional(),
   units: Yup.array().of(
@@ -214,6 +222,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   const handleSnapshotFieldChange = (snap: any, field: string, rawValue: string) => {
+    const normalizedRaw = String(rawValue ?? '').trim();
+    if (normalizedRaw !== '' && !(field === 'quantite' ? isSignedDecimalLike(normalizedRaw) : isDecimalLike(normalizedRaw))) return;
     const val = parseFloat(String(rawValue).replace(',', '.')) || 0;
     const prixAchat = parseFloat(String(
       snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
@@ -273,7 +283,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       const snapshots = entries.map(([idStr, edits]) => {
         const obj: any = { id: Number(idStr) };
         for (const [k, v] of Object.entries(edits as Record<string, string>)) {
-          obj[k] = v === '' ? 0 : Number(String(v).replace(',', '.')) || 0;
+          obj[k] = v === '' ? 0 : Math.max(0, Number(String(v).replace(',', '.')) || 0);
         }
         return obj;
       });
@@ -406,6 +416,27 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   // Helpers spécifiques à la saisie
   const normalizeDecimal = (s: string) => s.replace(/\s+/g, '').replace(',', '.');
   const isDecimalLike = (s: string) => /^[0-9]*[.,]?[0-9]*$/.test(s);
+  const isSignedDecimalLike = (s: string) => /^-?[0-9]*[.,]?[0-9]*$/.test(s);
+  const setNonNegativeFieldValue = (field: string, rawValue: string, emptyValue: string | number | null = 0) => {
+    const value = String(rawValue ?? '').trim();
+    if (value === '') {
+      formik.setFieldValue(field, emptyValue);
+      return true;
+    }
+    if (!isDecimalLike(value)) return false;
+    formik.setFieldValue(field, value);
+    return true;
+  };
+
+  const commitNonNegativeFieldValue = (field: string, currentValue: any, emptyValue: string | number | null = 0) => {
+    if (currentValue === '' || currentValue === null || currentValue === undefined) {
+      formik.setFieldValue(field, emptyValue);
+      return emptyValue;
+    }
+    const nextValue = Math.max(0, toNum(currentValue));
+    formik.setFieldValue(field, nextValue);
+    return nextValue;
+  };
 
   // États pour les calculs dynamiques
   const [dynamicPrices, setDynamicPrices] = useState({
@@ -489,7 +520,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   const normalizedVariants = Array.isArray((baseEdit as any)?.variants)
     ? ((baseEdit as any).variants as any[]).map((variant: any) => {
-        const prixAchat = toNum(variant?.prix_achat);
+        const prixAchat = toNonNegativeNum(variant?.prix_achat);
         return {
           ...variant,
           variant_name: variant?.variant_name ?? '',
@@ -499,15 +530,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           variant_type: variant?.variant_type || 'Autre',
           reference: variant?.reference ?? '',
           prix_achat: prixAchat,
-          cout_revient: toNum(variant?.cout_revient),
-          cout_revient_pourcentage: derivePct(variant?.cout_revient, prixAchat, toNum(variant?.cout_revient_pourcentage)),
-          prix_gros: toNum(variant?.prix_gros),
-          prix_gros_pourcentage: derivePct(variant?.prix_gros, prixAchat, toNum(variant?.prix_gros_pourcentage)),
-          prix_vente: toNum(variant?.prix_vente),
-          prix_vente_pourcentage: derivePct(variant?.prix_vente, prixAchat, toNum(variant?.prix_vente_pourcentage)),
-          stock_quantity: toNum(variant?.stock_quantity),
-          remise_client: toNum(variant?.remise_client ?? 0),
-          remise_artisan: toNum(variant?.remise_artisan ?? 0),
+          cout_revient: toNonNegativeNum(variant?.cout_revient),
+          cout_revient_pourcentage: derivePct(variant?.cout_revient, prixAchat, toNonNegativeNum(variant?.cout_revient_pourcentage)),
+          prix_gros: toNonNegativeNum(variant?.prix_gros),
+          prix_gros_pourcentage: derivePct(variant?.prix_gros, prixAchat, toNonNegativeNum(variant?.prix_gros_pourcentage)),
+          prix_vente: toNonNegativeNum(variant?.prix_vente),
+          prix_vente_pourcentage: derivePct(variant?.prix_vente, prixAchat, toNonNegativeNum(variant?.prix_vente_pourcentage)),
+          stock_quantity: toNonNegativeNum(variant?.stock_quantity),
+          remise_client: toNonNegativeNum(variant?.remise_client ?? 0),
+          remise_artisan: toNonNegativeNum(variant?.remise_artisan ?? 0),
         };
       })
     : [];
@@ -535,23 +566,23 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           designation_zh: (baseEdit as any).designation_zh ?? '',
           categorie_id: (baseEdit as any).categorie_id ?? ((baseEdit as any).categorie ? (baseEdit as any).categorie.id : 0),
           brand_id: (baseEdit as any).brand_id ?? ((baseEdit as any).brand ? (baseEdit as any).brand.id : undefined),
-          quantite: (baseEdit as any).quantite ?? 0,
-          kg: (baseEdit as any).kg ?? undefined,
-          prix_achat: (baseEdit as any).prix_achat ?? 0,
-          cout_revient_pourcentage: derivePct((baseEdit as any).cout_revient, (baseEdit as any).prix_achat, (baseEdit as any).cout_revient_pourcentage ?? 2),
-          prix_gros_pourcentage: derivePct((baseEdit as any).prix_gros, (baseEdit as any).prix_achat, (baseEdit as any).prix_gros_pourcentage ?? 10),
-          prix_vente_pourcentage: derivePct((baseEdit as any).prix_vente, (baseEdit as any).prix_achat, (baseEdit as any).prix_vente_pourcentage ?? 25),
+          quantite: toNonNegativeNum((baseEdit as any).quantite ?? 0),
+          kg: (baseEdit as any).kg == null || (baseEdit as any).kg === '' ? undefined : toNonNegativeNum((baseEdit as any).kg),
+          prix_achat: toNonNegativeNum((baseEdit as any).prix_achat ?? 0),
+          cout_revient_pourcentage: derivePct((baseEdit as any).cout_revient, (baseEdit as any).prix_achat, toNonNegativeNum((baseEdit as any).cout_revient_pourcentage ?? 2)),
+          prix_gros_pourcentage: derivePct((baseEdit as any).prix_gros, (baseEdit as any).prix_achat, toNonNegativeNum((baseEdit as any).prix_gros_pourcentage ?? 10)),
+          prix_vente_pourcentage: derivePct((baseEdit as any).prix_vente, (baseEdit as any).prix_achat, toNonNegativeNum((baseEdit as any).prix_vente_pourcentage ?? 25)),
           est_service: (baseEdit as any).est_service ?? false,
-          remise_client: (baseEdit as any).remise_client ?? 0,
-          remise_artisan: (baseEdit as any).remise_artisan ?? 0,
+          remise_client: toNonNegativeNum((baseEdit as any).remise_client ?? 0),
+          remise_artisan: toNonNegativeNum((baseEdit as any).remise_artisan ?? 0),
           description: (baseEdit as any).description ?? '',
           description_ar: (baseEdit as any).description_ar ?? '',
           description_en: (baseEdit as any).description_en ?? '',
           description_zh: (baseEdit as any).description_zh ?? '',
-          pourcentage_promo: (baseEdit as any).pourcentage_promo ?? 0,
+          pourcentage_promo: toNonNegativeNum((baseEdit as any).pourcentage_promo ?? 0),
           ecom_published: (baseEdit as any).ecom_published ?? false,
           stock_partage_ecom: (baseEdit as any).stock_partage_ecom ?? false,
-          stock_partage_ecom_qty: (baseEdit as any).stock_partage_ecom_qty ?? 0,
+          stock_partage_ecom_qty: toNonNegativeNum((baseEdit as any).stock_partage_ecom_qty ?? 0),
           isObligatoireVariant: (baseEdit as any).isObligatoireVariant ?? (baseEdit as any).is_obligatoire_variant ?? false,
           variants: normalizedVariants,
           units: normalizedUnits,
@@ -566,7 +597,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       console.debug('Current formik errors before submit:', formik.errors);
       // Hard guard: prevent submission if shared qty exceeds total (even if button is force-enabled)
       const totalQtyGuard = values.est_service ? 0 : toNum(values.quantite);
-      const shareQtyGuard = toNum(values.stock_partage_ecom_qty);
+      const shareQtyGuard = toNonNegativeNum(values.stock_partage_ecom_qty);
       const mustValidateGuard = !!(values.stock_partage_ecom || values.ecom_published);
       if (mustValidateGuard && shareQtyGuard > totalQtyGuard) {
         formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
@@ -575,14 +606,14 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       const prixAchatRaw = values.prix_achat;
       const hasPrixAchatInput = !(prixAchatRaw === null || prixAchatRaw === undefined || String(prixAchatRaw).trim() === '');
       const prixAchatNum = hasPrixAchatInput
-        ? toNum(prixAchatRaw)
-        : (editingProduct ? toNum((editingProduct as any).prix_achat) : 0);
-      const kgNum = values.kg !== undefined && values.kg !== null ? toNum(values.kg) : null;
-      const crPctNum = toNum(values.cout_revient_pourcentage);
-      const pgPctNum = toNum(values.prix_gros_pourcentage);
-      const pvPctNum = toNum(values.prix_vente_pourcentage);
-      const promoPctNum = toNum(values.pourcentage_promo);
-      const qteNum = values.est_service ? 0 : toNum(values.quantite);
+        ? toNonNegativeNum(prixAchatRaw)
+        : (editingProduct ? toNonNegativeNum((editingProduct as any).prix_achat) : 0);
+      const kgNum = values.kg !== undefined && values.kg !== null && values.kg !== '' ? toNonNegativeNum(values.kg) : null;
+      const crPctNum = toNonNegativeNum(values.cout_revient_pourcentage);
+      const pgPctNum = toNonNegativeNum(values.prix_gros_pourcentage);
+      const pvPctNum = toNonNegativeNum(values.prix_vente_pourcentage);
+      const promoPctNum = toNonNegativeNum(values.pourcentage_promo);
+      const qteNum = values.est_service ? 0 : toNonNegativeNum(values.quantite);
 
       const computed = calculatePrices(prixAchatNum, crPctNum, pgPctNum, pvPctNum);
 
@@ -622,16 +653,16 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             variant_name_zh: v.variant_name_zh ?? null,
             variant_type: v.variant_type,
             reference: v.reference,
-            prix_achat: toNum(v.prix_achat),
-            cout_revient: toNum(v.cout_revient),
-            cout_revient_pourcentage: toNum(v.cout_revient_pourcentage),
-            prix_gros: toNum(v.prix_gros),
-            prix_gros_pourcentage: toNum(v.prix_gros_pourcentage),
-            prix_vente_pourcentage: toNum(v.prix_vente_pourcentage),
-            prix_vente: toNum(v.prix_vente),
-            stock_quantity: toNum(v.stock_quantity),
-            remise_client: toNum(v.remise_client ?? 0),
-            remise_artisan: toNum(v.remise_artisan ?? 0),
+            prix_achat: toNonNegativeNum(v.prix_achat),
+            cout_revient: toNonNegativeNum(v.cout_revient),
+            cout_revient_pourcentage: toNonNegativeNum(v.cout_revient_pourcentage),
+            prix_gros: toNonNegativeNum(v.prix_gros),
+            prix_gros_pourcentage: toNonNegativeNum(v.prix_gros_pourcentage),
+            prix_vente_pourcentage: toNonNegativeNum(v.prix_vente_pourcentage),
+            prix_vente: toNonNegativeNum(v.prix_vente),
+            stock_quantity: toNonNegativeNum(v.stock_quantity),
+            remise_client: toNonNegativeNum(v.remise_client ?? 0),
+            remise_artisan: toNonNegativeNum(v.remise_artisan ?? 0),
           }))
         : variantsNormalized;
 
@@ -650,9 +681,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         brand_id: values.brand_id ? Number(values.brand_id) : null,
         ecom_published: values.ecom_published,
         stock_partage_ecom: values.stock_partage_ecom,
-        stock_partage_ecom_qty: values.stock_partage_ecom_qty ?? 0,
-        remise_client: Number((values as any)?.remise_client ?? 0),
-        remise_artisan: Number((values as any)?.remise_artisan ?? 0),
+        stock_partage_ecom_qty: toNonNegativeNum(values.stock_partage_ecom_qty ?? 0),
+        remise_client: toNonNegativeNum((values as any)?.remise_client ?? 0),
+        remise_artisan: toNonNegativeNum((values as any)?.remise_artisan ?? 0),
         variants: variantsSanitized as any,
         units: values.units,
         base_unit: values.base_unit,
@@ -739,7 +770,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               const snapshots = snapshotEntries.map(([idStr, edits]) => {
                 const obj: any = { id: Number(idStr) };
                 for (const [k, v] of Object.entries(edits as Record<string, string>)) {
-                  obj[k] = v === '' ? 0 : Number(String(v).replace(',', '.')) || 0;
+                  obj[k] = v === '' ? 0 : Math.max(0, Number(String(v).replace(',', '.')) || 0);
                 }
                 return obj;
               });
@@ -1189,10 +1220,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 name="quantite"
                 value={String(formik.values.quantite ?? '')}
                 onChange={(e) => {
-                  formik.setFieldValue('quantite', e.target.value);
+                  const rawValue = e.target.value;
+                  if (String(rawValue ?? '').trim() !== '' && !isSignedDecimalLike(String(rawValue))) return;
+                  formik.setFieldValue('quantite', rawValue);
                   // Revalider la quantité partagée quand la quantité totale change
-                  const newTotalQty = toNum(e.target.value);
-                  const shareQty = toNum(formik.values.stock_partage_ecom_qty);
+                  const newTotalQty = toNonNegativeNum(e.target.value);
+                  const shareQty = toNonNegativeNum(formik.values.stock_partage_ecom_qty);
                   if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > newTotalQty) {
                     formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                   } else {
@@ -1200,10 +1233,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   }
                 }}
                 onBlur={() => {
-                  formik.setFieldValue('quantite', toNum(formik.values.quantite));
+                  const totalQty = commitNonNegativeFieldValue('quantite', formik.values.quantite, 0);
                   // Revalider après blur aussi
-                  const totalQty = toNum(formik.values.quantite);
-                  const shareQty = toNum(formik.values.stock_partage_ecom_qty);
+                  const shareQty = toNonNegativeNum(formik.values.stock_partage_ecom_qty);
                   if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
                     formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                   } else {
@@ -1232,13 +1264,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 pattern="[0-9]*[.,]?[0-9]*"
                 name="kg"
                 value={String(formik.values.kg ?? '')}
-                onChange={(e) => formik.setFieldValue('kg', e.target.value)}
-                onBlur={() =>
-                  formik.setFieldValue(
-                    'kg',
-                    formik.values.kg === '' || formik.values.kg == null ? '' : toNum(formik.values.kg)
-                  )
-                }
+                onChange={(e) => {
+                  void setNonNegativeFieldValue('kg', e.target.value, '');
+                }}
+                onBlur={() => {
+                  void commitNonNegativeFieldValue('kg', formik.values.kg, '');
+                }}
                 className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                 placeholder="Ex: 1.5"
               />
@@ -1380,9 +1411,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <input
                   type="number"
                   step="0.01"
+                  min={0}
                   name="remise_client"
                   value={(formik.values as any).remise_client as any}
-                  onChange={formik.handleChange}
+                  onChange={(e) => {
+                    void setNonNegativeFieldValue('remise_client', e.target.value);
+                  }}
+                  onBlur={() => {
+                    void commitNonNegativeFieldValue('remise_client', (formik.values as any).remise_client, 0);
+                  }}
                   className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                   placeholder="0.00"
                 />
@@ -1392,9 +1429,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <input
                   type="number"
                   step="0.01"
+                  min={0}
                   name="remise_artisan"
                   value={(formik.values as any).remise_artisan as any}
-                  onChange={formik.handleChange}
+                  onChange={(e) => {
+                    void setNonNegativeFieldValue('remise_artisan', e.target.value);
+                  }}
+                  onBlur={() => {
+                    void commitNonNegativeFieldValue('remise_artisan', (formik.values as any).remise_artisan, 0);
+                  }}
                   className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                   placeholder="0.00"
                 />
@@ -1517,8 +1560,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 pattern="[0-9]*[.,]?[0-9]*"
                 name="pourcentage_promo"
                 value={String(formik.values.pourcentage_promo ?? '')}
-                onChange={(e) => formik.setFieldValue('pourcentage_promo', e.target.value)}
-                onBlur={() => formik.setFieldValue('pourcentage_promo', toNum(formik.values.pourcentage_promo))}
+                onChange={(e) => {
+                  void setNonNegativeFieldValue('pourcentage_promo', e.target.value);
+                }}
+                onBlur={() => {
+                  void commitNonNegativeFieldValue('pourcentage_promo', formik.values.pourcentage_promo, 0);
+                }}
                 className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                 placeholder="0"
               />
@@ -1537,8 +1584,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 pattern="[0-9]*[.,]?[0-9]*"
                 name="prix_achat"
                 value={String(formik.values.prix_achat ?? '')}
-                onChange={(e) => formik.setFieldValue('prix_achat', e.target.value)}
-                onBlur={() => formik.setFieldValue('prix_achat', toNum(formik.values.prix_achat))}
+                onChange={(e) => {
+                  void setNonNegativeFieldValue('prix_achat', e.target.value, '');
+                }}
+                onBlur={() => {
+                  void commitNonNegativeFieldValue('prix_achat', formik.values.prix_achat, '');
+                }}
                 className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                 placeholder="0"
               />
@@ -1568,7 +1619,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 e.preventDefault();
                                 const rawValue = (e.target as HTMLInputElement).value;
                                 const val = parseFloat(String(rawValue).replace(',', '.'));
-                                if (!Number.isFinite(val) || val <= 0) return;
+                                if (!Number.isFinite(val) || val < 0) return;
                                 // Apply prix_vente to all visible snapshots
                                 const updates: Record<number, any> = {};
                                 productSnapshotRows!.forEach((snap: any) => {
@@ -1589,7 +1640,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               // Also apply on change (live) for better UX
                               const rawValue = e.target.value;
                               const val = parseFloat(String(rawValue).replace(',', '.'));
-                              if (!Number.isFinite(val) || val <= 0) return;
+                              if (!Number.isFinite(val) || val < 0) return;
                               const updates: Record<number, any> = {};
                               productSnapshotRows!.forEach((snap: any) => {
                                 const pa = parseFloat(String(
@@ -1656,6 +1707,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                       inputMode="decimal"
                                       value={getSnapshotEditValue(s, key)}
                                       onChange={(e) => handleSnapshotFieldChange(s, key, e.target.value)}
+                                      onBlur={() => {
+                                        if (key !== 'quantite') return;
+                                        setSnapshotEditField(s.id, key, String(Math.max(0, toNum(getSnapshotEditValue(s, key)))));
+                                      }}
                                       className={`w-full px-3 py-2 text-sm font-medium border-2 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors ${
                                         snapshotEdits[s.id]?.[key] !== undefined ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white'
                                       }`}
@@ -1696,7 +1751,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                     } else if (!isService) {
                       // Revalider avec la quantité actuelle si on décoche service
-                      const totalQty = toNum(formik.values.quantite ?? 0);
+                      const totalQty = toNonNegativeNum(formik.values.quantite ?? 0);
                       if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
                         formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                       } else {
@@ -1759,7 +1814,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                         formik.setFieldTouched('stock_partage_ecom_qty', true, false);
                         
                         // Valider immédiatement et afficher l'erreur
-                        const totalQty = formik.values.est_service ? 0 : toNum(formik.values.quantite ?? 0);
+                        const totalQty = formik.values.est_service ? 0 : toNonNegativeNum(formik.values.quantite ?? 0);
                         if (newQty > totalQty) {
                           formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                         } else {
@@ -1802,7 +1857,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     id="cout_revient_pourcentage"
                     name="cout_revient_pourcentage"
                     value={String(formik.values.cout_revient_pourcentage ?? '')}
-                    onChange={(e) => formik.setFieldValue('cout_revient_pourcentage', e.target.value)}
+                    onChange={(e) => {
+                      void setNonNegativeFieldValue('cout_revient_pourcentage', e.target.value);
+                    }}
+                    onBlur={() => {
+                      void commitNonNegativeFieldValue('cout_revient_pourcentage', formik.values.cout_revient_pourcentage, 0);
+                    }}
                     className="w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                   <span className="text-sm text-gray-600">%</span>
@@ -1817,17 +1877,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       const v = e.target.value;
                       if (!isDecimalLike(v)) return;
                       setPriceRaw((prev) => ({ ...prev, cout_revient: v }));
-                      const val = parseFloat(normalizeDecimal(v)) || 0;
-                      const prixA = toNum(formik.values.prix_achat) || 0;
+                      const val = Math.max(0, parseFloat(normalizeDecimal(v)) || 0);
+                      const prixA = toNonNegativeNum(formik.values.prix_achat) || 0;
                       if (prixA > 0) {
                         const pct = (val / prixA - 1) * 100;
-                        formik.setFieldValue('cout_revient_pourcentage', Number(pct.toFixed(4)));
+                        formik.setFieldValue('cout_revient_pourcentage', Number(Math.max(0, pct).toFixed(4)));
                       }
                       setDynamicPrices((prev) => ({ ...prev, cout_revient: val }));
                     }}
                     onBlur={() => {
                       priceEditingRef.current = null;
-                      const val = parseFloat(normalizeDecimal(priceRaw.cout_revient)) || 0;
+                      const val = Math.max(0, parseFloat(normalizeDecimal(priceRaw.cout_revient)) || 0);
                       setPriceRaw((prev) => ({ ...prev, cout_revient: formatNumber(val) }));
                     }}
                     className="w-full text-right bg-transparent border-0 focus:outline-none"
@@ -1849,7 +1909,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     id="prix_gros_pourcentage"
                     name="prix_gros_pourcentage"
                     value={String(formik.values.prix_gros_pourcentage ?? '')}
-                    onChange={(e) => formik.setFieldValue('prix_gros_pourcentage', e.target.value)}
+                    onChange={(e) => {
+                      void setNonNegativeFieldValue('prix_gros_pourcentage', e.target.value);
+                    }}
+                    onBlur={() => {
+                      void commitNonNegativeFieldValue('prix_gros_pourcentage', formik.values.prix_gros_pourcentage, 0);
+                    }}
                     className="w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                   <span className="text-sm text-gray-600">%</span>
@@ -1864,17 +1929,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       const v = e.target.value;
                       if (!isDecimalLike(v)) return;
                       setPriceRaw((prev) => ({ ...prev, prix_gros: v }));
-                      const val = parseFloat(normalizeDecimal(v)) || 0;
-                      const prixA = toNum(formik.values.prix_achat) || 0;
+                      const val = Math.max(0, parseFloat(normalizeDecimal(v)) || 0);
+                      const prixA = toNonNegativeNum(formik.values.prix_achat) || 0;
                       if (prixA > 0) {
                         const pct = (val / prixA - 1) * 100;
-                        formik.setFieldValue('prix_gros_pourcentage', Number(pct.toFixed(4)));
+                        formik.setFieldValue('prix_gros_pourcentage', Number(Math.max(0, pct).toFixed(4)));
                       }
                       setDynamicPrices((prev) => ({ ...prev, prix_gros: val }));
                     }}
                     onBlur={() => {
                       priceEditingRef.current = null;
-                      const val = parseFloat(normalizeDecimal(priceRaw.prix_gros)) || 0;
+                      const val = Math.max(0, parseFloat(normalizeDecimal(priceRaw.prix_gros)) || 0);
                       setPriceRaw((prev) => ({ ...prev, prix_gros: formatNumber(val) }));
                     }}
                     className="w-full text-right bg-transparent border-0 focus:outline-none"
@@ -1896,7 +1961,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     id="prix_vente_pourcentage"
                     name="prix_vente_pourcentage"
                     value={String(formik.values.prix_vente_pourcentage ?? '')}
-                    onChange={(e) => formik.setFieldValue('prix_vente_pourcentage', e.target.value)}
+                    onChange={(e) => {
+                      void setNonNegativeFieldValue('prix_vente_pourcentage', e.target.value);
+                    }}
+                    onBlur={() => {
+                      void commitNonNegativeFieldValue('prix_vente_pourcentage', formik.values.prix_vente_pourcentage, 0);
+                    }}
                     className="w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                   <span className="text-sm text-gray-600">%</span>
@@ -1911,17 +1981,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       const v = e.target.value;
                       if (!isDecimalLike(v)) return;
                       setPriceRaw((prev) => ({ ...prev, prix_vente: v }));
-                      const val = parseFloat(normalizeDecimal(v)) || 0;
-                      const prixA = toNum(formik.values.prix_achat) || 0;
+                      const val = Math.max(0, parseFloat(normalizeDecimal(v)) || 0);
+                      const prixA = toNonNegativeNum(formik.values.prix_achat) || 0;
                       if (prixA > 0) {
                         const pct = (val / prixA - 1) * 100;
-                        formik.setFieldValue('prix_vente_pourcentage', Number(pct.toFixed(4)));
+                        formik.setFieldValue('prix_vente_pourcentage', Number(Math.max(0, pct).toFixed(4)));
                       }
                       setDynamicPrices((prev) => ({ ...prev, prix_vente: val }));
                     }}
                     onBlur={() => {
                       priceEditingRef.current = null;
-                      const val = parseFloat(normalizeDecimal(priceRaw.prix_vente)) || 0;
+                      const val = Math.max(0, parseFloat(normalizeDecimal(priceRaw.prix_vente)) || 0);
                       setPriceRaw((prev) => ({ ...prev, prix_vente: formatNumber(val) }));
                     }}
                     className="w-full text-right bg-transparent border-0 focus:outline-none"
@@ -1985,10 +2055,18 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 type="number"
                                 name={`units.${index}.conversion_factor`}
                                 value={unit.conversion_factor}
-                                onChange={formik.handleChange}
+                                onChange={(e) => {
+                                  if (!setNonNegativeFieldValue(`units.${index}.conversion_factor`, e.target.value)) return;
+                                }}
+                                onBlur={() => {
+                                  const current = (formik.values.units?.[index] as any)?.conversion_factor;
+                                  const nextValue = current === '' || current == null ? 1 : Math.max(0.0001, toNonNegativeNum(current));
+                                  formik.setFieldValue(`units.${index}.conversion_factor`, nextValue);
+                                }}
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="1.0"
                                 step="0.0001"
+                                min={0.0001}
                               />
                               {asStringError((formik.errors.units?.[index] as any)?.conversion_factor) && (
                                 <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.units?.[index] as any)?.conversion_factor)}</p>
@@ -2026,9 +2104,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                         name={`units.${index}.prix_vente`}
                                         value={isAuto ? computed : ((unit as any).prix_vente ?? '')}
                                         onChange={(e) => {
+                                          if (!setNonNegativeFieldValue(`units.${index}.prix_vente`, e.target.value, '')) return;
                                           // When user types manually => switch off auto by storing a value
-                                          formik.setFieldValue(`units.${index}.prix_vente`, e.target.value);
                                           formik.setFieldValue(`units.${index}.facteur_isNormal`, 0);
+                                        }}
+                                        onBlur={() => {
+                                          const current = (formik.values.units?.[index] as any)?.prix_vente;
+                                          void commitNonNegativeFieldValue(`units.${index}.prix_vente`, current, '');
                                         }}
                                         disabled={isAuto}
                                         className={`w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg transition-all ${isAuto ? 'bg-gray-100/80 text-gray-600' : 'bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'}`}
@@ -2168,11 +2250,19 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 type="number"
                                 name={`variants.${index}.stock_quantity`}
                                 value={variant.stock_quantity}
-                                onChange={formik.handleChange}
+                                onChange={(e) => {
+                                  const rawValue = e.target.value;
+                                  if (String(rawValue ?? '').trim() !== '' && !isSignedDecimalLike(String(rawValue))) return;
+                                  formik.setFieldValue(`variants.${index}.stock_quantity`, rawValue);
+                                }}
+                                onBlur={() => {
+                                  void commitNonNegativeFieldValue(`variants.${index}.stock_quantity`, (formik.values.variants?.[index] as any)?.stock_quantity, 0);
+                                }}
                                 disabled={false}
                                 title="Saisir la quantité en stock de la variante"
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="0"
+                                min={0}
                               />
                               {asStringError((formik.errors.variants?.[index] as any)?.stock_quantity) && (
                                 <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.stock_quantity)}</p>
@@ -2268,6 +2358,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                                   inputMode="decimal"
                                                   value={getSnapshotEditValue(s, key)}
                                                   onChange={(e) => handleSnapshotFieldChange(s, key, e.target.value)}
+                                                  onBlur={() => {
+                                                    if (key !== 'quantite') return;
+                                                    setSnapshotEditField(s.id, key, String(Math.max(0, toNum(getSnapshotEditValue(s, key)))));
+                                                  }}
                                                   className={`w-full px-3 py-2 text-sm font-medium border-2 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-colors ${
                                                     snapshotEdits[s.id]?.[key] !== undefined ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white'
                                                   }`}
@@ -2334,8 +2428,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 name={`variants.${index}.prix_achat`}
                                 value={variant.prix_achat}
                                 onChange={(e) => {
-                                  formik.handleChange(e);
-                                  const pa = Number(e.target.value);
+                                  if (!setNonNegativeFieldValue(`variants.${index}.prix_achat`, e.target.value)) return;
+                                  const pa = toNonNegativeNum(e.target.value);
                                   const crp = Number(variant.cout_revient_pourcentage || 0);
                                   const pgp = Number(variant.prix_gros_pourcentage || 0);
                                   const pvp = Number(variant.prix_vente_pourcentage || 0);
@@ -2347,8 +2441,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                     formik.setFieldValue(`variants.${index}.prix_vente`, Number((pa * (1 + pvp/100)).toFixed(2)));
                                   }
                                 }}
+                                onBlur={() => {
+                                  void commitNonNegativeFieldValue(`variants.${index}.prix_achat`, (formik.values.variants?.[index] as any)?.prix_achat, 0);
+                                }}
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 placeholder="0.00"
+                                min={0}
                               />
                               {asStringError((formik.errors.variants?.[index] as any)?.prix_achat) && (
                                 <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_achat)}</p>
@@ -2364,13 +2462,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   name={`variants.${index}.cout_revient_pourcentage`}
                                   value={variant.cout_revient_pourcentage}
                                   onChange={(e) => {
-                                    formik.handleChange(e);
-                                    const pct = Number(e.target.value);
-                                    const pa = Number(variant.prix_achat || 0);
+                                    if (!setNonNegativeFieldValue(`variants.${index}.cout_revient_pourcentage`, e.target.value)) return;
+                                    const pct = toNonNegativeNum(e.target.value);
+                                    const pa = toNonNegativeNum(variant.prix_achat || 0);
                                     formik.setFieldValue(`variants.${index}.cout_revient`, Number((pa * (1 + pct/100)).toFixed(2)));
+                                  }}
+                                  onBlur={() => {
+                                    void commitNonNegativeFieldValue(`variants.${index}.cout_revient_pourcentage`, (formik.values.variants?.[index] as any)?.cout_revient_pourcentage, 0);
                                   }}
                                   className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                   placeholder="%"
+                                  min={0}
                                 />
                               </div>
                               <div className="w-2/3">
@@ -2395,13 +2497,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   name={`variants.${index}.prix_gros_pourcentage`}
                                   value={variant.prix_gros_pourcentage}
                                   onChange={(e) => {
-                                    formik.handleChange(e);
-                                    const pct = Number(e.target.value);
-                                    const pa = Number(variant.prix_achat || 0);
+                                    if (!setNonNegativeFieldValue(`variants.${index}.prix_gros_pourcentage`, e.target.value)) return;
+                                    const pct = toNonNegativeNum(e.target.value);
+                                    const pa = toNonNegativeNum(variant.prix_achat || 0);
                                     formik.setFieldValue(`variants.${index}.prix_gros`, Number((pa * (1 + pct/100)).toFixed(2)));
+                                  }}
+                                  onBlur={() => {
+                                    void commitNonNegativeFieldValue(`variants.${index}.prix_gros_pourcentage`, (formik.values.variants?.[index] as any)?.prix_gros_pourcentage, 0);
                                   }}
                                   className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                   placeholder="%"
+                                  min={0}
                                 />
                               </div>
                               <div className="w-2/3">
@@ -2432,13 +2538,18 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                       formik.setFieldValue(`variants.${index}.prix_vente`, Number(variantPrixVenteLock.forcedPrixVente ?? 0));
                                       return;
                                     }
-                                    formik.handleChange(e);
-                                    const pct = Number(e.target.value);
-                                    const pa = Number(variant.prix_achat || 0);
+                                    if (!setNonNegativeFieldValue(`variants.${index}.prix_vente_pourcentage`, e.target.value)) return;
+                                    const pct = toNonNegativeNum(e.target.value);
+                                    const pa = toNonNegativeNum(variant.prix_achat || 0);
                                     formik.setFieldValue(`variants.${index}.prix_vente`, Number((pa * (1 + pct/100)).toFixed(2)));
+                                  }}
+                                  onBlur={() => {
+                                    if (variantPrixVenteLock.lock) return;
+                                    void commitNonNegativeFieldValue(`variants.${index}.prix_vente_pourcentage`, (formik.values.variants?.[index] as any)?.prix_vente_pourcentage, 0);
                                   }}
                                   className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                   placeholder="%"
+                                  min={0}
                                 />
                                 {asStringError((formik.errors.variants?.[index] as any)?.prix_vente_pourcentage) && (
                                   <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente_pourcentage)}</p>
@@ -2450,10 +2561,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   type="number"
                                   name={`variants.${index}.prix_vente`}
                                   value={variant.prix_vente}
-                                  onChange={formik.handleChange}
+                                  onChange={(e) => {
+                                    if (!setNonNegativeFieldValue(`variants.${index}.prix_vente`, e.target.value)) return;
+                                  }}
+                                  onBlur={() => {
+                                    if (variantPrixVenteLock.lock) return;
+                                    void commitNonNegativeFieldValue(`variants.${index}.prix_vente`, (formik.values.variants?.[index] as any)?.prix_vente, 0);
+                                  }}
                                   disabled={variantPrixVenteLock.lock}
                                   className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                   placeholder="0.00"
+                                  min={0}
                                 />
                                 {asStringError((formik.errors.variants?.[index] as any)?.prix_vente) && (
                                   <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente)}</p>
@@ -2488,9 +2606,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               <input
                                 type="number"
                                 step="0.01"
+                                min={0}
                                 name={`variants.${index}.remise_client`}
                                 value={(variant as any).remise_client ?? 0}
-                                onChange={formik.handleChange}
+                                onChange={(e) => {
+                                  if (!setNonNegativeFieldValue(`variants.${index}.remise_client`, e.target.value)) return;
+                                }}
+                                onBlur={() => {
+                                  void commitNonNegativeFieldValue(`variants.${index}.remise_client`, (formik.values.variants?.[index] as any)?.remise_client, 0);
+                                }}
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 disabled={variantUseProductRemise[(variant.id as number) ?? index]}
                               />
@@ -2500,9 +2624,15 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               <input
                                 type="number"
                                 step="0.01"
+                                min={0}
                                 name={`variants.${index}.remise_artisan`}
                                 value={(variant as any).remise_artisan ?? 0}
-                                onChange={formik.handleChange}
+                                onChange={(e) => {
+                                  if (!setNonNegativeFieldValue(`variants.${index}.remise_artisan`, e.target.value)) return;
+                                }}
+                                onBlur={() => {
+                                  void commitNonNegativeFieldValue(`variants.${index}.remise_artisan`, (formik.values.variants?.[index] as any)?.remise_artisan, 0);
+                                }}
                                 className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                                 disabled={variantUseProductRemise[(variant.id as number) ?? index]}
                               />
