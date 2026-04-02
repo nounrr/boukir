@@ -66,6 +66,22 @@ function roundSafe(n) {
   return Number.isFinite(v) ? v : 0;
 }
 
+function buildVariantIdExpr(itemAlias, snapshotAlias = 'ps') {
+  return `COALESCE(${itemAlias}.variant_id, ${snapshotAlias}.variant_id)`;
+}
+
+function buildBasePrixAchatExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv') {
+  return `COALESCE(${snapshotAlias}.prix_achat, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.cout_revient, ${variantAlias}.cout_revient, ${productAlias}.cout_revient, 0)`;
+}
+
+function buildBaseCoutRevientExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv') {
+  return `COALESCE(${snapshotAlias}.cout_revient, ${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.prix_achat, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, 0)`;
+}
+
+function buildConvertedCostExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv', unitAlias = 'pu') {
+  return `(${buildBaseCoutRevientExpr(productAlias, snapshotAlias, variantAlias)} * COALESCE(${unitAlias}.conversion_factor, 1))`;
+}
+
 async function tryQuery(sql, params) {
   try {
     const [rows] = await pool.query(sql, params);
@@ -104,14 +120,15 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(bs.date_creation) AS day,
                bs.id AS bon_id,
                bs.montant_total AS totalBon,
-               COALESCE(SUM((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite), 0) AS profitBrutBon,
+           COALESCE(SUM((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
+           COALESCE(SUM((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(si.remise_montant, 0) * si.quantite), 0) AS remiseBon,
                1 AS bonCount
         FROM bons_sortie bs
         LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
         LEFT JOIN products p ON p.id = si.product_id
         LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
+         LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('si', 'ps')}
         LEFT JOIN product_units pu ON pu.id = si.unit_id
         WHERE LOWER(TRIM(COALESCE(bs.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(bs.isNotCalculated, 0) <> 1
@@ -123,14 +140,15 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(bc.date_creation) AS day,
                bc.id AS bon_id,
                bc.montant_total AS totalBon,
-               COALESCE(SUM((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite - (COALESCE(ci.remise_montant, 0) * ci.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite), 0) AS profitBrutBon,
+           COALESCE(SUM((ci.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ci.quantite - (COALESCE(ci.remise_montant, 0) * ci.quantite)), 0) AS profitNetBon,
+           COALESCE(SUM((ci.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ci.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ci.remise_montant, 0) * ci.quantite), 0) AS remiseBon,
                1 AS bonCount
         FROM bons_comptant bc
         LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
         LEFT JOIN products p ON p.id = ci.product_id
         LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
+         LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('ci', 'ps')}
         LEFT JOIN product_units pu ON pu.id = ci.unit_id
         WHERE LOWER(TRIM(COALESCE(bc.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(bc.isNotCalculated, 0) <> 1
@@ -142,14 +160,15 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(o.created_at) AS day,
                o.id AS bon_id,
                o.total_amount AS totalBon,
-               COALESCE(SUM((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
-               COALESCE(SUM((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity), 0) AS profitBrutBon,
+           COALESCE(SUM((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
+           COALESCE(SUM((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(oi.remise_amount, 0)), 0) AS remiseBon,
                1 AS bonCount
         FROM ecommerce_orders o
         LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
         LEFT JOIN products p ON p.id = oi.product_id
         LEFT JOIN product_snapshot ps ON ps.id = oi.product_snapshot_id
+         LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('oi', 'ps')}
         LEFT JOIN product_units pu ON pu.id = oi.unit_id
         WHERE LOWER(COALESCE(o.status, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}
           ${buildDateFilter(filterArgs, 'o', 'created_at').sql}
@@ -169,13 +188,14 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(ac.date_creation) AS day,
                ac.id AS bon_id,
                ac.montant_total AS totalBon,
-               COALESCE(SUM((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite - (COALESCE(ai.remise_montant, 0) * ai.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite), 0) AS profitBrutBon,
+           COALESCE(SUM((ai.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai.quantite - (COALESCE(ai.remise_montant, 0) * ai.quantite)), 0) AS profitNetBon,
+           COALESCE(SUM((ai.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ai.remise_montant, 0) * ai.quantite), 0) AS remiseBon
         FROM avoirs_client ac
         LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
         LEFT JOIN products p ON p.id = ai.product_id
         LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
+         LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('ai', 'ps')}
         LEFT JOIN product_units pu ON pu.id = ai.unit_id
         WHERE LOWER(TRIM(COALESCE(ac.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(ac.isNotCalculated, 0) <> 1
@@ -196,13 +216,14 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(ac2.date_creation) AS day,
                ac2.id AS bon_id,
                ac2.montant_total AS totalBon,
-               COALESCE(SUM((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite), 0) AS profitBrutBon,
+           COALESCE(SUM((ai2.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai2.quantite - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)), 0) AS profitNetBon,
+           COALESCE(SUM((ai2.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai2.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(ai2.remise_montant, 0) * ai2.quantite), 0) AS remiseBon
         FROM avoirs_comptant ac2
         LEFT JOIN avoir_comptant_items ai2 ON ai2.avoir_comptant_id = ac2.id
         LEFT JOIN products p ON p.id = ai2.product_id
         LEFT JOIN product_snapshot ps ON ps.id = ai2.product_snapshot_id
+         LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('ai2', 'ps')}
         LEFT JOIN product_units pu ON pu.id = ai2.unit_id
         WHERE LOWER(TRIM(COALESCE(ac2.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(ac2.isNotCalculated, 0) <> 1
@@ -223,13 +244,14 @@ router.get('/chiffre-affaires', async (req, res) => {
         SELECT DATE(ae.date_creation) AS day,
                ae.id AS bon_id,
                ae.montant_total AS totalBon,
-               COALESCE(SUM((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite - (COALESCE(i.remise_montant, 0) * i.quantite)), 0) AS profitNetBon,
-               COALESCE(SUM((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite), 0) AS profitBrutBon,
+           COALESCE(SUM((i.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * i.quantite - (COALESCE(i.remise_montant, 0) * i.quantite)), 0) AS profitNetBon,
+           COALESCE(SUM((i.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * i.quantite), 0) AS profitBrutBon,
                COALESCE(SUM(COALESCE(i.remise_montant, 0) * i.quantite), 0) AS remiseBon
         FROM avoirs_ecommerce ae
         LEFT JOIN avoir_ecommerce_items i ON i.avoir_ecommerce_id = ae.id
         LEFT JOIN products p ON p.id = i.product_id
         LEFT JOIN product_snapshot ps ON ps.id = i.product_snapshot_id
+         LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('i', 'ps')}
         LEFT JOIN product_units pu ON pu.id = i.unit_id
         WHERE LOWER(TRIM(COALESCE(ae.statut, ''))) IN ${VALID_STATUSES_SQL}
           AND COALESCE(ae.isNotCalculated, 0) <> 1
@@ -457,27 +479,27 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
            (COALESCE(ct_bc.nom_complet, bc.client_nom, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
             ci.product_id AS product_id,
-            ps.variant_id AS variant_id,
+            ${buildVariantIdExpr('ci', 'ps')} AS variant_id,
             ci.unit_id AS unit_id,
            (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
             pu.unit_name AS unit_name,
             ci.quantite AS quantite,
             ci.prix_unitaire AS prix_unitaire,
-            COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
-            COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+            ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
+            ${buildBasePrixAchatExpr('p', 'ps', 'pv')} AS prix_achat,
             (ci.prix_unitaire * ci.quantite) AS montant_ligne,
             COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-            ((ci.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite) AS profitBrut,
+            ((ci.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ci.quantite) AS profitBrut,
             COALESCE(ci.remise_montant, 0) AS remise_unitaire,
             (COALESCE(ci.remise_montant, 0) * ci.quantite) AS remise_total,
-            (((ci.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ci.quantite) - (COALESCE(ci.remise_montant, 0) * ci.quantite)) AS profit
+            (((ci.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ci.quantite) - (COALESCE(ci.remise_montant, 0) * ci.quantite)) AS profit
           FROM bons_comptant bc
           LEFT JOIN contacts ct_bc ON ct_bc.id = bc.client_id
           LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
           LEFT JOIN products p ON p.id = ci.product_id
           LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
           LEFT JOIN product_units pu ON pu.id = ci.unit_id
-          LEFT JOIN product_variants pv ON pv.id = ps.variant_id
+          LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('ci', 'ps')}
       WHERE LOWER(TRIM(COALESCE(bc.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bc.isNotCalculated, 0) <> 1
         AND DATE(bc.date_creation) = ?
@@ -491,27 +513,27 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
              (COALESCE(ct_bs.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
               si.product_id AS product_id,
-              ps.variant_id AS variant_id,
+              ${buildVariantIdExpr('si', 'ps')} AS variant_id,
               si.unit_id AS unit_id,
              (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
               pu.unit_name AS unit_name,
               si.quantite AS quantite,
               si.prix_unitaire AS prix_unitaire,
-              COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
-              COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+              ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
+              ${buildBasePrixAchatExpr('p', 'ps', 'pv')} AS prix_achat,
               (si.prix_unitaire * si.quantite) AS montant_ligne,
               COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-              ((si.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite) AS profitBrut,
+              ((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite) AS profitBrut,
               COALESCE(si.remise_montant, 0) AS remise_unitaire,
               (COALESCE(si.remise_montant, 0) * si.quantite) AS remise_total,
-              (((si.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
+              (((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
             FROM bons_sortie bs
             LEFT JOIN contacts ct_bs ON ct_bs.id = bs.client_id
             LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
             LEFT JOIN products p ON p.id = si.product_id
             LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
             LEFT JOIN product_units pu ON pu.id = si.unit_id
-            LEFT JOIN product_variants pv ON pv.id = ps.variant_id
+            LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('si', 'ps')}
       WHERE LOWER(TRIM(COALESCE(bs.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(bs.isNotCalculated, 0) <> 1
         AND DATE(bs.date_creation) = ?
@@ -531,20 +553,20 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
               COALESCE(oi.unit_name, pu.unit_name) AS unit_name,
               oi.quantity AS quantite,
               oi.unit_price AS prix_unitaire,
-              COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
-              COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+              ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
+              ${buildBasePrixAchatExpr('p', 'ps', 'pv')} AS prix_achat,
               COALESCE(oi.subtotal, (oi.unit_price * oi.quantity)) AS montant_ligne,
               COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-              ((oi.unit_price - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity) AS profitBrut,
+              ((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity) AS profitBrut,
               COALESCE(oi.remise_percent_applied, 0) AS remise_unitaire,
               COALESCE(oi.remise_amount, 0) AS remise_total,
-              (((oi.unit_price - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
+              (((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity) - COALESCE(oi.remise_amount, 0)) AS profit
             FROM ecommerce_orders o
             LEFT JOIN ecommerce_order_items oi ON oi.order_id = o.id
             LEFT JOIN products p ON p.id = oi.product_id
             LEFT JOIN product_snapshot ps ON ps.id = oi.product_snapshot_id
             LEFT JOIN product_units pu ON pu.id = oi.unit_id
-            LEFT JOIN product_variants pv ON pv.id = ps.variant_id
+            LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('oi', 'ps')}
       WHERE LOWER(COALESCE(o.status, '')) NOT IN ${ECOMMERCE_EXCLUDED_STATUSES_SQL}
         AND DATE(o.created_at) = ?
     `;
@@ -557,27 +579,27 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
            (COALESCE(ct_ac.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
             ai.product_id AS product_id,
-            ps.variant_id AS variant_id,
+            ${buildVariantIdExpr('ai', 'ps')} AS variant_id,
             ai.unit_id AS unit_id,
            (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
             pu.unit_name AS unit_name,
             ai.quantite AS quantite,
             ai.prix_unitaire AS prix_unitaire,
-            COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
-            COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+            ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
+            ${buildBasePrixAchatExpr('p', 'ps', 'pv')} AS prix_achat,
             (ai.prix_unitaire * ai.quantite) AS montant_ligne,
             COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-            ((ai.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite) AS profitBrut,
+            ((ai.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai.quantite) AS profitBrut,
             COALESCE(ai.remise_montant, 0) AS remise_unitaire,
             (COALESCE(ai.remise_montant, 0) * ai.quantite) AS remise_total,
-            (((ai.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
+            (((ai.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
           FROM avoirs_client ac
           LEFT JOIN contacts ct_ac ON ct_ac.id = ac.client_id
           LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
           LEFT JOIN products p ON p.id = ai.product_id
           LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
           LEFT JOIN product_units pu ON pu.id = ai.unit_id
-          LEFT JOIN product_variants pv ON pv.id = ps.variant_id
+          LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('ai', 'ps')}
       WHERE LOWER(TRIM(COALESCE(ac.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ac.isNotCalculated, 0) <> 1
         AND DATE(ac.date_creation) = ?
@@ -591,26 +613,26 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
              (COALESCE(ac2.client_nom, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
               ai2.product_id AS product_id,
-              ps.variant_id AS variant_id,
+              ${buildVariantIdExpr('ai2', 'ps')} AS variant_id,
               ai2.unit_id AS unit_id,
              (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
               pu.unit_name AS unit_name,
               ai2.quantite AS quantite,
               ai2.prix_unitaire AS prix_unitaire,
-              COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
-              COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+              ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
+              ${buildBasePrixAchatExpr('p', 'ps', 'pv')} AS prix_achat,
               (ai2.prix_unitaire * ai2.quantite) AS montant_ligne,
               COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-              ((ai2.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite) AS profitBrut,
+              ((ai2.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai2.quantite) AS profitBrut,
               COALESCE(ai2.remise_montant, 0) AS remise_unitaire,
               (COALESCE(ai2.remise_montant, 0) * ai2.quantite) AS remise_total,
-              (((ai2.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * ai2.quantite) - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)) AS profit
+              (((ai2.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai2.quantite) - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)) AS profit
             FROM avoirs_comptant ac2
             LEFT JOIN avoir_comptant_items ai2 ON ai2.avoir_comptant_id = ac2.id
             LEFT JOIN products p ON p.id = ai2.product_id
             LEFT JOIN product_snapshot ps ON ps.id = ai2.product_snapshot_id
             LEFT JOIN product_units pu ON pu.id = ai2.unit_id
-            LEFT JOIN product_variants pv ON pv.id = ps.variant_id
+            LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('ai2', 'ps')}
       WHERE LOWER(TRIM(COALESCE(ac2.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ac2.isNotCalculated, 0) <> 1
         AND DATE(ac2.date_creation) = ?
@@ -630,20 +652,20 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
                     pu.unit_name AS unit_name,
               i.quantite AS quantite,
               i.prix_unitaire AS prix_unitaire,
-              COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) AS cout_revient,
-              COALESCE(ps.prix_achat, p.prix_achat, ps.cout_revient, p.cout_revient, 0) AS prix_achat,
+              ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
+              ${buildBasePrixAchatExpr('p', 'ps', 'pv')} AS prix_achat,
               (i.prix_unitaire * i.quantite) AS montant_ligne,
               COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-              ((i.prix_unitaire - (COALESCE(ps.cout_revient, p.cout_revient, ps.prix_achat, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite) AS profitBrut,
+              ((i.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * i.quantite) AS profitBrut,
               COALESCE(i.remise_montant, 0) AS remise_unitaire,
               (COALESCE(i.remise_montant, 0) * i.quantite) AS remise_total,
-              (((i.prix_unitaire - (COALESCE(ps.cout_revient, ps.prix_achat, p.cout_revient, p.prix_achat, 0) * COALESCE(pu.conversion_factor, 1))) * i.quantite) - (COALESCE(i.remise_montant, 0) * i.quantite)) AS profit
+              (((i.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * i.quantite) - (COALESCE(i.remise_montant, 0) * i.quantite)) AS profit
             FROM avoirs_ecommerce ae
             LEFT JOIN avoir_ecommerce_items i ON i.avoir_ecommerce_id = ae.id
             LEFT JOIN products p ON p.id = i.product_id
             LEFT JOIN product_snapshot ps ON ps.id = i.product_snapshot_id
             LEFT JOIN product_units pu ON pu.id = i.unit_id
-            LEFT JOIN product_variants pv ON pv.id = ps.variant_id
+            LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('i', 'ps')}
       WHERE LOWER(TRIM(COALESCE(ae.statut, ''))) IN ${VALID_STATUSES_SQL}
         AND COALESCE(ae.isNotCalculated, 0) <> 1
         AND DATE(ae.date_creation) = ?
