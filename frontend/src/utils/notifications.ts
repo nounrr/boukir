@@ -1,11 +1,11 @@
 export async function sendWhatsApp(to: string, body: string, mediaUrls?: string[], token?: string) {
-  const res = await fetch('/api/notifications/whatsapp/send', {
+  const res = await fetch('/api/notifications/whatsapp/bon', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ to, body, mediaUrls }),
+    body: JSON.stringify({ to, message: body, mediaUrls }),
   });
   if (!res.ok) {
     const text = await res.text();
