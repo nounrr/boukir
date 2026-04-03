@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken } from '../middleware/auth.js';
+import { getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
 
 const router = express.Router();
 
@@ -135,7 +136,7 @@ async function resolveBonLink(bonId, bonType) {
 router.get('/clients', async (_req, res) => {
   try {
     await ensureRemisesTables();
-  const [rows] = await pool.execute(`
+    const [rows] = await pool.execute(`
       SELECT 
         cr.*,
         (
@@ -146,9 +147,57 @@ router.get('/clients', async (_req, res) => {
       FROM client_remises cr
       ORDER BY cr.id DESC
     `);
-    res.json(rows);
+
+    const balances = await getRemisePaymentAccounts(pool);
+    const balanceById = new Map(balances.map((row) => [Number(row.id), row]));
+
+    res.json(rows.map((row) => {
+      const balance = balanceById.get(Number(row.id));
+      return {
+        ...row,
+        remise_gagnee_ancien: Number(balance?.earned_old_total ?? row.total_remise ?? 0),
+        remise_gagnee_nouveau: Number(balance?.earned_bon_total ?? 0),
+        remise_gagnee_ecommerce: Number(balance?.earned_ecommerce_total ?? 0),
+        remise_gagnee_total: Number(balance?.earned_total ?? row.total_remise ?? 0),
+        remise_utilisee: Number(balance?.used_total ?? 0),
+        remise_disponible: Number(balance?.available_total ?? 0),
+      };
+    }));
   } catch (e) {
     console.error('remises clients list error', e);
+    res.status(500).json({ message: 'Erreur du serveur', detail: e?.message, code: e?.code });
+  }
+});
+
+router.get('/payment-accounts', verifyToken, async (req, res) => {
+  try {
+    await ensureRemisesTables();
+
+    const rawTypes = String(req.query.types || req.query.type || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const typeMap = {
+      'client-remise': 'client-remise',
+      client_remise: 'client-remise',
+      clientremise: 'client-remise',
+      client_abonne: 'client_abonne',
+      'client-abonne': 'client_abonne',
+      clientabonne: 'client_abonne',
+    };
+    const types = rawTypes
+      .map((value) => typeMap[value])
+      .filter(Boolean);
+    const onlyAvailable = ['1', 'true', 'yes'].includes(String(req.query.onlyAvailable || '').toLowerCase());
+
+    const balances = await getRemisePaymentAccounts(pool, {
+      onlyAvailable,
+      types: types.length ? types : undefined,
+    });
+
+    res.json(balances);
+  } catch (e) {
+    console.error('remises payment-accounts error', e);
     res.status(500).json({ message: 'Erreur du serveur', detail: e?.message, code: e?.code });
   }
 });
@@ -171,7 +220,17 @@ router.get('/clients/by-contact/:contactId', async (req, res) => {
     `, [contactId]);
     
     if (rows.length > 0) {
-      res.json(rows[0]); // Retourne le client_abonné existant
+      const balances = await getRemisePaymentAccounts(pool, { ids: [Number(rows[0].id)] });
+      const balance = balances[0];
+      res.json({
+        ...rows[0],
+        remise_gagnee_ancien: Number(balance?.earned_old_total ?? rows[0].total_remise ?? 0),
+        remise_gagnee_nouveau: Number(balance?.earned_bon_total ?? 0),
+        remise_gagnee_ecommerce: Number(balance?.earned_ecommerce_total ?? 0),
+        remise_gagnee_total: Number(balance?.earned_total ?? rows[0].total_remise ?? 0),
+        remise_utilisee: Number(balance?.used_total ?? 0),
+        remise_disponible: Number(balance?.available_total ?? 0),
+      });
     } else {
       res.status(404).json({ message: 'Aucun client_abonné trouvé pour ce contact' });
     }
@@ -287,8 +346,15 @@ router.get('/clients/:id/bons', async (req, res) => {
 router.patch('/clients/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nom, phone, cin, note } = req.body;
+    const { nom, phone, cin, note, type } = req.body;
     const fields = [], vals = [];
+    // Validate type if provided
+    if (type !== undefined) {
+      const validTypes = ['client-remise', 'client_abonne'];
+      if (validTypes.includes(type)) {
+        fields.push('type = ?'); vals.push(type);
+      }
+    }
     for (const [k, v] of Object.entries({ nom, phone, cin, note })) {
       if (v !== undefined) { fields.push(`${k} = ?`); vals.push(v); }
     }

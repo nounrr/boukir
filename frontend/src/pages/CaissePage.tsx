@@ -30,6 +30,7 @@ import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetAllClientsQuery, useGetAllFournisseursQuery } from '../store/api/contactsApi';
+import { useGetRemisePaymentAccountsQuery } from '../store/api/remisesApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { canModifyPayments } from '../utils/permissions';
@@ -43,6 +44,20 @@ import { logout } from '../store/slices/authSlice';
 import PaymentPrintModal from '../components/PaymentPrintModal';
 import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
 import { calculateContactSoldeHistory } from '../utils/soldeCalculator';
+
+type RemiseAccountType = 'client-remise' | 'client_abonne';
+
+type RemisePaymentAccount = {
+  id: number;
+  nom: string;
+  type: RemiseAccountType;
+  contact_id?: number | null;
+  contact_nom?: string | null;
+  contact_societe?: string | null;
+  earned_total?: number;
+  used_total?: number;
+  available_total?: number;
+};
 
 const CaissePage = () => {
   const dispatch = useDispatch();
@@ -64,7 +79,7 @@ const CaissePage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite'>('all');
+  const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite' | 'Remise'>('all');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState<boolean>(false);
@@ -86,6 +101,7 @@ const CaissePage = () => {
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
   const { data: talons = [] } = useGetTalonsQuery(undefined);
   const { data: paymentsApi = [] } = useGetPaymentsQuery();
+  const { data: remiseAccountsRaw = [] } = useGetRemisePaymentAccountsQuery();
   const payments = paymentsApi;
   const [createPayment] = useCreatePaymentMutation();
   const [updatePaymentApi] = useUpdatePaymentMutation();
@@ -96,6 +112,7 @@ const CaissePage = () => {
   const { data: personnelNames = [] } = useGetPersonnelNamesQuery();
   const [createOldTalonCaisse] = useCreateOldTalonCaisseMutation();
   const { token } = useAuth();
+  const remiseAccounts = remiseAccountsRaw as RemisePaymentAccount[];
 
   // Audit meta for payments (created_by_name / updated_by_name)
   const [paymentsMeta, setPaymentsMeta] = useState<Record<string, { created_by_name: any; updated_by_name: any }>>({});
@@ -117,6 +134,36 @@ const CaissePage = () => {
       }
     }
     return String(v);
+  };
+
+  const getRemiseTypeLabel = (type?: string | null) => {
+    if (type === 'client_abonne') return 'Client abonné';
+    return 'Client remise';
+  };
+
+  const getPaymentContactName = (payment: Payment) => {
+    if (payment.mode_paiement === 'Remise' && payment.remise_account_name) {
+      return payment.remise_account_name;
+    }
+    if (payment.type_paiement === 'Fournisseur') {
+      return fournisseurs.find((f) => f.id === payment.contact_id)?.nom_complet || '-';
+    }
+    return clients.find((c) => c.id === payment.contact_id)?.nom_complet || '-';
+  };
+
+  const getPaymentSociete = (payment: Payment) => {
+    if (payment.mode_paiement === 'Remise') {
+      return clients.find((c) => c.id === payment.contact_id)?.societe || getRemiseTypeLabel(payment.remise_account_type);
+    }
+    if (payment.type_paiement === 'Fournisseur') {
+      return fournisseurs.find((f) => f.id === payment.contact_id)?.societe || '-';
+    }
+    return clients.find((c) => c.id === payment.contact_id)?.societe || '-';
+  };
+
+  const getPaymentTypeBadge = (payment: Payment) => {
+    if (payment.mode_paiement === 'Remise') return 'Remise';
+    return payment.type_paiement;
   };
   
   // Bons from database: utiliser les mêmes sources que BonFormModal
@@ -186,6 +233,8 @@ const CaissePage = () => {
     push(payment.numero);
     push(payment.code_reglement);
     push(payment.mode_paiement);
+    push((payment as any).remise_account_name);
+    push((payment as any).remise_account_type);
     push(payment.statut);
     push(payment.notes);
     push(payment.banque);
@@ -387,7 +436,12 @@ const CaissePage = () => {
       let bValue: any;
 
       const getContactName = (payment: Payment) => {
-        const byName = (payment as any).contact_nom || (payment as any).client_nom || (payment as any).fournisseur_nom || '';
+        const byName =
+          (payment as any).remise_account_name ||
+          (payment as any).contact_nom ||
+          (payment as any).client_nom ||
+          (payment as any).fournisseur_nom ||
+          '';
         if (byName) return String(byName).toLowerCase();
         const cid = String((payment as any).contact_id || (payment as any).client_id || (payment as any).fournisseur_id || '');
         if (cid) {
@@ -478,6 +532,9 @@ const CaissePage = () => {
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
   const totalTraites = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Traite')
+    .reduce((total: number, p: Payment) => total + amountOf(p), 0);
+  const totalRemises = sortedPayments
+    .filter((p: Payment) => p.mode_paiement === 'Remise')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
 
   const handleDelete = async (id: number) => {
@@ -593,8 +650,8 @@ const paymentValidationSchema = Yup.object({
     .required('Montant est requis')
     .positive('Le montant doit être positif'),
 
-  mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'>()
-    .oneOf(['Espèces','Chèque','Virement','Traite'], 'Mode invalide')
+  mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'|'Remise'>()
+    .oneOf(['Espèces','Chèque','Virement','Traite','Remise'], 'Mode invalide')
     .required('Mode de paiement est requis'),
 
   date_paiement: Yup.string()
@@ -609,10 +666,19 @@ const paymentValidationSchema = Yup.object({
     .transform((v, orig) => (orig === '' ? null : v))
     .typeError('Contact invalide')
     .integer('Contact invalide')
-    .when('contact_optional', {
-      is: true,
+    .when(['contact_optional', 'mode_paiement'], {
+      is: (contact_optional: boolean, mode_paiement: string) => contact_optional || mode_paiement === 'Remise',
       then: (schema) => schema.nullable().notRequired(),
       otherwise: (schema) => schema.required('Contact est requis'),
+    }),
+
+  remise_account_id: Yup.number()
+    .transform((v, orig) => (orig === '' ? null : v))
+    .nullable()
+    .when('mode_paiement', {
+      is: 'Remise',
+      then: (schema) => schema.required('Bénéficiaire remise requis').typeError('Bénéficiaire remise requis'),
+      otherwise: (schema) => schema.nullable().notRequired(),
     }),
 
   code_reglement: Yup.string()
@@ -775,6 +841,9 @@ const paymentValidationSchema = Yup.object({
         type_paiement: selectedPayment.type_paiement || 'Client',
         contact_optional: contactOptional,
         contact_id: selectedPayment.contact_id || '',
+        remise_account_id: selectedPayment.remise_account_id || '',
+        remise_filter_client_remise: selectedPayment.remise_account_type !== 'client_abonne',
+        remise_filter_client_abonne: selectedPayment.remise_account_type !== 'client-remise',
         bon_id: selectedPayment.bon_id ? (selectedPayment.bon_type ? `${selectedPayment.bon_type}:${selectedPayment.bon_id}` : String(selectedPayment.bon_id)) : '',
         bon_type: selectedPayment.bon_type || '',
         montant: selectedPayment.montant || selectedPayment.montant_total,
@@ -793,6 +862,9 @@ const paymentValidationSchema = Yup.object({
       type_paiement: 'Client',
       contact_optional: false,
       contact_id: '',
+      remise_account_id: '',
+      remise_filter_client_remise: true,
+      remise_filter_client_abonne: true,
       bon_id: '',
       bon_type: '',
       montant: 0,
@@ -823,6 +895,28 @@ const paymentValidationSchema = Yup.object({
       };
 
       const parsedBon = parseBonValue(values.bon_id);
+      const selectedRemiseAccount = values.remise_account_id
+        ? remiseAccounts.find((account) => Number(account.id) === Number(values.remise_account_id))
+        : undefined;
+      if (values.mode_paiement === 'Remise') {
+        if (!selectedRemiseAccount) {
+          showError('Sélectionnez un bénéficiaire remise');
+          return;
+        }
+        let allowedAmount = Number(selectedRemiseAccount.available_total || 0);
+        if (
+          selectedPayment &&
+          selectedPayment.mode_paiement === 'Remise' &&
+          Number(selectedPayment.remise_account_id || 0) === Number(selectedRemiseAccount.id) &&
+          ['En attente', 'Validé'].includes(String(selectedPayment.statut || ''))
+        ) {
+          allowedAmount += Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0);
+        }
+        if (Number(values.montant) > allowedAmount + 0.000001) {
+          showError(`Le montant dépasse la remise disponible (${allowedAmount.toFixed(2)} DH)`);
+          return;
+        }
+      }
 
       // Upload de l'image si présente
       let imageUrl: string | null = selectedPayment?.image_url || '';
@@ -845,8 +939,13 @@ const paymentValidationSchema = Yup.object({
 
   const paymentData: any = {
         id: selectedPayment ? selectedPayment.id : Date.now(),
-        type_paiement: values.type_paiement || 'Client',
-        contact_id: values.contact_id ? Number(values.contact_id) : null,
+      type_paiement: values.mode_paiement === 'Remise' ? 'Client' : (values.type_paiement || 'Client'),
+      contact_id: values.mode_paiement === 'Remise'
+        ? (selectedRemiseAccount?.contact_id ? Number(selectedRemiseAccount.contact_id) : null)
+        : (values.contact_id ? Number(values.contact_id) : null),
+      remise_account_id: values.mode_paiement === 'Remise' && selectedRemiseAccount ? Number(selectedRemiseAccount.id) : null,
+      remise_account_type: values.mode_paiement === 'Remise' && selectedRemiseAccount ? selectedRemiseAccount.type : null,
+      remise_account_name: values.mode_paiement === 'Remise' && selectedRemiseAccount ? selectedRemiseAccount.nom : null,
   bon_id: parsedBon.bonId,
   bon_type: parsedBon.bonId ? parsedBon.bonType : null,
         montant_total: Number(values.montant),
@@ -882,6 +981,9 @@ const paymentValidationSchema = Yup.object({
           type_paiement: paymentData.type_paiement,
           bon_id: paymentData.bon_id,
           bon_type: paymentData.bon_type,
+          remise_account_id: paymentData.remise_account_id,
+          remise_account_type: paymentData.remise_account_type,
+          remise_account_name: paymentData.remise_account_name,
           montant_total: paymentData.montant_total,
           mode_paiement: paymentData.mode_paiement,
           statut: paymentData.statut,
@@ -926,7 +1028,9 @@ const paymentValidationSchema = Yup.object({
               date_paiement: toYMD(created.date_paiement),
               fournisseur: created.type_paiement === 'Fournisseur'
                 ? (fournisseurs.find(f => f.id === created.contact_id)?.nom_complet || 'Fournisseur')
-                : (clients.find(c => c.id === created.contact_id)?.nom_complet || 'Client'),
+                : (created.mode_paiement === 'Remise'
+                  ? (created.remise_account_name || clients.find(c => c.id === created.contact_id)?.nom_complet || 'Client')
+                  : (clients.find(c => c.id === created.contact_id)?.nom_complet || 'Client')),
               montant_cheque: Number(created.montant_total || 0),
               // Pour les modes non-chèque/traite, on garde une date_cheque cohérente (date échéance si dispo sinon date paiement)
               date_cheque: toYMD(created.date_echeance) ?? toYMD(created.date_paiement),
@@ -975,6 +1079,8 @@ const paymentValidationSchema = Yup.object({
         return <CreditCard size={16} className="text-purple-600" />;
       case 'Traite':
         return <Receipt size={16} className="text-orange-600" />;
+      case 'Remise':
+        return <Receipt size={16} className="text-amber-600" />;
       default:
         return <DollarSign size={16} className="text-gray-600" />;
     }
@@ -1108,7 +1214,7 @@ const paymentValidationSchema = Yup.object({
       </div>
 
   {/* Statistiques de caisse */}
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 mb-4">
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 mb-4">
     <div className="bg-white p-2 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
@@ -1168,6 +1274,18 @@ const paymentValidationSchema = Yup.object({
             </div>
           </div>
         </div>
+
+  <div className="bg-white p-2 rounded-lg shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Remises</p>
+              <p className="text-xl font-bold text-amber-600">{totalRemises} DH</p>
+            </div>
+            <div className="p-3 bg-amber-100 rounded-full">
+              <Receipt className="h-6 w-6 text-amber-600" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filtres et recherche */}
@@ -1206,6 +1324,7 @@ const paymentValidationSchema = Yup.object({
               <option value="Chèque">Chèque</option>
               <option value="Virement">Virement</option>
               <option value="Traite">Traite</option>
+              <option value="Remise">Remise</option>
             </select>
           </div>
 
@@ -1358,31 +1477,21 @@ const paymentValidationSchema = Yup.object({
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             payment.type_paiement === 'Fournisseur'
                               ? 'bg-orange-100 text-orange-800'
-                              : 'bg-emerald-100 text-emerald-800'
+                              : payment.mode_paiement === 'Remise'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {payment.type_paiement}
+                          {getPaymentTypeBadge(payment)}
                         </span>
-                        <span className="truncate max-w-[220px]" title={
-                          payment.type_paiement === 'Fournisseur'
-                            ? (fournisseurs.find(f => f.id === payment.contact_id)?.nom_complet || '-')
-                            : (clients.find(c => c.id === payment.contact_id)?.nom_complet || '-')
-                        }>
-                          {payment.type_paiement === 'Fournisseur'
-                            ? (fournisseurs.find(f => f.id === payment.contact_id)?.nom_complet || '-')
-                            : (clients.find(c => c.id === payment.contact_id)?.nom_complet || '-')}
+                        <span className="truncate max-w-[220px]" title={getPaymentContactName(payment)}>
+                          {getPaymentContactName(payment)}
                         </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900 truncate max-w-[220px]" title={
-                        payment.type_paiement === 'Fournisseur'
-                          ? (fournisseurs.find(f => f.id === payment.contact_id)?.societe || '-')
-                          : (clients.find(c => c.id === payment.contact_id)?.societe || '-')
-                      }>
-                        {payment.type_paiement === 'Fournisseur'
-                          ? (fournisseurs.find(f => f.id === payment.contact_id)?.societe || '-')
-                          : (clients.find(c => c.id === payment.contact_id)?.societe || '-')}
+                      <div className="text-sm text-gray-900 truncate max-w-[220px]" title={getPaymentSociete(payment)}>
+                        {getPaymentSociete(payment)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -1660,12 +1769,8 @@ const paymentValidationSchema = Yup.object({
           <div className="text-center text-sm text-gray-500 bg-white rounded-lg p-3 shadow">Aucun paiement trouvé</div>
         ) : (
           paginatedPayments.map((payment: Payment) => {
-            const contactName = payment.type_paiement === 'Fournisseur'
-              ? (fournisseurs.find(f => f.id === payment.contact_id)?.nom_complet || '-')
-              : (clients.find(c => c.id === payment.contact_id)?.nom_complet || '-');
-            const societe = payment.type_paiement === 'Fournisseur'
-              ? (fournisseurs.find(f => f.id === payment.contact_id)?.societe || '-')
-              : (clients.find(c => c.id === payment.contact_id)?.societe || '-');
+            const contactName = getPaymentContactName(payment);
+            const societe = getPaymentSociete(payment);
             return (
               <div
                 key={payment.id}
@@ -1684,7 +1789,7 @@ const paymentValidationSchema = Yup.object({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1 text-xs">
-                  <span className={`px-2 py-0.5 rounded-full ${payment.type_paiement === 'Fournisseur' ? 'bg-orange-100 text-orange-800' : 'bg-emerald-100 text-emerald-800'}`}>{payment.type_paiement}</span>
+                  <span className={`px-2 py-0.5 rounded-full ${payment.type_paiement === 'Fournisseur' ? 'bg-orange-100 text-orange-800' : payment.mode_paiement === 'Remise' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>{getPaymentTypeBadge(payment)}</span>
                   <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{payment.mode_paiement}</span>
                   {payment.image_url && (payment.mode_paiement === 'Chèque' || payment.mode_paiement === 'Traite') && (
                     <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700">Image</span>
@@ -1845,6 +1950,30 @@ const paymentValidationSchema = Yup.object({
             >
               {({ values, setFieldValue }) => {
                 const isFournisseurPayment = values.type_paiement === 'Fournisseur';
+                const isRemisePayment = values.mode_paiement === 'Remise';
+                const selectedRemiseTypes = [
+                  values.remise_filter_client_remise ? 'client-remise' : null,
+                  values.remise_filter_client_abonne ? 'client_abonne' : null,
+                ].filter(Boolean) as RemiseAccountType[];
+                const filteredRemiseAccounts = remiseAccounts.filter((account) => {
+                  const matchesType = selectedRemiseTypes.length ? selectedRemiseTypes.includes(account.type) : true;
+                  const isSelected = Number(account.id) === Number(values.remise_account_id || 0);
+                  return matchesType && (Number(account.available_total || 0) > 0 || isSelected);
+                });
+                const selectedRemiseAccount = remiseAccounts.find((account) => Number(account.id) === Number(values.remise_account_id || 0));
+                const allowedRemiseAmount = (() => {
+                  if (!selectedRemiseAccount) return 0;
+                  let total = Number(selectedRemiseAccount.available_total || 0);
+                  if (
+                    selectedPayment &&
+                    selectedPayment.mode_paiement === 'Remise' &&
+                    Number(selectedPayment.remise_account_id || 0) === Number(selectedRemiseAccount.id) &&
+                    ['En attente', 'Validé'].includes(String(selectedPayment.statut || ''))
+                  ) {
+                    total += Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0);
+                  }
+                  return total;
+                })();
                 return (
                 <Form
                   className="space-y-6"
@@ -1935,46 +2064,116 @@ const paymentValidationSchema = Yup.object({
                       <label htmlFor="type_paiement" className="block text-sm font-medium text-gray-700 mb-1">
                         Type de paiement
                       </label>
-            <Field
-                        as="select"
-                        id="type_paiement"
-                        name="type_paiement"
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        onChange={(e: any) => {
-                          setFieldValue('type_paiement', e.target.value);
-                          // reset contact to avoid mismatch between client/fournisseur lists
-                          setFieldValue('contact_id', '');
-              // also reset bon to force re-selection based on new filter
-              setFieldValue('bon_id', '');
-                        }}
-                      >
-                        <option value="Client">Client</option>
-                        <option value="Fournisseur">Fournisseur</option>
-                      </Field>
+                      {isRemisePayment ? (
+                        <div className="w-full border border-amber-200 bg-amber-50 text-amber-800 rounded-md px-3 py-2 text-sm font-medium">
+                          Client via remise
+                        </div>
+                      ) : (
+                        <Field
+                          as="select"
+                          id="type_paiement"
+                          name="type_paiement"
+                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          onChange={(e: any) => {
+                            setFieldValue('type_paiement', e.target.value);
+                            setFieldValue('contact_id', '');
+                            setFieldValue('bon_id', '');
+                          }}
+                        >
+                          <option value="Client">Client</option>
+                          <option value="Fournisseur">Fournisseur</option>
+                        </Field>
+                      )}
                     </div>
                     <div>
-                      <label htmlFor="contact_id" className="block text-sm font-medium text-gray-700 mb-1">
-                        {isFournisseurPayment ? 'Fournisseur payeur' : 'Client payeur'} {values.contact_optional ? '' : '*'}
-                      </label>
-                      <SearchableSelect
-                        id="contact_id_select"
-                        options={(isFournisseurPayment ? fournisseurs : clients).map((c: Contact) => ({
-                          value: String(c.id),
-                          label: c.nom_complet || `${isFournisseurPayment ? 'Fournisseur' : 'Client'} #${c.id}`,
-                          data: c,
-                        }))}
-                        value={values.contact_id ? String(values.contact_id) : ''}
-                        onChange={(v) => { setFieldValue('contact_id', v); setFieldValue('contact_optional', false); setFieldValue('bon_id', ''); }}
-                        placeholder={isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}
-                        className="w-full"
-                        autoOpenOnFocus={true}
-                      />
-                      <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
-                      {/* Affichage du solde cumulé */}
-                      {values.contact_id && (
-                        <div className="mt-2 text-xs text-blue-700 font-semibold">
-                          Solde cumulé : {getContactSolde(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client')} DH
-                        </div>
+                      {isRemisePayment ? (
+                        <>
+                          <label htmlFor="remise_account_id" className="block text-sm font-medium text-gray-700 mb-1">
+                            Bénéficiaire remise *
+                          </label>
+                          <div className="flex items-center gap-4 mb-2 text-sm text-gray-700">
+                            <label className="inline-flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(values.remise_filter_client_remise)}
+                                onChange={(e) => {
+                                  setFieldValue('remise_filter_client_remise', e.target.checked);
+                                  setFieldValue('remise_account_id', '');
+                                  setFieldValue('contact_id', '');
+                                  setFieldValue('bon_id', '');
+                                }}
+                              />
+                              Client remise
+                            </label>
+                            <label className="inline-flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(values.remise_filter_client_abonne)}
+                                onChange={(e) => {
+                                  setFieldValue('remise_filter_client_abonne', e.target.checked);
+                                  setFieldValue('remise_account_id', '');
+                                  setFieldValue('contact_id', '');
+                                  setFieldValue('bon_id', '');
+                                }}
+                              />
+                              Client abonné
+                            </label>
+                          </div>
+                          <SearchableSelect
+                            id="remise_account_id"
+                            options={filteredRemiseAccounts.map((account) => ({
+                              value: String(account.id),
+                              label: `${account.nom} - ${getRemiseTypeLabel(account.type)} - ${Number(account.available_total || 0).toFixed(2)} DH`,
+                              data: account,
+                            }))}
+                            value={values.remise_account_id ? String(values.remise_account_id) : ''}
+                            onChange={(value) => {
+                              const account = remiseAccounts.find((entry) => Number(entry.id) === Number(value));
+                              setFieldValue('remise_account_id', value);
+                              setFieldValue('type_paiement', 'Client');
+                              setFieldValue('contact_optional', true);
+                              setFieldValue('contact_id', account?.contact_id ? String(account.contact_id) : '');
+                              setFieldValue('bon_id', '');
+                            }}
+                            placeholder="Sélectionner un bénéficiaire remise"
+                            className="w-full"
+                            autoOpenOnFocus={true}
+                          />
+                          <ErrorMessage name="remise_account_id" component="div" className="text-red-500 text-sm mt-1" />
+                          {selectedRemiseAccount && (
+                            <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 space-y-1">
+                              <div>Type: {getRemiseTypeLabel(selectedRemiseAccount.type)}</div>
+                              <div>Total gagné: {Number(selectedRemiseAccount.earned_total || 0).toFixed(2)} DH</div>
+                              <div>Remise utilisée: {Number(selectedRemiseAccount.used_total || 0).toFixed(2)} DH</div>
+                              <div className="font-semibold">Disponible: {allowedRemiseAmount.toFixed(2)} DH</div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <label htmlFor="contact_id" className="block text-sm font-medium text-gray-700 mb-1">
+                            {isFournisseurPayment ? 'Fournisseur payeur' : 'Client payeur'} {values.contact_optional ? '' : '*'}
+                          </label>
+                          <SearchableSelect
+                            id="contact_id_select"
+                            options={(isFournisseurPayment ? fournisseurs : clients).map((c: Contact) => ({
+                              value: String(c.id),
+                              label: c.nom_complet || `${isFournisseurPayment ? 'Fournisseur' : 'Client'} #${c.id}`,
+                              data: c,
+                            }))}
+                            value={values.contact_id ? String(values.contact_id) : ''}
+                            onChange={(v) => { setFieldValue('contact_id', v); setFieldValue('contact_optional', false); setFieldValue('bon_id', ''); }}
+                            placeholder={isFournisseurPayment ? 'Sélectionner un fournisseur' : 'Sélectionner un client'}
+                            className="w-full"
+                            autoOpenOnFocus={true}
+                          />
+                          <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
+                          {values.contact_id && (
+                            <div className="mt-2 text-xs text-blue-700 font-semibold">
+                              Solde cumulé : {getContactSolde(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client')} DH
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                     {/* Numéro supprimé: il sera égal à l'ID automatiquement */}
@@ -2001,9 +2200,13 @@ const paymentValidationSchema = Yup.object({
                         name="montant"
                         type="number"
                         step="0.01"
+                        max={isRemisePayment && selectedRemiseAccount ? allowedRemiseAmount : undefined}
                         className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <ErrorMessage name="montant" component="div" className="text-red-500 text-sm mt-1" />
+                      {isRemisePayment && selectedRemiseAccount && (
+                        <p className="text-xs text-amber-700 mt-1">Maximum disponible: {allowedRemiseAmount.toFixed(2)} DH</p>
+                      )}
                     </div>
 
                     <div>
@@ -2015,15 +2218,31 @@ const paymentValidationSchema = Yup.object({
                         id="mode_paiement"
                         name="mode_paiement"
                         className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e: any) => {
+                          const nextMode = e.target.value;
+                          setFieldValue('mode_paiement', nextMode);
+                          if (nextMode === 'Remise') {
+                            setFieldValue('type_paiement', 'Client');
+                            setFieldValue('contact_optional', true);
+                            setFieldValue('contact_id', '');
+                            setFieldValue('bon_id', '');
+                          } else {
+                            setFieldValue('remise_account_id', '');
+                            setFieldValue('remise_filter_client_remise', true);
+                            setFieldValue('remise_filter_client_abonne', true);
+                            setFieldValue('contact_optional', false);
+                          }
+                        }}
                       >
                         <option value="Espèces">Espèces</option>
                         <option value="Chèque">Chèque (avec possibilité d'image)</option>
                         <option value="Virement">Virement</option>
                         <option value="Traite">Traite (avec possibilité d'image)</option>
+                        <option value="Remise">Remise</option>
                       </Field>
                       <ErrorMessage name="mode_paiement" component="div" className="text-red-500 text-sm mt-1" />
                       <p className="text-xs text-gray-500 mt-1">
-                        💡 Sélectionnez "Chèque" ou "Traite" pour pouvoir ajouter une image
+                        {isRemisePayment ? 'Le paiement remise est limité par le total disponible du bénéficiaire sélectionné.' : '💡 Sélectionnez "Chèque" ou "Traite" pour pouvoir ajouter une image'}
                       </p>
                     </div>
 
@@ -2042,8 +2261,8 @@ const paymentValidationSchema = Yup.object({
                       >
                         <option value="">💰 Paiement libre (sans bon associé)</option>
                         {(() => {
-                          if (!values.contact_id || bonsLoading) {
-                            return <option disabled>{bonsLoading ? 'Chargement...' : 'Sélectionnez un contact d\'abord'}</option>;
+                          if ((!values.contact_id && !isRemisePayment) || (isRemisePayment && !selectedRemiseAccount?.contact_id) || bonsLoading) {
+                            return <option disabled>{bonsLoading ? 'Chargement...' : (isRemisePayment ? 'Aucun bon disponible pour ce bénéficiaire' : 'Sélectionnez un contact d\'abord')}</option>;
                           }
 
                           // Récupérer le contact
@@ -2122,7 +2341,7 @@ const paymentValidationSchema = Yup.object({
                         })()}
                       </Field>
                       {/* Affichage du solde cumulé total */}
-                      {values.contact_id && (
+                      {values.contact_id && !isRemisePayment && (
                         <div className="mt-1 text-xs font-semibold text-blue-700">
                           💰 Solde cumulé {isFournisseurPayment ? 'du fournisseur' : 'du client'}: {getContactSolde(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client').toFixed(2)} DH
                         </div>

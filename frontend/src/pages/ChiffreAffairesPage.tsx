@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, TrendingUp, TrendingDown, ArrowLeft, Package } from 'lucide-react';
 import { useGetChiffreAffairesStatsQuery } from '../store/api/statsApi';
+import { calculateProfitPercentage, formatProfitPercentage } from '../utils/profitPercentage';
 
 // Types
 interface ChiffreAffairesData {
@@ -108,6 +109,11 @@ const ChiffreAffairesPage: React.FC = () => {
     if (anyErr?.status === 401) return "Non autorisé. Veuillez vous reconnecter.";
     return anyErr?.data?.message || anyErr?.error || 'Erreur lors du chargement des statistiques.';
   }, [error]);
+
+  const totalProfitPct = useMemo(
+    () => calculateProfitPercentage(chiffreAffairesData.totalChiffreAffairesAchat, chiffreAffairesData.totalChiffreAffaires),
+    [chiffreAffairesData.totalChiffreAffairesAchat, chiffreAffairesData.totalChiffreAffaires]
+  );
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -246,6 +252,10 @@ const ChiffreAffairesPage: React.FC = () => {
                   <p className="text-xl font-bold text-emerald-900">
                     {formatAmount(chiffreAffairesData.totalChiffreAffairesAchat)} DH
                   </p>
+                  <div className="mt-3 pt-3 border-t border-emerald-200">
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Taux profit</p>
+                    <p className="text-xl font-bold text-gray-900 mt-0.5">{formatProfitPercentage(totalProfitPct)}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -286,6 +296,9 @@ const ChiffreAffairesPage: React.FC = () => {
                   Bénéfice Net (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  % Profit
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Remises (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -294,7 +307,9 @@ const ChiffreAffairesPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {chiffreAffairesData.dailyData.map((day: ChiffreAffairesData) => (
+              {chiffreAffairesData.dailyData.map((day: ChiffreAffairesData) => {
+                const profitPct = calculateProfitPercentage(day.chiffreAffairesAchat, day.chiffreAffaires);
+                return (
                 <tr key={day.date} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <button
@@ -318,6 +333,11 @@ const ChiffreAffairesPage: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-emerald-700">
+                      {formatProfitPercentage(profitPct)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-amber-700">
                       {formatAmount(day.totalRemises)} DH
                     </div>
@@ -328,10 +348,11 @@ const ChiffreAffairesPage: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {chiffreAffairesData.dailyData.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
                     Aucune donnée disponible pour cette période
                   </td>
                 </tr>

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, FileText, TrendingUp, DollarSign, Package, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
 import { useGetChiffreAffairesDetailQuery } from '../store/api/statsApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
+import { calculateProfitPercentage, formatProfitPercentage } from '../utils/profitPercentage';
 
 // Types
 interface BonDetail {
@@ -160,6 +161,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                   Profit
                 </th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
+                  % Profit
+                </th>
               </>
             )}
             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
@@ -175,6 +179,8 @@ const ChiffreAffairesDetailPage: React.FC = () => {
             const rawAchat = typeof item.prix_achat === 'number' ? item.prix_achat : (typeof item.cout_revient === 'number' ? item.cout_revient : 0);
             const coutParUnite = rawCout * factor;
             const prixAchatParUnite = rawAchat * factor;
+            const lineNetTotal = Number(item.montant_ligne || 0) - Number(item.remise_total || 0);
+            const lineProfitPct = calculateProfitPercentage(item.profit || 0, lineNetTotal || item.montant_ligne || 0);
             return (
             <tr key={`${calcul.bonType}-${calcul.bonId}-${itemIndex}`}>
               <td className="px-4 py-2 text-sm text-gray-900 font-medium">
@@ -206,6 +212,9 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                   <td className="px-4 py-2 text-sm text-emerald-600 text-right">
                     {formatAmount(item.profit || 0)} DH
                   </td>
+                  <td className="px-4 py-2 text-sm text-emerald-600 text-right">
+                    {formatProfitPercentage(lineProfitPct)}
+                  </td>
                 </>
               )}
               <td className="px-4 py-2 text-sm font-medium text-gray-900 text-right">
@@ -217,24 +226,37 @@ const ChiffreAffairesDetailPage: React.FC = () => {
         </tbody>
       </table>
       {isBeneficiaire && (
-        <div className="flex flex-wrap gap-6 mt-3 text-xs sm:text-sm text-gray-700 border-t pt-3">
-          <span>
-            Total Remises Bon: <span className="font-semibold text-amber-600">{formatAmount(calcul.totalRemiseBon || 0)} DH</span>
-          </span>
-          <span>
-            Profit Net Bon: <span className="font-semibold text-emerald-600">{formatAmount(calcul.profitBon || 0)} DH</span>
-          </span>
-          {typeof calcul.netTotalBon === 'number' && (
-            <span>
-              Total Net (Vente - Remise): <span className="font-semibold text-blue-600">{formatAmount(calcul.netTotalBon || 0)} DH</span>
-            </span>
-          )}
-        </div>
+        (() => {
+          const bonProfitPct = calculateProfitPercentage(calcul.profitBon || 0, calcul.netTotalBon ?? calcul.totalBon);
+          return (
+            <div className="flex flex-wrap gap-6 mt-3 text-xs sm:text-sm text-gray-700 border-t pt-3">
+              <span>
+                Total Remises Bon: <span className="font-semibold text-amber-600">{formatAmount(calcul.totalRemiseBon || 0)} DH</span>
+              </span>
+              <span>
+                Profit Net Bon: <span className="font-semibold text-emerald-600">{formatAmount(calcul.profitBon || 0)} DH</span>
+              </span>
+              <span>
+                % Profit Bon: <span className="font-semibold text-emerald-600">{formatProfitPercentage(bonProfitPct)}</span>
+              </span>
+              {typeof calcul.netTotalBon === 'number' && (
+                <span>
+                  Total Net (Vente - Remise): <span className="font-semibold text-blue-600">{formatAmount(calcul.netTotalBon || 0)} DH</span>
+                </span>
+              )}
+            </div>
+          );
+        })()
       )}
     </div>
   );
 
-  const renderCalculCard = (calcul: CalculDetail, isBeneficiaire: boolean) => (
+  const renderCalculCard = (calcul: CalculDetail, isBeneficiaire: boolean) => {
+    const bonProfitPct = isBeneficiaire
+      ? calculateProfitPercentage(calcul.profitBon || 0, calcul.netTotalBon ?? calcul.totalBon)
+      : null;
+
+    return (
     <div key={`${calcul.bonType}-${calcul.bonId}`} className="border border-gray-200 rounded-lg p-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
@@ -252,14 +274,15 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           </div>
           {isBeneficiaire && (
             <div className="text-sm text-emerald-600">
-              Profit: {formatAmount(calcul.profitBon || 0)} DH
+              Profit: {formatAmount(calcul.profitBon || 0)} DH{bonProfitPct != null ? ` (${formatProfitPercentage(bonProfitPct)})` : ''}
             </div>
           )}
         </div>
       </div>
       {renderItemsTable(calcul, isBeneficiaire)}
     </div>
-  );
+    );
+  };
 
   const {
     data: chiffresDetailResp = [],
@@ -306,6 +329,21 @@ const ChiffreAffairesDetailPage: React.FC = () => {
       } as any;
     });
   }, [chiffresDetailResp]);
+
+  const caNetSection = useMemo(
+    () => chiffresDetail.find((section) => section.type === 'CA_NET') || null,
+    [chiffresDetail]
+  );
+
+  const beneficiaireSection = useMemo(
+    () => chiffresDetail.find((section) => section.type === 'BENEFICIAIRE') || null,
+    [chiffresDetail]
+  );
+
+  const dayProfitPct = useMemo(
+    () => calculateProfitPercentage(beneficiaireSection?.total || 0, caNetSection?.total || 0),
+    [beneficiaireSection, caNetSection]
+  );
 
   if (!selectedDate) {
     return (
@@ -373,6 +411,12 @@ const ChiffreAffairesDetailPage: React.FC = () => {
             <div className="text-3xl font-bold text-gray-900 mb-2">
               {formatAmount(chiffre.total)} DH
             </div>
+            {chiffre.type === 'BENEFICIAIRE' && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Taux profit jour</div>
+                <div className="text-2xl font-bold text-gray-900 mt-0.5">{formatProfitPercentage(dayProfitPct)}</div>
+              </div>
+            )}
             <div className="text-sm text-gray-500">
               {chiffre.bons.length} document(s) traité(s)
             </div>
@@ -501,6 +545,8 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                           * Calcul: Profits (Ventes) - Profits (Avoirs Client) - Profits (Avoirs Comptant) - Montant Total (Bons Véhicule)
                           <br />
                           * Profit ligne = ((PV - Coût) × Qté)
+                          <br />
+                          * % Profit = Profit / Total net de vente
                           <br />
                           * Les remises n'affectent pas le profit, elles n'affectent que le total net d'un bon.
                           <br />

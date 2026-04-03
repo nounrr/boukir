@@ -12,7 +12,7 @@ interface PaymentsState {
     search: string;
     dateFrom: string;
     dateTo: string;
-    mode_paiement: 'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Carte';
+    mode_paiement: 'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Carte' | 'Traite' | 'Remise';
   };
 }
 

@@ -457,12 +457,15 @@ export interface Payment {
   id: number;
   numero: string;
   type_paiement: 'Client' | 'Fournisseur';
-  contact_id: number; // ID du client ou fournisseur
+  contact_id: number | null; // ID du client ou fournisseur
+  remise_account_id?: number | null;
+  remise_account_type?: 'client-remise' | 'client_abonne' | null;
+  remise_account_name?: string | null;
   bon_id?: number;
   bon_type?: string | null; // Type du bon (pour éviter collisions d'IDs entre tables)
   talon_id?: number; // ID du talon associé
   montant_total: number;
-  mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement';
+  mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'Remise';
   date_paiement: string | null;
   designation: string;
   // Champs spécifiques pour Chèque et Traite
@@ -488,11 +491,14 @@ export interface Payment {
 export interface CreatePaymentData {
   numero: string;
   type_paiement: 'Client' | 'Fournisseur';
-  contact_id: number;
+  contact_id: number | null;
+  remise_account_id?: number | null;
+  remise_account_type?: 'client-remise' | 'client_abonne' | null;
+  remise_account_name?: string | null;
   bon_id?: number;
   bon_type?: string | null;
   montant_total: number;
-  mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement';
+  mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'Remise';
   date_paiement: string | null;
   designation: string;
   date_echeance?: string;

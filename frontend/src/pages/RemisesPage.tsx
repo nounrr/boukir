@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Plus, X, User, TrendingUp } from 'lucide-react';
+import { Search, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Plus, X, User, TrendingUp, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import SearchableSelect from '../components/SearchableSelect';
 import BonFormModal from '../components/BonFormModal';
 import { getBonNumeroDisplay } from '../utils/numero';
@@ -83,6 +83,30 @@ const getBonDirectClientId = (bon: any): number | null => {
   return id != null && Number.isFinite(Number(id)) ? Number(id) : null;
 };
 
+type SortDirection = 'asc' | 'desc';
+type RemiseSortKey = 'nom' | 'type' | 'phone' | 'cin' | 'created_at' | 'ancien' | 'nouveau' | 'used' | 'final';
+type DirectSortKey = 'client' | 'societe' | 'telephone' | 'bons' | 'remise';
+
+const normalizeSortValue = (value: any): string | number => {
+  if (typeof value === 'number') return value;
+  if (value instanceof Date) return value.getTime();
+  if (value == null) return '';
+  const numeric = Number(value);
+  if (value !== '' && Number.isFinite(numeric)) return numeric;
+  return String(value).trim().toLowerCase();
+};
+
+const compareSortValues = (left: any, right: any) => {
+  const a = normalizeSortValue(left);
+  const b = normalizeSortValue(right);
+
+  if (typeof a === 'number' && typeof b === 'number') {
+    return a - b;
+  }
+
+  return String(a).localeCompare(String(b), 'fr', { numeric: true, sensitivity: 'base' });
+};
+
 const RemisesPage: React.FC = () => {
   const { user } = useAuth();
   const { data: clients = [], refetch } = useGetClientRemisesQuery();
@@ -104,15 +128,22 @@ const RemisesPage: React.FC = () => {
   const [selected, setSelected] = useState<ClientRemise>(null);
   const [search, setSearch] = useState('');
   const [directSearch, setDirectSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'client-remise' | 'client_abonne'>('all');
+  const [remiseSort, setRemiseSort] = useState<{ key: RemiseSortKey; direction: SortDirection } | null>(null);
+  const [directSort, setDirectSort] = useState<{ key: DirectSortKey; direction: SortDirection } | null>(null);
   const filtered = useMemo(() => {
+    let list = clients as any[];
+    if (typeFilter !== 'all') {
+      list = list.filter((c: any) => c.type === typeFilter);
+    }
     const term = search.trim().toLowerCase();
-    if (!term) return clients;
-    return clients.filter((c: any) =>
+    if (!term) return list;
+    return list.filter((c: any) =>
       String(c.nom || '').toLowerCase().includes(term) ||
       String(c.phone || '').toLowerCase().includes(term) ||
       String(c.cin || '').toLowerCase().includes(term)
     );
-  }, [clients, search]);
+  }, [clients, search, typeFilter]);
 
   const directNewByClientId = useMemo(() => {
     const totalById = new Map<number, number>();
@@ -168,7 +199,65 @@ const RemisesPage: React.FC = () => {
     return list;
   }, [directClients, directSearch, directNewByClientId]);
 
-  const [form, setForm] = useState({ nom: '', phone: '', cin: '' });
+  const toggleRemiseSort = (key: RemiseSortKey) => {
+    setRemiseSort((current) => {
+      if (!current || current.key !== key) return { key, direction: 'asc' };
+      return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' };
+    });
+  };
+
+  const toggleDirectSort = (key: DirectSortKey) => {
+    setDirectSort((current) => {
+      if (!current || current.key !== key) return { key, direction: 'asc' };
+      return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' };
+    });
+  };
+
+  const sortedDirectClients = useMemo(() => {
+    const list = [...filteredDirectClients];
+    if (!directSort) return list;
+
+    list.sort((left: any, right: any) => {
+      const leftId = Number(left?.id);
+      const rightId = Number(right?.id);
+      const leftCount = directNewByClientId.countById.get(leftId) || 0;
+      const rightCount = directNewByClientId.countById.get(rightId) || 0;
+      const leftRemise = directNewByClientId.totalById.get(leftId) || 0;
+      const rightRemise = directNewByClientId.totalById.get(rightId) || 0;
+
+      let result = 0;
+      switch (directSort.key) {
+        case 'client':
+          result = compareSortValues(left.nom_complet || left.nom || `#${leftId}`, right.nom_complet || right.nom || `#${rightId}`);
+          break;
+        case 'societe':
+          result = compareSortValues(left.societe, right.societe);
+          break;
+        case 'telephone':
+          result = compareSortValues(left.telephone, right.telephone);
+          break;
+        case 'bons':
+          result = compareSortValues(leftCount, rightCount);
+          break;
+        case 'remise':
+          result = compareSortValues(leftRemise, rightRemise);
+          break;
+      }
+
+      return directSort.direction === 'asc' ? result : -result;
+    });
+
+    return list;
+  }, [filteredDirectClients, directSort, directNewByClientId]);
+
+  const renderSortIcon = (isActive: boolean, direction: SortDirection | null, colorClass: string) => {
+    if (!isActive || !direction) return <ArrowUpDown size={14} className={colorClass} />;
+    return direction === 'asc'
+      ? <ArrowUp size={14} className={colorClass} />
+      : <ArrowDown size={14} className={colorClass} />;
+  };
+
+  const [form, setForm] = useState({ nom: '', phone: '', cin: '', type: 'client-remise' as 'client-remise' | 'client_abonne' });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -212,6 +301,57 @@ const RemisesPage: React.FC = () => {
     }
     return map;
   }, [sortiesAll, comptantsAll]);
+
+  const sortedRemiseClients = useMemo(() => {
+    const list = [...filtered];
+    if (!remiseSort) return list;
+
+    list.sort((left: any, right: any) => {
+      const leftOld = oldTotalByClientId.get(Number(left.id)) || 0;
+      const rightOld = oldTotalByClientId.get(Number(right.id)) || 0;
+      const leftNew = newTotalByClientId.get(Number(left.id)) || 0;
+      const rightNew = newTotalByClientId.get(Number(right.id)) || 0;
+      const leftUsed = Number(left.remise_utilisee || 0);
+      const rightUsed = Number(right.remise_utilisee || 0);
+      const leftFinal = Number(left.remise_disponible ?? (leftOld + leftNew - leftUsed));
+      const rightFinal = Number(right.remise_disponible ?? (rightOld + rightNew - rightUsed));
+
+      let result = 0;
+      switch (remiseSort.key) {
+        case 'nom':
+          result = compareSortValues(left.nom, right.nom);
+          break;
+        case 'type':
+          result = compareSortValues(left.type === 'client_abonne' ? 'client abonne' : 'client remise', right.type === 'client_abonne' ? 'client abonne' : 'client remise');
+          break;
+        case 'phone':
+          result = compareSortValues(left.phone, right.phone);
+          break;
+        case 'cin':
+          result = compareSortValues(left.cin, right.cin);
+          break;
+        case 'created_at':
+          result = compareSortValues(new Date(left.created_at || 0).getTime(), new Date(right.created_at || 0).getTime());
+          break;
+        case 'ancien':
+          result = compareSortValues(leftOld, rightOld);
+          break;
+        case 'nouveau':
+          result = compareSortValues(leftNew, rightNew);
+          break;
+        case 'used':
+          result = compareSortValues(leftUsed, rightUsed);
+          break;
+        case 'final':
+          result = compareSortValues(leftFinal, rightFinal);
+          break;
+      }
+
+      return remiseSort.direction === 'asc' ? result : -result;
+    });
+
+    return list;
+  }, [filtered, remiseSort, oldTotalByClientId, newTotalByClientId]);
 
   const totalRemisesOld = useMemo(() => {
     let sum = 0;
@@ -317,7 +457,7 @@ const RemisesPage: React.FC = () => {
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 inline-flex items-center gap-2"
           onClick={() => {
             setEditingId(0);
-            setForm({ nom: '', phone: '', cin: '' });
+            setForm({ nom: '', phone: '', cin: '', type: 'client-remise' });
             setIsFormModalOpen(true);
           }}
           disabled={activeTab === 'direct-clients'}
@@ -420,6 +560,19 @@ const RemisesPage: React.FC = () => {
             onChange={(e) => (activeTab === 'direct-clients' ? setDirectSearch(e.target.value) : setSearch(e.target.value))}
           />
         </div>
+        {activeTab === 'client-remises' && (
+          <div className="flex gap-2 mt-3">
+            <button type="button" onClick={() => setTypeFilter('all')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              Tous ({(clients as any[]).length})
+            </button>
+            <button type="button" onClick={() => setTypeFilter('client-remise')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === 'client-remise' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'}`}>
+              Client remise ({(clients as any[]).filter((c: any) => c.type === 'client-remise').length})
+            </button>
+            <button type="button" onClick={() => setTypeFilter('client_abonne')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === 'client_abonne' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
+              Client abonné ({(clients as any[]).filter((c: any) => c.type === 'client_abonne').length})
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tableau des clients avec style amélioré */}
@@ -441,16 +594,41 @@ const RemisesPage: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gradient-to-r from-blue-50 to-cyan-50">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Client</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Société</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Téléphone</th>
-                  <th className="px-6 py-4 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider">Bons</th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Remise (Nouveau)</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('client')}>
+                      Client
+                      {renderSortIcon(directSort?.key === 'client', directSort?.key === 'client' ? directSort.direction : null, 'text-blue-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('societe')}>
+                      Société
+                      {renderSortIcon(directSort?.key === 'societe', directSort?.key === 'societe' ? directSort.direction : null, 'text-blue-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('telephone')}>
+                      Téléphone
+                      {renderSortIcon(directSort?.key === 'telephone', directSort?.key === 'telephone' ? directSort.direction : null, 'text-blue-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('bons')}>
+                      Bons
+                      {renderSortIcon(directSort?.key === 'bons', directSort?.key === 'bons' ? directSort.direction : null, 'text-blue-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('remise')}>
+                      Remise (Nouveau)
+                      {renderSortIcon(directSort?.key === 'remise', directSort?.key === 'remise' ? directSort.direction : null, 'text-blue-700')}
+                    </button>
+                  </th>
                   <th className="px-6 py-4 text-center text-xs font-semibold text-blue-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
-                {filteredDirectClients.map((c: any) => {
+                {sortedDirectClients.map((c: any) => {
                   const id = Number(c?.id);
                   const total = directNewByClientId.totalById.get(id) || 0;
                   const count = directNewByClientId.countById.get(id) || 0;
@@ -480,7 +658,7 @@ const RemisesPage: React.FC = () => {
                     </tr>
                   );
                 })}
-                {filteredDirectClients.length === 0 && (
+                {sortedDirectClients.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
                       Aucun client avec remise (nouveau système) trouvé.
@@ -493,27 +671,80 @@ const RemisesPage: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gradient-to-r from-purple-50 to-blue-50">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Nom</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Téléphone</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">CIN</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">Créer le</th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">Ancien</th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">Nouveau</th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">Global</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleRemiseSort('nom')}>
+                      Nom
+                      {renderSortIcon(remiseSort?.key === 'nom', remiseSort?.key === 'nom' ? remiseSort.direction : null, 'text-purple-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleRemiseSort('type')}>
+                      Type
+                      {renderSortIcon(remiseSort?.key === 'type', remiseSort?.key === 'type' ? remiseSort.direction : null, 'text-purple-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleRemiseSort('phone')}>
+                      Téléphone
+                      {renderSortIcon(remiseSort?.key === 'phone', remiseSort?.key === 'phone' ? remiseSort.direction : null, 'text-purple-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleRemiseSort('cin')}>
+                      CIN
+                      {renderSortIcon(remiseSort?.key === 'cin', remiseSort?.key === 'cin' ? remiseSort.direction : null, 'text-purple-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleRemiseSort('created_at')}>
+                      Créer le
+                      {renderSortIcon(remiseSort?.key === 'created_at', remiseSort?.key === 'created_at' ? remiseSort.direction : null, 'text-purple-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleRemiseSort('ancien')}>
+                      Ancien
+                      {renderSortIcon(remiseSort?.key === 'ancien', remiseSort?.key === 'ancien' ? remiseSort.direction : null, 'text-purple-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleRemiseSort('nouveau')}>
+                      Nouveau
+                      {renderSortIcon(remiseSort?.key === 'nouveau', remiseSort?.key === 'nouveau' ? remiseSort.direction : null, 'text-purple-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleRemiseSort('used')}>
+                      Remise utilisée
+                      {renderSortIcon(remiseSort?.key === 'used', remiseSort?.key === 'used' ? remiseSort.direction : null, 'text-purple-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleRemiseSort('final')}>
+                      Final
+                      {renderSortIcon(remiseSort?.key === 'final', remiseSort?.key === 'final' ? remiseSort.direction : null, 'text-purple-700')}
+                    </button>
+                  </th>
                   <th className="px-6 py-4 text-center text-xs font-semibold text-purple-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
-                {filtered.map((c: any) => (
+                {sortedRemiseClients.map((c: any) => (
                   <tr key={c.id} className="hover:bg-gradient-to-r hover:from-purple-25 hover:to-blue-25 transition-all duration-200">
                     <td className="px-6 py-4 font-medium text-gray-900">{c.nom}</td>
+                    <td className="px-6 py-4">
+                      {c.type === 'client_abonne'
+                        ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Client abonné</span>
+                        : <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">Client remise</span>}
+                    </td>
                     <td className="px-6 py-4 text-gray-600">{c.phone || '-'}</td>
                     <td className="px-6 py-4 text-gray-600">{c.cin || '-'}</td>
                     <td className="px-6 py-4 text-gray-600">{c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '-'}</td>
                     {(() => {
                       const oldT = oldTotalByClientId.get(Number(c.id)) || 0;
                       const newT = newTotalByClientId.get(Number(c.id)) || 0;
-                      const glob = oldT + newT;
+                      const used = Number(c.remise_utilisee || 0);
+                      const finalTotal = Number(c.remise_disponible ?? (oldT + newT - used));
                       return (
                         <>
                           <td className="px-6 py-4 text-right">
@@ -523,7 +754,10 @@ const RemisesPage: React.FC = () => {
                             <span className="text-lg font-bold text-amber-600">{Number(newT).toFixed(2)} DH</span>
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <span className="text-lg font-bold text-gray-900">{Number(glob).toFixed(2)} DH</span>
+                            <span className="text-lg font-bold text-rose-600">{used.toFixed(2)} DH</span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <span className="text-lg font-bold text-emerald-600">{finalTotal.toFixed(2)} DH</span>
                           </td>
                         </>
                       );
@@ -542,7 +776,7 @@ const RemisesPage: React.FC = () => {
                           title="Modifier"
                           onClick={() => {
                             setEditingId(c.id);
-                            setForm({ nom: c.nom || '', phone: c.phone || '', cin: c.cin || '' });
+                            setForm({ nom: c.nom || '', phone: c.phone || '', cin: c.cin || '', type: c.type || 'client-remise' });
                             setIsFormModalOpen(true);
                           }}
                         >
@@ -637,6 +871,21 @@ const RemisesPage: React.FC = () => {
                     onChange={(e) => setForm({ ...form, cin: e.target.value })} 
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Type
+                  </label>
+                  <div className="flex gap-4">
+                    <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all duration-200 ${form.type === 'client-remise' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'}`}>
+                      <input type="radio" name="client-type" className="sr-only" checked={form.type === 'client-remise'} onChange={() => setForm({ ...form, type: 'client-remise' })} />
+                      <span className="font-medium text-sm">Client remise</span>
+                    </label>
+                    <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all duration-200 ${form.type === 'client_abonne' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'}`}>
+                      <input type="radio" name="client-type" className="sr-only" checked={form.type === 'client_abonne'} onChange={() => setForm({ ...form, type: 'client_abonne' })} />
+                      <span className="font-medium text-sm">Client abonné</span>
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -653,13 +902,13 @@ const RemisesPage: React.FC = () => {
                 className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-200 inline-flex items-center gap-2 shadow-md"
                 onClick={async () => {
                   if (editingId === 0) {
-                    await createClient({ nom: form.nom, phone: form.phone, cin: form.cin }).unwrap();
+                    await createClient({ nom: form.nom, phone: form.phone, cin: form.cin, type: form.type }).unwrap();
                   } else if (editingId) {
-                    await updateClient({ id: editingId, data: { nom: form.nom, phone: form.phone, cin: form.cin } }).unwrap();
+                    await updateClient({ id: editingId, data: { nom: form.nom, phone: form.phone, cin: form.cin, type: form.type } }).unwrap();
                   }
                   setIsFormModalOpen(false);
                   setEditingId(null);
-                  setForm({ nom: '', phone: '', cin: '' });
+                  setForm({ nom: '', phone: '', cin: '', type: 'client-remise' });
                   refetch();
                 }}
               >
