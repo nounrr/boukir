@@ -1,8 +1,13 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken, requireRole, requireRoles } from '../middleware/auth.js';
+import { ensurePaymentRemiseColumns, getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
 
 const router = express.Router();
+
+ensurePaymentRemiseColumns().catch((err) => {
+  console.error('ensurePaymentRemiseColumns:', err);
+});
 
 // date helpers
 const isYMD = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -103,6 +108,9 @@ const toPayment = (r) => ({
   numero: String(r.numero ?? r.id),
   type_paiement: r.type_paiement,
   contact_id: r.contact_id,
+  remise_account_id: r.remise_account_id ?? null,
+  remise_account_type: r.remise_account_type ?? null,
+  remise_account_name: r.remise_account_name ?? null,
   bon_id: r.bon_id,
   bon_type: r.bon_type ?? null,
   montant_total: Number(r.montant_total ?? 0),
@@ -151,9 +159,85 @@ function mapToCanonical(s) {
   }
 }
 
+function toNullableNumber(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isActiveRemiseStatut(statut) {
+  const canonical = mapToCanonical(statut);
+  return canonical === 'En attente' || canonical === 'Validé';
+}
+
+async function getRemiseAccountOrThrow(db, remiseAccountId) {
+  const numericId = toNullableNumber(remiseAccountId);
+  if (!numericId) {
+    const error = new Error('Compte remise requis');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const accounts = await getRemisePaymentAccounts(db, { ids: [numericId] });
+  if (!accounts.length) {
+    const error = new Error('Compte remise introuvable');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return accounts[0];
+}
+
+async function resolveRemisePaymentInput(db, payload, currentPayment = null) {
+  const modePaiement = String(payload?.mode_paiement || currentPayment?.mode_paiement || '');
+  if (modePaiement !== 'Remise') {
+    return {
+      typePaiement: payload?.type_paiement ?? currentPayment?.type_paiement,
+      contactId: Object.hasOwn(payload || {}, 'contact_id') ? toNullableNumber(payload.contact_id) : currentPayment?.contact_id ?? null,
+      remiseAccountId: null,
+      remiseAccountType: null,
+      remiseAccountName: null,
+    };
+  }
+
+  const amount = Number(payload?.montant_total ?? currentPayment?.montant_total ?? 0);
+  if (!(amount > 0)) {
+    const error = new Error('Montant remise invalide');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const account = await getRemiseAccountOrThrow(db, payload?.remise_account_id ?? currentPayment?.remise_account_id);
+  let allowedAmount = Number(account.available_total || 0);
+
+  if (
+    currentPayment &&
+    String(currentPayment.mode_paiement || '') === 'Remise' &&
+    Number(currentPayment.remise_account_id || 0) === Number(account.id) &&
+    isActiveRemiseStatut(currentPayment.statut)
+  ) {
+    allowedAmount += Number(currentPayment.montant_total || 0);
+  }
+
+  if (amount > allowedAmount + 0.000001) {
+    const error = new Error(`Montant remise supérieur au disponible (${Number(allowedAmount).toFixed(2)} DH)`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    typePaiement: 'Client',
+    contactId: toNullableNumber(account.contact_id),
+    remiseAccountId: Number(account.id),
+    remiseAccountType: account.type,
+    remiseAccountName: account.nom,
+  };
+}
+
 // List payments
 router.get('/', verifyToken, async (req, res) => {
   try {
+    await ensurePaymentRemiseColumns();
     const { bon_id, bon_type, contact_id, mode_paiement, type_paiement, date_from, date_to, search } = req.query;
     const where = [];
     const params = [];
@@ -193,6 +277,7 @@ router.get('/personnel', verifyToken, async (_req, res) => {
 });
 router.get('/:id', verifyToken, async (req, res) => {
 	try {
+  await ensurePaymentRemiseColumns();
     const { id } = req.params;
 		const [rows] = await pool.query('SELECT * FROM payments WHERE id = ?', [id]);
     if (!rows.length) return res.status(404).json({ message: 'Paiement introuvable' });
@@ -205,6 +290,7 @@ router.get('/:id', verifyToken, async (req, res) => {
 
 router.post('/', verifyToken, async (req, res) => {
 	try {
+    await ensurePaymentRemiseColumns();
     const {
       type_paiement = 'Client',
 			contact_id,
@@ -221,66 +307,58 @@ router.post('/', verifyToken, async (req, res) => {
       image_url = null,
       talon_id = null,
       created_by = null,
+      remise_account_id = null,
   } = req.body;
 
-    // Récupérer la vraie date d'ajout (maintenant)
-    const dateAjoutReelle = new Date();
-    const dateAjoutReelleStr = dateAjoutReelle.toISOString().slice(0, 19).replace('T', ' ');
+    const connection = await pool.getConnection();
 
-    // normalize statut to canonical French labels and default to 'En attente'
-    const rawStatut = req.body && Object.hasOwn(req.body, 'statut') ? req.body.statut : undefined;
-    const mapToCanonical = (s) => {
-      if (!s && s !== '') return 'En attente';
-      const low = String(s).toLowerCase();
-      switch (low) {
-        case 'attente':
-        case 'en attente':
-        case 'en_attente':
-          return 'En attente';
-        case 'valide':
-        case 'validé':
-        case 'valid':
-          return 'Validé';
-        case 'refuse':
-        case 'refusé':
-        case 'refusee':
-          return 'Refusé';
-        case 'annule':
-        case 'annulé':
-        case 'annulee':
-          return 'Annulé';
-        default:
-          return String(s);
+    try {
+      await connection.beginTransaction();
+
+      // Récupérer la vraie date d'ajout (maintenant)
+      const dateAjoutReelle = new Date();
+      const dateAjoutReelleStr = dateAjoutReelle.toISOString().slice(0, 19).replace('T', ' ');
+
+      // normalize statut to canonical French labels and default to 'En attente'
+      const rawStatut = req.body && Object.hasOwn(req.body, 'statut') ? req.body.statut : undefined;
+      const statut = mapToCanonical(rawStatut);
+
+      // Nettoyer les valeurs pour éviter les erreurs "Out of range"
+      const cleanBonId = bon_id ? Number(bon_id) : null;
+      const cleanBonType = bon_type != null && String(bon_type).trim() !== '' ? String(bon_type).trim() : null;
+      const cleanTalonId = talon_id ? Number(talon_id) : null;
+      const cleanDatePaiement = toYMDTime(date_paiement, true);
+      const cleanDateEcheance = toYMD(date_echeance);
+
+      if (!cleanDatePaiement) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ message: 'Date de paiement invalide', detail: String(date_paiement) });
       }
-    };
-    const statut = mapToCanonical(rawStatut);
 
-    // Nettoyer les valeurs pour éviter les erreurs "Out of range"
-    const cleanContactId = contact_id ? Number(contact_id) : null;
-    const cleanBonId = bon_id ? Number(bon_id) : null;
-    const cleanBonType = bon_type != null && String(bon_type).trim() !== '' ? String(bon_type).trim() : null;
-    const cleanTalonId = talon_id ? Number(talon_id) : null;
-    const cleanDatePaiement = toYMDTime(date_paiement, true); // DATETIME avec heure actuelle
-    const cleanDateEcheance = toYMD(date_echeance); // DATE simple
+      const allowedAll = ['En attente','Validé','Refusé','Annulé'];
+      const allowedEmployee = ['En attente','Annulé'];
+      const userRole = (req.user && req.user.role) ? String(req.user.role).toLowerCase() : '';
+      const allowed = (userRole === 'employe' || userRole === 'user') ? allowedEmployee : allowedAll;
+      if (!allowed.includes(statut)) {
+        await connection.rollback();
+        connection.release();
+        return res.status(403).json({ message: 'Statut non autorisé pour votre rôle' });
+      }
 
-    if (!cleanDatePaiement) {
-      return res.status(400).json({ message: 'Date de paiement invalide', detail: String(date_paiement) });
-    }
+      const remiseFields = await resolveRemisePaymentInput(connection, {
+        type_paiement,
+        contact_id,
+        montant_total,
+        mode_paiement,
+        remise_account_id,
+      });
 
-    // Validate statut according to user role
-    const allowedAll = ['En attente','Validé','Refusé','Annulé'];
-    const allowedEmployee = ['En attente','Annulé'];
-    const userRole = (req.user && req.user.role) ? String(req.user.role).toLowerCase() : '';
-    const allowed = (userRole === 'employe' || userRole === 'user') ? allowedEmployee : allowedAll;
-    if (!allowed.includes(statut)) {
-      return res.status(403).json({ message: 'Statut non autorisé pour votre rôle' });
-    }
-
-    // Si un bon est associé, récupérer sa date pour l'ordre chronologique
-    let createdAtValue = dateAjoutReelleStr; // Par défaut, la date actuelle
-    if (cleanBonId) {
-      try {
-        console.log('🔍 Recherche bon ID:', cleanBonId, '| BonType:', cleanBonType, '| TypePaiement:', type_paiement, '| Contact:', cleanContactId);
+      // Si un bon est associé, récupérer sa date pour l'ordre chronologique
+      let createdAtValue = dateAjoutReelleStr;
+      if (cleanBonId) {
+        try {
+          console.log('🔍 Recherche bon ID:', cleanBonId, '| BonType:', cleanBonType, '| TypePaiement:', remiseFields.typePaiement, '| Contact:', remiseFields.contactId);
         
         // Déterminer les tables à rechercher en fonction du type de paiement
         let bonTables = [];
@@ -295,14 +373,14 @@ router.post('/', verifyToken, async (req, res) => {
         if (cleanBonType && bonTypeToTable[cleanBonType]) {
           // Si le type du bon est fourni, ne chercher que dans la table correspondante
           bonTables = [bonTypeToTable[cleanBonType]];
-        } else if (type_paiement === 'Client') {
+        } else if (remiseFields.typePaiement === 'Client') {
           // Pour les clients: chercher d'abord dans bons sortie/comptant, puis avoirs client
           bonTables = [
             { table: 'bons_sortie', dateField: 'date_creation' },
             { table: 'bons_comptant', dateField: 'date_creation' },
             { table: 'avoirs_client', dateField: 'date_creation' }
           ];
-        } else if (type_paiement === 'Fournisseur') {
+        } else if (remiseFields.typePaiement === 'Fournisseur') {
           // Pour les fournisseurs: chercher dans bons commande puis avoirs fournisseur
           bonTables = [
             { table: 'bons_commande', dateField: 'date_creation' },
@@ -314,7 +392,7 @@ router.post('/', verifyToken, async (req, res) => {
         
         for (const { table, dateField } of bonTables) {
           try {
-            const [bonRows] = await pool.query(`SELECT ${dateField} as date_doc, created_at FROM ${table} WHERE id = ?`, [cleanBonId]);
+            const [bonRows] = await connection.query(`SELECT ${dateField} as date_doc, created_at FROM ${table} WHERE id = ?`, [cleanBonId]);
             if (bonRows.length > 0) {
               // Prendre la date la plus récente entre date_creation et created_at
               const dateDoc = new Date(bonRows[0].date_doc);
@@ -338,42 +416,52 @@ router.post('/', verifyToken, async (req, res) => {
           console.log('📅 Date paiement (+1h):', paymentDate.toISOString());
           console.log('📅 created_at MySQL:', createdAtValue);
         }
-      } catch (err) {
-        console.log('Erreur lors de la récupération de la date du bon:', err);
-        // Continuer avec la date actuelle en cas d'erreur
+        } catch (err) {
+          console.log('Erreur lors de la récupération de la date du bon:', err);
+        }
       }
-    }
 
-    console.log('💾 Insertion paiement - created_at:', createdAtValue, '| date_ajout_reelle:', dateAjoutReelleStr);
-    console.log('💾 Bon associé ID:', cleanBonId);
+      console.log('💾 Insertion paiement - created_at:', createdAtValue, '| date_ajout_reelle:', dateAjoutReelleStr);
+      console.log('💾 Bon associé ID:', cleanBonId);
 
-    const [result] = await pool.query(
+      const [result] = await connection.query(
       `INSERT INTO payments
-        (numero, type_paiement, contact_id, bon_id, bon_type, montant_total, mode_paiement, date_paiement, designation,
+        (numero, type_paiement, contact_id, remise_account_id, remise_account_type, remise_account_name, bon_id, bon_type, montant_total, mode_paiement, date_paiement, designation,
          date_echeance, banque, personnel, code_reglement, image_url, talon_id, statut, created_by, created_at, date_ajout_reelle)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ['', type_paiement, cleanContactId, cleanBonId, cleanBonType, montant_total, mode_paiement, cleanDatePaiement, designation,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ['', remiseFields.typePaiement, remiseFields.contactId, remiseFields.remiseAccountId, remiseFields.remiseAccountType, remiseFields.remiseAccountName, cleanBonId, cleanBonType, montant_total, mode_paiement, cleanDatePaiement, designation,
         cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanTalonId, statut, created_by, createdAtValue, dateAjoutReelleStr]
     );
-    await pool.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
-    const [rows] = await pool.query('SELECT * FROM payments WHERE id = ?', [result.insertId]);
+      await connection.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
+      const [rows] = await connection.query('SELECT * FROM payments WHERE id = ?', [result.insertId]);
     
-    // DEBUG: Afficher ce qui a été vraiment enregistré
-    console.log('✅ Paiement créé ID:', result.insertId);
-    console.log('📊 created_at enregistré:', rows[0].created_at);
-    console.log('📊 date_ajout_reelle enregistré:', rows[0].date_ajout_reelle);
+      console.log('✅ Paiement créé ID:', result.insertId);
+      console.log('📊 created_at enregistré:', rows[0].created_at);
+      console.log('📊 date_ajout_reelle enregistré:', rows[0].date_ajout_reelle);
+      await connection.commit();
+      connection.release();
     
-  res.status(201).json(toPayment(rows[0]));
+      res.status(201).json(toPayment(rows[0]));
+    } catch (innerError) {
+      await connection.rollback();
+      connection.release();
+      throw innerError;
+    }
   } catch (err) {
     console.error('POST /payments error:', err);
-    res.status(500).json({ message: 'Internal error', detail: String(err?.sqlMessage || err?.message || err) });
+    const statusCode = err?.statusCode || 500;
+    res.status(statusCode).json({ message: statusCode === 500 ? 'Internal error' : err?.message, detail: String(err?.sqlMessage || err?.message || err) });
   }
 });
 
 router.put('/:id', verifyToken, async (req, res) => {
 	try {
+    await ensurePaymentRemiseColumns();
     const { id } = req.params;
     const data = req.body || {};
+    const [currentRows] = await pool.query('SELECT * FROM payments WHERE id = ?', [id]);
+    if (!currentRows.length) return res.status(404).json({ message: 'Paiement introuvable' });
+    const currentPayment = currentRows[0];
     // Normalize possible date fields upfront
     if (Object.hasOwn(data, 'date_paiement')) {
       data.date_paiement = toYMDTime(data.date_paiement, true); // DATETIME avec heure actuelle
@@ -398,27 +486,51 @@ router.put('/:id', verifyToken, async (req, res) => {
       data.statut = canonical;
     }
 
-    const fields = [
-  'type_paiement','contact_id','bon_id','bon_type','montant_total','mode_paiement','date_paiement','designation',
-  'date_echeance','banque','personnel','code_reglement','image_url','talon_id','statut','updated_by'
-    ];
-    const setParts = [];
-		const values = [];
-    for (const f of fields) {
-      if (Object.hasOwn(data, f)) {
-        setParts.push(`${f} = ?`);
-        values.push(data[f]);
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const remiseFields = await resolveRemisePaymentInput(connection, {
+        ...currentPayment,
+        ...data,
+      }, currentPayment);
+      data.type_paiement = remiseFields.typePaiement;
+      data.contact_id = remiseFields.contactId;
+      data.remise_account_id = remiseFields.remiseAccountId;
+      data.remise_account_type = remiseFields.remiseAccountType;
+      data.remise_account_name = remiseFields.remiseAccountName;
+
+      const fields = [
+        'type_paiement','contact_id','remise_account_id','remise_account_type','remise_account_name','bon_id','bon_type','montant_total','mode_paiement','date_paiement','designation',
+        'date_echeance','banque','personnel','code_reglement','image_url','talon_id','statut','updated_by'
+      ];
+      const setParts = [];
+		  const values = [];
+      for (const f of fields) {
+        if (Object.hasOwn(data, f)) {
+          setParts.push(`${f} = ?`);
+          values.push(data[f]);
+        }
       }
+      if (!setParts.length) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ message: 'Aucune donnée à mettre à jour' });
+      }
+		  values.push(id);
+      await connection.query(`UPDATE payments SET ${setParts.join(', ')} WHERE id = ?`, values);
+		  const [rows] = await connection.query('SELECT * FROM payments WHERE id = ?', [id]);
+      await connection.commit();
+      connection.release();
+      res.json(toPayment(rows[0]));
+    } catch (innerError) {
+      await connection.rollback();
+      connection.release();
+      throw innerError;
     }
-    if (!setParts.length) return res.status(400).json({ message: 'Aucune donnée à mettre à jour' });
-		values.push(id);
-    await pool.query(`UPDATE payments SET ${setParts.join(', ')} WHERE id = ?`, values);
-		const [rows] = await pool.query('SELECT * FROM payments WHERE id = ?', [id]);
-    if (!rows.length) return res.status(404).json({ message: 'Paiement introuvable' });
-  res.json(toPayment(rows[0]));
   } catch (err) {
     console.error('PUT /payments/:id error:', err);
-    res.status(500).json({ message: 'Internal error', detail: String(err?.sqlMessage || err?.message || err) });
+    const statusCode = err?.statusCode || 500;
+    res.status(statusCode).json({ message: statusCode === 500 ? 'Internal error' : err?.message, detail: String(err?.sqlMessage || err?.message || err) });
   }
 });
 

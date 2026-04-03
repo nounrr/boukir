@@ -10,6 +10,16 @@ export const remisesApi = api.injectEndpoints({
       query: (contactId) => `/remises/clients/by-contact/${contactId}`,
       providesTags: (_r, _e, contactId) => [{ type: 'Remise', id: `CONTACT-${contactId}` }],
     }),
+    getRemisePaymentAccounts: build.query<any[], { onlyAvailable?: boolean; types?: string[] } | void>({
+      query: (params) => {
+        const searchParams = new URLSearchParams();
+        if (params?.onlyAvailable) searchParams.set('onlyAvailable', '1');
+        if (params?.types?.length) searchParams.set('types', params.types.join(','));
+        const suffix = searchParams.toString();
+        return `/remises/payment-accounts${suffix ? `?${suffix}` : ''}`;
+      },
+      providesTags: [{ type: 'Remise', id: 'LIST' }],
+    }),
     createClientRemise: build.mutation<any, Partial<any>>({
       query: (body) => ({ url: '/remises/clients', method: 'POST', body }),
       invalidatesTags: [{ type: 'Remise', id: 'LIST' }],
@@ -59,6 +69,7 @@ export const remisesApi = api.injectEndpoints({
 export const {
   useGetClientRemisesQuery,
   useGetClientAbonneByContactQuery,
+  useGetRemisePaymentAccountsQuery,
   useLazyGetClientAbonneByContactQuery,
   useCreateClientRemiseMutation,
   useUpdateClientRemiseMutation,
