@@ -887,61 +887,58 @@ const BonsPage = () => {
     return { profit, costBase, marginPct };
   };
 
+  const parseMontantNumber = (value: any): number => {
+    if (value == null || value === '') return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    if (typeof value === 'string') {
+      const cleaned = value.replace(/\s+/g, '').replace(',', '.');
+      const parsed = parseFloat(cleaned);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  };
+
+  const getDisplayedUnitPrice = (item: any, type: string): number => {
+    if (type === 'Commande') {
+      return (
+        parseMontantNumber(item.prix_unitaire) ||
+        parseMontantNumber(item.prix_achat) ||
+        parseMontantNumber(item.prix)
+      );
+    }
+
+    return (
+      parseMontantNumber(item.prix_unitaire) ||
+      parseMontantNumber(item.prix_achat) ||
+      parseMontantNumber(item.prixVente ?? item.prix)
+    );
+  };
+
+  const computeDisplayedLineTotal = (item: any, type: string): number => {
+    const quantity = parseMontantNumber(item.quantite ?? item.qty ?? item.qte);
+    const unitPrice = getDisplayedUnitPrice(item, type);
+
+    if (quantity > 0 && unitPrice > 0) {
+      return quantity * unitPrice;
+    }
+
+    return parseMontantNumber(item.total ?? item.montant_ligne ?? item.montantLigne);
+  };
+
   // Calcule le montant total d'un bon (aligné avec BonFormModal + tolérant aux données backend hétérogènes)
   const computeMontantTotal = (bon: any): number => {
     const items = parseItemsSafe(bon?.items);
     if (!items.length) return Number(bon?.montant_total) || 0; // fallback direct
     const type = bon?.type || currentTab;
 
-    const parseNum = (v: any): number => {
-      if (v == null || v === '') return 0;
-      if (typeof v === 'number') return isNaN(v) ? 0 : v;
-      if (typeof v === 'string') {
-        const cleaned = v.replace(/\s+/g, '').replace(',', '.');
-        const n = parseFloat(cleaned);
-        return isNaN(n) ? 0 : n;
-      }
-      return 0;
-    };
-
     let total = 0;
     for (const item of items) {
-      const q = parseNum(item.quantite ?? item.qty ?? item.qte);
-      if (!q) continue;
-
-      // Priorité:
-      // 1. Champ total / montant_ligne déjà calculé (fiable si présent)
-      // 2. Pour Commande: prix_achat sinon fallback prix_unitaire
-      // 3. Pour autres types: prix_unitaire sinon fallback prix_achat
-      // 4. Fallback supplémentaire: prix, prixVente
-      let lineTotal: number | null = null;
-      const rawLineTotal = item.total ?? item.montant_ligne ?? item.montantLigne;
-      if (rawLineTotal != null) {
-        const lt = parseNum(rawLineTotal);
-        if (lt > 0) lineTotal = lt; // n'utiliser que si positif
-      }
-
-      if (lineTotal == null) {
-        let unitPrice: number;
-        if (type === 'Commande') {
-          const puAchat = parseNum(item.prix_achat);
-            // certains items provenant d'anciennes versions n'ont que prix_unitaire
-          const puVenteFallback = parseNum(item.prix_unitaire);
-          unitPrice = puAchat > 0 ? puAchat : (puVenteFallback > 0 ? puVenteFallback : parseNum(item.prix));
-        } else {
-          const puVente = parseNum(item.prix_unitaire);
-          const puAchatFallback = parseNum(item.prix_achat);
-          unitPrice = puVente > 0 ? puVente : (puAchatFallback > 0 ? puAchatFallback : parseNum(item.prixVente ?? item.prix));
-        }
-        lineTotal = q * unitPrice;
-      }
-
-      total += lineTotal;
+      total += computeDisplayedLineTotal(item, type);
     }
 
     // Si total calculé = 0 mais backend fournit montant_total non nul, utiliser celui-ci
     if (total === 0) {
-      const backendTotal = parseNum(bon?.montant_total);
+      const backendTotal = parseMontantNumber(bon?.montant_total);
       if (backendTotal > 0) return backendTotal;
     }
     return total;
@@ -3486,6 +3483,8 @@ const BonsPage = () => {
                             }
                             const poids = kgUnit * q;
                             const resolvedCost = resolveCostWithVariantUnit(item);
+                            const displayedUnitPrice = getDisplayedUnitPrice(item, selectedBon?.type || currentTab);
+                            const displayedLineTotal = computeDisplayedLineTotal(item, selectedBon?.type || currentTab);
                             return (
                               <tr key={item.id} className="hover:bg-gray-50">
                                 <td className="px-4 py-2 text-sm text-gray-700">
@@ -3501,8 +3500,8 @@ const BonsPage = () => {
                                 <td className="px-4 py-2 text-sm text-right">{kgUnit.toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-medium">{poids.toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-right text-orange-600" title={`item.pa=${item.prix_achat} item.cr=${item.cout_revient} resolved=${resolvedCost}`}>{resolvedCost.toFixed(2)} DH</td>
-                                <td className="px-4 py-2 text-sm text-right">{Number(item.prix_unitaire || 0).toFixed(2)} DH</td>
-                                <td className="px-4 py-2 text-sm text-right font-semibold">{Number(item.montant_ligne || item.total || 0).toFixed(2)} DH</td>
+                                <td className="px-4 py-2 text-sm text-right">{displayedUnitPrice.toFixed(2)} DH</td>
+                                <td className="px-4 py-2 text-sm text-right font-semibold">{displayedLineTotal.toFixed(2)} DH</td>
                               </tr>
                             );
                           }))}
