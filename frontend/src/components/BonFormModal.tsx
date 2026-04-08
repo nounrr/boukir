@@ -390,6 +390,72 @@ const AutoCheckNonCalculatedForAwatif: React.FC<{ isOpen: boolean; clients: any[
   return null;
 };
 
+const ComptantPaidAmountField: React.FC<{
+  qtyRaw: Record<number, string>;
+  unitPriceRaw: Record<number, string>;
+}> = ({ qtyRaw, unitPriceRaw }) => {
+  const { values, setFieldValue } = useFormikContext<any>();
+  const normalizePaidDecimal = (value: string) => value.replace(/\s+/g, '').replace(',', '.');
+  const isPaidDecimalLike = (value: string) => /^[0-9]*[.,]?[0-9]*$/.test(value);
+  const formatPaidValue = (value: number) => {
+    if (!Number.isFinite(value)) return '0';
+    let formatted = String(value);
+    if (/\.\d{10,}/.test(formatted)) {
+      formatted = String(Math.round(value * 1e12) / 1e12);
+    }
+    if (formatted.includes('.')) {
+      formatted = formatted.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+    }
+    return formatted;
+  };
+  const montantTotalFromItems = (values.items || []).reduce((sum: number, item: any, idx: number) => {
+    const quantity = parseFloat(normalizePaidDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+    const price = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
+      ? parseFloat(normalizePaidDecimal(unitPriceRaw[idx])) || 0
+      : Number(item.prix_unitaire || 0);
+    return sum + quantity * price;
+  }, 0);
+  const montantTotalComptant = montantTotalFromItems > 0
+    ? montantTotalFromItems
+    : Number(values.montant_total || 0);
+  const reste = Number(values.reste || 0);
+  const montantPaye = Math.max(0, montantTotalComptant - reste);
+  const [rawValue, setRawValue] = useState(formatPaidValue(montantPaye));
+
+  useEffect(() => {
+    setRawValue(formatPaidValue(montantPaye));
+  }, [montantPaye]);
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <label htmlFor="montant_paye" className="text-sm font-medium text-gray-700">Montant payé (DH):</label>
+      <input
+        type="text"
+        id="montant_paye"
+        inputMode="decimal"
+        autoComplete="off"
+        placeholder="0.00"
+        value={rawValue}
+        onChange={(e) => {
+          const nextRawValue = e.target.value || '';
+          if (!isPaidDecimalLike(nextRawValue)) return;
+          setRawValue(nextRawValue);
+          const montantPayeSaisi = parseFloat(normalizePaidDecimal(nextRawValue || '0')) || 0;
+          const montantPayeNormalise = Math.min(Math.max(montantPayeSaisi, 0), montantTotalComptant);
+          const nouveauReste = Math.max(0, montantTotalComptant - montantPayeNormalise);
+          setFieldValue('reste', Number(nouveauReste.toFixed(2)));
+        }}
+        onBlur={() => setRawValue(formatPaidValue(montantPaye))}
+        onWheel={(e) => e.currentTarget.blur()}
+        className="w-40 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
+      />
+      <div className={`px-3 py-2 rounded-md text-sm font-medium ${reste <= 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>
+        Restant: {formatPaidValue(Math.max(0, reste))} DH
+      </div>
+    </div>
+  );
+};
+
 /* --------------------------------- Composant -------------------------------- */
 interface BonFormModalProps {
   isOpen: boolean;
@@ -397,6 +463,7 @@ interface BonFormModalProps {
   currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
   initialValues?: any;
   onBonAdded?: (bon: any) => void;
+  comptantPartialPaymentMode?: 'hidden' | 'required';
 }
 
 const BonFormModal: React.FC<BonFormModalProps> = ({
@@ -405,6 +472,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   currentTab,
   initialValues,
   onBonAdded,
+  comptantPartialPaymentMode = 'hidden',
 }) => {
   const [previewMouvement, { data: mouvementPreviewResp, isLoading: mouvementPreviewLoading }] = usePreviewMouvementMutation();
 
@@ -670,6 +738,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     currentModalType === 'AvoirFournisseur'
   );
   const { data: commandesHistory = [] } = useGetBonsByTypeQuery('Commande', { skip: !shouldFetchCommandesHistory });
+  const shouldFetchAvoirsFournisseurHistory = isOpen && currentModalType === 'AvoirFournisseur';
+  const { data: avoirsFournisseurHistory = [] } = useGetBonsByTypeQuery('AvoirFournisseur', { skip: !shouldFetchAvoirsFournisseurHistory });
   const shouldFetchEcommerceOrders = isOpen && (currentTab === 'AvoirEcommerce' || String((initialValues as any)?.type || '') === 'AvoirEcommerce');
   const { data: ecommerceOrders = [] } = useGetBonsByTypeQuery('Ecommerce', { skip: !shouldFetchEcommerceOrders });
   // For cumulative balances
@@ -1387,7 +1457,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       montant_ht: 0,
       montant_total: 0,
       isNotCalculated: false,
-      payer_partiellement: false,
+      payer_partiellement: currentTab === 'Comptant' && comptantPartialPaymentMode === 'required',
       reste: 0,
       items: [
         {
@@ -1415,7 +1485,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   // Mémoïser les initial values pour éviter les resets Formik intempestifs
   const initialFormValues = useMemo(
     () => getInitialValues(),
-    [currentTab, initialValues?.id] // ne PAS inclure products ici
+    [currentTab, initialValues?.id, comptantPartialPaymentMode] // ne PAS inclure products ici
   );
 
   // Seed la saisie brute quand initial values changent / modal ouvre
@@ -2528,6 +2598,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   };
 
   const getLastPurchasePriceForSupplierProduct = (
+    bonType: string,
     fournisseurId: string | number | undefined,
     productId: string | number | undefined,
     variantId?: string | number | undefined,
@@ -2590,7 +2661,11 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         }
       };
 
-      for (const b of commandesHistory as any[]) scan(b, (b as any).items);
+      const supplierHistory = bonType === 'AvoirFournisseur'
+        ? avoirsFournisseurHistory
+        : commandesHistory;
+
+      for (const b of supplierHistory as any[]) scan(b, (b as any).items);
       return bestConfirmedPrice ?? bestPendingPrice;
     };
 
@@ -3235,24 +3310,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Partial Payment Option for Comptant - Moved outside client block for visibility */}
-              {values.type === 'Comptant' && (
+              {values.type === 'Comptant' && (comptantPartialPaymentMode === 'required' || values.payer_partiellement) && (
                 <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 mb-4">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <Field type="checkbox" name="payer_partiellement" className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300" />
-                    <span className="text-sm font-medium text-gray-800">Payer partiellement</span>
-                  </label>
+                  {comptantPartialPaymentMode === 'required' && (
+                    <div className="text-sm font-medium text-gray-800">Bon comptant non payé</div>
+                  )}
                   {values.payer_partiellement && (
-                    <div className="mt-3 flex items-center gap-3 animate-fadeIn pl-6">
-                      <label htmlFor="reste" className="text-sm font-medium text-gray-700">Montant restant (DH):</label>
-                      <Field
-                        type="number"
-                        id="reste"
-                        name="reste"
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        className="w-40 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
-                      />
+                    <div className={`mt-3 flex items-center gap-3 animate-fadeIn ${comptantPartialPaymentMode === 'required' ? '' : 'pl-6'}`}>
+                      <ComptantPaidAmountField qtyRaw={qtyRaw} unitPriceRaw={unitPriceRaw} />
                     </div>
                   )}
                 </div>
@@ -4462,6 +4527,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   })()}
   {(values.fournisseur_id && values.items[index].product_id && (values.type === 'Commande' || values.type === 'AvoirFournisseur')) && (() => {
     const lastPurchase = getLastPurchasePriceForSupplierProduct(
+      values.type,
       values.fournisseur_id,
       values.items[index].product_id,
       values.items[index].variant_id,
