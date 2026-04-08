@@ -43,6 +43,26 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
 // Centralize action/status icon size for easier adjustment
 const ACTION_ICON_SIZE = 24; // increased from 20 per user request
 
+type BonTabKey = 'Commande' | 'Sortie' | 'Comptant' | 'ComptantNonPaye' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
+
+const BON_TAB_LABELS: Record<BonTabKey, string> = {
+  Commande: 'Bon de Commande',
+  Sortie: 'Bon de Sortie',
+  Comptant: 'Bon Comptant',
+  ComptantNonPaye: 'Bon Comptant non payé',
+  Vehicule: 'Bon Véhicule',
+  Avoir: 'Avoir Client',
+  AvoirComptant: 'Avoir Comptant',
+  AvoirFournisseur: 'Avoir Fournisseur',
+  AvoirEcommerce: 'Avoir Ecommerce',
+  Ecommerce: 'Bon Ecommerce',
+  Devis: 'Devis'
+};
+
+const normalizeBonTab = (tab: BonTabKey): Exclude<BonTabKey, 'ComptantNonPaye'> => (
+  tab === 'ComptantNonPaye' ? 'Comptant' : tab
+);
+
 const normalizeHumanName = (value: unknown) => {
   return String(value ?? '')
     .toLowerCase()
@@ -61,18 +81,21 @@ const isKhezinAwatifName = (name: unknown) => {
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
   const navigate = useNavigate();
-  const [currentTab, setCurrentTab] = useState<'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce'>('Commande');
+  const [currentTab, setCurrentTab] = useState<BonTabKey>('Commande');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedBon, setSelectedBon] = useState<any>(null);
+  const effectiveCurrentTab = normalizeBonTab(currentTab);
+  const isUnpaidComptantTab = currentTab === 'ComptantNonPaye';
+  const isComptantTab = effectiveCurrentTab === 'Comptant';
+  const currentTabLabel = BON_TAB_LABELS[currentTab];
+  const effectiveCurrentTabLabel = BON_TAB_LABELS[effectiveCurrentTab];
 
   const [isEcommerceRemiseModalOpen, setIsEcommerceRemiseModalOpen] = useState(false);
   const [selectedEcommerceForRemise, setSelectedEcommerceForRemise] = useState<any>(null);
   const [ecommerceRemiseDraftItems, setEcommerceRemiseDraftItems] = useState<Array<any>>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  // Nouveau filtre: si coché, ne montrer que les bons partiellement payés (reste > 0)
-  const [showPartialOnly, setShowPartialOnly] = useState(false);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
   const [isNewSupplierModalOpen, setIsNewSupplierModalOpen] = useState(false);
   const [isNewVehicleModalOpen, setIsNewVehicleModalOpen] = useState(false);
@@ -187,17 +210,17 @@ const BonsPage = () => {
   // Persist per-type value whenever it changes for the active tab
   useEffect(() => {
     try {
-      const key = getAutoSendKey(currentTab);
+      const key = getAutoSendKey(effectiveCurrentTab);
       localStorage.setItem(key, String(autoSendWhatsApp));
     } catch (error) {
       console.warn('Erreur lors de la sauvegarde de autoSendWhatsApp (per-type):', error);
     }
-  }, [autoSendWhatsApp, currentTab]);
+  }, [autoSendWhatsApp, effectiveCurrentTab]);
 
   // Load the per-type value when the tab changes (with legacy fallback)
   useEffect(() => {
     try {
-      const key = getAutoSendKey(currentTab);
+      const key = getAutoSendKey(effectiveCurrentTab);
       const val = localStorage.getItem(key);
       if (val != null) {
         setAutoSendWhatsApp(val === 'true');
@@ -214,11 +237,11 @@ const BonsPage = () => {
     } catch (error) {
       console.warn('Erreur lors du chargement de autoSendWhatsApp (per-type):', error);
     }
-  }, [currentTab]);
+  }, [effectiveCurrentTab]);
 
   // RTK Query hooks
   // Load bons by type
-  const { data: bons = [], isLoading: bonsLoading } = useGetBonsByTypeQuery(currentTab);
+  const { data: bons = [], isLoading: bonsLoading } = useGetBonsByTypeQuery(effectiveCurrentTab);
   const { data: clients = [], isLoading: clientsLoading } = useGetAllClientsQuery();
   const { data: suppliers = [], isLoading: suppliersLoading } = useGetAllFournisseursQuery();
   const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery();
@@ -412,7 +435,7 @@ const BonsPage = () => {
         return;
       }
       
-      await updateBonStatus({ id: bon.id, statut, type: bon.type || currentTab }).unwrap();
+      await updateBonStatus({ id: bon.id, statut, type: bon.type || effectiveCurrentTab }).unwrap();
       showSuccess(`Statut mis à jour: ${statut}`);
       // IMPORTANT: refetch stock/products after status change (validation or cancel)
       refetchProducts();
@@ -539,7 +562,7 @@ const BonsPage = () => {
         : null;
 
     // Prefer contact lookup by user_id for e-commerce bons when available
-    if ((bon?.type === 'Ecommerce' || currentTab === 'Ecommerce' || bon?.type === 'AvoirEcommerce' || currentTab === 'AvoirEcommerce') && ecommerceContactFromUserId?.nom_complet) {
+    if ((bon?.type === 'Ecommerce' || effectiveCurrentTab === 'Ecommerce' || bon?.type === 'AvoirEcommerce' || effectiveCurrentTab === 'AvoirEcommerce') && ecommerceContactFromUserId?.nom_complet) {
       return String(ecommerceContactFromUserId.nom_complet);
     }
 
@@ -552,17 +575,17 @@ const BonsPage = () => {
         .trim() ||
       null;
 
-    if ((bon?.type === 'Ecommerce' || currentTab === 'Ecommerce' || bon?.type === 'AvoirEcommerce' || currentTab === 'AvoirEcommerce') && ecommerceContactName) {
+    if ((bon?.type === 'Ecommerce' || effectiveCurrentTab === 'Ecommerce' || bon?.type === 'AvoirEcommerce' || effectiveCurrentTab === 'AvoirEcommerce') && ecommerceContactName) {
       return String(ecommerceContactName);
     }
 
     // Comptant et Devis: if client_nom is present (free text), prefer it
     const freeClientName = bon?.client_nom ?? bon?.customer_name;
     if (
-      (bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || currentTab === 'Comptant' || currentTab === 'AvoirComptant' ||
-       bon?.type === 'Devis' || currentTab === 'Devis' ||
-       bon?.type === 'Ecommerce' || currentTab === 'Ecommerce' ||
-       bon?.type === 'AvoirEcommerce' || currentTab === 'AvoirEcommerce') &&
+      (bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || effectiveCurrentTab === 'Comptant' || effectiveCurrentTab === 'AvoirComptant' ||
+       bon?.type === 'Devis' || effectiveCurrentTab === 'Devis' ||
+       bon?.type === 'Ecommerce' || effectiveCurrentTab === 'Ecommerce' ||
+       bon?.type === 'AvoirEcommerce' || effectiveCurrentTab === 'AvoirEcommerce') &&
       freeClientName
     ) {
       return String(freeClientName);
@@ -997,9 +1020,14 @@ const BonsPage = () => {
 
       const matchesStatus = !statusFilter || statusFilter.length === 0 ? true : (bon.statut && statusFilter.includes(String(bon.statut)));
 
-      const matchesPartial = !showPartialOnly || (currentTab === 'Comptant' && Number(bon.reste) > 0);
+      const bonReste = Number((bon as any)?.reste ?? 0);
+      const matchesPaymentState = isUnpaidComptantTab
+        ? bonReste > 0
+        : isComptantTab
+          ? bonReste <= 0
+          : true;
 
-      return matchesSearch && matchesStatus && matchesPartial;
+      return matchesSearch && matchesStatus && matchesPaymentState;
     });
 
     // Then sort
@@ -1019,8 +1047,8 @@ const BonsPage = () => {
           bValue = new Date(b.date_creation || 0).getTime();
           break;
         case 'contact':
-          aValue = (currentTab === 'Vehicule' ? (a.vehicule_nom || '') : getContactName(a)).toLowerCase();
-          bValue = (currentTab === 'Vehicule' ? (b.vehicule_nom || '') : getContactName(b)).toLowerCase();
+          aValue = (effectiveCurrentTab === 'Vehicule' ? (a.vehicule_nom || '') : getContactName(a)).toLowerCase();
+          bValue = (effectiveCurrentTab === 'Vehicule' ? (b.vehicule_nom || '') : getContactName(b)).toLowerCase();
           break;
         case 'montant':
           aValue = computeMontantTotal(a);
@@ -1034,7 +1062,7 @@ const BonsPage = () => {
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [bons, searchTerm, statusFilter, sortField, sortDirection, currentTab, clients, suppliers]);
+  }, [bons, searchTerm, statusFilter, sortField, sortDirection, currentTab, effectiveCurrentTab, clients, suppliers, isComptantTab, isUnpaidComptantTab]);
 
   // Pagination
   const totalItems = sortedBons.length;
@@ -1131,7 +1159,7 @@ const BonsPage = () => {
       const bonItems = parseItems(bon.items);
       const defaultLines = [
         `Bonjour ${getContactName(bon) || ''}`,
-        `Type: ${bon.type || currentTab}`,
+        `Type: ${bon.type || effectiveCurrentTab}`,
         `Numéro: ${getDisplayNumero(bon)}`,
         `Montant: ${computeMontantTotal(bon).toFixed(2)} DH`,
         bon.date_creation ? `Date: ${formatDateTimeWithHour(bon.date_creation)}` : '',
@@ -1364,12 +1392,9 @@ const BonsPage = () => {
     }
   }, [onMouseMove, onMouseDown]);
 
-  // Réinitialiser la page quand on change d'onglet ou de recherche, et reset le filtre partiel
+  // Réinitialiser la page quand on change d'onglet ou de recherche
   useEffect(() => {
     setCurrentPage(1);
-    if (currentTab !== 'Comptant') {
-      setShowPartialOnly(false);
-    }
   }, [currentTab, searchTerm]);
 
   // Tabs configuration
@@ -1378,6 +1403,7 @@ const BonsPage = () => {
       { key: 'Commande', label: 'Bon de Commande' },
       { key: 'Sortie', label: 'Bon de Sortie' },
       { key: 'Comptant', label: 'Bon Comptant' },
+      { key: 'ComptantNonPaye', label: 'Bon Comptant non payé' },
       { key: 'Vehicule', label: 'Bon Véhicule' },
       { key: 'Avoir', label: 'Avoir Client' },
       { key: 'AvoirComptant', label: 'Avoir Comptant' },
@@ -1508,7 +1534,7 @@ const BonsPage = () => {
         showError('Permission refusée: seul le PDG peut créer un avoir e-commerce.');
         return;
       }
-      if (currentTab !== 'Ecommerce') {
+      if (effectiveCurrentTab !== 'Ecommerce') {
         showError('Cette action est disponible uniquement dans l\'onglet Bon Ecommerce.');
         return;
       }
@@ -1556,18 +1582,18 @@ const BonsPage = () => {
       console.error('Erreur création avoir e-commerce (bouton):', e);
       showError(e?.message || 'Erreur lors de la création de l\'avoir e-commerce');
     }
-  }, [isPdg, currentTab, paginatedBons, getContactName, computeMontantTotal, openAvoirEcommerceModalFromOrder]);
+  }, [isPdg, effectiveCurrentTab, paginatedBons, getContactName, computeMontantTotal, openAvoirEcommerceModalFromOrder]);
 
   // If user clicks the button from AvoirEcommerce tab, we switch to Ecommerce then open the picker.
   useEffect(() => {
     if (!pendingOpenAvoirEcommercePicker) return;
     if (!isPdg) { setPendingOpenAvoirEcommercePicker(false); return; }
-    if (currentTab !== 'Ecommerce') return;
+    if (effectiveCurrentTab !== 'Ecommerce') return;
 
     setPendingOpenAvoirEcommercePicker(false);
     // Fire and forget; errors are handled inside.
     void handleAddAvoirEcommerce();
-  }, [pendingOpenAvoirEcommercePicker, currentTab, isPdg, handleAddAvoirEcommerce]);
+  }, [pendingOpenAvoirEcommercePicker, effectiveCurrentTab, isPdg, handleAddAvoirEcommerce]);
 
   // Fonction pour ouvrir le modal de création d'un nouveau bon
   const handleAddNew = () => {
@@ -1595,7 +1621,7 @@ const BonsPage = () => {
       
       if (result.isConfirmed) {
         try {
-      await deleteBonMutation({ id: bonToDelete.id, type: bonToDelete.type || currentTab }).unwrap();
+      await deleteBonMutation({ id: bonToDelete.id, type: bonToDelete.type || effectiveCurrentTab }).unwrap();
           showSuccess('Bon supprimé avec succès');
           // Rafraîchir les produits pour mettre à jour les quantités immédiatement
           try { refetchProducts(); } catch {}
@@ -1870,7 +1896,7 @@ const BonsPage = () => {
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
               >
                 <Plus size={20} />
-                Nouveau {currentTab}
+                Nouveau {effectiveCurrentTabLabel}
               </button>
             )}
           </div>
@@ -1937,7 +1963,7 @@ const BonsPage = () => {
         {/* Barre de filtres et actions au-dessus du tableau */}
         <div className="bg-white rounded-lg shadow mb-4 p-4">
           <div className="flex flex-wrap items-center gap-3">
-            {(currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce') && isPdg && (
+            {(effectiveCurrentTab === 'Ecommerce' || effectiveCurrentTab === 'AvoirEcommerce') && isPdg && (
               <button
                 onClick={() => {
                   openBlankAvoirEcommerceModal();
@@ -1982,19 +2008,9 @@ const BonsPage = () => {
               </div>
             </div>
 
-            {/* Checkbox Partiellement payés (Comptant uniquement) */}
-            {currentTab === 'Comptant' && (
-              <div className="flex items-center gap-2 px-3 py-2 border border-yellow-200 rounded-md bg-yellow-50">
-                <input
-                  type="checkbox"
-                  id="showPartialOnly"
-                  checked={showPartialOnly}
-                  onChange={(e) => setShowPartialOnly(e.target.checked)}
-                  className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
-                />
-                <label htmlFor="showPartialOnly" className="text-sm font-medium text-gray-700 cursor-pointer whitespace-nowrap">
-                  Reste à payer
-                </label>
+            {isUnpaidComptantTab && (
+              <div className="flex items-center gap-2 px-3 py-2 border border-yellow-200 rounded-md bg-yellow-50 text-sm font-medium text-yellow-800">
+                Non payé uniquement
               </div>
             )}
 
@@ -2090,8 +2106,8 @@ const BonsPage = () => {
                   >
                     <div className="flex items-center gap-1">
                       {(() => {
-                        if (currentTab === 'Vehicule') return 'Véhicule';
-                        if (currentTab === 'AvoirFournisseur' || currentTab === 'Commande') return 'Fournisseur';
+                        if (effectiveCurrentTab === 'Vehicule') return 'Véhicule';
+                        if (effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'Commande') return 'Fournisseur';
                         return 'Client';
                       })()}
                       {sortField === 'contact' && (
@@ -2212,7 +2228,7 @@ const BonsPage = () => {
                 {paginatedBons.length === 0 ? (
                   <tr>
                     <td colSpan={showAuditCols ? 14 : 12} className="px-6 py-4 text-center text-sm text-gray-500">
-                      Aucun bon trouvé pour {currentTab}
+                      Aucun bon trouvé pour {currentTabLabel}
                     </td>
                   </tr>
                 ) : (
@@ -2226,7 +2242,7 @@ const BonsPage = () => {
                         <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.date_creation)}</div>
                       </td>
                       <td className="px-4 py-2 text-sm">
-                        {currentTab === 'Vehicule' ? (
+                        {effectiveCurrentTab === 'Vehicule' ? (
                           (bon?.livraisons && Array.isArray(bon.livraisons) && bon.livraisons.length > 0) ? (
                             <div className="space-y-1">
                               {(bon.livraisons || []).map((l: any, idx: number) => {
@@ -2247,7 +2263,7 @@ const BonsPage = () => {
                             <>{bon.vehicule_nom || '-'}</>
                           )
                         ) : (
-                          currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce' || bon?.type === 'Ecommerce' || bon?.type === 'AvoirEcommerce' ? (
+                          effectiveCurrentTab === 'Ecommerce' || effectiveCurrentTab === 'AvoirEcommerce' || bon?.type === 'Ecommerce' || bon?.type === 'AvoirEcommerce' ? (
                             <div className="flex flex-col">
                               <span className="text-sm text-gray-800">{getContactName(bon)}</span>
                               {(() => {
@@ -2290,7 +2306,7 @@ const BonsPage = () => {
                         {(() => {
                           const bAny = bon as any;
                           const addr = bAny?.adresse_livraison ?? bAny?.adresseLivraison ?? '-';
-                          const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                          const isEcom = effectiveCurrentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
                           const deliveryMethod = bAny?.delivery_method ?? bAny?.deliveryMethod;
                           const pickupId = bAny?.pickup_location_id ?? bAny?.pickupLocationId ?? bAny?.pickup_location?.id;
                           return (
@@ -2309,14 +2325,19 @@ const BonsPage = () => {
                       <td className="px-4 py-2">
                         <div className="text-sm font-semibold text-gray-900">{computeMontantTotal(bon).toFixed(2)} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
-                        {currentTab === 'Comptant' && (bon.reste > 0) && (
-                          <div className="text-xs font-semibold text-orange-600 mt-1 flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-                            Reste: {Number(bon.reste).toFixed(2)} DH
-                          </div>
-                        )}
                         {(() => {
-                          const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                          const bonReste = Number((bon as any)?.reste ?? 0);
+                          const bonPaye = Math.max(0, computeMontantTotal(bon) - bonReste);
+                          if (!isComptantTab || bonReste <= 0) return null;
+                          return (
+                            <div className="text-xs font-semibold text-orange-600 mt-1 flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                              Montant payé: {bonPaye.toFixed(2)} DH
+                            </div>
+                          );
+                        })()}
+                        {(() => {
+                          const isEcom = effectiveCurrentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
                           if (!isEcom) return null;
                           const bAny = bon as any;
                           const pm = bAny?.payment_method ?? bAny?.paymentMethod;
@@ -2333,7 +2354,7 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-sm">
                         {(() => {
                           // Show mouvement only for sales/stock out types (Sortie, Comptant, Avoir, AvoirComptant)
-                          const type = bon.type || currentTab;
+                          const type = bon.type || effectiveCurrentTab;
                           if (!['Sortie','Comptant','Avoir','AvoirComptant'].includes(type)) return <span className="text-gray-400">-</span>;
                           // If bon is marked as non-calculated, do not compute mouvement
                           const bAny = bon as any;
@@ -2386,7 +2407,7 @@ const BonsPage = () => {
                         {(() => {
                           const bAny = bon as any;
                           const extraIncoming: Array<{ from_type: string; from_id: any }> = [];
-                          const type = bon?.type || currentTab;
+                          const type = bon?.type || effectiveCurrentTab;
                           if (type === 'AvoirEcommerce') {
                             const orderId = bAny?.ecommerce_order_id ?? bAny?.order_id;
                             if (orderId != null && orderId !== '') {
@@ -2437,7 +2458,7 @@ const BonsPage = () => {
                       </td>
                       <td className="px-4 py-2">
                         {(() => {
-                          const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                          const isEcom = effectiveCurrentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
                           if (!isEcom) return <span className="text-gray-400">-</span>;
                           const bAny = bon as any;
                           const currentPs = String(bAny?.payment_status ?? bAny?.paymentStatus ?? '').trim().toLowerCase() as any;
@@ -2505,7 +2526,7 @@ const BonsPage = () => {
 
                           {/* Ecommerce: always visible confirm icon (others in 3-dot menu) */}
                           {(() => {
-                            const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                            const isEcom = effectiveCurrentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
                             if (!isEcom || !canChangeEcommerceStatus) return null;
                             const s = getEcommerceStatusValue(bon);
                             if (s !== 'pending') return null;
@@ -2522,7 +2543,7 @@ const BonsPage = () => {
 
                           {/* Avoir e-commerce: always visible validate + back-to-pending */}
                           {(() => {
-                            const isAvoirEcom = currentTab === 'AvoirEcommerce' || bon?.type === 'AvoirEcommerce';
+                            const isAvoirEcom = effectiveCurrentTab === 'AvoirEcommerce' || bon?.type === 'AvoirEcommerce';
                             if (!isAvoirEcom) return null;
                             // UI restriction already hides this tab for non-PDG, but keep it safe.
                             if (currentUser?.role !== 'PDG') return null;
@@ -2561,15 +2582,15 @@ const BonsPage = () => {
                             // - PDG and ManagerPlus on all relevant tabs
                             // - Manager on Commande & AvoirFournisseur only
                             const canValidate = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' ||
-                              (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'));
+                              (currentUser?.role === 'Manager' && (bon.type === 'Commande' || effectiveCurrentTab === 'Commande' || bon.type === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirFournisseur'));
                             
                             if (!canValidate) return null;
                             
                             // Show validation for different tab types
-                            const showForCommande = (currentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Sortie' || currentTab === 'Comptant'));
-                            const showForAvoir = ((currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || 
-                              ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')));
-                            const showForDevis = currentTab === 'Devis' && (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus');
+                            const showForCommande = (effectiveCurrentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant'));
+                            const showForAvoir = ((effectiveCurrentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || 
+                              ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant')));
+                            const showForDevis = effectiveCurrentTab === 'Devis' && (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus');
                             
                             if (!showForCommande && !showForAvoir && !showForDevis) return null;
                             
@@ -2595,7 +2616,7 @@ const BonsPage = () => {
                             // Don't show edit for cancelled bons
                             if (bon.statut === 'Annulé') return null;
                             
-                            const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                            const isEcom = effectiveCurrentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
                             const canOpenEditModal = canModifyBons(currentUser) || isEmployee26CommandeOverride || (isChefChauffeur && !isEcom);
                             return canOpenEditModal ? (
                               <button
@@ -2669,7 +2690,7 @@ const BonsPage = () => {
                                     <div className="flex flex-col gap-1">
                                   {/* Status-change actions */}
                                   {(() => {
-                                    const isEcom = currentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
+                                    const isEcom = effectiveCurrentTab === 'Ecommerce' || bon?.type === 'Ecommerce';
                                     if (!isEcom || !canChangeEcommerceStatus) return null;
                                     const current = getEcommerceStatusValue(bon);
                                     const actions: Array<{ status: any; title: string; cls: string; Icon: any }> = [
@@ -2708,10 +2729,10 @@ const BonsPage = () => {
                                     // Full privileged actions for:
                                     //  - PDG and ManagerPlus on all relevant tabs
                                     //  - Manager on Commande & AvoirFournisseur (align backend)
-                                    if (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) {
+                                    if (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || effectiveCurrentTab === 'Commande' || bon.type === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirFournisseur'))) {
                                       return (
                                         <>
-                                          {(currentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Sortie' || currentTab === 'Comptant')) && (
+                                          {(effectiveCurrentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant')) && (
                                             <div className="flex gap-1">
                                               {/* Show "En attente" only if not already "En attente" */}
                                               {bon.statut !== 'En attente' && (
@@ -2736,9 +2757,9 @@ const BonsPage = () => {
                                             </div>
                                           )}
                                           {(
-                                            (currentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) ||
-                                            ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant')) ||
-                                            (currentUser?.role === 'PDG' && currentTab === 'AvoirEcommerce')
+                                            (effectiveCurrentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) ||
+                                            ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant')) ||
+                                            (currentUser?.role === 'PDG' && effectiveCurrentTab === 'AvoirEcommerce')
                                           ) && (
                                             <div className="flex gap-1">
                                               {/* Show "En attente" only if not already "En attente" */}
@@ -2763,7 +2784,7 @@ const BonsPage = () => {
                                               )}
                                             </div>
                                           )}
-                                          {currentTab === 'Devis' && currentUser?.role === 'PDG' && (
+                                          {effectiveCurrentTab === 'Devis' && currentUser?.role === 'PDG' && (
                                             <div className="flex gap-1">
                                               {/* Show "En attente" only if not already "En attente" */}
                                               {bon.statut !== 'En attente' && (
@@ -2793,7 +2814,7 @@ const BonsPage = () => {
                                     if (isEmployee && !isEmployee26CommandeOverride) {
                                       return (
                                         <>
-                                          {(currentTab === 'Commande' || currentTab === 'Sortie' || currentTab === 'Comptant' || currentTab === 'Devis') && bon.statut !== 'Validé' && (
+                                          {(effectiveCurrentTab === 'Commande' || effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant' || effectiveCurrentTab === 'Devis') && bon.statut !== 'Validé' && (
                                             <div className="flex gap-1">
                                               <button 
                                                 onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
@@ -2811,7 +2832,7 @@ const BonsPage = () => {
                                               </button>
                                             </div>
                                           )}
-                                          {(currentTab === 'Avoir' || currentTab === 'AvoirFournisseur' || currentTab === 'AvoirComptant' || currentTab === 'AvoirEcommerce') && bon.statut !== 'Validé' && (
+                                          {(effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant' || effectiveCurrentTab === 'AvoirEcommerce') && bon.statut !== 'Validé' && (
                                             <div className="flex gap-1">
                                               <button 
                                                 onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
@@ -2836,15 +2857,15 @@ const BonsPage = () => {
                                     // ChefChauffeur: secondary actions only (En attente / Annuler) on non-validé bons
                                     if (isChefChauffeur && bon.statut !== 'Validé') {
                                       const isDocTab = (
-                                        currentTab === 'Commande' ||
-                                        currentTab === 'Sortie' ||
-                                        currentTab === 'Comptant' ||
-                                        currentTab === 'Devis' ||
-                                        currentTab === 'Avoir' ||
-                                        currentTab === 'AvoirFournisseur' ||
-                                        currentTab === 'AvoirComptant' ||
-                                        currentTab === 'AvoirEcommerce' ||
-                                        currentTab === 'Vehicule'
+                                        effectiveCurrentTab === 'Commande' ||
+                                        effectiveCurrentTab === 'Sortie' ||
+                                        effectiveCurrentTab === 'Comptant' ||
+                                        effectiveCurrentTab === 'Devis' ||
+                                        effectiveCurrentTab === 'Avoir' ||
+                                        effectiveCurrentTab === 'AvoirFournisseur' ||
+                                        effectiveCurrentTab === 'AvoirComptant' ||
+                                        effectiveCurrentTab === 'AvoirEcommerce' ||
+                                        effectiveCurrentTab === 'Vehicule'
                                       );
                                       if (!isDocTab) return null;
                                       return (
@@ -2887,10 +2908,10 @@ const BonsPage = () => {
                                   {/* Other actions */}
                                   <div className="flex gap-1">
                                     {/* Audit history */}
-                                    {(currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && (
+                                    {(currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || effectiveCurrentTab === 'Commande' || bon.type === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirFournisseur'))) && (
                                       <button
                                         onClick={() => {
-                                          const t = tableForType(bon.type || currentTab);
+                                          const t = tableForType(bon.type || effectiveCurrentTab);
                                           if (t) navigate(`/audit?mode=group&t=${encodeURIComponent(t)}&id=${encodeURIComponent(String(bon.id))}&details=1`);
                                           setOpenMenuBonId(null);
                                         }}
@@ -2902,7 +2923,7 @@ const BonsPage = () => {
                                     )}
 
                                     {/* Ecommerce: create credit note */}
-                                    {(currentTab === 'Ecommerce' || bon?.type === 'Ecommerce') && currentUser?.role === 'PDG' && (
+                                    {(effectiveCurrentTab === 'Ecommerce' || bon?.type === 'Ecommerce') && currentUser?.role === 'PDG' && (
                                       <button
                                         onClick={() => {
                                           handleCreateEcommerceAvoir(bon);
@@ -2927,7 +2948,7 @@ const BonsPage = () => {
                                     )}
                                     
                                     {/* Duplicate - Only for non-cancelled bons */}
-                                    {((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || currentTab === 'Commande' || bon.type === 'AvoirFournisseur' || currentTab === 'AvoirFournisseur'))) && bon.statut !== 'Annulé' && (
+                                    {((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || effectiveCurrentTab === 'Commande' || bon.type === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirFournisseur'))) && bon.statut !== 'Annulé' && (
                                       <button
                                         onClick={() => {
                                           setSelectedBonForDuplicate(bon);
@@ -3025,15 +3046,16 @@ const BonsPage = () => {
           key={bonFormKey}
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
-          currentTab={currentTab as any}
+          currentTab={effectiveCurrentTab as any}
+          comptantPartialPaymentMode={isUnpaidComptantTab ? 'required' : 'hidden'}
           initialValues={selectedBon || undefined}
           onBonAdded={(newBon) => {
             // Le bon est automatiquement ajouté au store Redux
-            const labelTab = String(newBon?.type || currentTab);
+            const labelTab = String(newBon?.type || effectiveCurrentTab);
             showSuccess(`${labelTab} ${getDisplayNumero(newBon)} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
             setIsCreateModalOpen(false);
             setSelectedBon(null);
-            if (newBon?.type && newBon.type !== currentTab) {
+            if (newBon?.type && newBon.type !== effectiveCurrentTab) {
               setCurrentTab(newBon.type);
             }
           }}
@@ -3056,7 +3078,7 @@ const BonsPage = () => {
                 <div className="mb-3">
                   <button
                     onClick={() => {
-                      const t = tableForType(selectedBon.type || currentTab);
+                      const t = tableForType(selectedBon.type || effectiveCurrentTab);
                       if (t) navigate(`/audit?mode=group&t=${encodeURIComponent(t)}&id=${encodeURIComponent(String(selectedBon.id))}&details=1`);
                     }}
                     className="inline-flex items-center gap-2 px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700"
@@ -3102,7 +3124,7 @@ const BonsPage = () => {
                     </div>
                   </div>
 
-                  {(selectedBon?.type === 'Ecommerce' || currentTab === 'Ecommerce') && (() => {
+                  {(selectedBon?.type === 'Ecommerce' || effectiveCurrentTab === 'Ecommerce') && (() => {
                     const raw = (selectedBon as any)?.ecommerce_raw ?? selectedBon;
                     const uid = raw?.user_id != null && raw?.user_id !== '' ? Number(raw.user_id) : null;
                     const contactFromUserId =
@@ -3856,13 +3878,13 @@ const BonsPage = () => {
             setSelectedBonForPrint(null);
           }}
           bon={selectedBonForPrint}
-          type={((currentTab === 'Avoir' || currentTab === 'AvoirComptant') ? 'AvoirClient' : currentTab) as any}
+          type={((effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirComptant') ? 'AvoirClient' : effectiveCurrentTab) as any}
           products={products}
           contact={(() => {
             const b = selectedBonForPrint;
             if (!b) return null;
             // Devis: always a client; prefer client_id, fallback to contact_id, then client_nom
-            if (currentTab === 'Devis') {
+            if (effectiveCurrentTab === 'Devis') {
               const id = b.client_id ?? b.contact_id;
               const found = clients.find((c) => String(c.id) === String(id)) || null;
               if (!found && b.client_nom) {
@@ -3872,14 +3894,14 @@ const BonsPage = () => {
               return found;
             }
             // Commande & AvoirFournisseur: suppliers; prefer fournisseur_id, fallback to contact_id
-            if (currentTab === 'Commande' || currentTab === 'AvoirFournisseur') {
+            if (effectiveCurrentTab === 'Commande' || effectiveCurrentTab === 'AvoirFournisseur') {
               const id = b.fournisseur_id ?? b.contact_id;
               return suppliers.find((s) => String(s.id) === String(id)) || null;
             }
             // Sortie / Comptant / Avoir (client): prefer client_id, fallback to contact_id
             const clientId = b.client_id ?? b.contact_id;
             const found = clients.find((c) => String(c.id) === String(clientId)) || null;
-            if (!found && ((currentTab === 'Comptant' || b.type === 'Comptant' || currentTab === 'AvoirComptant' || b.type === 'AvoirComptant') && b.client_nom)) {
+            if (!found && ((effectiveCurrentTab === 'Comptant' || b.type === 'Comptant' || effectiveCurrentTab === 'AvoirComptant' || b.type === 'AvoirComptant') && b.client_nom)) {
               // Build a minimal contact-like object for display
               return { nom_complet: b.client_nom } as any;
             }
@@ -3926,7 +3948,7 @@ const BonsPage = () => {
             if (!selectedBonForPDFPrint) return undefined;
             const bon = selectedBonForPDFPrint;
             const found = clients.find(c => c.id === bon.client_id);
-            if (!found && ((bon.type === 'Comptant' || currentTab === 'Comptant' || bon.type === 'AvoirComptant' || currentTab === 'AvoirComptant' || bon.type === 'Devis' || currentTab === 'Devis') && bon.client_nom)) {
+            if (!found && ((bon.type === 'Comptant' || effectiveCurrentTab === 'Comptant' || bon.type === 'AvoirComptant' || effectiveCurrentTab === 'AvoirComptant' || bon.type === 'Devis' || effectiveCurrentTab === 'Devis') && bon.client_nom)) {
               return { id: 0, nom_complet: bon.client_nom, type: 'Client', solde: 0, created_at: '', updated_at: '' } as any;
             }
             return found;
