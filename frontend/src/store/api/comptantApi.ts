@@ -5,7 +5,14 @@ export const comptantApi = apiSlice.injectEndpoints({
     // Récupérer tous les bons comptant
     getComptant: builder.query({
       query: () => '/comptant',
-      providesTags: ['Comptant']
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }: { id: number }) => ({ type: 'Comptant' as const, id })),
+              { type: 'Comptant' as const, id: 'LIST' },
+              'Comptant',
+            ]
+          : [{ type: 'Comptant' as const, id: 'LIST' }, 'Comptant']
     }),
 
     // Récupérer un bon comptant par ID

@@ -5,7 +5,14 @@ export const sortiesApi = apiSlice.injectEndpoints({
     // Récupérer toutes les sorties
     getSorties: builder.query({
       query: () => '/sorties',
-      providesTags: ['Sortie']
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }: { id: number }) => ({ type: 'Sortie' as const, id })),
+              { type: 'Sortie' as const, id: 'LIST' },
+              'Sortie',
+            ]
+          : [{ type: 'Sortie' as const, id: 'LIST' }, 'Sortie']
     }),
 
     // Récupérer une sortie par ID
