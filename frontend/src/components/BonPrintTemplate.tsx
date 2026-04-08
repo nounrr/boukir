@@ -366,8 +366,16 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               </h3>
               <div className={`bg-gray-50 ${spacing.padding} rounded border-l-4 border-orange-500`}>
                 <div className={`grid grid-cols-2 ${spacing.gap} ${textSizes.normal}`}>
-                  {contactDisplayName && contactDisplayName !== '-' && (
-                    <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
+                  {(contactDisplayName && contactDisplayName !== '-') && (
+                    <div className="flex flex-col">
+                      <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
+                      {tel && String(tel).trim() && (
+                        <div><span className="font-medium">Téléphone:</span> {String(tel).trim()}</div>
+                      )}
+                    </div>
+                  )}
+                  {(!contactDisplayName || contactDisplayName === '-') && tel && String(tel).trim() && (
+                    <div><span className="font-medium">Téléphone:</span> {String(tel).trim()}</div>
                   )}
                   <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
                 </div>

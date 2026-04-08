@@ -664,7 +664,11 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined);
-  const shouldFetchCommandesHistory = isOpen && (currentTab === 'AvoirFournisseur' || String((initialValues as any)?.type || '') === 'AvoirFournisseur');
+  const currentModalType = String((initialValues as any)?.type || currentTab || '');
+  const shouldFetchCommandesHistory = isOpen && (
+    currentModalType === 'Commande' ||
+    currentModalType === 'AvoirFournisseur'
+  );
   const { data: commandesHistory = [] } = useGetBonsByTypeQuery('Commande', { skip: !shouldFetchCommandesHistory });
   const shouldFetchEcommerceOrders = isOpen && (currentTab === 'AvoirEcommerce' || String((initialValues as any)?.type || '') === 'AvoirEcommerce');
   const { data: ecommerceOrders = [] } = useGetBonsByTypeQuery('Ecommerce', { skip: !shouldFetchEcommerceOrders });
@@ -2374,48 +2378,80 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
   const getLastUnitPriceForClientProduct = (
     clientId: string | number | undefined,
-    productId: string | number | undefined
+    productId: string | number | undefined,
+    variantId?: string | number | undefined,
+    unitId?: string | number | undefined
   ): number | null => {
     if (!clientId || !productId) return null;
     const cid = String(clientId);
     const pid = String(productId);
+    const wantedVariantId = variantId == null || variantId === '' ? null : String(variantId);
+    const wantedUnitId = unitId == null || unitId === '' ? null : String(unitId);
 
     type HistItem = { prix_unitaire?: number; total?: number; quantite?: number };
-    let bestPrice: number | null = null;
-    let bestTime = -1;
+    let bestConfirmedPrice: number | null = null;
+    let bestConfirmedTime = -1;
+    let bestPendingPrice: number | null = null;
+    let bestPendingTime = -1;
 
-    const scan = (bon: any, itemsField: any) => {
-      // Pour l'historique de prix, inclure "Validé" ET "En attente" (selon besoin utilisateur)
-      const statut = String(bon.statut || '').toLowerCase();
-      // On accepte 'en attente' aussi pour voir le dernier prix PROPOSÉ/NÉGOCIÉ même si pas encore validé
-      const accepted = ['validé', 'valide', 'validée', 'en attente', 'livré', 'livre']; 
-      if (!accepted.includes(statut)) return;
+    const confirmedStatuses = new Set(['validé', 'valide', 'validée', 'livré', 'livre']);
+    const pendingStatuses = new Set(['en attente']);
 
-      const items = parseItems(itemsField);
-      // Comparaison flexible (string vs number)
-      const bonClientId = String(bon.client_id ?? bon.contact_id ?? '');
-      // Si on cherche pour un client précis, on filtre
-      if (cid && bonClientId !== cid) return;
-      
-      const bonTime = toTime(bon.date_creation || bon.date);
+    const collectBestPrice = (requireExactVariantUnit: boolean) => {
+      bestConfirmedPrice = null;
+      bestConfirmedTime = -1;
+      bestPendingPrice = null;
+      bestPendingTime = -1;
 
-      for (const it of items as HistItem[]) {
-        const itPid = String((it as any).product_id ?? (it as any).id ?? '');
-        if (itPid !== pid) continue;
-        const price = Number((it as any).prix_unitaire ?? (it as any).price ?? 0);
-        if (!Number.isFinite(price) || price <= 0) continue;
-        
-        // On veut le dernier en date
-        if (bonTime > bestTime) {
-          bestTime = bonTime;
-          bestPrice = price;
+      const scan = (bon: any, itemsField: any) => {
+        const statut = String(bon.statut || '').toLowerCase();
+        const isConfirmed = confirmedStatuses.has(statut);
+        const isPending = pendingStatuses.has(statut);
+        if (!isConfirmed && !isPending) return;
+
+        const items = parseItems(itemsField);
+        const bonClientId = String(bon.client_id ?? bon.contact_id ?? '');
+        if (cid && bonClientId !== cid) return;
+
+        const bonTime = toTime(bon.date_creation || bon.date);
+
+        for (const it of items as HistItem[]) {
+          const itPid = String((it as any).product_id ?? (it as any).id ?? '');
+          if (itPid !== pid) continue;
+
+          if (requireExactVariantUnit) {
+            const itVariantId = (it as any).variant_id == null || (it as any).variant_id === '' ? null : String((it as any).variant_id);
+            const itUnitId = (it as any).unit_id == null || (it as any).unit_id === '' ? null : String((it as any).unit_id);
+            if (wantedVariantId !== null && itVariantId !== wantedVariantId) continue;
+            if (wantedUnitId !== null && itUnitId !== wantedUnitId) continue;
+          }
+
+          const price = Number((it as any).prix_unitaire ?? (it as any).price ?? 0);
+          if (!Number.isFinite(price) || price <= 0) continue;
+
+          if (isConfirmed && bonTime > bestConfirmedTime) {
+            bestConfirmedTime = bonTime;
+            bestConfirmedPrice = price;
+          } else if (isPending && bonTime > bestPendingTime) {
+            bestPendingTime = bonTime;
+            bestPendingPrice = price;
+          }
         }
-      }
+      };
+
+      for (const b of sortiesHistory as any[]) scan(b, (b as any).items);
+      for (const b of comptantHistory as any[]) scan(b, (b as any).items);
+
+      return bestConfirmedPrice ?? bestPendingPrice;
     };
 
-    for (const b of sortiesHistory as any[]) scan(b, (b as any).items);
-    for (const b of comptantHistory as any[]) scan(b, (b as any).items);
-    return bestPrice;
+    const requiresExactVariantUnit = wantedVariantId !== null || wantedUnitId !== null;
+    if (requiresExactVariantUnit) {
+      const exactMatchPrice = collectBestPrice(true);
+      if (exactMatchPrice != null) return exactMatchPrice;
+    }
+
+    return collectBestPrice(false);
   };
 
   const getLastQuantityForClientProduct = (
@@ -2493,44 +2529,78 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
   const getLastPurchasePriceForSupplierProduct = (
     fournisseurId: string | number | undefined,
-    productId: string | number | undefined
+    productId: string | number | undefined,
+    variantId?: string | number | undefined,
+    unitId?: string | number | undefined
   ): number | null => {
     if (!fournisseurId || !productId) return null;
     const fid = String(fournisseurId);
     const pid = String(productId);
+    const wantedVariantId = variantId == null || variantId === '' ? null : String(variantId);
+    const wantedUnitId = unitId == null || unitId === '' ? null : String(unitId);
 
     type HistItem = { prix_achat?: number; prix_unitaire?: number; price?: number };
-    let bestPrice: number | null = null;
-    let bestTime = -1;
+    let bestConfirmedPrice: number | null = null;
+    let bestConfirmedTime = -1;
+    let bestPendingPrice: number | null = null;
+    let bestPendingTime = -1;
 
-    const accepted = new Set(['validé', 'valide', 'validée', 'en attente', 'livré', 'livre']);
+    const confirmedStatuses = new Set(['validé', 'valide', 'validée', 'livré', 'livre']);
+    const pendingStatuses = new Set(['en attente']);
 
-    const scan = (bon: any, itemsField: any) => {
-      const statut = String(bon.statut || '').toLowerCase();
-      if (!accepted.has(statut)) return;
+    const collectBestPrice = (requireExactVariantUnit: boolean) => {
+      bestConfirmedPrice = null;
+      bestConfirmedTime = -1;
+      bestPendingPrice = null;
+      bestPendingTime = -1;
 
-      const bonSupplierId = String(bon.fournisseur_id ?? bon.contact_id ?? '');
-      if (bonSupplierId !== fid) return;
+      const scan = (bon: any, itemsField: any) => {
+        const statut = String(bon.statut || '').toLowerCase();
+        const isConfirmed = confirmedStatuses.has(statut);
+        const isPending = pendingStatuses.has(statut);
+        if (!isConfirmed && !isPending) return;
 
-      const items = parseItems(itemsField);
-      const bonTime = toTime(bon.date_creation || bon.date);
+        const bonSupplierId = String(bon.fournisseur_id ?? bon.contact_id ?? '');
+        if (bonSupplierId !== fid) return;
 
-      for (const it of items as HistItem[]) {
-        const itPid = String((it as any).product_id ?? (it as any).id ?? '');
-        if (itPid !== pid) continue;
+        const items = parseItems(itemsField);
+        const bonTime = toTime(bon.date_creation || bon.date);
 
-        const price = Number((it as any).prix_achat ?? (it as any).prix_unitaire ?? (it as any).price ?? 0);
-        if (!Number.isFinite(price) || price <= 0) continue;
+        for (const it of items as HistItem[]) {
+          const itPid = String((it as any).product_id ?? (it as any).id ?? '');
+          if (itPid !== pid) continue;
 
-        if (bonTime > bestTime) {
-          bestTime = bonTime;
-          bestPrice = price;
+          if (requireExactVariantUnit) {
+            const itVariantId = (it as any).variant_id == null || (it as any).variant_id === '' ? null : String((it as any).variant_id);
+            const itUnitId = (it as any).unit_id == null || (it as any).unit_id === '' ? null : String((it as any).unit_id);
+            if (wantedVariantId !== null && itVariantId !== wantedVariantId) continue;
+            if (wantedUnitId !== null && itUnitId !== wantedUnitId) continue;
+          }
+
+          const price = Number((it as any).prix_achat ?? (it as any).prix_unitaire ?? (it as any).price ?? 0);
+          if (!Number.isFinite(price) || price <= 0) continue;
+
+          if (isConfirmed && bonTime > bestConfirmedTime) {
+            bestConfirmedTime = bonTime;
+            bestConfirmedPrice = price;
+          } else if (isPending && bonTime > bestPendingTime) {
+            bestPendingTime = bonTime;
+            bestPendingPrice = price;
+          }
         }
-      }
+      };
+
+      for (const b of commandesHistory as any[]) scan(b, (b as any).items);
+      return bestConfirmedPrice ?? bestPendingPrice;
     };
 
-    for (const b of commandesHistory as any[]) scan(b, (b as any).items);
-    return bestPrice;
+    const requiresExactVariantUnit = wantedVariantId !== null || wantedUnitId !== null;
+    if (requiresExactVariantUnit) {
+      const exactMatchPrice = collectBestPrice(true);
+      if (exactMatchPrice != null) return exactMatchPrice;
+    }
+
+    return collectBestPrice(false);
   };
 
     // (Removed local cumulative balance calculations; using backend provided solde_cumule)
@@ -4366,7 +4436,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   {values.client_id && values.items[index].product_id && (() => {
     const last = getLastUnitPriceForClientProduct(
       values.client_id,
-      values.items[index].product_id
+      values.items[index].product_id,
+      values.items[index].variant_id,
+      values.items[index].unit_id
     );
     return last && Number.isFinite(last) ? (
       <div className="text-xs text-blue-600 font-medium mt-1">Dernier prix client: {formatFull(Number(last))} DH</div>
@@ -4388,13 +4460,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       <div className="text-xs text-gray-500 mt-1">Dernier (Comptant): {formatFull(Number(lastC))} DH</div>
     ) : null;
   })()}
-  {(values.fournisseur_id && values.items[index].product_id && values.type === 'AvoirFournisseur') && (() => {
+  {(values.fournisseur_id && values.items[index].product_id && (values.type === 'Commande' || values.type === 'AvoirFournisseur')) && (() => {
     const lastPurchase = getLastPurchasePriceForSupplierProduct(
       values.fournisseur_id,
-      values.items[index].product_id
+      values.items[index].product_id,
+      values.items[index].variant_id,
+      values.items[index].unit_id
     );
     return lastPurchase && Number.isFinite(lastPurchase) ? (
-      <div className="text-xs text-amber-700 font-medium mt-1">Dernier prix achat fournisseur: {formatFull(Number(lastPurchase))} DH</div>
+      <div className="text-xs text-amber-700 font-medium mt-1">Dernier prix: {formatFull(Number(lastPurchase))} DH</div>
     ) : null;
   })()}
 </td>
