@@ -6,6 +6,12 @@ import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../u
 
 const router = express.Router();
 
+const clampPercentage = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(999.99, Math.max(-999.99, n));
+};
+
 // GET /commandes - Obtenir tous les bons de commande
 // GET /commandes - liste
 router.get('/', verifyToken, forbidRoles('ChefChauffeur'), async (_req, res) => {
@@ -282,6 +288,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     await connection.beginTransaction();
     const { id } = req.params;
     const { statut } = req.body;
+    const forceClampPercentages = req.body?.force_clamp_percentages === true;
 
     if (!statut) {
       await connection.rollback();
@@ -367,6 +374,55 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 
     const enteringValidation = oldStatut !== 'Validé' && statut === 'Validé';
     const leavingValidation = oldStatut === 'Validé' && statut !== 'Validé';
+    if (enteringValidation && !forceClampPercentages) {
+      const [abnormalRows] = await connection.execute(
+        `SELECT
+            ci.id AS commande_item_id,
+            ci.product_id,
+            p.designation,
+            ci.prix_unitaire,
+            COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+            COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0) AS source_prix_vente_pourcentage,
+            CASE
+              WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 OR COALESCE(pv.prix_vente, p.prix_vente) IS NULL THEN NULL
+              ELSE ROUND(((COALESCE(pv.prix_vente, p.prix_vente) / ci.prix_unitaire) - 1) * 100, 2)
+            END AS computed_prix_vente_pourcentage
+          FROM commande_items ci
+          JOIN products p ON p.id = ci.product_id
+          LEFT JOIN product_variants pv ON pv.id = ci.variant_id
+          WHERE ci.bon_commande_id = ?
+            AND (
+              COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0) NOT BETWEEN -999.99 AND 999.99
+              OR (
+                ci.prix_unitaire IS NOT NULL
+                AND ci.prix_unitaire <> 0
+                AND COALESCE(pv.prix_vente, p.prix_vente) IS NOT NULL
+                AND ROUND(((COALESCE(pv.prix_vente, p.prix_vente) / ci.prix_unitaire) - 1) * 100, 2) NOT BETWEEN -999.99 AND 999.99
+              )
+            )
+          ORDER BY ci.id ASC
+          LIMIT 1`,
+        [id]
+      );
+      if (Array.isArray(abnormalRows) && abnormalRows.length > 0) {
+        const row = abnormalRows[0];
+        return res.status(409).json({
+          message: 'Valeur anormale détectée pour prix_vente_pourcentage',
+          code: 'ABNORMAL_PRIX_VENTE_POURCENTAGE',
+          details: {
+            commande_item_id: row.commande_item_id,
+            product_id: row.product_id,
+            designation: row.designation,
+            prix_unitaire: Number(row.prix_unitaire ?? 0),
+            prix_vente: Number(row.prix_vente ?? 0),
+            source_prix_vente_pourcentage: Number(row.source_prix_vente_pourcentage ?? 0),
+            computed_prix_vente_pourcentage: row.computed_prix_vente_pourcentage == null ? null : Number(row.computed_prix_vente_pourcentage),
+            clamped_source_prix_vente_pourcentage: clampPercentage(row.source_prix_vente_pourcentage),
+            clamped_computed_prix_vente_pourcentage: row.computed_prix_vente_pourcentage == null ? null : clampPercentage(row.computed_prix_vente_pourcentage),
+          },
+        });
+      }
+    }
 
     // Snapshot + cleanup of old snapshot when status changes
     if (leavingValidation) {
@@ -437,7 +493,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
                 COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
                 COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
-                COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
+                LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
                 ci.quantite,
                 ci.bon_commande_id,
                 1 AS en_validation,
@@ -472,7 +528,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
                 COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
                 COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
-                COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
+                LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
                 ci.quantite,
                 ci.bon_commande_id,
                 1 AS en_validation,
@@ -505,7 +561,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
               COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
               COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
-              COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage) AS prix_vente_pourcentage,
+              LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
               ci.quantite,
               ci.bon_commande_id,
               NOW() AS created_at
@@ -542,8 +598,8 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.prix_gros_pourcentage, 0) / 100)), 2)
             END,
             ps.prix_vente_pourcentage = CASE
-              WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_vente_pourcentage
-              ELSE ROUND(((ps.prix_vente / ci.prix_unitaire) - 1) * 100, 2)
+              WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN LEAST(GREATEST(COALESCE(ps.prix_vente_pourcentage, 0), -999.99), 999.99)
+              ELSE LEAST(GREATEST(ROUND(((ps.prix_vente / ci.prix_unitaire) - 1) * 100, 2), -999.99), 999.99)
             END
           WHERE ps.bon_commande_id = ?${hasEnValidationColumn ? ' AND ps.en_validation = 1' : ''}`,
         [id, id]
@@ -847,6 +903,56 @@ router.put('/:id', verifyToken, async (req, res) => {
       }
     }
     if (hasSnapshotTable) {
+      const snapshotEnValidationValue = st === 'Validé' ? 1 : 0;
+      await connection.execute(
+        `DELETE ps FROM product_snapshot ps
+         LEFT JOIN (
+           SELECT bon_commande_id, product_id, variant_id
+             FROM commande_items
+            WHERE bon_commande_id = ?
+            GROUP BY bon_commande_id, product_id, variant_id
+         ) ci
+           ON ci.bon_commande_id = ps.bon_commande_id
+          AND ci.product_id = ps.product_id
+          AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR (ci.variant_id = ps.variant_id))
+         WHERE ps.bon_commande_id = ? AND ci.product_id IS NULL`,
+        [id, id]
+      );
+
+      await connection.execute(
+        `INSERT INTO product_snapshot (
+            product_id, variant_id,
+            prix_achat, prix_vente,
+            cout_revient, cout_revient_pourcentage,
+            prix_gros, prix_gros_pourcentage,
+            prix_vente_pourcentage,
+            quantite, bon_commande_id, en_validation, created_at
+          )
+          SELECT
+            ci.product_id,
+            ci.variant_id,
+            ci.prix_unitaire AS prix_achat,
+            COALESCE(pv.prix_vente, p.prix_vente) AS prix_vente,
+            COALESCE(pv.cout_revient, p.cout_revient) AS cout_revient,
+            COALESCE(pv.cout_revient_pourcentage, p.cout_revient_pourcentage) AS cout_revient_pourcentage,
+            COALESCE(pv.prix_gros, p.prix_gros) AS prix_gros,
+            COALESCE(pv.prix_gros_pourcentage, p.prix_gros_pourcentage) AS prix_gros_pourcentage,
+            LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
+            ci.quantite,
+            ci.bon_commande_id,
+            ? AS en_validation,
+            NOW() AS created_at
+          FROM commande_items ci
+          JOIN products p ON p.id = ci.product_id
+          LEFT JOIN product_variants pv ON pv.id = ci.variant_id
+          LEFT JOIN product_snapshot ps
+            ON ps.bon_commande_id = ci.bon_commande_id
+           AND ps.product_id = ci.product_id
+           AND ((ps.variant_id IS NULL AND ci.variant_id IS NULL) OR ps.variant_id = ci.variant_id)
+          WHERE ci.bon_commande_id = ? AND ps.id IS NULL`,
+        [snapshotEnValidationValue, id]
+      );
+
       // NOTE: percentages are defined relative to prix_achat (same formula as ProductModal: price = prix_achat * (1 + pct/100)).
       // Business rule when purchase price changes:
       // - keep cout_revient_pourcentage and prix_gros_pourcentage fixed, recompute their prices
@@ -854,7 +960,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       await connection.execute(
         `UPDATE product_snapshot ps
            JOIN (
-             SELECT bon_commande_id, product_id, variant_id, AVG(prix_unitaire) AS prix_unitaire
+             SELECT bon_commande_id, product_id, variant_id, AVG(prix_unitaire) AS prix_unitaire, SUM(quantite) AS quantite
                FROM commande_items
               WHERE bon_commande_id = ?
               GROUP BY bon_commande_id, product_id, variant_id
@@ -864,6 +970,8 @@ router.put('/:id', verifyToken, async (req, res) => {
             AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR (ci.variant_id = ps.variant_id))
           SET
             ps.prix_achat = ci.prix_unitaire,
+            ps.quantite = ci.quantite,
+            ps.en_validation = ?,
             ps.cout_revient = CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient
               ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100)), 2)
@@ -873,11 +981,11 @@ router.put('/:id', verifyToken, async (req, res) => {
               ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.prix_gros_pourcentage, 0) / 100)), 2)
             END,
             ps.prix_vente_pourcentage = CASE
-              WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_vente_pourcentage
-              ELSE ROUND(((ps.prix_vente / ci.prix_unitaire) - 1) * 100, 2)
+              WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN LEAST(GREATEST(COALESCE(ps.prix_vente_pourcentage, 0), -999.99), 999.99)
+              ELSE LEAST(GREATEST(ROUND(((ps.prix_vente / ci.prix_unitaire) - 1) * 100, 2), -999.99), 999.99)
             END
           WHERE ps.bon_commande_id = ?`,
-        [id, id]
+        [id, snapshotEnValidationValue, id]
       );
     }
 

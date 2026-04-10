@@ -329,6 +329,85 @@ const bonValidationSchema = Yup.object({
 /* ------------------------------- Utilitaires ------------------------------- */
 const makeRowId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+const findCatalogProductForItem = (item: any, products: any[] = []) => {
+  try {
+    return (products || []).find((p: any) => {
+      const pid = String(p?.id ?? p?.product_id ?? '');
+      const pref = String(p?.reference ?? p?.ref ?? p?.id ?? '');
+      const itemPid = String(item?.product_id ?? item?.produit_id ?? item?.product?.id ?? item?.productId ?? '');
+      const itemPref = String(item?.product_reference ?? item?.reference ?? item?.product?.reference ?? '');
+      if (itemPid && pid && itemPid === pid) return true;
+      if (itemPref && pref && itemPref === pref) return true;
+      return false;
+    });
+  } catch {
+    return undefined;
+  }
+};
+
+const resolveItemCostContext = (
+  item: any,
+  products: any[] = [],
+  snapshotProducts: any[] = []
+) => {
+  const product = findCatalogProductForItem(item, products);
+  const snapshotId = item?.product_snapshot_id ?? item?.snapshot_id ?? null;
+  const snapshot = snapshotId
+    ? (snapshotProducts || []).find((s: any) => String(s?.snapshot_id) === String(snapshotId)) || null
+    : null;
+  const variantId = item?.variant_id ?? item?.variantId ?? item?.variant?.id ?? null;
+  const variant = variantId && product?.variants?.length
+    ? (product.variants as any[]).find((v: any) => String(v?.id) === String(variantId)) || null
+    : null;
+  const unitId = item?.unit_id ?? item?.unitId ?? item?.unit?.id ?? null;
+
+  let convFactor = 1;
+  if (unitId && product?.units?.length) {
+    const unitObj = (product.units as any[]).find((u: any) => String(u?.id) === String(unitId));
+    if (unitObj) {
+      const isBase = unitObj.is_default || unitObj.facteur_isNormal;
+      if (!isBase) {
+        const f = Number(unitObj.conversion_factor) || 1;
+        if (f > 0) convFactor = f;
+      }
+    }
+  }
+
+  const itemPA = Number(item?.prix_achat ?? item?.pa ?? item?.prixA ?? 0) || 0;
+  const itemCR =
+    Number(item?.cout_revient ?? item?.cout_rev ?? item?.cr ?? item?.cout ?? item?.prix_achat ?? itemPA) || 0;
+  const snapshotPA = Number(snapshot?.prix_achat) || 0;
+  const snapshotCR = Number(snapshot?.cout_revient) || snapshotPA || 0;
+  const variantPA = Number(variant?.prix_achat) || 0;
+  const variantCR = Number(variant?.cout_revient) || variantPA || 0;
+  const productPA = Number(product?.prix_achat) || 0;
+  const productCR = Number(product?.cout_revient) || productPA || 0;
+
+  const basePA = snapshotPA || variantPA || productPA || itemPA || 0;
+  const baseCR = snapshotCR || variantCR || productCR || itemCR || basePA || 0;
+
+  return {
+    product,
+    snapshot,
+    variant,
+    requestedSnapshotId: snapshotId,
+    requestedVariantId: variantId,
+    requestedUnitId: unitId,
+    convFactor,
+    itemPA,
+    itemCR,
+    snapshotPA,
+    snapshotCR,
+    variantPA,
+    variantCR,
+    productPA,
+    productCR,
+    prix_achat: Number((basePA * convFactor).toFixed(2)),
+    cout_revient: Number((baseCR * convFactor).toFixed(2)),
+    source: snapshotPA || snapshotCR ? 'snapshot' : variantPA || variantCR ? 'variant' : productPA || productCR ? 'product' : 'item',
+  };
+};
+
 const normalizeHumanName = (value: unknown) => {
   return String(value ?? '')
     .toLowerCase()
@@ -1223,46 +1302,10 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           return String(v);
         };
 
-        const findProductInCatalog = () => {
-          try {
-            if (!products || !Array.isArray(products)) return undefined;
-            return products.find((p: any) => {
-              const pid = String(p.id ?? p.product_id ?? '');
-              const pref = String(p.reference ?? p.ref ?? p.id ?? '');
-              const itPid = String(it.product_id ?? it.produit_id ?? it.product?.id ?? it.productId ?? '');
-              const itPref = String(it.product_reference ?? it.reference ?? (it.product && it.product.reference) ?? '');
-              if (itPid && pid && itPid === pid) return true;
-              if (itPref && pref && itPref === pref) return true;
-              return false;
-            });
-          } catch {
-            return undefined;
-          }
-        };
-
-  const productFound = findProductInCatalog();
-
-        // Also try to find the snapshot product for accurate historic prices
-        const snapshotFound = (() => {
-          try {
-            const snapId = it.product_snapshot_id ?? it.snapshot_id;
-            if (snapId && snapshotProducts?.length) {
-              return (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId)) || null;
-            }
-            return null;
-          } catch { return null; }
-        })();
-
-        // Also look up variant from the base product catalog
-        const variantFound = (() => {
-          try {
-            const vId = it.variant_id ?? it.variantId ?? it.variant?.id;
-            if (vId && productFound?.variants?.length) {
-              return (productFound.variants as any[]).find((v: any) => String(v.id) === String(vId)) || null;
-            }
-            return null;
-          } catch { return null; }
-        })();
+        const resolvedCostContext = resolveItemCostContext(it, products as any[], snapshotProducts as any[]);
+        const productFound = resolvedCostContext.product;
+        const snapshotFound = resolvedCostContext.snapshot;
+        const variantFound = resolvedCostContext.variant;
 
         let prix_achat =
           Number(it.prix_achat ?? it.pa ?? it.prixA ?? it.product?.prix_achat ?? it.produit?.prix_achat ?? 0) || 0;
@@ -1330,6 +1373,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           }
         }
 
+        if (resolvedCostContext.source !== 'item') {
+          prix_achat = resolvedCostContext.prix_achat;
+          cout_revient = resolvedCostContext.cout_revient;
+        }
+
         if (productFound) {
           try {
             it.product_id = it.product_id ?? it.produit_id ?? it.product?.id ?? it.productId ?? productFound.id;
@@ -1393,7 +1441,6 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         } else {
           const merged = {
             ...item,
-            product_snapshot_id: null, // will be re-allocated by FIFO on submit
           };
           mergeMap.set(key, merged);
           mergedItems.push(merged);
@@ -1651,12 +1698,15 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       const currentCR = Number(item.cout_revient) || 0;
       const finalPA = Number((bestPA * convFactor).toFixed(2));
       const finalCR = Number((bestCR * convFactor).toFixed(2));
-      if (finalPA > 0 && currentPA !== finalPA) {
-        formikRef.current!.setFieldValue(`items.${idx}.prix_achat`, finalPA);
+      const resolvedCostContext = resolveItemCostContext(item, products as any[], snapshotProducts as any[]);
+      const resolvedPA = Number(resolvedCostContext.prix_achat) || finalPA;
+      const resolvedCR = Number(resolvedCostContext.cout_revient) || finalCR;
+      if (resolvedPA > 0 && currentPA !== resolvedPA) {
+        formikRef.current!.setFieldValue(`items.${idx}.prix_achat`, resolvedPA);
         anyPatched = true;
       }
-      if (finalCR > 0 && currentCR !== finalCR) {
-        formikRef.current!.setFieldValue(`items.${idx}.cout_revient`, finalCR);
+      if (resolvedCR > 0 && currentCR !== resolvedCR) {
+        formikRef.current!.setFieldValue(`items.${idx}.cout_revient`, resolvedCR);
         anyPatched = true;
       }
     });
@@ -4414,9 +4464,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                 {/* SERIE / Info rapide + debug snapshot */}
                                 <td className="px-1 py-2 text-sm text-gray-700">
-                                  <div>{`PA${values.items[index].prix_achat ?? 0} CR${
-                                    values.items[index].cout_revient ?? 0
-                                  }`}</div>
+                                  {(() => {
+                                    const resolvedCostContext = resolveItemCostContext(
+                                      values.items[index],
+                                      products as any[],
+                                      snapshotProducts as any[]
+                                    );
+                                    const displayPA = resolvedCostContext.prix_achat || Number(values.items[index].prix_achat) || 0;
+                                    const displayCR = resolvedCostContext.cout_revient || Number(values.items[index].cout_revient) || 0;
+                                    return <div>{`PA${displayPA} CR${displayCR}`}</div>;
+                                  })()}
                                   <div className="text-[9px] text-orange-600">
                                     snap:{String(values.items[index].product_snapshot_id || '-')}
                                     {' '}v:{String(values.items[index].variant_id || '-')}
@@ -4698,103 +4755,77 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   );
                 })()}
 
-                {/* 🔍 DEBUG PANEL - Résolution prix_achat / cout_revient par ligne */}
-                {/* <div className="mt-4 bg-red-50 border-2 border-red-300 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                  <div className="font-bold text-red-700 text-sm mb-2">🔍 DEBUG: Résolution PA / CR par ligne</div>
-                  <table className="w-full text-[10px] border-collapse">
+                <div className="mt-4 bg-amber-50 border border-amber-300 rounded-md p-3 text-xs overflow-x-auto">
+                  <div className="font-semibold text-amber-900 mb-2">Debug PA / CR</div>
+                  <table className="w-full text-[11px] border-collapse">
                     <thead>
-                      <tr className="bg-red-100">
-                        <th className="border px-1 py-0.5 text-left">#</th>
-                        <th className="border px-1 py-0.5 text-left">Produit</th>
-                        <th className="border px-1 py-0.5 text-left">snap_id</th>
-                        <th className="border px-1 py-0.5 text-left">variant_id</th>
-                        <th className="border px-1 py-0.5 text-left">unit_id</th>
-                        <th className="border px-1 py-0.5 text-left">item.PA</th>
-                        <th className="border px-1 py-0.5 text-left">item.CR</th>
-                        <th className="border px-1 py-0.5 text-left">snap.PA</th>
-                        <th className="border px-1 py-0.5 text-left">snap.CR</th>
-                        <th className="border px-1 py-0.5 text-left">snap.PV</th>
-                        <th className="border px-1 py-0.5 text-left">variant.PA</th>
-                        <th className="border px-1 py-0.5 text-left">variant.CR</th>
-                        <th className="border px-1 py-0.5 text-left">variant.PV</th>
-                        <th className="border px-1 py-0.5 text-left">product.PA</th>
-                        <th className="border px-1 py-0.5 text-left">product.CR</th>
-                        <th className="border px-1 py-0.5 text-left">product.PV</th>
-                        <th className="border px-1 py-0.5 text-left">Source</th>
+                      <tr className="bg-amber-100 text-left">
+                        <th className="border px-2 py-1">Ligne</th>
+                        <th className="border px-2 py-1">Produit</th>
+                        <th className="border px-2 py-1">IDs sélectionnés</th>
+                        <th className="border px-2 py-1">Snapshot trouvé</th>
+                        <th className="border px-2 py-1">Valeurs item</th>
+                        <th className="border px-2 py-1">Valeurs snapshot</th>
+                        <th className="border px-2 py-1">Valeurs variant</th>
+                        <th className="border px-2 py-1">Valeurs product</th>
+                        <th className="border px-2 py-1">Résolution finale</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(values.items || []).map((item: any, idx: number) => {
-                        const pid = item.product_id;
-                        const prod = pid ? (products as any[]).find((p: any) => String(p.id) === String(pid)) : null;
-                        const snapId = item.product_snapshot_id;
-                        const snap = snapId && snapshotProducts?.length
-                          ? (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId))
-                          : null;
-                        const varId = item.variant_id;
-                        const variant = varId && prod?.variants
-                          ? (prod.variants as any[]).find((v: any) => String(v.id) === String(varId))
-                          : null;
-                        const unitId = item.unit_id;
-                        const unit = unitId && prod?.units
-                          ? (prod.units as any[]).find((u: any) => String(u.id) === String(unitId))
-                          : null;
-                        // Determine source — check in reverse priority: product FIRST, then variant, then snapshot
-                        // Last match wins = most authoritative source
-                        let source = '?';
-                        const nPA = Number(item.prix_achat) || 0;
-                        const nCR = Number(item.cout_revient) || 0;
-                        if (!nPA && !nCR) {
-                          source = '❌ AUCUN';
-                        } else {
-                          // Start with product (least priority)
-                          if (prod) {
-                            const pPA = Number(prod.prix_achat) || 0;
-                            const pCR = Number(prod.cout_revient) || 0;
-                            if (nPA === pPA || nCR === pCR) source = '⚠️ PRODUIT';
-                          }
-                          // Variant overrides product
-                          if (variant) {
-                            const vPA = Number(variant.prix_achat) || 0;
-                            const vCR = Number((variant as any).cout_revient) || 0;
-                            if (nPA === vPA || nCR === vCR) source = '✅ VARIANT';
-                          }
-                          // Snapshot overrides all (highest priority)
-                          if (snap) {
-                            const sPA = Number(snap.prix_achat) || 0;
-                            const sCR = Number(snap.cout_revient) || 0;
-                            if (nPA === sPA || nCR === sCR) source = '✅ SNAPSHOT';
-                          }
-                        }
-                        // Append variant/unit names for clarity
-                        const variantLabel = variant ? ` | V: ${variant.variant_name || varId}` : (varId ? ` | V: ${varId}` : '');
-                        const unitLabel = unit ? ` | U: ${unit.unit_name || unitId} (×${unit.conversion_factor || 1})` : (unitId ? ` | U: ${unitId}` : '');
-                        const sourceDisplay = source + variantLabel + unitLabel;
+                        const debug = resolveItemCostContext(item, products as any[], snapshotProducts as any[]);
+                        const sourceClass =
+                          debug.source === 'snapshot'
+                            ? 'text-green-700'
+                            : debug.source === 'variant'
+                              ? 'text-purple-700'
+                              : debug.source === 'product'
+                                ? 'text-orange-700'
+                                : 'text-red-700';
                         return (
-                          <tr key={idx} className={source.includes('PRODUIT') ? 'bg-yellow-100' : source.includes('AUCUN') ? 'bg-red-100' : ''}>
-                            <td className="border px-1 py-0.5">{idx}</td>
-                            <td className="border px-1 py-0.5 max-w-[100px] truncate">{item.designation || pid || '-'}</td>
-                            <td className="border px-1 py-0.5">{snapId || '-'}</td>
-                            <td className="border px-1 py-0.5">{varId || '-'}</td>
-                            <td className="border px-1 py-0.5">{item.unit_id || '-'}</td>
-                            <td className="border px-1 py-0.5 font-bold">{nPA}</td>
-                            <td className="border px-1 py-0.5 font-bold">{nCR}</td>
-                            <td className="border px-1 py-0.5 text-blue-700">{snap ? (Number(snap.prix_achat) || 0) : '-'}</td>
-                            <td className="border px-1 py-0.5 text-blue-700">{snap ? (Number(snap.cout_revient) || 0) : '-'}</td>
-                            <td className="border px-1 py-0.5 text-blue-700">{snap ? (Number(snap.prix_vente) || 0) : '-'}</td>
-                            <td className="border px-1 py-0.5 text-purple-700">{variant ? (Number(variant.prix_achat) || 0) : '-'}</td>
-                            <td className="border px-1 py-0.5 text-purple-700">{variant ? (Number((variant as any).cout_revient) || 0) : '-'}</td>
-                            <td className="border px-1 py-0.5 text-purple-700">{variant ? (Number(variant.prix_vente) || 0) : '-'}</td>
-                            <td className="border px-1 py-0.5 text-gray-500">{prod ? (Number(prod.prix_achat) || 0) : '-'}</td>
-                            <td className="border px-1 py-0.5 text-gray-500">{prod ? (Number(prod.cout_revient) || 0) : '-'}</td>
-                            <td className="border px-1 py-0.5 text-gray-500">{prod ? (Number(prod.prix_vente) || 0) : '-'}</td>
-                            <td className="border px-1 py-0.5 font-bold">{sourceDisplay}</td>
+                          <tr key={`debug-${idx}`} className="align-top">
+                            <td className="border px-2 py-1">{idx + 1}</td>
+                            <td className="border px-2 py-1">
+                              <div>{item.designation || item.product_id || '-'}</div>
+                              <div className="text-gray-500">id:{String(item.product_id || '-')}</div>
+                            </td>
+                            <td className="border px-2 py-1">
+                              <div>snap demandé: {String(debug.requestedSnapshotId || '-')}</div>
+                              <div>variant demandé: {String(debug.requestedVariantId || '-')}</div>
+                              <div>unit demandé: {String(debug.requestedUnitId || '-')}</div>
+                            </td>
+                            <td className="border px-2 py-1">
+                              <div>snapshot trouvé: {String(debug.snapshot?.snapshot_id ?? debug.snapshot?.id ?? '-')}</div>
+                              <div>qty snapshot: {String(debug.snapshot?.snapshot_quantite ?? debug.snapshot?.quantite ?? '-')}</div>
+                              <div>factor unité: {debug.convFactor}</div>
+                            </td>
+                            <td className="border px-2 py-1">
+                              <div>PA: {Number(debug.itemPA || 0)}</div>
+                              <div>CR: {Number(debug.itemCR || 0)}</div>
+                            </td>
+                            <td className="border px-2 py-1 text-blue-700">
+                              <div>PA: {Number(debug.snapshotPA || 0)}</div>
+                              <div>CR: {Number(debug.snapshotCR || 0)}</div>
+                            </td>
+                            <td className="border px-2 py-1 text-purple-700">
+                              <div>PA: {Number(debug.variantPA || 0)}</div>
+                              <div>CR: {Number(debug.variantCR || 0)}</div>
+                            </td>
+                            <td className="border px-2 py-1 text-gray-700">
+                              <div>PA: {Number(debug.productPA || 0)}</div>
+                              <div>CR: {Number(debug.productCR || 0)}</div>
+                            </td>
+                            <td className="border px-2 py-1">
+                              <div className={`font-semibold uppercase ${sourceClass}`}>source: {debug.source}</div>
+                              <div>PA final: {Number(debug.prix_achat || 0)}</div>
+                              <div>CR final: {Number(debug.cout_revient || 0)}</div>
+                            </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
-                </div> */}
+                </div>
 
                 {/* Récapitulatif */}
                 <div className="mt-4 bg-gray-50 p-4 rounded-md">

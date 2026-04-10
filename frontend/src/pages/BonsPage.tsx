@@ -454,6 +454,37 @@ const BonsPage = () => {
       console.error('Erreur mise à jour statut:', error);
       const status = error?.status;
       const msg = error?.data?.message || error?.message || 'Erreur inconnue';
+      if (status === 409 && error?.data?.code === 'ABNORMAL_PRIX_VENTE_POURCENTAGE') {
+        const d = error?.data?.details || {};
+        const confirmation = await showConfirmation(
+          `Produit: ${d.designation || d.product_id || '-'}\n` +
+          `Prix unitaire commande: ${d.prix_unitaire ?? '-'}\n` +
+          `Prix vente: ${d.prix_vente ?? '-'}\n` +
+          `Valeur actuelle: ${d.source_prix_vente_pourcentage ?? '-'}\n` +
+          `Valeur recalculée: ${d.computed_prix_vente_pourcentage ?? '-'}\n` +
+          `Valeur SQL appliquée si vous continuez: ${d.clamped_computed_prix_vente_pourcentage ?? d.clamped_source_prix_vente_pourcentage ?? '-'}\n\n` +
+          `Cette valeur n'est pas normale. Voulez-vous continuer quand même ?`,
+          'Valeur anormale détectée',
+          'Continuer',
+          'Annuler'
+        );
+        if (confirmation.isConfirmed) {
+          try {
+            await updateBonStatus({
+              id: bon.id,
+              statut,
+              type: bon.type || effectiveCurrentTab,
+              force_clamp_percentages: true,
+            }).unwrap();
+            showSuccess(`Statut mis à jour: ${statut}`);
+            refetchProducts();
+          } catch (retryError: any) {
+            const retryMsg = retryError?.data?.message || retryError?.message || 'Erreur inconnue';
+            showError(`Erreur lors du changement de statut: ${retryMsg}`);
+          }
+        }
+        return;
+      }
       if (status === 401) {
         showError('Session expirée. Veuillez vous reconnecter.');
         dispatch(logout());
