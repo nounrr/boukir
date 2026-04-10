@@ -287,8 +287,8 @@ export const bonsApi = api.injectEndpoints({
     }),
 
     // Pour changer le statut d'un bon (Valider, Annuler, etc.)
-  updateBonStatus: builder.mutation<Bon, { id: number; statut: string; type?: AnyBonType }>({
-      query: ({ id, statut, type }) => {
+  updateBonStatus: builder.mutation<Bon, { id: number; statut: string; type?: AnyBonType; force_clamp_percentages?: boolean }>({
+      query: ({ id, statut, type, force_clamp_percentages }) => {
         let endpoint = '';
         switch (type) {
           case 'Commande':
@@ -324,7 +324,7 @@ export const bonsApi = api.injectEndpoints({
         return {
           url: endpoint,
           method: 'PATCH',
-          body: { statut },
+          body: { statut, ...(force_clamp_percentages ? { force_clamp_percentages: true } : {}) },
         };
       },
       invalidatesTags: (_result, _error, { id, type }) => {

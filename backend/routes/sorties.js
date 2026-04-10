@@ -28,8 +28,8 @@ router.get('/', async (_req, res) => {
               'designation', p.designation,
               'quantite', si.quantite,
               'prix_unitaire', si.prix_unitaire,
-              'prix_achat', p.prix_achat,
-              'cout_revient', p.cout_revient,
+              'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
+              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
               'remise_pourcentage', si.remise_pourcentage,
               'remise_montant', si.remise_montant,
               'total', si.total,
@@ -39,6 +39,7 @@ router.get('/', async (_req, res) => {
           )
           FROM sortie_items si
           LEFT JOIN products p ON p.id = si.product_id
+          LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
           WHERE si.bon_sortie_id = bs.id
         ), JSON_ARRAY()) AS items
       FROM bons_sortie bs
@@ -127,8 +128,8 @@ router.get('/:id', async (req, res) => {
               'designation', p.designation,
               'quantite', si.quantite,
               'prix_unitaire', si.prix_unitaire,
-              'prix_achat', p.prix_achat,
-              'cout_revient', p.cout_revient,
+              'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
+              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
               'remise_pourcentage', si.remise_pourcentage,
               'remise_montant', si.remise_montant,
               'total', si.total,
@@ -138,6 +139,7 @@ router.get('/:id', async (req, res) => {
           )
           FROM sortie_items si
           LEFT JOIN products p ON p.id = si.product_id
+          LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
           WHERE si.bon_sortie_id = bs.id
         ), JSON_ARRAY()) AS items
       FROM bons_sortie bs
