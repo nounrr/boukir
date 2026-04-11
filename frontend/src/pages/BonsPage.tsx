@@ -454,7 +454,7 @@ const BonsPage = () => {
       console.error('Erreur mise à jour statut:', error);
       const status = error?.status;
       const msg = error?.data?.message || error?.message || 'Erreur inconnue';
-      if (status === 409 && error?.data?.code === 'ABNORMAL_PRIX_VENTE_POURCENTAGE') {
+      if (isAbnormalCommandeValidationError(error)) {
         const d = error?.data?.details || {};
         const confirmation = await showConfirmation(
           `Produit: ${d.designation || d.product_id || '-'}\n` +
@@ -503,6 +503,23 @@ const BonsPage = () => {
     const n = Number(v);
     if (!Number.isFinite(n)) return 0;
     return Math.round(n * 100) / 100;
+  };
+
+  const isAbnormalCommandeValidationError = (error: any): boolean => {
+    const status = Number(error?.status);
+    const code = String(error?.data?.code || '');
+    const message = String(error?.data?.message || error?.message || '').toLowerCase();
+    const detail = String(error?.data?.error || error?.data?.detail || '').toLowerCase();
+    const combined = `${message} ${detail}`;
+
+    if (code === 'ABNORMAL_PRIX_VENTE_POURCENTAGE') return true;
+    if (status === 409 && combined.includes('prix_vente_pourcentage')) return true;
+    if (combined.includes('abnormal_prix_vente_pourcentage')) return true;
+    if (combined.includes('valeur anormale') && combined.includes('prix_vente_pourcentage')) return true;
+    if (combined.includes('out of range value') && combined.includes('prix_vente_pourcentage')) return true;
+    if (combined.includes('numeric value out of range') && combined.includes('prix_vente_pourcentage')) return true;
+
+    return false;
   };
 
   const openEcommerceRemiseEditor = (bon: any) => {
