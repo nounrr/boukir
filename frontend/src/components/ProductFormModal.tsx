@@ -104,6 +104,7 @@ const validationSchema = Yup.object({
   remise_artisan: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
   pourcentage_promo: Yup.number().transform(numberTransform()).min(0, 'Le pourcentage promo ne peut pas être négatif').optional(),
   est_service: Yup.boolean(),
+  non_stockable: Yup.boolean(),
   ecom_published: Yup.boolean().optional(),
   stock_partage_ecom: Yup.boolean().optional(),
   stock_partage_ecom_qty: Yup.number()
@@ -117,7 +118,7 @@ const validationSchema = Yup.object({
         const parent: any = this.parent || {};
         const shouldValidate = !!(parent.stock_partage_ecom || parent.ecom_published);
         if (!shouldValidate) return true; // only enforce when share/publish active
-        const qte = !!parent.est_service ? 0 : toNum(parent.quantite);
+        const qte = (!!parent.est_service || !!parent.non_stockable) ? 0 : toNum(parent.quantite);
         const v = Number(value || 0);
         return v <= qte;
       }
@@ -163,6 +164,7 @@ interface ProductFormModalProps {
   onProductAdded?: (product: Product) => void;
   onProductUpdated?: (product: Product) => void;
   editingProduct?: Product | null;
+  defaultNonStockable?: boolean;
 }
 
 const ProductFormModal: React.FC<ProductFormModalProps> = ({
@@ -171,6 +173,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   onProductAdded,
   onProductUpdated,
   editingProduct = null,
+  defaultNonStockable = false,
 }) => {
   const { data: categories = [] } = useGetCategoriesQuery();
   const { data: brands = [] } = useGetBrandsQuery();
@@ -484,6 +487,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     prix_gros_pourcentage: 10,
     prix_vente_pourcentage: 25,
     est_service: false,
+    non_stockable: defaultNonStockable,
     remise_client: 0,
     remise_artisan: 0,
     description: '',
@@ -573,6 +577,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           prix_gros_pourcentage: derivePct((baseEdit as any).prix_gros, (baseEdit as any).prix_achat, toNonNegativeNum((baseEdit as any).prix_gros_pourcentage ?? 10)),
           prix_vente_pourcentage: derivePct((baseEdit as any).prix_vente, (baseEdit as any).prix_achat, toNonNegativeNum((baseEdit as any).prix_vente_pourcentage ?? 25)),
           est_service: (baseEdit as any).est_service ?? false,
+          non_stockable: (baseEdit as any).non_stockable ?? false,
           remise_client: toNonNegativeNum((baseEdit as any).remise_client ?? 0),
           remise_artisan: toNonNegativeNum((baseEdit as any).remise_artisan ?? 0),
           description: (baseEdit as any).description ?? '',
@@ -596,7 +601,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       console.log('ProductFormModal submit handler called', { values });
       console.debug('Current formik errors before submit:', formik.errors);
       // Hard guard: prevent submission if shared qty exceeds total (even if button is force-enabled)
-      const totalQtyGuard = values.est_service ? 0 : toNum(values.quantite);
+      const totalQtyGuard = (values.est_service || (values as any).non_stockable) ? 0 : toNum(values.quantite);
       const shareQtyGuard = toNonNegativeNum(values.stock_partage_ecom_qty);
       const mustValidateGuard = !!(values.stock_partage_ecom || values.ecom_published);
       if (mustValidateGuard && shareQtyGuard > totalQtyGuard) {
@@ -613,7 +618,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       const pgPctNum = toNonNegativeNum(values.prix_gros_pourcentage);
       const pvPctNum = toNonNegativeNum(values.prix_vente_pourcentage);
       const promoPctNum = toNonNegativeNum(values.pourcentage_promo);
-      const qteNum = values.est_service ? 0 : toNonNegativeNum(values.quantite);
+      const qteNum = (values.est_service || (values as any).non_stockable) ? 0 : toNonNegativeNum(values.quantite);
 
       const computed = calculatePrices(prixAchatNum, crPctNum, pgPctNum, pvPctNum);
 
@@ -711,6 +716,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('prix_gros_pourcentage', String(pgPctNum));
           formData.append('prix_vente_pourcentage', String(pvPctNum));
           formData.append('est_service', productData.est_service ? '1' : '0');
+          formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
           formData.append('remise_artisan', String((productData as any).remise_artisan ?? 0));
           formData.append('description', productData.description || '');
@@ -798,6 +804,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('prix_gros_pourcentage', String(pgPctNum));
           formData.append('prix_vente_pourcentage', String(pvPctNum));
           formData.append('est_service', productData.est_service ? '1' : '0');
+          formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
           formData.append('remise_artisan', String((productData as any).remise_artisan ?? 0));
           formData.append('description', productData.description || '');
@@ -860,6 +867,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               pourcentage_promo: res?.pourcentage_promo ?? promoPctNum ?? 0,
               ecom_published: res?.ecom_published ?? productData.ecom_published ?? false,
               stock_partage_ecom: res?.stock_partage_ecom ?? productData.stock_partage_ecom ?? false,
+              non_stockable: res?.non_stockable ?? (productData as any).non_stockable ?? false,
             };
             onProductAdded(created);
           }
@@ -919,7 +927,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   // When opening in "new" mode, hard-reset all states to ensure empty form
   useEffect(() => {
     if (isOpen && !editingProduct) {
-      formik.resetForm({ values: initialValues as any });
+      formik.resetForm({ values: { ...initialValues, non_stockable: defaultNonStockable } as any });
       setSelectedFile(null);
       setGalleryFiles([]);
       setDeletedGalleryIds([]);
@@ -944,6 +952,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setPriceRaw({ cout_revient: '', prix_gros: '', prix_vente: '' });
     }
   }, [isOpen, editingProduct]);
+
+  const syncStockModeValidation = (nextIsService: boolean, nextNonStockable: boolean) => {
+    const shareQty = toNum(formik.values.stock_partage_ecom_qty);
+    const totalQty = (nextIsService || nextNonStockable) ? 0 : toNonNegativeNum(formik.values.quantite ?? 0);
+
+    if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
+      formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
+    } else {
+      formik.setFieldError('stock_partage_ecom_qty', undefined);
+    }
+  };
 
   // Recalculer et synchroniser l'affichage dès que les pourcentages ou le prix d'achat changent
   useEffect(() => {
@@ -1224,7 +1243,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   if (String(rawValue ?? '').trim() !== '' && !isSignedDecimalLike(String(rawValue))) return;
                   formik.setFieldValue('quantite', rawValue);
                   // Revalider la quantité partagée quand la quantité totale change
-                  const newTotalQty = toNonNegativeNum(e.target.value);
+                  const newTotalQty = ((formik.values as any).non_stockable || formik.values.est_service) ? 0 : toNonNegativeNum(e.target.value);
                   const shareQty = toNonNegativeNum(formik.values.stock_partage_ecom_qty);
                   if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > newTotalQty) {
                     formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
@@ -1233,7 +1252,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   }
                 }}
                 onBlur={() => {
-                  const totalQty = commitNonNegativeFieldValue('quantite', formik.values.quantite, 0);
+                  const totalQty = ((formik.values as any).non_stockable || formik.values.est_service)
+                    ? 0
+                    : commitNonNegativeFieldValue('quantite', formik.values.quantite, 0);
                   // Revalider après blur aussi
                   const shareQty = toNonNegativeNum(formik.values.stock_partage_ecom_qty);
                   if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
@@ -1242,8 +1263,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     formik.setFieldError('stock_partage_ecom_qty', undefined);
                   }
                 }}
-                disabled={false}
-                title="Saisir la quantité en stock"
+                disabled={Boolean((formik.values as any).non_stockable)}
+                title={Boolean((formik.values as any).non_stockable) ? 'Quantité forcée à 0 pour un produit non stockable' : 'Saisir la quantité en stock'}
                 className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
                 placeholder="0"
               />
@@ -1743,6 +1764,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   name="est_service"
                   checked={formik.values.est_service}
                   onChange={(e) => {
+                    if (e.target.checked) formik.setFieldValue('non_stockable', false);
                     formik.handleChange(e);
                     // Si c'est un service, la quantité devient 0, donc revalider
                     const isService = e.target.checked;
@@ -1762,6 +1784,48 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   className="w-4 h-4 text-blue-600 border-2 border-gray-300 rounded focus:ring-blue-500 transition-colors"
                 />
                 <span className="text-sm font-medium text-gray-700">Service</span>
+              </label>
+
+              <label className="flex items-center gap-2.5 cursor-pointer px-3 py-2 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 transition-all">
+                <input
+                  type="checkbox"
+                  name="stockable"
+                  checked={!formik.values.est_service && !Boolean((formik.values as any).non_stockable)}
+                  onChange={(e) => {
+                    if (!e.target.checked) return;
+                    formik.setFieldValue('est_service', false);
+                    formik.setFieldValue('non_stockable', false);
+                    syncStockModeValidation(false, false);
+                  }}
+                  className="w-4 h-4 text-blue-600 border-2 border-gray-300 rounded focus:ring-blue-500 transition-colors"
+                />
+                <span className="text-sm font-medium text-gray-700">Stockable</span>
+              </label>
+
+              <label className="flex items-center gap-2.5 cursor-pointer px-3 py-2 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 transition-all">
+                <input
+                  type="checkbox"
+                  name="non_stockable"
+                  checked={Boolean((formik.values as any).non_stockable)}
+                  onChange={(e) => {
+                    if (e.target.checked) formik.setFieldValue('est_service', false);
+                    formik.setFieldValue('non_stockable', e.target.checked);
+                    const checked = e.target.checked;
+                    const shareQty = toNum(formik.values.stock_partage_ecom_qty);
+                    if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && checked && shareQty > 0) {
+                      formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
+                    } else if (!checked) {
+                      const totalQty = toNonNegativeNum(formik.values.quantite ?? 0);
+                      if ((formik.values.stock_partage_ecom || formik.values.ecom_published) && shareQty > totalQty) {
+                        formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
+                      } else {
+                        formik.setFieldError('stock_partage_ecom_qty', undefined);
+                      }
+                    }
+                  }}
+                  className="w-4 h-4 text-blue-600 border-2 border-gray-300 rounded focus:ring-blue-500 transition-colors"
+                />
+                <span className="text-sm font-medium text-gray-700">Produit non stockable</span>
               </label>
 
               <label className="flex items-center gap-2.5 cursor-pointer px-3 py-2 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 transition-all">
@@ -1814,7 +1878,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                         formik.setFieldTouched('stock_partage_ecom_qty', true, false);
                         
                         // Valider immédiatement et afficher l'erreur
-                        const totalQty = formik.values.est_service ? 0 : toNonNegativeNum(formik.values.quantite ?? 0);
+                        const totalQty = (formik.values.est_service || (formik.values as any).non_stockable) ? 0 : toNonNegativeNum(formik.values.quantite ?? 0);
                         if (newQty > totalQty) {
                           formik.setFieldError('stock_partage_ecom_qty', 'La quantité partagée ne peut pas dépasser la quantité totale');
                         } else {
@@ -1825,7 +1889,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       className="w-24 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     />
                     <span className="text-xs text-gray-600">
-                      / {formik.values.est_service ? 0 : toNum(formik.values.quantite)} disponible
+                      / {(formik.values.est_service || (formik.values as any).non_stockable) ? 0 : toNum(formik.values.quantite)} disponible
                     </span>
                   </div>
                   {formik.errors.stock_partage_ecom_qty && (

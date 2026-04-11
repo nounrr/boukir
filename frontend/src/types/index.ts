@@ -170,6 +170,7 @@ export interface Product {
   prix_vente_pourcentage: number;
   prix_vente: number;
   est_service: boolean;
+  non_stockable?: boolean;
   image_url?: string | null;
   remise_client?: number;
   remise_artisan?: number;
@@ -224,6 +225,7 @@ export interface CreateProductData {
   prix_gros_pourcentage?: number;
   prix_vente_pourcentage?: number;
   est_service?: boolean;
+  non_stockable?: boolean;
   remise_client?: number;
   remise_artisan?: number;
   description?: string;
