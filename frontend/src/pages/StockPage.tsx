@@ -59,7 +59,7 @@ const StockPage: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
-  const [activeTab, setActiveTab] = useState<'Produits' | 'Services'>('Produits');
+  const [activeTab, setActiveTab] = useState<'Produits' | 'Produits non stockables' | 'Services'>('Produits');
   const [deleteProductMutation] = useDeleteProductMutation();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isTranslating, setIsTranslating] = useState(false);
@@ -293,7 +293,8 @@ const StockPage: React.FC = () => {
 
   const filteredProducts = flattenedProducts.filter((product: any) => {
     // Tab filter first
-    if (activeTab === 'Produits' && product.est_service) return false;
+    if (activeTab === 'Produits' && (product.est_service || product.non_stockable)) return false;
+    if (activeTab === 'Produits non stockables' && (product.est_service || !product.non_stockable)) return false;
     if (activeTab === 'Services' && !product.est_service) return false;
 
     const term = (searchTerm ?? '').toLowerCase();
@@ -380,7 +381,7 @@ const StockPage: React.FC = () => {
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Stock');
-      const suffix = activeTab === 'Services' ? 'services' : 'produits';
+      const suffix = activeTab === 'Services' ? 'services' : activeTab === 'Produits non stockables' ? 'produits-non-stockables' : 'produits';
       XLSX.writeFile(wb, `export-${suffix}-${new Date().toISOString().slice(0, 10)}.xlsx`);
       showSuccess('Export Excel généré avec formules');
     } catch (e) {
@@ -532,6 +533,19 @@ const StockPage: React.FC = () => {
                 }`}
             >
               Services
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('Produits non stockables');
+                setSelectedIds(new Set());
+              }}
+              className={`px-4 py-2 text-sm font-medium ${activeTab === 'Produits non stockables'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+            >
+              Produits non stockables
             </button>
           </div>
         </div>
@@ -725,7 +739,7 @@ const StockPage: React.FC = () => {
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
           >
             <Plus size={20} />
-            Nouveau Produit
+            {activeTab === 'Services' ? 'Nouveau Service' : activeTab === 'Produits non stockables' ? 'Nouveau Produit Non Stockable' : 'Nouveau Produit'}
           </button>
         </div>
       </div>
@@ -757,13 +771,13 @@ const StockPage: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center">
             <Package className="text-blue-600" size={32} />
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Produits</p>
-              <p className="text-3xl font-bold text-gray-900">{products.length}</p>
+              <p className="text-3xl font-bold text-gray-900">{products.filter(p => !p.est_service && !p.non_stockable).length}</p>
             </div>
           </div>
         </div>
@@ -774,6 +788,17 @@ const StockPage: React.FC = () => {
               <p className="text-sm font-medium text-gray-600">Services</p>
               <p className="text-3xl font-bold text-gray-900">
                 {products.filter(p => p.est_service).length}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <Package className="text-amber-600" size={32} />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Non stockables</p>
+              <p className="text-3xl font-bold text-gray-900">
+                {products.filter(p => !p.est_service && p.non_stockable).length}
               </p>
             </div>
           </div>
@@ -793,7 +818,7 @@ const StockPage: React.FC = () => {
       <div className="mb-4 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-700">
-            Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} produits
+            Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} éléments
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -959,7 +984,7 @@ const StockPage: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
-                    {!product.isVariantRow && !product.est_service && (
+                    {!product.isVariantRow && !product.est_service && !product.non_stockable && (
                       <input
                         type="checkbox"
                         checked={!!product.stock_partage_ecom}
@@ -984,12 +1009,12 @@ const StockPage: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.est_service ? '-' : (
+                    {(product.est_service || product.non_stockable) ? '-' : (
                       formatNum((getSnapshotAwareQuantite(product)) / getSelectedUnitFactor(product))
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {!product.est_service && (
+                    {!product.est_service && !product.non_stockable && (
                       <select
                         value={getSelectedUnitKey(product)}
                         onChange={(e) => {
@@ -1057,9 +1082,11 @@ const StockPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${product.est_service
                       ? 'bg-blue-100 text-blue-800'
-                      : 'bg-green-100 text-green-800'
+                      : product.non_stockable
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-green-100 text-green-800'
                       }`}>
-                      {product.est_service ? 'Service' : 'Produit'}
+                      {product.est_service ? 'Service' : product.non_stockable ? 'Non stockable' : 'Produit'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -1141,6 +1168,7 @@ const StockPage: React.FC = () => {
       {/* Modal Nouveau/Modifier Produit */}
       <ProductFormModal
         isOpen={isModalOpen}
+        defaultNonStockable={activeTab === 'Produits non stockables'}
         onClose={() => {
           setIsModalOpen(false);
           setEditingProduct(null);
