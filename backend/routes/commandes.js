@@ -406,6 +406,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       );
       if (Array.isArray(abnormalRows) && abnormalRows.length > 0) {
         const row = abnormalRows[0];
+        await connection.rollback();
         return res.status(409).json({
           message: 'Valeur anormale détectée pour prix_vente_pourcentage',
           code: 'ABNORMAL_PRIX_VENTE_POURCENTAGE',
