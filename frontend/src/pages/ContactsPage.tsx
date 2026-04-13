@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Plus, Edit, Trash2, Search, Users, Truck, Phone, Mail, MapPin,
@@ -656,6 +656,7 @@ const ContactsPage: React.FC = () => {
         bon_numero: getDisplayNumeroPayment(p),
         bon_type: 'Paiement',
         bon_id: p.bon_id,
+        code_reglement: p.code_reglement,
         bon_date: formatDateDMY(paymentDateIso || new Date().toISOString()), // AFFICHER la vraie date du paiement (ou fallback)
         bon_date_iso: paymentSortDateIso, // TRIER: date_paiement en priorité pour permettre repositionnement manuel
         bon_statut: p.statut ? String(p.statut) : 'Paiement',
@@ -1631,7 +1632,7 @@ const ContactsPage: React.FC = () => {
     const tel = contact.telephone || 'N/A';
     const email = contact.email || 'N/A';
     const ice = contact.ice || 'N/A';
-    const solde = Number(contact.solde || 0).toFixed(2) + ' DH';
+    const solde = Number(contact.solde || 0).toFixed(3) + ' DH';
     return `
       <table style="width:100%;border-collapse:collapse;margin:8px 0;">
         <tr>
@@ -1906,7 +1907,7 @@ const ContactsPage: React.FC = () => {
       const mediaUrl = uploadResult.absoluteUrl || `${baseForUrl.replace(/\/$/, '')}${uploadResult.url.startsWith('/') ? '' : '/'}${uploadResult.url}`;
 
       const periodLine = useFilters && (dateFrom || dateTo)
-        ? `Période: ${dateFrom || '...'} → ${dateTo || '...'}`
+        ? `P�riode: ${dateFrom || '...'} vers ${dateTo || '...'}`
         : null;
       const caption = [
         'Bonjour,',
@@ -1926,7 +1927,7 @@ const ContactsPage: React.FC = () => {
           pdfUrl: mediaUrl,
           message: caption,
           numero: 'Rapport Produits',
-          total: (reportTotals.totalAmount != null ? Number(reportTotals.totalAmount).toFixed(2) : ''),
+          total: (reportTotals.totalAmount != null ? Number(reportTotals.totalAmount).toFixed(3) : ''),
           devise: 'DH',
         }),
       });
@@ -2090,21 +2091,21 @@ const ContactsPage: React.FC = () => {
       let clientAbonneId: number;
 
       // 1. Vérifier si un client_abonné existe déjà pour ce contact
-      console.log(`🔍 Recherche d'un client_abonné existant pour contact_id: ${selectedContact.id}`);
+      console.log(`[client_abonne] Recherche d'un client_abonn� existant pour contact_id: ${selectedContact.id}`);
 
       try {
         const result = await getClientAbonneByContact(selectedContact.id).unwrap();
         // Client abonné existant trouvé
-        console.log('✅ Client abonné existant trouvé:', result);
+        console.log('[client_abonne] Client abonn� existant trouv�:', result);
         clientAbonneId = result.id;
-        console.log(`🔄 Réutilisation du client_abonné ID: ${clientAbonneId}`);
+        console.log(`[client_abonne] R�utilisation du client_abonn� ID: ${clientAbonneId}`);
       } catch (error: any) {
         // Aucun client_abonné existant (404) ou autre erreur
         if (error?.status === 404) {
-          console.log('❌ Aucun client abonné existant trouvé, création d\'un nouveau...');
+          console.log('[client_abonne] Aucun client abonn\u00e9 existant trouv\u00e9, cr\u00e9ation d\'un nouveau...');
         } else {
-          console.log('⚠️ Erreur lors de la recherche:', error);
-          console.log('❌ Création d\'un nouveau client abonné...');
+          console.log('[client_abonne] Erreur lors de la recherche:', error);
+          console.log('[client_abonne] Cr�ation d\'un nouveau client abonn�...');
         }
 
         const clientAbonneData = {
@@ -2115,18 +2116,18 @@ const ContactsPage: React.FC = () => {
           type: 'client_abonne',
         };
 
-        console.log('📝 Données client abonné à créer:', clientAbonneData);
+        console.log('[client_abonne] Donn�es client abonn� � cr�er:', clientAbonneData);
 
         const createdClientAbonne: any = await createClientRemise(clientAbonneData).unwrap();
 
-        console.log('✅ Nouveau client abonné créé:', createdClientAbonne);
+        console.log('[client_abonne] Nouveau client abonn� cr��:', createdClientAbonne);
 
         if (!createdClientAbonne?.id) {
           throw new Error('Erreur lors de la création du client abonné');
         }
 
         clientAbonneId = createdClientAbonne.id;
-        console.log(`➕ Nouveau client_abonné créé avec ID: ${clientAbonneId}`);
+        console.log(`[client_abonne] Nouveau client_abonn� cr�� avec ID: ${clientAbonneId}`);
       }
 
       console.log(`Utilisation du client_abonné ID: ${clientAbonneId}`);
@@ -2356,15 +2357,15 @@ const ContactsPage: React.FC = () => {
           <div style="text-align:center;margin-bottom:12px;">
             <h1 style="margin:0;font-size:18px;font-weight:700;color:#111">RAPPORT DÉTAILLÉ</h1>
             <h2 style="margin:4px 0;font-size:14px;font-weight:600;color:#333">${selectedContact.type.toUpperCase()}: ${selectedContact.nom_complet}</h2>
-            <p style="margin:2px 0;font-size:12px"><strong>Période:</strong> ${dateFrom ? formatDateDMY(dateFrom) : 'Début'} → ${dateTo ? formatDateDMY(dateTo) : 'Fin'}</p>
+            <p style="margin:2px 0;font-size:12px"><strong>P�riode:</strong> ${dateFrom ? formatDateDMY(dateFrom) : 'D�but'} vers ${dateTo ? formatDateDMY(dateTo) : 'Fin'}</p>
             <p style="margin:2px 0;font-size:12px"><strong>Date d'impression:</strong> ${formatDateTimeWithHour(new Date().toISOString())}</p>
           </div>
 
           ${getTwoRowContactTable(selectedContact)}
 
           <div class="section">
-            <h3>📊 STATISTIQUES PAR PRODUIT (${productStatsArray.length} produits)</h3>
-            ${(dateFrom || dateTo) ? `<p style="margin:5px 0;font-size:11px;color:#666;font-style:italic;">⚠️ Statistiques filtrées par période sélectionnée</p>` : ''}
+            <h3>STATISTIQUES PAR PRODUIT (${productStatsArray.length} produits)</h3>
+            ${(dateFrom || dateTo) ? `<p style="margin:5px 0;font-size:11px;color:#666;font-style:italic;">Statistiques filtr�es par p�riode s�lectionn�e</p>` : ''}
             <table style="table-layout: fixed; width: 100%;">
               <tr>
                 <th style="width: 15%;">Référence</th>
@@ -2379,22 +2380,22 @@ const ContactsPage: React.FC = () => {
                   <td style="font-size: 6px; word-break: break-all;">${stat.reference}</td>
                   <td style="font-size: 6px; line-height: 0.9; word-break: break-word; hyphens: auto;">${stat.designation}</td>
                   <td class="numeric-col">${stat.quantite_totale}</td>
-                  <td class="numeric-col">${stat.montant_total.toFixed(2)} DH</td>
-                  <td class="numeric-col">${stat.prix_moyen.toFixed(2)} DH</td>
+                  <td class="numeric-col">${stat.montant_total.toFixed(3)} DH</td>
+                  <td class="numeric-col">${stat.prix_moyen.toFixed(3)} DH</td>
                   <td class="numeric-col">${stat.nombre_commandes}</td>
                 </tr>`
     ).join('')}
               <tr class="total-row">
                 <td colspan="2" class="text-wrap"><strong>TOTAL</strong></td>
                 <td class="numeric-col"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.quantite_totale, 0)}</strong></td>
-                <td class="numeric-col"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.montant_total, 0).toFixed(2)} DH</strong></td>
+                <td class="numeric-col"><strong>${productStatsArray.reduce((s: number, p: any) => s + p.montant_total, 0).toFixed(3)} DH</strong></td>
                 <td colspan="2"></td>
               </tr>
             </table>
           </div>
 
           <div class="section">
-            <h3>📋 DÉTAIL DES TRANSACTIONS (${printBons.length} documents)</h3>
+            <h3>D�TAIL DES TRANSACTIONS (${printBons.length} documents)</h3>
             <table style="table-layout: fixed; width: 100%;">
               <tr>
                 <th style="width: 15%;">N° Bon</th>
@@ -2410,22 +2411,22 @@ const ContactsPage: React.FC = () => {
                   <td style="font-size: 6px; word-break: break-all;">${bon.numero}</td>
                   <td style="font-size: 6px;">${bon.type}</td>
                   <td style="font-size: 6px;">${formatDateTimeWithHour(bon.date_creation)}</td>
-                  <td class="numeric-col">${Number(bon.montant_total || 0).toFixed(2)} DH</td>
+                  <td class="numeric-col">${Number(bon.montant_total || 0).toFixed(3)} DH</td>
                   <td style="font-size: 6px;">${bon.statut}</td>
                   <td class="numeric-col">${bonItems.length}</td>
                 </tr>`;
     }).join('')}
               <tr class="total-row">
                 <td colspan="3" class="text-wrap"><strong>TOTAL</strong></td>
-                <td class="numeric-col"><strong>${printBons.reduce((s, b) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH</strong></td>
+                <td class="numeric-col"><strong>${printBons.reduce((s, b) => s + Number(b.montant_total || 0), 0).toFixed(3)} DH</strong></td>
                 <td colspan="2"></td>
               </tr>
             </table>
           </div>
 
           <div class="section">
-            <h3>🛍️ DÉTAIL DES ACHATS PAR PRODUIT (${filteredProductsForDisplay2.length} lignes)</h3>
-            ${(dateFrom || dateTo) ? `<p style="margin:5px 0;font-size:11px;color:#666;font-style:italic;">⚠️ Données filtrées par période - Soldes cumulatifs calculés correctement en tenant compte des transactions antérieures</p>` : ''}
+            <h3>D�TAIL DES ACHATS PAR PRODUIT (${filteredProductsForDisplay2.length} lignes)</h3>
+            ${(dateFrom || dateTo) ? `<p style="margin:5px 0;font-size:11px;color:#666;font-style:italic;">Donn�es filtr�es par p�riode - Soldes cumulatifs calcul�s correctement en tenant compte des transactions ant�rieures</p>` : ''}
             <table style="table-layout: fixed; width: 100%;">
               <tr>
                 <th style="width: 7%;">Date</th>
@@ -2446,17 +2447,17 @@ const ContactsPage: React.FC = () => {
                   <td style="font-size: 6px; word-break: break-all;">${item.product_reference}</td>
                   <td style="font-size: 6px; line-height: 0.9; word-break: break-word; hyphens: auto;">${item.product_designation}</td>
                   <td class="numeric-col">${item.quantite || 0}</td>
-                  <td class="numeric-col">${(item.prix_unitaire || 0).toFixed(2)} DH</td>
-                  <td class="numeric-col">${(item.total || 0).toFixed(2)} DH</td>
-                  ${printHasSelection ? '' : `<td class="numeric-col"><strong>${(item.soldeCumulatif || 0).toFixed(2)} DH</strong></td>`}
+                  <td class="numeric-col">${(item.prix_unitaire || 0).toFixed(3)} DH</td>
+                  <td class="numeric-col">${(item.total || 0).toFixed(3)} DH</td>
+                  ${printHasSelection ? '' : `<td class="numeric-col"><strong>${(item.soldeCumulatif || 0).toFixed(3)} DH</strong></td>`}
                 </tr>`
     ).join('')}
               <tr class="total-row">
                 <td colspan="5" class="text-wrap"><strong>TOTAL (période affichée)</strong></td>
                 <td class="numeric-col"><strong>${filteredProductsForDisplay2.reduce((s, p) => s + (p.quantite || 0), 0)}</strong></td>
                 <td></td>
-                <td class="numeric-col"><strong>${filteredProductsForDisplay2.reduce((s, p) => s + (p.total || 0), 0).toFixed(2)} DH</strong></td>
-                ${printHasSelection ? '' : `<td class="numeric-col"><strong>${filteredProductsForDisplay2.length > 0 ? (filteredProductsForDisplay2[filteredProductsForDisplay2.length - 1].soldeCumulatif || 0).toFixed(2) : '0.00'} DH</strong></td>`}
+                <td class="numeric-col"><strong>${filteredProductsForDisplay2.reduce((s, p) => s + (p.total || 0), 0).toFixed(3)} DH</strong></td>
+                ${printHasSelection ? '' : `<td class="numeric-col"><strong>${filteredProductsForDisplay2.length > 0 ? (filteredProductsForDisplay2[filteredProductsForDisplay2.length - 1].soldeCumulatif || 0).toFixed(3) : '0.00'} DH</strong></td>`}
               </tr>
             </table>
             <!-- Bloc Débit / Crédit / Solde Final -->
@@ -2464,23 +2465,23 @@ const ContactsPage: React.FC = () => {
               <div style="background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #1e40af; font-weight: 600;">Total Débit</p>
                 <p style="margin: 0; font-size: 8px; color: #6b7280;">${(dateFrom || dateTo) ? '(Ventes/Achats période)' : '(Ventes/Achats + Solde initial)'}</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #1e3a8a;">${filteredDebitCredit.totalDebit.toFixed(2)} DH</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #1e3a8a;">${filteredDebitCredit.totalDebit.toFixed(3)} DH</p>
               </div>
               <div style="background: #dcfce7; border: 2px solid #22c55e; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #166534; font-weight: 600;">Total Crédit</p>
                 <p style="margin: 0; font-size: 8px; color: #6b7280;">(Paiements + Avoirs)</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #14532d;">${filteredDebitCredit.totalCredit.toFixed(2)} DH</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #14532d;">${filteredDebitCredit.totalCredit.toFixed(3)} DH</p>
               </div>
               <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #92400e; font-weight: 600;">Solde Final</p>
                 <p style="margin: 0; font-size: 8px; color: #6b7280;">(Dernier solde cumulé du tableau)</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: ${tableSoldeFinal > 0 ? '#dc2626' : '#16a34a'};">${tableSoldeFinal.toFixed(2)} DH</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: ${tableSoldeFinal > 0 ? '#dc2626' : '#16a34a'};">${tableSoldeFinal.toFixed(3)} DH</p>
               </div>
             </div>
           </div>
 
           <div class="section">
-            <h3>📈 RÉSUMÉ EXÉCUTIF</h3>
+            <h3>R�SUM� EX�CUTIF</h3>
             <div class="info-grid">
               <div class="info-box">
                 <h4>Volumes</h4>
@@ -2493,17 +2494,17 @@ const ContactsPage: React.FC = () => {
                 <p><strong>Chiffre d'affaires total:</strong> ${filteredBons.filter((b: any) => {
       const type = String(b.type || '').toLowerCase();
       return type !== 'avoir' && type !== 'avoirfournisseur';
-    }).reduce((s, b) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH</p>
+    }).reduce((s, b) => s + Number(b.montant_total || 0), 0).toFixed(3)} DH</p>
                 <p><strong>Panier moyen:</strong> ${(() => {
         const realBons = filteredBons.filter((b: any) => {
           const type = String(b.type || '').toLowerCase();
           return type !== 'avoir' && type !== 'avoirfournisseur';
         });
-        return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total || 0), 0) / realBons.length).toFixed(2) : '0.00';
+        return realBons.length > 0 ? (realBons.reduce((s, b) => s + Number(b.montant_total || 0), 0) / realBons.length).toFixed(3) : '0.00';
       })()} DH</p>
                 ${printHasSelection
-                  ? `<p><strong>Solde final (sélection uniquement):</strong> ${selectedTotal.toFixed(2)} DH</p>`
-                  : `<p><strong>Solde final (dernier solde cumulé du tableau):</strong> ${tableSoldeFinal.toFixed(2)} DH</p>`}
+                  ? `<p><strong>Solde final (sélection uniquement):</strong> ${selectedTotal.toFixed(3)} DH</p>`
+                  : `<p><strong>Solde final (dernier solde cumulé du tableau):</strong> ${tableSoldeFinal.toFixed(3)} DH</p>`}
               </div>
             </div>
           </div>
@@ -2589,7 +2590,7 @@ const ContactsPage: React.FC = () => {
           ${getTwoRowContactTable(contact)}
 
           <div class="section">
-            <h3>📋 TRANSACTIONS (${list.length} documents)</h3>
+            <h3>TRANSACTIONS (${list.length} documents)</h3>
             <table>
               <tr>
                 <th>N° Bon</th>
@@ -2603,13 +2604,13 @@ const ContactsPage: React.FC = () => {
                   <td>${bon.numero}</td>
                   <td>${bon.type}</td>
                   <td>${formatDateTimeWithHour(bon.date_creation)}</td>
-                  <td class="numeric">${Number(bon.montant_total || 0).toFixed(2)} DH</td>
+                  <td class="numeric">${Number(bon.montant_total || 0).toFixed(3)} DH</td>
                   <td>${bon.statut}</td>
                 </tr>`
     ).join('')}
               <tr class="total-row">
                 <td colspan="3"><strong>TOTAL</strong></td>
-                <td class="numeric"><strong>${list.reduce((s, b) => s + Number(b.montant_total || 0), 0).toFixed(2)} DH</strong></td>
+                <td class="numeric"><strong>${list.reduce((s, b) => s + Number(b.montant_total || 0), 0).toFixed(3)} DH</strong></td>
                 <td></td>
               </tr>
             </table>
@@ -2694,13 +2695,13 @@ const ContactsPage: React.FC = () => {
           </div>
 
           <div class="info-box">
-            <h3>📊 RÉSUMÉ EXÉCUTIF</h3>
+            <h3>R�SUM� EX�CUTIF</h3>
             <p><strong>Nombre total de ${typeLabel.toLowerCase()}:</strong> ${totalContacts}</p>
-            <p><strong>Solde total cumulé:</strong> <span class="${totalSoldes >= 0 ? 'positive' : 'negative'}">${totalSoldes.toFixed(2)} DH</span></p>
-            <p><strong>Solde moyen par contact:</strong> ${totalContacts > 0 ? (totalSoldes / totalContacts).toFixed(2) : '0.00'} DH</p>
+            <p><strong>Solde total cumulé:</strong> <span class="${totalSoldes >= 0 ? 'positive' : 'negative'}">${totalSoldes.toFixed(3)} DH</span></p>
+            <p><strong>Solde moyen par contact:</strong> ${totalContacts > 0 ? (totalSoldes / totalContacts).toFixed(3) : '0.00'} DH</p>
           </div>
 
-      <h3>📋 LISTE DES ${typeLabel} (${totalContacts})</h3>
+      <h3>LISTE DES ${typeLabel} (${totalContacts})</h3>
           <table>
             <tr>
         <th>Nom Complet</th>
@@ -2738,16 +2739,16 @@ const ContactsPage: React.FC = () => {
                 <td>${contact.telephone || 'N/A'}</td>
                 <td>${contact.email || 'N/A'}</td>
                 <td>${contact.ice || 'N/A'}</td>
-                ${activeTab === 'clients' ? `<td class="numeric">${Number(contact.plafond || 0).toFixed(2)} DH</td>` : ''}
-                <td class="numeric">${base.toFixed(2)} DH</td>
-                <td class="numeric ${soldeActuel >= 0 ? 'positive' : 'negative'}"><strong>${soldeActuel.toFixed(2)} DH</strong></td>
+                ${activeTab === 'clients' ? `<td class="numeric">${Number(contact.plafond || 0).toFixed(3)} DH</td>` : ''}
+                <td class="numeric">${base.toFixed(3)} DH</td>
+                <td class="numeric ${soldeActuel >= 0 ? 'positive' : 'negative'}"><strong>${soldeActuel.toFixed(3)} DH</strong></td>
                 <td class="numeric">${transactionCount}</td>
               </tr>`;
     }).join('')}
             <tr class="total-row">
               <td colspan="${activeTab === 'clients' ? '6' : '5'}"><strong>TOTAUX</strong></td>
-              <td class="numeric"><strong>${contactsList.reduce((s, c) => s + Number(c.solde || 0), 0).toFixed(2)} DH</strong></td>
-              <td class="numeric"><strong>${totalSoldes.toFixed(2)} DH</strong></td>
+              <td class="numeric"><strong>${contactsList.reduce((s, c) => s + Number(c.solde || 0), 0).toFixed(3)} DH</strong></td>
+              <td class="numeric"><strong>${totalSoldes.toFixed(3)} DH</strong></td>
               <td class="numeric"><strong>${contactsList.reduce((sum, contact) => {
       const isClient = contact.type === 'Client';
       const id = contact.id;
@@ -3107,6 +3108,31 @@ const ContactsPage: React.FC = () => {
     return m;
   }, [payments]);
 
+  const getHistoryCodeReglement = (item: any) => {
+    if (item.syntheticInitial) return '-';
+
+    if (item.type === 'paiement') {
+      if (item.code_reglement) return item.code_reglement;
+
+      const lookupKeys = [item.id, item.bon_id, item.bon_numero, item.reference].map((k: any) => k != null ? String(k) : '');
+      for (const k of lookupKeys) {
+        if (!k) continue;
+        const p = paymentsMap.get(k);
+        if (p?.code_reglement) return p.code_reglement;
+      }
+
+      return '-';
+    }
+
+    return item.code_reglement
+      || item.bon_code_reglement
+      || item.reglement
+      || (item.bon && item.bon.code_reglement)
+      || (item.product && item.product.code_reglement)
+      || (item.product && item.product.reglement)
+      || '-';
+  };
+
   return (
     <div className="p-6">
       {(clientsLoading || fournisseursLoading || contactGroupsLoading || groupsClientsLoading || groupsFournisseursLoading) && (
@@ -3236,7 +3262,7 @@ const ContactsPage: React.FC = () => {
                   onClick={() => setShowSettings(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
-                  ✕
+                  ?
                 </button>
               </div>
 
@@ -3266,7 +3292,7 @@ const ContactsPage: React.FC = () => {
 
                   {/* Debug section */}
                   <div className="mt-3 p-2 bg-white border rounded text-xs">
-                    <div className="font-medium mb-1">🔬 Exemple (premiers 2 contacts avec solde {'>'}  0):</div>
+                    <div className="font-medium mb-1">Exemple (premiers 2 contacts avec solde {'>'}  0):</div>
                     {(() => {
                       const contactsWithPositiveBalance = (activeTab === 'clients' ? clients : fournisseurs)
                         .filter(c => {
@@ -3284,10 +3310,10 @@ const ContactsPage: React.FC = () => {
                         return (
                           <div key={contact.id} className="mb-1">
                             <strong>{contact.nom_complet || 'Sans nom'}</strong> -
-                            Solde: {solde.toFixed(2)} -
+                            Solde: {solde.toFixed(3)} -
                             MAJ: {contact.updated_at || 'Jamais'} -
                             Il y a: {daysSinceUpdate || 'N/A'} jours -
-                            En retard: {isOverdue ? '✅' : '❌'}
+                            En retard: {isOverdue ? 'Oui' : 'Non'}
                           </div>
                         );
                       });
@@ -3413,7 +3439,7 @@ const ContactsPage: React.FC = () => {
                 className="px-3 py-2 text-gray-600 hover:text-gray-900"
                 aria-label="Fermer"
               >
-                ✕
+                ?
               </button>
             </div>
 
@@ -3663,7 +3689,7 @@ const ContactsPage: React.FC = () => {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Solde cumulé Client</p>
                   <p className="text-3xl font-bold text-gray-900">
-                    {(Number(soldeCumuleCard?.total_final ?? 0) || 0).toFixed(2)} DH
+                    {(Number(soldeCumuleCard?.total_final ?? 0) || 0).toFixed(3)} DH
                   </p>
                 </div>
               </div>
@@ -3675,7 +3701,7 @@ const ContactsPage: React.FC = () => {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Solde cumulé Fournisseur</p>
                   <p className="text-3xl font-bold text-gray-900">
-                    {(Number(soldeCumuleFournisseurCard?.total_final ?? 0) || 0).toFixed(2)} DH
+                    {(Number(soldeCumuleFournisseurCard?.total_final ?? 0) || 0).toFixed(3)} DH
                   </p>
                 </div>
               </div>
@@ -3711,7 +3737,7 @@ const ContactsPage: React.FC = () => {
                 <div className="text-right">
                   <div className="text-xs uppercase tracking-wide text-gray-500">Total solde</div>
                   <div className={`text-2xl font-bold ${expandedGroupTotalSoldeForActiveTab > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                    {expandedGroupTotalSoldeForActiveTab.toFixed(2)} DH
+                    {expandedGroupTotalSoldeForActiveTab.toFixed(3)} DH
                   </div>
                 </div>
               </div>
@@ -3734,8 +3760,8 @@ const ContactsPage: React.FC = () => {
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-700">
                 {itemsPerPage === 0
-                  ? `Affichage de tous les ${totalItems} éléments`
-                  : `Affichage de ${((currentPage - 1) * itemsPerPage) + 1} à ${Math.min(currentPage * itemsPerPage, totalItems)} sur ${totalItems} éléments`
+                  ? `Affichage de tous les ${totalItems} \u00e9l\u00e9ments`
+                  : `Affichage de ${((currentPage - 1) * itemsPerPage) + 1} \u00e0 ${Math.min(currentPage * itemsPerPage, totalItems)} sur ${totalItems} \u00e9l\u00e9ments`
                 }
               </span>
             </div>
@@ -3893,7 +3919,7 @@ const ContactsPage: React.FC = () => {
                             const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
                             return (
                               <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                                {display.toFixed(2)} DH
+                                {display.toFixed(3)} DH
                                 {overPlafond && (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
                                 )}
@@ -4014,7 +4040,7 @@ const ContactsPage: React.FC = () => {
                         {/* Solde total du groupe */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className={`flex items-center gap-2 text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                            {totalSolde.toFixed(2)} DH
+                            {totalSolde.toFixed(3)} DH
                             <span className="text-xs text-gray-500 font-normal">
                               (Total groupe)
                             </span>
@@ -4106,7 +4132,7 @@ const ContactsPage: React.FC = () => {
                                 const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
                                 return (
                                   <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                                    {display.toFixed(2)} DH
+                                    {display.toFixed(3)} DH
                                     {overPlafond && (
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
                                     )}
@@ -4116,7 +4142,7 @@ const ContactsPage: React.FC = () => {
                             </td>
                             <td className="px-6 py-4">
                               <div className="text-sm font-medium text-gray-900">
-                                <span className="text-gray-400 mr-2">↳</span>
+                                <span className="text-gray-400 mr-2">�</span>
                                 {contact.nom_complet}
                               </div>
                             </td>
@@ -4287,7 +4313,7 @@ const ContactsPage: React.FC = () => {
                       </div>
                       <div className="text-right">
                         <div className={`text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                          {display.toFixed(2)} DH
+                          {display.toFixed(3)} DH
                           {overPlafond && (
                             <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
                           )}
@@ -4304,7 +4330,7 @@ const ContactsPage: React.FC = () => {
                       <div><span className="text-gray-500">RIB:</span> {contact.rib || '-'}</div>
                       <div className="col-span-2"><span className="text-gray-500">Créé le:</span> {contact.created_at ? String(contact.created_at).slice(0, 10) : '-'}</div>
                       {activeTab === 'clients' && (
-                        <div className="col-span-2"><span className="text-gray-500">Plafond:</span> {typeof contact.plafond === 'number' ? `${contact.plafond.toFixed(2)} DH` : '-'}</div>
+                        <div className="col-span-2"><span className="text-gray-500">Plafond:</span> {typeof contact.plafond === 'number' ? `${contact.plafond.toFixed(3)} DH` : '-'}</div>
                       )}
                     </div>
 
@@ -4356,7 +4382,7 @@ const ContactsPage: React.FC = () => {
                         <div className="text-xs text-gray-500">{members.length} membres</div>
                       </div>
                     </div>
-                    <div className={`text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>{totalSolde.toFixed(2)} DH</div>
+                    <div className={`text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>{totalSolde.toFixed(3)} DH</div>
                   </button>
 
                   {isOpen && (
@@ -4378,14 +4404,14 @@ const ContactsPage: React.FC = () => {
                             {/* Top row: Name + Solde */}
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <div className="text-sm font-semibold text-gray-900 truncate">↳ {contact.nom_complet}</div>
+                                <div className="text-sm font-semibold text-gray-900 truncate">{contact.nom_complet}</div>
                                 <div className="text-xs text-gray-500 truncate">
                                   {(contact.societe && contact.societe.trim()) ? contact.societe : '-'}
                                 </div>
                               </div>
                               <div className="text-right">
                                 <div className={`text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                                  {display.toFixed(2)} DH
+                                  {display.toFixed(3)} DH
                                   {overPlafond && (
                                     <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
                                   )}
@@ -4403,7 +4429,7 @@ const ContactsPage: React.FC = () => {
                               <div><span className="text-gray-500">RIB:</span> {contact.rib || '-'}</div>
                               <div className="col-span-2"><span className="text-gray-500">Créé le:</span> {contact.created_at ? String(contact.created_at).slice(0, 10) : '-'}</div>
                               {activeTab === 'clients' && (
-                                <div className="col-span-2"><span className="text-gray-500">Plafond:</span> {typeof contact.plafond === 'number' ? `${contact.plafond.toFixed(2)} DH` : '-'}</div>
+                                <div className="col-span-2"><span className="text-gray-500">Plafond:</span> {typeof contact.plafond === 'number' ? `${contact.plafond.toFixed(3)} DH` : '-'}</div>
                               )}
                             </div>
 
@@ -4551,7 +4577,7 @@ const ContactsPage: React.FC = () => {
                       }}
                       className="text-white hover:text-gray-200 text-2xl font-bold"
                     >
-                      ✕
+                      ?
                     </button>
                   </div>
                 </div>
@@ -4600,7 +4626,7 @@ const ContactsPage: React.FC = () => {
                       <div className="bg-white rounded-lg p-3 border">
                         <p className="font-semibold text-gray-600 text-sm">Solde Initial:</p>
                         <p className={`font-bold text-lg ${(Number(selectedContact.solde) || 0) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                          {(Number(selectedContact.solde) || 0).toFixed(2)} DH
+                          {(Number(selectedContact.solde) || 0).toFixed(3)} DH
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-3 border">
@@ -4616,9 +4642,9 @@ const ContactsPage: React.FC = () => {
                             <div className="space-y-1">
                               {selectedContact?.type === 'Client' ? (
                                 <>
-                                  <p className={`font-bold text-lg ${combined >= 0 ? 'text-green-600' : 'text-red-600'}`}>{combined.toFixed(2)} DH</p>
-                                  <p className="text-xs text-gray-500">Nouveau (bons Sortie/Comptant): {newTotal.toFixed(2)} DH</p>
-                                  <p className="text-xs text-gray-500">Ancien (client_remises): {Number(oldTotal || 0).toFixed(2)} DH</p>
+                                  <p className={`font-bold text-lg ${combined >= 0 ? 'text-green-600' : 'text-red-600'}`}>{combined.toFixed(3)} DH</p>
+                                  <p className="text-xs text-gray-500">Nouveau (bons Sortie/Comptant): {newTotal.toFixed(3)} DH</p>
+                                  <p className="text-xs text-gray-500">Ancien (client_remises): {Number(oldTotal || 0).toFixed(3)} DH</p>
 
                                   {Array.isArray(newSystemRemiseDisplayed.bons) && newSystemRemiseDisplayed.bons.length > 0 && (
                                     <details className="text-xs text-gray-600">
@@ -4630,7 +4656,7 @@ const ContactsPage: React.FC = () => {
                                               <span className="font-medium">{b.bon_type}</span> #{b.bon_numero || b.bon_id}
                                               {b.bon_date ? <span className="text-gray-500"> · {b.bon_date}</span> : null}
                                             </div>
-                                            <div className="font-semibold whitespace-nowrap">{Number(b.totalRemise || 0).toFixed(2)} DH</div>
+                                            <div className="font-semibold whitespace-nowrap">{Number(b.totalRemise || 0).toFixed(3)} DH</div>
                                           </div>
                                         ))}
                                       </div>
@@ -4655,7 +4681,7 @@ const ContactsPage: React.FC = () => {
                           const value = detailedContact?.solde_cumule ?? finalSoldeNet;
                           return (
                             <div className="space-y-1">
-                              <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(2)} DH</p>
+                              <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(3)} DH</p>
                               {detailedContact?.solde_cumule !== undefined && (
                                 <p className="text-xs text-gray-500">Calculé par le serveur</p>
                               )}
@@ -4681,7 +4707,7 @@ const ContactsPage: React.FC = () => {
                                 const b = Number(i.benefice || 0) || 0;
                                 return s + (i.type === 'avoir' ? -Math.abs(b) : b);
                               }, 0);
-                            return `${sum.toFixed(2)} DH`;
+                            return `${sum.toFixed(3)} DH`;
                           })()}
                         </p>
                       </div>
@@ -4691,7 +4717,7 @@ const ContactsPage: React.FC = () => {
                        <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
                          <p className="font-semibold text-blue-800 text-sm">{(dateFrom || dateTo) ? 'Total Débit (Ventes période)' : 'Total Débit (Ventes + Solde init.)'}</p>
                          <p className="font-bold text-lg text-blue-700">
-                           {filteredDebitCredit.totalDebit.toFixed(2)} DH
+                           {filteredDebitCredit.totalDebit.toFixed(3)} DH
                          </p>
                          {(dateFrom || dateTo || productSearch) && (
                            <p className="text-xs text-blue-500 mt-1">Filtré par période/recherche</p>
@@ -4700,13 +4726,13 @@ const ContactsPage: React.FC = () => {
                        <div className="bg-green-50 rounded-lg p-3 border border-green-100">
                          <p className="font-semibold text-green-800 text-sm">Total Paiements</p>
                          <p className="font-bold text-lg text-green-700">
-                           {filteredDebitCredit.totalPaiements.toFixed(2)} DH
+                           {filteredDebitCredit.totalPaiements.toFixed(3)} DH
                          </p>
                        </div>
                        <div className="bg-orange-50 rounded-lg p-3 border border-orange-100">
                          <p className="font-semibold text-orange-800 text-sm">Total Avoirs</p>
                          <p className="font-bold text-lg text-orange-700">
-                           {filteredDebitCredit.totalAvoirs.toFixed(2)} DH
+                           {filteredDebitCredit.totalAvoirs.toFixed(3)} DH
                          </p>
                        </div>
                     </div>
@@ -4735,7 +4761,7 @@ const ContactsPage: React.FC = () => {
                             }, 0);
                           return (
                             <p className={`font-bold text-2xl ${selectedBenefit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {selectedBenefit.toFixed(2)} DH
+                              {selectedBenefit.toFixed(3)} DH
                             </p>
                           );
                         })()}
@@ -4864,16 +4890,16 @@ const ContactsPage: React.FC = () => {
                         <div className="font-semibold">Résumé Remises</div>
                         <div className="flex gap-3 flex-wrap">
                           <span>
-                            Total (Ancien+Nouveau): {(Number(newSystemRemiseDisplayed.total || 0) + contactRemises.reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0)).toFixed(2)} DH
+                            Total (Ancien+Nouveau): {(Number(newSystemRemiseDisplayed.total || 0) + contactRemises.reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0)).toFixed(3)} DH
                           </span>
                           <span>
-                            Nouveau (bons): {Number(newSystemRemiseDisplayed.total || 0).toFixed(2)} DH
+                            Nouveau (bons): {Number(newSystemRemiseDisplayed.total || 0).toFixed(3)} DH
                           </span>
                           <span>
-                            Abonné: {contactRemises.filter(r => r.type === 'client_abonne').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH
+                            Abonné: {contactRemises.filter(r => r.type === 'client_abonne').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(3)} DH
                           </span>
                           <span>
-                            Client: {contactRemises.filter(r => r.type === 'client-remise').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(2)} DH
+                            Client: {contactRemises.filter(r => r.type === 'client-remise').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(3)} DH
                           </span>
                         </div>
                       </div>
@@ -5005,7 +5031,7 @@ const ContactsPage: React.FC = () => {
                                 const item = allProductHistory.find(i => i.id === id);
                                 return sum + (price * (item?.quantite || 0));
                               }, 0)
-                              .toFixed(2)} DH
+                              .toFixed(3)} DH
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -5085,9 +5111,7 @@ const ContactsPage: React.FC = () => {
                             <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Référence</th>
                             <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Désignation</th>
                             <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adresse Livraison</th>
-                            {selectedContact?.type === 'Fournisseur' && (
-                              <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Règlement</th>
-                            )}
+                            <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Code Règlement</th>
                             {/* Remises séparées par type */}
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Abonné</th>
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Client</th>
@@ -5249,71 +5273,17 @@ const ContactsPage: React.FC = () => {
                                     {item.syntheticInitial || item.type === 'paiement' ? '-' : (item.adresse_livraison || '-')}
                                   </div>
                                 </td>
-                                {selectedContact?.type === 'Fournisseur' && (
-                                  <td className="px-1 whitespace-nowrap">
-                                    <div className="text-sm text-gray-900">
-                                      {(() => {
-                                        if (item.syntheticInitial) return '-';
-
-                                        // Payment rows: prefer explicit fields, then try to infer from designation
-                                        if (item.type === 'paiement') {
-                                          // First try any explicit code_reglement on the item
-                                          if (item.code_reglement) return item.code_reglement;
-
-                                          // Try to find a matching payment from Redux by several keys and prefer code_reglement
-                                          const lookupKeys = [item.id, item.bon_id, item.bon_numero, item.reference].map((k: any) => k != null ? String(k) : '');
-                                          for (const k of lookupKeys) {
-                                            if (!k) continue;
-                                            const p = paymentsMap.get(k);
-                                            if (p) {
-                                              if (p.code_reglement) return p.code_reglement;
-                                              if (p.mode_paiement) return p.mode_paiement;
-                                              if (p.mode) return p.mode;
-                                              const pdp = p.product_designation || p.product?.designation || '';
-                                              if (pdp) {
-                                                const m2 = String(pdp).match(/^Paiement[:\s-]*(.+)$/i);
-                                                if (m2 && m2[1]) return m2[1].trim();
-                                                return String(pdp).trim();
-                                              }
-                                            }
-                                          }
-
-                                          // Then try fields that may exist directly on the item
-                                          if (item.mode_paiement) return item.mode_paiement;
-                                          if (item.mode) return item.mode;
-
-                                          // Fallback to item designation if present
-                                          const pd = (item.product_designation || item.product?.designation || '') + '';
-                                          if (pd) {
-                                            const m = pd.match(/^Paiement[:\s-]*(.+)$/i);
-                                            if (m && m[1]) return m[1].trim();
-                                            return pd.trim();
-                                          }
-
-                                          // Nothing available -> log for debugging and show visible warning
-                                          console.debug('Payment item missing reglement/mode/code_reglement:', item);
-                                          return <span style={{ color: 'red', fontWeight: 'bold' }}>pas trouver non cheque</span>;
-                                        }
-
-                                        // Non-payment rows: try all possible sources for reglement value
-                                        const val = item.code_reglement
-                                          || item.bon_code_reglement
-                                          || item.reglement
-                                          || (item.bon && item.bon.code_reglement)
-                                          || (item.product && item.product.code_reglement)
-                                          || (item.product && item.product.reglement)
-                                          || '-';
-                                        return val;
-                                      })()}
-                                    </div>
-                                  </td>
-                                )}
+                                <td className="px-1 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">
+                                    {getHistoryCodeReglement(item)}
+                                  </div>
+                                </td>
                                 {/* Remises séparées par type */}
                                 <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
                                   {(() => {
                                     if (item.syntheticInitial || item.type === 'paiement') return '-';
                                     const remises = getItemRemises(item);
-                                    if (remises.abonne > 0) return `${remises.abonne.toFixed(2)} DH`;
+                                    if (remises.abonne > 0) return `${remises.abonne.toFixed(3)} DH`;
                                     // Montrer 0 si un match a eu lieu mais totalRemise = 0 (rare) -> on ne sait pas ici. Donc on laisse '-'
                                     return '-';
                                   })()}
@@ -5325,7 +5295,7 @@ const ContactsPage: React.FC = () => {
                                     const remiseFromBon = typeof item.remise_montant === 'number' && item.remise_montant > 0 ? item.remise_montant : 0;
                                     // Addition des remises client-remise (items) + remise du bon
                                     const totalClientRemise = remises.client + remiseFromBon;
-                                    return totalClientRemise > 0 ? `${totalClientRemise.toFixed(2)} DH` : '-';
+                                    return totalClientRemise > 0 ? `${totalClientRemise.toFixed(3)} DH` : '-';
                                   })()}
                                 </td>
                                 {showRemiseMode && selectedContact?.type === 'Client' && (
@@ -5337,9 +5307,9 @@ const ContactsPage: React.FC = () => {
                                       ) : (
                                         <input
                                           type="number"
-                                          step="0.01"
+                                          step="0.001"
                                           min="0"
-                                          placeholder="0.00"
+                                          placeholder="0.000"
                                           value={remisePrices[item.id] || ''}
                                           onChange={(e) => {
                                             const value = parseFloat(e.target.value) || 0;
@@ -5368,8 +5338,8 @@ const ContactsPage: React.FC = () => {
                                       ) : (
                                         <span className="font-medium text-green-600">
                                           {remisePrices[item.id] ?
-                                            `${(remisePrices[item.id] * item.quantite).toFixed(2)} DH` :
-                                            '0.00 DH'
+                                            `${(remisePrices[item.id] * item.quantite).toFixed(3)} DH` :
+                                            '0.000 DH'
                                           }
                                         </span>
                                       )}
@@ -5384,13 +5354,13 @@ const ContactsPage: React.FC = () => {
                                     const v = selectedContact?.type === 'Fournisseur'
                                       ? (item as any).prix_achat ?? item.prix_unitaire
                                       : item.prix_unitaire;
-                                    return `${(typeof v === 'number' ? v : parseFloat(v) || 0).toFixed(2)} DH`;
+                                    return `${(typeof v === 'number' ? v : parseFloat(v) || 0).toFixed(3)} DH`;
                                   })()}
                                 </td>
                                 <td className="px-6  whitespace-nowrap text-sm text-right">
                                   <div className={`font-semibold ${item.syntheticInitial ? 'text-gray-500' : item.type === 'paiement' ? 'text-green-600' : 'text-blue-600'}`}>
                                     {item.syntheticInitial ? '—' : item.type === 'paiement' ? '-' : '+'}
-                                    {item.syntheticInitial ? '' : `${item.total.toFixed(2)} DH`}
+                                    {item.syntheticInitial ? '' : `${item.total.toFixed(3)} DH`}
                                   </div>
                                 </td>
                                 <td className="px-6  whitespace-nowrap text-sm text-right">
@@ -5398,7 +5368,7 @@ const ContactsPage: React.FC = () => {
                                     <span className="text-gray-400">-</span>
                                   ) : (
                                     <div className={`font-semibold ${Number(item.benefice) > 0 ? 'text-green-600' : Number(item.benefice) < 0 ? 'text-red-600' : 'text-gray-700'}`}>
-                                      {Number(item.benefice ?? 0).toFixed(2)} DH
+                                      {Number(item.benefice ?? 0).toFixed(3)} DH
                                     </div>
                                   )}
                                 </td>
@@ -5426,7 +5396,7 @@ const ContactsPage: React.FC = () => {
                                         : 'text-gray-600'
                                       }`}
                                   >
-                                    {Number(item.soldeCumulatif ?? 0).toFixed(2)} DH
+                                    {Number(item.soldeCumulatif ?? 0).toFixed(3)} DH
                                   </div>
                                 </td>
                               </tr>
@@ -5454,7 +5424,7 @@ const ContactsPage: React.FC = () => {
                               {searchedProductHistory
                                 .filter((i: any) => i.type === 'produit')
                                 .reduce((s: number, i: any) => s + i.total, 0)
-                                .toFixed(2)} DH
+                                .toFixed(3)} DH
                             </p>
                             <p className="text-xs text-blue-500">
                               ({searchedProductHistory.filter((i: any) => i.type === 'produit').length} produit{searchedProductHistory.filter((i: any) => i.type === 'produit').length > 1 ? 's' : ''})
@@ -5466,7 +5436,7 @@ const ContactsPage: React.FC = () => {
                               {searchedProductHistory
                                 .filter((i: any) => i.type === 'paiement')
                                 .reduce((s: number, i: any) => s + i.total, 0)
-                                .toFixed(2)} DH
+                                .toFixed(3)} DH
                             </p>
                             <p className="text-xs text-green-500">
                               ({searchedProductHistory.filter((i: any) => i.type === 'paiement').length} paiement{searchedProductHistory.filter((i: any) => i.type === 'paiement').length > 1 ? 's' : ''})
@@ -5478,7 +5448,7 @@ const ContactsPage: React.FC = () => {
                               {searchedProductHistory
                                 .filter((i: any) => i.type === 'avoir')
                                 .reduce((s: number, i: any) => s + i.total, 0)
-                                .toFixed(2)} DH
+                                .toFixed(3)} DH
                             </p>
                             <p className="text-xs text-orange-500">
                               ({searchedProductHistory.filter((i: any) => i.type === 'avoir').length} avoir{searchedProductHistory.filter((i: any) => i.type === 'avoir').length > 1 ? 's' : ''})
@@ -5487,7 +5457,7 @@ const ContactsPage: React.FC = () => {
                           <div>
                             <p className="font-semibold text-gray-600">Solde Final:</p>
                             <p className={`text-lg font-bold ${tableSoldeFinal > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                              {tableSoldeFinal.toFixed(2)} DH
+                              {tableSoldeFinal.toFixed(3)} DH
                             </p>
                             {(dateFrom || dateTo) && (
                               <p className="text-xs text-gray-500">Dernier solde cumulé du tableau</p>
@@ -5579,3 +5549,5 @@ const ArtisanRequestsSection: React.FC<{ onView: (c: Contact) => void }> = ({ on
     </div>
   );
 };
+
+
