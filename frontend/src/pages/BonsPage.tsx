@@ -452,6 +452,12 @@ const BonsPage = () => {
       }
     } catch (error: any) {
       console.error('Erreur mise à jour statut:', error);
+      // PARSING_ERROR + originalStatus 200 = backend a réussi mais le body de la réponse était invalide/vide
+      if (error?.status === 'PARSING_ERROR' && error?.originalStatus === 200) {
+        showSuccess(`Statut mis à jour: ${statut}`);
+        refetchProducts();
+        return;
+      }
       const status = error?.status;
       const msg = error?.data?.message || error?.message || 'Erreur inconnue';
       if (isAbnormalCommandeValidationError(error)) {
