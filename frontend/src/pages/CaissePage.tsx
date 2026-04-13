@@ -30,7 +30,7 @@ import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetAllClientsQuery, useGetAllFournisseursQuery } from '../store/api/contactsApi';
-import { useGetClientRemisesQuery, useGetRemisePaymentAccountsQuery } from '../store/api/remisesApi';
+import { useGetClientRemisesQuery } from '../store/api/remisesApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { canModifyPayments } from '../utils/permissions';
@@ -101,8 +101,7 @@ const CaissePage = () => {
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
   const { data: talons = [] } = useGetTalonsQuery(undefined);
   const { data: paymentsApi = [] } = useGetPaymentsQuery();
-  const { data: remiseAccountsRaw = [], error: remiseAccountsError } = useGetRemisePaymentAccountsQuery();
-  const { data: legacyRemiseAccountsRaw = [] } = useGetClientRemisesQuery();
+  const { data: clientRemisesRaw = [] } = useGetClientRemisesQuery();
   const payments = paymentsApi;
   const [createPayment] = useCreatePaymentMutation();
   const [updatePaymentApi] = useUpdatePaymentMutation();
@@ -114,14 +113,8 @@ const CaissePage = () => {
   const [createOldTalonCaisse] = useCreateOldTalonCaisseMutation();
   const { token } = useAuth();
   const remiseAccounts = useMemo<RemisePaymentAccount[]>(() => {
-    const current = Array.isArray(remiseAccountsRaw) ? (remiseAccountsRaw as RemisePaymentAccount[]) : [];
-    if (current.length > 0) return current;
-
-    const errStatus = Number((remiseAccountsError as any)?.status || 0);
-    if (errStatus !== 404 && current.length !== 0) return current;
-    if (!Array.isArray(legacyRemiseAccountsRaw)) return current;
-
-    return legacyRemiseAccountsRaw.map((row: any) => ({
+    if (!Array.isArray(clientRemisesRaw)) return [];
+    return clientRemisesRaw.map((row: any) => ({
       id: Number(row.id),
       nom: String(row.nom || row.contact_nom || `Remise #${row.id}`),
       type: row.type === 'client_abonne' ? 'client_abonne' : 'client-remise',
@@ -135,7 +128,7 @@ const CaissePage = () => {
         ((Number(row.remise_gagnee_total ?? row.total_remise ?? 0) || 0) - (Number(row.remise_utilisee ?? 0) || 0))
       ),
     }));
-  }, [legacyRemiseAccountsRaw, remiseAccountsError, remiseAccountsRaw]);
+  }, [clientRemisesRaw]);
 
   // Audit meta for payments (created_by_name / updated_by_name)
   const [paymentsMeta, setPaymentsMeta] = useState<Record<string, { created_by_name: any; updated_by_name: any }>>({});

@@ -169,7 +169,7 @@ router.get('/clients', async (_req, res) => {
   }
 });
 
-router.get('/remise-accounts', verifyToken, async (req, res) => {
+router.get('/payment-accounts', verifyToken, async (req, res) => {
   try {
     await ensureRemisesTables();
 
