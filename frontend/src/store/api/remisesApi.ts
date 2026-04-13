@@ -16,7 +16,7 @@ export const remisesApi = api.injectEndpoints({
         if (params?.onlyAvailable) searchParams.set('onlyAvailable', '1');
         if (params?.types?.length) searchParams.set('types', params.types.join(','));
         const suffix = searchParams.toString();
-        return `/remises/remise-accounts${suffix ? `?${suffix}` : ''}`;
+        return `/remises/payment-accounts${suffix ? `?${suffix}` : ''}`;
       },
       providesTags: [{ type: 'Remise', id: 'LIST' }],
     }),

@@ -87,6 +87,12 @@ const StockPage: React.FC = () => {
     designation: string;
   }>(null);
 
+  const getTabForProduct = (product: Partial<Product> & { non_stockable?: boolean | number | null; est_service?: boolean | number | null }) => {
+    if (product.est_service) return 'Services' as const;
+    if (product.non_stockable) return 'Produits non stockables' as const;
+    return 'Produits' as const;
+  };
+
   const formatNum = (n: number) => String(parseFloat((Number(n || 0)).toFixed(2)));
 
   // Dynamically compute percentage from actual prices: pct = ((price / prix_achat) - 1) * 100
@@ -1180,6 +1186,7 @@ const StockPage: React.FC = () => {
           refetchProducts?.();
         }}
         onProductUpdated={(updatedProduct) => {
+          setActiveTab(getTabForProduct(updatedProduct as any));
           console.log('Produit mis à jour:', updatedProduct);
           showSuccess('Produit mis à jour avec succès !');
           refetchProducts?.();
