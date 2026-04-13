@@ -30,7 +30,7 @@ import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetAllClientsQuery, useGetAllFournisseursQuery } from '../store/api/contactsApi';
-import { useGetRemisePaymentAccountsQuery } from '../store/api/remisesApi';
+import { useGetClientRemisesQuery, useGetRemisePaymentAccountsQuery } from '../store/api/remisesApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { canModifyPayments } from '../utils/permissions';
@@ -101,7 +101,8 @@ const CaissePage = () => {
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
   const { data: talons = [] } = useGetTalonsQuery(undefined);
   const { data: paymentsApi = [] } = useGetPaymentsQuery();
-  const { data: remiseAccountsRaw = [] } = useGetRemisePaymentAccountsQuery();
+  const { data: remiseAccountsRaw = [], error: remiseAccountsError } = useGetRemisePaymentAccountsQuery();
+  const { data: legacyRemiseAccountsRaw = [] } = useGetClientRemisesQuery();
   const payments = paymentsApi;
   const [createPayment] = useCreatePaymentMutation();
   const [updatePaymentApi] = useUpdatePaymentMutation();
@@ -112,7 +113,29 @@ const CaissePage = () => {
   const { data: personnelNames = [] } = useGetPersonnelNamesQuery();
   const [createOldTalonCaisse] = useCreateOldTalonCaisseMutation();
   const { token } = useAuth();
-  const remiseAccounts = remiseAccountsRaw as RemisePaymentAccount[];
+  const remiseAccounts = useMemo<RemisePaymentAccount[]>(() => {
+    const current = Array.isArray(remiseAccountsRaw) ? (remiseAccountsRaw as RemisePaymentAccount[]) : [];
+    if (current.length > 0) return current;
+
+    const errStatus = Number((remiseAccountsError as any)?.status || 0);
+    if (errStatus !== 404 && current.length !== 0) return current;
+    if (!Array.isArray(legacyRemiseAccountsRaw)) return current;
+
+    return legacyRemiseAccountsRaw.map((row: any) => ({
+      id: Number(row.id),
+      nom: String(row.nom || row.contact_nom || `Remise #${row.id}`),
+      type: row.type === 'client_abonne' ? 'client_abonne' : 'client-remise',
+      contact_id: row.contact_id != null ? Number(row.contact_id) : null,
+      contact_nom: row.contact_nom ?? null,
+      contact_societe: row.contact_societe ?? null,
+      earned_total: Number(row.remise_gagnee_total ?? row.total_remise ?? 0),
+      used_total: Number(row.remise_utilisee ?? 0),
+      available_total: Number(
+        row.remise_disponible ??
+        ((Number(row.remise_gagnee_total ?? row.total_remise ?? 0) || 0) - (Number(row.remise_utilisee ?? 0) || 0))
+      ),
+    }));
+  }, [legacyRemiseAccountsRaw, remiseAccountsError, remiseAccountsRaw]);
 
   // Audit meta for payments (created_by_name / updated_by_name)
   const [paymentsMeta, setPaymentsMeta] = useState<Record<string, { created_by_name: any; updated_by_name: any }>>({});
@@ -139,6 +162,17 @@ const CaissePage = () => {
   const getRemiseTypeLabel = (type?: string | null) => {
     if (type === 'client_abonne') return 'Client abonné';
     return 'Client remise';
+  };
+
+  const getContactSelectLabel = (contact: Contact, kind: 'Client' | 'Fournisseur') => {
+    const baseName = String(contact.nom_complet || `${kind} #${contact.id}`).trim();
+    const extras = [
+      contact.societe ? String(contact.societe).trim() : '',
+      contact.telephone ? String(contact.telephone).trim() : '',
+      (contact as any).reference ? String((contact as any).reference).trim() : '',
+    ].filter(Boolean);
+
+    return extras.length ? `${baseName} - ${extras.join(' - ')}` : baseName;
   };
 
   const getPaymentContactName = (payment: Payment) => {
@@ -2123,7 +2157,13 @@ const paymentValidationSchema = Yup.object({
                             id="remise_account_id"
                             options={filteredRemiseAccounts.map((account) => ({
                               value: String(account.id),
-                              label: `${account.nom} - ${getRemiseTypeLabel(account.type)} - ${Number(account.available_total || 0).toFixed(2)} DH`,
+                              label: [
+                                account.nom,
+                                account.contact_nom || '',
+                                account.contact_societe || '',
+                                getRemiseTypeLabel(account.type),
+                                `${Number(account.available_total || 0).toFixed(2)} DH`,
+                              ].filter(Boolean).join(' - '),
                               data: account,
                             }))}
                             value={values.remise_account_id ? String(values.remise_account_id) : ''}
@@ -2158,7 +2198,7 @@ const paymentValidationSchema = Yup.object({
                             id="contact_id_select"
                             options={(isFournisseurPayment ? fournisseurs : clients).map((c: Contact) => ({
                               value: String(c.id),
-                              label: c.nom_complet || `${isFournisseurPayment ? 'Fournisseur' : 'Client'} #${c.id}`,
+                              label: getContactSelectLabel(c, isFournisseurPayment ? 'Fournisseur' : 'Client'),
                               data: c,
                             }))}
                             value={values.contact_id ? String(values.contact_id) : ''}

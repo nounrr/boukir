@@ -39,14 +39,25 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const lastOpenAtRef = useRef<number>(0);
 
   // Multi-word search: every token must be contained in the label (order-independent)
-  const norm = (s: string) => s.toLowerCase();
+  const norm = (s: string) => String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   const tokens = norm(searchTerm).split(/\s+/).filter(Boolean);
   const matchLabel = (label: string) => {
     const L = norm(label);
     if (tokens.length === 0) return true;
     return tokens.every((t) => L.includes(t));
   };
-  const allMatches = options.filter((o) => matchLabel(o.label));
+  const allMatches = options.filter((o) => {
+    const haystack = [o.label, o.value, o.data ? JSON.stringify(o.data) : '']
+      .map((part) => norm(part))
+      .join(' ');
+    if (tokens.length === 0) return true;
+    return tokens.every((t) => haystack.includes(t));
+  });
   const filteredOptions = allMatches.slice(0, displayCount);
   const hasMoreItems = allMatches.length > displayCount;
   const selectedOption = options.find(o => o.value === value);

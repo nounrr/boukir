@@ -969,6 +969,8 @@ const BonsPage = () => {
     return 0;
   };
 
+  const formatNumber4 = (value: any): string => parseMontantNumber(value).toFixed(4);
+
   const getDisplayedUnitPrice = (item: any, type: string): number => {
     if (type === 'Commande') {
       return (
@@ -1209,7 +1211,7 @@ const BonsPage = () => {
         `Bonjour ${getContactName(bon) || ''}`,
         `Type: ${bon.type || effectiveCurrentTab}`,
         `Numéro: ${getDisplayNumero(bon)}`,
-        `Montant: ${computeMontantTotal(bon).toFixed(2)} DH`,
+        `Montant: ${formatNumber4(computeMontantTotal(bon))} DH`,
         bon.date_creation ? `Date: ${formatDateTimeWithHour(bon.date_creation)}` : '',
         bon.adresse_livraison ? `Adresse: ${bon.adresse_livraison}` : '',
         bon.lieu_chargement ? `Lieu de chargement: ${bon.lieu_chargement}` : '',
@@ -1217,7 +1219,7 @@ const BonsPage = () => {
         bonItems.length
           ? 'Articles:\n' + bonItems.map((it: any) => {
               const unit = it.prix_unitaire || it.prix || 0;
-              return `  - ${it.nom || it.name || it.designation || ''} x${it.quantite || it.qty || 1} @ ${Number(unit).toFixed(2)} DH`;
+              return `  - ${it.nom || it.name || it.designation || ''} x${formatNumber4(it.quantite || it.qty || 1)} @ ${formatNumber4(unit)} DH`;
             }).join('\n')
           : '',
         'Merci.'
@@ -1322,7 +1324,7 @@ const BonsPage = () => {
 
       // Utiliser la route /whatsapp/bon pour tous les types (envoie le PDF en pièce jointe)
       const numeroDisplay = getDisplayNumero(bon) || 'N/A';
-      const montantDisplay = computeMontantTotal(bon).toFixed(2);
+      const montantDisplay = formatNumber4(computeMontantTotal(bon));
       
       try {
         const resp = await fetch('/api/notifications/whatsapp/bon', {
@@ -1601,7 +1603,7 @@ const BonsPage = () => {
         const numero = bAny?.numero || bAny?.order_number || id;
         const name = bAny?.client_nom || bAny?.customer_name || getContactName(o);
         const total = computeMontantTotal(o);
-        inputOptions[String(id)] = `${numero} • ${name} • ${Number(total || 0).toFixed(2)} DH`;
+        inputOptions[String(id)] = `${numero} • ${name} • ${formatNumber4(total || 0)} DH`;
       }
 
       const result = await Swal.fire({
@@ -2371,7 +2373,7 @@ const BonsPage = () => {
                         })()}
                       </td>
                       <td className="px-4 py-2">
-                        <div className="text-sm font-semibold text-gray-900">{computeMontantTotal(bon).toFixed(2)} DH</div>
+                        <div className="text-sm font-semibold text-gray-900">{formatNumber4(computeMontantTotal(bon))} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
                         {(() => {
                           const bonReste = Number((bon as any)?.reste ?? 0);
@@ -2380,7 +2382,7 @@ const BonsPage = () => {
                           return (
                             <div className="text-xs font-semibold text-orange-600 mt-1 flex items-center gap-1">
                               <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-                              Montant payé: {bonPaye.toFixed(2)} DH
+                              Montant payé: {formatNumber4(bonPaye)} DH
                             </div>
                           );
                         })()}
@@ -2398,7 +2400,7 @@ const BonsPage = () => {
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-2 text-sm">{computeTotalPoids(bon).toFixed(2)}</td>
+                      <td className="px-4 py-2 text-sm">{formatNumber4(computeTotalPoids(bon))}</td>
                       <td className="px-4 py-2 text-sm">
                         {(() => {
                           // Show mouvement only for sales/stock out types (Sortie, Comptant, Avoir, AvoirComptant)
@@ -2419,7 +2421,7 @@ const BonsPage = () => {
                             const cost = resolveCostWithVariantUnit(it);
                             const pv = Number(it.prix_unitaire ?? 0) || 0;
                             const q = Number(it.quantite ?? 0) || 0;
-                            return `#${idx} ${(it.designation || '').slice(0,20)} | snap:${snapId||'-'} var:${it.variant_id||'-'} u:${it.unit_id||'-'} | PA/CR=${cost} PV=${pv} Q=${q} => ${((pv-cost)*q).toFixed(2)}`;
+                            return `#${idx} ${(it.designation || '').slice(0,20)} | snap:${snapId||'-'} var:${it.variant_id||'-'} u:${it.unit_id||'-'} | PA/CR=${formatNumber4(cost)} PV=${formatNumber4(pv)} Q=${formatNumber4(q)} => ${formatNumber4((pv-cost)*q)}`;
                           });
                           const debugTitle = debugLines.join('\n');
                           let cls = 'text-gray-600';
@@ -2427,8 +2429,8 @@ const BonsPage = () => {
                           else if (profit < 0) cls = 'text-red-600';
                           return (
                             <span className={`font-semibold ${cls} cursor-help`} title={debugTitle}> 
-                              {profit.toFixed(2)} DH{marginPct !== null && (
-                                <span className="text-xs font-normal ml-1">({marginPct.toFixed(1)}%)</span>
+                              {formatNumber4(profit)} DH{marginPct !== null && (
+                                <span className="text-xs font-normal ml-1">({formatNumber4(marginPct)}%)</span>
                               )}
                             </span>
                           );
@@ -3164,11 +3166,11 @@ const BonsPage = () => {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Montant total:</p>
-                      <p className="text-lg font-bold text-blue-600">{computeMontantTotal(selectedBon).toFixed(2)} DH</p>
+                      <p className="text-lg font-bold text-blue-600">{formatNumber4(computeMontantTotal(selectedBon))} DH</p>
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-600">Poids total:</p>
-                      <p className="text-lg font-bold text-amber-600">{computeTotalPoids(selectedBon).toFixed(2)} kg</p>
+                      <p className="text-lg font-bold text-amber-600">{formatNumber4(computeTotalPoids(selectedBon))} kg</p>
                     </div>
                   </div>
 
@@ -3214,7 +3216,7 @@ const BonsPage = () => {
                               )}
                               {contactFromUserId?.solde_cumule != null && (
                                 <p className="text-xs text-gray-600 mt-1">
-                                  Solde cumulé: {Number(contactFromUserId.solde_cumule).toFixed(2)} DH
+                                  Solde cumulé: {formatNumber4(contactFromUserId.solde_cumule)} DH
                                 </p>
                               )}
                             </div>
@@ -3288,19 +3290,19 @@ const BonsPage = () => {
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div>
                               <span className="text-gray-500">subtotal</span>
-                              <p className="font-semibold text-gray-900">{raw?.subtotal != null ? `${Number(raw.subtotal).toFixed(2)} DH` : '-'}</p>
+                              <p className="font-semibold text-gray-900">{raw?.subtotal != null ? `${formatNumber4(raw.subtotal)} DH` : '-'}</p>
                             </div>
                             <div>
                               <span className="text-gray-500">tax_amount</span>
-                              <p className="font-semibold text-gray-900">{raw?.tax_amount != null ? `${Number(raw.tax_amount).toFixed(2)} DH` : '-'}</p>
+                              <p className="font-semibold text-gray-900">{raw?.tax_amount != null ? `${formatNumber4(raw.tax_amount)} DH` : '-'}</p>
                             </div>
                             <div>
                               <span className="text-gray-500">shipping_cost</span>
-                              <p className="font-semibold text-gray-900">{raw?.shipping_cost != null ? `${Number(raw.shipping_cost).toFixed(2)} DH` : '-'}</p>
+                              <p className="font-semibold text-gray-900">{raw?.shipping_cost != null ? `${formatNumber4(raw.shipping_cost)} DH` : '-'}</p>
                             </div>
                             <div>
                               <span className="text-gray-500">discount_amount</span>
-                              <p className="font-semibold text-gray-900">{raw?.discount_amount != null ? `${Number(raw.discount_amount).toFixed(2)} DH` : '-'}</p>
+                              <p className="font-semibold text-gray-900">{raw?.discount_amount != null ? `${formatNumber4(raw.discount_amount)} DH` : '-'}</p>
                             </div>
                             <div>
                               <span className="text-gray-500">promo_code</span>
@@ -3308,11 +3310,11 @@ const BonsPage = () => {
                             </div>
                             <div>
                               <span className="text-gray-500">promo_discount_amount</span>
-                              <p className="font-semibold text-gray-900">{raw?.promo_discount_amount != null ? `${Number(raw.promo_discount_amount).toFixed(2)} DH` : '-'}</p>
+                              <p className="font-semibold text-gray-900">{raw?.promo_discount_amount != null ? `${formatNumber4(raw.promo_discount_amount)} DH` : '-'}</p>
                             </div>
                             <div className="col-span-2">
                               <span className="text-gray-500">total_amount</span>
-                              <p className="font-bold text-blue-700 text-lg">{raw?.total_amount != null ? `${Number(raw.total_amount).toFixed(2)} DH` : '-'}</p>
+                              <p className="font-bold text-blue-700 text-lg">{raw?.total_amount != null ? `${formatNumber4(raw.total_amount)} DH` : '-'}</p>
                             </div>
                           </div>
                         </div>
@@ -3342,7 +3344,7 @@ const BonsPage = () => {
                             </div>
                             <div>
                               <span className="text-gray-500">solde_amount</span>
-                              <p className="font-semibold text-gray-900">{raw?.solde_amount != null ? `${Number(raw.solde_amount).toFixed(2)} DH` : '-'}</p>
+                              <p className="font-semibold text-gray-900">{raw?.solde_amount != null ? `${formatNumber4(raw.solde_amount)} DH` : '-'}</p>
                             </div>
                           </div>
                         </div>
@@ -3356,11 +3358,11 @@ const BonsPage = () => {
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div>
                               <span className="text-gray-500">remise_used_amount</span>
-                              <p className="font-semibold text-gray-900">{raw?.remise_used_amount != null ? `${Number(raw.remise_used_amount).toFixed(2)} DH` : '-'}</p>
+                              <p className="font-semibold text-gray-900">{raw?.remise_used_amount != null ? `${formatNumber4(raw.remise_used_amount)} DH` : '-'}</p>
                             </div>
                             <div>
                               <span className="text-gray-500">remise_earned_amount</span>
-                              <p className="font-semibold text-gray-900">{raw?.remise_earned_amount != null ? `${Number(raw.remise_earned_amount).toFixed(2)} DH` : '-'}</p>
+                              <p className="font-semibold text-gray-900">{raw?.remise_earned_amount != null ? `${formatNumber4(raw.remise_earned_amount)} DH` : '-'}</p>
                             </div>
                             <div>
                               <span className="text-gray-500">remise_earned_at</span>
@@ -3417,11 +3419,11 @@ const BonsPage = () => {
                                         return (
                                           <tr key={String(it.id)} className="hover:bg-gray-50">
                                             <td className="px-4 py-2 text-sm text-gray-700">{label}</td>
-                                            <td className="px-4 py-2 text-sm text-right">{q}</td>
-                                            <td className="px-4 py-2 text-sm text-right">{pu.toFixed(2)} DH</td>
-                                            <td className="px-4 py-2 text-sm text-right">{sub.toFixed(2)} DH</td>
-                                            <td className="px-4 py-2 text-sm text-right">{rp.toFixed(2)}%</td>
-                                            <td className="px-4 py-2 text-sm text-right font-semibold text-pink-700">{ra.toFixed(2)} DH</td>
+                                            <td className="px-4 py-2 text-sm text-right">{formatNumber4(q)}</td>
+                                            <td className="px-4 py-2 text-sm text-right">{formatNumber4(pu)} DH</td>
+                                            <td className="px-4 py-2 text-sm text-right">{formatNumber4(sub)} DH</td>
+                                            <td className="px-4 py-2 text-sm text-right">{formatNumber4(rp)}%</td>
+                                            <td className="px-4 py-2 text-sm text-right font-semibold text-pink-700">{formatNumber4(ra)} DH</td>
                                           </tr>
                                         );
                                       })
@@ -3429,7 +3431,7 @@ const BonsPage = () => {
                                   </tbody>
                                 </table>
                                 <div className="flex justify-end text-sm font-semibold mt-2 text-pink-800">
-                                  Total remise (articles): {Number(totalRemise || 0).toFixed(2)} DH
+                                  Total remise (articles): {formatNumber4(totalRemise || 0)} DH
                                 </div>
                               </div>
                             );
@@ -3566,12 +3568,12 @@ const BonsPage = () => {
                                     <span className="ml-1 text-[10px] text-purple-500">v:{item.variant_id}</span>
                                   )}
                                 </td>
-                                <td className="px-4 py-2 text-sm text-right">{q}</td>
-                                <td className="px-4 py-2 text-sm text-right">{kgUnit.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-sm text-right font-medium">{poids.toFixed(2)}</td>
-                                <td className="px-4 py-2 text-sm text-right text-orange-600" title={`item.pa=${item.prix_achat} item.cr=${item.cout_revient} resolved=${resolvedCost}`}>{resolvedCost.toFixed(2)} DH</td>
-                                <td className="px-4 py-2 text-sm text-right">{displayedUnitPrice.toFixed(2)} DH</td>
-                                <td className="px-4 py-2 text-sm text-right font-semibold">{displayedLineTotal.toFixed(2)} DH</td>
+                                <td className="px-4 py-2 text-sm text-right">{formatNumber4(q)}</td>
+                                <td className="px-4 py-2 text-sm text-right">{formatNumber4(kgUnit)}</td>
+                                <td className="px-4 py-2 text-sm text-right font-medium">{formatNumber4(poids)}</td>
+                                <td className="px-4 py-2 text-sm text-right text-orange-600" title={`item.pa=${item.prix_achat} item.cr=${item.cout_revient} resolved=${resolvedCost}`}>{formatNumber4(resolvedCost)} DH</td>
+                                <td className="px-4 py-2 text-sm text-right">{formatNumber4(displayedUnitPrice)} DH</td>
+                                <td className="px-4 py-2 text-sm text-right font-semibold">{formatNumber4(displayedLineTotal)} DH</td>
                               </tr>
                             );
                           }))}
@@ -3579,7 +3581,7 @@ const BonsPage = () => {
                       </table>
                     </div>
                     <div className="flex justify-end text-base font-semibold mt-2">
-                      Total poids: {computeTotalPoids(selectedBon).toFixed(2)} kg | Total montant: {computeMontantTotal(selectedBon).toFixed(2)} DH
+                      Total poids: {formatNumber4(computeTotalPoids(selectedBon))} kg | Total montant: {formatNumber4(computeMontantTotal(selectedBon))} DH
                     </div>
                   </div>
 
@@ -3682,7 +3684,7 @@ const BonsPage = () => {
                         ecommerceRemiseDraftItems.map((it: any) => (
                           <tr key={String(it.order_item_id)} className="hover:bg-gray-50">
                             <td className="px-4 py-2 text-sm text-gray-700">{String(it.label || 'Article')}</td>
-                            <td className="px-4 py-2 text-sm text-right">{Number(it.subtotal || 0).toFixed(2)} DH</td>
+                            <td className="px-4 py-2 text-sm text-right">{formatNumber4(it.subtotal || 0)} DH</td>
                             <td className="px-4 py-2 text-sm text-right">
                               <input
                                 type="number"
@@ -4144,8 +4146,8 @@ const BonsPage = () => {
                                     className="mr-2"
                                   />
                                   <span>
-                                    {productName} - Qté: {item.quantite || item.qty || 0} - 
-                                    Prix: {Number(item.prix_unitaire || 0).toFixed(2)} €
+                                    {productName} - Qté: {formatNumber4(item.quantite || item.qty || 0)} - 
+                                    Prix: {formatNumber4(item.prix_unitaire || 0)} €
                                   </span>
                                 </label>
                               );
