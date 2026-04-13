@@ -4465,13 +4465,44 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 {/* SERIE / Info rapide + debug snapshot */}
                                 <td className="px-1 py-2 text-sm text-gray-700">
                                   {(() => {
-                                    const resolvedCostContext = resolveItemCostContext(
-                                      values.items[index],
-                                      products as any[],
-                                      snapshotProducts as any[]
-                                    );
-                                    const displayPA = resolvedCostContext.prix_achat || Number(values.items[index].prix_achat) || 0;
-                                    const displayCR = resolvedCostContext.cout_revient || Number(values.items[index].cout_revient) || 0;
+                                    const item = values.items[index];
+                                    const product = products.find((p: any) => String(p.id) === String(item.product_id));
+                                    const unitId = item.unit_id;
+                                    const units = product?.units ?? [];
+                                    const unitObj = unitId ? units.find((u: any) => String(u.id) === String(unitId)) : null;
+                                    const factor = unitObj ? (Number(unitObj.conversion_factor) || 1) : 1;
+
+                                    // Resolve base PA/CR from snapshot > product (unfactored sources)
+                                    let snapshotProd: any = null;
+                                    const snapId = item.product_snapshot_id;
+                                    if (snapId && snapshotProducts.length > 0) {
+                                      snapshotProd = snapshotProducts.find((p: any) => p.snapshot_id === snapId) || null;
+                                    }
+                                    const variantId = item.variant_id;
+                                    const variant = variantId && product?.variants?.length
+                                      ? (product.variants as any[]).find((v: any) => String(v.id) === String(variantId)) || null
+                                      : null;
+
+                                    const basePA =
+                                      Number(snapshotProd?.prix_achat) ||
+                                      Number(variant?.prix_achat) ||
+                                      Number(product?.prix_achat) ||
+                                      0;
+                                    const baseCR =
+                                      Number(snapshotProd?.cout_revient) ||
+                                      Number((variant as any)?.cout_revient) ||
+                                      Number(product?.cout_revient) ||
+                                      basePA ||
+                                      0;
+
+                                    // Apply factor to base values; fall back to formik if base is 0
+                                    const displayPA = basePA
+                                      ? Number((basePA * factor).toFixed(2))
+                                      : Number(item.prix_achat) || 0;
+                                    const displayCR = baseCR
+                                      ? Number((baseCR * factor).toFixed(2))
+                                      : Number(item.cout_revient) || 0;
+
                                     return <div>{`PA${displayPA} CR${displayCR}`}</div>;
                                   })()}
                                   <div className="text-[9px] text-orange-600">
