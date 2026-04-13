@@ -726,16 +726,8 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       }
     }
 
-    const [rows] = await connection.execute(`
-      SELECT bc.*, COALESCE(bc.client_nom, c.nom_complet) AS client_nom, v.nom AS vehicule_nom
-      FROM bons_comptant bc
-      LEFT JOIN contacts c ON c.id = bc.client_id
-      LEFT JOIN vehicules v ON v.id = bc.vehicule_id
-      WHERE bc.id = ?
-    `, [id]);
-
     await connection.commit();
-    res.json({ success: true, message: `Statut mis à jour: ${statut}`, data: rows[0] });
+    res.json({ success: true, message: `Statut mis à jour: ${statut}`, data: { id: Number(id), statut } });
   } catch (error) {
     await connection.rollback();
     console.error('PATCH /comptant/:id/statut', error);
