@@ -72,6 +72,7 @@ import notificationsRouter from './routes/notifications.js';
 import aiRouter from './routes/ai.js';
 import inventoryRouter from './routes/inventory.js';
 import statsRouter from './routes/stats.js';
+import calcRouter from './routes/calc.js';
 
 import {
   ensureContactsRemiseBalance,
@@ -338,6 +339,7 @@ app.use('/api/livraisons', livraisonsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/inventory', inventoryRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/calc', calcRouter);
 
 // 404
 app.use((req, res) => {

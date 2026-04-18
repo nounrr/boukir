@@ -24,7 +24,12 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
     useGetAllClientsQuery, 
   useGetAllFournisseursQuery
   } from '../store/api/contactsApi';
-  import { useGetProductsQuery, useGetProductsWithSnapshotsQuery } from '../store/api/productsApi';
+import { useGetProductsQuery, useGetProductsWithSnapshotsQuery } from '../store/api/productsApi';
+import {
+  useGetComptantPaymentsQuery,
+  useCreateComptantPaymentMutation,
+  useDeleteComptantPaymentMutation
+} from '../store/api/comptantApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
@@ -110,6 +115,11 @@ const BonsPage = () => {
   const [selectedBonForPrint, setSelectedBonForPrint] = useState<any>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [selectedBonForPDFPrint, setSelectedBonForPDFPrint] = useState<any>(null);
+  const [isComptantPaymentsModalOpen, setIsComptantPaymentsModalOpen] = useState(false);
+  const [selectedComptantForPayments, setSelectedComptantForPayments] = useState<any>(null);
+  const [newComptantPaymentAmount, setNewComptantPaymentAmount] = useState('');
+  const [newComptantPaymentDate, setNewComptantPaymentDate] = useState('');
+  const [newComptantPaymentNote, setNewComptantPaymentNote] = useState('');
   // État pour la modal de duplication AWATEF
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
   const [selectedBonForDuplicate, setSelectedBonForDuplicate] = useState<any>(null);
@@ -155,7 +165,8 @@ const BonsPage = () => {
   const anyModalOpen = isCreateModalOpen || isViewModalOpen || isEcommerceRemiseModalOpen ||
     isNewClientModalOpen || isNewSupplierModalOpen || isNewVehicleModalOpen ||
     isCreateAvoirModalOpen || isCreateAvoirClientModalOpen || isProductModalOpen ||
-    isDevisTransformModalOpen || isThermalPrintModalOpen || isPrintModalOpen || isDuplicateModalOpen;
+    isDevisTransformModalOpen || isThermalPrintModalOpen || isPrintModalOpen || isDuplicateModalOpen ||
+    isComptantPaymentsModalOpen;
   useEffect(() => {
     if (anyModalOpen) {
       document.body.style.overflow = 'hidden';
@@ -245,6 +256,9 @@ const BonsPage = () => {
   const { data: clients = [], isLoading: clientsLoading } = useGetAllClientsQuery();
   const { data: suppliers = [], isLoading: suppliersLoading } = useGetAllFournisseursQuery();
   const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery();
+  const { data: comptantPayments = [] } = useGetComptantPaymentsQuery(selectedComptantForPayments?.id, {
+    skip: !selectedComptantForPayments?.id
+  });
   // Snapshot-expanded products (with historic prix_achat/cout_revient per bon de commande)
   const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery();
   const [deleteBonMutation] = useDeleteBonMutation();
@@ -252,6 +266,8 @@ const BonsPage = () => {
   const [updateEcommerceOrderStatus] = useUpdateEcommerceOrderStatusMutation();
   const [updateEcommerceOrderRemises, { isLoading: isSavingEcommerceRemises }] = useUpdateEcommerceOrderRemisesMutation();
   const [createBon] = useCreateBonMutation();
+  const [createComptantPayment, { isLoading: isCreatingComptantPayment }] = useCreateComptantPaymentMutation();
+  const [deleteComptantPayment] = useDeleteComptantPaymentMutation();
   // Bon links API: record duplications
   const [createBonLink] = useCreateBonLinkMutation();
   const [getBonLinksBatch] = useGetBonLinksBatchMutation();
@@ -1042,6 +1058,12 @@ const BonsPage = () => {
     return total;
   };
 
+  const isBonComptantNonPaye = (bon: any): boolean => {
+    const statut = String(bon?.statut || '').trim().toLowerCase();
+    if (statut.includes('annul') || statut === 'avoir') return false;
+    return (bon as any)?.non_paye === true || Number((bon as any)?.non_paye ?? 0) === 1;
+  };
+
   // Handle sorting
   const handleSort = (field: 'numero' | 'date' | 'contact' | 'montant') => {
     if (sortField === field) {
@@ -1076,11 +1098,10 @@ const BonsPage = () => {
 
       const matchesStatus = !statusFilter || statusFilter.length === 0 ? true : (bon.statut && statusFilter.includes(String(bon.statut)));
 
-      const bonReste = Number((bon as any)?.reste ?? 0);
-      const matchesPaymentState = isUnpaidComptantTab
-        ? bonReste > 0
-        : isComptantTab
-          ? bonReste <= 0
+      const matchesPaymentState = currentTab === 'ComptantNonPaye'
+        ? isBonComptantNonPaye(bon)
+        : currentTab === 'Comptant'
+          ? !isBonComptantNonPaye(bon)
           : true;
 
       return matchesSearch && matchesStatus && matchesPaymentState;
@@ -1453,6 +1474,22 @@ const BonsPage = () => {
     setCurrentPage(1);
   }, [currentTab, searchTerm]);
 
+  useEffect(() => {
+    if (!selectedComptantForPayments?.id) return;
+    const refreshed = (bons as any[]).find((bon: any) => Number(bon.id) === Number(selectedComptantForPayments.id));
+    if (refreshed) {
+      setSelectedComptantForPayments(refreshed);
+    }
+  }, [bons, selectedComptantForPayments?.id]);
+
+  useEffect(() => {
+    if (!selectedBon?.id || !isCreateModalOpen) return;
+    const refreshed = (bons as any[]).find((bon: any) => Number(bon.id) === Number(selectedBon.id));
+    if (refreshed) {
+      setSelectedBon(refreshed);
+    }
+  }, [bons, selectedBon?.id, isCreateModalOpen]);
+
   // Tabs configuration
   const tabs = useMemo(() => {
     const base = [
@@ -1483,6 +1520,73 @@ const BonsPage = () => {
   }, [isPdg, isChefChauffeur]);
 
   const toMySQLDateTime = (d: Date = new Date()) => d.toISOString().slice(0, 19).replace('T', ' ');
+
+  const openComptantPaymentsModal = (bon: any) => {
+    setSelectedComptantForPayments(bon);
+    setNewComptantPaymentAmount('');
+    setNewComptantPaymentDate(formatMySQLToDateTimeInput(toMySQLDateTime(new Date())) || '');
+    setNewComptantPaymentNote('');
+    setIsComptantPaymentsModalOpen(true);
+  };
+
+  const closeComptantPaymentsModal = () => {
+    setIsComptantPaymentsModalOpen(false);
+    setSelectedComptantForPayments(null);
+    setNewComptantPaymentAmount('');
+    setNewComptantPaymentDate('');
+    setNewComptantPaymentNote('');
+  };
+
+  const handleCreateComptantPayment = async () => {
+    try {
+      if (!selectedComptantForPayments?.id) return;
+      const montant = Number(String(newComptantPaymentAmount || '').replace(',', '.'));
+      if (!(montant > 0)) {
+        showError('Montant de paiement invalide.');
+        return;
+      }
+      if (!newComptantPaymentDate) {
+        showError('Date de paiement requise.');
+        return;
+      }
+
+      await createComptantPayment({
+        id: selectedComptantForPayments.id,
+        montant,
+        date_paiement: formatDateInputToMySQL(newComptantPaymentDate),
+        note: newComptantPaymentNote || null,
+        created_by: currentUser?.id,
+      }).unwrap();
+
+      setNewComptantPaymentAmount('');
+      setNewComptantPaymentNote('');
+      setNewComptantPaymentDate(formatMySQLToDateTimeInput(toMySQLDateTime(new Date())) || '');
+      showSuccess('Paiement ajouté au bon comptant non payé.');
+    } catch (error: any) {
+      showError(error?.data?.message || error?.message || 'Erreur lors de l\'ajout du paiement.');
+    }
+  };
+
+  const handleDeleteComptantPayment = async (paymentId: number) => {
+    if (!selectedComptantForPayments?.id) return;
+    const result = await showConfirmation(
+      'Supprimer ce paiement de ce bon comptant non payé ?',
+      'Supprimer paiement',
+      'Supprimer',
+      'Annuler'
+    );
+    if (!result.isConfirmed) return;
+
+    try {
+      await deleteComptantPayment({
+        id: selectedComptantForPayments.id,
+        paymentId,
+      }).unwrap();
+      showSuccess('Paiement supprimé.');
+    } catch (error: any) {
+      showError(error?.data?.message || error?.message || 'Erreur lors de la suppression du paiement.');
+    }
+  };
 
   const openBlankAvoirEcommerceModal = useCallback(() => {
     if (!isPdg) {
@@ -2384,7 +2488,7 @@ const BonsPage = () => {
                         {(() => {
                           const bonReste = Number((bon as any)?.reste ?? 0);
                           const bonPaye = Math.max(0, computeMontantTotal(bon) - bonReste);
-                          if (!isComptantTab || bonReste <= 0) return null;
+                          if (currentTab !== 'ComptantNonPaye' || bonReste <= 0) return null;
                           return (
                             <div className="text-xs font-semibold text-orange-600 mt-1 flex items-center gap-1">
                               <span className="w-2 h-2 rounded-full bg-orange-500"></span>
@@ -2963,6 +3067,18 @@ const BonsPage = () => {
 
                                   {/* Other actions */}
                                   <div className="flex gap-1">
+                                    {effectiveCurrentTab === 'Comptant' && Number((bon as any)?.reste ?? 0) > 0 && (
+                                      <button
+                                        onClick={() => {
+                                          openComptantPaymentsModal(bon);
+                                          setOpenMenuBonId(null);
+                                        }}
+                                        className="p-2 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800 rounded"
+                                        title="Paiements du bon"
+                                      >
+                                        <Plus size={16} />
+                                      </button>
+                                    )}
                                     {/* Audit history */}
                                     {(currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || effectiveCurrentTab === 'Commande' || bon.type === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirFournisseur'))) && (
                                       <button
@@ -3094,6 +3210,115 @@ const BonsPage = () => {
             >
               Suivant
             </button>
+          </div>
+        )}
+
+        {isComptantPaymentsModalOpen && selectedComptantForPayments && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Paiements bon comptant non payé</h2>
+                  <div className="text-sm text-gray-500">{getDisplayNumero(selectedComptantForPayments)} • {getContactName(selectedComptantForPayments)}</div>
+                </div>
+                <button onClick={closeComptantPaymentsModal} className="text-gray-500 hover:text-gray-700">
+                  <XCircle size={20} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <div className="text-xs text-gray-500">Montant total</div>
+                  <div className="text-lg font-semibold text-gray-900">{formatNumber4(computeMontantTotal(selectedComptantForPayments))} DH</div>
+                </div>
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <div className="text-xs text-gray-500">Montant payé</div>
+                  <div className="text-lg font-semibold text-emerald-700">
+                    {formatNumber4((comptantPayments as any[]).reduce((sum, p: any) => sum + Number(p?.montant || 0), 0))} DH
+                  </div>
+                </div>
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <div className="text-xs text-gray-500">Reste</div>
+                  <div className="text-lg font-semibold text-orange-700">{formatNumber4(Number(selectedComptantForPayments?.reste || 0))} DH</div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4 mb-5">
+                <div className="text-sm font-medium text-gray-800 mb-3">Ajouter un paiement</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newComptantPaymentAmount}
+                    onChange={(e) => setNewComptantPaymentAmount(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="Montant"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={newComptantPaymentDate}
+                    onChange={(e) => setNewComptantPaymentDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                  <input
+                    type="text"
+                    value={newComptantPaymentNote}
+                    onChange={(e) => setNewComptantPaymentNote(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="Note"
+                  />
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    onClick={handleCreateComptantPayment}
+                    disabled={isCreatingComptantPayment}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-60"
+                  >
+                    Ajouter paiement
+                  </button>
+                </div>
+              </div>
+
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Montant</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Note</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {(comptantPayments as any[]).length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-4 text-sm text-gray-500">Aucun paiement enregistré pour ce bon.</td>
+                      </tr>
+                    ) : (
+                      (comptantPayments as any[]).map((payment: any) => (
+                        <tr key={payment.id}>
+                          <td className="px-4 py-3 text-sm text-gray-700">{formatDateTimeWithHour(payment.date_paiement)}</td>
+                          <td className="px-4 py-3 text-sm font-semibold text-emerald-700">{formatNumber4(Number(payment.montant || 0))} DH</td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{payment.note || '-'}</td>
+                          <td className="px-4 py-3 text-right">
+                            {currentUser?.role === 'PDG' && (
+                              <button
+                                onClick={() => handleDeleteComptantPayment(Number(payment.id))}
+                                className="text-red-600 hover:text-red-800"
+                                title="Supprimer paiement"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 

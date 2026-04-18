@@ -15,7 +15,7 @@ import { useGetProductsQuery, useGetProductsWithSnapshotsQuery } from '../store/
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
-import { useGetComptantQuery } from '../store/api/comptantApi';
+import { useGetComptantPaymentsQuery, useGetComptantQuery } from '../store/api/comptantApi';
 import { useGetAllClientsQuery, useGetAllFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
 // Removed unused: useGetPaymentsQuery
 import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
@@ -472,7 +472,9 @@ const AutoCheckNonCalculatedForAwatif: React.FC<{ isOpen: boolean; clients: any[
 const ComptantPaidAmountField: React.FC<{
   qtyRaw: Record<number, string>;
   unitPriceRaw: Record<number, string>;
-}> = ({ qtyRaw, unitPriceRaw }) => {
+  paymentHistory?: any[];
+  isEditMode?: boolean;
+}> = ({ qtyRaw, unitPriceRaw, paymentHistory = [], isEditMode = false }) => {
   const { values, setFieldValue } = useFormikContext<any>();
   const normalizePaidDecimal = (value: string) => value.replace(/\s+/g, '').replace(',', '.');
   const isPaidDecimalLike = (value: string) => /^[0-9]*[.,]?[0-9]*$/.test(value);
@@ -497,17 +499,25 @@ const ComptantPaidAmountField: React.FC<{
   const montantTotalComptant = montantTotalFromItems > 0
     ? montantTotalFromItems
     : Number(values.montant_total || 0);
-  const reste = Number(values.reste || 0);
-  const montantPaye = Math.max(0, montantTotalComptant - reste);
-  const [rawValue, setRawValue] = useState(formatPaidValue(montantPaye));
+  const montantPayeHistorique = Array.isArray(paymentHistory)
+    ? paymentHistory.reduce((sum: number, payment: any) => sum + (Number(payment?.montant || 0) || 0), 0)
+    : 0;
+  const rawValue = String(values.montant_paye_saisi ?? '');
+  const montantPayeSaisi = parseFloat(normalizePaidDecimal(rawValue || '0')) || 0;
+  const montantPayeTotal = Math.max(0, Math.min(montantPayeHistorique + montantPayeSaisi, montantTotalComptant));
+  const reste = Math.max(0, Number((montantTotalComptant - montantPayeTotal).toFixed(2)));
 
   useEffect(() => {
-    setRawValue(formatPaidValue(montantPaye));
-  }, [montantPaye]);
+    if (Math.abs(Number(values.reste || 0) - reste) > 0.000001) {
+      setFieldValue('reste', reste, false);
+    }
+  }, [montantTotalComptant, montantPayeHistorique, montantPayeSaisi, reste, setFieldValue, values.reste]);
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <label htmlFor="montant_paye" className="text-sm font-medium text-gray-700">Montant payé (DH):</label>
+      <label htmlFor="montant_paye" className="text-sm font-medium text-gray-700">
+        {isEditMode ? 'Nouveau paiement (DH):' : 'Montant payé (DH):'}
+      </label>
       <input
         type="text"
         id="montant_paye"
@@ -518,21 +528,36 @@ const ComptantPaidAmountField: React.FC<{
         onChange={(e) => {
           const nextRawValue = e.target.value || '';
           if (!isPaidDecimalLike(nextRawValue)) return;
-          setRawValue(nextRawValue);
-          const montantPayeSaisi = parseFloat(normalizePaidDecimal(nextRawValue || '0')) || 0;
-          const montantPayeNormalise = Math.min(Math.max(montantPayeSaisi, 0), montantTotalComptant);
-          const nouveauReste = Math.max(0, montantTotalComptant - montantPayeNormalise);
-          setFieldValue('reste', Number(nouveauReste.toFixed(2)));
+          setFieldValue('montant_paye_saisi', nextRawValue);
         }}
-        onBlur={() => setRawValue(formatPaidValue(montantPaye))}
+        onBlur={() => setFieldValue('montant_paye_saisi', rawValue ? formatPaidValue(montantPayeSaisi) : '')}
         onWheel={(e) => e.currentTarget.blur()}
         className="w-40 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
       />
-      <div className={`px-3 py-2 rounded-md text-sm font-medium ${reste <= 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>
+      <div className={`px-3 py-2 rounded-md text-sm font-medium ${Math.max(0, reste) <= 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>
         Restant: {formatPaidValue(Math.max(0, reste))} DH
       </div>
     </div>
   );
+};
+
+const computeComptantMontantTotal = (
+  values: any,
+  qtyRaw: Record<number, string>,
+  unitPriceRaw: Record<number, string>
+) => {
+  const normalizePaidDecimal = (value: string) => value.replace(/\s+/g, '').replace(',', '.');
+  const montantTotalFromItems = (values.items || []).reduce((sum: number, item: any, idx: number) => {
+    const quantity = parseFloat(normalizePaidDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+    const price = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
+      ? parseFloat(normalizePaidDecimal(unitPriceRaw[idx])) || 0
+      : Number(item.prix_unitaire || 0);
+    return sum + quantity * price;
+  }, 0);
+
+  return montantTotalFromItems > 0
+    ? montantTotalFromItems
+    : Number(values.montant_total || 0);
 };
 
 /* --------------------------------- Composant -------------------------------- */
@@ -811,6 +836,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined);
+  const { data: comptantPaymentsHistory = [] } = useGetComptantPaymentsQuery((initialValues as any)?.id, {
+    skip: !isEditMode || currentTab !== 'Comptant' || !((initialValues as any)?.id),
+  });
   const currentModalType = String((initialValues as any)?.type || currentTab || '');
   const shouldFetchCommandesHistory = isOpen && (
     currentModalType === 'Commande' ||
@@ -1473,8 +1501,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
   phone: initialValues.phone || initialValues.customer_phone || '',
         isNotCalculated: initialValues.isNotCalculated === true || initialValues.isNotCalculated === 1 ? true : false,
-        payer_partiellement: (initialValues.reste !== undefined && Number(initialValues.reste) > 0) || false,
+        payer_partiellement: initialValues.non_paye === true || initialValues.non_paye === 1 || (initialValues.reste !== undefined && Number(initialValues.reste) > 0) || false,
         reste: initialValues.reste || 0,
+        montant_paye_saisi: '',
         statut: initialValues.statut || 'En attente',
       };
     }
@@ -1506,6 +1535,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       isNotCalculated: false,
       payer_partiellement: currentTab === 'Comptant' && comptantPartialPaymentMode === 'required',
       reste: 0,
+      montant_paye_saisi: '',
       items: [
         {
           _rowId: makeRowId(), // id stable
@@ -1999,6 +2029,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
   reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
+  non_paye: requestType === 'Comptant' ? !!values.payer_partiellement : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
       ...(requestType === 'AvoirEcommerce'
         ? {
@@ -2194,6 +2225,23 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       }),
     };
 
+    if (requestType === 'Comptant') {
+      if (values.payer_partiellement) {
+      const montantPayeSaisi = parseFloat(normalizeDecimal(String(values.montant_paye_saisi ?? ''))) || 0;
+      cleanBonData.paiements_non_payes = montantPayeSaisi > 0
+        ? [{
+            montant: Number(montantPayeSaisi.toFixed(2)),
+            date_paiement: cleanBonData.date_creation,
+            note: isEditMode
+              ? 'Paiement ajouté depuis modification du bon comptant non payé'
+              : 'Paiement initial du bon comptant non payé',
+          }]
+        : [];
+      } else {
+        cleanBonData.paiements_non_payes = [];
+      }
+    }
+
     // ChefChauffeur: en modification, autoriser seulement les quantités (tout le reste est verrouillé)
     if (isQtyOnlyEdit) {
       const locked = (initialValues as any) || {};
@@ -2242,6 +2290,13 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     if (isEditMode) {
       const updated = await updateBonMutation({ id: (initialValues as any).id, type: requestType, ...cleanBonData }).unwrap();
+      const mergedUpdatedBon = {
+        ...(initialValues as any),
+        ...cleanBonData,
+        ...(updated && typeof updated === 'object' ? updated : {}),
+        id: (initialValues as any).id,
+        type: requestType,
+      };
       // Rafraîchir les stocks produits immédiatement après mise à jour du bon
       try { dispatch(api.util.invalidateTags(['Product'])); } catch {}
       // Optionally show WhatsApp prompt on update
@@ -2260,15 +2315,15 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
               if (!clientPhone) {
                 showError('Numéro de téléphone client introuvable. Renseignez le champ téléphone.');
               } else {
-                const numero = updated?.numero || (initialValues as any)?.numero || '';
+                const numero = mergedUpdatedBon?.numero || (initialValues as any)?.numero || '';
                 try {
                   await sendBonViaWhatsAppWithPdf({
                     bonType: requestType,
                     numero,
-                    bonRecord: updated,
+                    bonRecord: mergedUpdatedBon,
                     formValues: values,
                     phone: String(clientPhone),
-                    bonId: updated?.id || (initialValues as any)?.id,
+                    bonId: mergedUpdatedBon?.id || (initialValues as any)?.id,
                     montantTotalValue: montantTotal,
                   });
                 } catch (err: any) {
@@ -2282,6 +2337,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           }
         });
       }
+      onBonAdded && onBonAdded(mergedUpdatedBon);
       // Note: La mise à jour des prix des produits pour les bons Commande
       // est maintenant gérée par le backend lors du changement de statut vers "Validé"
       // (voir backend/routes/commandes.js PATCH /:id/statut)
@@ -2435,7 +2491,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       // (voir backend/routes/commandes.js PATCH /:id/statut)
     }
 
-    onBonAdded && onBonAdded(cleanBonData);
+    if (!isEditMode) {
+      onBonAdded && onBonAdded(cleanBonData);
+    }
     onClose();
   } catch (error: any) {
     console.error('Erreur lors de la soumission:', error);
@@ -3360,14 +3418,71 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Partial Payment Option for Comptant - Moved outside client block for visibility */}
-              {values.type === 'Comptant' && (comptantPartialPaymentMode === 'required' || values.payer_partiellement) && (
+              {values.type === 'Comptant' && (
                 <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 mb-4">
+                  {comptantPartialPaymentMode === 'hidden' && (
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                      <input
+                        type="checkbox"
+                        checked={!!values.payer_partiellement}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          const montantTotalComptant = computeComptantMontantTotal(values, qtyRaw, unitPriceRaw);
+                          const montantPayeHistorique = Array.isArray(comptantPaymentsHistory)
+                            ? comptantPaymentsHistory.reduce((sum: number, payment: any) => sum + (Number(payment?.montant || 0) || 0), 0)
+                            : 0;
+                          setFieldValue('payer_partiellement', checked);
+                          if (checked) {
+                            const resteInitial = Math.max(0, Number((montantTotalComptant - montantPayeHistorique).toFixed(2)));
+                            setFieldValue('reste', resteInitial);
+                            setFieldValue('montant_paye_saisi', '');
+                          } else {
+                            setFieldValue('reste', 0);
+                            setFieldValue('montant_paye_saisi', '');
+                          }
+                        }}
+                      />
+                      Bon comptant non paye
+                    </label>
+                  )}
                   {comptantPartialPaymentMode === 'required' && (
                     <div className="text-sm font-medium text-gray-800">Bon comptant non payé</div>
                   )}
-                  {values.payer_partiellement && (
-                    <div className={`mt-3 flex items-center gap-3 animate-fadeIn ${comptantPartialPaymentMode === 'required' ? '' : 'pl-6'}`}>
-                      <ComptantPaidAmountField qtyRaw={qtyRaw} unitPriceRaw={unitPriceRaw} />
+                      {values.payer_partiellement && (
+                    <div className={`mt-3 animate-fadeIn ${comptantPartialPaymentMode === 'required' ? '' : 'pl-6'}`}>
+                      <div className="flex items-center gap-3">
+                        <ComptantPaidAmountField
+                          qtyRaw={qtyRaw}
+                          unitPriceRaw={unitPriceRaw}
+                          paymentHistory={comptantPaymentsHistory}
+                          isEditMode={isEditMode}
+                        />
+                      </div>
+                      {isEditMode && Array.isArray(comptantPaymentsHistory) && comptantPaymentsHistory.length > 0 && (
+                        <div className="mt-3 rounded-md border border-blue-200 bg-white p-3">
+                          <div className="text-sm font-semibold text-gray-800 mb-2">Historique des paiements</div>
+                          <div className="space-y-2 max-h-40 overflow-y-auto">
+                            {comptantPaymentsHistory.map((payment: any) => (
+                              <div
+                                key={payment.id}
+                                className="flex items-start justify-between gap-3 rounded border border-gray-200 px-3 py-2 text-sm"
+                              >
+                                <div className="min-w-0">
+                                  <div className="font-medium text-gray-800">
+                                    {formatDateTimeWithHour(payment.date_paiement)}
+                                  </div>
+                                  <div className="text-xs text-gray-500 break-words">
+                                    {payment.note || 'Sans note'}
+                                  </div>
+                                </div>
+                                <div className="shrink-0 font-semibold text-blue-700">
+                                  {Number(payment.montant || 0).toFixed(2)} DH
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

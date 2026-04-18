@@ -8,6 +8,72 @@ import { computeMouvementCalc } from '../utils/mouvementCalc.js';
 
 const router = express.Router();
 
+async function ensureComptantPaymentsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS paiement_boncomptant_nonpaye (
+      id INT NOT NULL AUTO_INCREMENT,
+      bon_comptant_id INT NOT NULL,
+      montant DECIMAL(12,2) NOT NULL,
+      date_paiement DATETIME NOT NULL,
+      note TEXT NULL,
+      created_by INT NULL,
+      updated_by INT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_pbcnp_bon_id (bon_comptant_id),
+      CONSTRAINT fk_pbcnp_bon_comptant
+        FOREIGN KEY (bon_comptant_id) REFERENCES bons_comptant(id)
+        ON DELETE CASCADE
+    )
+  `);
+}
+
+ensureComptantPaymentsTable().catch((error) => {
+  console.error('ensureComptantPaymentsTable:', error);
+});
+
+const normalizeSqlDateTime = (value) => {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) return `${s.replace('T', ' ')}:00`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s} 00:00:00`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', ' ');
+};
+
+async function sumComptantBonPayments(db, bonComptantId) {
+  const [rows] = await db.execute(
+    'SELECT COALESCE(SUM(montant), 0) AS total FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?',
+    [bonComptantId]
+  );
+  return Number(rows?.[0]?.total || 0);
+}
+
+async function syncComptantBonReste(db, bonComptantId, montantTotalOverride = null) {
+  const bonId = Number(bonComptantId);
+  if (!Number.isFinite(bonId) || bonId <= 0) return 0;
+
+  const montantTotal = montantTotalOverride == null
+    ? await (async () => {
+        const [rows] = await db.execute('SELECT montant_total FROM bons_comptant WHERE id = ? LIMIT 1', [bonId]);
+        return Number(rows?.[0]?.montant_total || 0);
+      })()
+    : Number(montantTotalOverride || 0);
+
+  const montantPaye = await sumComptantBonPayments(db, bonId);
+  const reste = Math.max(0, Number((montantTotal - montantPaye).toFixed(2)));
+  const nonPaye = reste > 0 ? 1 : 0;
+  await db.execute(
+    'UPDATE bons_comptant SET reste = ?, non_paye = ?, updated_at = NOW() WHERE id = ?',
+    [reste, nonPaye, bonId]
+  );
+  return reste;
+}
+
 /* =========================
    GET /comptant (liste)
    ========================= */
@@ -180,6 +246,154 @@ router.get('/:id', async (req, res) => {
 /* =========================
    POST /comptant (création)
    ========================= */
+/* =========================
+   GET /comptant/:id/paiements
+   ========================= */
+router.get('/:id/paiements', verifyToken, async (req, res) => {
+  try {
+    await ensureComptantPaymentsTable();
+    const bonId = Number(req.params.id);
+    if (!Number.isFinite(bonId) || bonId <= 0) {
+      return res.status(400).json({ message: 'Bon comptant invalide' });
+    }
+
+    const [rows] = await pool.execute(
+      `SELECT id, bon_comptant_id, montant, date_paiement, note, created_by, updated_by, created_at, updated_at
+         FROM paiement_boncomptant_nonpaye
+        WHERE bon_comptant_id = ?
+        ORDER BY date_paiement ASC, id ASC`,
+      [bonId]
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error('Erreur GET /comptant/:id/paiements:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  }
+});
+
+/* =========================
+   POST /comptant/:id/paiements
+   ========================= */
+router.post('/:id/paiements', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await ensureComptantPaymentsTable();
+    await connection.beginTransaction();
+
+    const bonId = Number(req.params.id);
+    const montant = Number(req.body?.montant || 0);
+    const datePaiement = normalizeSqlDateTime(req.body?.date_paiement);
+    const note = req.body?.note ? String(req.body.note) : null;
+    const createdBy = req.body?.created_by != null ? Number(req.body.created_by) : (req.user?.id ?? null);
+
+    if (!Number.isFinite(bonId) || bonId <= 0) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Bon comptant invalide' });
+    }
+    if (!(montant > 0)) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Montant invalide' });
+    }
+    if (!datePaiement) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Date de paiement invalide' });
+    }
+
+    const [bonRows] = await connection.execute(
+      'SELECT id, montant_total FROM bons_comptant WHERE id = ? FOR UPDATE',
+      [bonId]
+    );
+    if (!Array.isArray(bonRows) || !bonRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon comptant non trouvé' });
+    }
+
+    const bon = bonRows[0];
+    const dejaPaye = await sumComptantBonPayments(connection, bonId);
+    const montantDisponible = Math.max(0, Number(bon.montant_total || 0) - dejaPaye);
+    if (montant > montantDisponible + 0.000001) {
+      await connection.rollback();
+      return res.status(400).json({ message: `Le paiement dépasse le reste (${montantDisponible.toFixed(2)} DH)` });
+    }
+
+    const [result] = await connection.execute(
+      `INSERT INTO paiement_boncomptant_nonpaye
+        (bon_comptant_id, montant, date_paiement, note, created_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [bonId, montant, datePaiement, note, createdBy]
+    );
+
+    await syncComptantBonReste(connection, bonId, bon.montant_total);
+
+    const [rows] = await connection.execute(
+      `SELECT id, bon_comptant_id, montant, date_paiement, note, created_by, updated_by, created_at, updated_at
+         FROM paiement_boncomptant_nonpaye
+        WHERE id = ? LIMIT 1`,
+      [result.insertId]
+    );
+
+    await connection.commit();
+    res.status(201).json(rows[0]);
+  } catch (error) {
+    await connection.rollback();
+    console.error('Erreur POST /comptant/:id/paiements:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message || String(error) });
+  } finally {
+    connection.release();
+  }
+});
+
+/* =========================
+   DELETE /comptant/:id/paiements/:paymentId
+   ========================= */
+router.delete('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await ensureComptantPaymentsTable();
+    await connection.beginTransaction();
+
+    const bonId = Number(req.params.id);
+    const paymentId = Number(req.params.paymentId);
+    if (!Number.isFinite(bonId) || !Number.isFinite(paymentId)) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Identifiant invalide' });
+    }
+
+    const [rows] = await connection.execute(
+      'SELECT id FROM paiement_boncomptant_nonpaye WHERE id = ? AND bon_comptant_id = ?',
+      [paymentId, bonId]
+    );
+    if (!Array.isArray(rows) || !rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Paiement non trouvé' });
+    }
+
+    const [bonRows] = await connection.execute(
+      'SELECT montant_total FROM bons_comptant WHERE id = ? FOR UPDATE',
+      [bonId]
+    );
+    if (!Array.isArray(bonRows) || !bonRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Bon comptant non trouvé' });
+    }
+
+    await connection.execute(
+      'DELETE FROM paiement_boncomptant_nonpaye WHERE id = ? AND bon_comptant_id = ?',
+      [paymentId, bonId]
+    );
+    await syncComptantBonReste(connection, bonId, bonRows[0].montant_total);
+
+    await connection.commit();
+    res.json({ success: true, id: paymentId });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Erreur DELETE /comptant/:id/paiements/:paymentId:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message || String(error) });
+  } finally {
+    connection.release();
+  }
+});
+
 router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   const connection = await pool.getConnection();
   try {
@@ -196,7 +410,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       statut = 'Brouillon',
     items = [],
     created_by,
-    livraisons
+    livraisons,
+    paiements_non_payes = []
     } = req.body || {};
 
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
@@ -236,9 +451,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
         date_creation, client_id, client_nom, phone, vehicule_id,
-        lieu_chargement, adresse_livraison, montant_total, reste, statut, created_by, isNotCalculated,
+        lieu_chargement, adresse_livraison, montant_total, reste, non_paye, statut, created_by, isNotCalculated,
         remise_is_client, remise_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       date_creation,
       cId,
@@ -249,6 +464,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       adresse_livraison ?? null,
       montant_total,
       req.body.reste || 0,
+      req.body.non_paye ? 1 : 0,
       st,
       created_by,
       isNotCalculated,
@@ -310,6 +526,26 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       `, [comptantId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
 
+    if (Array.isArray(paiements_non_payes) && paiements_non_payes.length) {
+      for (const paiement of paiements_non_payes) {
+        const montantPaiement = Number(paiement?.montant || 0);
+        const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || date_creation);
+        const notePaiement = paiement?.note ? String(paiement.note) : null;
+        if (!(montantPaiement > 0) || !datePaiement) {
+          await connection.rollback();
+          return res.status(400).json({ message: 'Paiement initial invalide' });
+        }
+        await connection.execute(
+          `INSERT INTO paiement_boncomptant_nonpaye
+            (bon_comptant_id, montant, date_paiement, note, created_by)
+           VALUES (?, ?, ?, ?, ?)`,
+          [comptantId, montantPaiement, datePaiement, notePaiement, created_by ?? null]
+        );
+      }
+    }
+
+    await syncComptantBonReste(connection, comptantId, montant_total);
+
     // Stock: Comptant => retire du stock dès la création (même "En attente")
     // Sauf si statut = "Annulé".
     if (st !== 'Annulé') {
@@ -360,7 +596,8 @@ router.put('/:id', async (req, res) => {
       montant_total,
       statut,
     items = [],
-    livraisons
+    livraisons,
+    paiements_non_payes
     } = req.body || {};
     let phone = req.body?.phone ?? null;
     let isNotCalculated = req.body?.isNotCalculated === true ? true : null;
@@ -470,7 +707,7 @@ router.put('/:id', async (req, res) => {
     await connection.execute(`
       UPDATE bons_comptant SET
         date_creation = ?, client_id = ?, client_nom = ?, phone = ?,
-        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, reste = ?, statut = ?, isNotCalculated = ?,
+        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, reste = ?, non_paye = ?, statut = ?, isNotCalculated = ?,
         remise_is_client = ?, remise_id = ?
       WHERE id = ?
     `, [
@@ -483,12 +720,36 @@ router.put('/:id', async (req, res) => {
       adresse_livraison ?? null,
       montant_total,
       req.body.reste || 0,
+      req.body.non_paye ? 1 : 0,
       st,
       isNotCalculated,
       resolved.remise_is_client,
       resolved.remise_id,
       id,
     ]);
+
+    if (Array.isArray(paiements_non_payes) && paiements_non_payes.length) {
+      for (const paiement of paiements_non_payes) {
+        const montantPaiement = Number(paiement?.montant || 0);
+        const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || date_creation);
+        const notePaiement = paiement?.note ? String(paiement.note) : null;
+        const createdBy = paiement?.created_by != null ? Number(paiement.created_by) : (req.user?.id ?? null);
+
+        if (!(montantPaiement > 0) || !datePaiement) {
+          await connection.rollback();
+          return res.status(400).json({ message: 'Paiement invalide' });
+        }
+
+        await connection.execute(
+          `INSERT INTO paiement_boncomptant_nonpaye
+            (bon_comptant_id, montant, date_paiement, note, created_by)
+           VALUES (?, ?, ?, ?, ?)`,
+          [id, montantPaiement, datePaiement, notePaiement, createdBy]
+        );
+      }
+    }
+
+    await syncComptantBonReste(connection, id, montant_total);
 
     await connection.execute('DELETE FROM comptant_items WHERE bon_comptant_id = ?', [id]);
     if (Array.isArray(livraisons)) {

@@ -215,12 +215,37 @@ export const bonsApi = api.injectEndpoints({
           body: bonData,
         };
       },
+      async onQueryStarted({ id, type, ...bonData }, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          if (!type) return;
+          dispatch(
+            api.util.updateQueryData('getBonsByType', type, (draft: any[]) => {
+              const idx = draft.findIndex((b: any) => Number(b?.id) === Number(id));
+              if (idx === -1) return;
+              draft[idx] = {
+                ...draft[idx],
+                ...bonData,
+                id,
+                type,
+                items: Array.isArray((bonData as any).items) ? (bonData as any).items : draft[idx]?.items,
+                montant_total: (bonData as any).montant_total ?? draft[idx]?.montant_total,
+                reste: (bonData as any).reste ?? draft[idx]?.reste,
+                non_paye: (bonData as any).non_paye ?? draft[idx]?.non_paye,
+                updated_at: new Date().toISOString(),
+              };
+            })
+          );
+        } catch {
+          // keep default invalidation/refetch behavior on failure
+        }
+      },
       invalidatesTags: (_result, _error, { id, type }) => {
         let actualTagType: any = (type as AnyBonType) || 'Bon';
         if (type === 'Avoir') actualTagType = 'AvoirClient';
         else if ((type as any) === 'AvoirComptant') actualTagType = 'AvoirComptant';
         else if ((type as any) === 'AvoirEcommerce') actualTagType = 'AvoirEcommerce';
-        return [
+        const tags: any[] = [
           { type: actualTagType, id },
           { type: actualTagType, id: 'LIST' },
           { type: 'Bon', id },
@@ -228,6 +253,10 @@ export const bonsApi = api.injectEndpoints({
           { type: 'Product', id: 'LIST' },
           'Contact',
         ];
+        if (type === 'Comptant') {
+          tags.push({ type: 'ComptantPayment', id });
+        }
+        return tags;
       },
     }),
     
