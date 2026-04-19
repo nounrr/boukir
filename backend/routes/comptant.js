@@ -416,6 +416,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
 
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
     const phone = req.body?.phone ?? null;
+    const normalizedDateCreation = normalizeSqlDateTime(date_creation);
 
     const remise_is_client = req.body?.remise_is_client;
     const remise_id = req.body?.remise_id;
@@ -423,7 +424,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
 
   // Validation champs requis (détaillée)
   const missing = [];
-  if (!date_creation) missing.push('date_creation');
+  if (!normalizedDateCreation) missing.push('date_creation');
   if (!(typeof montant_total === 'number' ? montant_total > 0 : !!montant_total)) missing.push('montant_total');
   if (!created_by) missing.push('created_by');
   if (missing.length) {
@@ -455,7 +456,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         remise_is_client, remise_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      date_creation,
+      normalizedDateCreation,
       cId,
       client_nom ?? null,
       phone,
@@ -529,7 +530,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     if (Array.isArray(paiements_non_payes) && paiements_non_payes.length) {
       for (const paiement of paiements_non_payes) {
         const montantPaiement = Number(paiement?.montant || 0);
-        const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || date_creation);
+        const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || normalizedDateCreation);
         const notePaiement = paiement?.note ? String(paiement.note) : null;
         if (!(montantPaiement > 0) || !datePaiement) {
           await connection.rollback();
@@ -675,6 +676,7 @@ router.put('/:id', async (req, res) => {
       livraisons = undefined;
     }
 
+    const normalizedDateCreation = normalizeSqlDateTime(date_creation);
     const cId  = client_id ?? null;
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
@@ -682,7 +684,7 @@ router.put('/:id', async (req, res) => {
 
     // Validation minimale (détaillée)
     const missingPut = [];
-    if (!date_creation) missingPut.push('date_creation');
+    if (!normalizedDateCreation) missingPut.push('date_creation');
     if (!(typeof montant_total === 'number' ? true : montant_total != null)) missingPut.push('montant_total');
     if (!statut) missingPut.push('statut');
     if (missingPut.length) {
@@ -711,7 +713,7 @@ router.put('/:id', async (req, res) => {
         remise_is_client = ?, remise_id = ?
       WHERE id = ?
     `, [
-      date_creation,
+      normalizedDateCreation,
       cId,
       client_nom ?? null,
       phone,
@@ -731,7 +733,7 @@ router.put('/:id', async (req, res) => {
     if (Array.isArray(paiements_non_payes) && paiements_non_payes.length) {
       for (const paiement of paiements_non_payes) {
         const montantPaiement = Number(paiement?.montant || 0);
-        const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || date_creation);
+        const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || normalizedDateCreation);
         const notePaiement = paiement?.note ? String(paiement.note) : null;
         const createdBy = paiement?.created_by != null ? Number(paiement.created_by) : (req.user?.id ?? null);
 

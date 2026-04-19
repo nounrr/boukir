@@ -29,7 +29,6 @@ import {
   useDeleteContactGroupMutation,
   useUnassignContactsFromGroupMutation,
 } from '../store/api/contactGroupsApi';
-import { useCreateClientRemiseMutation, useCreateRemiseItemMutation, useLazyGetClientAbonneByContactQuery } from '../store/api/remisesApi';
 import { showError, showSuccess, showInfo, showConfirmation } from '../utils/notifications';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetPaymentsQuery, useReorderPaymentsMutation } from '../store/api/paymentsApi';
@@ -38,8 +37,8 @@ import { useGetArtisanRequestsQuery, useApproveArtisanRequestMutation, useReject
 import ContactPrintModal from '../components/ContactPrintModal';
 import ContactPrintTemplate from '../components/ContactPrintTemplate';
 import PeriodConfig from '../components/PeriodConfig';
-import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
+import { useGetBonsByTypeQuery, useUpdateBonMutation } from '../store/api/bonsApi';
+import { formatDateDMY, formatDateTimeWithHour, normalizeDateTimeToMySQL } from '../utils/dateUtils';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 import logo from '../components/logo.png';
@@ -120,8 +119,7 @@ const ContactsPage: React.FC = () => {
   const [createContact] = useCreateContactMutation();
   const [updateContactMutation] = useUpdateContactMutation();
   const [deleteContactMutation] = useDeleteContactMutation();
-  const [createClientRemise] = useCreateClientRemiseMutation();
-  const [createRemiseItem] = useCreateRemiseItemMutation();
+  const [updateBonMutation] = useUpdateBonMutation();
   const [reorderPayments] = useReorderPaymentsMutation();
 
   // Statuts considérés comme "actifs" (bons/paiements) pour les calculs
@@ -1500,6 +1498,17 @@ const ContactsPage: React.FC = () => {
     return { total, bons };
   }, [displayedProductHistory]);
 
+  const getBonDirectRemiseTotal = React.useCallback((row: any) => {
+    if (!row || row.syntheticInitial || row.type === 'paiement') return 0;
+
+    const remiseMontant = Number(row.remise_montant ?? 0) || 0;
+    if (remiseMontant <= 0) return 0;
+
+    const quantite = Number(row.quantite ?? 0) || 0;
+    const total = quantite > 0 ? remiseMontant * quantite : remiseMontant;
+    return Number(total.toFixed(3));
+  }, []);
+
   const displayedRemiseSoldeByRow = useMemo(() => {
     const byRow: Record<string, number> = {};
     let cumulativeRemise = 0;
@@ -1508,9 +1517,7 @@ const ContactsPage: React.FC = () => {
       if (!row || row.syntheticInitial || row.type === 'paiement') continue;
 
       const remises = getItemRemises(row);
-      const remiseFromBon = typeof row.remise_montant === 'number' && row.remise_montant > 0
-        ? row.remise_montant
-        : 0;
+      const remiseFromBon = getBonDirectRemiseTotal(row);
       const totalRowRemise = Number(remises.abonne || 0) + Number(remises.client || 0) + Number(remiseFromBon || 0);
 
       if (totalRowRemise > 0) {
@@ -1520,16 +1527,14 @@ const ContactsPage: React.FC = () => {
     }
 
     return byRow;
-  }, [displayedProductHistory, contactRemises]);
+  }, [displayedProductHistory, contactRemises, getBonDirectRemiseTotal]);
 
   const getExistingRemiseTotal = React.useCallback((item: any) => {
     if (!item || item.syntheticInitial || item.type !== 'produit') return 0;
     const remises = getItemRemises(item);
-    const remiseFromBon = typeof item.remise_montant === 'number' && item.remise_montant > 0
-      ? item.remise_montant
-      : 0;
+    const remiseFromBon = getBonDirectRemiseTotal(item);
     return Number(remises.abonne || 0) + Number(remises.client || 0) + Number(remiseFromBon || 0);
-  }, [contactRemises]);
+  }, [contactRemises, getBonDirectRemiseTotal]);
 
   const isEligibleForManualRemise = React.useCallback((item: any) => {
     if (!item || item.syntheticInitial) return false;
@@ -1771,9 +1776,6 @@ const ContactsPage: React.FC = () => {
     setRemisePrices({});
     setSelectedItemsForRemise(new Set());
   };
-
-  // Hook lazy pour vérifier le client_abonné existant seulement quand nécessaire
-  const [getClientAbonneByContact] = useLazyGetClientAbonneByContactQuery();
 
   // État pour stocker les remises du contact sélectionné
   // Token auth pour appels directs fetch (déjà disponible via authTokenValue en haut du composant)
@@ -2323,6 +2325,130 @@ const ContactsPage: React.FC = () => {
     } catch (error: any) {
       console.error('=== ERREUR VALIDATION REMISES ===', error);
       showError(error?.data?.message || 'Erreur lors de la création des remises');
+    }
+  };
+
+  const handleValidateRemisesNewSystem = async () => {
+    if (!selectedContact || selectedItemsForRemise.size === 0) {
+      showError('Aucune remise sélectionnée');
+      return;
+    }
+
+    try {
+      const selectedRemiseItems = Array.from(selectedItemsForRemise)
+        .map((itemId) => {
+          const normalizedId = String(itemId);
+          const item = eligibleDisplayedRemiseItems.find((p: any) => String(p.id) === normalizedId);
+          const prixRemise = Number(remisePrices[normalizedId] || 0);
+
+          if (!item || prixRemise <= 0) return null;
+
+          return { item, prixRemise, itemId: normalizedId };
+        })
+        .filter(Boolean) as Array<{ item: any; prixRemise: number; itemId: string }>;
+
+      if (selectedRemiseItems.length === 0) {
+        showError('Aucune remise valide à enregistrer');
+        return;
+      }
+
+      const buildUpdatedBonPayload = (sourceBon: any, bonType: 'Sortie' | 'Comptant', targetItem: any, prixRemise: number) => {
+        const sourceItemId = Number(String(targetItem.id || '').split('-').pop());
+        let updatedLineFound = false;
+
+        const updatedItems = (Array.isArray(sourceBon?.items) ? sourceBon.items : []).map((line: any) => {
+          const isTargetLine = Number(line?.id) === sourceItemId;
+          if (isTargetLine) updatedLineFound = true;
+
+          const quantite = Number(line?.quantite || 0) || 0;
+          const prixUnitaire = Number(line?.prix_unitaire || 0) || 0;
+
+          return {
+            product_id: Number(line?.product_id),
+            variant_id: line?.variant_id != null && line?.variant_id !== '' ? Number(line.variant_id) : null,
+            unit_id: line?.unit_id != null && line?.unit_id !== '' ? Number(line.unit_id) : null,
+            quantite,
+            prix_unitaire: prixUnitaire,
+            remise_pourcentage: isTargetLine ? 0 : (Number(line?.remise_pourcentage || 0) || 0),
+            remise_montant: isTargetLine ? prixRemise : (Number(line?.remise_montant || 0) || 0),
+            total: quantite * prixUnitaire,
+            product_snapshot_id: line?.product_snapshot_id != null && line?.product_snapshot_id !== '' ? Number(line.product_snapshot_id) : null,
+            is_indisponible: Boolean(line?.is_indisponible),
+          };
+        });
+
+        if (!updatedLineFound) {
+          throw new Error(`Ligne introuvable pour le bon ${bonType} #${sourceBon?.id}`);
+        }
+
+        const payload: any = {
+          id: Number(sourceBon.id),
+          type: bonType,
+          date_creation: normalizeDateTimeToMySQL(sourceBon.date_creation) || sourceBon.date_creation,
+          vehicule_id: sourceBon.vehicule_id != null && sourceBon.vehicule_id !== '' ? Number(sourceBon.vehicule_id) : undefined,
+          lieu_chargement: sourceBon.lieu_chargement || '',
+          adresse_livraison: sourceBon.adresse_livraison || '',
+          phone: sourceBon.phone || null,
+          isNotCalculated: sourceBon.isNotCalculated ? true : null,
+          statut: sourceBon.statut || 'Brouillon',
+          montant_total: updatedItems.reduce((sum: number, line: any) => sum + (Number(line.total) || 0), 0),
+          remise_is_client: sourceBon.remise_is_client ?? undefined,
+          remise_id: sourceBon.remise_id ?? undefined,
+          items: updatedItems,
+          livraisons: Array.isArray(sourceBon?.livraisons) && sourceBon.livraisons.length > 0
+            ? sourceBon.livraisons
+                .map((livraison: any) => ({
+                  vehicule_id: livraison?.vehicule_id != null ? Number(livraison.vehicule_id) : undefined,
+                  user_id: livraison?.user_id != null ? Number(livraison.user_id) : null,
+                }))
+                .filter((livraison: any) => livraison.vehicule_id)
+            : undefined,
+        };
+
+        if (bonType === 'Sortie') {
+          payload.client_id = sourceBon.client_id != null && sourceBon.client_id !== '' ? Number(sourceBon.client_id) : undefined;
+        }
+
+        if (bonType === 'Comptant') {
+          payload.client_nom = sourceBon.client_nom || null;
+          payload.reste = Number(sourceBon.reste || 0) || 0;
+          payload.non_paye = Boolean(sourceBon.non_paye);
+        }
+
+        return payload;
+      };
+
+      const remisePromises = selectedRemiseItems.map(async ({ item, prixRemise, itemId }) => {
+        if (!isEligibleForManualRemise(item)) {
+          console.warn(`Article ignoré car déjà remisé: ${itemId}`);
+          return null;
+        }
+
+        const bonType = String(item?.bon_type || '');
+        if (bonType !== 'Sortie' && bonType !== 'Comptant') {
+          console.warn(`Article ignoré car type non supporté pour remise directe: ${bonType}`);
+          return null;
+        }
+
+        const sourceList = bonType === 'Sortie' ? sorties : comptants;
+        const sourceBon = sourceList.find((bon: any) => Number(bon?.id) === Number(item?.bon_id));
+        if (!sourceBon) {
+          throw new Error(`Bon ${bonType} introuvable (#${item?.bon_id})`);
+        }
+
+        const payload = buildUpdatedBonPayload(sourceBon, bonType, item, prixRemise);
+        return updateBonMutation(payload).unwrap();
+      });
+
+      await Promise.all(remisePromises.filter(Boolean));
+      await loadContactRemises();
+      setShowRemiseMode(false);
+      setRemisePrices({});
+      setSelectedItemsForRemise(new Set());
+      showSuccess(`${selectedRemiseItems.length} remise(s) enregistrée(s) dans le nouveau système`);
+    } catch (error: any) {
+      console.error('=== ERREUR VALIDATION REMISES NEW SYSTEM ===', error);
+      showError(error?.data?.message || error?.message || 'Erreur lors de l’enregistrement des remises');
     }
   };
 
@@ -5207,7 +5333,7 @@ const ContactsPage: React.FC = () => {
                             Effacer
                           </button>
                           <button
-                            onClick={handleValidateRemises}
+                            onClick={handleValidateRemisesNewSystem}
                             className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
                           >
                             Valider Remises
@@ -5455,7 +5581,7 @@ const ContactsPage: React.FC = () => {
                                   {(() => {
                                     if (item.syntheticInitial || item.type === 'paiement') return '-';
                                     const remises = getItemRemises(item);
-                                    const remiseFromBon = typeof item.remise_montant === 'number' && item.remise_montant > 0 ? item.remise_montant : 0;
+                                    const remiseFromBon = getBonDirectRemiseTotal(item);
                                     // Addition des remises client-remise (items) + remise du bon
                                     const totalClientRemise = remises.client + remiseFromBon;
                                     return totalClientRemise > 0 ? `${totalClientRemise.toFixed(3)} DH` : '-';

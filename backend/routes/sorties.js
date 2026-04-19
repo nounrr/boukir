@@ -8,6 +8,18 @@ import { computeMouvementCalc } from '../utils/mouvementCalc.js';
 
 const router = express.Router();
 
+const normalizeSqlDateTime = (value) => {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) return `${s.replace('T', ' ')}:00`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s} 00:00:00`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', ' ');
+};
+
 /* =========================
    GET /sorties (liste)
    ========================= */
@@ -203,12 +215,13 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     } = req.body || {};
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+    const normalizedDateCreation = normalizeSqlDateTime(date_creation);
 
     const remise_is_client = req.body?.remise_is_client;
     const remise_id = req.body?.remise_id;
     const remise_client_nom = req.body?.remise_client_nom;
 
-  if (!date_creation || !montant_total || !created_by) {
+  if (!normalizedDateCreation || !montant_total || !created_by) {
       await connection.rollback();
       return res.status(400).json({ message: 'Champs requis manquants' });
     }
@@ -237,7 +250,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         remise_is_client, remise_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      date_creation,
+      normalizedDateCreation,
       cId,
       phone,
       vId,
@@ -436,10 +449,16 @@ router.put('/:id', async (req, res) => {
       livraisons = undefined;
     }
 
+    const normalizedDateCreation = normalizeSqlDateTime(date_creation);
     const cId  = client_id ?? null;
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? null;
+
+    if (!normalizedDateCreation || montant_total == null || !statut) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Champs requis manquants' });
+    }
 
     const resolved = isChefChauffeur
       ? { remise_is_client: oldBon.remise_is_client ?? null, remise_id: oldBon.remise_id ?? null }
@@ -462,7 +481,7 @@ router.put('/:id', async (req, res) => {
         remise_is_client = ?, remise_id = ?
       WHERE id = ?
     `, [
-      date_creation,
+      normalizedDateCreation,
       cId,
       phone,
       vId,
