@@ -322,6 +322,29 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
         }
       }`}
       </style>
+      {/* Watermark AVOIR - uniquement pour les bons de type avoir, uniquement en PDF (pas thermal) */}
+      {['Avoir', 'AvoirComptant', 'AvoirFournisseur', 'AvoirEcommerce'].includes(bon?.type) && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%) rotate(-45deg)',
+            fontSize: '130px',
+            fontWeight: '900',
+            color: '#6b7280',
+            opacity: 0.5,
+            pointerEvents: 'none',
+            userSelect: 'none',
+            whiteSpace: 'nowrap',
+            zIndex: 0,
+            letterSpacing: '0.1em',
+          }}
+        >
+          AVOIR
+        </div>
+      )}
+
       {/* Options */}
       <div className="flex justify-end items-center gap-4 mb-2 print-hidden">
         <div className="flex items-center">
