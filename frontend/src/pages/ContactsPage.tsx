@@ -29,7 +29,6 @@ import {
   useDeleteContactGroupMutation,
   useUnassignContactsFromGroupMutation,
 } from '../store/api/contactGroupsApi';
-import { useCreateClientRemiseMutation, useCreateRemiseItemMutation, useLazyGetClientAbonneByContactQuery } from '../store/api/remisesApi';
 import { showError, showSuccess, showInfo, showConfirmation } from '../utils/notifications';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetPaymentsQuery, useReorderPaymentsMutation } from '../store/api/paymentsApi';
@@ -38,8 +37,8 @@ import { useGetArtisanRequestsQuery, useApproveArtisanRequestMutation, useReject
 import ContactPrintModal from '../components/ContactPrintModal';
 import ContactPrintTemplate from '../components/ContactPrintTemplate';
 import PeriodConfig from '../components/PeriodConfig';
-import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-import { formatDateDMY, formatDateTimeWithHour } from '../utils/dateUtils';
+import { useGetBonsByTypeQuery, useUpdateBonMutation } from '../store/api/bonsApi';
+import { formatDateDMY, formatDateTimeWithHour, normalizeDateTimeToMySQL } from '../utils/dateUtils';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 import logo from '../components/logo.png';
@@ -112,7 +111,7 @@ const ContactsPage: React.FC = () => {
 
     return () => controller.abort();
   }, [location.search, authTokenValue]);
-  
+      
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -120,8 +119,7 @@ const ContactsPage: React.FC = () => {
   const [createContact] = useCreateContactMutation();
   const [updateContactMutation] = useUpdateContactMutation();
   const [deleteContactMutation] = useDeleteContactMutation();
-  const [createClientRemise] = useCreateClientRemiseMutation();
-  const [createRemiseItem] = useCreateRemiseItemMutation();
+  const [updateBonMutation] = useUpdateBonMutation();
   const [reorderPayments] = useReorderPaymentsMutation();
 
   // Statuts considérés comme "actifs" (bons/paiements) pour les calculs
@@ -266,11 +264,81 @@ const ContactsPage: React.FC = () => {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [contactRemises, setContactRemises] = useState<any[]>([]);
   
   // Fetch detailed contact info from backend when a contact is selected to get fresh stats
   const { data: detailedContact } = useGetContactQuery(selectedContact?.id!, {
     skip: !selectedContact?.id
   });
+
+  const getItemRemises = (item: any) => {
+    const remises = {
+      abonne: 0,
+      client: 0
+    };
+
+    if (contactRemises.length > 0) {
+      console.log('Debug getItemRemises:', {
+        item: { bon_id: item.bon_id, product_id: item.product_id, product_reference: item.product_reference },
+        contactRemises: contactRemises.map((r: any) => ({
+          id: r.id,
+          type: r.type,
+          itemsCount: r.items?.length || 0,
+          items: r.items?.map((i: any) => ({ bon_id: i.bon_id, product_id: i.product_id, qte: i.qte, prix_remise: i.prix_remise }))
+        }))
+      });
+    }
+
+    for (const remise of contactRemises) {
+      for (const remiseItem of remise.items || []) {
+        const bonIdItem = Number(item.bon_id);
+        const bonIdRemise = Number(remiseItem.bon_id);
+        const prodIdItem = item.product_id != null ? Number(item.product_id) : null;
+        const prodIdRemise = remiseItem.product_id != null ? Number(remiseItem.product_id) : null;
+
+        let match = bonIdItem === bonIdRemise && prodIdItem != null && prodIdRemise != null && prodIdItem === prodIdRemise;
+
+        if (!match && bonIdItem === bonIdRemise) {
+          const refItem = (item.product_reference || item.reference || '').toString().trim();
+          const refRemise = (remiseItem.reference || remiseItem.product_reference || '').toString().trim();
+          if (refItem && refRemise && refItem === refRemise) {
+            match = true;
+          }
+        }
+
+        if (!match && bonIdItem === bonIdRemise) {
+          const itemProdKey = item.product_id != null ? String(item.product_id).trim() : '';
+          const remiseProdKey = remiseItem.reference != null
+            ? String(remiseItem.reference).trim()
+            : (remiseItem.product_id != null ? String(remiseItem.product_id).trim() : '');
+          if (itemProdKey && remiseProdKey && itemProdKey === remiseProdKey) {
+            match = true;
+          }
+        }
+
+        if (match) {
+          const totalRemise = (Number(remiseItem.qte) || 0) * (Number(remiseItem.prix_remise) || 0);
+
+          console.log('Match trouvÃ©:', {
+            remiseType: remise.type,
+            bon_id: bonIdItem,
+            product_id: prodIdItem,
+            referenceItem: item.product_reference,
+            referenceRemise: remiseItem.reference,
+            totalRemise
+          });
+
+          if (remise.type === 'client_abonne') {
+            remises.abonne += totalRemise;
+          } else if (remise.type === 'client-remise') {
+            remises.client += totalRemise;
+          }
+        }
+      }
+    }
+
+    return remises;
+  };
   
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde_cumule' | null>(null);
@@ -1430,6 +1498,56 @@ const ContactsPage: React.FC = () => {
     return { total, bons };
   }, [displayedProductHistory]);
 
+  const getBonDirectRemiseTotal = React.useCallback((row: any) => {
+    if (!row || row.syntheticInitial || row.type === 'paiement') return 0;
+
+    const remiseMontant = Number(row.remise_montant ?? 0) || 0;
+    if (remiseMontant <= 0) return 0;
+
+    const quantite = Number(row.quantite ?? 0) || 0;
+    const total = quantite > 0 ? remiseMontant * quantite : remiseMontant;
+    return Number(total.toFixed(3));
+  }, []);
+
+  const displayedRemiseSoldeByRow = useMemo(() => {
+    const byRow: Record<string, number> = {};
+    let cumulativeRemise = 0;
+
+    for (const row of displayedProductHistory || []) {
+      if (!row || row.syntheticInitial || row.type === 'paiement') continue;
+
+      const remises = getItemRemises(row);
+      const remiseFromBon = getBonDirectRemiseTotal(row);
+      const totalRowRemise = Number(remises.abonne || 0) + Number(remises.client || 0) + Number(remiseFromBon || 0);
+
+      if (totalRowRemise > 0) {
+        cumulativeRemise += totalRowRemise;
+        byRow[String(row.id)] = Number(cumulativeRemise.toFixed(3));
+      }
+    }
+
+    return byRow;
+  }, [displayedProductHistory, contactRemises, getBonDirectRemiseTotal]);
+
+  const getExistingRemiseTotal = React.useCallback((item: any) => {
+    if (!item || item.syntheticInitial || item.type !== 'produit') return 0;
+    const remises = getItemRemises(item);
+    const remiseFromBon = getBonDirectRemiseTotal(item);
+    return Number(remises.abonne || 0) + Number(remises.client || 0) + Number(remiseFromBon || 0);
+  }, [contactRemises, getBonDirectRemiseTotal]);
+
+  const isEligibleForManualRemise = React.useCallback((item: any) => {
+    if (!item || item.syntheticInitial) return false;
+    if (item.type !== 'produit') return false;
+    if (String(item.bon_type || '') === 'Avoir') return false;
+    return getExistingRemiseTotal(item) <= 0;
+  }, [getExistingRemiseTotal]);
+
+  const eligibleDisplayedRemiseItems = useMemo(
+    () => (displayedProductHistory || []).filter((item: any) => isEligibleForManualRemise(item)),
+    [displayedProductHistory, isEligibleForManualRemise]
+  );
+
   // Bons visibles dans le tableau (IDs uniques) — utile pour la sélection de bons
   const displayedBonIds = useMemo(() => {
     const s = new Set<number>();
@@ -1659,11 +1777,7 @@ const ContactsPage: React.FC = () => {
     setSelectedItemsForRemise(new Set());
   };
 
-  // Hook lazy pour vérifier le client_abonné existant seulement quand nécessaire
-  const [getClientAbonneByContact] = useLazyGetClientAbonneByContactQuery();
-
   // État pour stocker les remises du contact sélectionné
-  const [contactRemises, setContactRemises] = useState<any[]>([]);
   // Token auth pour appels directs fetch (déjà disponible via authTokenValue en haut du composant)
 
   const handleSendWhatsAppContactProducts = async () => {
@@ -1945,7 +2059,7 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  const loadContactRemises = async () => {
+  const loadContactRemises = React.useCallback(async () => {
     if (!selectedContact?.id) {
       setContactRemises([]);
       return;
@@ -1968,7 +2082,7 @@ const ContactsPage: React.FC = () => {
         // Filtrer les remises pour ce contact (nouveau schéma) OU legacy (contact_id null mais type abonné avec nom identique)
         const contactRemisesData: any[] = [];
         for (const remise of allRemises) {
-          const isDirectLink = remise.contact_id === selectedContact.id;
+          const isDirectLink = remise.contact_id != null && String(remise.contact_id) === String(selectedContact.id);
           const isLegacyAbonne = !remise.contact_id && remise.type === 'client_abonne' && contactNameVariants.has(normalize(remise.nom));
           if (isDirectLink || isLegacyAbonne) {
             const itemsResponse = await fetch(`/api/remises/clients/${remise.id}/items`, {
@@ -2002,15 +2116,33 @@ const ContactsPage: React.FC = () => {
       console.error('Erreur chargement remises:', error);
       setContactRemises([]);
     }
-  };
+  }, [selectedContact?.id, selectedContact?.nom_complet, selectedContact?.societe, authTokenValue]);
 
   // Charger les remises du contact lorsqu'il change
   React.useEffect(() => {
     loadContactRemises();
-  }, [selectedContact?.id]);
+  }, [loadContactRemises]);
+
+  React.useEffect(() => {
+    if (!showRemiseMode) return;
+
+    const eligibleIds = new Set(eligibleDisplayedRemiseItems.map((item: any) => String(item.id)));
+
+    setSelectedItemsForRemise((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => eligibleIds.has(String(id))));
+      return next.size === prev.size ? prev : next;
+    });
+
+    setRemisePrices((prev) => {
+      const next = Object.fromEntries(
+        Object.entries(prev).filter(([id]) => eligibleIds.has(String(id)))
+      );
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+  }, [showRemiseMode, eligibleDisplayedRemiseItems]);
 
   // Fonction pour obtenir les remises d'un item spécifique
-  const getItemRemises = (item: any) => {
+  const getItemRemisesLegacy = (item: any) => {
     const remises = {
       abonne: 0,
       client: 0
@@ -2133,11 +2265,28 @@ const ContactsPage: React.FC = () => {
       console.log(`Utilisation du client_abonné ID: ${clientAbonneId}`);
 
       // 2. Créer les items de remise
-      const remisePromises = Array.from(selectedItemsForRemise).map(async (itemId) => {
-        const item = filteredProductHistory.find(p => p.id === itemId);
-        const prixRemise = remisePrices[itemId] || 0;
+      const selectedRemiseItems = Array.from(selectedItemsForRemise)
+        .map((itemId) => {
+          const normalizedId = String(itemId);
+          const item = eligibleDisplayedRemiseItems.find((p: any) => String(p.id) === normalizedId);
+          const prixRemise = Number(remisePrices[normalizedId] || 0);
 
-        if (!item || prixRemise <= 0) return null;
+          if (!item || prixRemise <= 0) return null;
+
+          return { item, prixRemise, itemId: normalizedId };
+        })
+        .filter(Boolean) as Array<{ item: any; prixRemise: number; itemId: string }>;
+
+      if (selectedRemiseItems.length === 0) {
+        showError('Aucune remise valide Ã  enregistrer');
+        return;
+      }
+
+      const remisePromises = selectedRemiseItems.map(async ({ item, prixRemise, itemId }) => {
+        if (!isEligibleForManualRemise(item)) {
+          console.warn(`Article ignorÃ© car dÃ©jÃ  remisé: ${itemId}`);
+          return null;
+        }
 
         const remiseItemData = {
           product_id: item.product_id,
@@ -2164,6 +2313,7 @@ const ContactsPage: React.FC = () => {
       console.log('Résultats création items:', results);
 
       showSuccess(`${results.length} remise(s) créée(s) avec succès`);
+      await loadContactRemises();
 
       // Réinitialiser l'interface après validation
       setShowRemiseMode(false);
@@ -2175,6 +2325,130 @@ const ContactsPage: React.FC = () => {
     } catch (error: any) {
       console.error('=== ERREUR VALIDATION REMISES ===', error);
       showError(error?.data?.message || 'Erreur lors de la création des remises');
+    }
+  };
+
+  const handleValidateRemisesNewSystem = async () => {
+    if (!selectedContact || selectedItemsForRemise.size === 0) {
+      showError('Aucune remise sélectionnée');
+      return;
+    }
+
+    try {
+      const selectedRemiseItems = Array.from(selectedItemsForRemise)
+        .map((itemId) => {
+          const normalizedId = String(itemId);
+          const item = eligibleDisplayedRemiseItems.find((p: any) => String(p.id) === normalizedId);
+          const prixRemise = Number(remisePrices[normalizedId] || 0);
+
+          if (!item || prixRemise <= 0) return null;
+
+          return { item, prixRemise, itemId: normalizedId };
+        })
+        .filter(Boolean) as Array<{ item: any; prixRemise: number; itemId: string }>;
+
+      if (selectedRemiseItems.length === 0) {
+        showError('Aucune remise valide à enregistrer');
+        return;
+      }
+
+      const buildUpdatedBonPayload = (sourceBon: any, bonType: 'Sortie' | 'Comptant', targetItem: any, prixRemise: number) => {
+        const sourceItemId = Number(String(targetItem.id || '').split('-').pop());
+        let updatedLineFound = false;
+
+        const updatedItems = (Array.isArray(sourceBon?.items) ? sourceBon.items : []).map((line: any) => {
+          const isTargetLine = Number(line?.id) === sourceItemId;
+          if (isTargetLine) updatedLineFound = true;
+
+          const quantite = Number(line?.quantite || 0) || 0;
+          const prixUnitaire = Number(line?.prix_unitaire || 0) || 0;
+
+          return {
+            product_id: Number(line?.product_id),
+            variant_id: line?.variant_id != null && line?.variant_id !== '' ? Number(line.variant_id) : null,
+            unit_id: line?.unit_id != null && line?.unit_id !== '' ? Number(line.unit_id) : null,
+            quantite,
+            prix_unitaire: prixUnitaire,
+            remise_pourcentage: isTargetLine ? 0 : (Number(line?.remise_pourcentage || 0) || 0),
+            remise_montant: isTargetLine ? prixRemise : (Number(line?.remise_montant || 0) || 0),
+            total: quantite * prixUnitaire,
+            product_snapshot_id: line?.product_snapshot_id != null && line?.product_snapshot_id !== '' ? Number(line.product_snapshot_id) : null,
+            is_indisponible: Boolean(line?.is_indisponible),
+          };
+        });
+
+        if (!updatedLineFound) {
+          throw new Error(`Ligne introuvable pour le bon ${bonType} #${sourceBon?.id}`);
+        }
+
+        const payload: any = {
+          id: Number(sourceBon.id),
+          type: bonType,
+          date_creation: normalizeDateTimeToMySQL(sourceBon.date_creation) || sourceBon.date_creation,
+          vehicule_id: sourceBon.vehicule_id != null && sourceBon.vehicule_id !== '' ? Number(sourceBon.vehicule_id) : undefined,
+          lieu_chargement: sourceBon.lieu_chargement || '',
+          adresse_livraison: sourceBon.adresse_livraison || '',
+          phone: sourceBon.phone || null,
+          isNotCalculated: sourceBon.isNotCalculated ? true : null,
+          statut: sourceBon.statut || 'Brouillon',
+          montant_total: updatedItems.reduce((sum: number, line: any) => sum + (Number(line.total) || 0), 0),
+          remise_is_client: sourceBon.remise_is_client ?? undefined,
+          remise_id: sourceBon.remise_id ?? undefined,
+          items: updatedItems,
+          livraisons: Array.isArray(sourceBon?.livraisons) && sourceBon.livraisons.length > 0
+            ? sourceBon.livraisons
+                .map((livraison: any) => ({
+                  vehicule_id: livraison?.vehicule_id != null ? Number(livraison.vehicule_id) : undefined,
+                  user_id: livraison?.user_id != null ? Number(livraison.user_id) : null,
+                }))
+                .filter((livraison: any) => livraison.vehicule_id)
+            : undefined,
+        };
+
+        if (bonType === 'Sortie') {
+          payload.client_id = sourceBon.client_id != null && sourceBon.client_id !== '' ? Number(sourceBon.client_id) : undefined;
+        }
+
+        if (bonType === 'Comptant') {
+          payload.client_nom = sourceBon.client_nom || null;
+          payload.reste = Number(sourceBon.reste || 0) || 0;
+          payload.non_paye = Boolean(sourceBon.non_paye);
+        }
+
+        return payload;
+      };
+
+      const remisePromises = selectedRemiseItems.map(async ({ item, prixRemise, itemId }) => {
+        if (!isEligibleForManualRemise(item)) {
+          console.warn(`Article ignoré car déjà remisé: ${itemId}`);
+          return null;
+        }
+
+        const bonType = String(item?.bon_type || '');
+        if (bonType !== 'Sortie' && bonType !== 'Comptant') {
+          console.warn(`Article ignoré car type non supporté pour remise directe: ${bonType}`);
+          return null;
+        }
+
+        const sourceList = bonType === 'Sortie' ? sorties : comptants;
+        const sourceBon = sourceList.find((bon: any) => Number(bon?.id) === Number(item?.bon_id));
+        if (!sourceBon) {
+          throw new Error(`Bon ${bonType} introuvable (#${item?.bon_id})`);
+        }
+
+        const payload = buildUpdatedBonPayload(sourceBon, bonType, item, prixRemise);
+        return updateBonMutation(payload).unwrap();
+      });
+
+      await Promise.all(remisePromises.filter(Boolean));
+      await loadContactRemises();
+      setShowRemiseMode(false);
+      setRemisePrices({});
+      setSelectedItemsForRemise(new Set());
+      showSuccess(`${selectedRemiseItems.length} remise(s) enregistrée(s) dans le nouveau système`);
+    } catch (error: any) {
+      console.error('=== ERREUR VALIDATION REMISES NEW SYSTEM ===', error);
+      showError(error?.data?.message || error?.message || 'Erreur lors de l’enregistrement des remises');
     }
   };
 
@@ -4944,14 +5218,28 @@ const ContactsPage: React.FC = () => {
                       )}
                       {selectedContact?.type === 'Client' && (
                         <button
-                          onClick={() => setShowRemiseMode(!showRemiseMode)}
+                          onClick={() => {
+                            if (showRemiseMode) {
+                              setShowRemiseMode(false);
+                              setRemisePrices({});
+                              setSelectedItemsForRemise(new Set());
+                              return;
+                            }
+
+                            if (eligibleDisplayedRemiseItems.length === 0) {
+                              showInfo('Aucun article visible n’est éligible à une nouvelle remise.');
+                              return;
+                            }
+
+                            setShowRemiseMode(true);
+                          }}
                           className={`w-full sm:w-auto flex items-center gap-2 px-3 py-1 rounded-md transition-colors text-sm ${showRemiseMode
                             ? 'bg-green-600 text-white hover:bg-green-700'
                             : 'bg-orange-600 text-white hover:bg-orange-700'
                             }`}
                         >
                           <Receipt size={14} />
-                          {showRemiseMode ? 'Annuler Remises' : 'Appliquer Remise'}
+                          {showRemiseMode ? 'Annuler Remises' : `Appliquer Remise (${eligibleDisplayedRemiseItems.length})`}
                         </button>
                       )}
                       <button
@@ -5028,7 +5316,7 @@ const ContactsPage: React.FC = () => {
                             Total remises: {Object.entries(remisePrices)
                               .filter(([id]) => selectedItemsForRemise.has(id))
                               .reduce((sum, [id, price]) => {
-                                const item = allProductHistory.find(i => i.id === id);
+                                const item = eligibleDisplayedRemiseItems.find((i: any) => String(i.id) === String(id));
                                 return sum + (price * (item?.quantite || 0));
                               }, 0)
                               .toFixed(3)} DH
@@ -5045,7 +5333,7 @@ const ContactsPage: React.FC = () => {
                             Effacer
                           </button>
                           <button
-                            onClick={handleValidateRemises}
+                            onClick={handleValidateRemisesNewSystem}
                             className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
                           >
                             Valider Remises
@@ -5115,6 +5403,7 @@ const ContactsPage: React.FC = () => {
                             {/* Remises séparées par type */}
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Abonné</th>
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Remise Client</th>
+                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Solde Remise</th>
                             {showRemiseMode && selectedContact?.type === 'Client' && (
                               <>
                                 <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Prix Remise</th>
@@ -5140,7 +5429,7 @@ const ContactsPage: React.FC = () => {
                               >
                                 {displayedProductHistory.length === 0 ? (
                                   <tr>
-                                    <td colSpan={20} className="px-6  text-center text-sm text-gray-500">
+                                    <td colSpan={showRemiseMode && selectedContact?.type === 'Client' ? 19 : 17} className="px-6  text-center text-sm text-gray-500">
                                       Aucun produit trouvé pour cette période
                                     </td>
                                   </tr>
@@ -5292,17 +5581,23 @@ const ContactsPage: React.FC = () => {
                                   {(() => {
                                     if (item.syntheticInitial || item.type === 'paiement') return '-';
                                     const remises = getItemRemises(item);
-                                    const remiseFromBon = typeof item.remise_montant === 'number' && item.remise_montant > 0 ? item.remise_montant : 0;
+                                    const remiseFromBon = getBonDirectRemiseTotal(item);
                                     // Addition des remises client-remise (items) + remise du bon
                                     const totalClientRemise = remises.client + remiseFromBon;
                                     return totalClientRemise > 0 ? `${totalClientRemise.toFixed(3)} DH` : '-';
+                                  })()}
+                                </td>
+                                <td className="px-1 whitespace-nowrap text-sm text-right text-gray-900">
+                                  {(() => {
+                                    const soldeRemise = displayedRemiseSoldeByRow[String(item.id)];
+                                    return Number.isFinite(soldeRemise) ? `${soldeRemise.toFixed(3)} DH` : '-';
                                   })()}
                                 </td>
                                 {showRemiseMode && selectedContact?.type === 'Client' && (
                                   <>
                                     {/* Prix remise input */}
                                     <td className="px-1  whitespace-nowrap text-sm text-right">
-                                      {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
+                                      {!isEligibleForManualRemise(item) ? (
                                         <span className="text-gray-400">-</span>
                                       ) : (
                                         <input
@@ -5310,19 +5605,20 @@ const ContactsPage: React.FC = () => {
                                           step="0.001"
                                           min="0"
                                           placeholder="0.000"
-                                          value={remisePrices[item.id] || ''}
+                                          value={remisePrices[String(item.id)] || ''}
                                           onChange={(e) => {
+                                            const itemId = String(item.id);
                                             const value = parseFloat(e.target.value) || 0;
                                             setRemisePrices(prev => ({
                                               ...prev,
-                                              [item.id]: value
+                                              [itemId]: value
                                             }));
                                             if (value > 0) {
-                                              setSelectedItemsForRemise(prev => new Set(prev).add(item.id));
+                                              setSelectedItemsForRemise(prev => new Set(prev).add(itemId));
                                             } else {
                                               setSelectedItemsForRemise(prev => {
                                                 const newSet = new Set(prev);
-                                                newSet.delete(item.id);
+                                                newSet.delete(itemId);
                                                 return newSet;
                                               });
                                             }
@@ -5333,12 +5629,12 @@ const ContactsPage: React.FC = () => {
                                     </td>
                                     {/* Total remise calculé */}
                                     <td className="px-1  whitespace-nowrap text-sm text-right">
-                                      {item.syntheticInitial || item.type === 'paiement' || item.type === 'avoir' ? (
+                                      {!isEligibleForManualRemise(item) ? (
                                         <span className="text-gray-400">-</span>
                                       ) : (
                                         <span className="font-medium text-green-600">
-                                          {remisePrices[item.id] ?
-                                            `${(remisePrices[item.id] * item.quantite).toFixed(3)} DH` :
+                                          {remisePrices[String(item.id)] ?
+                                            `${(remisePrices[String(item.id)] * item.quantite).toFixed(3)} DH` :
                                             '0.000 DH'
                                           }
                                         </span>
@@ -5549,5 +5845,4 @@ const ArtisanRequestsSection: React.FC<{ onView: (c: Contact) => void }> = ({ on
     </div>
   );
 };
-
 

@@ -190,6 +190,42 @@ export const formatDateInputToMySQL = (dateInput: string, withCurrentTime: boole
 };
 
 /**
+ * Normalise une date/datetime quelconque vers le format DATETIME MySQL.
+ */
+export const normalizeDateTimeToMySQL = (value: string | Date | number | null | undefined): string | null => {
+  if (value == null) return null;
+
+  if (value instanceof Date || typeof value === 'number') {
+    const dateObj = new Date(value);
+    if (isNaN(dateObj.getTime())) return null;
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const hours = String(dateObj.getHours()).padStart(2, '0');
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+
+  const input = String(value).trim();
+  if (!input) return null;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(input)) return input;
+
+  const fromHtmlInput = formatDateInputToMySQL(input);
+  if (fromHtmlInput) return fromHtmlInput;
+
+  const dateObj = new Date(input);
+  if (isNaN(dateObj.getTime())) return null;
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  const hours = String(dateObj.getHours()).padStart(2, '0');
+  const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+  const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+/**
  * Convertit une valeur de date/datetime vers le format d'input HTML (YYYY-MM-DD)
  * @param dateValue - Date MySQL (DATETIME/DATE) ou ISO string
  * @returns Date au format YYYY-MM-DD pour les inputs HTML

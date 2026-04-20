@@ -21,6 +21,39 @@ export const comptantApi = apiSlice.injectEndpoints({
       providesTags: (_result, _error, id) => [{ type: 'Comptant', id }]
     }),
 
+    getComptantPayments: builder.query({
+      query: (id) => `/comptant/${id}/paiements`,
+      providesTags: (_result, _error, id) => [
+        { type: 'ComptantPayment', id },
+        { type: 'Comptant', id }
+      ]
+    }),
+
+    createComptantPayment: builder.mutation({
+      query: ({ id, ...body }) => ({
+        url: `/comptant/${id}/paiements`,
+        method: 'POST',
+        body
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'ComptantPayment', id },
+        { type: 'Comptant', id },
+        'Comptant'
+      ]
+    }),
+
+    deleteComptantPayment: builder.mutation({
+      query: ({ id, paymentId }) => ({
+        url: `/comptant/${id}/paiements/${paymentId}`,
+        method: 'DELETE'
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'ComptantPayment', id },
+        { type: 'Comptant', id },
+        'Comptant'
+      ]
+    }),
+
     // Créer un nouveau bon comptant
     createComptant: builder.mutation({
       query: (comptantData) => ({
@@ -62,6 +95,9 @@ export const comptantApi = apiSlice.injectEndpoints({
 export const {
   useGetComptantQuery,
   useGetComptantByIdQuery,
+  useGetComptantPaymentsQuery,
+  useCreateComptantPaymentMutation,
+  useDeleteComptantPaymentMutation,
   useCreateComptantMutation,
   useUpdateComptantMutation,
   useDeleteComptantMutation
