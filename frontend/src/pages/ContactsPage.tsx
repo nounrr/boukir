@@ -5292,13 +5292,19 @@ const ContactsPage: React.FC = () => {
                           })()}
                           finalSolde={tableSoldeFinal}
                           totalDebit={(() => {
-                            const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
-                            if (hasSelection) return undefined;
+                            const shouldHideTotals =
+                              (selectedBonIds && selectedBonIds.size > 0) ||
+                              (selectedProductIds && selectedProductIds.size > 0) ||
+                              !!(dateFrom || dateTo);
+                            if (shouldHideTotals) return undefined;
                             return filteredDebitCredit.totalDebit;
                           })()}
                           totalCredit={(() => {
-                            const hasSelection = (selectedBonIds && selectedBonIds.size > 0) || (selectedProductIds && selectedProductIds.size > 0);
-                            if (hasSelection) return undefined;
+                            const shouldHideTotals =
+                              (selectedBonIds && selectedBonIds.size > 0) ||
+                              (selectedProductIds && selectedProductIds.size > 0) ||
+                              !!(dateFrom || dateTo);
+                            if (shouldHideTotals) return undefined;
                             return filteredDebitCredit.totalCredit;
                           })()}
                         />

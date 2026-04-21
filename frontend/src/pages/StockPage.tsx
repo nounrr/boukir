@@ -104,6 +104,21 @@ const StockPage: React.FC = () => {
   };
 
   const getSnapshotAwareQuantite = (p: any) => {
+    const hasRequiredVariants =
+      !p?.isVariantRow &&
+      (p?.has_variants === true || p?.has_variants === 1) &&
+      (p?.is_obligatoire_variant === true || p?.is_obligatoire_variant === 1 || p?.isObligatoireVariant === true);
+
+    if (hasRequiredVariants && Array.isArray(p?.variants) && p.variants.length > 0) {
+      return p.variants.reduce((sum: number, variant: any) => {
+        const snapshotQty = variant?.snapshot_quantite_total;
+        const qty = snapshotQty === null || snapshotQty === undefined
+          ? Number(variant?.stock_quantity || 0)
+          : Number(snapshotQty);
+        return sum + (Number.isFinite(qty) ? qty : Number(variant?.stock_quantity || 0));
+      }, 0);
+    }
+
     // Prefer snapshot totals when backend provides them
     const v = p?.snapshot_quantite_total;
     if (v === null || v === undefined) return Number(p?.quantite || 0);
@@ -116,6 +131,18 @@ const StockPage: React.FC = () => {
     const n = v === null || v === undefined ? null : Number(v);
     if (n !== null && Number.isFinite(n) && n > 0) return n;
     return Number(p?.prix_achat || 0);
+  };
+
+  const getOldestPositiveSnapshotRow = (rows: any[] | null | undefined) => {
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    return rows.reduce((oldest: any, row: any) => {
+      if (!oldest) return row;
+      const oldestTime = new Date(oldest?.created_at || 0).getTime();
+      const rowTime = new Date(row?.created_at || 0).getTime();
+      if (rowTime < oldestTime) return row;
+      if (rowTime === oldestTime && Number(row?.id || 0) < Number(oldest?.id || 0)) return row;
+      return oldest;
+    }, null);
   };
 
   // ── Snapshot display logic ──
@@ -151,13 +178,18 @@ const StockPage: React.FC = () => {
       };
     }
     if (sd.mode === 'multi_different') {
+      const oldestRow = getOldestPositiveSnapshotRow(sd.rows);
       return {
         mode: 'multi_different',
         rows: sd.rows || [],
-        prix_achat: null,
-        cout_revient: null,
-        prix_gros: null,
-        prix_vente: null,
+        prix_achat: oldestRow?.prix_achat != null
+          ? Number(oldestRow.prix_achat)
+          : (p?.snapshot_prix_achat_old != null ? Number(p.snapshot_prix_achat_old) : Number(p.prix_achat || 0)),
+        cout_revient: oldestRow?.cout_revient != null ? Number(oldestRow.cout_revient) : Number(p.cout_revient || 0),
+        prix_gros: oldestRow?.prix_gros != null ? Number(oldestRow.prix_gros) : Number(p.prix_gros || 0),
+        prix_vente: oldestRow?.prix_vente != null
+          ? Number(oldestRow.prix_vente)
+          : (p?.snapshot_prix_vente_old != null ? Number(p.snapshot_prix_vente_old) : Number(p.prix_vente || 0)),
       };
     }
     return {
@@ -1039,14 +1071,12 @@ const StockPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
-                      if (dp.mode === 'multi_different') return <span className="text-gray-400">—</span>;
                       return <>{formatNum(dp.prix_achat!)} DH</>;
                     })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
-                      if (dp.mode === 'multi_different') return <span className="text-gray-400">—</span>;
                       return (
                         <>
                           {formatNum(dp.cout_revient!)} DH
@@ -1058,7 +1088,6 @@ const StockPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
-                      if (dp.mode === 'multi_different') return <span className="text-gray-400">—</span>;
                       return (
                         <>
                           {formatNum(dp.prix_gros!)} DH
@@ -1070,7 +1099,6 @@ const StockPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
-                      if (dp.mode === 'multi_different') return <span className="text-gray-400">—</span>;
                       const pa = dp.prix_achat!;
                       const basePv = dp.prix_vente!;
                       const factor = getSelectedUnitFactor(product);
