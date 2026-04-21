@@ -1300,6 +1300,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   }, [isOpen, currentTab, qtyRaw, unitPriceRaw, remiseRaw, showRemisePanel]);
   /* ----------------------- Initialisation des valeurs ----------------------- */
   const getInitialValues = () => {
+  const isRequiredUnpaidComptant =
+    currentTab === 'Comptant' && comptantPartialPaymentMode === 'required';
+
   if (initialValues) {
   // (formatDateForInput removed - unused after refactor)
 
@@ -1533,9 +1536,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       montant_ht: 0,
       montant_total: 0,
       isNotCalculated: false,
-      payer_partiellement: currentTab === 'Comptant' && comptantPartialPaymentMode === 'required',
+      payer_partiellement: isRequiredUnpaidComptant,
       reste: 0,
-      montant_paye_saisi: '',
+      montant_paye_saisi: isRequiredUnpaidComptant ? '0' : '',
       items: [
         {
           _rowId: makeRowId(), // id stable

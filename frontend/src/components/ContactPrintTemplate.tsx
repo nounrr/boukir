@@ -63,6 +63,18 @@ const fmtDateTime = (d?: string) => {
   return fmtDate(d);
 };
 
+const getProductHistoryCodeReglement = (item: any) => {
+  if (item?.syntheticInitial) return '—';
+  return item?.code_reglement
+    || item?.bon_code_reglement
+    || item?.reglement
+    || item?.reference_reglement
+    || (item?.bon && item.bon.code_reglement)
+    || (item?.product && item.product.code_reglement)
+    || (item?.product && item.product.reglement)
+    || '—';
+};
+
 const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   contact,
   mode,
@@ -141,14 +153,19 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   const hasAnyReference = prList.some(
     (r) => !r.syntheticInitial && r.product_reference && String(r.product_reference).trim() !== ''
   );
+  const hasAnyCodeReglement = prList.some(
+    (r) => !r.syntheticInitial && getProductHistoryCodeReglement(r) !== '—'
+  );
 
   const showReferenceCol = hasAnyReference;
   const showAddressCol = hasAnyAddress;
+  const showCodeReglementCol = hasAnyCodeReglement;
 
   const productsColSpan =
     1 + // Bon
     (showReferenceCol ? 1 : 0) +
     1 + // Désignation
+    (showCodeReglementCol ? 1 : 0) +
     (showAddressCol ? 1 : 0) +
     1 + // Qté
     (showPrices ? (2 + (!hideCumulative ? 1 : 0)) : 1);
@@ -346,6 +363,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                 <th>Bon N° / Date</th>
                 {showReferenceCol && <th>Référence</th>}
                 <th className="col-designation">Désignation</th>
+                {showCodeReglementCol && <th>Code règlement</th>}
                 {showAddressCol && <th className="col-address">Adresse Livraison</th>}
                 <th className="cell-num">Qté</th>
                 {showPrices ? (
@@ -408,6 +426,12 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                         {it.syntheticInitial ? 'Solde initial' : it.product_designation}
                       </td>
 
+                      {showCodeReglementCol && (
+                        <td className="cell-wrap">
+                          {getProductHistoryCodeReglement(it)}
+                        </td>
+                      )}
+
                       {/* Adresse (wrap libre) */}
                       {showAddressCol && (
                         <td className="cell-wrap col-address">
@@ -448,6 +472,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                   <td>—</td>
                   {showReferenceCol && <td>—</td>}
                   <td className="cell-wrap">TOTAL</td>
+                  {showCodeReglementCol && <td>—</td>}
                   {showAddressCol && <td>—</td>}
                   <td className="cell-num">{totalQtyProducts}</td>
                   <td className="cell-num">—</td>
