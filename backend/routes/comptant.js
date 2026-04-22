@@ -45,6 +45,13 @@ const normalizeSqlDateTime = (value) => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', ' ');
 };
 
+const parseBooleanFlag = (value) => (
+  value === true ||
+  value === 1 ||
+  value === '1' ||
+  (typeof value === 'string' && value.toLowerCase() === 'true')
+);
+
 async function sumComptantBonPayments(db, bonComptantId) {
   const [rows] = await db.execute(
     'SELECT COALESCE(SUM(montant), 0) AS total FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?',
@@ -417,6 +424,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
     const phone = req.body?.phone ?? null;
     const normalizedDateCreation = normalizeSqlDateTime(date_creation);
+    const nonPayeRequested = parseBooleanFlag(req.body?.non_paye);
 
     const remise_is_client = req.body?.remise_is_client;
     const remise_id = req.body?.remise_id;
@@ -464,8 +472,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       lieu,
       adresse_livraison ?? null,
       montant_total,
-      req.body.reste || 0,
-      req.body.non_paye ? 1 : 0,
+      nonPayeRequested ? (req.body.reste || 0) : 0,
+      nonPayeRequested ? 1 : 0,
       st,
       created_by,
       isNotCalculated,
@@ -545,7 +553,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       }
     }
 
-    await syncComptantBonReste(connection, comptantId, montant_total);
+    if (nonPayeRequested || (Array.isArray(paiements_non_payes) && paiements_non_payes.length)) {
+      await syncComptantBonReste(connection, comptantId, montant_total);
+    }
 
     // Stock: Comptant => retire du stock dès la création (même "En attente")
     // Sauf si statut = "Annulé".
@@ -681,6 +691,7 @@ router.put('/:id', async (req, res) => {
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? null;
+    const nonPayeRequested = parseBooleanFlag(req.body?.non_paye);
 
     // Validation minimale (détaillée)
     const missingPut = [];
@@ -721,8 +732,8 @@ router.put('/:id', async (req, res) => {
       lieu,
       adresse_livraison ?? null,
       montant_total,
-      req.body.reste || 0,
-      req.body.non_paye ? 1 : 0,
+      nonPayeRequested ? (req.body.reste || 0) : 0,
+      nonPayeRequested ? 1 : 0,
       st,
       isNotCalculated,
       resolved.remise_is_client,
@@ -751,7 +762,12 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    await syncComptantBonReste(connection, id, montant_total);
+    if (nonPayeRequested || (Array.isArray(paiements_non_payes) && paiements_non_payes.length)) {
+      await syncComptantBonReste(connection, id, montant_total);
+    } else {
+      await connection.execute('DELETE FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?', [id]);
+      await connection.execute('UPDATE bons_comptant SET reste = 0, non_paye = 0 WHERE id = ?', [id]);
+    }
 
     await connection.execute('DELETE FROM comptant_items WHERE bon_comptant_id = ?', [id]);
     if (Array.isArray(livraisons)) {
