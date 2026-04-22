@@ -25,6 +25,10 @@ function unionNullText() {
   return `(CAST(NULL AS CHAR CHARACTER SET utf8mb4) COLLATE ${UNION_COLLATION})`;
 }
 
+function unionCoalesce(...exprs) {
+  return `COALESCE(${exprs.map((expr) => (expr === 'NULL' ? 'NULL' : unionText(expr))).join(', ')})`;
+}
+
 function normalizeFilterType(v) {
   const s = String(v ?? 'all').toLowerCase();
   if (s === 'all' || s === 'day' || s === 'period' || s === 'month') return s;
@@ -176,33 +180,45 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
   const parts = [];
   const params = [];
 
-  const commonSelect = (type, headerAlias, itemAlias, contactIdExpr, contactNameExpr, numeroExpr, dateCol = 'date_creation') => `
-    SELECT
-      ${unionText(`'${type}'`)} AS bonType,
-      ${headerAlias}.id AS bonId,
-      ${unionText(numeroExpr)} AS bonNumero,
-      ${headerAlias}.${dateCol} AS date_creation,
-      ${unionText(type === 'Ecommerce' ? `${headerAlias}.status` : `${headerAlias}.statut`)} AS statut,
-      ${type === 'Ecommerce' ? '0' : `COALESCE(${headerAlias}.isNotCalculated, 0)`} AS isNotCalculated,
-      ${contactIdExpr} AS client_id,
-      ${contactIdExpr} AS fournisseur_id,
-      ${unionText(contactNameExpr)} AS contact_nom,
-      ${unionNullText()} AS phone,
-      ${unionNullText()} AS customer_email,
-      ${itemAlias}.product_id AS product_id,
-      ${unionText('CAST(p.id AS CHAR)')} AS product_reference,
-      ${unionText(`COALESCE(p.designation, ${type === 'Ecommerce' ? `${itemAlias}.product_name` : 'NULL'})`)} AS designation,
-      COALESCE(${itemAlias}.variant_id, ps.variant_id) AS variant_id,
-      ${unionText(`COALESCE(pv.variant_name, ${type === 'Ecommerce' ? `${itemAlias}.variant_name` : 'NULL'})`)} AS variant_name,
-      ${itemAlias}.unit_id AS unit_id,
-      ${unionText(`COALESCE(pu.unit_name, ${type === 'Ecommerce' ? `${itemAlias}.unit_name` : 'NULL'})`)} AS unit_name,
-      COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-      ${type === 'Ecommerce' ? `${itemAlias}.quantity` : `${itemAlias}.quantite`} AS quantite,
-      ${type === 'Ecommerce' ? `${itemAlias}.unit_price` : `${itemAlias}.prix_unitaire`} AS prix_unitaire,
-      COALESCE(${type === 'Ecommerce' ? `${itemAlias}.subtotal` : `${itemAlias}.total`}, ${type === 'Ecommerce' ? `${itemAlias}.unit_price * ${itemAlias}.quantity` : `${itemAlias}.prix_unitaire * ${itemAlias}.quantite`}) AS total,
-      ${type === 'Ecommerce' ? `COALESCE(${itemAlias}.remise_amount, 0)` : `COALESCE(${itemAlias}.remise_montant, 0)`} AS remise_montant,
-      ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} * COALESCE(pu.conversion_factor, 1) AS cout_revient
-  `;
+  const commonSelect = (type, headerAlias, itemAlias, contactIdExpr, contactNameExpr, numeroExpr, dateCol = 'date_creation') => {
+    const designationExpr = type === 'Ecommerce'
+      ? unionCoalesce('p.designation', `${itemAlias}.product_name`)
+      : unionText('p.designation');
+    const variantNameExpr = type === 'Ecommerce'
+      ? unionCoalesce('pv.variant_name', `${itemAlias}.variant_name`)
+      : unionText('pv.variant_name');
+    const unitNameExpr = type === 'Ecommerce'
+      ? unionCoalesce('pu.unit_name', `${itemAlias}.unit_name`)
+      : unionText('pu.unit_name');
+
+    return `
+      SELECT
+        ${unionText(`'${type}'`)} AS bonType,
+        ${headerAlias}.id AS bonId,
+        ${unionText(numeroExpr)} AS bonNumero,
+        ${headerAlias}.${dateCol} AS date_creation,
+        ${unionText(type === 'Ecommerce' ? `${headerAlias}.status` : `${headerAlias}.statut`)} AS statut,
+        ${type === 'Ecommerce' ? '0' : `COALESCE(${headerAlias}.isNotCalculated, 0)`} AS isNotCalculated,
+        ${unionText(contactIdExpr)} AS client_id,
+        ${unionText(contactIdExpr)} AS fournisseur_id,
+        ${unionText(contactNameExpr)} AS contact_nom,
+        ${unionNullText()} AS phone,
+        ${unionNullText()} AS customer_email,
+        ${itemAlias}.product_id AS product_id,
+        ${unionText('CAST(p.id AS CHAR)')} AS product_reference,
+        ${designationExpr} AS designation,
+        COALESCE(${itemAlias}.variant_id, ps.variant_id) AS variant_id,
+        ${variantNameExpr} AS variant_name,
+        ${itemAlias}.unit_id AS unit_id,
+        ${unitNameExpr} AS unit_name,
+        COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+        ${type === 'Ecommerce' ? `${itemAlias}.quantity` : `${itemAlias}.quantite`} AS quantite,
+        ${type === 'Ecommerce' ? `${itemAlias}.unit_price` : `${itemAlias}.prix_unitaire`} AS prix_unitaire,
+        COALESCE(${type === 'Ecommerce' ? `${itemAlias}.subtotal` : `${itemAlias}.total`}, ${type === 'Ecommerce' ? `${itemAlias}.unit_price * ${itemAlias}.quantity` : `${itemAlias}.prix_unitaire * ${itemAlias}.quantite`}) AS total,
+        ${type === 'Ecommerce' ? `COALESCE(${itemAlias}.remise_amount, 0)` : `COALESCE(${itemAlias}.remise_montant, 0)`} AS remise_montant,
+        ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} * COALESCE(pu.conversion_factor, 1) AS cout_revient
+    `;
+  };
 
   if (includeVentes) {
     const ps = [];
@@ -221,7 +237,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
 
     const pc = [];
     parts.push({
-      sql: `${commonSelect('Comptant', 'bc', 'ci', 'bc.client_id', 'COALESCE(ct.nom_complet, bc.client_nom)', "CONCAT('COM', LPAD(bc.id, GREATEST(LENGTH(bc.id), 2), '0'))")}
+      sql: `${commonSelect('Comptant', 'bc', 'ci', 'bc.client_id', unionCoalesce('ct.nom_complet', 'bc.client_nom'), "CONCAT('COM', LPAD(bc.id, GREATEST(LENGTH(bc.id), 2), '0'))")}
         FROM bons_comptant bc
         JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
         LEFT JOIN contacts ct ON ct.id = bc.client_id
@@ -235,7 +251,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
 
     const pe = [];
     parts.push({
-      sql: `${commonSelect('Ecommerce', 'eo', 'oi', 'eo.user_id', 'COALESCE(eo.customer_name, ct.nom_complet)', 'eo.order_number', 'created_at').replace(`${unionNullText()} AS phone`, `${unionText('eo.customer_phone')} AS phone`).replace(`${unionNullText()} AS customer_email`, `${unionText('eo.customer_email')} AS customer_email`)}
+      sql: `${commonSelect('Ecommerce', 'eo', 'oi', 'eo.user_id', unionCoalesce('eo.customer_name', 'ct.nom_complet'), 'eo.order_number', 'created_at').replace(`${unionNullText()} AS phone`, `${unionText('eo.customer_phone')} AS phone`).replace(`${unionNullText()} AS customer_email`, `${unionText('eo.customer_email')} AS customer_email`)}
         FROM ecommerce_orders eo
         JOIN ecommerce_order_items oi ON oi.order_id = eo.id
         LEFT JOIN contacts ct ON ct.id = eo.user_id
@@ -308,7 +324,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
 
     const pae = [];
     parts.push({
-      sql: `${commonSelect('AvoirEcommerce', 'ae', 'aei', 'NULL', 'ae.customer_name', "COALESCE(ae.order_number, CONCAT('AVE', LPAD(ae.id, GREATEST(LENGTH(ae.id), 2), '0')))").replace(`${unionNullText()} AS phone`, `${unionText('ae.customer_phone')} AS phone`).replace(`${unionNullText()} AS customer_email`, `${unionText('ae.customer_email')} AS customer_email`)}
+      sql: `${commonSelect('AvoirEcommerce', 'ae', 'aei', 'NULL', 'ae.customer_name', unionCoalesce('ae.order_number', "CONCAT('AVE', LPAD(ae.id, GREATEST(LENGTH(ae.id), 2), '0'))")).replace(`${unionNullText()} AS phone`, `${unionText('ae.customer_phone')} AS phone`).replace(`${unionNullText()} AS customer_email`, `${unionText('ae.customer_email')} AS customer_email`)}
         FROM avoirs_ecommerce ae
         JOIN avoir_ecommerce_items aei ON aei.avoir_ecommerce_id = ae.id
         LEFT JOIN products p ON p.id = aei.product_id
