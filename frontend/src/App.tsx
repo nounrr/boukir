@@ -32,6 +32,7 @@ import CategoriesPage from './pages/CategoriesPage';
 import CategoryManagementPage from './pages/CategoryManagementPage';
 import BrandsPage from './pages/BrandsPage';
 import StatsDetailPage from './pages/StatsDetailPage';
+import StatsDetailBackupPage from './pages/StatsDetailBackupPage';
 import ExcelUploadPage from './pages/ImportExcelTabs';
 import ExportProducts from './pages/ExportProducts';
 import ExportContacts from './pages/ExportContacts';
@@ -438,6 +439,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
               <LayoutWithAccessCheck>
                 <StatsDetailPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/reports/details-backup"
+          element={
+            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
+              <LayoutWithAccessCheck>
+                <StatsDetailBackupPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

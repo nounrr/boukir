@@ -66,6 +66,252 @@ function roundSafe(n) {
   return Number.isFinite(v) ? v : 0;
 }
 
+function parseBoolQuery(value, defaultValue = true) {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+}
+
+function clampInt(value, fallback, min, max) {
+  const n = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function getStatsDetailSign(type) {
+  switch (type) {
+    case 'Commande':
+      return -1;
+    case 'Avoir':
+    case 'AvoirComptant':
+    case 'AvoirEcommerce':
+      return -1;
+    case 'AvoirFournisseur':
+      return 1;
+    default:
+      return 1;
+  }
+}
+
+function formatStatsDetailNumero(type, id, numero) {
+  if (numero) return String(numero);
+  const prefixes = {
+    Sortie: 'SOR',
+    Comptant: 'COM',
+    Ecommerce: 'ORD',
+    Commande: 'CMD',
+    Avoir: 'AVC',
+    AvoirFournisseur: 'AVF',
+    AvoirComptant: 'AVCC',
+    AvoirEcommerce: 'AVE',
+  };
+  return `${prefixes[type] || 'BON'}${String(id).padStart(2, '0')}`;
+}
+
+function buildStatsDateCondition(alias, dateColumn, params, dateFrom, dateTo) {
+  const parts = [];
+  if (dateFrom) {
+    parts.push(`DATE(${alias}.${dateColumn}) >= ?`);
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    parts.push(`DATE(${alias}.${dateColumn}) <= ?`);
+    params.push(dateTo);
+  }
+  return parts.length ? ` AND ${parts.join(' AND ')}` : '';
+}
+
+function normalizeStatsStatus(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isStatsDetailStatusAllowed(type, statut) {
+  const s = normalizeStatsStatus(statut);
+  if (!s) return true;
+  if (type === 'Comptant') return !['annulé', 'annule', 'avoir'].includes(s);
+  if (type === 'Ecommerce') return !['cancelled', 'canceled', 'refunded', 'annulé', 'annule'].includes(s);
+  return !['annulé', 'annule', 'refusé', 'refuse', 'expiré', 'expire'].includes(s);
+}
+
+function resolveStatsClientId(row) {
+  const type = row.bonType;
+  let clientId = '';
+  if (type === 'Commande' || type === 'AvoirFournisseur') {
+    clientId = row.fournisseur_id != null ? String(row.fournisseur_id) : '';
+  } else {
+    clientId = row.client_id != null ? String(row.client_id) : '';
+  }
+
+  if (!clientId && (type === 'Comptant' || type === 'AvoirComptant')) {
+    clientId = `comptant_${row.contact_nom || 'Sans nom'}`;
+  }
+
+  if (!clientId && (type === 'Ecommerce' || type === 'AvoirEcommerce')) {
+    const key = String(row.contact_nom || row.phone || row.customer_email || row.bonNumero || row.bonId || '').trim();
+    clientId = `ecom_${key || 'inconnu'}`;
+  }
+
+  return clientId;
+}
+
+function resolveStatsClientName(clientId, row, contactsById) {
+  if (clientId === '__all__') return 'Tous (sans condition client)';
+  if (String(clientId).startsWith('comptant_')) return `${String(clientId).replace('comptant_', '')} (Comptant)`;
+  if (String(clientId).startsWith('ecom_')) return `${String(clientId).replace('ecom_', '')} (Ecommerce)`;
+  return contactsById.get(String(clientId))?.nom_complet || row?.contact_nom || `Client ${clientId}`;
+}
+
+function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeCommandes, includeAvoirs }) {
+  const parts = [];
+  const params = [];
+
+  const commonSelect = (type, headerAlias, itemAlias, contactIdExpr, contactNameExpr, numeroExpr, dateCol = 'date_creation') => `
+    SELECT
+      '${type}' AS bonType,
+      ${headerAlias}.id AS bonId,
+      ${numeroExpr} AS bonNumero,
+      ${headerAlias}.${dateCol} AS date_creation,
+      ${type === 'Ecommerce' ? `${headerAlias}.status` : `${headerAlias}.statut`} AS statut,
+      ${type === 'Ecommerce' ? '0' : `COALESCE(${headerAlias}.isNotCalculated, 0)`} AS isNotCalculated,
+      ${contactIdExpr} AS client_id,
+      ${contactIdExpr} AS fournisseur_id,
+      ${contactNameExpr} AS contact_nom,
+      NULL AS phone,
+      NULL AS customer_email,
+      ${itemAlias}.product_id AS product_id,
+      CAST(p.id AS CHAR) AS product_reference,
+      COALESCE(p.designation, ${type === 'Ecommerce' ? `${itemAlias}.product_name` : 'NULL'}) AS designation,
+      COALESCE(${itemAlias}.variant_id, ps.variant_id) AS variant_id,
+      COALESCE(pv.variant_name, ${type === 'Ecommerce' ? `${itemAlias}.variant_name` : 'NULL'}) AS variant_name,
+      ${itemAlias}.unit_id AS unit_id,
+      COALESCE(pu.unit_name, ${type === 'Ecommerce' ? `${itemAlias}.unit_name` : 'NULL'}) AS unit_name,
+      COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+      ${type === 'Ecommerce' ? `${itemAlias}.quantity` : `${itemAlias}.quantite`} AS quantite,
+      ${type === 'Ecommerce' ? `${itemAlias}.unit_price` : `${itemAlias}.prix_unitaire`} AS prix_unitaire,
+      COALESCE(${type === 'Ecommerce' ? `${itemAlias}.subtotal` : `${itemAlias}.total`}, ${type === 'Ecommerce' ? `${itemAlias}.unit_price * ${itemAlias}.quantity` : `${itemAlias}.prix_unitaire * ${itemAlias}.quantite`}) AS total,
+      ${type === 'Ecommerce' ? `COALESCE(${itemAlias}.remise_amount, 0)` : `COALESCE(${itemAlias}.remise_montant, 0)`} AS remise_montant,
+      ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} * COALESCE(pu.conversion_factor, 1) AS cout_revient
+  `;
+
+  if (includeVentes) {
+    const ps = [];
+    parts.push({
+      sql: `${commonSelect('Sortie', 'bs', 'si', 'bs.client_id', 'ct.nom_complet', "CONCAT('SOR', LPAD(bs.id, GREATEST(LENGTH(bs.id), 2), '0'))")}
+        FROM bons_sortie bs
+        JOIN sortie_items si ON si.bon_sortie_id = bs.id
+        LEFT JOIN contacts ct ON ct.id = bs.client_id
+        LEFT JOIN products p ON p.id = si.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(si.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = si.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('bs', 'date_creation', ps, dateFrom, dateTo)}`,
+      params: ps,
+    });
+
+    const pc = [];
+    parts.push({
+      sql: `${commonSelect('Comptant', 'bc', 'ci', 'bc.client_id', 'COALESCE(ct.nom_complet, bc.client_nom)', "CONCAT('COM', LPAD(bc.id, GREATEST(LENGTH(bc.id), 2), '0'))")}
+        FROM bons_comptant bc
+        JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
+        LEFT JOIN contacts ct ON ct.id = bc.client_id
+        LEFT JOIN products p ON p.id = ci.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(ci.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = ci.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('bc', 'date_creation', pc, dateFrom, dateTo)}`,
+      params: pc,
+    });
+
+    const pe = [];
+    parts.push({
+      sql: `${commonSelect('Ecommerce', 'eo', 'oi', 'eo.user_id', 'COALESCE(eo.customer_name, ct.nom_complet)', 'eo.order_number', 'created_at').replace('NULL AS phone', 'eo.customer_phone AS phone').replace('NULL AS customer_email', 'eo.customer_email AS customer_email')}
+        FROM ecommerce_orders eo
+        JOIN ecommerce_order_items oi ON oi.order_id = eo.id
+        LEFT JOIN contacts ct ON ct.id = eo.user_id
+        LEFT JOIN products p ON p.id = oi.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = oi.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = oi.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('eo', 'created_at', pe, dateFrom, dateTo)}`,
+      params: pe,
+    });
+  }
+
+  if (includeCommandes) {
+    const pcmd = [];
+    parts.push({
+      sql: `${commonSelect('Commande', 'bcmd', 'ci', 'bcmd.fournisseur_id', 'ct.nom_complet', "CONCAT('CMD', LPAD(bcmd.id, GREATEST(LENGTH(bcmd.id), 2), '0'))")}
+        FROM bons_commande bcmd
+        JOIN commande_items ci ON ci.bon_commande_id = bcmd.id
+        LEFT JOIN contacts ct ON ct.id = bcmd.fournisseur_id
+        LEFT JOIN products p ON p.id = ci.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(ci.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = ci.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('bcmd', 'date_creation', pcmd, dateFrom, dateTo)}`,
+      params: pcmd,
+    });
+  }
+
+  if (includeAvoirs) {
+    const pa = [];
+    parts.push({
+      sql: `${commonSelect('Avoir', 'ac', 'ai', 'ac.client_id', 'ct.nom_complet', "CONCAT('AVC', LPAD(ac.id, GREATEST(LENGTH(ac.id), 2), '0'))")}
+        FROM avoirs_client ac
+        JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
+        LEFT JOIN contacts ct ON ct.id = ac.client_id
+        LEFT JOIN products p ON p.id = ai.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(ai.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = ai.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('ac', 'date_creation', pa, dateFrom, dateTo)}`,
+      params: pa,
+    });
+
+    const paf = [];
+    parts.push({
+      sql: `${commonSelect('AvoirFournisseur', 'af', 'afi', 'af.fournisseur_id', 'ct.nom_complet', "CONCAT('AVF', LPAD(af.id, GREATEST(LENGTH(af.id), 2), '0'))")}
+        FROM avoirs_fournisseur af
+        JOIN avoir_fournisseur_items afi ON afi.avoir_fournisseur_id = af.id
+        LEFT JOIN contacts ct ON ct.id = af.fournisseur_id
+        LEFT JOIN products p ON p.id = afi.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = afi.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(afi.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = afi.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('af', 'date_creation', paf, dateFrom, dateTo)}`,
+      params: paf,
+    });
+
+    const pac = [];
+    parts.push({
+      sql: `${commonSelect('AvoirComptant', 'ac2', 'aci', 'NULL', 'ac2.client_nom', "CONCAT('AVCC', LPAD(ac2.id, GREATEST(LENGTH(ac2.id), 2), '0'))")}
+        FROM avoirs_comptant ac2
+        JOIN avoir_comptant_items aci ON aci.avoir_comptant_id = ac2.id
+        LEFT JOIN products p ON p.id = aci.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = aci.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(aci.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = aci.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('ac2', 'date_creation', pac, dateFrom, dateTo)}`,
+      params: pac,
+    });
+
+    const pae = [];
+    parts.push({
+      sql: `${commonSelect('AvoirEcommerce', 'ae', 'aei', 'NULL', 'ae.customer_name', "COALESCE(ae.order_number, CONCAT('AVE', LPAD(ae.id, GREATEST(LENGTH(ae.id), 2), '0')))").replace('NULL AS phone', 'ae.customer_phone AS phone').replace('NULL AS customer_email', 'ae.customer_email AS customer_email')}
+        FROM avoirs_ecommerce ae
+        JOIN avoir_ecommerce_items aei ON aei.avoir_ecommerce_id = ae.id
+        LEFT JOIN products p ON p.id = aei.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = aei.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(aei.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = aei.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('ae', 'date_creation', pae, dateFrom, dateTo)}`,
+      params: pae,
+    });
+  }
+
+  for (const p of parts) params.push(...p.params);
+  return { sql: parts.map((p) => p.sql).join('\nUNION ALL\n'), params };
+}
+
 function buildVariantIdExpr(itemAlias, snapshotAlias = 'ps') {
   return `COALESCE(${itemAlias}.variant_id, ${snapshotAlias}.variant_id)`;
 }
@@ -90,6 +336,174 @@ async function tryQuery(sql, params) {
     return { ok: false, error: e?.sqlMessage || e?.message || String(e) };
   }
 }
+
+router.get('/details', async (req, res) => {
+  try {
+    const mode = String(req.query?.mode || 'produits') === 'clients' ? 'clients' : 'produits';
+    const page = clampInt(req.query?.page, 1, 1, 100000);
+    const pageSize = clampInt(req.query?.pageSize, 10, 1, 100);
+    const dateFrom = req.query?.dateFrom ? String(req.query.dateFrom) : '';
+    const dateTo = req.query?.dateTo ? String(req.query.dateTo) : '';
+    const includeVentes = parseBoolQuery(req.query?.includeVentes, true);
+    const includeCommandes = parseBoolQuery(req.query?.includeCommandes, true);
+    const includeAvoirs = parseBoolQuery(req.query?.includeAvoirs, true);
+    const useClientCondition = parseBoolQuery(req.query?.useClientCondition, false);
+    const selectedProductId = req.query?.selectedProductId ? String(req.query.selectedProductId) : '';
+    const selectedClientId = req.query?.selectedClientId ? String(req.query.selectedClientId) : '';
+
+    const emptyResponse = () => ({
+      rows: [],
+      pagination: { page, pageSize, total: 0, totalPages: 0 },
+      totals: { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0 },
+      options: { products: [{ value: '', label: 'Tous' }], clients: [{ value: '', label: 'Tous' }] },
+      counts: { ventes: { total: 0, filtered: 0 }, commandes: { total: 0, filtered: 0 }, avoirs: { total: 0, filtered: 0 } },
+    });
+
+    if (!includeVentes && !includeCommandes && !includeAvoirs) return res.json(emptyResponse());
+
+    const { sql, params } = buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeCommandes, includeAvoirs });
+    if (!sql.trim()) return res.json(emptyResponse());
+
+    const [[contactsRows], [lineRows]] = await Promise.all([
+      pool.query('SELECT id, nom_complet FROM contacts'),
+      pool.query(sql, params),
+    ]);
+
+    const contactsById = new Map((contactsRows || []).map((c) => [String(c.id), c]));
+    const productStats = new Map();
+    const clientStats = new Map();
+    const productOptions = new Map();
+    const clientOptions = new Map();
+    const counts = {
+      ventes: { total: 0, filtered: 0 },
+      commandes: { total: 0, filtered: 0 },
+      avoirs: { total: 0, filtered: 0 },
+    };
+    const bucketFor = (type) => (['Sortie', 'Comptant', 'Ecommerce'].includes(type) ? 'ventes' : type === 'Commande' ? 'commandes' : 'avoirs');
+
+    for (const raw of lineRows || []) {
+      const bonType = String(raw.bonType || '');
+      const bucket = bucketFor(bonType);
+      counts[bucket].total += 1;
+      if (Number(raw.isNotCalculated || 0) === 1) continue;
+      if (!isStatsDetailStatusAllowed(bonType, raw.statut)) continue;
+
+      const productId = raw.product_id == null ? '' : String(raw.product_id);
+      if (!productId) continue;
+      const realClientId = resolveStatsClientId(raw);
+      if (!realClientId) continue;
+      counts[bucket].filtered += 1;
+
+      const sign = getStatsDetailSign(bonType);
+      const qty = roundSafe(raw.quantite);
+      const unit = roundSafe(raw.prix_unitaire);
+      const total = roundSafe(raw.total || unit * qty);
+      const costUnit = roundSafe(raw.cout_revient);
+      const signedQty = qty * sign;
+      const signedTotal = total * sign;
+      const profit = (unit - costUnit) * qty * sign;
+      const productLabel = [raw.product_reference, raw.designation].filter(Boolean).join(' - ') || `Produit ${productId}`;
+      const productName = raw.designation || productLabel;
+      const productClientId = useClientCondition ? realClientId : '__all__';
+      const clientName = resolveStatsClientName(realClientId, raw, contactsById);
+      const productClientName = resolveStatsClientName(productClientId, raw, contactsById);
+
+      productOptions.set(productId, { value: productId, label: productLabel });
+      clientOptions.set(realClientId, { value: realClientId, label: clientName });
+
+      const detail = {
+        bonId: raw.bonId,
+        bonNumero: formatStatsDetailNumero(bonType, raw.bonId, raw.bonNumero),
+        type: bonType,
+        date: formatDayKey(raw.date_creation),
+        statut: raw.statut,
+        variantName: raw.variant_name || '',
+        unitName: raw.unit_name || '',
+        quantite: signedQty,
+        rawQuantite: qty,
+        prix_unitaire: unit,
+        costUnit,
+        total: signedTotal,
+        profit,
+        sign,
+      };
+
+      if (!productStats.has(productId)) {
+        productStats.set(productId, { productId, title: productName, totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, clients: new Map() });
+      }
+      const ps = productStats.get(productId);
+      ps.totalVentes += 1;
+      ps.totalQuantite += signedQty;
+      ps.totalMontant += signedTotal;
+      ps.totalProfit += profit;
+      if (!ps.clients.has(productClientId)) {
+        ps.clients.set(productClientId, { clientId: productClientId, clientName: productClientName, ventes: 0, quantite: 0, montant: 0, profit: 0, details: [] });
+      }
+      const pc = ps.clients.get(productClientId);
+      pc.ventes += 1;
+      pc.quantite += signedQty;
+      pc.montant += signedTotal;
+      pc.profit += profit;
+      pc.details.push(detail);
+
+      if (!clientStats.has(realClientId)) {
+        clientStats.set(realClientId, { clientId: realClientId, clientName, totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, products: new Map() });
+      }
+      const cs = clientStats.get(realClientId);
+      cs.totalVentes += 1;
+      cs.totalQuantite += signedQty;
+      cs.totalMontant += signedTotal;
+      cs.totalProfit += profit;
+      if (!cs.products.has(productId)) cs.products.set(productId, { productId, productName, ventes: 0, quantite: 0, montant: 0, profit: 0 });
+      const cp = cs.products.get(productId);
+      cp.ventes += 1;
+      cp.quantite += signedQty;
+      cp.montant += signedTotal;
+      cp.profit += profit;
+    }
+
+    const productRows = Array.from(productStats.values()).map((row) => ({
+      ...row,
+      clients: Array.from(row.clients.values()).sort((a, b) => b.montant - a.montant).slice(0, 10),
+    }));
+    const clientRows = Array.from(clientStats.values()).map((row) => ({
+      ...row,
+      products: Array.from(row.products.values()).sort((a, b) => b.montant - a.montant).slice(0, 10),
+    }));
+
+    let rows = mode === 'clients' ? clientRows : productRows;
+    if (mode === 'produits' && selectedProductId) rows = rows.filter((r) => String(r.productId) === selectedProductId);
+    if (mode === 'clients' && selectedClientId) rows = rows.filter((r) => String(r.clientId) === selectedClientId);
+    rows = rows.sort((a, b) => roundSafe(b.totalMontant) - roundSafe(a.totalMontant));
+
+    const totals = rows.reduce((acc, row) => {
+      acc.totalVentes += roundSafe(row.totalVentes);
+      acc.totalQuantite += roundSafe(row.totalQuantite);
+      acc.totalMontant += roundSafe(row.totalMontant);
+      acc.totalProfit += roundSafe(row.totalProfit);
+      return acc;
+    }, { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0 });
+
+    const total = rows.length;
+    const totalPages = total ? Math.ceil(total / pageSize) : 0;
+    const start = (page - 1) * pageSize;
+
+    res.json({
+      rows: rows.slice(start, start + pageSize),
+      pagination: { page, pageSize, total, totalPages },
+      totals,
+      options: {
+        products: [{ value: '', label: 'Tous' }, ...Array.from(productOptions.values()).sort((a, b) => a.label.localeCompare(b.label))],
+        clients: [{ value: '', label: 'Tous' }, ...Array.from(clientOptions.values()).sort((a, b) => a.label.localeCompare(b.label))],
+      },
+      counts,
+      filters: { mode, dateFrom, dateTo, includeVentes, includeCommandes, includeAvoirs, useClientCondition, selectedProductId, selectedClientId },
+    });
+  } catch (error) {
+    console.error('GET /stats/details error:', error);
+    res.status(500).json({ message: 'Erreur stats détaillées', error: error?.sqlMessage || error?.message });
+  }
+});
 
 router.get('/chiffre-affaires', async (req, res) => {
   try {

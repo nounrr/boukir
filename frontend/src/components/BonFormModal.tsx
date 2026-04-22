@@ -860,6 +860,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [updateBonMutation] = useUpdateBonMutation();
   const [createClientRemise] = useCreateClientRemiseMutation();
   const [createContact] = useCreateContactMutation();
+  const submitInProgressRef = useRef(false);
+  const [isSavingBon, setIsSavingBon] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isSendingWhatsAppPdf, setIsSendingWhatsAppPdf] = useState(false);
   const apiBaseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
@@ -1854,6 +1856,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   /* ------------------------------ Soumission ------------------------------ */
   /* ------------------------------ Soumission ------------------------------ */
 const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) => {
+  if (submitInProgressRef.current) {
+    return;
+  }
+  submitInProgressRef.current = true;
+  setIsSavingBon(true);
   try {
     if (isChefChauffeur && !isEditMode) {
       showError('Permission refusée: Chef Chauffeur ne peut pas créer des bons/avoirs.');
@@ -2530,6 +2537,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       showError(`Erreur: ${error?.data?.message || error.message || 'Une erreur est survenue'}`);
     }
   } finally {
+    submitInProgressRef.current = false;
+    setIsSavingBon(false);
     setSubmitting(false);
   }
 };
@@ -5159,10 +5168,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting || (isChefChauffeur && !isEditMode)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                    disabled={isSavingBon || isSubmitting || (isChefChauffeur && !isEditMode)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {(() => {
+                      if (isSavingBon || isSubmitting) return isEditMode ? 'Mise à jour...' : 'Validation...';
                       if (isEditMode) return 'Mettre à jour';
                       if (values.type === 'Devis') return 'Créer Devis';
                       return 'Valider Bon';

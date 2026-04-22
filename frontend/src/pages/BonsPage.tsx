@@ -136,6 +136,8 @@ const BonsPage = () => {
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [sendingWhatsAppId, setSendingWhatsAppId] = useState<string | null>(null);
+  const statusUpdateInProgressRef = useRef<Set<string>>(new Set());
+  const [updatingStatusKeys, setUpdatingStatusKeys] = useState<Set<string>>(new Set());
   const [pendingOpenAvoirEcommercePicker, setPendingOpenAvoirEcommercePicker] = useState(false);
 
   // Pagination
@@ -409,8 +411,20 @@ const BonsPage = () => {
     document.addEventListener('mouseup', stopResize);
   }, [colWidths, onMouseMove, stopResize]);
   // const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
+  const getStatusUpdateKey = useCallback((bon: any) => `${bon?.type || effectiveCurrentTab}:${bon?.id}`, [effectiveCurrentTab]);
+
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
   const handleChangeStatus = async (bon: any, statut: 'Validé' | 'En attente' | 'Annulé' | 'Accepté' | 'Envoyé' | 'Refusé') => {
+    const statusUpdateKey = getStatusUpdateKey(bon);
+    if (statusUpdateInProgressRef.current.has(statusUpdateKey)) {
+      return;
+    }
+    statusUpdateInProgressRef.current.add(statusUpdateKey);
+    setUpdatingStatusKeys((prev) => {
+      const next = new Set(prev);
+      next.add(statusUpdateKey);
+      return next;
+    });
     try {
       // ChefChauffeur: lecture seule avec exception: peut uniquement Annuler / Mettre en attente
       // (utile pour ajuster le stock via Annulation sur Comptant/Sortie)
@@ -513,6 +527,13 @@ const BonsPage = () => {
       } else {
         showError(`Erreur lors du changement de statut: ${msg}`);
       }
+    } finally {
+      statusUpdateInProgressRef.current.delete(statusUpdateKey);
+      setUpdatingStatusKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(statusUpdateKey);
+        return next;
+      });
     }
   };
 
@@ -2708,13 +2729,15 @@ const BonsPage = () => {
                             // UI restriction already hides this tab for non-PDG, but keep it safe.
                             if (currentUser?.role !== 'PDG') return null;
                             if (bon.statut === 'Annulé') return null;
+                            const isUpdatingStatus = updatingStatusKeys.has(getStatusUpdateKey(bon));
 
                             return (
                               <>
                                 {bon.statut !== 'Validé' && (
                                   <button
                                     onClick={() => handleChangeStatus(bon, 'Validé')}
-                                    className="text-emerald-600 hover:text-emerald-800"
+                                    disabled={isUpdatingStatus}
+                                    className="text-emerald-600 hover:text-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                     title="Valider (Avoir e-commerce)"
                                   >
                                     <CheckCircle2 size={ACTION_ICON_SIZE} />
@@ -2723,7 +2746,8 @@ const BonsPage = () => {
                                 {bon.statut === 'Validé' && (
                                   <button
                                     onClick={() => handleChangeStatus(bon, 'En attente')}
-                                    className="text-yellow-600 hover:text-yellow-800"
+                                    disabled={isUpdatingStatus}
+                                    className="text-yellow-600 hover:text-yellow-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                     title="Revenir en attente (Avoir e-commerce)"
                                   >
                                     <Clock size={ACTION_ICON_SIZE} />
@@ -2756,11 +2780,13 @@ const BonsPage = () => {
                             
                             const actionText = showForDevis ? 'Accepter' : 'Valider';
                             const statusToSet = showForDevis ? 'Accepté' : 'Validé';
+                            const isUpdatingStatus = updatingStatusKeys.has(getStatusUpdateKey(bon));
                             
                             return (
                               <button
                                 onClick={() => handleChangeStatus(bon, statusToSet)}
-                                className="text-emerald-600 hover:text-emerald-800"
+                                disabled={isUpdatingStatus}
+                                className="text-emerald-600 hover:text-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                 title={actionText}
                               >
                                 <CheckCircle2 size={ACTION_ICON_SIZE} />
