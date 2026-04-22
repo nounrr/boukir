@@ -985,16 +985,14 @@ const BonsPage = () => {
     const items = parseItemsSafe(bon?.items);
     let profit = 0; let costBase = 0;
     const type = bon?.type || currentTab;
-    const applyRemise = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(type);
     for (const it of items) {
       const q = Number(it.quantite ?? it.qty ?? 0) || 0;
       if (!q) continue;
       const prixVente = Number(it.prix_unitaire ?? 0) || 0;
       const cost = resolveCostWithVariantUnit(it);
-      const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0; // support legacy key
+      const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0;
       const remiseTotale = remiseUnitaire * q;
-      // Profit net si types concernés, sinon brut
-      profit += (prixVente - cost) * q - (applyRemise ? remiseTotale : 0);
+      profit += (prixVente - cost) * q - remiseTotale;
       costBase += cost * q;
     }
     const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;

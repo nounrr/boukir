@@ -641,8 +641,7 @@ const ContactsPage: React.FC = () => {
         const mouvement = (prixUnit - cost) * q;
         const remiseUnitaire = Number((it as any).remise_montant || (it as any).remise_valeur || 0) || 0;
         const remiseTotale = remiseUnitaire * q;
-        const applyRemise = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(b.type);
-        const benefice = mouvement - (applyRemise ? remiseTotale : 0);
+        const benefice = mouvement - remiseTotale;
 
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
         items.push({
@@ -1180,8 +1179,7 @@ const ContactsPage: React.FC = () => {
         const mouvement = (prixUnit - cost) * q;
         const remiseUnitaire = Number((it as any).remise_montant || (it as any).remise_valeur || 0) || 0;
         const remiseTotale = remiseUnitaire * q;
-        const applyRemise = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(b.type);
-        const benefice = mouvement - (applyRemise ? remiseTotale : 0);
+        const benefice = mouvement - remiseTotale;
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
         items.push({
           id: `${b.id}-${it.product_id}-${it.id ?? `${items.length}`}`,
@@ -1900,8 +1898,7 @@ const ContactsPage: React.FC = () => {
             const mouvement = (prixUnit - cost) * q;
             const remiseUnitaire = Number(it.remise_montant || it.remise_valeur || 0) || 0;
             const remiseTotale = remiseUnitaire * q;
-            const applyRemise = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(b.type);
-            const benefice = mouvement - (applyRemise ? remiseTotale : 0);
+            const benefice = mouvement - remiseTotale;
 
             const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
             items.push({

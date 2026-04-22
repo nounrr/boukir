@@ -1,11 +1,9 @@
 // Compute mouvement (profit) and margin% exactly aligned with frontend BonsPage.tsx
-// profit = Σ( (prix_unitaire - (cout_revient || prix_achat)) * quantite ) - remise (for some types)
+// profit = Σ( (prix_unitaire - (cout_revient || prix_achat)) * quantite ) - remise
 // margin% = profit / Σ( (cout_revient || prix_achat) * quantite ) * 100
 
 export const computeMouvementCalc = ({ type, items }) => {
   const safeItems = Array.isArray(items) ? items : [];
-
-  const applyRemise = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(String(type || ''));
 
   let profit = 0;
   let costBase = 0;
@@ -23,7 +21,7 @@ export const computeMouvementCalc = ({ type, items }) => {
     const remiseUnitaire = Number(it?.remise_montant ?? it?.remise_valeur ?? it?.remise_amount ?? 0) || 0;
     const remiseTotale = remiseUnitaire * q;
 
-    profit += (prixVente - cost) * q - (applyRemise ? remiseTotale : 0);
+    profit += (prixVente - cost) * q - remiseTotale;
     costBase += cost * q;
   }
 

@@ -98,16 +98,17 @@ router.get('/', async (_req, res) => {
           const pv = Number(it?.prix_unitaire || 0);
           const cost = (it?.cout_revient ?? it?.prix_achat ?? 0);
           const remise = Number(it?.remise_montant || 0) * q;
-          profit += (pv - Number(cost || 0)) * q;
+          const itemProfit = (pv - Number(cost || 0)) * q;
+          profit += itemProfit;
           totalRemise += remise;
           costBase += Number(cost || 0) * q;
-          return { ...it, profit: (pv - Number(cost || 0)) * q };
+          return { ...it, profit: itemProfit - remise };
         });
         const totalBon = Number(b?.montant_total || 0);
-        const marginPct = costBase > 0 ? (profit / costBase) * 100 : null;
-        // New: mouvement_calc aligned with frontend computeMouvementDetail
+        const profitNet = profit - totalRemise;
+        const marginPct = costBase > 0 ? (profitNet / costBase) * 100 : null;
         const mouvement_calc = computeMouvementCalc({ type: 'Sortie', items });
-        return { ...b, items, calc: { profitBon: profit, totalRemiseBon: totalRemise, netTotalBon: totalBon - totalRemise, marginPct }, mouvement_calc };
+        return { ...b, items, calc: { profitBon: profitNet, totalRemiseBon: totalRemise, netTotalBon: totalBon - totalRemise, marginPct }, mouvement_calc };
       });
     }
 

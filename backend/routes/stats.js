@@ -354,7 +354,7 @@ router.get('/details', async (req, res) => {
     const emptyResponse = () => ({
       rows: [],
       pagination: { page, pageSize, total: 0, totalPages: 0 },
-      totals: { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0 },
+      totals: { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalRemise: 0, totalProfit: 0 },
       options: { products: [{ value: '', label: 'Tous' }], clients: [{ value: '', label: 'Tous' }] },
       counts: { ventes: { total: 0, filtered: 0 }, commandes: { total: 0, filtered: 0 }, avoirs: { total: 0, filtered: 0 } },
     });
@@ -399,9 +399,11 @@ router.get('/details', async (req, res) => {
       const unit = roundSafe(raw.prix_unitaire);
       const total = roundSafe(raw.total || unit * qty);
       const costUnit = roundSafe(raw.cout_revient);
+      const remiseUnit = roundSafe(raw.remise_montant);
       const signedQty = qty * sign;
       const signedTotal = total * sign;
-      const profit = (unit - costUnit) * qty * sign;
+      const signedRemise = remiseUnit * qty * sign;
+      const profit = ((unit - costUnit) * qty - remiseUnit * qty) * sign;
       const productLabel = [raw.product_reference, raw.designation].filter(Boolean).join(' - ') || `Produit ${productId}`;
       const productName = raw.designation || productLabel;
       const productClientId = useClientCondition ? realClientId : '__all__';
@@ -423,42 +425,47 @@ router.get('/details', async (req, res) => {
         rawQuantite: qty,
         prix_unitaire: unit,
         costUnit,
+        remise: signedRemise,
         total: signedTotal,
         profit,
         sign,
       };
 
       if (!productStats.has(productId)) {
-        productStats.set(productId, { productId, title: productName, totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, clients: new Map() });
+        productStats.set(productId, { productId, title: productName, totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalRemise: 0, totalProfit: 0, clients: new Map() });
       }
       const ps = productStats.get(productId);
       ps.totalVentes += 1;
       ps.totalQuantite += signedQty;
       ps.totalMontant += signedTotal;
+      ps.totalRemise += signedRemise;
       ps.totalProfit += profit;
       if (!ps.clients.has(productClientId)) {
-        ps.clients.set(productClientId, { clientId: productClientId, clientName: productClientName, ventes: 0, quantite: 0, montant: 0, profit: 0, details: [] });
+        ps.clients.set(productClientId, { clientId: productClientId, clientName: productClientName, ventes: 0, quantite: 0, montant: 0, remise: 0, profit: 0, details: [] });
       }
       const pc = ps.clients.get(productClientId);
       pc.ventes += 1;
       pc.quantite += signedQty;
       pc.montant += signedTotal;
+      pc.remise += signedRemise;
       pc.profit += profit;
       pc.details.push(detail);
 
       if (!clientStats.has(realClientId)) {
-        clientStats.set(realClientId, { clientId: realClientId, clientName, totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, products: new Map() });
+        clientStats.set(realClientId, { clientId: realClientId, clientName, totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalRemise: 0, totalProfit: 0, products: new Map() });
       }
       const cs = clientStats.get(realClientId);
       cs.totalVentes += 1;
       cs.totalQuantite += signedQty;
       cs.totalMontant += signedTotal;
+      cs.totalRemise += signedRemise;
       cs.totalProfit += profit;
-      if (!cs.products.has(productId)) cs.products.set(productId, { productId, productName, ventes: 0, quantite: 0, montant: 0, profit: 0 });
+      if (!cs.products.has(productId)) cs.products.set(productId, { productId, productName, ventes: 0, quantite: 0, montant: 0, remise: 0, profit: 0 });
       const cp = cs.products.get(productId);
       cp.ventes += 1;
       cp.quantite += signedQty;
       cp.montant += signedTotal;
+      cp.remise += signedRemise;
       cp.profit += profit;
     }
 
@@ -480,9 +487,10 @@ router.get('/details', async (req, res) => {
       acc.totalVentes += roundSafe(row.totalVentes);
       acc.totalQuantite += roundSafe(row.totalQuantite);
       acc.totalMontant += roundSafe(row.totalMontant);
+      acc.totalRemise += roundSafe(row.totalRemise);
       acc.totalProfit += roundSafe(row.totalProfit);
       return acc;
-    }, { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0 });
+    }, { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalRemise: 0, totalProfit: 0 });
 
     const total = rows.length;
     const totalPages = total ? Math.ceil(total / pageSize) : 0;
