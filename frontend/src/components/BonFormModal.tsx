@@ -1506,7 +1506,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
   phone: initialValues.phone || initialValues.customer_phone || '',
         isNotCalculated: initialValues.isNotCalculated === true || initialValues.isNotCalculated === 1 ? true : false,
-        payer_partiellement: initialValues.non_paye === true || initialValues.non_paye === 1 || (initialValues.reste !== undefined && Number(initialValues.reste) > 0) || false,
+        payer_partiellement: initialValues.non_paye === true || initialValues.non_paye === 1 || false,
         reste: initialValues.reste || 0,
         montant_paye_saisi: '',
         statut: initialValues.statut || 'En attente',
@@ -4554,6 +4554,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           s.snapshot_id &&
           Number(s.snapshot_quantite) > 0
         );
+        
         availableStock = matchingSnaps.reduce((sum: number, s: any) => sum + Number(s.snapshot_quantite ?? 0), 0);
       }
     } else if (variantId && Array.isArray(product.variants)) {
