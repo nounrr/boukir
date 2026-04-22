@@ -153,7 +153,7 @@ const StatsDetailPage: React.FC = () => {
   }
 
   const pagination = data?.pagination || { page, pageSize, total: 0, totalPages: 0 };
-  const totals = data?.totals || { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0 };
+  const totals = data?.totals || { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalRemise: 0, totalProfit: 0 };
   const counts = data?.counts;
 
   return (
@@ -234,11 +234,12 @@ const StatsDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow p-4"><p className="text-sm text-gray-500">Ventes</p><p className="text-xl font-semibold">{totals.totalVentes}</p></div>
         <div className="bg-white rounded-lg shadow p-4"><p className="text-sm text-gray-500">Quantité</p><p className="text-xl font-semibold">{toNumber(totals.totalQuantite)}</p></div>
         <div className="bg-white rounded-lg shadow p-4"><p className="text-sm text-gray-500">Montant</p><p className="text-xl font-semibold">{money(totals.totalMontant)}</p></div>
-        <div className="bg-white rounded-lg shadow p-4"><p className="text-sm text-gray-500">Profit</p><p className={`text-xl font-semibold ${toNumber(totals.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{money(totals.totalProfit)}</p></div>
+        <div className="bg-white rounded-lg shadow p-4"><p className="text-sm text-gray-500">Remise</p><p className="text-xl font-semibold text-amber-600">{money((totals as any).totalRemise)}</p></div>
+        <div className="bg-white rounded-lg shadow p-4"><p className="text-sm text-gray-500">Profit (- remise)</p><p className={`text-xl font-semibold ${toNumber(totals.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{money(totals.totalProfit)}</p></div>
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow">
@@ -263,6 +264,7 @@ const StatsDetailPage: React.FC = () => {
                   <div className="text-right text-sm">
                     <p>Qté: <span className="font-semibold">{toNumber(row.totalQuantite)}</span></p>
                     <p>{money(row.totalMontant)}</p>
+                    {toNumber(row.totalRemise) !== 0 && <p className="text-amber-600">Remise: {money(row.totalRemise)}</p>}
                     <p className={toNumber(row.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}>Profit: {money(row.totalProfit)}</p>
                   </div>
                 </div>
@@ -282,6 +284,7 @@ const StatsDetailPage: React.FC = () => {
                   <div className="text-right text-sm">
                     <p>Qté: <span className="font-semibold">{toNumber(row.totalQuantite)}</span></p>
                     <p>{money(row.totalMontant)}</p>
+                    {toNumber(row.totalRemise) !== 0 && <p className="text-amber-600">Remise: {money(row.totalRemise)}</p>}
                     <p className={toNumber(row.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}>Profit: {money(row.totalProfit)}</p>
                   </div>
                 </div>
@@ -312,6 +315,7 @@ const StatsProductClientsTable: React.FC<{ row: any; expanded: Record<string, bo
           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ventes</th>
           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Quantité</th>
           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
+          <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">Remise</th>
           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
         </tr>
       </thead>
@@ -326,6 +330,7 @@ const StatsProductClientsTable: React.FC<{ row: any; expanded: Record<string, bo
                 <td className="px-4 py-2 text-sm text-right">{client.ventes}</td>
                 <td className="px-4 py-2 text-sm text-right">{toNumber(client.quantite)}</td>
                 <td className="px-4 py-2 text-sm text-right font-semibold">{money(client.montant)}</td>
+                <td className="px-4 py-2 text-sm text-right font-semibold text-amber-600">{money(client.remise)}</td>
                 <td className={`px-4 py-2 text-sm text-right font-semibold ${toNumber(client.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{money(client.profit)}</td>
               </tr>
               {isOpen && <StatsDetailsRows details={client.details || []} />}
@@ -339,7 +344,7 @@ const StatsProductClientsTable: React.FC<{ row: any; expanded: Record<string, bo
 
 const StatsDetailsRows: React.FC<{ details: any[] }> = ({ details }) => (
   <tr className="bg-gray-50/60">
-    <td colSpan={5} className="px-4 pb-4 pt-0">
+    <td colSpan={6} className="px-4 pb-4 pt-0">
       <div className="mt-2 border border-gray-200 rounded-md bg-white overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="bg-gray-100">
@@ -353,6 +358,7 @@ const StatsDetailsRows: React.FC<{ details: any[] }> = ({ details }) => (
               <th className="px-2 py-1 text-right">P.Unit</th>
               <th className="px-2 py-1 text-right">Coût</th>
               <th className="px-2 py-1 text-right">Total</th>
+              <th className="px-2 py-1 text-right text-amber-600">Remise</th>
               <th className="px-2 py-1 text-right">Profit</th>
               <th className="px-2 py-1 text-left">Statut</th>
             </tr>
@@ -369,6 +375,7 @@ const StatsDetailsRows: React.FC<{ details: any[] }> = ({ details }) => (
                 <td className="px-2 py-1 text-right">{money(d.prix_unitaire)}</td>
                 <td className="px-2 py-1 text-right">{money(d.costUnit)}</td>
                 <td className="px-2 py-1 text-right font-medium">{money(d.total)}</td>
+                <td className="px-2 py-1 text-right font-medium text-amber-600">{money(d.remise)}</td>
                 <td className={`px-2 py-1 text-right font-medium ${toNumber(d.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{money(d.profit)}</td>
                 <td className="px-2 py-1">{d.statut}</td>
               </tr>
@@ -389,6 +396,7 @@ const StatsClientProductsTable: React.FC<{ row: any }> = ({ row }) => (
           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ventes</th>
           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Quantité</th>
           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
+          <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">Remise</th>
           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
         </tr>
       </thead>
@@ -399,6 +407,7 @@ const StatsClientProductsTable: React.FC<{ row: any }> = ({ row }) => (
             <td className="px-4 py-2 text-sm text-right">{product.ventes}</td>
             <td className="px-4 py-2 text-sm text-right">{toNumber(product.quantite)}</td>
             <td className="px-4 py-2 text-sm text-right font-semibold">{money(product.montant)}</td>
+            <td className="px-4 py-2 text-sm text-right font-semibold text-amber-600">{money(product.remise)}</td>
             <td className={`px-4 py-2 text-sm text-right font-semibold ${toNumber(product.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{money(product.profit)}</td>
           </tr>
         ))}

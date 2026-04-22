@@ -548,7 +548,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                           <br />
                           * % Profit = Profit / Total net de vente
                           <br />
-                          * Les remises n'affectent pas le profit, elles n'affectent que le total net d'un bon.
+                          * Les remises sont déduites du profit : Profit ligne = (PV - Coût) × Qté - Remise × Qté
                           <br />
                           * Les bons véhicule sont déduits en montant total (pas en profit)
                         </div>
