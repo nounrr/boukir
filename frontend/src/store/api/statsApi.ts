@@ -62,6 +62,35 @@ export interface ChiffreDetailSection {
   calculs: ChiffreDetailCalcul[];
 }
 
+export interface StatsDetailsQuery {
+  mode: 'produits' | 'clients';
+  page: number;
+  pageSize: number;
+  dateFrom?: string;
+  dateTo?: string;
+  includeVentes: boolean;
+  includeCommandes: boolean;
+  includeAvoirs: boolean;
+  useClientCondition: boolean;
+  selectedProductId?: string;
+  selectedClientId?: string;
+}
+
+export interface StatsDetailsResponse {
+  rows: any[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+  totals: { totalVentes: number; totalQuantite: number; totalMontant: number; totalProfit: number };
+  options: {
+    products: Array<{ value: string; label: string }>;
+    clients: Array<{ value: string; label: string }>;
+  };
+  counts: {
+    ventes: { total: number; filtered: number };
+    commandes: { total: number; filtered: number };
+    avoirs: { total: number; filtered: number };
+  };
+}
+
 export const statsApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getChiffreAffairesStats: builder.query<
@@ -82,7 +111,26 @@ export const statsApi = apiSlice.injectEndpoints({
     getChiffreAffairesDetail: builder.query<ChiffreDetailSection[], { date: string }>({
       query: ({ date }) => `/stats/chiffre-affaires/detail/${encodeURIComponent(date)}`,
     }),
+
+    getStatsDetails: builder.query<StatsDetailsResponse, StatsDetailsQuery>({
+      query: (args) => {
+        const params = new URLSearchParams();
+        params.set('mode', args.mode);
+        params.set('page', String(args.page));
+        params.set('pageSize', String(args.pageSize));
+        if (args.dateFrom) params.set('dateFrom', args.dateFrom);
+        if (args.dateTo) params.set('dateTo', args.dateTo);
+        params.set('includeVentes', String(args.includeVentes));
+        params.set('includeCommandes', String(args.includeCommandes));
+        params.set('includeAvoirs', String(args.includeAvoirs));
+        params.set('useClientCondition', String(args.useClientCondition));
+        if (args.selectedProductId) params.set('selectedProductId', args.selectedProductId);
+        if (args.selectedClientId) params.set('selectedClientId', args.selectedClientId);
+        return `/stats/details?${params.toString()}`;
+      },
+      providesTags: ['Bon', 'Product', 'Contact'],
+    }),
   }),
 });
 
-export const { useGetChiffreAffairesStatsQuery, useGetChiffreAffairesDetailQuery } = statsApi;
+export const { useGetChiffreAffairesStatsQuery, useGetChiffreAffairesDetailQuery, useGetStatsDetailsQuery } = statsApi;
