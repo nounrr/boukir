@@ -377,18 +377,24 @@ const StatsDetailPage: React.FC = () => {
         }
         // Ajuster le coût par le facteur de conversion de l'unité
         const adjustedCost = costUnit * conversionFactor;
-        const profitItem = (unit - adjustedCost) * qty * sign;
+        const rawRemise = bonType === 'Ecommerce'
+          ? (it.remise_amount ?? it.remise_total ?? 0)
+          : (it.remise_total ?? (toNumber(it.remise_montant ?? 0) * qty));
+        const remiseItem = toNumber(rawRemise) * sign;
+        const profitItem = ((unit - adjustedCost) * qty - toNumber(rawRemise)) * sign;
 
-        if (!pcs[productId]) pcs[productId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, clients: {} };
+        if (!pcs[productId]) pcs[productId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalRemise: 0, totalProfit: 0, clients: {} };
         const pcEntry = pcs[productId];
-        if (!pcEntry.clients[clientId]) pcEntry.clients[clientId] = { ventes: 0, quantite: 0, montant: 0, profit: 0, details: [] };
+        if (!pcEntry.clients[clientId]) pcEntry.clients[clientId] = { ventes: 0, quantite: 0, montant: 0, remise: 0, profit: 0, details: [] };
         pcEntry.clients[clientId].ventes += 1;
         pcEntry.clients[clientId].quantite += signedQty;
         pcEntry.clients[clientId].montant += signedTotal;
+        pcEntry.clients[clientId].remise += remiseItem;
         pcEntry.clients[clientId].profit += profitItem;
         pcEntry.totalVentes += 1;
         pcEntry.totalQuantite += signedQty;
         pcEntry.totalMontant += signedTotal;
+        pcEntry.totalRemise += remiseItem;
         pcEntry.totalProfit += profitItem;
 
         // Détails par bon pour l'accordéon (vue produits)
@@ -403,6 +409,7 @@ const StatsDetailPage: React.FC = () => {
           prix_unitaire: unit,
           unitSource,
           total: signedTotal,
+          remise: remiseItem,
           totalSource,
           baseBeforeSign,
           sign,
@@ -420,16 +427,18 @@ const StatsDetailPage: React.FC = () => {
         const targetClientId = realClientId;
         if (!targetClientId) continue;
 
-        if (!cps[targetClientId]) cps[targetClientId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, products: {} };
+        if (!cps[targetClientId]) cps[targetClientId] = { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalRemise: 0, totalProfit: 0, products: {} };
         const cpEntry = cps[targetClientId];
-        if (!cpEntry.products[productId]) cpEntry.products[productId] = { ventes: 0, quantite: 0, montant: 0, profit: 0 };
+        if (!cpEntry.products[productId]) cpEntry.products[productId] = { ventes: 0, quantite: 0, montant: 0, remise: 0, profit: 0 };
         cpEntry.products[productId].ventes += 1;
         cpEntry.products[productId].quantite += signedQty;
         cpEntry.products[productId].montant += signedTotal;
+        cpEntry.products[productId].remise += remiseItem;
         cpEntry.products[productId].profit += profitItem;
         cpEntry.totalVentes += 1;
         cpEntry.totalQuantite += signedQty;
         cpEntry.totalMontant += signedTotal;
+        cpEntry.totalRemise += remiseItem;
         cpEntry.totalProfit += profitItem;
       }
     }
@@ -805,7 +814,7 @@ const StatsDetailPage: React.FC = () => {
               // Ensure we include all products (even those with zero ventes)
               const allProductIds = new Set<string>([...Object.keys(productClientStats), ...products.map((p:any) => String(p.id))]);
               const entries = Array.from(allProductIds).map((pid) => {
-                const data = productClientStats[pid] || { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalProfit: 0, clients: {} };
+                const data = productClientStats[pid] || { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalRemise: 0, totalProfit: 0, clients: {} };
                 return { productId: pid, ...data };
               });
               const filtered = selectedProductId
@@ -851,7 +860,8 @@ const StatsDetailPage: React.FC = () => {
                         <p className="text-sm text-gray-600">Quantité totale</p>
                         <p className="text-lg font-semibold text-gray-900">{toNumber(row.totalQuantite)}</p>
                         <p className="text-xs text-gray-500">{toNumber(row.totalMontant).toFixed(2)} DH</p>
-                        <p className={`text-xs font-semibold ${toNumber(row.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>Profit: {toNumber(row.totalProfit).toFixed(2)} DH</p>
+                        <p className="text-xs font-semibold text-amber-600">Remise: {toNumber(row.totalRemise).toFixed(2)} DH</p>
+                        <p className={`text-xs font-semibold ${toNumber(row.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>Profit (- remise): {toNumber(row.totalProfit).toFixed(2)} DH</p>
                       </div>
                     </div>
                     <div className="overflow-x-auto w-full">
@@ -862,13 +872,14 @@ const StatsDetailPage: React.FC = () => {
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ventes</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Quantité</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Remise</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {clientRows.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="px-4 py-4 text-center text-sm text-gray-500">Aucune vente pour ce produit</td>
+                              <td colSpan={6} className="px-4 py-4 text-center text-sm text-gray-500">Aucune vente pour ce produit</td>
                             </tr>
                           ) : clientRows.map((cr: any) => {
                             // Gérer l'affichage du nom client pour les bons Comptant
@@ -900,11 +911,12 @@ const StatsDetailPage: React.FC = () => {
                                   <td className="px-4 py-2 text-sm text-right text-gray-900">{cr.ventes}</td>
                                   <td className="px-4 py-2 text-sm text-right text-gray-900">{toNumber(cr.quantite)}</td>
                                   <td className="px-4 py-2 text-sm text-right font-semibold text-gray-900">{toNumber(cr.montant).toFixed(2)} DH</td>
+                                  <td className="px-4 py-2 text-sm text-right font-semibold text-amber-600">{toNumber(cr.remise).toFixed(2)} DH</td>
                                   <td className={`px-4 py-2 text-sm text-right font-semibold ${toNumber(cr.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{toNumber(cr.profit).toFixed(2)} DH</td>
                                 </tr>
                                 {isOpen && cr.details && cr.details.length > 0 && (
                                   <tr className="bg-gray-50/60">
-                                    <td colSpan={5} className="px-4 pb-4 pt-0">
+                                    <td colSpan={6} className="px-4 pb-4 pt-0">
                                       <div className="mt-2 border border-gray-200 rounded-md bg-white w-full overflow-x-auto">
                                         <table className="w-full text-xs">
                                           <thead className="bg-gray-100">
@@ -918,6 +930,7 @@ const StatsDetailPage: React.FC = () => {
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">P.Unit</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">Coût</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">Total</th>
+                                              <th className="px-2 py-1 text-right font-medium text-gray-600">Remise</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">Profit</th>
                                               <th className="px-2 py-1 text-right font-medium text-gray-600">Solde</th>
                                               <th className="px-2 py-1 text-left font-medium text-gray-600">Statut</th>
@@ -956,6 +969,7 @@ const StatsDetailPage: React.FC = () => {
                                                     <td className="px-2 py-1 text-right">{toNumber(d.prix_unitaire).toFixed(2)} DH</td>
                                                     <td className="px-2 py-1 text-right text-gray-500">{toNumber(d.costUnit).toFixed(2)} DH</td>
                                                     <td className="px-2 py-1 text-right font-medium">{toNumber(d.total).toFixed(2)} DH</td>
+                                                    <td className="px-2 py-1 text-right font-medium text-amber-600">{toNumber(d.remise).toFixed(2)} DH</td>
                                                     <td className={`px-2 py-1 text-right font-medium ${toNumber(d.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{toNumber(d.profit).toFixed(2)} DH</td>
                                                     <td className="px-2 py-1 text-right font-semibold text-gray-900">{toNumber(rowSolde).toFixed(2)} DH</td>
                                                     <td className="px-2 py-1">{d.statut}</td>
@@ -965,10 +979,12 @@ const StatsDetailPage: React.FC = () => {
 
                                               const soldeFinal = solde;
                                               const profitFinal = profitCumul;
+                                              const remiseFinal = detailsSorted.reduce((s: number, d: any) => s + toNumber(d.remise), 0);
                                               rows.push(
                                                 <tr key="__solde_final__" className="border-t bg-gray-100">
                                                   <td className="px-2 py-1 font-semibold text-gray-900" colSpan={8}>Solde final</td>
                                                   <td className="px-2 py-1 text-right font-semibold text-gray-900">{toNumber(soldeFinal).toFixed(2)} DH</td>
+                                                  <td className="px-2 py-1 text-right font-semibold text-amber-600">{toNumber(remiseFinal).toFixed(2)} DH</td>
                                                   <td className={`px-2 py-1 text-right font-semibold ${profitFinal >= 0 ? 'text-green-600' : 'text-red-600'}`}>{toNumber(profitFinal).toFixed(2)} DH</td>
                                                   <td className="px-2 py-1 text-right font-semibold text-gray-900">{toNumber(soldeFinal).toFixed(2)} DH</td>
                                                   <td className="px-2 py-1"></td>
@@ -1022,7 +1038,7 @@ const StatsDetailPage: React.FC = () => {
                 // Include products with zero sales for this client
                 const prodIdsForClient = new Set<string>([...Object.keys(row.products || {}), ...products.map((p:any) => String(p.id))]);
                 const productRows = Array.from(prodIdsForClient).map((pid) => {
-                  const stats = row.products?.[pid] || { ventes: 0, quantite: 0, montant: 0 };
+                  const stats = row.products?.[pid] || { ventes: 0, quantite: 0, montant: 0, remise: 0, profit: 0 };
                   return { productId: pid, ...stats };
                 }).sort((a: any, b: any) => b.montant - a.montant).slice(0, 10);
 
@@ -1040,7 +1056,8 @@ const StatsDetailPage: React.FC = () => {
                         <p className="text-sm text-gray-600">Quantité totale</p>
                         <p className="text-lg font-semibold text-gray-900">{toNumber(row.totalQuantite)}</p>
                         <p className="text-xs text-gray-500">{toNumber(row.totalMontant).toFixed(2)} DH</p>
-                        <p className={`text-xs font-semibold ${toNumber(row.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>Profit: {toNumber(row.totalProfit).toFixed(2)} DH</p>
+                        <p className="text-xs font-semibold text-amber-600">Remise: {toNumber(row.totalRemise).toFixed(2)} DH</p>
+                        <p className={`text-xs font-semibold ${toNumber(row.totalProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>Profit (- remise): {toNumber(row.totalProfit).toFixed(2)} DH</p>
                       </div>
                     </div>
                     <div className="overflow-x-auto w-full">
@@ -1051,6 +1068,7 @@ const StatsDetailPage: React.FC = () => {
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ventes</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Quantité</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Remise</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
                           </tr>
                         </thead>
@@ -1064,6 +1082,7 @@ const StatsDetailPage: React.FC = () => {
                                 <td className="px-4 py-2 text-sm text-right text-gray-900">{pr.ventes}</td>
                                 <td className="px-4 py-2 text-sm text-right text-gray-900">{toNumber(pr.quantite)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-semibold text-gray-900">{toNumber(pr.montant).toFixed(2)} DH</td>
+                                <td className="px-4 py-2 text-sm text-right font-semibold text-amber-600">{toNumber(pr.remise).toFixed(2)} DH</td>
                                 <td className={`px-4 py-2 text-sm text-right font-semibold ${toNumber(pr.profit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{toNumber(pr.profit).toFixed(2)} DH</td>
                               </tr>
                             );
