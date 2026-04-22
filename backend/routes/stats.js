@@ -13,6 +13,18 @@ const VALID_STATUSES_SQL = "('validé','valide','en attente','pending','livré',
 // except cancelled/refunded for CA stats by default.
 const ECOMMERCE_EXCLUDED_STATUSES_SQL = "('cancelled','refunded')";
 
+// Keep string columns compatible across UNION queries when production tables use
+// different utf8mb4 collations (for example utf8mb4_0900_ai_ci vs unicode_ci).
+const UNION_COLLATION = 'utf8mb4_unicode_ci';
+
+function unionText(expr) {
+  return `(CONVERT(${expr} USING utf8mb4) COLLATE ${UNION_COLLATION})`;
+}
+
+function unionNullText() {
+  return `(CAST(NULL AS CHAR CHARACTER SET utf8mb4) COLLATE ${UNION_COLLATION})`;
+}
+
 function normalizeFilterType(v) {
   const s = String(v ?? 'all').toLowerCase();
   if (s === 'all' || s === 'day' || s === 'period' || s === 'month') return s;
@@ -166,24 +178,24 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
 
   const commonSelect = (type, headerAlias, itemAlias, contactIdExpr, contactNameExpr, numeroExpr, dateCol = 'date_creation') => `
     SELECT
-      '${type}' AS bonType,
+      ${unionText(`'${type}'`)} AS bonType,
       ${headerAlias}.id AS bonId,
-      ${numeroExpr} AS bonNumero,
+      ${unionText(numeroExpr)} AS bonNumero,
       ${headerAlias}.${dateCol} AS date_creation,
-      ${type === 'Ecommerce' ? `${headerAlias}.status` : `${headerAlias}.statut`} AS statut,
+      ${unionText(type === 'Ecommerce' ? `${headerAlias}.status` : `${headerAlias}.statut`)} AS statut,
       ${type === 'Ecommerce' ? '0' : `COALESCE(${headerAlias}.isNotCalculated, 0)`} AS isNotCalculated,
       ${contactIdExpr} AS client_id,
       ${contactIdExpr} AS fournisseur_id,
-      ${contactNameExpr} AS contact_nom,
-      NULL AS phone,
-      NULL AS customer_email,
+      ${unionText(contactNameExpr)} AS contact_nom,
+      ${unionNullText()} AS phone,
+      ${unionNullText()} AS customer_email,
       ${itemAlias}.product_id AS product_id,
-      CAST(p.id AS CHAR) AS product_reference,
-      COALESCE(p.designation, ${type === 'Ecommerce' ? `${itemAlias}.product_name` : 'NULL'}) AS designation,
+      ${unionText('CAST(p.id AS CHAR)')} AS product_reference,
+      ${unionText(`COALESCE(p.designation, ${type === 'Ecommerce' ? `${itemAlias}.product_name` : 'NULL'})`)} AS designation,
       COALESCE(${itemAlias}.variant_id, ps.variant_id) AS variant_id,
-      COALESCE(pv.variant_name, ${type === 'Ecommerce' ? `${itemAlias}.variant_name` : 'NULL'}) AS variant_name,
+      ${unionText(`COALESCE(pv.variant_name, ${type === 'Ecommerce' ? `${itemAlias}.variant_name` : 'NULL'})`)} AS variant_name,
       ${itemAlias}.unit_id AS unit_id,
-      COALESCE(pu.unit_name, ${type === 'Ecommerce' ? `${itemAlias}.unit_name` : 'NULL'}) AS unit_name,
+      ${unionText(`COALESCE(pu.unit_name, ${type === 'Ecommerce' ? `${itemAlias}.unit_name` : 'NULL'})`)} AS unit_name,
       COALESCE(pu.conversion_factor, 1) AS conversion_factor,
       ${type === 'Ecommerce' ? `${itemAlias}.quantity` : `${itemAlias}.quantite`} AS quantite,
       ${type === 'Ecommerce' ? `${itemAlias}.unit_price` : `${itemAlias}.prix_unitaire`} AS prix_unitaire,
@@ -223,7 +235,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
 
     const pe = [];
     parts.push({
-      sql: `${commonSelect('Ecommerce', 'eo', 'oi', 'eo.user_id', 'COALESCE(eo.customer_name, ct.nom_complet)', 'eo.order_number', 'created_at').replace('NULL AS phone', 'eo.customer_phone AS phone').replace('NULL AS customer_email', 'eo.customer_email AS customer_email')}
+      sql: `${commonSelect('Ecommerce', 'eo', 'oi', 'eo.user_id', 'COALESCE(eo.customer_name, ct.nom_complet)', 'eo.order_number', 'created_at').replace(`${unionNullText()} AS phone`, `${unionText('eo.customer_phone')} AS phone`).replace(`${unionNullText()} AS customer_email`, `${unionText('eo.customer_email')} AS customer_email`)}
         FROM ecommerce_orders eo
         JOIN ecommerce_order_items oi ON oi.order_id = eo.id
         LEFT JOIN contacts ct ON ct.id = eo.user_id
@@ -296,7 +308,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
 
     const pae = [];
     parts.push({
-      sql: `${commonSelect('AvoirEcommerce', 'ae', 'aei', 'NULL', 'ae.customer_name', "COALESCE(ae.order_number, CONCAT('AVE', LPAD(ae.id, GREATEST(LENGTH(ae.id), 2), '0')))").replace('NULL AS phone', 'ae.customer_phone AS phone').replace('NULL AS customer_email', 'ae.customer_email AS customer_email')}
+      sql: `${commonSelect('AvoirEcommerce', 'ae', 'aei', 'NULL', 'ae.customer_name', "COALESCE(ae.order_number, CONCAT('AVE', LPAD(ae.id, GREATEST(LENGTH(ae.id), 2), '0')))").replace(`${unionNullText()} AS phone`, `${unionText('ae.customer_phone')} AS phone`).replace(`${unionNullText()} AS customer_email`, `${unionText('ae.customer_email')} AS customer_email`)}
         FROM avoirs_ecommerce ae
         JOIN avoir_ecommerce_items aei ON aei.avoir_ecommerce_id = ae.id
         LEFT JOIN products p ON p.id = aei.product_id
