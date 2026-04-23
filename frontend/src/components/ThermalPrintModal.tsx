@@ -129,7 +129,7 @@ const getPrintCss = () => `
     image-rendering: crisp-edges;
     image-rendering: pixelated;
   }
-  .thermal-container { width: 80mm; max-width: 100%; padding: 0; margin: 0 auto; text-align: center; }
+  .thermal-container { width: 80mm; max-width: 100%; padding: 0; margin: 0 auto; text-align: center; position: relative; overflow: hidden; }
   img { display: block; margin: 0 auto 4px; width: 40%; height: auto; image-rendering: pixelated; }
   .thermal-header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 2mm; margin-bottom: 4mm; }
   .thermal-title { font-weight: bold; font-size: 13px; margin-bottom: 4mm; }
@@ -265,6 +265,8 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
 
   const hasRightInfo = Boolean((contactName && contactName.trim()) || tel || adrLiv);
 
+  const isAvoir = ['AvoirClient', 'AvoirFournisseur', 'Avoir', 'AvoirComptant'].includes(type);
+
   const MIN_ROWS = 5;
   const padCount = Math.max(0, MIN_ROWS - parsedItems.length);
   const padKeys = useMemo(
@@ -394,8 +396,26 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
           <div
             ref={printRef}
             className="mt-6 mb-6 p-3 border border-gray-300 mx-auto bg-white"
-            style={{ width: '80mm', fontSize: '10px', fontFamily: 'Courier New, monospace', fontWeight: 'bold', tableLayout: 'fixed' }}
+            style={{ width: '80mm', fontSize: '10px', fontFamily: 'Courier New, monospace', fontWeight: 'bold', tableLayout: 'fixed', position: 'relative', overflow: 'hidden' }}
           >
+            {isAvoir && (
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%) rotate(-45deg)',
+                fontSize: '52px',
+                fontWeight: '900',
+                color: 'rgba(0,0,0,0.4)',
+                zIndex: 0,
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+                userSelect: 'none',
+                letterSpacing: '6px',
+              }}>
+                AVOIR
+              </div>
+            )}
             <div className="thermal-header flex items-center justify-center gap-10">
               <img 
                 src={logoBase64 || logoCurrent}

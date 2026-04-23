@@ -1177,7 +1177,8 @@ const ContactsPage: React.FC = () => {
           return 0;
         })();
         const mouvement = (prixUnit - cost) * q;
-        const remiseUnitaire = Number((it as any).remise_montant || (it as any).remise_valeur || 0) || 0;
+        const remise_m = Number((it as any).remise_montant ?? (it as any).remise_valeur ?? 0) || 0;
+        const remiseUnitaire = remise_m > 0 ? remise_m : (prixUnit * (remise_pourcentage / 100));
         const remiseTotale = remiseUnitaire * q;
         const benefice = mouvement - remiseTotale;
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
@@ -4893,7 +4894,7 @@ const ContactsPage: React.FC = () => {
                       <DollarSign size={16} />
                       Situation Financière
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="bg-white rounded-lg p-3 border">
                         <p className="font-semibold text-gray-600 text-sm">Solde Initial:</p>
                         <p className={`font-bold text-lg ${(Number(selectedContact.solde) || 0) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
@@ -4944,9 +4945,7 @@ const ContactsPage: React.FC = () => {
                           );
                         })()}
                       </div>
-                    </div>
-                    <div className="flex gap-4 items-stretch">
-                      <div className="bg-white rounded-lg p-3 border flex-1">
+                      <div className="bg-white rounded-lg p-3 border">
                         <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
                         {(() => {
                           const value = detailedContact?.solde_cumule ?? finalSoldeNet;
@@ -4960,52 +4959,44 @@ const ContactsPage: React.FC = () => {
                           );
                         })()}
                       </div>
-                      <div className="bg-white rounded-lg p-3 border flex-1">
-                        <p className="font-semibold text-gray-600 text-sm">Bénéfice total</p>
-                        <p className={`font-bold text-lg ${(() => {
-                          const sum = (allProductHistory || [])
-                            .filter((i: any) => !i.syntheticInitial && (i.type === 'produit' || i.type === 'avoir'))
-                            .reduce((s: number, i: any) => {
-                              const b = Number(i.benefice || 0) || 0;
-                              return s + (i.type === 'avoir' ? -Math.abs(b) : b);
-                            }, 0);
-                          return sum >= 0 ? 'text-green-600' : 'text-red-600';
-                        })()}`}>
-                          {(() => {
-                            const sum = (allProductHistory || [])
-                              .filter((i: any) => !i.syntheticInitial && (i.type === 'produit' || i.type === 'avoir'))
-                              .reduce((s: number, i: any) => {
-                                const b = Number(i.benefice || 0) || 0;
-                                return s + (i.type === 'avoir' ? -Math.abs(b) : b);
-                              }, 0);
-                            return `${sum.toFixed(3)} DH`;
-                          })()}
+                    </div>
+                    {/* Stats Cards — 4 cards en une seule ligne */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                      {(() => {
+                        const sum = (allProductHistory || [])
+                          .filter((i: any) => !i.syntheticInitial && (i.type === 'produit' || i.type === 'avoir'))
+                          .reduce((s: number, i: any) => {
+                            const b = Number(i.benefice || 0) || 0;
+                            return s + (i.type === 'avoir' ? -Math.abs(b) : b);
+                          }, 0);
+                        return (
+                          <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+                            <p className="font-semibold text-emerald-800 text-sm">Bénéfice (- Remise)</p>
+                            <p className={`font-bold text-lg ${sum >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{sum.toFixed(3)} DH</p>
+                          </div>
+                        );
+                      })()}
+                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                        <p className="font-semibold text-blue-800 text-sm">{(dateFrom || dateTo) ? 'Total Débit (période)' : 'Total Débit'}</p>
+                        <p className="font-bold text-lg text-blue-700">
+                          {filteredDebitCredit.totalDebit.toFixed(3)} DH
+                        </p>
+                        {(dateFrom || dateTo || productSearch) && (
+                          <p className="text-xs text-blue-500 mt-1">Filtré</p>
+                        )}
+                      </div>
+                      <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                        <p className="font-semibold text-green-800 text-sm">Total Paiements</p>
+                        <p className="font-bold text-lg text-green-700">
+                          {filteredDebitCredit.totalPaiements.toFixed(3)} DH
                         </p>
                       </div>
-                    </div>
-                    {/* Stats Cards — filtrées par période / recherche */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                       <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                         <p className="font-semibold text-blue-800 text-sm">{(dateFrom || dateTo) ? 'Total Débit (Ventes période)' : 'Total Débit (Ventes + Solde init.)'}</p>
-                         <p className="font-bold text-lg text-blue-700">
-                           {filteredDebitCredit.totalDebit.toFixed(3)} DH
-                         </p>
-                         {(dateFrom || dateTo || productSearch) && (
-                           <p className="text-xs text-blue-500 mt-1">Filtré par période/recherche</p>
-                         )}
-                       </div>
-                       <div className="bg-green-50 rounded-lg p-3 border border-green-100">
-                         <p className="font-semibold text-green-800 text-sm">Total Paiements</p>
-                         <p className="font-bold text-lg text-green-700">
-                           {filteredDebitCredit.totalPaiements.toFixed(3)} DH
-                         </p>
-                       </div>
-                       <div className="bg-orange-50 rounded-lg p-3 border border-orange-100">
-                         <p className="font-semibold text-orange-800 text-sm">Total Avoirs</p>
-                         <p className="font-bold text-lg text-orange-700">
-                           {filteredDebitCredit.totalAvoirs.toFixed(3)} DH
-                         </p>
-                       </div>
+                      <div className="bg-orange-50 rounded-lg p-3 border border-orange-100">
+                        <p className="font-semibold text-orange-800 text-sm">Total Avoirs</p>
+                        <p className="font-bold text-lg text-orange-700">
+                          {filteredDebitCredit.totalAvoirs.toFixed(3)} DH
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>

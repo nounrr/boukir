@@ -537,8 +537,12 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       `, [comptantId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
 
-    if (Array.isArray(paiements_non_payes) && paiements_non_payes.length) {
-      for (const paiement of paiements_non_payes) {
+    const initialNonPayePayments = nonPayeRequested && Array.isArray(paiements_non_payes)
+      ? paiements_non_payes
+      : [];
+
+    if (initialNonPayePayments.length) {
+      for (const paiement of initialNonPayePayments) {
         const montantPaiement = Number(paiement?.montant || 0);
         const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || normalizedDateCreation);
         const notePaiement = paiement?.note ? String(paiement.note) : null;
@@ -555,8 +559,10 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       }
     }
 
-    if (nonPayeRequested || (Array.isArray(paiements_non_payes) && paiements_non_payes.length)) {
+    if (nonPayeRequested) {
       await syncComptantBonReste(connection, comptantId, montant_total);
+    } else {
+      await connection.execute('UPDATE bons_comptant SET reste = 0, non_paye = 0 WHERE id = ?', [comptantId]);
     }
 
     // Stock: Comptant => retire du stock dès la création (même "En attente")
@@ -743,8 +749,12 @@ router.put('/:id', async (req, res) => {
       id,
     ]);
 
-    if (Array.isArray(paiements_non_payes) && paiements_non_payes.length) {
-      for (const paiement of paiements_non_payes) {
+    const nextNonPayePayments = nonPayeRequested && Array.isArray(paiements_non_payes)
+      ? paiements_non_payes
+      : [];
+
+    if (nextNonPayePayments.length) {
+      for (const paiement of nextNonPayePayments) {
         const montantPaiement = Number(paiement?.montant || 0);
         const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || normalizedDateCreation);
         const notePaiement = paiement?.note ? String(paiement.note) : null;
@@ -764,7 +774,7 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    if (nonPayeRequested || (Array.isArray(paiements_non_payes) && paiements_non_payes.length)) {
+    if (nonPayeRequested) {
       await syncComptantBonReste(connection, id, montant_total);
     } else {
       await connection.execute('DELETE FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?', [id]);
