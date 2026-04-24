@@ -120,7 +120,7 @@ async function getDirectBonRemiseTotalsByContact(db, contactIds) {
     `SELECT bs.client_id AS id, ${amountExpr} AS total
      FROM bons_sortie bs
      INNER JOIN sortie_items items ON items.bon_sortie_id = bs.id
-     WHERE COALESCE(bs.remise_is_client, 1) = 1
+     WHERE (COALESCE(bs.remise_is_client, 1) = 1 OR bs.remise_id IS NULL)
        AND bs.client_id IN (${inClause})
      GROUP BY bs.client_id`,
     params
@@ -130,7 +130,7 @@ async function getDirectBonRemiseTotalsByContact(db, contactIds) {
     `SELECT bc.client_id AS id, ${amountExpr} AS total
      FROM bons_comptant bc
      INNER JOIN comptant_items items ON items.bon_comptant_id = bc.id
-     WHERE COALESCE(bc.remise_is_client, 1) = 1
+     WHERE (COALESCE(bc.remise_is_client, 1) = 1 OR bc.remise_id IS NULL)
        AND bc.client_id IN (${inClause})
      GROUP BY bc.client_id`,
     params
@@ -170,7 +170,7 @@ async function getUsedRemiseTotals(db, accountIds) {
 }
 
 export async function getRemisePaymentAccounts(db = pool, options = {}) {
-  const { ids, onlyAvailable = false, types } = options;
+  const { ids, onlyAvailable = false, types, contactIds: filterContactIds } = options;
 
   await ensurePaymentRemiseColumns(db);
 
@@ -185,6 +185,11 @@ export async function getRemisePaymentAccounts(db = pool, options = {}) {
   if (Array.isArray(types) && types.length) {
     where.push(`cr.type IN (${makeInClause(types)})`);
     params.push(...types);
+  }
+
+  if (Array.isArray(filterContactIds) && filterContactIds.length) {
+    where.push(`cr.contact_id IN (${makeInClause(filterContactIds)})`);
+    params.push(...filterContactIds);
   }
 
   const [accounts] = await db.execute(
@@ -210,14 +215,14 @@ export async function getRemisePaymentAccounts(db = pool, options = {}) {
   if (!accounts.length) return [];
 
   const accountIds = accounts.map((row) => Number(row.id)).filter(Number.isFinite);
-  const contactIds = accounts
+  const accountContactIds = accounts
     .map((row) => Number(row.contact_id))
     .filter((value) => Number.isFinite(value) && value > 0);
 
   const oldTotals = await getOldRemiseTotals(db, accountIds);
   const assignedBonTotals = await getAssignedBonRemiseTotals(db, accountIds);
-  const directBonTotalsByContact = await getDirectBonRemiseTotalsByContact(db, contactIds);
-  const ecommerceTotalsByContact = await getEcommerceEarnedTotalsByContact(db, contactIds);
+  const directBonTotalsByContact = await getDirectBonRemiseTotalsByContact(db, accountContactIds);
+  const ecommerceTotalsByContact = await getEcommerceEarnedTotalsByContact(db, accountContactIds);
   const usedTotals = await getUsedRemiseTotals(db, accountIds);
 
   const accountIdByContactId = new Map();
@@ -236,15 +241,15 @@ export async function getRemisePaymentAccounts(db = pool, options = {}) {
 
   const result = accounts.map((account) => {
     const accountId = Number(account.id);
-    const oldTotal = Number(oldTotals.get(accountId) || 0);
-    const assignedBonTotal = Number(assignedBonTotals.get(accountId) || 0);
-    const directBonTotal = Number(directBonTotals.get(accountId) || 0);
-    const ecommerceTotal = Number(ecommerceTotals.get(accountId) || 0);
+    const oldTotal = Math.max(0, Number(oldTotals.get(accountId) || 0));
+    const assignedBonTotal = Math.max(0, Number(assignedBonTotals.get(accountId) || 0));
+    const directBonTotal = Math.max(0, Number(directBonTotals.get(accountId) || 0));
+    const ecommerceTotal = Math.max(0, Number(ecommerceTotals.get(accountId) || 0));
     const usedTotal = Number(usedTotals.get(accountId) || 0);
 
-    const earnedBonTotal = account.type === 'client_abonne' ? directBonTotal : assignedBonTotal;
-    const earnedEcommerceTotal = account.type === 'client_abonne' ? ecommerceTotal : 0;
-    const earnedTotal = oldTotal + earnedBonTotal + earnedEcommerceTotal;
+    const earnedBonTotal = directBonTotal + assignedBonTotal;
+    const earnedEcommerceTotal = ecommerceTotal;
+    const earnedTotal = Math.max(0, oldTotal + earnedBonTotal + earnedEcommerceTotal);
     const availableTotal = Math.max(0, earnedTotal - usedTotal);
 
     return {

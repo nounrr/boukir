@@ -269,6 +269,13 @@ export interface Contact {
   total_ventes?: number;
   total_paiements?: number;
   total_avoirs?: number;
+  remise_account_id?: number | null;
+  remise_gagnee_ancien?: number;
+  remise_gagnee_nouveau?: number;
+  remise_gagnee_ecommerce?: number;
+  remise_gagnee_total?: number;
+  remise_utilisee?: number;
+  remise_disponible?: number;
   plafond?: number | null; // Plafond de crédit (clients)
   demande_artisan?: boolean;
   artisan_approuve?: boolean;

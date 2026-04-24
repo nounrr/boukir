@@ -44,6 +44,7 @@ import type { RootState } from '../store';
 import logo from '../components/logo.png';
 import { generatePDFBlobFromElement } from '../utils/pdf';
 import { uploadBonPdf } from '../utils/uploads';
+import { fetchClientRemisesWithItems, sumRemiseItemsTotal } from '../utils/remisesClientTotals';
 // Validation du formulaire de contact
 const contactValidationSchema = Yup.object({
   nom_complet: Yup.string().nullable(),
@@ -1497,6 +1498,16 @@ const ContactsPage: React.FC = () => {
     return { total, bons };
   }, [displayedProductHistory]);
 
+  const fetchedContactOldRemiseTotal = useMemo(
+    () => sumRemiseItemsTotal(contactRemises.flatMap((remise: any) => remise?.items || [])),
+    [contactRemises]
+  );
+  const backendRemiseUsedTotal = Number(detailedContact?.remise_utilisee ?? 0);
+  const backendRemiseNewTotal = Number(detailedContact?.remise_gagnee_nouveau ?? 0) + Number(detailedContact?.remise_gagnee_ecommerce ?? 0);
+  const backendRemiseOldTotal = fetchedContactOldRemiseTotal;
+  const backendRemiseEarnedTotal = fetchedContactOldRemiseTotal + backendRemiseNewTotal;
+  const backendRemiseAvailableTotal = Math.max(0, backendRemiseEarnedTotal - backendRemiseUsedTotal);
+
   const getBonDirectRemiseTotal = React.useCallback((row: any) => {
     if (!row || row.syntheticInitial || row.type === 'paiement') return 0;
 
@@ -2064,12 +2075,7 @@ const ContactsPage: React.FC = () => {
     }
 
     try {
-      // Récupérer toutes les remises liées à ce contact (protégé -> besoin Authorization)
-      const response = await fetch(`/api/remises/clients`, {
-        headers: authTokenValue ? { 'Authorization': `Bearer ${authTokenValue}` } : {}
-      });
-      if (response.ok) {
-        const allRemises = await response.json();
+      const allRemises = await fetchClientRemisesWithItems(authTokenValue);
 
         const normalize = (s: any) => (s || '').toString().trim().toLowerCase();
         const contactNameVariants = new Set([
@@ -2083,17 +2089,11 @@ const ContactsPage: React.FC = () => {
           const isDirectLink = remise.contact_id != null && String(remise.contact_id) === String(selectedContact.id);
           const isLegacyAbonne = !remise.contact_id && remise.type === 'client_abonne' && contactNameVariants.has(normalize(remise.nom));
           if (isDirectLink || isLegacyAbonne) {
-            const itemsResponse = await fetch(`/api/remises/clients/${remise.id}/items`, {
-              headers: authTokenValue ? { 'Authorization': `Bearer ${authTokenValue}` } : {}
+            contactRemisesData.push({
+              ...remise,
+              _isLegacy: isLegacyAbonne,
+              items: Array.isArray(remise.items) ? remise.items : [],
             });
-            if (itemsResponse.ok) {
-              const items = await itemsResponse.json();
-              contactRemisesData.push({
-                ...remise,
-                _isLegacy: isLegacyAbonne,
-                items
-              });
-            }
           }
         }
 
@@ -2102,14 +2102,7 @@ const ContactsPage: React.FC = () => {
         const countClient = contactRemisesData.filter(r => r.type === 'client-remise').length;
         console.log(`Chargement remises: abonné=${countAbonne} client-remise=${countClient}`, contactRemisesData);
 
-        setContactRemises(contactRemisesData);
-      } else {
-        if (response.status === 401) {
-          console.warn('Non autorisé (401) pour /api/remises/clients — token manquant ou expiré');
-        } else {
-          console.error('Erreur lors du chargement des remises:', response.status);
-        }
-      }
+      setContactRemises(contactRemisesData);
     } catch (error) {
       console.error('Erreur chargement remises:', error);
       setContactRemises([]);
@@ -4902,21 +4895,17 @@ const ContactsPage: React.FC = () => {
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-3 border">
-                        <p className="font-semibold text-gray-600 text-sm">Total des remises (Ancien + Nouveau)</p>
+                        <p className="font-semibold text-gray-600 text-sm">Total des remises disponible</p>
                         {(() => {
-                          const newTotal = Number(newSystemRemiseDisplayed.total || 0);
-                          const oldTotal = contactRemises.reduce(
-                            (sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0),
-                            0
-                          );
-                          const combined = (selectedContact?.type === 'Client') ? (oldTotal + newTotal) : 0;
                           return (
                             <div className="space-y-1">
                               {selectedContact?.type === 'Client' ? (
                                 <>
-                                  <p className={`font-bold text-lg ${combined >= 0 ? 'text-green-600' : 'text-red-600'}`}>{combined.toFixed(3)} DH</p>
-                                  <p className="text-xs text-gray-500">Nouveau (bons Sortie/Comptant): {newTotal.toFixed(3)} DH</p>
-                                  <p className="text-xs text-gray-500">Ancien (client_remises): {Number(oldTotal || 0).toFixed(3)} DH</p>
+                                  <p className={`font-bold text-lg ${backendRemiseAvailableTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>{backendRemiseAvailableTotal.toFixed(3)} DH</p>
+                                  <p className="text-xs text-gray-500">Gagné total: {backendRemiseEarnedTotal.toFixed(3)} DH</p>
+                                  <p className="text-xs text-gray-500">Paiements mode Remise: {backendRemiseUsedTotal.toFixed(3)} DH</p>
+                                  <p className="text-xs text-gray-500">Nouveau: {backendRemiseNewTotal.toFixed(3)} DH</p>
+                                  <p className="text-xs text-gray-500">Ancien: {backendRemiseOldTotal.toFixed(3)} DH</p>
 
                                   {Array.isArray(newSystemRemiseDisplayed.bons) && newSystemRemiseDisplayed.bons.length > 0 && (
                                     <details className="text-xs text-gray-600">
@@ -5147,21 +5136,27 @@ const ContactsPage: React.FC = () => {
                       )}
                     </h3>
                     {/* Résumé remises (debug + info) */}
-                    {selectedContact?.type === 'Client' && (contactRemises.length > 0 || Number(newSystemRemiseDisplayed.total || 0) > 0) && (
+                    {selectedContact?.type === 'Client' && backendRemiseEarnedTotal > 0 && (
                       <div className="flex flex-col sm:flex-row gap-2 sm:items-center bg-blue-50 border border-blue-200 rounded-md px-3 py-2 text-xs text-blue-800">
                         <div className="font-semibold">Résumé Remises</div>
                         <div className="flex gap-3 flex-wrap">
                           <span>
-                            Total (Ancien+Nouveau): {(Number(newSystemRemiseDisplayed.total || 0) + contactRemises.reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0)).toFixed(3)} DH
+                            Disponible: {backendRemiseAvailableTotal.toFixed(3)} DH
                           </span>
                           <span>
-                            Nouveau (bons): {Number(newSystemRemiseDisplayed.total || 0).toFixed(3)} DH
+                            GagnÃ© total: {backendRemiseEarnedTotal.toFixed(3)} DH
                           </span>
                           <span>
-                            Abonné: {contactRemises.filter(r => r.type === 'client_abonne').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(3)} DH
+                            Paiements Remise: {backendRemiseUsedTotal.toFixed(3)} DH
                           </span>
                           <span>
-                            Client: {contactRemises.filter(r => r.type === 'client-remise').reduce((sum: number, r: any) => sum + (r.items || []).reduce((s: number, i: any) => s + (Number(i.qte) || 0) * (Number(i.prix_remise) || 0), 0), 0).toFixed(3)} DH
+                            Nouveau: {backendRemiseNewTotal.toFixed(3)} DH
+                          </span>
+                          <span>
+                            Ancien: {backendRemiseOldTotal.toFixed(3)} DH
+                          </span>
+                          <span>
+                            Compte remise: #{detailedContact?.remise_account_id ?? '-'}
                           </span>
                         </div>
                       </div>
