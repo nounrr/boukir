@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Plus, X, User, TrendingUp, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import SearchableSelect from '../components/SearchableSelect';
 import BonFormModal from '../components/BonFormModal';
@@ -8,6 +8,7 @@ import { useGetClientRemisesQuery, useCreateClientRemiseMutation, useUpdateClien
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetAllClientsQuery } from '../store/api/contactsApi';
 import { useAuth } from '../hooks/redux';
+import { fetchClientRemisesWithItems, sumRemiseItemsTotal } from '../utils/remisesClientTotals';
 
 const parseItems = (items: any): any[] => {
   if (Array.isArray(items)) return items;
@@ -83,6 +84,15 @@ const getBonDirectClientId = (bon: any): number | null => {
   return id != null && Number.isFinite(Number(id)) ? Number(id) : null;
 };
 
+const getAccountOldTotal = (account: any): number => Number(account?.remise_gagnee_ancien ?? account?.earned_old_total ?? account?.total_remise ?? 0);
+const getAccountNewTotal = (account: any): number => Number(account?.remise_gagnee_nouveau ?? account?.earned_bon_total ?? 0);
+const getAccountUsedTotal = (account: any): number => Number(account?.remise_utilisee ?? account?.used_total ?? 0);
+const getAccountAvailableTotal = (account: any, fallbackEarned = 0): number => {
+  const explicit = account?.remise_disponible ?? account?.available_total;
+  if (explicit != null && explicit !== '') return Number(explicit || 0);
+  return Math.max(0, Number(fallbackEarned || 0) - getAccountUsedTotal(account));
+};
+
 type SortDirection = 'asc' | 'desc';
 type RemiseSortKey = 'nom' | 'type' | 'phone' | 'cin' | 'created_at' | 'ancien' | 'nouveau' | 'used' | 'final';
 type DirectSortKey = 'client' | 'societe' | 'telephone' | 'bons' | 'remise';
@@ -108,7 +118,7 @@ const compareSortValues = (left: any, right: any) => {
 };
 
 const RemisesPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { data: clients = [], refetch } = useGetClientRemisesQuery();
   const [createClient] = useCreateClientRemiseMutation();
   const [updateClient] = useUpdateClientRemiseMutation();
@@ -145,6 +155,17 @@ const RemisesPage: React.FC = () => {
     );
   }, [clients, search, typeFilter]);
 
+  const clientAbonneByContactId = useMemo(() => {
+    const map = new Map<number, any>();
+    for (const account of (clients as any[])) {
+      if (String(account?.type) !== 'client_abonne') continue;
+      const contactId = Number(account?.contact_id);
+      if (!Number.isFinite(contactId) || contactId <= 0) continue;
+      map.set(contactId, account);
+    }
+    return map;
+  }, [clients]);
+
   const directNewByClientId = useMemo(() => {
     const totalById = new Map<number, number>();
     const countById = new Map<number, number>();
@@ -174,6 +195,18 @@ const RemisesPage: React.FC = () => {
 
     return { totalById, countById };
   }, [sortiesAll, comptantsAll, ecommerceOrdersAll]);
+
+  const directAvailableByClientId = useMemo(() => {
+    const map = new Map<number, number>();
+
+    for (const [clientId, earnedTotal] of directNewByClientId.totalById.entries()) {
+      const linkedAccount = clientAbonneByContactId.get(clientId);
+      const used = linkedAccount ? getAccountUsedTotal(linkedAccount) : 0;
+      map.set(clientId, Math.max(0, Number(earnedTotal || 0) - Number(used || 0)));
+    }
+
+    return map;
+  }, [directNewByClientId, clientAbonneByContactId]);
 
   const filteredDirectClients = useMemo(() => {
     const term = directSearch.trim().toLowerCase();
@@ -222,8 +255,8 @@ const RemisesPage: React.FC = () => {
       const rightId = Number(right?.id);
       const leftCount = directNewByClientId.countById.get(leftId) || 0;
       const rightCount = directNewByClientId.countById.get(rightId) || 0;
-      const leftRemise = directNewByClientId.totalById.get(leftId) || 0;
-      const rightRemise = directNewByClientId.totalById.get(rightId) || 0;
+      const leftRemise = directAvailableByClientId.get(leftId) || 0;
+      const rightRemise = directAvailableByClientId.get(rightId) || 0;
 
       let result = 0;
       switch (directSort.key) {
@@ -248,7 +281,7 @@ const RemisesPage: React.FC = () => {
     });
 
     return list;
-  }, [filteredDirectClients, directSort, directNewByClientId]);
+  }, [filteredDirectClients, directSort, directNewByClientId, directAvailableByClientId]);
 
   const renderSortIcon = (isActive: boolean, direction: SortDirection | null, colorClass: string) => {
     if (!isActive || !direction) return <ArrowUpDown size={14} className={colorClass} />;
@@ -267,6 +300,7 @@ const RemisesPage: React.FC = () => {
   const [isDirectDetailsOpen, setIsDirectDetailsOpen] = useState(false);
   const [editingBon, setEditingBon] = useState<any>(null);
   const [isBonEditOpen, setIsBonEditOpen] = useState(false);
+  const [clientsWithItems, setClientsWithItems] = useState<any[]>([]);
 
   const openEditBon = (bon: any) => {
     if (!bon) return;
@@ -274,21 +308,36 @@ const RemisesPage: React.FC = () => {
     setIsBonEditOpen(true);
   };
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadClientsWithItems = async () => {
+      try {
+        const rows = await fetchClientRemisesWithItems(token);
+        if (!cancelled) setClientsWithItems(rows);
+      } catch (error) {
+        console.error('Erreur chargement remises avec items:', error);
+        if (!cancelled) setClientsWithItems([]);
+      }
+    };
+
+    loadClientsWithItems();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, clients.length]);
+
 
   const oldTotalByClientId = useMemo(() => {
     const map = new Map<number, number>();
-    for (const c of clients as any[]) {
+    for (const c of clientsWithItems as any[]) {
       const id = Number(c?.id);
       if (!Number.isFinite(id)) continue;
-      const oldTotal = Array.isArray(c.items)
-        ? c.items
-            .filter((it: any) => it.statut !== 'Annulé')
-            .reduce((itemSum: number, it: any) => itemSum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0)
-        : Number(c.total_remise ?? 0);
+      const oldTotal = sumRemiseItemsTotal(c.items);
       map.set(id, Number(oldTotal || 0));
     }
     return map;
-  }, [clients]);
+  }, [clientsWithItems]);
 
   const newTotalByClientId = useMemo(() => {
     const map = new Map<number, number>();
@@ -307,14 +356,16 @@ const RemisesPage: React.FC = () => {
     if (!remiseSort) return list;
 
     list.sort((left: any, right: any) => {
-      const leftOld = oldTotalByClientId.get(Number(left.id)) || 0;
-      const rightOld = oldTotalByClientId.get(Number(right.id)) || 0;
-      const leftNew = newTotalByClientId.get(Number(left.id)) || 0;
-      const rightNew = newTotalByClientId.get(Number(right.id)) || 0;
-      const leftUsed = Number(left.remise_utilisee || 0);
-      const rightUsed = Number(right.remise_utilisee || 0);
-      const leftFinal = Number(left.remise_disponible ?? (leftOld + leftNew - leftUsed));
-      const rightFinal = Number(right.remise_disponible ?? (rightOld + rightNew - rightUsed));
+      const leftOld = getAccountOldTotal(left);
+      const rightOld = getAccountOldTotal(right);
+      const leftNew = Number((left.remise_gagnee_nouveau ?? left.earned_bon_total ?? newTotalByClientId.get(Number(left.id))) || 0);
+      const rightNew = Number((right.remise_gagnee_nouveau ?? right.earned_bon_total ?? newTotalByClientId.get(Number(right.id))) || 0);
+      const leftEarned = Number(left.remise_gagnee_total ?? left.earned_total ?? (leftOld + leftNew));
+      const rightEarned = Number(right.remise_gagnee_total ?? right.earned_total ?? (rightOld + rightNew));
+      const leftUsed = getAccountUsedTotal(left);
+      const rightUsed = getAccountUsedTotal(right);
+      const leftFinal = getAccountAvailableTotal(left, leftEarned);
+      const rightFinal = getAccountAvailableTotal(right, rightEarned);
 
       let result = 0;
       switch (remiseSort.key) {
@@ -367,9 +418,9 @@ const RemisesPage: React.FC = () => {
 
   const totalRemisesNewDirectClients = useMemo(() => {
     let sum = 0;
-    for (const v of directNewByClientId.totalById.values()) sum += Number(v || 0);
+    for (const v of directAvailableByClientId.values()) sum += Number(v || 0);
     return sum;
-  }, [directNewByClientId]);
+  }, [directAvailableByClientId]);
 
   const totalRemisesGlobal = totalRemisesOld + totalRemisesNew;
 
@@ -620,7 +671,7 @@ const RemisesPage: React.FC = () => {
                   </th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">
                     <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('remise')}>
-                      Remise (Nouveau)
+                      Remise disponible
                       {renderSortIcon(directSort?.key === 'remise', directSort?.key === 'remise' ? directSort.direction : null, 'text-blue-700')}
                     </button>
                   </th>
@@ -630,7 +681,7 @@ const RemisesPage: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-100">
                 {sortedDirectClients.map((c: any) => {
                   const id = Number(c?.id);
-                  const total = directNewByClientId.totalById.get(id) || 0;
+                  const total = directAvailableByClientId.get(id) || 0;
                   const count = directNewByClientId.countById.get(id) || 0;
                   return (
                     <tr key={id} className="hover:bg-gradient-to-r hover:from-blue-25 hover:to-cyan-25 transition-all duration-200">
@@ -741,10 +792,11 @@ const RemisesPage: React.FC = () => {
                     <td className="px-6 py-4 text-gray-600">{c.cin || '-'}</td>
                     <td className="px-6 py-4 text-gray-600">{c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '-'}</td>
                     {(() => {
-                      const oldT = oldTotalByClientId.get(Number(c.id)) || 0;
-                      const newT = newTotalByClientId.get(Number(c.id)) || 0;
-                      const used = Number(c.remise_utilisee || 0);
-                      const finalTotal = Number(c.remise_disponible ?? (oldT + newT - used));
+                      const oldT = getAccountOldTotal(c);
+                      const newT = Number((c.remise_gagnee_nouveau ?? c.earned_bon_total ?? newTotalByClientId.get(Number(c.id))) || 0);
+                      const earnedT = Number(c.remise_gagnee_total ?? c.earned_total ?? (oldT + newT));
+                      const used = getAccountUsedTotal(c);
+                      const finalTotal = getAccountAvailableTotal(c, earnedT);
                       return (
                         <>
                           <td className="px-6 py-4 text-right">
@@ -987,8 +1039,19 @@ const RemisesPage: React.FC = () => {
                     <p>{selectedDirectClient?.id ?? '-'}</p>
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-600">Total remise (nouveau):</p>
-                    <p className="font-bold text-blue-700">{Number(directClientTotalRemise || 0).toFixed(2)} DH</p>
+                    {(() => {
+                      const linkedAccount = clientAbonneByContactId.get(Number(selectedDirectClient?.id));
+                      const usedTotal = linkedAccount ? getAccountUsedTotal(linkedAccount) : 0;
+                      const availableTotal = Math.max(0, Number(directClientTotalRemise || 0) - Number(usedTotal || 0));
+                      return (
+                        <>
+                          <p className="font-semibold text-gray-600">Remise disponible:</p>
+                          <p className="font-bold text-blue-700">{availableTotal.toFixed(2)} DH</p>
+                          <p className="text-xs text-gray-500">GagnÃ©: {Number(directClientTotalRemise || 0).toFixed(2)} DH</p>
+                          <p className="text-xs text-gray-500">UtilisÃ©: {Number(usedTotal || 0).toFixed(2)} DH</p>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1210,9 +1273,10 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
           </div>
           <div>
             <p className="font-semibold text-gray-600">Total Remises:</p>
-            <p className="font-medium">Ancien: {Number(total).toFixed(2)} DH</p>
-            <p className="font-medium">Nouveau: {Number(newSystemTotal).toFixed(2)} DH</p>
-            <p className="font-semibold">Global: {Number(total + newSystemTotal).toFixed(2)} DH</p>
+            <p className="font-medium">Ancien: {getAccountOldTotal(clientRemise).toFixed(2)} DH</p>
+            <p className="font-medium">Nouveau: {Number((clientRemise?.remise_gagnee_nouveau ?? clientRemise?.earned_bon_total ?? newSystemTotal) || 0).toFixed(2)} DH</p>
+            <p className="font-medium">Utilisée: {getAccountUsedTotal(clientRemise).toFixed(2)} DH</p>
+            <p className="font-semibold">Disponible: {getAccountAvailableTotal(clientRemise, Number(clientRemise?.remise_gagnee_total ?? clientRemise?.earned_total ?? (total + newSystemTotal))).toFixed(2)} DH</p>
           </div>
         </div>
       </div>

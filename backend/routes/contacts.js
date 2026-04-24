@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
 
 const router = express.Router();
 
@@ -943,6 +944,30 @@ router.get('/:id', async (req, res) => {
       total_avoirs: Number(rows[0].total_avoirs || 0),
       solde: Number(rows[0].solde || 0),
     };
+
+    if (String(contact.type) === 'Client') {
+      const remiseAccounts = await getRemisePaymentAccounts(pool, {
+        contactIds: [Number(contact.id)],
+        types: ['client_abonne'],
+      });
+      const remiseAccount = remiseAccounts.find((row) => Number(row.contact_id) === Number(contact.id));
+
+      contact.remise_gagnee_ancien = Number(remiseAccount?.earned_old_total ?? 0);
+      contact.remise_gagnee_nouveau = Number(remiseAccount?.earned_bon_total ?? 0);
+      contact.remise_gagnee_ecommerce = Number(remiseAccount?.earned_ecommerce_total ?? 0);
+      contact.remise_gagnee_total = Number(remiseAccount?.earned_total ?? 0);
+      contact.remise_utilisee = Number(remiseAccount?.used_total ?? 0);
+      contact.remise_disponible = Number(remiseAccount?.available_total ?? 0);
+      contact.remise_account_id = remiseAccount ? Number(remiseAccount.id) : null;
+    } else {
+      contact.remise_gagnee_ancien = 0;
+      contact.remise_gagnee_nouveau = 0;
+      contact.remise_gagnee_ecommerce = 0;
+      contact.remise_gagnee_total = 0;
+      contact.remise_utilisee = 0;
+      contact.remise_disponible = 0;
+      contact.remise_account_id = null;
+    }
 
     res.json(contact);
   } catch (error) {

@@ -2025,8 +2025,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         })()
       : requestType === 'Comptant'
       ? { remise_is_client: 0, remise_id: null, remise_client_nom: undefined }
-      // New Sortie without opening the remise panel: do not force a client-based remise.
-      : { remise_is_client: 0, remise_id: null, remise_client_nom: undefined };
+      // New Sortie without opening the remise panel: default to the bon client when available.
+      : { remise_is_client: values.client_id ? 1 : 0, remise_id: null, remise_client_nom: undefined };
 
     let cleanBonData: any = {
   date_creation: formatDateInputToMySQL(values.date_bon) || new Date().toISOString().slice(0,19).replace('T',' '), // assure string
