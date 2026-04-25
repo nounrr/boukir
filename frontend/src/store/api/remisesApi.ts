@@ -20,6 +20,10 @@ export const remisesApi = api.injectEndpoints({
       },
       providesTags: [{ type: 'Remise', id: 'LIST' }],
     }),
+    getAncienRemisesAbonnes: build.query<any[], void>({
+      query: () => '/remises/anciens-abonnes',
+      providesTags: [{ type: 'Remise', id: 'ANCIENS-ABONNES' }],
+    }),
     createClientRemise: build.mutation<any, Partial<any>>({
       query: (body) => ({ url: '/remises/clients', method: 'POST', body }),
       invalidatesTags: [{ type: 'Remise', id: 'LIST' }],
@@ -70,6 +74,7 @@ export const {
   useGetClientRemisesQuery,
   useGetClientAbonneByContactQuery,
   useGetRemisePaymentAccountsQuery,
+  useGetAncienRemisesAbonnesQuery,
   useLazyGetClientAbonneByContactQuery,
   useCreateClientRemiseMutation,
   useUpdateClientRemiseMutation,

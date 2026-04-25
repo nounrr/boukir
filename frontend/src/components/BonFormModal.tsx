@@ -19,7 +19,7 @@ import { useGetComptantPaymentsQuery, useGetComptantQuery } from '../store/api/c
 import { useGetAllClientsQuery, useGetAllFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
 // Removed unused: useGetPaymentsQuery
 import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
-import { useGetClientRemisesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
+import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
 import type { Contact } from '../types';
 import ProductFormModal from './ProductFormModal';
@@ -600,6 +600,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // New remise target (bon header)
   const [remiseTargetIsBonClient, setRemiseTargetIsBonClient] = useState(true);
   const { data: remiseClients = [] } = useGetClientRemisesQuery();
+  const { data: anciensAbonnes = [] } = useGetAncienRemisesAbonnesQuery();
   const [localCreatedRemiseClients, setLocalCreatedRemiseClients] = useState<any[]>([]);
   const mergedRemiseClients = useMemo(() => {
     const byId = new Map<string, any>();
@@ -610,6 +611,23 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     }
     return Array.from(byId.values());
   }, [localCreatedRemiseClients, remiseClients]);
+  const clientRemiseOptions = useMemo(
+    () => (mergedRemiseClients || []).filter((c: any) => String(c?.type || 'client-remise') === 'client-remise'),
+    [mergedRemiseClients]
+  );
+  const clientAbonneContactIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const c of (remiseClients || []) as any[]) {
+      if (String(c?.type) !== 'client_abonne') continue;
+      const contactId = Number(c?.contact_id);
+      if (Number.isFinite(contactId) && contactId > 0) ids.add(contactId);
+    }
+    for (const row of (anciensAbonnes || []) as any[]) {
+      const contactId = Number(row?.contact_id);
+      if (Number.isFinite(contactId) && contactId > 0) ids.add(contactId);
+    }
+    return ids;
+  }, [remiseClients, anciensAbonnes]);
 
   // Raw input for per-line remise (unit discount), similar to qtyRaw/unitPriceRaw
   const [remiseRaw, setRemiseRaw] = useState<Record<number, string>>({});
@@ -1953,6 +1971,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       const p = Number(it?.remise_pourcentage ?? 0) || 0;
       return m !== 0 || p !== 0;
     });
+    const bonClientId = values.client_id ? Number(values.client_id) : null;
+    const bonClientIsAbonne = bonClientId != null && Number.isFinite(bonClientId) && clientAbonneContactIds.has(bonClientId);
     if ((requestType === 'Sortie' || requestType === 'Comptant') && showRemisePanel && hasAnyItemRemise) {
       if (requestType === 'Sortie' && remiseTargetIsBonClient && !values.client_id) {
         const msg = "Choisissez un client pour 'Même client du bon', ou décochez et choisissez un client remise.";
@@ -1963,7 +1983,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
       if (!remiseTargetIsBonClient) {
         const hasSelected = typeof selectedRemiseId === 'number';
-        if (!hasSelected) {
+        if (!hasSelected && !bonClientIsAbonne) {
           const msg = 'Veuillez sélectionner un client remise (ou créer depuis la recherche).';
           showError(msg);
           setSubmitting(false);
@@ -1980,7 +2000,6 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     const existingRemiseIdRaw = initialValues ? (initialValues as any)?.remise_id : undefined;
     const existingRemiseId =
       existingRemiseIdRaw == null || existingRemiseIdRaw === '' ? null : Number(existingRemiseIdRaw);
-
     const computeRemiseTargetFromUi = () => {
       if (requestType === 'Comptant') {
         // Comptant often has no client_id; keep target as "other client remise".
@@ -1992,6 +2011,10 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       }
 
       // Sortie
+      if (bonClientIsAbonne) {
+        return { remise_is_client: 1, remise_id: null, remise_client_nom: undefined };
+      }
+
       if (remiseTargetIsBonClient) {
         // Backend will resolve remise_id from client_id
         return { remise_is_client: 1, remise_id: null, remise_client_nom: undefined };
@@ -3659,8 +3682,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       <label className="flex items-center gap-2 text-sm text-gray-700">
                         <input
                           type="checkbox"
-                          checked={remiseTargetIsBonClient}
+                          checked={remiseTargetIsBonClient || Boolean(values.client_id && clientAbonneContactIds.has(Number(values.client_id)))}
+                          disabled={Boolean(values.client_id && clientAbonneContactIds.has(Number(values.client_id)))}
                           onChange={(e) => {
+                            if (values.client_id && clientAbonneContactIds.has(Number(values.client_id))) return;
                             const checked = e.target.checked;
                             setRemiseTargetIsBonClient(checked);
                             if (checked) {
@@ -3671,10 +3696,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         Même client du bon
                       </label>
 
-                      {!remiseTargetIsBonClient && (
+                      {!remiseTargetIsBonClient && !(values.client_id && clientAbonneContactIds.has(Number(values.client_id))) && (
                         <div className="min-w-[280px]">
                           <SearchableSelect
-                            options={(mergedRemiseClients || []).map((c: any) => ({
+                            options={(clientRemiseOptions || []).map((c: any) => ({
                               value: String(c.id),
                               label: `${c.nom || ''}${c.cin ? ' ' + c.cin : ''}${c.phone ? ' ' + c.phone : ''}`.trim(),
                               data: c,
@@ -3715,7 +3740,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       )}
 
                       {(() => {
-                        const c = typeof selectedRemiseId === 'number' ? mergedRemiseClients.find((x: any) => x.id === selectedRemiseId) : null;
+                        const c = typeof selectedRemiseId === 'number' ? clientRemiseOptions.find((x: any) => x.id === selectedRemiseId) : null;
                         return c ? (
                           <span className="text-sm text-gray-600">Total Remise (profil): {Number(c.total_remise || 0).toFixed(2)} DH</span>
                         ) : null;
