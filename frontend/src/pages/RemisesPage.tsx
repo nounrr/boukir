@@ -34,9 +34,17 @@ const computeItemDiscount = (it: any): number => {
   return q * perUnit;
 };
 
+const isLegacyRemiseBonItem = (it: any): boolean => {
+  const legacyId = it?.legacy_remise_client_id ?? it?.legacyRemiseClientId;
+  return legacyId != null && legacyId !== '';
+};
+
 const computeBonDiscount = (bon: any): number => {
   const items = parseItems(bon?.items);
-  return items.reduce((sum: number, it: any) => sum + computeItemDiscount(it), 0);
+  return items.reduce((sum: number, it: any) => {
+    if (isLegacyRemiseBonItem(it)) return sum;
+    return sum + computeItemDiscount(it);
+  }, 0);
 };
 
 const computeEcommerceItemRemise = (it: any): number => {
@@ -91,7 +99,17 @@ const getBonClientId = (bon: any): number | null => {
 };
 
 const getAccountOldTotal = (account: any): number => Number(account?.remise_gagnee_ancien ?? account?.earned_old_total ?? account?.total_remise ?? 0);
+const getAccountOldTotalWithFallback = (account: any, fallbackOldTotal = 0): number => {
+  const fallback = Number(fallbackOldTotal || 0);
+  if (fallback !== 0) return fallback;
+  return getAccountOldTotal(account);
+};
 const getAccountNewTotal = (account: any): number => Number(account?.remise_gagnee_nouveau ?? account?.earned_bon_total ?? 0);
+const getAccountNewTotalWithFallback = (account: any, fallbackNewTotal = 0): number => {
+  const fallback = Number(fallbackNewTotal || 0);
+  if (fallback !== 0) return fallback;
+  return getAccountNewTotal(account);
+};
 const getAccountUsedTotal = (account: any): number => Number(account?.remise_utilisee ?? account?.used_total ?? 0);
 const getAccountAvailableTotal = (account: any, fallbackEarned = 0): number => {
   const explicit = account?.remise_disponible ?? account?.available_total;
@@ -433,10 +451,10 @@ const RemisesPage: React.FC = () => {
     if (!remiseSort) return list;
 
     list.sort((left: any, right: any) => {
-      const leftOld = getAccountOldTotal(left);
-      const rightOld = getAccountOldTotal(right);
-      const leftNew = Number((left.remise_gagnee_nouveau ?? left.earned_bon_total ?? newTotalByClientId.get(Number(left.id))) || 0);
-      const rightNew = Number((right.remise_gagnee_nouveau ?? right.earned_bon_total ?? newTotalByClientId.get(Number(right.id))) || 0);
+      const leftOld = getAccountOldTotalWithFallback(left, oldTotalByClientId.get(Number(left.id)) || 0);
+      const rightOld = getAccountOldTotalWithFallback(right, oldTotalByClientId.get(Number(right.id)) || 0);
+      const leftNew = getAccountNewTotalWithFallback(left, newTotalByClientId.get(Number(left.id)) || 0);
+      const rightNew = getAccountNewTotalWithFallback(right, newTotalByClientId.get(Number(right.id)) || 0);
       const leftEarned = Number(left.remise_gagnee_total ?? left.earned_total ?? (leftOld + leftNew));
       const rightEarned = Number(right.remise_gagnee_total ?? right.earned_total ?? (rightOld + rightNew));
       const leftUsed = getAccountUsedTotal(left);
@@ -517,6 +535,7 @@ const RemisesPage: React.FC = () => {
       .map((b: any) => {
         const items = parseItems(b?.items);
         const itemsWithRemise = items.filter((it: any) => {
+          if (isLegacyRemiseBonItem(it)) return false;
           const d = computeItemDiscount(it);
           return Number(d || 0) !== 0;
         });
@@ -874,8 +893,8 @@ const RemisesPage: React.FC = () => {
                     <td className="px-6 py-4 text-gray-600">{c.cin || '-'}</td>
                     <td className="px-6 py-4 text-gray-600">{c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '-'}</td>
                     {(() => {
-                      const oldT = getAccountOldTotal(c);
-                      const newT = Number((c.remise_gagnee_nouveau ?? c.earned_bon_total ?? newTotalByClientId.get(Number(c.id))) || 0);
+                      const oldT = getAccountOldTotalWithFallback(c, oldTotalByClientId.get(Number(c.id)) || 0);
+                      const newT = getAccountNewTotalWithFallback(c, newTotalByClientId.get(Number(c.id)) || 0);
                       const earnedT = Number(c.remise_gagnee_total ?? c.earned_total ?? (oldT + newT));
                       const used = getAccountUsedTotal(c);
                       const finalTotal = getAccountAvailableTotal(c, earnedT);
@@ -1292,6 +1311,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void; o
         const totalRemise = computeBonDiscount(b);
         return { ...b, _new_total_remise: totalRemise };
       })
+      .filter((b: any) => Math.abs(Number(b?._new_total_remise || 0)) > 0.000001)
       .sort((a: any, b: any) => {
         const ta = new Date(a?.date_creation || a?.date || 0).getTime() || 0;
         const tb = new Date(b?.date_creation || b?.date || 0).getTime() || 0;
@@ -1420,10 +1440,10 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void; o
           </div>
           <div>
             <p className="font-semibold text-gray-600">Total Remises:</p>
-            <p className="font-medium">Ancien: {getAccountOldTotal(clientRemise).toFixed(2)} DH</p>
-            <p className="font-medium">Nouveau: {Number((clientRemise?.remise_gagnee_nouveau ?? clientRemise?.earned_bon_total ?? newSystemTotal) || 0).toFixed(2)} DH</p>
+            <p className="font-medium">Ancien: {total.toFixed(2)} DH</p>
+            <p className="font-medium">Nouveau: {getAccountNewTotalWithFallback(clientRemise, newSystemTotal).toFixed(2)} DH</p>
             <p className="font-medium">Utilisée: {getAccountUsedTotal(clientRemise).toFixed(2)} DH</p>
-            <p className="font-semibold">Disponible: {getAccountAvailableTotal(clientRemise, Number(clientRemise?.remise_gagnee_total ?? clientRemise?.earned_total ?? (total + newSystemTotal))).toFixed(2)} DH</p>
+            <p className="font-semibold">Disponible: {getAccountAvailableTotal(clientRemise, Number(clientRemise?.remise_gagnee_total ?? clientRemise?.earned_total ?? (total + getAccountNewTotalWithFallback(clientRemise, newSystemTotal)))).toFixed(2)} DH</p>
           </div>
         </div>
       </div>

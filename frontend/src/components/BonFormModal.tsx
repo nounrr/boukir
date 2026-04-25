@@ -4625,7 +4625,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const unitObj = unitId ? units.find((u: any) => String(u.id) === String(unitId)) : null;
                                     const factor = unitObj ? (Number(unitObj.conversion_factor) || 1) : 1;
 
-                                    // Resolve base PA/CR from snapshot > product (unfactored sources)
+                                    // Resolve base PA/CR for display only.
+                                    // If several active snapshots have stock, show the highest PA/CR in SERIE.
                                     let snapshotProd: any = null;
                                     const snapId = item.product_snapshot_id;
                                     if (snapId && snapshotProducts.length > 0) {
@@ -4635,13 +4636,29 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const variant = variantId && product?.variants?.length
                                       ? (product.variants as any[]).find((v: any) => String(v.id) === String(variantId)) || null
                                       : null;
+                                    const activeSnapshotsForRow = (snapshotProducts as any[] || []).filter((snap: any) => {
+                                      if (!snap?.snapshot_id) return false;
+                                      if (String(snap.id) !== String(item.product_id)) return false;
+                                      if (String(snap.variant_id || '') !== String(variantId || '')) return false;
+                                      const flag = snap.snapshot_en_validation;
+                                      const isActive = flag == null ? true : Number(flag) !== 0;
+                                      return isActive && Number(snap.snapshot_quantite ?? 0) > 0;
+                                    });
+                                    const maxActivePA = activeSnapshotsForRow.length > 1
+                                      ? activeSnapshotsForRow.reduce((max: number, snap: any) => Math.max(max, Number(snap.prix_achat) || 0), 0)
+                                      : 0;
+                                    const maxActiveCR = activeSnapshotsForRow.length > 1
+                                      ? activeSnapshotsForRow.reduce((max: number, snap: any) => Math.max(max, Number(snap.cout_revient) || Number(snap.prix_achat) || 0), 0)
+                                      : 0;
 
                                     const basePA =
+                                      maxActivePA ||
                                       Number(snapshotProd?.prix_achat) ||
                                       Number(variant?.prix_achat) ||
                                       Number(product?.prix_achat) ||
                                       0;
                                     const baseCR =
+                                      maxActiveCR ||
                                       Number(snapshotProd?.cout_revient) ||
                                       Number((variant as any)?.cout_revient) ||
                                       Number(product?.cout_revient) ||
