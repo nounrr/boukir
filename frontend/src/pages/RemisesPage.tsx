@@ -455,12 +455,10 @@ const RemisesPage: React.FC = () => {
       const rightOld = getAccountOldTotalWithFallback(right, oldTotalByClientId.get(Number(right.id)) || 0);
       const leftNew = getAccountNewTotalWithFallback(left, newTotalByClientId.get(Number(left.id)) || 0);
       const rightNew = getAccountNewTotalWithFallback(right, newTotalByClientId.get(Number(right.id)) || 0);
-      const leftEarned = Number(left.remise_gagnee_total ?? left.earned_total ?? (leftOld + leftNew));
-      const rightEarned = Number(right.remise_gagnee_total ?? right.earned_total ?? (rightOld + rightNew));
       const leftUsed = getAccountUsedTotal(left);
       const rightUsed = getAccountUsedTotal(right);
-      const leftFinal = getAccountAvailableTotal(left, leftEarned);
-      const rightFinal = getAccountAvailableTotal(right, rightEarned);
+      const leftFinal = Math.max(0, leftOld + leftNew - leftUsed);
+      const rightFinal = Math.max(0, rightOld + rightNew - rightUsed);
 
       let result = 0;
       switch (remiseSort.key) {
@@ -895,9 +893,8 @@ const RemisesPage: React.FC = () => {
                     {(() => {
                       const oldT = getAccountOldTotalWithFallback(c, oldTotalByClientId.get(Number(c.id)) || 0);
                       const newT = getAccountNewTotalWithFallback(c, newTotalByClientId.get(Number(c.id)) || 0);
-                      const earnedT = Number(c.remise_gagnee_total ?? c.earned_total ?? (oldT + newT));
                       const used = getAccountUsedTotal(c);
-                      const finalTotal = getAccountAvailableTotal(c, earnedT);
+                      const finalTotal = Math.max(0, oldT + newT - used);
                       return (
                         <>
                           <td className="px-6 py-4 text-right">
@@ -1443,7 +1440,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void; o
             <p className="font-medium">Ancien: {total.toFixed(2)} DH</p>
             <p className="font-medium">Nouveau: {getAccountNewTotalWithFallback(clientRemise, newSystemTotal).toFixed(2)} DH</p>
             <p className="font-medium">Utilisée: {getAccountUsedTotal(clientRemise).toFixed(2)} DH</p>
-            <p className="font-semibold">Disponible: {getAccountAvailableTotal(clientRemise, Number(clientRemise?.remise_gagnee_total ?? clientRemise?.earned_total ?? (total + getAccountNewTotalWithFallback(clientRemise, newSystemTotal)))).toFixed(2)} DH</p>
+            <p className="font-semibold">Disponible: {Math.max(0, total + getAccountNewTotalWithFallback(clientRemise, newSystemTotal) - getAccountUsedTotal(clientRemise)).toFixed(2)} DH</p>
           </div>
         </div>
       </div>
@@ -1562,13 +1559,14 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void; o
 
           <table className="min-w-full divide-y divide-gray-200 table-fixed">
             <colgroup>
-              <col className="w-[30%]" />
-              <col className="w-[18%]" />
+              <col className="w-[28%]" />
+              <col className="w-[16%]" />
               <col className="w-[8%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
               <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[8%]" />
+              <col className="w-[9%]" />
+              <col className="w-[5%]" />
             </colgroup>
             <thead className="bg-gray-50">
               <tr>
@@ -1576,18 +1574,22 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void; o
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bon</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qté</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Prix Remise</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créer le</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {items.map((it: any) => (
+              {items.map((it: any) => {
+                const lineTotal = Number(it.qte || 0) * Number(it.prix_remise || 0);
+                return (
                 <tr key={it.id}>
                   <td className="px-4 py-2 max-w-0 truncate">{it.reference ? `${it.reference} - ${it.designation}` : it.product_id}</td>
                   <td className="px-4 py-2 max-w-0 truncate">{it.bon_id ? `${it.bon_type || ''} #${it.bon_id}` : '-'}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">{it.qte}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">{Number(it.prix_remise || 0)} DH</td>
+                  <td className="px-4 py-2 text-right whitespace-nowrap font-semibold text-purple-700">{lineTotal.toFixed(2)} DH</td>
                   <td className="px-4 py-2 whitespace-nowrap">{it.created_at ? new Date(it.created_at).toLocaleDateString('fr-FR') : '-'}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
@@ -1633,7 +1635,8 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void; o
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
