@@ -4,7 +4,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import BonFormModal from '../components/BonFormModal';
 import { getBonNumeroDisplay } from '../utils/numero';
 import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-import { useGetClientRemisesQuery, useCreateClientRemiseMutation, useUpdateClientRemiseMutation, useDeleteClientRemiseMutation, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useUpdateRemiseItemMutation, useDeleteRemiseItemMutation } from '../store/api/remisesApi';
+import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation, useUpdateClientRemiseMutation, useDeleteClientRemiseMutation, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useUpdateRemiseItemMutation, useDeleteRemiseItemMutation } from '../store/api/remisesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetAllClientsQuery } from '../store/api/contactsApi';
 import { useAuth } from '../hooks/redux';
@@ -34,9 +34,17 @@ const computeItemDiscount = (it: any): number => {
   return q * perUnit;
 };
 
+const isLegacyRemiseBonItem = (it: any): boolean => {
+  const legacyId = it?.legacy_remise_client_id ?? it?.legacyRemiseClientId;
+  return legacyId != null && legacyId !== '';
+};
+
 const computeBonDiscount = (bon: any): number => {
   const items = parseItems(bon?.items);
-  return items.reduce((sum: number, it: any) => sum + computeItemDiscount(it), 0);
+  return items.reduce((sum: number, it: any) => {
+    if (isLegacyRemiseBonItem(it)) return sum;
+    return sum + computeItemDiscount(it);
+  }, 0);
 };
 
 const computeEcommerceItemRemise = (it: any): number => {
@@ -84,8 +92,24 @@ const getBonDirectClientId = (bon: any): number | null => {
   return id != null && Number.isFinite(Number(id)) ? Number(id) : null;
 };
 
+const getBonClientId = (bon: any): number | null => {
+  const raw = bon?.client_id ?? bon?.clientId;
+  const id = raw == null || raw === '' ? null : Number(raw);
+  return id != null && Number.isFinite(id) ? id : null;
+};
+
 const getAccountOldTotal = (account: any): number => Number(account?.remise_gagnee_ancien ?? account?.earned_old_total ?? account?.total_remise ?? 0);
+const getAccountOldTotalWithFallback = (account: any, fallbackOldTotal = 0): number => {
+  const fallback = Number(fallbackOldTotal || 0);
+  if (fallback !== 0) return fallback;
+  return getAccountOldTotal(account);
+};
 const getAccountNewTotal = (account: any): number => Number(account?.remise_gagnee_nouveau ?? account?.earned_bon_total ?? 0);
+const getAccountNewTotalWithFallback = (account: any, fallbackNewTotal = 0): number => {
+  const fallback = Number(fallbackNewTotal || 0);
+  if (fallback !== 0) return fallback;
+  return getAccountNewTotal(account);
+};
 const getAccountUsedTotal = (account: any): number => Number(account?.remise_utilisee ?? account?.used_total ?? 0);
 const getAccountAvailableTotal = (account: any, fallbackEarned = 0): number => {
   const explicit = account?.remise_disponible ?? account?.available_total;
@@ -120,6 +144,7 @@ const compareSortValues = (left: any, right: any) => {
 const RemisesPage: React.FC = () => {
   const { user, token } = useAuth();
   const { data: clients = [], refetch } = useGetClientRemisesQuery();
+  const { data: anciensAbonnes = [] } = useGetAncienRemisesAbonnesQuery();
   const [createClient] = useCreateClientRemiseMutation();
   const [updateClient] = useUpdateClientRemiseMutation();
   const [deleteClient] = useDeleteClientRemiseMutation();
@@ -138,14 +163,10 @@ const RemisesPage: React.FC = () => {
   const [selected, setSelected] = useState<ClientRemise>(null);
   const [search, setSearch] = useState('');
   const [directSearch, setDirectSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'client-remise' | 'client_abonne'>('all');
   const [remiseSort, setRemiseSort] = useState<{ key: RemiseSortKey; direction: SortDirection } | null>(null);
   const [directSort, setDirectSort] = useState<{ key: DirectSortKey; direction: SortDirection } | null>(null);
   const filtered = useMemo(() => {
-    let list = clients as any[];
-    if (typeFilter !== 'all') {
-      list = list.filter((c: any) => c.type === typeFilter);
-    }
+    let list = (clients as any[]).filter((c: any) => c.type !== 'client_abonne');
     const term = search.trim().toLowerCase();
     if (!term) return list;
     return list.filter((c: any) =>
@@ -153,7 +174,7 @@ const RemisesPage: React.FC = () => {
       String(c.phone || '').toLowerCase().includes(term) ||
       String(c.cin || '').toLowerCase().includes(term)
     );
-  }, [clients, search, typeFilter]);
+  }, [clients, search]);
 
   const clientAbonneByContactId = useMemo(() => {
     const map = new Map<number, any>();
@@ -166,16 +187,26 @@ const RemisesPage: React.FC = () => {
     return map;
   }, [clients]);
 
+  const ancienAbonneByContactId = useMemo(() => {
+    const map = new Map<number, any>();
+    for (const row of (anciensAbonnes as any[])) {
+      const contactId = Number(row?.contact_id);
+      if (!Number.isFinite(contactId) || contactId <= 0) continue;
+      map.set(contactId, row);
+    }
+    return map;
+  }, [anciensAbonnes]);
+
   const directNewByClientId = useMemo(() => {
     const totalById = new Map<number, number>();
     const countById = new Map<number, number>();
     const all = [...(sortiesAll as any[]), ...(comptantsAll as any[])];
 
     for (const b of all) {
-      const clientId = getBonDirectClientId(b);
-      if (!clientId) continue;
       const disc = computeBonDiscount(b);
       if (!disc) continue;
+      const clientId = getBonClientId(b);
+      if (!clientId) continue;
       totalById.set(clientId, (totalById.get(clientId) || 0) + disc);
       countById.set(clientId, (countById.get(clientId) || 0) + 1);
     }
@@ -201,19 +232,83 @@ const RemisesPage: React.FC = () => {
 
     for (const [clientId, earnedTotal] of directNewByClientId.totalById.entries()) {
       const linkedAccount = clientAbonneByContactId.get(clientId);
+      const archivedOld = Number(ancienAbonneByContactId.get(clientId)?.total_remise || 0);
+      const oldEarned = (linkedAccount ? getAccountOldTotal(linkedAccount) : 0) + archivedOld;
       const used = linkedAccount ? getAccountUsedTotal(linkedAccount) : 0;
-      map.set(clientId, Math.max(0, Number(earnedTotal || 0) - Number(used || 0)));
+      map.set(clientId, Math.max(0, Number(earnedTotal || 0) + Number(oldEarned || 0) - Number(used || 0)));
+    }
+
+    for (const [clientId, linkedAccount] of clientAbonneByContactId.entries()) {
+      if (map.has(clientId)) continue;
+      const oldEarned = getAccountOldTotal(linkedAccount) + Number(ancienAbonneByContactId.get(clientId)?.total_remise || 0);
+      const used = getAccountUsedTotal(linkedAccount);
+      map.set(clientId, Math.max(0, Number(oldEarned || 0) - Number(used || 0)));
+    }
+
+    for (const [clientId, archived] of ancienAbonneByContactId.entries()) {
+      if (map.has(clientId)) continue;
+      map.set(clientId, Math.max(0, Number(archived?.total_remise || 0)));
     }
 
     return map;
-  }, [directNewByClientId, clientAbonneByContactId]);
+  }, [directNewByClientId, clientAbonneByContactId, ancienAbonneByContactId]);
+
+  const directClientRows = useMemo(() => {
+    const map = new Map<number, any>();
+
+    for (const c of (directClients || []) as any[]) {
+      const id = Number(c?.id);
+      if (!Number.isFinite(id)) continue;
+      map.set(id, c);
+    }
+
+    for (const [contactId, account] of clientAbonneByContactId.entries()) {
+      if (!Number.isFinite(contactId)) continue;
+      if (!map.has(contactId)) {
+        map.set(contactId, {
+          id: contactId,
+          nom_complet: account?.nom || account?.contact_nom || `#${contactId}`,
+          nom: account?.nom || account?.contact_nom || `#${contactId}`,
+          societe: account?.contact_societe || '',
+          telephone: account?.phone || account?.contact_phone || '',
+          _client_abonne_account: account,
+        });
+      } else {
+        map.set(contactId, {
+          ...map.get(contactId),
+          _client_abonne_account: account,
+        });
+      }
+    }
+
+    for (const [contactId, archived] of ancienAbonneByContactId.entries()) {
+      if (!Number.isFinite(contactId)) continue;
+      if (!map.has(contactId)) {
+        map.set(contactId, {
+          id: contactId,
+          nom_complet: archived?.nom_complet || `#${contactId}`,
+          nom: archived?.nom_complet || `#${contactId}`,
+          societe: archived?.societe || '',
+          telephone: archived?.telephone || '',
+          _ancien_abonne: archived,
+        });
+      } else {
+        map.set(contactId, {
+          ...map.get(contactId),
+          _ancien_abonne: archived,
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  }, [directClients, clientAbonneByContactId, ancienAbonneByContactId]);
 
   const filteredDirectClients = useMemo(() => {
     const term = directSearch.trim().toLowerCase();
-    const list = (directClients || []).filter((c: any) => {
+    const list = directClientRows.filter((c: any) => {
       const id = Number(c?.id);
       if (!Number.isFinite(id)) return false;
-      const total = directNewByClientId.totalById.get(id) || 0;
+      const total = directAvailableByClientId.get(id) || 0;
       if (!total) return false;
 
       if (!term) return true;
@@ -225,12 +320,12 @@ const RemisesPage: React.FC = () => {
     });
     // biggest first
     list.sort((a: any, b: any) => {
-      const ta = directNewByClientId.totalById.get(Number(a?.id)) || 0;
-      const tb = directNewByClientId.totalById.get(Number(b?.id)) || 0;
+      const ta = directAvailableByClientId.get(Number(a?.id)) || 0;
+      const tb = directAvailableByClientId.get(Number(b?.id)) || 0;
       return tb - ta;
     });
     return list;
-  }, [directClients, directSearch, directNewByClientId]);
+  }, [directClientRows, directSearch, directAvailableByClientId]);
 
   const toggleRemiseSort = (key: RemiseSortKey) => {
     setRemiseSort((current) => {
@@ -356,16 +451,14 @@ const RemisesPage: React.FC = () => {
     if (!remiseSort) return list;
 
     list.sort((left: any, right: any) => {
-      const leftOld = getAccountOldTotal(left);
-      const rightOld = getAccountOldTotal(right);
-      const leftNew = Number((left.remise_gagnee_nouveau ?? left.earned_bon_total ?? newTotalByClientId.get(Number(left.id))) || 0);
-      const rightNew = Number((right.remise_gagnee_nouveau ?? right.earned_bon_total ?? newTotalByClientId.get(Number(right.id))) || 0);
-      const leftEarned = Number(left.remise_gagnee_total ?? left.earned_total ?? (leftOld + leftNew));
-      const rightEarned = Number(right.remise_gagnee_total ?? right.earned_total ?? (rightOld + rightNew));
+      const leftOld = getAccountOldTotalWithFallback(left, oldTotalByClientId.get(Number(left.id)) || 0);
+      const rightOld = getAccountOldTotalWithFallback(right, oldTotalByClientId.get(Number(right.id)) || 0);
+      const leftNew = getAccountNewTotalWithFallback(left, newTotalByClientId.get(Number(left.id)) || 0);
+      const rightNew = getAccountNewTotalWithFallback(right, newTotalByClientId.get(Number(right.id)) || 0);
       const leftUsed = getAccountUsedTotal(left);
       const rightUsed = getAccountUsedTotal(right);
-      const leftFinal = getAccountAvailableTotal(left, leftEarned);
-      const rightFinal = getAccountAvailableTotal(right, rightEarned);
+      const leftFinal = Math.max(0, leftOld + leftNew - leftUsed);
+      const rightFinal = Math.max(0, rightOld + rightNew - rightUsed);
 
       let result = 0;
       switch (remiseSort.key) {
@@ -436,10 +529,11 @@ const RemisesPage: React.FC = () => {
     if (!Number.isFinite(id)) return [] as any[];
     const hasRemise = (n: any) => Math.abs(Number(n || 0)) > 0.000001;
     const list = [...(sortiesAll as any[]), ...(comptantsAll as any[])]
-      .filter((b: any) => getBonDirectClientId(b) === id)
+      .filter((b: any) => getBonClientId(b) === id)
       .map((b: any) => {
         const items = parseItems(b?.items);
         const itemsWithRemise = items.filter((it: any) => {
+          if (isLegacyRemiseBonItem(it)) return false;
           const d = computeItemDiscount(it);
           return Number(d || 0) !== 0;
         });
@@ -498,6 +592,14 @@ const RemisesPage: React.FC = () => {
     const fromEcom = (directClientEcommerceOrders || []).reduce((sum: number, o: any) => sum + Number(o?._ecom_total_remise || 0), 0);
     return fromBons + fromEcom;
   }, [directClientBons, directClientEcommerceOrders]);
+
+  const directClientOldRemise = useMemo(() => {
+    const id = Number(selectedDirectClient?.id);
+    if (!Number.isFinite(id)) return 0;
+    const archived = Number(ancienAbonneByContactId.get(id)?.total_remise || 0);
+    const linkedAccount = clientAbonneByContactId.get(id);
+    return archived + (linkedAccount ? getAccountOldTotal(linkedAccount) : 0);
+  }, [selectedDirectClient?.id, ancienAbonneByContactId, clientAbonneByContactId]);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -611,19 +713,6 @@ const RemisesPage: React.FC = () => {
             onChange={(e) => (activeTab === 'direct-clients' ? setDirectSearch(e.target.value) : setSearch(e.target.value))}
           />
         </div>
-        {activeTab === 'client-remises' && (
-          <div className="flex gap-2 mt-3">
-            <button type="button" onClick={() => setTypeFilter('all')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-              Tous ({(clients as any[]).length})
-            </button>
-            <button type="button" onClick={() => setTypeFilter('client-remise')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === 'client-remise' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'}`}>
-              Client remise ({(clients as any[]).filter((c: any) => c.type === 'client-remise').length})
-            </button>
-            <button type="button" onClick={() => setTypeFilter('client_abonne')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${typeFilter === 'client_abonne' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
-              Client abonné ({(clients as any[]).filter((c: any) => c.type === 'client_abonne').length})
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Tableau des clients avec style amélioré */}
@@ -635,7 +724,7 @@ const RemisesPage: React.FC = () => {
               : 'Remises via table client_remises (Ancien + Nouveau)'}
           </h3>
           {activeTab === 'direct-clients' ? (
-            <p className="text-xs text-gray-500 mt-1">Nouveau système: remises des items Sortie/Comptant attribuées au client du bon</p>
+            <p className="text-xs text-gray-500 mt-1">Nouveau système: toute ligne Sortie/Comptant avec remise est attribuée au client du bon</p>
           ) : (
             <p className="text-xs text-gray-500 mt-1">Ancien système + nouveau système (bons attribués à client_remises)</p>
           )}
@@ -669,9 +758,11 @@ const RemisesPage: React.FC = () => {
                       {renderSortIcon(directSort?.key === 'bons', directSort?.key === 'bons' ? directSort.direction : null, 'text-blue-700')}
                     </button>
                   </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Ancien</th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Nouveau</th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">
                     <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('remise')}>
-                      Remise disponible
+                      Final
                       {renderSortIcon(directSort?.key === 'remise', directSort?.key === 'remise' ? directSort.direction : null, 'text-blue-700')}
                     </button>
                   </th>
@@ -682,13 +773,21 @@ const RemisesPage: React.FC = () => {
                 {sortedDirectClients.map((c: any) => {
                   const id = Number(c?.id);
                   const total = directAvailableByClientId.get(id) || 0;
-                  const count = directNewByClientId.countById.get(id) || 0;
+                  const count = (directNewByClientId.countById.get(id) || 0) + Number(c?._ancien_abonne?.lignes_count || 0) + (c?._client_abonne_account ? 1 : 0);
+                  const ancien = Number(ancienAbonneByContactId.get(id)?.total_remise || 0) + (c?._client_abonne_account ? getAccountOldTotal(c._client_abonne_account) : 0);
+                  const nouveau = Number(directNewByClientId.totalById.get(id) || 0);
                   return (
                     <tr key={id} className="hover:bg-gradient-to-r hover:from-blue-25 hover:to-cyan-25 transition-all duration-200">
                       <td className="px-6 py-4 font-medium text-gray-900">{c.nom_complet || c.nom || `#${id}`}</td>
                       <td className="px-6 py-4 text-gray-600">{c.societe || '-'}</td>
                       <td className="px-6 py-4 text-gray-600">{c.telephone || '-'}</td>
                       <td className="px-6 py-4 text-center text-gray-700">{count}</td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="text-lg font-bold text-purple-600">{Number(ancien).toFixed(2)} DH</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="text-lg font-bold text-amber-600">{Number(nouveau).toFixed(2)} DH</span>
+                      </td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-lg font-bold text-blue-600">{Number(total).toFixed(2)} DH</span>
                       </td>
@@ -711,7 +810,7 @@ const RemisesPage: React.FC = () => {
                 })}
                 {sortedDirectClients.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-500">
+                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
                       Aucun client avec remise (nouveau système) trouvé.
                     </td>
                   </tr>
@@ -792,11 +891,10 @@ const RemisesPage: React.FC = () => {
                     <td className="px-6 py-4 text-gray-600">{c.cin || '-'}</td>
                     <td className="px-6 py-4 text-gray-600">{c.created_at ? new Date(c.created_at).toLocaleDateString('fr-FR') : '-'}</td>
                     {(() => {
-                      const oldT = getAccountOldTotal(c);
-                      const newT = Number((c.remise_gagnee_nouveau ?? c.earned_bon_total ?? newTotalByClientId.get(Number(c.id))) || 0);
-                      const earnedT = Number(c.remise_gagnee_total ?? c.earned_total ?? (oldT + newT));
+                      const oldT = getAccountOldTotalWithFallback(c, oldTotalByClientId.get(Number(c.id)) || 0);
+                      const newT = getAccountNewTotalWithFallback(c, newTotalByClientId.get(Number(c.id)) || 0);
                       const used = getAccountUsedTotal(c);
-                      const finalTotal = getAccountAvailableTotal(c, earnedT);
+                      const finalTotal = Math.max(0, oldT + newT - used);
                       return (
                         <>
                           <td className="px-6 py-4 text-right">
@@ -994,7 +1092,15 @@ const RemisesPage: React.FC = () => {
               </div>
             </div>
             <div className="p-6 w-full">
-              <RemiseDetail clientRemise={selected} onItemsChanged={refetch} />
+              <RemiseDetail
+                clientRemise={selected}
+                onItemsChanged={refetch}
+                onOpenBon={(bon) => {
+                  setIsDetailsModalOpen(false);
+                  setSelected(null);
+                  openEditBon(bon);
+                }}
+              />
             </div>
           </div>
         </div>
@@ -1042,12 +1148,14 @@ const RemisesPage: React.FC = () => {
                     {(() => {
                       const linkedAccount = clientAbonneByContactId.get(Number(selectedDirectClient?.id));
                       const usedTotal = linkedAccount ? getAccountUsedTotal(linkedAccount) : 0;
-                      const availableTotal = Math.max(0, Number(directClientTotalRemise || 0) - Number(usedTotal || 0));
+                      const earnedTotal = Number(directClientOldRemise || 0) + Number(directClientTotalRemise || 0);
+                      const availableTotal = Math.max(0, earnedTotal - Number(usedTotal || 0));
                       return (
                         <>
                           <p className="font-semibold text-gray-600">Remise disponible:</p>
                           <p className="font-bold text-blue-700">{availableTotal.toFixed(2)} DH</p>
-                          <p className="text-xs text-gray-500">GagnÃ©: {Number(directClientTotalRemise || 0).toFixed(2)} DH</p>
+                          <p className="text-xs text-gray-500">Ancien: {Number(directClientOldRemise || 0).toFixed(2)} DH</p>
+                          <p className="text-xs text-gray-500">Nouveau: {Number(directClientTotalRemise || 0).toFixed(2)} DH</p>
                           <p className="text-xs text-gray-500">UtilisÃ©: {Number(usedTotal || 0).toFixed(2)} DH</p>
                         </>
                       );
@@ -1177,7 +1285,7 @@ const RemisesPage: React.FC = () => {
   );
 };
 
-const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }> = ({ clientRemise, onItemsChanged }) => {
+const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void; onOpenBon?: (bon: any) => void }> = ({ clientRemise, onItemsChanged, onOpenBon }) => {
   const { user } = useAuth();
   const { data: items = [], refetch: refetchItems } = useGetRemiseItemsQuery(clientRemise.id);
   const [createItem] = useCreateRemiseItemMutation();
@@ -1200,6 +1308,7 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
         const totalRemise = computeBonDiscount(b);
         return { ...b, _new_total_remise: totalRemise };
       })
+      .filter((b: any) => Math.abs(Number(b?._new_total_remise || 0)) > 0.000001)
       .sort((a: any, b: any) => {
         const ta = new Date(a?.date_creation || a?.date || 0).getTime() || 0;
         const tb = new Date(b?.date_creation || b?.date || 0).getTime() || 0;
@@ -1247,6 +1356,61 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
   const total = items
     .filter((it: any) => it.statut !== 'Annulé')
     .reduce((sum: number, it: any) => sum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0);
+
+  const legacyRemiseByBonKey = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const it of items as any[]) {
+      if (!it?.bon_id || !it?.bon_type || it?.statut === 'Annulé') continue;
+      const key = `${it.bon_type}:${it.bon_id}`;
+      const list = map.get(key) || [];
+      list.push(it);
+      map.set(key, list);
+    }
+    return map;
+  }, [items]);
+
+  const openBonWithLegacyRemises = (item: any) => {
+    const type = String(item?.bon_type || '');
+    const bonId = Number(item?.bon_id);
+    if (!type || !Number.isFinite(bonId)) return;
+
+    const source =
+      type === 'Sortie'
+        ? sorties
+        : type === 'Comptant'
+          ? comptants
+          : type === 'Commande'
+            ? commandes
+            : [];
+    const bon = (source as any[]).find((b: any) => Number(b?.id) === bonId);
+    if (!bon) return;
+
+    const legacyRows = legacyRemiseByBonKey.get(`${type}:${bonId}`) || [];
+    const remiseByProductId = new Map<string, number>();
+    for (const row of legacyRows) {
+      const productId = String(row?.product_id || '');
+      if (!productId) continue;
+      remiseByProductId.set(productId, (remiseByProductId.get(productId) || 0) + Number(row?.prix_remise || 0));
+    }
+
+    const enrichedItems = parseItems(bon?.items).map((bonItem: any) => {
+      const productId = String(bonItem?.product_id ?? bonItem?.produit_id ?? '');
+      if (!productId || !remiseByProductId.has(productId)) return bonItem;
+      return {
+        ...bonItem,
+        remise_montant: remiseByProductId.get(productId) || 0,
+        remise_pourcentage: Number(bonItem?.remise_pourcentage || 0),
+      };
+    });
+
+    onOpenBon?.({
+      ...bon,
+      type,
+      items: enrichedItems,
+      remise_is_client: 0,
+      remise_id: clientRemise.id,
+    });
+  };
   
 
   return (
@@ -1273,10 +1437,10 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
           </div>
           <div>
             <p className="font-semibold text-gray-600">Total Remises:</p>
-            <p className="font-medium">Ancien: {getAccountOldTotal(clientRemise).toFixed(2)} DH</p>
-            <p className="font-medium">Nouveau: {Number((clientRemise?.remise_gagnee_nouveau ?? clientRemise?.earned_bon_total ?? newSystemTotal) || 0).toFixed(2)} DH</p>
+            <p className="font-medium">Ancien: {total.toFixed(2)} DH</p>
+            <p className="font-medium">Nouveau: {getAccountNewTotalWithFallback(clientRemise, newSystemTotal).toFixed(2)} DH</p>
             <p className="font-medium">Utilisée: {getAccountUsedTotal(clientRemise).toFixed(2)} DH</p>
-            <p className="font-semibold">Disponible: {getAccountAvailableTotal(clientRemise, Number(clientRemise?.remise_gagnee_total ?? clientRemise?.earned_total ?? (total + newSystemTotal))).toFixed(2)} DH</p>
+            <p className="font-semibold">Disponible: {Math.max(0, total + getAccountNewTotalWithFallback(clientRemise, newSystemTotal) - getAccountUsedTotal(clientRemise)).toFixed(2)} DH</p>
           </div>
         </div>
       </div>
@@ -1395,13 +1559,14 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
 
           <table className="min-w-full divide-y divide-gray-200 table-fixed">
             <colgroup>
-              <col className="w-[30%]" />
-              <col className="w-[18%]" />
+              <col className="w-[28%]" />
+              <col className="w-[16%]" />
               <col className="w-[8%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
               <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[8%]" />
+              <col className="w-[9%]" />
+              <col className="w-[5%]" />
             </colgroup>
             <thead className="bg-gray-50">
               <tr>
@@ -1409,18 +1574,22 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bon</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qté</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Prix Remise</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créer le</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {items.map((it: any) => (
+              {items.map((it: any) => {
+                const lineTotal = Number(it.qte || 0) * Number(it.prix_remise || 0);
+                return (
                 <tr key={it.id}>
                   <td className="px-4 py-2 max-w-0 truncate">{it.reference ? `${it.reference} - ${it.designation}` : it.product_id}</td>
                   <td className="px-4 py-2 max-w-0 truncate">{it.bon_id ? `${it.bon_type || ''} #${it.bon_id}` : '-'}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">{it.qte}</td>
                   <td className="px-4 py-2 text-right whitespace-nowrap">{Number(it.prix_remise || 0)} DH</td>
+                  <td className="px-4 py-2 text-right whitespace-nowrap font-semibold text-purple-700">{lineTotal.toFixed(2)} DH</td>
                   <td className="px-4 py-2 whitespace-nowrap">{it.created_at ? new Date(it.created_at).toLocaleDateString('fr-FR') : '-'}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
@@ -1450,6 +1619,15 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                     </div>
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
+                    {it.bon_id && onOpenBon && ['Sortie', 'Comptant', 'Commande'].includes(String(it.bon_type || '')) && (
+                      <button
+                        className="text-amber-600 hover:text-amber-700 mr-2"
+                        title="Ouvrir le bon avec cette remise"
+                        onClick={() => openBonWithLegacyRemises(it)}
+                      >
+                        <Edit size={18} />
+                      </button>
+                    )}
                     {user?.role === 'PDG' && (
                       <button className="text-gray-500 hover:text-red-600" title="Supprimer" onClick={async () => { await deleteItem(it.id).unwrap(); await refetchItems(); onItemsChanged?.(); }}>
                         <Trash2 size={18} />
@@ -1457,7 +1635,8 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void }>
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

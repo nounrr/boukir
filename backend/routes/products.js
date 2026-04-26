@@ -689,9 +689,12 @@ router.get('/with-snapshots', async (req, res, next) => {
         p.is_obligatoire_variant,
         p.remise_client,
         p.remise_artisan,
+        p.prix_vente AS product_prix_vente,
+        p.prix_vente_pourcentage AS product_prix_vente_pourcentage,
         pv.variant_name,
         pv.prix_achat AS variant_prix_achat,
-        pv.prix_vente AS variant_prix_vente
+        pv.prix_vente AS variant_prix_vente,
+        pv.prix_vente_pourcentage AS variant_prix_vente_pourcentage
       FROM product_snapshot ps
       JOIN products p ON p.id = ps.product_id
       LEFT JOIN product_variants pv ON pv.id = ps.variant_id
@@ -736,6 +739,12 @@ router.get('/with-snapshots', async (req, res, next) => {
     for (const snap of snapRows) {
       const bonLabel = snap.bon_commande_id ? `Bon #${snap.bon_commande_id}` : `Snap #${snap.snapshot_id}`;
       const variantLabel = snap.variant_name ? ` - ${snap.variant_name}` : '';
+      const originalPrixVente = snap.variant_id
+        ? Number(snap.variant_prix_vente ?? snap.product_prix_vente ?? 0)
+        : Number(snap.product_prix_vente ?? 0);
+      const originalPrixVentePourcentage = snap.variant_id
+        ? Number(snap.variant_prix_vente_pourcentage ?? snap.product_prix_vente_pourcentage ?? 0)
+        : Number(snap.product_prix_vente_pourcentage ?? 0);
 
       // Compute FIFO priority: 1 = oldest (should be used first)
       const fifoKey = `${snap.product_id}:${snap.variant_id || 0}`;
@@ -762,12 +771,12 @@ router.get('/with-snapshots', async (req, res, next) => {
         fifo_priority: fifoNum,
         bon_commande_id: snap.bon_commande_id,
         prix_achat: snap.snapshot_prix_achat !== null ? Number(snap.snapshot_prix_achat) : Number(snap.variant_prix_achat || 0),
-        prix_vente: snap.snapshot_prix_vente !== null ? Number(snap.snapshot_prix_vente) : Number(snap.variant_prix_vente || 0),
+        prix_vente: originalPrixVente,
         cout_revient: snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : 0,
         cout_revient_pourcentage: snap.snapshot_cout_revient_pourcentage !== null ? Number(snap.snapshot_cout_revient_pourcentage) : 0,
         prix_gros: snap.snapshot_prix_gros !== null ? Number(snap.snapshot_prix_gros) : 0,
         prix_gros_pourcentage: snap.snapshot_prix_gros_pourcentage !== null ? Number(snap.snapshot_prix_gros_pourcentage) : 0,
-        prix_vente_pourcentage: snap.snapshot_prix_vente_pourcentage !== null ? Number(snap.snapshot_prix_vente_pourcentage) : 0,
+        prix_vente_pourcentage: originalPrixVentePourcentage,
         quantite: Number(snap.snapshot_quantite),
         est_service: !!snap.est_service,
         non_stockable: !!snap.non_stockable,

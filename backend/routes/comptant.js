@@ -104,7 +104,23 @@ router.get('/', async (_req, res) => {
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
               'remise_pourcentage', ci.remise_pourcentage,
-              'remise_montant', ci.remise_montant,
+              'remise_montant', COALESCE(NULLIF(ci.remise_montant, 0), (
+                SELECT COALESCE(SUM(ir.prix_remise), 0)
+                FROM item_remises ir
+                WHERE ir.bon_type = 'Comptant'
+                  AND ir.bon_id = bc.id
+                  AND ir.product_id = ci.product_id
+                  AND COALESCE(ir.statut, '') NOT LIKE 'Annul%'
+              )),
+              'legacy_remise_client_id', (
+                SELECT ir.client_remise_id
+                FROM item_remises ir
+                WHERE ir.bon_type = 'Comptant'
+                  AND ir.bon_id = bc.id
+                  AND ir.product_id = ci.product_id
+                  AND COALESCE(ir.statut, '') NOT LIKE 'Annul%'
+                LIMIT 1
+              ),
               'total', ci.total,
               'product_snapshot_id', ci.product_snapshot_id
             )
@@ -145,6 +161,11 @@ router.get('/', async (_req, res) => {
       items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
       livraisons: byBonId.get(r.id) || []
     }));
+    data = data.map(b => {
+      const legacyRemiseId = (b.items || []).find(it => it?.legacy_remise_client_id)?.legacy_remise_client_id;
+      if (!legacyRemiseId || b.remise_id) return b;
+      return { ...b, remise_is_client: 0, remise_id: legacyRemiseId };
+    });
 
     // Optionnel: calcul serveur (profit/mouvement) si demandé
     const includeCalc = String((_req.query?.includeCalc ?? '')).toLowerCase();
@@ -204,7 +225,23 @@ router.get('/:id', async (req, res) => {
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
               'remise_pourcentage', ci.remise_pourcentage,
-              'remise_montant', ci.remise_montant,
+              'remise_montant', COALESCE(NULLIF(ci.remise_montant, 0), (
+                SELECT COALESCE(SUM(ir.prix_remise), 0)
+                FROM item_remises ir
+                WHERE ir.bon_type = 'Comptant'
+                  AND ir.bon_id = bc.id
+                  AND ir.product_id = ci.product_id
+                  AND COALESCE(ir.statut, '') NOT LIKE 'Annul%'
+              )),
+              'legacy_remise_client_id', (
+                SELECT ir.client_remise_id
+                FROM item_remises ir
+                WHERE ir.bon_type = 'Comptant'
+                  AND ir.bon_id = bc.id
+                  AND ir.product_id = ci.product_id
+                  AND COALESCE(ir.statut, '') NOT LIKE 'Annul%'
+                LIMIT 1
+              ),
               'total', ci.total,
               'product_snapshot_id', ci.product_snapshot_id
             )
@@ -232,10 +269,13 @@ router.get('/:id', async (req, res) => {
         WHERE l.bon_type = 'Comptant' AND l.bon_id = ?`,
       [id]
     );
+    const parsedItems = typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []);
+    const legacyRemiseId = parsedItems.find(it => it?.legacy_remise_client_id)?.legacy_remise_client_id;
     const data = {
       ...r,
+      ...(legacyRemiseId && !r.remise_id ? { remise_is_client: 0, remise_id: legacyRemiseId } : {}),
       numero: `COM${String(r.id).padStart(2, '0')}`,
-      items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
+      items: parsedItems,
       livraisons: livs
     };
 

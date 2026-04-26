@@ -203,6 +203,39 @@ router.get('/payment-accounts', verifyToken, async (req, res) => {
 });
 
 // Vérifier ou récupérer un client_abonné existant par contact_id
+router.get('/anciens-abonnes', async (_req, res) => {
+  try {
+    if (!(await tableExists('ancien_remises_abonne'))) {
+      return res.json([]);
+    }
+
+    const [rows] = await pool.execute(`
+      SELECT
+        ara.contact_id,
+        MAX(c.nom_complet) AS nom_complet,
+        MAX(c.societe) AS societe,
+        MAX(c.telephone) AS telephone,
+        COUNT(*) AS lignes_count,
+        COALESCE(SUM(ara.qte * ara.prix_remise), 0) AS total_remise
+      FROM ancien_remises_abonne ara
+      LEFT JOIN contacts c ON c.id = ara.contact_id
+      WHERE COALESCE(ara.statut, '') NOT LIKE 'Annul%'
+      GROUP BY ara.contact_id
+      ORDER BY total_remise DESC
+    `);
+
+    res.json(rows.map((row) => ({
+      ...row,
+      contact_id: Number(row.contact_id),
+      lignes_count: Number(row.lignes_count || 0),
+      total_remise: Number(row.total_remise || 0),
+    })));
+  } catch (e) {
+    console.error('remises anciens abonnes error', e);
+    res.status(500).json({ message: 'Erreur du serveur', detail: e?.message, code: e?.code });
+  }
+});
+
 router.get('/clients/by-contact/:contactId', async (req, res) => {
   try {
     const { contactId } = req.params;
