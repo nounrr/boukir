@@ -39,11 +39,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       items: [
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: !isChefChauffeur },
         { name: 'Remises', href: '/remises', icon: Percent, show: !isChefChauffeur },
-        { name: 'Remises Backup', href: '/remises-backup', icon: Percent, show: !isChefChauffeur },
         { name: 'Promo codes', href: '/promo-codes', icon: Percent, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus') },
         { name: 'Hero Slides', href: '/hero-slides', icon: Image, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus') },
         { name: 'Contacts', href: '/contacts', icon: UserCheck, show: !isChefChauffeur && user?.role !== 'Employé' },
-        { name: 'Contacts Backup', href: '/contacts-backup', icon: UserCheck, show: !isChefChauffeur && user?.role !== 'Employé' },
         { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: !isChefChauffeur && user?.role !== 'Employé' },
       ],
     },
@@ -64,7 +62,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { name: 'Bons', href: '/bons', icon: FileText, show: true },
     { name: 'Véhicules', href: '/vehicules', icon: Truck, show: isChefChauffeur || user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
     { name: 'Caisse', href: '/caisse', icon: CreditCard, show: !isChefChauffeur },
-    { name: 'Caisse Backup', href: '/caisse-backup', icon: CreditCard, show: !isChefChauffeur },
     // Talons et Talon Caisse : visibles seulement PDG
   { name: 'Talons', href: '/talons', icon: ClipboardList, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
   { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
@@ -84,9 +81,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     // Audit et Rapports : visibles seulement PDG
     { name: 'Audit', href: '/audit', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
     { name: 'Rapports', href: '/reports', icon: BarChart3, show: !isChefChauffeur && user?.role === 'PDG' },
-    { name: 'Rapports Backup', href: '/reports-backup', icon: BarChart3, show: !isChefChauffeur && user?.role === 'PDG' },
     { name: 'Stats détaillées', href: '/reports/details', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
-    { name: 'Backup Stats detaillees', href: '/reports/details-backup', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
       ],
     },
     {

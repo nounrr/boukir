@@ -1826,6 +1826,7 @@ router.post('/', upload.fields([
       cout_revient_pourcentage,
       prix_gros_pourcentage,
       prix_vente_pourcentage,
+      prix_vente,
       remise_client,
       remise_artisan,
       est_service,
@@ -1874,7 +1875,8 @@ router.post('/', upload.fields([
 
     const cr = pa * (1 + crp / 100);
     const pg = pa * (1 + pgp / 100);
-    const pv = pa * (1 + pvp / 100);
+    const pvExplicit = prix_vente !== undefined && prix_vente !== null && prix_vente !== '' ? Number(prix_vente) : null;
+    const pv = pvExplicit !== null && Number.isFinite(pvExplicit) ? pvExplicit : pa * (1 + pvp / 100);
 
     // Variant pricing rule:
     // If product has exactly one unit and that unit is manual (facteur_isNormal=0),
@@ -2162,6 +2164,7 @@ router.put('/:id', upload.fields([
       cout_revient_pourcentage,
       prix_gros_pourcentage,
       prix_vente_pourcentage,
+      prix_vente,
       remise_client,
       remise_artisan,
       est_service,
@@ -2229,7 +2232,8 @@ router.put('/:id', upload.fields([
     const pvp = (prix_vente_pourcentage !== undefined && prix_vente_pourcentage !== null && prix_vente_pourcentage !== '') ? Number(prix_vente_pourcentage) : Number(existing.prix_vente_pourcentage ?? 0);
     const cr = pa * (1 + crp / 100);
     const pg = pa * (1 + pgp / 100);
-    const pv = pa * (1 + pvp / 100);
+    const pvExplicit = (prix_vente !== undefined && prix_vente !== null && prix_vente !== '') ? Number(prix_vente) : null;
+    const pv = (pvExplicit !== null && Number.isFinite(pvExplicit)) ? pvExplicit : pa * (1 + pvp / 100);
 
     // Variant pricing rule:
     // If (desired OR current) units are exactly 1 and it's manual (facteur_isNormal=0),

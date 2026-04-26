@@ -512,6 +512,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const productSnapshotRows = Array.isArray(productSnapshotRowsRaw)
     ? productSnapshotRowsRaw.filter((s: any) => Number(s.quantite || 0) !== 0)
     : productSnapshotRowsRaw;
+  const hasProductSnapshots = !!(editingProduct && Array.isArray(productSnapshotRows) && productSnapshotRows.length > 0);
 
   // Reverse-compute percentages from actual stored prices so they are always in sync.
   // Formula: price = prix_achat * (1 + pct/100)  =>  pct = ((price / prix_achat) - 1) * 100
@@ -621,6 +622,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       const qteNum = (values.est_service || (values as any).non_stockable) ? 0 : toNonNegativeNum(values.quantite);
 
       const computed = calculatePrices(prixAchatNum, crPctNum, pgPctNum, pvPctNum);
+      const productPrixVenteNum = priceRaw.prix_vente !== ''
+        ? toNonNegativeNum(priceRaw.prix_vente)
+        : (Number(dynamicPrices.prix_vente) || computed.prix_vente);
 
       const unit0 = Array.isArray(values.units) ? values.units[0] : undefined;
       const lockVariantPrixVente =
@@ -677,7 +681,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         kg: kgNum as any,
         cout_revient: computed.cout_revient,
         prix_gros: computed.prix_gros,
-        prix_vente: computed.prix_vente,
+        prix_vente: productPrixVenteNum,
         cout_revient_pourcentage: crPctNum,
         prix_gros_pourcentage: pgPctNum,
         prix_vente_pourcentage: pvPctNum,
@@ -715,6 +719,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('cout_revient_pourcentage', String(crPctNum));
           formData.append('prix_gros_pourcentage', String(pgPctNum));
           formData.append('prix_vente_pourcentage', String(pvPctNum));
+          formData.append('prix_vente', String(productPrixVenteNum));
           formData.append('est_service', productData.est_service ? '1' : '0');
           formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
@@ -803,6 +808,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('cout_revient_pourcentage', String(crPctNum));
           formData.append('prix_gros_pourcentage', String(pgPctNum));
           formData.append('prix_vente_pourcentage', String(pvPctNum));
+          formData.append('prix_vente', String(productPrixVenteNum));
           formData.append('est_service', productData.est_service ? '1' : '0');
           formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
@@ -1301,129 +1307,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               )}
             </div>
 
-            {/* Image du produit */}
-            <div>
-              <label htmlFor="image" className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
-                Image du produit
-              </label>
-              <input
-                id="image"
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
-              />
-              {/* Aperçu image principale (nouvelle sélection ou existante) */}
-              <div className="mt-3">
-                {selectedFile ? (
-                  <div className="inline-block relative border rounded p-1">
-                    <img
-                      src={URL.createObjectURL(selectedFile)}
-                      alt="aperçu principale"
-                      className="w-24 h-24 object-cover rounded"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFile(null)}
-                      className="absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded bg-red-600 text-white"
-                      title="Retirer la nouvelle image"
-                    >
-                      Retirer
-                    </button>
-                  </div>
-                ) : (
-                  editingProduct && (editingProduct as any).image_url ? (
-                    <div className="inline-block border rounded p-1">
-                      <img
-                        src={toBackendUrl((editingProduct as any).image_url)}
-                        alt="image principale"
-                        className="w-24 h-24 object-cover rounded"
-                      />
-                    </div>
-                  ) : null
-                )}
-              </div>
-            </div>
-
-            {/* Galerie d'images */}
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Galerie d'images</label>
-              {(
-                (editingProduct && (editingProduct as any).image_url) ||
-                (editingProduct && Array.isArray((editingProduct as any).gallery) && (editingProduct as any).gallery.length > 0)
-              ) && (
-                <div className="mb-3">
-                  <div className="text-xs text-gray-600 mb-1">Images existantes</div>
-                  <div className="flex flex-wrap gap-3">
-                    {editingProduct && (editingProduct as any).image_url && (
-                      <div className="relative border rounded p-1">
-                        <img
-                          src={toBackendUrl((editingProduct as any).image_url)}
-                          alt="image principale"
-                          className="w-24 h-24 object-cover rounded"
-                        />
-                        <div className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white rounded px-1">Principale</div>
-                      </div>
-                    )}
-                    {Array.isArray((editingProduct as any)?.gallery) && (editingProduct as any).gallery.map((img: any) => {
-                      const isMarked = deletedGalleryIds.includes(img.id);
-                      return (
-                        <div key={img.id} className={`relative border rounded p-1 ${isMarked ? 'opacity-50' : ''}`}>
-                          <img
-                            src={toBackendUrl(img.image_url)}
-                            alt="product"
-                            className="w-24 h-24 object-cover rounded"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => toggleDeleteExistingGallery(img.id)}
-                            className={`absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded ${isMarked ? 'bg-gray-600 text-white' : 'bg-red-600 text-white'}`}
-                            title={isMarked ? 'Annuler la suppression' : 'Supprimer cette image'}
-                          >
-                            {isMarked ? 'Annuler' : 'Suppr'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <div className="mb-2">
-                <input
-                  id="gallery"
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleGalleryChange}
-                  className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
-                />
-              </div>
-              {galleryFiles.length > 0 && (
-                <div>
-                  <div className="text-xs text-gray-600 mb-1">Nouvelles images sélectionnées</div>
-                  <div className="flex flex-wrap gap-3">
-                    {galleryFiles.map((file, idx) => (
-                      <div key={idx} className="relative border rounded p-1">
-                        <img
-                          src={URL.createObjectURL(file)}
-                          alt="new"
-                          className="w-24 h-24 object-cover rounded"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeNewGalleryFile(idx)}
-                          className="absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded bg-red-600 text-white"
-                          title="Retirer cette image"
-                        >
-                          Retirer
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* Remises produit (montant) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:col-span-2 p-4 rounded-xl border-2 border-gray-200 bg-gray-50/30">
               <h4 className="md:col-span-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Remises</h4>
@@ -1617,143 +1500,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </div>
             )}
 
-            {/* Snapshot accordion produit — masqué si variantes obligatoires */}
-            {editingProduct && !(formik.values as any).isObligatoireVariant && (
-                <div className="mt-4 md:col-span-2 w-full rounded-xl border-2 border-blue-300 bg-gradient-to-b from-blue-50 to-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                    <h4 className="text-base font-bold text-blue-900 flex items-center gap-2">
-                      <Package size={18} />
-                      Historique des achats <span className="text-sm font-normal text-blue-600">({Array.isArray(productSnapshotRows) ? productSnapshotRows.length : 0})</span>
-                    </h4>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* Bulk prix vente input — visible when multiple visible snapshots */}
-                      {Array.isArray(productSnapshotRows) && productSnapshotRows.length > 1 && (
-                        <div className="flex items-center gap-1.5">
-                          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">Prix vente tous:</label>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="0"
-                            className="w-24 px-2.5 py-1.5 text-sm font-medium border-2 border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                const rawValue = (e.target as HTMLInputElement).value;
-                                const val = parseFloat(String(rawValue).replace(',', '.'));
-                                if (!Number.isFinite(val) || val < 0) return;
-                                // Apply prix_vente to all visible snapshots
-                                const updates: Record<number, any> = {};
-                                productSnapshotRows!.forEach((snap: any) => {
-                                  const pa = parseFloat(String(
-                                    snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
-                                  ).replace(',', '.')) || 0;
-                                  const pctVal = pa > 0 ? parseFloat(((val / pa - 1) * 100).toFixed(2)) : 0;
-                                  updates[snap.id] = {
-                                    ...(snapshotEdits[snap.id] || {}),
-                                    prix_vente: String(val),
-                                    prix_vente_pourcentage: String(pctVal),
-                                  };
-                                });
-                                setSnapshotEdits(prev => ({ ...prev, ...updates }));
-                              }
-                            }}
-                            onChange={(e) => {
-                              // Also apply on change (live) for better UX
-                              const rawValue = e.target.value;
-                              const val = parseFloat(String(rawValue).replace(',', '.'));
-                              if (!Number.isFinite(val) || val < 0) return;
-                              const updates: Record<number, any> = {};
-                              productSnapshotRows!.forEach((snap: any) => {
-                                const pa = parseFloat(String(
-                                  snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
-                                ).replace(',', '.')) || 0;
-                                const pctVal = pa > 0 ? parseFloat(((val / pa - 1) * 100).toFixed(2)) : 0;
-                                updates[snap.id] = {
-                                  ...(snapshotEdits[snap.id] || {}),
-                                  prix_vente: String(val),
-                                  prix_vente_pourcentage: String(pctVal),
-                                };
-                              });
-                              setSnapshotEdits(prev => ({ ...prev, ...updates }));
-                            }}
-                          />
-                          <span className="text-xs text-gray-500">DH</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {Array.isArray(productSnapshotRows) && productSnapshotRows.length > 0 ? productSnapshotRows.map((s: any) => {
-                      const isOpen = expandedSnapshots.has(s.id);
-                      const hasEdits = !!snapshotEdits[s.id];
-                      return (
-                        <div key={String(s.id)} className={`rounded-lg border-2 transition-all ${
-                          hasEdits ? 'border-orange-400 bg-orange-50/50 shadow-md' : 'border-gray-200 bg-white shadow-sm'
-                        }`}>
-                          <button
-                            type="button"
-                            onClick={() => toggleSnapshotExpanded(s.id)}
-                            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-blue-50/40 rounded-t-lg transition-colors"
-                          >
-                            <div className="flex items-center gap-3 flex-wrap">
-                              {isOpen ? <ChevronDown size={18} className="text-blue-600" /> : <ChevronRight size={18} className="text-gray-400" />}
-                              <span className="text-sm font-bold text-gray-800">{s.bon_commande_id ? `Bon #${s.bon_commande_id}` : `Snapshot #${s.id}`}</span>
-                              <span className="text-sm text-gray-500">{String(s.created_at ?? '').slice(0, 10)}</span>
-                              <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
-                                Qte: {formatNumber(Number(getSnapshotEditValue(s, 'quantite')))}
-                              </span>
-                              <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                                Achat: {formatNumber(Number(getSnapshotEditValue(s, 'prix_achat')))} DH
-                              </span>
-                              {hasEdits && <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded-full text-xs font-bold">modifié</span>}
-                            </div>
-                          </button>
-                          {isOpen && (
-                            <div className="px-4 pb-4 pt-2 border-t-2 border-gray-100">
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                {[
-                                  { key: 'quantite', label: 'Quantité' },
-                                  { key: 'prix_achat', label: 'Prix Achat' },
-                                  { key: 'prix_vente', label: 'Prix Vente' },
-                                  { key: 'prix_vente_pourcentage', label: '% Vente' },
-                                  { key: 'cout_revient', label: 'Coût Revient' },
-                                  { key: 'cout_revient_pourcentage', label: '% Coût Rev.' },
-                                  { key: 'prix_gros', label: 'Prix Gros' },
-                                  { key: 'prix_gros_pourcentage', label: '% Gros' },
-                                ].map(({ key, label }) => (
-                                  <div key={key}>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-                                    <input
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={getSnapshotEditValue(s, key)}
-                                      onChange={(e) => handleSnapshotFieldChange(s, key, e.target.value)}
-                                      onBlur={() => {
-                                        if (key !== 'quantite') return;
-                                        setSnapshotEditField(s.id, key, String(Math.max(0, toNum(getSnapshotEditValue(s, key)))));
-                                      }}
-                                      className={`w-full px-3 py-2 text-sm font-medium border-2 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors ${
-                                        snapshotEdits[s.id]?.[key] !== undefined ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white'
-                                      }`}
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    }) : (
-                      <div className="text-center py-6 text-gray-400">
-                        <Package size={32} className="mx-auto mb-2 opacity-40" />
-                        <p className="text-sm">Aucun historique d'achat</p>
-                        <p className="text-xs mt-1">Les snapshots seront créés lors de la validation d'un bon de commande</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
             {/* Options & Paramètres */}
             <div className="md:col-span-2 mt-2 p-4 rounded-xl border-2 border-gray-200 bg-gray-50/30">
               <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Options</h4>
@@ -1903,7 +1649,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           </div>
 
           {/* Calculs automatiques des prix — masqué si snapshots existent */}
-          {!(editingProduct && Array.isArray(productSnapshotRows) && productSnapshotRows.length > 0) && (
           <div className="mt-6 p-5 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm">
             <h3 className="text-base font-bold text-gray-900 mb-4">Calculs automatiques des prix</h3>
 
@@ -1921,13 +1666,16 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     id="cout_revient_pourcentage"
                     name="cout_revient_pourcentage"
                     value={String(formik.values.cout_revient_pourcentage ?? '')}
+                    disabled={hasProductSnapshots}
                     onChange={(e) => {
+                      if (hasProductSnapshots) return;
                       void setNonNegativeFieldValue('cout_revient_pourcentage', e.target.value);
                     }}
                     onBlur={() => {
+                      if (hasProductSnapshots) return;
                       void commitNonNegativeFieldValue('cout_revient_pourcentage', formik.values.cout_revient_pourcentage, 0);
                     }}
-                    className="w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                    className={`w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg transition-all ${hasProductSnapshots ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'}`}
                   />
                   <span className="text-sm text-gray-600">%</span>
                 </div>
@@ -1936,8 +1684,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     type="text"
                     inputMode="decimal"
                     value={priceRaw.cout_revient}
+                    disabled={hasProductSnapshots}
                     onFocus={() => { priceEditingRef.current = 'cout_revient'; }}
                     onChange={(e) => {
+                      if (hasProductSnapshots) return;
                       const v = e.target.value;
                       if (!isDecimalLike(v)) return;
                       setPriceRaw((prev) => ({ ...prev, cout_revient: v }));
@@ -1950,11 +1700,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       setDynamicPrices((prev) => ({ ...prev, cout_revient: val }));
                     }}
                     onBlur={() => {
+                      if (hasProductSnapshots) return;
                       priceEditingRef.current = null;
                       const val = Math.max(0, parseFloat(normalizeDecimal(priceRaw.cout_revient)) || 0);
                       setPriceRaw((prev) => ({ ...prev, cout_revient: formatNumber(val) }));
                     }}
-                    className="w-full text-right bg-transparent border-0 focus:outline-none"
+                    className={`w-full text-right bg-transparent border-0 focus:outline-none ${hasProductSnapshots ? 'cursor-not-allowed text-gray-500' : ''}`}
                   />
                   <div className="text-xs text-gray-500">DH</div>
                 </div>
@@ -1973,13 +1724,16 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     id="prix_gros_pourcentage"
                     name="prix_gros_pourcentage"
                     value={String(formik.values.prix_gros_pourcentage ?? '')}
+                    disabled={hasProductSnapshots}
                     onChange={(e) => {
+                      if (hasProductSnapshots) return;
                       void setNonNegativeFieldValue('prix_gros_pourcentage', e.target.value);
                     }}
                     onBlur={() => {
+                      if (hasProductSnapshots) return;
                       void commitNonNegativeFieldValue('prix_gros_pourcentage', formik.values.prix_gros_pourcentage, 0);
                     }}
-                    className="w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                    className={`w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg transition-all ${hasProductSnapshots ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'}`}
                   />
                   <span className="text-sm text-gray-600">%</span>
                 </div>
@@ -1988,8 +1742,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     type="text"
                     inputMode="decimal"
                     value={priceRaw.prix_gros}
+                    disabled={hasProductSnapshots}
                     onFocus={() => { priceEditingRef.current = 'prix_gros'; }}
                     onChange={(e) => {
+                      if (hasProductSnapshots) return;
                       const v = e.target.value;
                       if (!isDecimalLike(v)) return;
                       setPriceRaw((prev) => ({ ...prev, prix_gros: v }));
@@ -2002,11 +1758,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       setDynamicPrices((prev) => ({ ...prev, prix_gros: val }));
                     }}
                     onBlur={() => {
+                      if (hasProductSnapshots) return;
                       priceEditingRef.current = null;
                       const val = Math.max(0, parseFloat(normalizeDecimal(priceRaw.prix_gros)) || 0);
                       setPriceRaw((prev) => ({ ...prev, prix_gros: formatNumber(val) }));
                     }}
-                    className="w-full text-right bg-transparent border-0 focus:outline-none"
+                    className={`w-full text-right bg-transparent border-0 focus:outline-none ${hasProductSnapshots ? 'cursor-not-allowed text-gray-500' : ''}`}
                   />
                   <div className="text-xs text-gray-500">DH</div>
                 </div>
@@ -2065,7 +1822,264 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               </div>
             </div>
           </div>
-          )}
+
+            {/* Snapshot accordion produit — masqué si variantes obligatoires */}
+            {editingProduct && !(formik.values as any).isObligatoireVariant && (
+                <div className="mt-4 md:col-span-2 w-full rounded-xl border-2 border-blue-300 bg-gradient-to-b from-blue-50 to-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h4 className="text-base font-bold text-blue-900 flex items-center gap-2">
+                      <Package size={18} />
+                      Historique des achats <span className="text-sm font-normal text-blue-600">({Array.isArray(productSnapshotRows) ? productSnapshotRows.length : 0})</span>
+                    </h4>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Bulk prix vente input — visible when multiple visible snapshots */}
+                      {false && Array.isArray(productSnapshotRows) && productSnapshotRows.length > 1 && (
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">Prix vente tous:</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0"
+                            className="w-24 px-2.5 py-1.5 text-sm font-medium border-2 border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const rawValue = (e.target as HTMLInputElement).value;
+                                const val = parseFloat(String(rawValue).replace(',', '.'));
+                                if (!Number.isFinite(val) || val < 0) return;
+                                // Apply prix_vente to all visible snapshots
+                                const updates: Record<number, any> = {};
+                                productSnapshotRows!.forEach((snap: any) => {
+                                  const pa = parseFloat(String(
+                                    snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
+                                  ).replace(',', '.')) || 0;
+                                  const pctVal = pa > 0 ? parseFloat(((val / pa - 1) * 100).toFixed(2)) : 0;
+                                  updates[snap.id] = {
+                                    ...(snapshotEdits[snap.id] || {}),
+                                    prix_vente: String(val),
+                                    prix_vente_pourcentage: String(pctVal),
+                                  };
+                                });
+                                setSnapshotEdits(prev => ({ ...prev, ...updates }));
+                              }
+                            }}
+                            onChange={(e) => {
+                              // Also apply on change (live) for better UX
+                              const rawValue = e.target.value;
+                              const val = parseFloat(String(rawValue).replace(',', '.'));
+                              if (!Number.isFinite(val) || val < 0) return;
+                              const updates: Record<number, any> = {};
+                              productSnapshotRows!.forEach((snap: any) => {
+                                const pa = parseFloat(String(
+                                  snapshotEdits[snap.id]?.prix_achat !== undefined ? snapshotEdits[snap.id].prix_achat : snap.prix_achat
+                                ).replace(',', '.')) || 0;
+                                const pctVal = pa > 0 ? parseFloat(((val / pa - 1) * 100).toFixed(2)) : 0;
+                                updates[snap.id] = {
+                                  ...(snapshotEdits[snap.id] || {}),
+                                  prix_vente: String(val),
+                                  prix_vente_pourcentage: String(pctVal),
+                                };
+                              });
+                              setSnapshotEdits(prev => ({ ...prev, ...updates }));
+                            }}
+                          />
+                          <span className="text-xs text-gray-500">DH</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {Array.isArray(productSnapshotRows) && productSnapshotRows.length > 0 ? productSnapshotRows.map((s: any) => {
+                      const isOpen = expandedSnapshots.has(s.id);
+                      const hasEdits = !!snapshotEdits[s.id];
+                      return (
+                        <div key={String(s.id)} className={`rounded-lg border-2 transition-all ${
+                          hasEdits ? 'border-orange-400 bg-orange-50/50 shadow-md' : 'border-gray-200 bg-white shadow-sm'
+                        }`}>
+                          <button
+                            type="button"
+                            onClick={() => toggleSnapshotExpanded(s.id)}
+                            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-blue-50/40 rounded-t-lg transition-colors"
+                          >
+                            <div className="flex items-center gap-3 flex-wrap">
+                              {isOpen ? <ChevronDown size={18} className="text-blue-600" /> : <ChevronRight size={18} className="text-gray-400" />}
+                              <span className="text-sm font-bold text-gray-800">{s.bon_commande_id ? `Bon #${s.bon_commande_id}` : `Snapshot #${s.id}`}</span>
+                              <span className="text-sm text-gray-500">{String(s.created_at ?? '').slice(0, 10)}</span>
+                              <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
+                                Qte: {formatNumber(Number(getSnapshotEditValue(s, 'quantite')))}
+                              </span>
+                              <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                                Achat: {formatNumber(Number(getSnapshotEditValue(s, 'prix_achat')))} DH
+                              </span>
+                              {hasEdits && <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded-full text-xs font-bold">modifié</span>}
+                            </div>
+                          </button>
+                          {isOpen && (
+                            <div className="px-4 pb-4 pt-2 border-t-2 border-gray-100">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                {[
+                                  { key: 'quantite', label: 'Quantité' },
+                                  { key: 'prix_achat', label: 'Prix Achat' },
+                                  { key: 'cout_revient', label: 'Coût Revient' },
+                                  { key: 'cout_revient_pourcentage', label: '% Coût Rev.' },
+                                  { key: 'prix_gros', label: 'Prix Gros' },
+                                  { key: 'prix_gros_pourcentage', label: '% Gros' },
+                                ].map(({ key, label }) => (
+                                  <div key={key}>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={getSnapshotEditValue(s, key)}
+                                      onChange={(e) => handleSnapshotFieldChange(s, key, e.target.value)}
+                                      onBlur={() => {
+                                        if (key !== 'quantite') return;
+                                        setSnapshotEditField(s.id, key, String(Math.max(0, toNum(getSnapshotEditValue(s, key)))));
+                                      }}
+                                      className={`w-full px-3 py-2 text-sm font-medium border-2 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors ${
+                                        snapshotEdits[s.id]?.[key] !== undefined ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white'
+                                      }`}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }) : (
+                      <div className="text-center py-6 text-gray-400">
+                        <Package size={32} className="mx-auto mb-2 opacity-40" />
+                        <p className="text-sm">Aucun historique d'achat</p>
+                        <p className="text-xs mt-1">Les snapshots seront créés lors de la validation d'un bon de commande</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+            {/* Image du produit */}
+            <div>
+              <label htmlFor="image" className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+                Image du produit
+              </label>
+              <input
+                id="image"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
+              />
+              {/* Aperçu image principale (nouvelle sélection ou existante) */}
+              <div className="mt-3">
+                {selectedFile ? (
+                  <div className="inline-block relative border rounded p-1">
+                    <img
+                      src={URL.createObjectURL(selectedFile)}
+                      alt="aperçu principale"
+                      className="w-24 h-24 object-cover rounded"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFile(null)}
+                      className="absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded bg-red-600 text-white"
+                      title="Retirer la nouvelle image"
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                ) : (
+                  editingProduct && (editingProduct as any).image_url ? (
+                    <div className="inline-block border rounded p-1">
+                      <img
+                        src={toBackendUrl((editingProduct as any).image_url)}
+                        alt="image principale"
+                        className="w-24 h-24 object-cover rounded"
+                      />
+                    </div>
+                  ) : null
+                )}
+              </div>
+            </div>
+
+            {/* Galerie d'images */}
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Galerie d'images</label>
+              {(
+                (editingProduct && (editingProduct as any).image_url) ||
+                (editingProduct && Array.isArray((editingProduct as any).gallery) && (editingProduct as any).gallery.length > 0)
+              ) && (
+                <div className="mb-3">
+                  <div className="text-xs text-gray-600 mb-1">Images existantes</div>
+                  <div className="flex flex-wrap gap-3">
+                    {editingProduct && (editingProduct as any).image_url && (
+                      <div className="relative border rounded p-1">
+                        <img
+                          src={toBackendUrl((editingProduct as any).image_url)}
+                          alt="image principale"
+                          className="w-24 h-24 object-cover rounded"
+                        />
+                        <div className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white rounded px-1">Principale</div>
+                      </div>
+                    )}
+                    {Array.isArray((editingProduct as any)?.gallery) && (editingProduct as any).gallery.map((img: any) => {
+                      const isMarked = deletedGalleryIds.includes(img.id);
+                      return (
+                        <div key={img.id} className={`relative border rounded p-1 ${isMarked ? 'opacity-50' : ''}`}>
+                          <img
+                            src={toBackendUrl(img.image_url)}
+                            alt="product"
+                            className="w-24 h-24 object-cover rounded"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => toggleDeleteExistingGallery(img.id)}
+                            className={`absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded ${isMarked ? 'bg-gray-600 text-white' : 'bg-red-600 text-white'}`}
+                            title={isMarked ? 'Annuler la suppression' : 'Supprimer cette image'}
+                          >
+                            {isMarked ? 'Annuler' : 'Suppr'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div className="mb-2">
+                <input
+                  id="gallery"
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleGalleryChange}
+                  className="w-full px-3.5 py-2.5 text-sm border-2 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-gray-400"
+                />
+              </div>
+              {galleryFiles.length > 0 && (
+                <div>
+                  <div className="text-xs text-gray-600 mb-1">Nouvelles images sélectionnées</div>
+                  <div className="flex flex-wrap gap-3">
+                    {galleryFiles.map((file, idx) => (
+                      <div key={idx} className="relative border rounded p-1">
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt="new"
+                          className="w-24 h-24 object-cover rounded"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeNewGalleryFile(idx)}
+                          className="absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded bg-red-600 text-white"
+                          title="Retirer cette image"
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
           {/* Unités de mesure */}
           <div className="mt-6 p-5 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm">
@@ -2408,8 +2422,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                             {[
                                               { key: 'quantite', label: 'Quantité' },
                                               { key: 'prix_achat', label: 'Prix Achat' },
-                                              { key: 'prix_vente', label: 'Prix Vente' },
-                                              { key: 'prix_vente_pourcentage', label: '% Vente' },
                                               { key: 'cout_revient', label: 'Coût Revient' },
                                               { key: 'cout_revient_pourcentage', label: '% Coût Rev.' },
                                               { key: 'prix_gros', label: 'Prix Gros' },
