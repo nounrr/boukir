@@ -261,6 +261,11 @@ const StockPage: React.FC = () => {
     return found ? found.label : (prod.base_unit || 'u');
   };
 
+  const getProductTablePrixVente = (prod: any) => {
+    const value = Number(prod?.prix_vente || 0);
+    return Number.isFinite(value) ? value : 0;
+  };
+
   const handleEdit = (product: any) => {
     const realProduct = product.isVariantRow
       ? products.find((p: any) => p.id === product.originalId)
@@ -1082,7 +1087,7 @@ const StockPage: React.FC = () => {
                     {(() => {
                       const dp = getSnapshotDisplayPrices(product);
                       const pa = dp.prix_achat!;
-                      const basePv = dp.prix_vente!;
+                      const basePv = getProductTablePrixVente(product);
                       const factor = getSelectedUnitFactor(product);
                       const unitPv = getSelectedUnitPrixVenteOverride(product);
                       const converted = unitPv !== null && Number.isFinite(unitPv) ? unitPv : (basePv * factor);

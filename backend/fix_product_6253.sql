@@ -1,435 +1,175 @@
 -- ============================================================
--- PRODUIT ID 6253 - Detection de tous les bons sans liaison snapshot
--- Memes conditions: date > 2026-03-31, product_snapshot_id IS NULL,
---                  prix_achat=0, cout_revient=0, multi-snapshot
+-- DETECTION: Nouvelle quantite produit 6253 apres fix
+-- LECTURE SEULE - aucune modification de la base
+--
+-- LOGIQUE: On vide chaque snapshot completement (oldest first)
+-- avant de passer au suivant. On ne laisse PAS de reste
+-- sauf sur le dernier snapshot qui a encore du stock.
 -- ============================================================
 
--- -----------------------------------------------------------
--- PARTIE A: DETAIL PAR BON (toutes les lignes concernees)
--- -----------------------------------------------------------
+DROP TEMPORARY TABLE IF EXISTS fix_items_6253;
+DROP TEMPORARY TABLE IF EXISTS fix_mapping_6253;
+DROP TEMPORARY TABLE IF EXISTS snapshot_stock_6253;
 
-SELECT
-    CONVERT('bons_comptant' USING utf8mb4) COLLATE utf8mb4_general_ci AS type_bon,
-    bc.id AS bon_id,
-    bc.date_creation,
-    CONVERT(bc.client_nom USING utf8mb4) COLLATE utf8mb4_general_ci AS client_nom,
-    ci.id AS item_id,
-    ci.product_id,
-    ci.quantite,
-    ci.prix_unitaire,
-    ci.product_snapshot_id,
-    COUNT(ps.id) AS nb_snapshots_dispo,
-    SUM(ps.quantite) AS stock_total_en_snapshots
-FROM bons_comptant bc
-JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
-JOIN products p ON p.id = ci.product_id
-JOIN product_snapshot ps ON ps.product_id = ci.product_id AND ps.quantite > 0
-WHERE ci.product_id = 6253
-  AND ci.product_snapshot_id IS NULL
-  AND bc.date_creation > '2026-03-31'
-  AND p.prix_achat = 0
-  AND p.cout_revient = 0
-GROUP BY bc.id, bc.date_creation, bc.client_nom, ci.id, ci.product_id, ci.quantite, ci.prix_unitaire
-HAVING COUNT(ps.id) > 1
+-- Tous les items a fixer
+CREATE TEMPORARY TABLE fix_items_6253 (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    bon_type VARCHAR(20),
+    item_id INT,
+    item_qte DECIMAL(20,3)
+);
 
+INSERT INTO fix_items_6253 (bon_type, item_id, item_qte)
+SELECT 'comptant', ci.id, ci.quantite
+FROM comptant_items ci
+WHERE ci.product_id = 6253 AND ci.product_snapshot_id IS NULL
 UNION ALL
-
-SELECT
-    CONVERT('bons_sortie' USING utf8mb4) COLLATE utf8mb4_general_ci AS type_bon,
-    bs.id AS bon_id,
-    bs.date_creation,
-    CAST(NULL AS CHAR) COLLATE utf8mb4_general_ci AS client_nom,
-    si.id AS item_id,
-    si.product_id,
-    si.quantite,
-    si.prix_unitaire,
-    si.product_snapshot_id,
-    COUNT(ps.id) AS nb_snapshots_dispo,
-    SUM(ps.quantite) AS stock_total_en_snapshots
-FROM bons_sortie bs
-JOIN sortie_items si ON si.bon_sortie_id = bs.id
-JOIN products p ON p.id = si.product_id
-JOIN product_snapshot ps ON ps.product_id = si.product_id AND ps.quantite > 0
-WHERE si.product_id = 6253
-  AND si.product_snapshot_id IS NULL
-  AND bs.date_creation > '2026-03-31'
-  AND p.prix_achat = 0
-  AND p.cout_revient = 0
-GROUP BY bs.id, bs.date_creation, si.id, si.product_id, si.quantite, si.prix_unitaire
-HAVING COUNT(ps.id) > 1
-
+SELECT 'sortie', si.id, si.quantite
+FROM sortie_items si
+WHERE si.product_id = 6253 AND si.product_snapshot_id IS NULL
 UNION ALL
+SELECT 'avoir_client', aci.id, aci.quantite
+FROM avoir_client_items aci
+WHERE aci.product_id = 6253 AND aci.product_snapshot_id IS NULL;
+
+CREATE TEMPORARY TABLE fix_mapping_6253 (
+    bon_type VARCHAR(20), item_id INT, item_qte DECIMAL(20,3), target_snapshot_id INT
+);
+
+CREATE TEMPORARY TABLE snapshot_stock_6253 AS
+SELECT id AS snapshot_id, quantite AS remaining, prix_vente, created_at
+FROM product_snapshot WHERE product_id = 6253 AND quantite > 0;
+ALTER TABLE snapshot_stock_6253 ADD INDEX idx_snap (snapshot_id);
+
+DROP PROCEDURE IF EXISTS detect_fix_6253;
+
+DELIMITER //
+CREATE PROCEDURE detect_fix_6253()
+BEGIN
+    DECLARE v_snap_id INT;
+    DECLARE v_snap_remaining DECIMAL(20,3);
+    DECLARE v_item_row_id INT;
+    DECLARE v_bon_type VARCHAR(20);
+    DECLARE v_item_id INT;
+    DECLARE v_item_qte DECIMAL(20,3);
+    DECLARE v_count INT;
+
+    -- =====================================================
+    -- 1. AVOIR_CLIENT d'abord (retours => ajouter au stock)
+    --    Ajout au snapshot le plus recent
+    -- =====================================================
+    avoir_loop: LOOP
+        SELECT COUNT(*) INTO v_count FROM fix_items_6253 WHERE bon_type = 'avoir_client';
+        IF v_count = 0 THEN LEAVE avoir_loop; END IF;
+
+        SELECT id, item_id, item_qte INTO v_item_row_id, v_item_id, v_item_qte
+        FROM fix_items_6253 WHERE bon_type = 'avoir_client' LIMIT 1;
+
+        SELECT snapshot_id INTO v_snap_id
+        FROM snapshot_stock_6253 ORDER BY created_at DESC LIMIT 1;
+
+        IF v_snap_id IS NOT NULL THEN
+            UPDATE snapshot_stock_6253 SET remaining = remaining + v_item_qte WHERE snapshot_id = v_snap_id;
+        END IF;
+
+        INSERT INTO fix_mapping_6253 VALUES ('avoir_client', v_item_id, v_item_qte, v_snap_id);
+        DELETE FROM fix_items_6253 WHERE id = v_item_row_id;
+    END LOOP;
+
+    -- =====================================================
+    -- 2. COMPTANT + SORTIE (ventes/sorties => deduire)
+    --    FIFO: vider chaque snapshot completement avant
+    --    de passer au suivant (du plus ancien au plus recent)
+    -- =====================================================
+    snap_loop: LOOP
+        -- Des items restants?
+        SELECT COUNT(*) INTO v_count FROM fix_items_6253;
+        IF v_count = 0 THEN LEAVE snap_loop; END IF;
+
+        -- Prendre le snapshot le plus ancien avec du stock
+        SET v_snap_id = NULL;
+        SELECT COUNT(*) INTO v_count FROM snapshot_stock_6253 WHERE remaining > 0;
+        IF v_count = 0 THEN
+            -- Plus de stock => items restants sans cible
+            INSERT INTO fix_mapping_6253 (bon_type, item_id, item_qte, target_snapshot_id)
+            SELECT bon_type, item_id, item_qte, NULL FROM fix_items_6253;
+            DELETE FROM fix_items_6253;
+            LEAVE snap_loop;
+        END IF;
+
+        SELECT snapshot_id, remaining INTO v_snap_id, v_snap_remaining
+        FROM snapshot_stock_6253 WHERE remaining > 0
+        ORDER BY created_at ASC
+        LIMIT 1;
+
+        -- Vider ce snapshot completement
+        drain_loop: LOOP
+            -- Rafraichir le stock restant
+            SELECT remaining INTO v_snap_remaining FROM snapshot_stock_6253 WHERE snapshot_id = v_snap_id;
+            IF v_snap_remaining <= 0 THEN LEAVE drain_loop; END IF;
+
+            -- Des items restants?
+            SELECT COUNT(*) INTO v_count FROM fix_items_6253;
+            IF v_count = 0 THEN LEAVE drain_loop; END IF;
+
+            -- Chercher le plus grand item qui rentre dans le stock restant
+            SET v_item_row_id = NULL;
+            SELECT COUNT(*) INTO v_count FROM fix_items_6253 WHERE item_qte <= v_snap_remaining;
+
+            IF v_count > 0 THEN
+                -- Prendre le plus grand qui rentre
+                SELECT id, bon_type, item_id, item_qte
+                INTO v_item_row_id, v_bon_type, v_item_id, v_item_qte
+                FROM fix_items_6253
+                WHERE item_qte <= v_snap_remaining
+                ORDER BY item_qte DESC
+                LIMIT 1;
+            ELSE
+                -- Aucun item ne rentre => prendre le plus petit
+                -- (va mettre le snapshot a 0 et le surplus ira au suivant)
+                SELECT id, bon_type, item_id, item_qte
+                INTO v_item_row_id, v_bon_type, v_item_id, v_item_qte
+                FROM fix_items_6253
+                ORDER BY item_qte ASC
+                LIMIT 1;
+            END IF;
+
+            IF v_item_row_id IS NULL THEN LEAVE drain_loop; END IF;
+
+            -- Deduire
+            UPDATE snapshot_stock_6253
+            SET remaining = GREATEST(remaining - v_item_qte, 0)
+            WHERE snapshot_id = v_snap_id;
+
+            INSERT INTO fix_mapping_6253 VALUES (v_bon_type, v_item_id, v_item_qte, v_snap_id);
+            DELETE FROM fix_items_6253 WHERE id = v_item_row_id;
+        END LOOP;
+    END LOOP;
+END //
+DELIMITER ;
+
+CALL detect_fix_6253();
+DROP PROCEDURE IF EXISTS detect_fix_6253;
 
 SELECT
-    CONVERT('avoir_client' USING utf8mb4) COLLATE utf8mb4_general_ci AS type_bon,
-    ac.id AS bon_id,
-    ac.date_creation,
-    CAST(NULL AS CHAR) COLLATE utf8mb4_general_ci AS client_nom,
-    aci.id AS item_id,
-    aci.product_id,
-    aci.quantite,
-    aci.prix_unitaire,
-    aci.product_snapshot_id,
-    COUNT(ps.id) AS nb_snapshots_dispo,
-    SUM(ps.quantite) AS stock_total_en_snapshots
-FROM avoirs_client ac
-JOIN avoir_client_items aci ON aci.avoir_client_id = ac.id
-JOIN products p ON p.id = aci.product_id
-JOIN product_snapshot ps ON ps.product_id = aci.product_id AND ps.quantite > 0
-WHERE aci.product_id = 6253
-  AND aci.product_snapshot_id IS NULL
-  AND ac.date_creation > '2026-03-31'
-  AND p.prix_achat = 0
-  AND p.cout_revient = 0
-GROUP BY ac.id, ac.date_creation, aci.id, aci.product_id, aci.quantite, aci.prix_unitaire
-HAVING COUNT(ps.id) > 1
-
-UNION ALL
-
-SELECT
-    CONVERT('avoir_comptant' USING utf8mb4) COLLATE utf8mb4_general_ci AS type_bon,
-    acp.id AS bon_id,
-    acp.date_creation,
-    CONVERT(acp.client_nom USING utf8mb4) COLLATE utf8mb4_general_ci AS client_nom,
-    acpi.id AS item_id,
-    acpi.product_id,
-    acpi.quantite,
-    acpi.prix_unitaire,
-    acpi.product_snapshot_id,
-    COUNT(ps.id) AS nb_snapshots_dispo,
-    SUM(ps.quantite) AS stock_total_en_snapshots
-FROM avoirs_comptant acp
-JOIN avoir_comptant_items acpi ON acpi.avoir_comptant_id = acp.id
-JOIN products p ON p.id = acpi.product_id
-JOIN product_snapshot ps ON ps.product_id = acpi.product_id AND ps.quantite > 0
-WHERE acpi.product_id = 6253
-  AND acpi.product_snapshot_id IS NULL
-  AND acp.date_creation > '2026-03-31'
-  AND p.prix_achat = 0
-  AND p.cout_revient = 0
-GROUP BY acp.id, acp.date_creation, acp.client_nom, acpi.id, acpi.product_id, acpi.quantite, acpi.prix_unitaire
-HAVING COUNT(ps.id) > 1
-
-ORDER BY date_creation DESC;
-
-
--- -----------------------------------------------------------
--- PARTIE B: RESUME - Total quantite non liee au snapshot
---           par type de bon pour le produit 6253
--- -----------------------------------------------------------
-
-WITH items_6253 AS (
-    SELECT 'bons_comptant' AS type_bon, ci.quantite
-    FROM comptant_items ci
-    JOIN bons_comptant bc ON bc.id = ci.bon_comptant_id
-    JOIN products p ON p.id = ci.product_id
-    JOIN product_snapshot ps ON ps.product_id = ci.product_id AND ps.quantite > 0
-    WHERE ci.product_id = 6253
-      AND ci.product_snapshot_id IS NULL
-      AND bc.date_creation > '2026-03-31'
-      AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY ci.id, ci.quantite
-    HAVING COUNT(ps.id) > 1
-
-    UNION ALL
-
-    SELECT 'bons_sortie', si.quantite
-    FROM sortie_items si
-    JOIN bons_sortie bs ON bs.id = si.bon_sortie_id
-    JOIN products p ON p.id = si.product_id
-    JOIN product_snapshot ps ON ps.product_id = si.product_id AND ps.quantite > 0
-    WHERE si.product_id = 6253
-      AND si.product_snapshot_id IS NULL
-      AND bs.date_creation > '2026-03-31'
-      AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY si.id, si.quantite
-    HAVING COUNT(ps.id) > 1
-
-    UNION ALL
-
-    SELECT 'avoir_client', aci.quantite
-    FROM avoir_client_items aci
-    JOIN avoirs_client ac ON ac.id = aci.avoir_client_id
-    JOIN products p ON p.id = aci.product_id
-    JOIN product_snapshot ps ON ps.product_id = aci.product_id AND ps.quantite > 0
-    WHERE aci.product_id = 6253
-      AND aci.product_snapshot_id IS NULL
-      AND ac.date_creation > '2026-03-31'
-      AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY aci.id, aci.quantite
-    HAVING COUNT(ps.id) > 1
-
-    UNION ALL
-
-    SELECT 'avoir_comptant', acpi.quantite
-    FROM avoir_comptant_items acpi
-    JOIN avoirs_comptant acp ON acp.id = acpi.avoir_comptant_id
-    JOIN products p ON p.id = acpi.product_id
-    JOIN product_snapshot ps ON ps.product_id = acpi.product_id AND ps.quantite > 0
-    WHERE acpi.product_id = 6253
-      AND acpi.product_snapshot_id IS NULL
-      AND acp.date_creation > '2026-03-31'
-      AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY acpi.id, acpi.quantite
-    HAVING COUNT(ps.id) > 1
-)
-SELECT type_bon,
-       COUNT(*)       AS nb_items_problematiques,
-       SUM(quantite)  AS qte_totale_non_liee
-FROM items_6253
-GROUP BY type_bon
-
-UNION ALL
-
-SELECT 'TOTAL',
-       COUNT(*)       AS nb_items_problematiques,
-       SUM(quantite)  AS qte_totale_non_liee
-FROM items_6253;
-
-
--- -----------------------------------------------------------
--- PARTIE C: SNAPSHOTS DISPONIBLES pour le produit 6253
---           (pour savoir quoi lier)
--- -----------------------------------------------------------
--- NOTE: PARTIE D et E necessitent d'etre lancees ensemble (CTEs partagees)
---       PARTIE E STANDALONE ci-dessous = lancer seule sans PARTIE D
--- -----------------------------------------------------------
-
--- PARTIE E STANDALONE: Stock restant apres fix (query autonome)
-WITH
-comptant_fix AS (
-    SELECT ci.id AS item_id, ci.quantite AS item_qte,
-        (SELECT ps2.id FROM product_snapshot ps2
-         WHERE ps2.product_id = 6253 AND ps2.quantite > 0
-         ORDER BY CASE WHEN ps2.quantite >= ci.quantite THEN 0 ELSE 1 END, ps2.created_at DESC
-         LIMIT 1) AS target_snapshot_id
-    FROM comptant_items ci
-    JOIN bons_comptant bc ON bc.id = ci.bon_comptant_id
-    JOIN products p ON p.id = ci.product_id
-    JOIN product_snapshot ps ON ps.product_id = 6253 AND ps.quantite > 0
-    WHERE ci.product_id = 6253 AND ci.product_snapshot_id IS NULL
-      AND bc.date_creation > '2026-03-31' AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY ci.id, ci.quantite HAVING COUNT(ps.id) > 1
-),
-sortie_fix AS (
-    SELECT si.id AS item_id, si.quantite AS item_qte,
-        (SELECT ps2.id FROM product_snapshot ps2
-         WHERE ps2.product_id = 6253 AND ps2.quantite > 0
-         ORDER BY CASE WHEN ps2.quantite >= si.quantite THEN 0 ELSE 1 END, ps2.created_at DESC
-         LIMIT 1) AS target_snapshot_id
-    FROM sortie_items si
-    JOIN bons_sortie bs ON bs.id = si.bon_sortie_id
-    JOIN products p ON p.id = si.product_id
-    JOIN product_snapshot ps ON ps.product_id = 6253 AND ps.quantite > 0
-    WHERE si.product_id = 6253 AND si.product_snapshot_id IS NULL
-      AND bs.date_creation > '2026-03-31' AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY si.id, si.quantite HAVING COUNT(ps.id) > 1
-),
-avoir_client_fix AS (
-    SELECT aci.id AS item_id, aci.quantite AS item_qte,
-        (SELECT ps2.id FROM product_snapshot ps2
-         WHERE ps2.product_id = 6253 AND ps2.quantite > 0
-         ORDER BY CASE WHEN ps2.quantite >= aci.quantite THEN 0 ELSE 1 END, ps2.created_at DESC
-         LIMIT 1) AS target_snapshot_id
-    FROM avoir_client_items aci
-    JOIN avoirs_client ac ON ac.id = aci.avoir_client_id
-    JOIN products p ON p.id = aci.product_id
-    JOIN product_snapshot ps ON ps.product_id = 6253 AND ps.quantite > 0
-    WHERE aci.product_id = 6253 AND aci.product_snapshot_id IS NULL
-      AND ac.date_creation > '2026-03-31' AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY aci.id, aci.quantite HAVING COUNT(ps.id) > 1
-)
-SELECT
-    SUM(ps.quantite)                    AS stock_total_actuel,
-    COALESCE(SUM(m.total_a_deduire), 0) AS total_a_deduire,
-    COALESCE(SUM(m.total_a_ajouter), 0) AS total_a_ajouter,
-    GREATEST(
-        SUM(ps.quantite)
-        - COALESCE(SUM(m.total_a_deduire), 0)
-        + COALESCE(SUM(m.total_a_ajouter), 0),
-    0)                                  AS stock_total_apres_fix
-FROM product_snapshot ps
-LEFT JOIN (
-    SELECT target_snapshot_id,
-           SUM(total_sortie) AS total_a_deduire,
-           SUM(total_retour) AS total_a_ajouter
-    FROM (
-        SELECT target_snapshot_id, SUM(item_qte) AS total_sortie, 0 AS total_retour FROM comptant_fix GROUP BY target_snapshot_id
-        UNION ALL
-        SELECT target_snapshot_id, SUM(item_qte), 0 FROM sortie_fix GROUP BY target_snapshot_id
-        UNION ALL
-        SELECT target_snapshot_id, 0, SUM(item_qte) FROM avoir_client_fix GROUP BY target_snapshot_id
-    ) x GROUP BY target_snapshot_id
-) m ON m.target_snapshot_id = ps.id
-WHERE ps.product_id = 6253;
-
--- -----------------------------------------------------------
-
-SELECT
-    ps.id AS snapshot_id,
-    ps.quantite,
-    ps.prix_achat,
+    ps.id                                                                          AS snapshot_id,
+    ps.quantite                                                                    AS stock_avant,
+    COALESCE(ch.a_deduire, 0)                                                     AS a_deduire,
+    COALESCE(ch.a_ajouter, 0)                                                     AS a_ajouter,
+    GREATEST(ps.quantite - COALESCE(ch.a_deduire,0) + COALESCE(ch.a_ajouter,0), 0) AS stock_apres,
     ps.prix_vente,
-    ps.cout_revient,
-    ps.bon_commande_id,
     ps.created_at
 FROM product_snapshot ps
-WHERE ps.product_id = 6253
-  AND ps.quantite > 0
-ORDER BY ps.created_at DESC;
-
-
--- -----------------------------------------------------------
--- PARTIE D: SIMULATION - Stock restant PAR SNAPSHOT apres UPDATE
--- Logique du fix: chaque item non lie choisit le snapshot
---   le plus recent avec quantite >= item.quantite
---   sinon celui avec le max de quantite
--- Cette query montre ce qui va etre deduit/ajoute par snapshot
--- AUCUNE MODIFICATION - lecture seule
--- -----------------------------------------------------------
-
-WITH
-
--- Snapshot cible choisi pour chaque item comptant problematique
-comptant_fix AS (
-    SELECT
-        ci.id AS item_id,
-        ci.quantite AS item_qte,
-        (
-            SELECT ps2.id
-            FROM product_snapshot ps2
-            WHERE ps2.product_id = 6253 AND ps2.quantite > 0
-            ORDER BY CASE WHEN ps2.quantite >= ci.quantite THEN 0 ELSE 1 END,
-                     ps2.created_at DESC
-            LIMIT 1
-        ) AS target_snapshot_id
-    FROM comptant_items ci
-    JOIN bons_comptant bc ON bc.id = ci.bon_comptant_id
-    JOIN products p ON p.id = ci.product_id
-    JOIN product_snapshot ps ON ps.product_id = 6253 AND ps.quantite > 0
-    WHERE ci.product_id = 6253
-      AND ci.product_snapshot_id IS NULL
-      AND bc.date_creation > '2026-03-31'
-      AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY ci.id, ci.quantite
-    HAVING COUNT(ps.id) > 1
-),
-
--- Snapshot cible choisi pour chaque item sortie problematique
-sortie_fix AS (
-    SELECT
-        si.id AS item_id,
-        si.quantite AS item_qte,
-        (
-            SELECT ps2.id
-            FROM product_snapshot ps2
-            WHERE ps2.product_id = 6253 AND ps2.quantite > 0
-            ORDER BY CASE WHEN ps2.quantite >= si.quantite THEN 0 ELSE 1 END,
-                     ps2.created_at DESC
-            LIMIT 1
-        ) AS target_snapshot_id
-    FROM sortie_items si
-    JOIN bons_sortie bs ON bs.id = si.bon_sortie_id
-    JOIN products p ON p.id = si.product_id
-    JOIN product_snapshot ps ON ps.product_id = 6253 AND ps.quantite > 0
-    WHERE si.product_id = 6253
-      AND si.product_snapshot_id IS NULL
-      AND bs.date_creation > '2026-03-31'
-      AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY si.id, si.quantite
-    HAVING COUNT(ps.id) > 1
-),
-
--- Snapshot cible choisi pour chaque item avoir_client (AJOUT stock)
-avoir_client_fix AS (
-    SELECT
-        aci.id AS item_id,
-        aci.quantite AS item_qte,
-        (
-            SELECT ps2.id
-            FROM product_snapshot ps2
-            WHERE ps2.product_id = 6253 AND ps2.quantite > 0
-            ORDER BY CASE WHEN ps2.quantite >= aci.quantite THEN 0 ELSE 1 END,
-                     ps2.created_at DESC
-            LIMIT 1
-        ) AS target_snapshot_id
-    FROM avoir_client_items aci
-    JOIN avoirs_client ac ON ac.id = aci.avoir_client_id
-    JOIN products p ON p.id = aci.product_id
-    JOIN product_snapshot ps ON ps.product_id = 6253 AND ps.quantite > 0
-    WHERE aci.product_id = 6253
-      AND aci.product_snapshot_id IS NULL
-      AND ac.date_creation > '2026-03-31'
-      AND p.prix_achat = 0 AND p.cout_revient = 0
-    GROUP BY aci.id, aci.quantite
-    HAVING COUNT(ps.id) > 1
-),
-
--- Mouvement net par snapshot (deduction - ajout)
-mouvements AS (
-    SELECT target_snapshot_id, SUM(item_qte) AS total_sortie, 0 AS total_retour
-    FROM comptant_fix GROUP BY target_snapshot_id
-    UNION ALL
-    SELECT target_snapshot_id, SUM(item_qte), 0
-    FROM sortie_fix GROUP BY target_snapshot_id
-    UNION ALL
-    SELECT target_snapshot_id, 0, SUM(item_qte)
-    FROM avoir_client_fix GROUP BY target_snapshot_id
-),
-
-mouv_agg AS (
-    SELECT
-        target_snapshot_id,
-        SUM(total_sortie) AS total_a_deduire,
-        SUM(total_retour) AS total_a_ajouter
-    FROM mouvements
-    GROUP BY target_snapshot_id
-)
-
--- RESULTAT FINAL: stock actuel vs stock apres fix par snapshot
-SELECT
-    ps.id                                                   AS snapshot_id,
-    ps.created_at                                           AS date_snapshot,
-    ps.prix_achat,
-    ps.prix_vente,
-    ps.quantite                                             AS stock_actuel,
-    COALESCE(m.total_a_deduire, 0)                         AS qte_a_deduire,
-    COALESCE(m.total_a_ajouter, 0)                         AS qte_a_ajouter,
-    GREATEST(
-        ps.quantite
-        - COALESCE(m.total_a_deduire, 0)
-        + COALESCE(m.total_a_ajouter, 0),
-    0)                                                      AS stock_apres_fix
-FROM product_snapshot ps
-LEFT JOIN mouv_agg m ON m.target_snapshot_id = ps.id
-WHERE ps.product_id = 6253
-ORDER BY ps.created_at DESC;
-
-
--- -----------------------------------------------------------
--- PARTIE E: RESUME GLOBAL - Total stock produit 6253
--- -----------------------------------------------------------
-
-SELECT
-    SUM(ps.quantite)                                        AS stock_total_actuel,
-    COALESCE(SUM(m.total_a_deduire), 0)                    AS total_a_deduire,
-    COALESCE(SUM(m.total_a_ajouter), 0)                    AS total_a_ajouter,
-    GREATEST(
-        SUM(ps.quantite)
-        - COALESCE(SUM(m.total_a_deduire), 0)
-        + COALESCE(SUM(m.total_a_ajouter), 0),
-    0)                                                      AS stock_total_apres_fix
-FROM product_snapshot ps
 LEFT JOIN (
     SELECT target_snapshot_id,
-           SUM(total_sortie) AS total_a_deduire,
-           SUM(total_retour) AS total_a_ajouter
-    FROM (
-        SELECT target_snapshot_id, SUM(item_qte) AS total_sortie, 0 AS total_retour FROM comptant_fix GROUP BY target_snapshot_id
-        UNION ALL
-        SELECT target_snapshot_id, SUM(item_qte), 0 FROM sortie_fix GROUP BY target_snapshot_id
-        UNION ALL
-        SELECT target_snapshot_id, 0, SUM(item_qte) FROM avoir_client_fix GROUP BY target_snapshot_id
-    ) x GROUP BY target_snapshot_id
-) m ON m.target_snapshot_id = ps.id
-WHERE ps.product_id = 6253;
+        SUM(CASE WHEN bon_type IN ('comptant','sortie') THEN item_qte ELSE 0 END) AS a_deduire,
+        SUM(CASE WHEN bon_type = 'avoir_client'         THEN item_qte ELSE 0 END) AS a_ajouter
+    FROM fix_mapping_6253 WHERE target_snapshot_id IS NOT NULL
+    GROUP BY target_snapshot_id
+) ch ON ch.target_snapshot_id = ps.id
+WHERE ps.product_id = 6253
+ORDER BY ps.created_at ASC;
+
+DROP TEMPORARY TABLE IF EXISTS fix_items_6253;
+DROP TEMPORARY TABLE IF EXISTS fix_mapping_6253;
+DROP TEMPORARY TABLE IF EXISTS snapshot_stock_6253;

@@ -436,7 +436,13 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         JOIN commande_items ci ON ci.bon_commande_id = bcmd.id
         LEFT JOIN contacts ct ON ct.id = bcmd.fournisseur_id
         LEFT JOIN products p ON p.id = ci.product_id
-        LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
+        LEFT JOIN product_snapshot ps ON ps.id = COALESCE(
+          ci.product_snapshot_id,
+          (SELECT ps2.id FROM product_snapshot ps2
+           WHERE ps2.bon_commande_id = bcmd.id
+             AND ps2.product_id = ci.product_id
+           ORDER BY ps2.id DESC LIMIT 1)
+        )
         LEFT JOIN product_variants pv ON pv.id = COALESCE(ci.variant_id, ps.variant_id)
         LEFT JOIN product_units pu ON pu.id = ci.unit_id
         WHERE 1=1 ${buildStatsDateCondition('bcmd', 'date_creation', pcmd, dateFrom, dateTo)}`,
@@ -466,7 +472,13 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         JOIN avoir_fournisseur_items afi ON afi.avoir_fournisseur_id = af.id
         LEFT JOIN contacts ct ON ct.id = af.fournisseur_id
         LEFT JOIN products p ON p.id = afi.product_id
-        LEFT JOIN product_snapshot ps ON ps.id = afi.product_snapshot_id
+        LEFT JOIN product_snapshot ps ON ps.id = COALESCE(
+          afi.product_snapshot_id,
+          (SELECT ps2.id FROM product_snapshot ps2
+           WHERE ps2.product_id = afi.product_id
+             AND ps2.bon_commande_id IS NOT NULL
+           ORDER BY ps2.id DESC LIMIT 1)
+        )
         LEFT JOIN product_variants pv ON pv.id = COALESCE(afi.variant_id, ps.variant_id)
         LEFT JOIN product_units pu ON pu.id = afi.unit_id
         WHERE 1=1 ${buildStatsDateCondition('af', 'date_creation', paf, dateFrom, dateTo)}`,

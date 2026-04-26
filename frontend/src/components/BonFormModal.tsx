@@ -352,10 +352,31 @@ const resolveItemCostContext = (
 ) => {
   const product = findCatalogProductForItem(item, products);
   const snapshotId = item?.product_snapshot_id ?? item?.snapshot_id ?? null;
-  const snapshot = snapshotId
+  const explicitSnapshot = snapshotId
     ? (snapshotProducts || []).find((s: any) => String(s?.snapshot_id) === String(snapshotId)) || null
     : null;
   const variantId = item?.variant_id ?? item?.variantId ?? item?.variant?.id ?? null;
+  const itemPVRaw = item?.prix_unitaire ?? item?.prix_vente ?? null;
+  const itemPV = itemPVRaw !== null && itemPVRaw !== undefined && itemPVRaw !== ''
+    ? Number(itemPVRaw)
+    : null;
+  const mergedSnapshots = !explicitSnapshot && item?.product_id
+    ? (snapshotProducts || [])
+        .filter((s: any) => {
+          if (!s?.snapshot_id) return false;
+          if (String(s?.id) !== String(item.product_id)) return false;
+          if (String(s?.variant_id || '') !== String(variantId || '')) return false;
+          const flag = s?.snapshot_en_validation;
+          const isActive = flag == null ? true : Number(flag) !== 0;
+          if (!isActive || Number(s?.snapshot_quantite ?? 0) <= 0) return false;
+          if (itemPV !== null && Number.isFinite(itemPV)) {
+            return Number(s?.prix_vente ?? 0) === itemPV;
+          }
+          return true;
+        })
+        .sort((a: any, b: any) => (Number(a?.fifo_priority) || 999) - (Number(b?.fifo_priority) || 999))
+    : [];
+  const snapshot = explicitSnapshot || mergedSnapshots[0] || null;
   const variant = variantId && product?.variants?.length
     ? (product.variants as any[]).find((v: any) => String(v?.id) === String(variantId)) || null
     : null;
@@ -389,6 +410,8 @@ const resolveItemCostContext = (
   return {
     product,
     snapshot,
+    mergedSnapshots,
+    isMergedSnapshotSelection: !explicitSnapshot && mergedSnapshots.length > 0,
     variant,
     requestedSnapshotId: snapshotId,
     requestedVariantId: variantId,
@@ -406,6 +429,15 @@ const resolveItemCostContext = (
     cout_revient: Number((baseCR * convFactor).toFixed(2)),
     source: snapshotPA || snapshotCR ? 'snapshot' : variantPA || variantCR ? 'variant' : productPA || productCR ? 'product' : 'item',
   };
+};
+
+const getCatalogPrixVente = (product: any, variantId?: any) => {
+  const variant = variantId && product?.variants?.length
+    ? (product.variants as any[]).find((v: any) => String(v?.id) === String(variantId))
+    : null;
+  return variant
+    ? Number(variant.prix_vente ?? product?.prix_vente ?? 0)
+    : Number(product?.prix_vente ?? 0);
 };
 
 const normalizeHumanName = (value: unknown) => {
@@ -2174,7 +2206,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         let availableQty = Infinity; // par défaut, pas de limite
 
         if (snapId && useSnapshotSelection && snapshotProducts?.length) {
-          const snap = (snapshotProducts as any[]).find((s: any) => s.snapshot_id === snapId);
+          const snap = (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(snapId));
           if (snap) {
             // If snapshot is not active (en_validation=0), treat it as out of stock
             const flag = (snap as any).snapshot_en_validation;
@@ -3861,7 +3893,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             const pv = Number(p.prix_vente ?? 0);
                                             return {
                                               value: `merged:${p.id}:${p.variant_id || 0}:${pv}`,
-                                              label: `${displayReference} - ${nom}${variant}${qte}${parentRefSuffix}`.trim(),
+                                              label: `[Lots fusionnés] ${displayReference} - ${nom}${variant}${qte}${parentRefSuffix}`.trim(),
                                               data: p,
                                             };
                                           }
@@ -3947,11 +3979,26 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         const v = (fromCatalog?.variants ?? []).find((vv: any) => String(vv.id) === String(variantId));
                                         if (v) variantSuffix = ` - ${v.variant_name}`;
                                       }
-                                      if (fromRow) return `${ref} - ${fromRow}${variantSuffix}`.trim();
+                                      const isMerged = (() => {
+                                        if (!useSnapshotSelection) return false;
+                                        const snapId = values.items[index].product_snapshot_id;
+                                        if (snapId) return false;
+                                        const pv = Number(values.items[index].prix_unitaire ?? 0);
+                                        return (filteredSnapshotProducts as any[]).some(
+                                          (p: any) =>
+                                            p._isMerged &&
+                                            String(p.id) === String(prodId) &&
+                                            String(p.variant_id || 0) === String(variantId || 0) &&
+                                            Number(p.prix_vente ?? 0) === pv
+                                        );
+                                      })();
+                                      const prefix = isMerged ? '[Lots fusionnés] ' : '';
+
+                                      if (fromRow) return `${prefix}${ref} - ${fromRow}${variantSuffix}`.trim();
 
                                       const fromCatalog = products.find((p: any) => String(p.id) === String(prodId));
                                       const des = String(fromCatalog?.designation ?? '').trim();
-                                      return des ? `${ref} - ${des}${variantSuffix}`.trim() : ref;
+                                      return des ? `${prefix}${ref} - ${des}${variantSuffix}`.trim() : `${prefix}${ref}`;
                                     })()}
                                     onChange={(selectedValue) => {
                                       if (isQtyOnlyEdit) return;
@@ -3994,7 +4041,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         if (selectedValue.startsWith('snap:')) {
                                           const parts = selectedValue.split(':');
                                           const snapId = parseInt(parts[1]);
-                                          product = snapshotProducts.find((p: any) => p.snapshot_id === snapId);
+                                          product = snapshotProducts.find((p: any) => String(p.snapshot_id) === String(snapId));
                                           // If snapshot row is missing (deleted/not returned), fallback to base product table
                                           if (!product) {
                                             const productIdFromValue = parts[2];
@@ -4146,7 +4193,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           let snapshotProd: any = null;
                                           const snapIdForRow = values.items[index].product_snapshot_id;
                                           if (snapIdForRow && useSnapshotSelection && snapshotProducts.length > 0) {
-                                            snapshotProd = snapshotProducts.find((p: any) => p.snapshot_id === snapIdForRow) || null;
+                                            snapshotProd = snapshotProducts.find((p: any) => String(p.snapshot_id) === String(snapIdForRow)) || null;
                                           }
 
                                           if (vId) {
@@ -4177,7 +4224,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 snapIdForRow: values.items[index].product_snapshot_id,
                                                 'snapshotProd?.prix_achat': snapshotProd?.prix_achat,
                                                 'snapshotProd?.cout_revient': snapshotProd?.cout_revient,
-                                                'snapshotProd?.prix_vente': snapshotProd?.prix_vente,
+                                                'catalog.prix_vente': getCatalogPrixVente(product, vId),
                                                 'product.prix_achat': product?.prix_achat,
                                                 'product.cout_revient': product?.cout_revient,
                                                 'product.prix_vente': product?.prix_vente,
@@ -4196,7 +4243,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               // Update price based on variant
                                               const variantBasePrice = values.type === 'Commande'
                                                 ? Number(variant.prix_achat || snapshotProd?.prix_achat || product?.prix_achat || 0)
-                                                : Number(variant.prix_vente || snapshotProd?.prix_vente || product?.prix_vente || 0);
+                                                : getCatalogPrixVente(product, vId);
 
                                               // If a unit is already selected, apply its conversion factor to the variant price
                                               let effectivePrice = variantBasePrice;
@@ -4219,11 +4266,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const snapIdForRow2 = values.items[index].product_snapshot_id;
                                           let snapshotProd2: any = null;
                                           if (snapIdForRow2 && useSnapshotSelection && snapshotProducts.length > 0) {
-                                            snapshotProd2 = snapshotProducts.find((p: any) => p.snapshot_id === snapIdForRow2) || null;
+                                            snapshotProd2 = snapshotProducts.find((p: any) => String(p.snapshot_id) === String(snapIdForRow2)) || null;
                                           }
 
                                           const basePriceAchat = Number(snapshotProd2?.prix_achat) || Number(product?.prix_achat) || 0;
-                                          const basePriceVente = Number(snapshotProd2?.prix_vente) || Number(product?.prix_vente) || 0;
+                                          const basePriceVente = getCatalogPrixVente(product);
                                           const baseCoutRevient = Number(snapshotProd2?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
 
                                           let effectivePrice = values.type === 'Commande' ? basePriceAchat : basePriceVente;
@@ -4285,11 +4332,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     let snapshotProd: any = null;
                                     const snapIdForRow = values.items[index].product_snapshot_id;
                                     if (snapIdForRow && useSnapshotSelection && snapshotProducts.length > 0) {
-                                      snapshotProd = snapshotProducts.find((p: any) => p.snapshot_id === snapIdForRow) || null;
+                                      snapshotProd = snapshotProducts.find((p: any) => String(p.snapshot_id) === String(snapIdForRow)) || null;
                                     }
 
                                     const basePriceAchat = Number(snapshotProd?.prix_achat) || Number(product?.prix_achat) || 0;
-                                    const basePriceVente = Number(snapshotProd?.prix_vente) || Number(product?.prix_vente) || 0;
+                                    const basePriceVente = getCatalogPrixVente(product, values.items[index].variant_id);
                                     if (!product || units.length === 0) {
                                       return <span className="text-xs text-gray-400">{baseUnit}</span>;
                                     }
@@ -4327,7 +4374,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 snapIdForRow: values.items[index].product_snapshot_id,
                                                 'snapshotProd?.prix_achat': snapshotProd?.prix_achat,
                                                 'snapshotProd?.cout_revient': snapshotProd?.cout_revient,
-                                                'snapshotProd?.prix_vente': snapshotProd?.prix_vente,
+                                                'catalog.prix_vente': getCatalogPrixVente(product, selectedVariantId),
                                                 'product.prix_achat': product?.prix_achat,
                                                 'product.cout_revient': product?.cout_revient,
                                                 'product.prix_vente': product?.prix_vente,
@@ -4340,7 +4387,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                                 if (v) {
                                                   baseA = Number(v.prix_achat) || basePriceAchat || 0;
-                                                  baseV = Number(v.prix_vente) || basePriceVente || 0;
+                                                  baseV = getCatalogPrixVente(product, selectedVariantId) || basePriceVente || 0;
                                                   baseCR = Number((v as any).cout_revient) || baseCR;
                                                 }
                                               }
@@ -4387,7 +4434,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                               if (v) {
                                                 baseA = Number(v.prix_achat) || basePriceAchat || 0;
-                                                baseV = Number(v.prix_vente) || basePriceVente || 0;
+                                                baseV = getCatalogPrixVente(product, selectedVariantId) || basePriceVente || 0;
                                                 baseCR = Number((v as any).cout_revient) || baseCR;
                                               }
                                             }
@@ -4475,7 +4522,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       if (useSnapshotSelection && snapshotProducts.length > 0) {
         const currentSnapId = values.items[index].product_snapshot_id;
         if (currentSnapId) {
-          const currentSnap = snapshotProducts.find((p: any) => p.snapshot_id === currentSnapId);
+          const currentSnap = snapshotProducts.find((p: any) => String(p.snapshot_id) === String(currentSnapId));
           const snapQty = Number(currentSnap?.snapshot_quantite ?? 0);
           if (snapQty > 0 && q > snapQty) {
             const prodId = currentSnap.id;
@@ -4514,7 +4561,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
               // Create new row with next snapshot and remaining qty.
               // If nextSnap is the last available snapshot (nothing after it), allow full excess.
-              const nextPrice = nextSnap.prix_vente || 0;
+              const catalogProduct = products.find((p: any) => String(p.id) === String(nextSnap.id));
+              const nextPrice = getCatalogPrixVente(catalogProduct, nextSnap.variant_id);
               const nextPA = nextSnap.prix_achat || 0;
               const priceForNew = values.type === 'Commande' ? nextPA : nextPrice;
               const newRowQty = snapAfterNext
@@ -4630,7 +4678,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     let snapshotProd: any = null;
                                     const snapId = item.product_snapshot_id;
                                     if (snapId && snapshotProducts.length > 0) {
-                                      snapshotProd = snapshotProducts.find((p: any) => p.snapshot_id === snapId) || null;
+                                      snapshotProd = snapshotProducts.find((p: any) => String(p.snapshot_id) === String(snapId)) || null;
                                     }
                                     const variantId = item.variant_id;
                                     const variant = variantId && product?.variants?.length
@@ -4996,7 +5044,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                               <div>unit demandé: {String(debug.requestedUnitId || '-')}</div>
                             </td>
                             <td className="border px-2 py-1">
-                              <div>snapshot trouvé: {String(debug.snapshot?.snapshot_id ?? debug.snapshot?.id ?? '-')}</div>
+                              <div>
+                                snapshot trouvé: {debug.isMergedSnapshotSelection
+                                  ? `lots FIFO: ${(debug.mergedSnapshots || []).map((s: any) => s.snapshot_id).join(',')}`
+                                  : String(debug.snapshot?.snapshot_id ?? debug.snapshot?.id ?? '-')}
+                              </div>
                               <div>qty snapshot: {String(debug.snapshot?.snapshot_quantite ?? debug.snapshot?.quantite ?? '-')}</div>
                               <div>factor unité: {debug.convFactor}</div>
                             </td>

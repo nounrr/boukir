@@ -26,7 +26,7 @@ const bonPagedConfigs = {
     itemTable: 'commande_items',
     itemFk: 'bon_commande_id',
     itemAlias: 'i',
-    itemSnapshot: false,
+    itemSnapshot: true,
     livraisonType: 'Commande',
   },
   Sortie: {

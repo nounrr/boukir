@@ -147,7 +147,7 @@ const BonsPage = () => {
 
   // Sorting
   const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Auth context
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -263,7 +263,7 @@ const BonsPage = () => {
 
   // RTK Query hooks
   // Load only the current tab from the backend with server-side pagination/search.
-  const { data: bonsResponse, isLoading: bonsLoading } = useGetBonsByTypePagedQuery({
+  const { data: bonsResponse, isLoading: bonsLoading, refetch: refetchBons } = useGetBonsByTypePagedQuery({
     type: effectiveCurrentTab,
     page: currentPage,
     limit: itemsPerPage,
@@ -279,6 +279,10 @@ const BonsPage = () => {
   const { data: clients = [], isLoading: clientsLoading } = useGetAllClientsQuery(undefined, { skip: !needsReferenceData });
   const { data: suppliers = [], isLoading: suppliersLoading } = useGetAllFournisseursQuery(undefined, { skip: !needsReferenceData });
   const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery(undefined, { skip: !needsReferenceData });
+  const safeRefetchProducts = useCallback(() => {
+    if (!needsReferenceData) return;
+    void refetchProducts();
+  }, [needsReferenceData, refetchProducts]);
   const { data: comptantPayments = [] } = useGetComptantPaymentsQuery(selectedComptantForPayments?.id, {
     skip: !selectedComptantForPayments?.id
   });
@@ -489,7 +493,7 @@ const BonsPage = () => {
       await updateBonStatus({ id: bon.id, statut, type: bon.type || effectiveCurrentTab }).unwrap();
       showSuccess(`Statut mis à jour: ${statut}`);
       // IMPORTANT: refetch stock/products after status change (validation or cancel)
-      refetchProducts();
+      safeRefetchProducts();
 
       // Auto-send WhatsApp if enabled and status is Validé
       if (autoSendWhatsApp && statut === 'Validé' && SHOW_WHATSAPP_BUTTON) {
@@ -506,7 +510,7 @@ const BonsPage = () => {
       // PARSING_ERROR + originalStatus 200 = backend a réussi mais le body de la réponse était invalide/vide
       if (error?.status === 'PARSING_ERROR' && error?.originalStatus === 200) {
         showSuccess(`Statut mis à jour: ${statut}`);
-        refetchProducts();
+        safeRefetchProducts();
         return;
       }
       const status = error?.status;
@@ -534,7 +538,7 @@ const BonsPage = () => {
               force_clamp_percentages: true,
             }).unwrap();
             showSuccess(`Statut mis à jour: ${statut}`);
-            refetchProducts();
+            safeRefetchProducts();
           } catch (retryError: any) {
             const retryMsg = retryError?.data?.message || retryError?.message || 'Erreur inconnue';
             showError(`Erreur lors du changement de statut: ${retryMsg}`);
@@ -666,6 +670,14 @@ const BonsPage = () => {
   // Helper to get contact name (client or fournisseur) used by filtering/render
   const getContactName = (bon: any) => {
     const ecommerceRaw = bon?.ecommerce_raw ?? bon;
+    const cleanName = (...values: any[]) => {
+      for (const value of values) {
+        if (value == null) continue;
+        const text = String(value).trim();
+        if (text) return text;
+      }
+      return '';
+    };
 
     const ecommerceUserId = ecommerceRaw?.user_id != null && ecommerceRaw?.user_id !== '' ? Number(ecommerceRaw.user_id) : null;
     const ecommerceContactFromUserId =
@@ -691,16 +703,19 @@ const BonsPage = () => {
       return String(ecommerceContactName);
     }
 
-    // Comptant et Devis: if client_nom is present (free text), prefer it
-    const freeClientName = bon?.client_nom ?? bon?.customer_name;
+    // Prefer names already returned by the bon payload, including free-text names.
+    const type = bon?.type || effectiveCurrentTab;
+    const freeClientName = cleanName(bon?.client_nom, bon?.customer_name, bon?.customerName);
+    const freeSupplierName = cleanName(bon?.fournisseur_nom, bon?.supplier_name, bon?.supplierName);
+    if ((type === 'Commande' || type === 'AvoirFournisseur') && freeSupplierName) {
+      return freeSupplierName;
+    }
     if (
-      (bon?.type === 'Comptant' || bon?.type === 'AvoirComptant' || effectiveCurrentTab === 'Comptant' || effectiveCurrentTab === 'AvoirComptant' ||
-       bon?.type === 'Devis' || effectiveCurrentTab === 'Devis' ||
-       bon?.type === 'Ecommerce' || effectiveCurrentTab === 'Ecommerce' ||
-       bon?.type === 'AvoirEcommerce' || effectiveCurrentTab === 'AvoirEcommerce') &&
+      (type === 'Sortie' || type === 'Comptant' || type === 'Avoir' || type === 'AvoirComptant' ||
+       type === 'Devis' || type === 'Ecommerce' || type === 'AvoirEcommerce') &&
       freeClientName
     ) {
-      return String(freeClientName);
+      return freeClientName;
     }
     const clientId = bon?.client_id ?? bon?.contact_id;
     if (clientId && clients.length > 0) {
@@ -787,6 +802,7 @@ const BonsPage = () => {
       push(bon?.statut);
       push(getContactName(bon));
       push(bon?.client_nom);
+      push(bon?.fournisseur_nom);
       push(bon?.adresse_livraison);
       push(bon?.lieu_chargement);
       push(bon?.observations || bon?.note || bon?.notes);
@@ -1188,6 +1204,16 @@ const BonsPage = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedBons = sortedBons;
+
+  const refreshFirstBonsPageAfterCreate = useCallback(() => {
+    if (currentPage === 1) {
+      void refetchBons();
+    } else {
+      setCurrentPage(1);
+    }
+
+    safeRefetchProducts();
+  }, [currentPage, refetchBons, safeRefetchProducts]);
 
   // Fetch linked info for the visible bons
   useEffect(() => {
@@ -1807,7 +1833,7 @@ const BonsPage = () => {
       await deleteBonMutation({ id: bonToDelete.id, type: bonToDelete.type || effectiveCurrentTab }).unwrap();
           showSuccess('Bon supprimé avec succès');
           // Rafraîchir les produits pour mettre à jour les quantités immédiatement
-          try { refetchProducts(); } catch {}
+          safeRefetchProducts()
         } catch (error: any) {
           console.error('Erreur lors de la suppression:', error);
           showError(`Erreur lors de la suppression: ${error.message || 'Erreur inconnue'}`);
@@ -2026,6 +2052,7 @@ const BonsPage = () => {
         if (newBonData.type !== currentTab) {
           setCurrentTab(newBonData.type);
         }
+        refreshFirstBonsPageAfterCreate();
         
       } catch (error: any) {
         console.error('Erreur lors de la duplication:', error);
@@ -3385,6 +3412,7 @@ const BonsPage = () => {
               if (newBon?.type && newBon.type !== effectiveCurrentTab) {
                 setCurrentTab(newBon.type);
               }
+              refreshFirstBonsPageAfterCreate();
             }}
           />
         )}
@@ -4233,7 +4261,8 @@ const BonsPage = () => {
               // Commande & AvoirFournisseur: suppliers; prefer fournisseur_id, fallback to contact_id
               if (effectiveCurrentTab === 'Commande' || effectiveCurrentTab === 'AvoirFournisseur') {
                 const id = b.fournisseur_id ?? b.contact_id;
-                return suppliers.find((s) => String(s.id) === String(id)) || null;
+                const found = suppliers.find((s) => String(s.id) === String(id)) || null;
+                return found || (b.fournisseur_nom ? ({ nom_complet: b.fournisseur_nom } as any) : null);
               }
               // Sortie / Comptant / Avoir (client): prefer client_id, fallback to contact_id
               const clientId = b.client_id ?? b.contact_id;
@@ -4298,7 +4327,8 @@ const BonsPage = () => {
             })()}
             fournisseur={(() => {
               if (!selectedBonForPDFPrint) return undefined;
-              return suppliers.find(s => s.id === selectedBonForPDFPrint.fournisseur_id || s.id === selectedBonForPDFPrint.contact_id);
+              const found = suppliers.find(s => s.id === selectedBonForPDFPrint.fournisseur_id || s.id === selectedBonForPDFPrint.contact_id);
+              return found || (selectedBonForPDFPrint.fournisseur_nom ? ({ nom_complet: selectedBonForPDFPrint.fournisseur_nom } as any) : undefined);
             })()}
           />
         )}
@@ -4593,3 +4623,4 @@ const BonsPage = () => {
     if (s.includes('refus') || s.includes('annul') || s === 'cancelled') return <XCircle size={14} />;
     return null;
   }
+
