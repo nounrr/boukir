@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
-import { useGetCaisseBonsContextQuery } from '../store/api/bonsApi';
+import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetAllClientsQuery, useGetAllFournisseursQuery } from '../store/api/contactsApi';
 import { useGetClientRemisesQuery } from '../store/api/remisesApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
@@ -37,7 +37,7 @@ import { canModifyPayments } from '../utils/permissions';
 import { formatDateTimeWithHour, formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput } from '../utils/dateUtils';
 import { resetFilters } from '../store/slices/paymentsSlice';
 import { toBackendUrl } from '../utils/url';
-import { useGetPaymentsQuery, useGetPaymentsPagedQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
+import { useGetPaymentsQuery, useCreatePaymentMutation, useUpdatePaymentMutation, useDeletePaymentMutation, useGetPersonnelNamesQuery, useChangePaymentStatusMutation } from '../store/api/paymentsApi';
 import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '../store/api/uploadApi';
 import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
@@ -77,7 +77,6 @@ const CaissePage = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchInput, setSearchInput] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [modeFilter, setModeFilter] = useState<'all' | 'Espèces' | 'Chèque' | 'Virement' | 'Traite' | 'Remise'>('all');
@@ -101,22 +100,9 @@ const CaissePage = () => {
   const { data: clients = [] } = useGetAllClientsQuery(undefined);
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
   const { data: talons = [] } = useGetTalonsQuery(undefined);
-  const paymentSortBy = sortField || 'id';
-  const { data: paymentsPagedResponse } = useGetPaymentsPagedQuery({
-    page: currentPage,
-    limit: itemsPerPage,
-    search: searchTerm || undefined,
-    date: dateFilter || undefined,
-    mode: modeFilter !== 'all' ? modeFilter : undefined,
-    status: statusFilter.length ? statusFilter.join(',') : undefined,
-    sortBy: paymentSortBy,
-    sortDir: sortDirection,
-  });
-  const needsAllPayments = isCreateModalOpen || isViewModalOpen || isPrintModalOpen;
-  const { data: allPaymentsForHistory = [] } = useGetPaymentsQuery(undefined, { skip: !needsAllPayments });
+  const { data: paymentsApi = [] } = useGetPaymentsQuery();
   const { data: clientRemisesRaw = [] } = useGetClientRemisesQuery();
-  const payments = paymentsPagedResponse?.data || [];
-  const paymentsForHistory = needsAllPayments ? allPaymentsForHistory : payments;
+  const payments = paymentsApi;
   const [createPayment] = useCreatePaymentMutation();
   const [updatePaymentApi] = useUpdatePaymentMutation();
   const [deletePaymentApi] = useDeletePaymentMutation();
@@ -208,16 +194,17 @@ const CaissePage = () => {
   };
   
   // Bons from database: utiliser les mêmes sources que BonFormModal
-  const { data: bonsContext, isLoading: bonsLoading } = useGetCaisseBonsContextQuery();
-  const sorties = bonsContext?.sorties || [];
-  const comptantsRaw = bonsContext?.comptants || [];
-  const commandes = bonsContext?.commandes || [];
+  const { data: sorties = [], isLoading: sortiesLoading } = useGetBonsByTypeQuery('Sortie');
+  const { data: comptantsRaw = [], isLoading: comptantsLoading } = useGetBonsByTypeQuery('Comptant');
+  const { data: commandes = [], isLoading: commandesLoading } = useGetBonsByTypeQuery('Commande');
   // Charger les avoirs pour les afficher dans l'historique du solde cumulé
-  const avoirsClient = bonsContext?.avoirsClient || [];
-  const avoirsFournisseur = bonsContext?.avoirsFournisseur || [];
+  const { data: avoirsClient = [], isLoading: avoirsClientLoading } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsFournisseur = [], isLoading: avoirsFournisseurLoading } = useGetBonsByTypeQuery('AvoirFournisseur');
   // Bons e-commerce (commandes e-commerce + avoirs e-commerce)
-  const ecommerceOrders = bonsContext?.ecommerceOrders || [];
-  const avoirsEcommerce = bonsContext?.avoirsEcommerce || [];
+  const { data: ecommerceOrders = [], isLoading: ecommerceOrdersLoading } = useGetBonsByTypeQuery('Ecommerce');
+  const { data: avoirsEcommerce = [], isLoading: avoirsEcommerceLoading } = useGetBonsByTypeQuery('AvoirEcommerce');
+  
+  const bonsLoading = sortiesLoading || comptantsLoading || commandesLoading || avoirsClientLoading || avoirsFournisseurLoading || ecommerceOrdersLoading || avoirsEcommerceLoading;
   const bons: Bon[] = [
     ...(Array.isArray(sorties) ? sorties : []),
     ...(Array.isArray(comptantsRaw) ? comptantsRaw.filter((b: any) => !!b.client_id) : []),
@@ -433,7 +420,6 @@ const CaissePage = () => {
   };
 
   const sortedPayments = useMemo(() => {
-    return payments;
     // First filter
     const filtered = payments.filter((payment: Payment) => {
       const term = searchTerm.trim().toLowerCase();
@@ -529,7 +515,7 @@ const CaissePage = () => {
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [payments]);
+  }, [payments, searchTerm, dateFilter, statusFilter, modeFilter, sortField, sortDirection, clients, fournisseurs]);
 
   // Fetch audit meta for displayed payments
   useEffect(() => {
@@ -547,32 +533,34 @@ const CaissePage = () => {
   }, [sortedPayments, token]);
 
   // Pagination des paiements
-  const totalPayments = paymentsPagedResponse?.pagination?.total ?? sortedPayments.length;
-  const totalPages = paymentsPagedResponse?.pagination?.totalPages ?? Math.ceil(totalPayments / itemsPerPage);
-  const paginatedPayments = sortedPayments;
+  const totalPages = Math.ceil(sortedPayments.length / itemsPerPage);
+  const paginatedPayments = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return sortedPayments.slice(startIndex, endIndex);
+  }, [sortedPayments, currentPage, itemsPerPage]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, dateFilter, statusFilter, modeFilter, sortField, sortDirection]);
+  }, [searchTerm, dateFilter, statusFilter, modeFilter]);
 
   // Calculs statistiques
   const amountOf = (p: Payment) => Number(p.montant ?? p.montant_total ?? 0);
-  const paymentTotals = paymentsPagedResponse?.totals;
-  const totalEncaissements = paymentTotals?.totalEncaissements ?? sortedPayments.reduce((total: number, p: Payment) => total + amountOf(p), 0);
-  const totalEspeces = paymentTotals?.totalEspeces ?? sortedPayments
+  const totalEncaissements = sortedPayments.reduce((total: number, p: Payment) => total + amountOf(p), 0);
+  const totalEspeces = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Espèces')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
-  const totalCheques = paymentTotals?.totalCheques ?? sortedPayments
+  const totalCheques = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Chèque')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
-  const totalVirements = paymentTotals?.totalVirements ?? sortedPayments
+  const totalVirements = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Virement')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
-  const totalTraites = paymentTotals?.totalTraites ?? sortedPayments
+  const totalTraites = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Traite')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
-  const totalRemises = paymentTotals?.totalRemises ?? sortedPayments
+  const totalRemises = sortedPayments
     .filter((p: Payment) => p.mode_paiement === 'Remise')
     .reduce((total: number, p: Payment) => total + amountOf(p), 0);
 
@@ -1335,27 +1323,11 @@ const paymentValidationSchema = Yup.object({
             <input
               type="text"
               placeholder="Rechercher (N° paiement, Nom, Société, Notes, Montant)..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  setCurrentPage(1);
-                  setSearchTerm(searchInput.trim());
-                }
-              }}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full sm:w-72 pl-9 pr-2 py-1 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setCurrentPage(1);
-              setSearchTerm(searchInput.trim());
-            }}
-            className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
-          >
-            Rechercher
-          </button>
           
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <Calendar size={16} className="text-gray-500" />
@@ -1406,7 +1378,6 @@ const paymentValidationSchema = Yup.object({
         <button
           onClick={() => {
             setSearchTerm('');
-            setSearchInput('');
             setDateFilter('');
             setModeFilter('all');
             setStatusFilter([]);
@@ -1700,11 +1671,11 @@ const paymentValidationSchema = Yup.object({
         </div>
 
         {/* Pagination Controls */}
-        {totalPayments > 0 && (
+        {sortedPayments.length > 0 && (
           <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-gray-50">
             <div className="flex items-center gap-4">
               <div className="text-sm text-gray-600">
-                Affichage {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, totalPayments)} sur {totalPayments} paiements
+                Affichage {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, sortedPayments.length)} sur {sortedPayments.length} paiements
               </div>
               <select
                 value={itemsPerPage}
@@ -1927,12 +1898,12 @@ const paymentValidationSchema = Yup.object({
       </div>
 
       {/* Pagination Mobile */}
-      {totalPayments > 0 && (
+      {sortedPayments.length > 0 && (
         <div className="md:hidden mb-4 bg-white rounded-lg shadow p-3">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between text-sm text-gray-600">
               <span>
-                {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalPayments)} sur {totalPayments}
+                {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, sortedPayments.length)} sur {sortedPayments.length}
               </span>
               <select
                 value={itemsPerPage}
@@ -2334,7 +2305,7 @@ const paymentValidationSchema = Yup.object({
                           const history = calculateContactSoldeHistory(
                             contact,
                             bons,
-                            paymentsForHistory,
+                            paymentsApi, // Tous les paiements du backend
                             values.type_paiement as 'Client' | 'Fournisseur'
                           );
 
@@ -2758,7 +2729,7 @@ const paymentValidationSchema = Yup.object({
           payment={selectedPayment}
           client={clients.find(c => c.id === selectedPayment.contact_id)}
           fournisseur={fournisseurs.find(f => f.id === selectedPayment.contact_id)}
-          allPayments={paymentsForHistory}
+          allPayments={payments}
         />
       )}
     </div>

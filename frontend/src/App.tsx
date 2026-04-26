@@ -23,11 +23,14 @@ import EmployeeArchivePage from './pages/EmployeeArchivePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
 import StockPage from './pages/StockPage';
 import ContactsPage from './pages/ContactsPage';
+import ContactsBackupPage from './pages/ContactsBackupPage';
 import ContactArchiverPage from './pages/ContactArchiverPage';
 import BonsPage from './pages/BonsPage';
 import VehiculesPage from './pages/VehiculesPage';
 import CaissePage from './pages/CaissePage';
+import CaisseBackupPage from './pages/CaisseBackupPage';
 import ReportsPage from './pages/ReportsPage';
+import ReportsBackupPage from './pages/ReportsBackupPage';
 import CategoriesPage from './pages/CategoriesPage';
 import CategoryManagementPage from './pages/CategoryManagementPage';
 import BrandsPage from './pages/BrandsPage';
@@ -37,6 +40,7 @@ import ExcelUploadPage from './pages/ImportExcelTabs';
 import ExportProducts from './pages/ExportProducts';
 import ExportContacts from './pages/ExportContacts';
 import RemisesPage from './pages/RemisesPage';
+import RemisesBackupPage from './pages/RemisesBackupPage';
 import PromoCodesPage from './pages/PromoCodesPage';
 import HeroSlidesPage from './pages/HeroSlidesPage';
 import TalonsPage from './pages/TalonsPage';
@@ -241,6 +245,17 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/contacts-backup"
+          element={
+            <ProtectedRoute forbiddenRoles={['EmployÃ©']}>
+              <LayoutWithAccessCheck>
+                <ContactsBackupPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/contacts-archiver"
           element={
             <ProtectedRoute forbiddenRoles={['Employé']}>
@@ -340,11 +355,33 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/caisse-backup"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <CaisseBackupPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/reports"
           element={
             <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
               <LayoutWithAccessCheck>
                 <ReportsPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/reports-backup"
+          element={
+            <ProtectedRoute forbiddenRoles={['ManagerPlus']}>
+              <LayoutWithAccessCheck>
+                <ReportsBackupPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
@@ -428,6 +465,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <RemisesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/remises-backup"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <RemisesBackupPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

@@ -13,7 +13,7 @@ import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/
   import BonPrintModal from '../components/BonPrintModal';
   import SearchableSelect from '../components/SearchableSelect';
   import { 
-    useGetBonsByTypeQuery, 
+    useGetBonsByTypePagedQuery,
     useDeleteBonMutation, 
     useUpdateBonStatusMutation,
     useUpdateEcommerceOrderStatusMutation,
@@ -99,6 +99,7 @@ const BonsPage = () => {
   const [isEcommerceRemiseModalOpen, setIsEcommerceRemiseModalOpen] = useState(false);
   const [selectedEcommerceForRemise, setSelectedEcommerceForRemise] = useState<any>(null);
   const [ecommerceRemiseDraftItems, setEcommerceRemiseDraftItems] = useState<Array<any>>([]);
+  const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
@@ -252,17 +253,37 @@ const BonsPage = () => {
     }
   }, [effectiveCurrentTab]);
 
+  const backendSortBy = sortField || 'date';
+  const backendStatus = statusFilter.length ? statusFilter.join(',') : undefined;
+  const backendPaymentState = currentTab === 'ComptantNonPaye'
+    ? 'unpaid'
+    : currentTab === 'Comptant'
+      ? 'paid'
+      : undefined;
+
   // RTK Query hooks
-  // Load bons by type
-  const { data: bons = [], isLoading: bonsLoading } = useGetBonsByTypeQuery(effectiveCurrentTab);
-  const { data: clients = [], isLoading: clientsLoading } = useGetAllClientsQuery();
-  const { data: suppliers = [], isLoading: suppliersLoading } = useGetAllFournisseursQuery();
-  const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery();
+  // Load only the current tab from the backend with server-side pagination/search.
+  const { data: bonsResponse, isLoading: bonsLoading } = useGetBonsByTypePagedQuery({
+    type: effectiveCurrentTab,
+    page: currentPage,
+    limit: itemsPerPage,
+    search: searchTerm || undefined,
+    status: backendStatus,
+    sortBy: backendSortBy,
+    sortDir: sortDirection,
+    paymentState: backendPaymentState,
+  });
+  const bons = bonsResponse?.data || [];
+  const bonsPagination = bonsResponse?.pagination;
+  const needsReferenceData = anyModalOpen;
+  const { data: clients = [], isLoading: clientsLoading } = useGetAllClientsQuery(undefined, { skip: !needsReferenceData });
+  const { data: suppliers = [], isLoading: suppliersLoading } = useGetAllFournisseursQuery(undefined, { skip: !needsReferenceData });
+  const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useGetProductsQuery(undefined, { skip: !needsReferenceData });
   const { data: comptantPayments = [] } = useGetComptantPaymentsQuery(selectedComptantForPayments?.id, {
     skip: !selectedComptantForPayments?.id
   });
   // Snapshot-expanded products (with historic prix_achat/cout_revient per bon de commande)
-  const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery();
+  const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !needsReferenceData });
   const [deleteBonMutation] = useDeleteBonMutation();
   const [updateBonStatus] = useUpdateBonStatusMutation();
   const [updateEcommerceOrderStatus] = useUpdateEcommerceOrderStatusMutation();
@@ -1096,6 +1117,7 @@ const BonsPage = () => {
   // On ne filtre plus par bon.type car la requête est déjà segmentée par onglet,
     // et certains endpoints ne renvoyaient pas `type`.
   const sortedBons = useMemo(() => {
+    return bons;
     // First filter - search across all bon attributes and nested item values
     const filtered = bons.filter(bon => {
       const term = (searchTerm || '').trim().toLowerCase();
@@ -1158,24 +1180,18 @@ const BonsPage = () => {
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [bons, searchTerm, statusFilter, sortField, sortDirection, currentTab, effectiveCurrentTab, clients, suppliers, isComptantTab, isUnpaidComptantTab]);
+  }, [bons]);
 
   // Pagination
-  const totalItems = sortedBons.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const totalItems = bonsPagination?.total ?? sortedBons.length;
+  const totalPages = bonsPagination?.totalPages ?? Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedBons = sortedBons.slice(startIndex, endIndex);
+  const paginatedBons = sortedBons;
 
   // Fetch linked info for the visible bons
   useEffect(() => {
-    const ids = paginatedBons.map((b) => b.id).filter(Boolean);
-    if (!ids.length) { setBonLinksMap({}); return; }
-    // Only request for known types
-    const type = currentTab as string;
-    getBonLinksBatch({ type, ids }).unwrap()
-      .then((res) => setBonLinksMap(res || {}))
-      .catch(() => setBonLinksMap({}));
+    setBonLinksMap({});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTab, startIndex, endIndex, sortedBons.length]);
 
@@ -1423,19 +1439,7 @@ const BonsPage = () => {
     }
   };
   useEffect(() => {
-    if (!showAuditCols) { setAuditMeta({}); return; }
-    const ids = paginatedBons.map(b => b.id).filter(Boolean);
-    const t = tableForType(currentTab);
-    if (!ids.length || !t) { setAuditMeta({}); return; }
-    const ctrl = new AbortController();
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch(`/api/audit/meta?table=${encodeURIComponent(t)}&ids=${ids.join(',')}`, { signal: ctrl.signal, headers })
-      .then(r => r.ok ? r.json() : r.text().then(tx => Promise.reject(new Error(tx))))
-      .then(obj => setAuditMeta(obj || {}))
-      .catch(() => {})
-      .finally(() => {});
-    return () => ctrl.abort();
+    setAuditMeta({});
   }, [currentTab, startIndex, endIndex, sortedBons.length, token, showAuditCols]);
 
   // Handle click outside to close menu
@@ -1491,7 +1495,7 @@ const BonsPage = () => {
   // Réinitialiser la page quand on change d'onglet ou de recherche
   useEffect(() => {
     setCurrentPage(1);
-  }, [currentTab, searchTerm]);
+  }, [currentTab, searchTerm, statusFilter, sortField, sortDirection]);
 
   useEffect(() => {
     if (!selectedComptantForPayments?.id) return;
@@ -2161,11 +2165,28 @@ const BonsPage = () => {
               <input
                 type="text"
                 placeholder="Rechercher par numéro, statut, client, téléphone ou montant..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setCurrentPage(1);
+                    setSearchTerm(searchInput.trim());
+                  }
+                }}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentPage(1);
+                setSearchTerm(searchInput.trim());
+              }}
+              className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+            >
+              <Search size={18} />
+              Rechercher
+            </button>
 
             {/* Filtre Statut */}
             <div className="flex items-center gap-2">
@@ -3347,24 +3368,26 @@ const BonsPage = () => {
         )}
 
         {/* Modal de création/édition */}
-        <BonFormModal
-          key={bonFormKey}
-          isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
-          currentTab={effectiveCurrentTab as any}
-          comptantPartialPaymentMode={isUnpaidComptantTab ? 'required' : 'hidden'}
-          initialValues={selectedBon || undefined}
-          onBonAdded={(newBon) => {
-            // Le bon est automatiquement ajouté au store Redux
-            const labelTab = String(newBon?.type || effectiveCurrentTab);
-            showSuccess(`${labelTab} ${getDisplayNumero(newBon)} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
-            setIsCreateModalOpen(false);
-            setSelectedBon(null);
-            if (newBon?.type && newBon.type !== effectiveCurrentTab) {
-              setCurrentTab(newBon.type);
-            }
-          }}
-        />
+        {isCreateModalOpen && (
+          <BonFormModal
+            key={bonFormKey}
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            currentTab={effectiveCurrentTab as any}
+            comptantPartialPaymentMode={isUnpaidComptantTab ? 'required' : 'hidden'}
+            initialValues={selectedBon || undefined}
+            onBonAdded={(newBon) => {
+              // Le bon est automatiquement ajouté au store Redux
+              const labelTab = String(newBon?.type || effectiveCurrentTab);
+              showSuccess(`${labelTab} ${getDisplayNumero(newBon)} ${selectedBon ? 'mis à jour' : 'créé'} avec succès!`);
+              setIsCreateModalOpen(false);
+              setSelectedBon(null);
+              if (newBon?.type && newBon.type !== effectiveCurrentTab) {
+                setCurrentTab(newBon.type);
+              }
+            }}
+          />
+        )}
 
         {/* Modal de visualisation */}
         {isViewModalOpen && selectedBon && (
@@ -4037,24 +4060,28 @@ const BonsPage = () => {
         )}
 
         {/* Modal pour nouveau client */}
-        <ContactFormModal
-          isOpen={isNewClientModalOpen}
-          onClose={() => setIsNewClientModalOpen(false)}
-          contactType="Client"
-          onContactAdded={() => {
-            showSuccess('Client créé avec succès!');
-          }}
-        />
+        {isNewClientModalOpen && (
+          <ContactFormModal
+            isOpen={isNewClientModalOpen}
+            onClose={() => setIsNewClientModalOpen(false)}
+            contactType="Client"
+            onContactAdded={() => {
+              showSuccess('Client créé avec succès!');
+            }}
+          />
+        )}
 
         {/* Modal pour nouveau fournisseur */}
-        <ContactFormModal
-          isOpen={isNewSupplierModalOpen}
-          onClose={() => setIsNewSupplierModalOpen(false)}
-          contactType="Fournisseur"
-          onContactAdded={() => {
-            showSuccess('Fournisseur créé avec succès!');
-          }}
-        />
+        {isNewSupplierModalOpen && (
+          <ContactFormModal
+            isOpen={isNewSupplierModalOpen}
+            onClose={() => setIsNewSupplierModalOpen(false)}
+            contactType="Fournisseur"
+            onContactAdded={() => {
+              showSuccess('Fournisseur créé avec succès!');
+            }}
+          />
+        )}
 
         {/* Modal pour nouveau véhicule */}
         {isNewVehicleModalOpen && (
@@ -4144,125 +4171,137 @@ const BonsPage = () => {
         )}
 
         {/* Modal pour créer un avoir */}
-        <AvoirFormModal
-          isOpen={isCreateAvoirModalOpen}
-          onClose={() => {
-            setIsCreateAvoirModalOpen(false);
-            setSelectedBonForAvoir(null);
-          }}
-          bonOrigine={selectedBonForAvoir}
-          onAvoirCreated={() => {
-            showSuccess('Avoir fournisseur créé avec succès');
-            setIsCreateAvoirModalOpen(false);
-            setSelectedBonForAvoir(null);
-            setCurrentTab('AvoirFournisseur');
-          }}
-        />
+        {isCreateAvoirModalOpen && (
+          <AvoirFormModal
+            isOpen={isCreateAvoirModalOpen}
+            onClose={() => {
+              setIsCreateAvoirModalOpen(false);
+              setSelectedBonForAvoir(null);
+            }}
+            bonOrigine={selectedBonForAvoir}
+            onAvoirCreated={() => {
+              showSuccess('Avoir fournisseur créé avec succès');
+              setIsCreateAvoirModalOpen(false);
+              setSelectedBonForAvoir(null);
+              setCurrentTab('AvoirFournisseur');
+            }}
+          />
+        )}
 
         {/* Modal pour créer un avoir client */}
-        <AvoirFormModal
-          isOpen={isCreateAvoirClientModalOpen}
-          onClose={() => {
-            setIsCreateAvoirClientModalOpen(false);
-            setSelectedBonForAvoirClient(null);
-          }}
-          bonOrigine={selectedBonForAvoirClient}
-          onAvoirCreated={() => {
-            showSuccess('Avoir client créé avec succès');
-            setIsCreateAvoirClientModalOpen(false);
-            setSelectedBonForAvoirClient(null);
-            setCurrentTab('Avoir');
-          }}
-        />
+        {isCreateAvoirClientModalOpen && (
+          <AvoirFormModal
+            isOpen={isCreateAvoirClientModalOpen}
+            onClose={() => {
+              setIsCreateAvoirClientModalOpen(false);
+              setSelectedBonForAvoirClient(null);
+            }}
+            bonOrigine={selectedBonForAvoirClient}
+            onAvoirCreated={() => {
+              showSuccess('Avoir client créé avec succès');
+              setIsCreateAvoirClientModalOpen(false);
+              setSelectedBonForAvoirClient(null);
+              setCurrentTab('Avoir');
+            }}
+          />
+        )}
 
         {/* Modal Impression Thermique */}
-        <ThermalPrintModal
-          isOpen={isThermalPrintModalOpen}
-          onClose={() => {
-            setIsThermalPrintModalOpen(false);
-            setSelectedBonForPrint(null);
-          }}
-          bon={selectedBonForPrint}
-          type={((effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirComptant') ? 'AvoirClient' : effectiveCurrentTab) as any}
-          products={products}
-          contact={(() => {
-            const b = selectedBonForPrint;
-            if (!b) return null;
-            // Devis: always a client; prefer client_id, fallback to contact_id, then client_nom
-            if (effectiveCurrentTab === 'Devis') {
-              const id = b.client_id ?? b.contact_id;
-              const found = clients.find((c) => String(c.id) === String(id)) || null;
-              if (!found && b.client_nom) {
-                // Build a minimal contact-like object for display with client_nom
+        {isThermalPrintModalOpen && (
+          <ThermalPrintModal
+            isOpen={isThermalPrintModalOpen}
+            onClose={() => {
+              setIsThermalPrintModalOpen(false);
+              setSelectedBonForPrint(null);
+            }}
+            bon={selectedBonForPrint}
+            type={((effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirComptant') ? 'AvoirClient' : effectiveCurrentTab) as any}
+            products={products}
+            contact={(() => {
+              const b = selectedBonForPrint;
+              if (!b) return null;
+              // Devis: always a client; prefer client_id, fallback to contact_id, then client_nom
+              if (effectiveCurrentTab === 'Devis') {
+                const id = b.client_id ?? b.contact_id;
+                const found = clients.find((c) => String(c.id) === String(id)) || null;
+                if (!found && b.client_nom) {
+                  // Build a minimal contact-like object for display with client_nom
+                  return { nom_complet: b.client_nom } as any;
+                }
+                return found;
+              }
+              // Commande & AvoirFournisseur: suppliers; prefer fournisseur_id, fallback to contact_id
+              if (effectiveCurrentTab === 'Commande' || effectiveCurrentTab === 'AvoirFournisseur') {
+                const id = b.fournisseur_id ?? b.contact_id;
+                return suppliers.find((s) => String(s.id) === String(id)) || null;
+              }
+              // Sortie / Comptant / Avoir (client): prefer client_id, fallback to contact_id
+              const clientId = b.client_id ?? b.contact_id;
+              const found = clients.find((c) => String(c.id) === String(clientId)) || null;
+              if (!found && ((effectiveCurrentTab === 'Comptant' || b.type === 'Comptant' || effectiveCurrentTab === 'AvoirComptant' || b.type === 'AvoirComptant') && b.client_nom)) {
+                // Build a minimal contact-like object for display
                 return { nom_complet: b.client_nom } as any;
               }
               return found;
-            }
-            // Commande & AvoirFournisseur: suppliers; prefer fournisseur_id, fallback to contact_id
-            if (effectiveCurrentTab === 'Commande' || effectiveCurrentTab === 'AvoirFournisseur') {
-              const id = b.fournisseur_id ?? b.contact_id;
-              return suppliers.find((s) => String(s.id) === String(id)) || null;
-            }
-            // Sortie / Comptant / Avoir (client): prefer client_id, fallback to contact_id
-            const clientId = b.client_id ?? b.contact_id;
-            const found = clients.find((c) => String(c.id) === String(clientId)) || null;
-            if (!found && ((effectiveCurrentTab === 'Comptant' || b.type === 'Comptant' || effectiveCurrentTab === 'AvoirComptant' || b.type === 'AvoirComptant') && b.client_nom)) {
-              // Build a minimal contact-like object for display
-              return { nom_complet: b.client_nom } as any;
-            }
-            return found;
-          })()}
-          items={selectedBonForPrint?.items || []}
-        />
+            })()}
+            items={selectedBonForPrint?.items || []}
+          />
+        )}
 
         {/* Modal Transformation Devis */}
-  <DevisTransformModal 
-          isOpen={isDevisTransformModalOpen}
-          onClose={() => {
-            setIsDevisTransformModalOpen(false);
-            setSelectedDevisToTransform(null);
-          }}
-          devis={selectedDevisToTransform}
-          onTransformComplete={() => {
-            // Rafraîchir les données ou effectuer d'autres actions après la transformation
-          }}
-        />
+        {isDevisTransformModalOpen && (
+          <DevisTransformModal
+            isOpen={isDevisTransformModalOpen}
+            onClose={() => {
+              setIsDevisTransformModalOpen(false);
+              setSelectedDevisToTransform(null);
+            }}
+            devis={selectedDevisToTransform}
+            onTransformComplete={() => {
+              // Rafraîchir les données ou effectuer d'autres actions après la transformation
+            }}
+          />
+        )}
 
         {/* Modal Nouveau Produit */}
-        <ProductFormModal
-          isOpen={isProductModalOpen}
-          onClose={() => setIsProductModalOpen(false)}
-          onProductAdded={(newProduct) => {
-            // Le produit est automatiquement ajouté au store Redux
-            console.log('Nouveau produit ajouté:', newProduct);
-            setIsProductModalOpen(false);
-            showSuccess('Produit ajouté avec succès !');
-          }}
-        />
+        {isProductModalOpen && (
+          <ProductFormModal
+            isOpen={isProductModalOpen}
+            onClose={() => setIsProductModalOpen(false)}
+            onProductAdded={(newProduct) => {
+              // Le produit est automatiquement ajouté au store Redux
+              console.log('Nouveau produit ajouté:', newProduct);
+              setIsProductModalOpen(false);
+              showSuccess('Produit ajouté avec succès !');
+            }}
+          />
+        )}
 
         {/* Modal Impression PDF */}
-        <BonPrintModal
-          isOpen={isPrintModalOpen}
-          onClose={() => {
-            setIsPrintModalOpen(false);
-            setSelectedBonForPDFPrint(null);
-          }}
-          bon={selectedBonForPDFPrint}
-          products={products}
-          client={(() => {
-            if (!selectedBonForPDFPrint) return undefined;
-            const bon = selectedBonForPDFPrint;
-            const found = clients.find(c => c.id === bon.client_id);
-            if (!found && ((bon.type === 'Comptant' || effectiveCurrentTab === 'Comptant' || bon.type === 'AvoirComptant' || effectiveCurrentTab === 'AvoirComptant' || bon.type === 'Devis' || effectiveCurrentTab === 'Devis') && bon.client_nom)) {
-              return { id: 0, nom_complet: bon.client_nom, type: 'Client', solde: 0, created_at: '', updated_at: '' } as any;
-            }
-            return found;
-          })()}
-          fournisseur={(() => {
-            if (!selectedBonForPDFPrint) return undefined;
-            return suppliers.find(s => s.id === selectedBonForPDFPrint.fournisseur_id || s.id === selectedBonForPDFPrint.contact_id);
-          })()}
-        />
+        {isPrintModalOpen && (
+          <BonPrintModal
+            isOpen={isPrintModalOpen}
+            onClose={() => {
+              setIsPrintModalOpen(false);
+              setSelectedBonForPDFPrint(null);
+            }}
+            bon={selectedBonForPDFPrint}
+            products={products}
+            client={(() => {
+              if (!selectedBonForPDFPrint) return undefined;
+              const bon = selectedBonForPDFPrint;
+              const found = clients.find(c => c.id === bon.client_id);
+              if (!found && ((bon.type === 'Comptant' || effectiveCurrentTab === 'Comptant' || bon.type === 'AvoirComptant' || effectiveCurrentTab === 'AvoirComptant' || bon.type === 'Devis' || effectiveCurrentTab === 'Devis') && bon.client_nom)) {
+                return { id: 0, nom_complet: bon.client_nom, type: 'Client', solde: 0, created_at: '', updated_at: '' } as any;
+              }
+              return found;
+            })()}
+            fournisseur={(() => {
+              if (!selectedBonForPDFPrint) return undefined;
+              return suppliers.find(s => s.id === selectedBonForPDFPrint.fournisseur_id || s.id === selectedBonForPDFPrint.contact_id);
+            })()}
+          />
+        )}
 
         {/* Modal de duplication AWATEF */}
         {isDuplicateModalOpen && selectedBonForDuplicate && (

@@ -10,11 +10,7 @@ import {
   AlertTriangle,
   ArrowLeft
 } from 'lucide-react';
-import { useGetEmployeesQuery } from '../store/api/employeesApi';
-import { useGetProductsQuery } from '../store/api/productsApi';
-import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
-import { useGetPaymentsQuery } from '../store/api/paymentsApi';
-import { useGetChiffreAffairesStatsQuery } from '../store/api/statsApi';
+import { useGetChiffreAffairesStatsQuery, useGetDashboardSummaryQuery } from '../store/api/statsApi';
 import { calculateProfitPercentage, formatProfitPercentage } from '../utils/profitPercentage';
 
 const DashboardPage: React.FC = () => {
@@ -27,13 +23,8 @@ const DashboardPage: React.FC = () => {
   const [showPasswordError, setShowPasswordError] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
 
-  // Live data
-  const { data: employees = [] } = useGetEmployeesQuery();
-  const { data: products = [] } = useGetProductsQuery();
-  const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
-  const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
-  const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
-  const { data: allPayments = [] } = useGetPaymentsQuery();
+  // Dashboard counters come from one lightweight backend summary request.
+  const { data: dashboardSummary } = useGetDashboardSummaryQuery();
 
   // Use the same backend API as ChiffreAffairesPage for financial stats (today)
   const todayStr = useMemo(() => {
@@ -58,148 +49,15 @@ const DashboardPage: React.FC = () => {
     }).format(amount);
   };
 
-  // Helpers
-  // isSameMonth removed (unused)
-
-  const isToday = (iso?: string) => {
-    if (!iso) return false;
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return false;
-    const today = new Date();
-    return d.getFullYear() === today.getFullYear() && 
-           d.getMonth() === today.getMonth() && 
-           d.getDate() === today.getDate();
+  const stats = dashboardSummary?.stats ?? {
+    employees: 0,
+    products: 0,
+    orders: 0,
+    lowStock: 0,
+    pendingOrders: 0,
+    talonDueSoon: 0,
   };
-
-  // Rules
-  // - Orders card = sales documents only: Sortie + Comptant (flow of sales) with status "En attente" or "Validé"
-  // - Revenue / Bénéfice / CA Achats = fetched from backend (same API as ChiffreAffairesPage)
-  // - Low stock = products with quantite <= 5
-  // - Pending orders = docs not finalized: statuses in ['Brouillon','En attente','En cours'] across Sortie + Commande
-  const stats = useMemo(() => {
-    const validStatuses = new Set(['En attente', 'Validé']);
-    
-    const salesDocs = [...sorties, ...comptants];
-    const orders = salesDocs.filter((b: any) => isToday(b.date_creation) && validStatuses.has(b.statut)).length;
-
-    const lowStock = products.filter((p: any) => Number(p.quantite || 0) <= 5).length;
-
-    const pendingStatuses = new Set(['Brouillon', 'En attente', 'En cours']);
-    const pendingOrders = [...sorties, ...commandes].filter((b: any) => pendingStatuses.has(b.statut)).length;
-    // Talon due soon (<=5 days) among payments with talon_id
-    const today = new Date(); today.setHours(0,0,0,0);
-    const talonDueSoon = allPayments.filter((p: any) => p.talon_id && p.date_echeance).filter((p: any) => {
-      const due = new Date(p.date_echeance);
-      if (isNaN(due.getTime())) return false;
-      due.setHours(0,0,0,0);
-      const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000*60*60*24));
-      return diffDays <= 5;
-    }).length;
-
-    return {
-      employees: employees.length,
-      products: products.length,
-      orders,
-      lowStock,
-      pendingOrders,
-      talonDueSoon,
-    };
-  }, [employees, products, sorties, comptants, commandes, allPayments]);
-
-  // Recent Activity - Real data from last 24 hours
-  const recentActivity = useMemo(() => {
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    
-    const activities = [];
-
-    // Recent bons (last 24h)
-    const recentBons = [...sorties, ...comptants, ...commandes]
-      .filter((bon: any) => {
-        const created = new Date(bon.date_creation);
-        return created >= yesterday;
-      })
-      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime())
-      .slice(0, 3);
-
-    recentBons.forEach((bon: any) => {
-      const timeAgo = Math.floor((now.getTime() - new Date(bon.date_creation).getTime()) / (1000 * 60 * 60));
-      const bonNumero = bon.numero ? bon.numero : `#${bon.id}`;
-      const montantBon = formatAmount(Number(bon.montant_total || 0));
-      const getBonColor = (t: string) => {
-        if (t === 'Sortie') return 'green';
-        if (t === 'Comptant') return 'blue';
-        return 'purple';
-      };
-      activities.push({
-        type: 'bon',
-        message: `${bon.type} ${bonNumero} créé - ${montantBon} DH`,
-        time: timeAgo > 0 ? `Il y a ${timeAgo}h` : "À l'instant",
-        color: getBonColor(bon.type),
-        priority: bon.statut === 'Validé' ? 'high' : 'medium'
-      });
-    });
-
-    // Recent payments (last 24h)
-    const recentPayments = allPayments
-      .filter((payment: any) => {
-        const created = new Date(payment.date_paiement);
-        return created >= yesterday;
-      })
-      .sort((a: any, b: any) => new Date(b.date_paiement).getTime() - new Date(a.date_paiement).getTime())
-      .slice(0, 2);
-
-    recentPayments.forEach((payment: any) => {
-      const timeAgo = Math.floor((now.getTime() - new Date(payment.date_paiement).getTime()) / (1000 * 60 * 60));
-      activities.push({
-        type: 'payment',
-        message: `Paiement PAY${String(payment.id).padStart(2, '0')} - ${formatAmount(Number(payment.montant_total || 0))} DH (${payment.mode_paiement})`,
-        time: timeAgo > 0 ? `Il y a ${timeAgo}h` : "À l'instant",
-        color: 'yellow',
-        priority: 'high'
-      });
-    });
-
-    // Critical stock alerts (always show if exists)
-    const criticalStock = products.filter((p: any) => Number(p.quantite || 0) <= 2);
-    if (criticalStock.length > 0) {
-      const product = criticalStock[0];
-      activities.push({
-        type: 'alert',
-        message: `Stock critique: "${product.designation}" (${product.quantite || 0} restants)`,
-        time: "Maintenant",
-        color: 'red',
-        priority: 'critical'
-      });
-    }
-
-    // Overdue talons (always show if exists)
-    const today = new Date(); today.setHours(0,0,0,0);
-    const overdueTalons = allPayments.filter((p: any) => {
-      if (!p.talon_id || !p.date_echeance) return false;
-      const due = new Date(p.date_echeance);
-      if (isNaN(due.getTime())) return false;
-      due.setHours(0,0,0,0);
-      return due < today;
-    });
-
-    if (overdueTalons.length > 0) {
-      activities.push({
-        type: 'overdue',
-        message: `${overdueTalons.length} talon(s) en retard de paiement`,
-        time: "Urgent",
-        color: 'red',
-        priority: 'critical'
-      });
-    }
-
-    // Sort by priority and time
-    const priorityOrder = { critical: 0, high: 1, medium: 2 } as const;
-    activities.sort((a: any, b: any) => {
-      return priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder];
-    });
-    return activities.slice(0, 5);
-  }, [sorties, comptants, commandes, allPayments, products]);
+  const recentActivity = dashboardSummary?.recentActivity ?? [];
 
   // Gestion du clic protégé par mot de passe
   const handleProtectedClick = (path: string) => {

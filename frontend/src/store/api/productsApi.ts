@@ -9,7 +9,7 @@ const productsApi = api.injectEndpoints({
       providesTags: ['Product'],
     }),
 
-    getProductsPaginated: builder.query<{ data: Product[]; meta: { total: number; page: number; limit: number; totalPages: number } }, { page: number; limit: number; q?: string; category_id?: number | string; brand_id?: number | string; missing_lang?: string }>({
+    getProductsPaginated: builder.query<{ data: Product[]; meta: { total: number; page: number; limit: number; totalPages: number } }, { page: number; limit: number; q?: string; category_id?: number | string; brand_id?: number | string; missing_lang?: string; type?: 'stockable' | 'non_stockable' | 'service' }>({
       query: (params) => ({
         url: '/products/search',
         params,

@@ -542,24 +542,57 @@ async function ensureProductsColumns() {
 // Search / Filter / Paginate endpoint
 router.get('/search', async (req, res, next) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = (page - 1) * limit;
+    await ensureProductsColumns();
 
-    const { q, category_id, brand_id, missing_lang } = req.query;
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200);
+    const offset = (page - 1) * limit;
+    const useSnapshot = await hasProductSnapshotTable();
+
+    const { q, category_id, brand_id, missing_lang, type } = req.query;
 
     const conditions = ['COALESCE(p.is_deleted, 0) = 0'];
     const params = [];
 
     if (q) {
-      conditions.push('(p.designation LIKE ? OR p.id LIKE ?)');
+      conditions.push(`(
+        p.designation LIKE ?
+        OR CAST(p.id AS CHAR) LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM product_variants pv_search
+          WHERE pv_search.product_id = p.id
+            AND (
+              pv_search.variant_name LIKE ?
+              OR pv_search.reference LIKE ?
+            )
+        )
+      )`);
       const wild = `%${q}%`;
-      params.push(wild, wild);
+      params.push(wild, wild, wild, wild);
     }
 
     if (category_id) {
-      conditions.push('p.categorie_id = ?');
-      params.push(category_id);
+      const rootCategoryId = Number(category_id);
+      if (Number.isFinite(rootCategoryId)) {
+        const [categoryRows] = await pool.query('SELECT id, parent_id FROM categories');
+        const childrenByParent = new Map();
+        for (const category of categoryRows) {
+          const parentId = category.parent_id == null ? null : Number(category.parent_id);
+          if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+          childrenByParent.get(parentId).push(Number(category.id));
+        }
+
+        const categoryIds = [];
+        const collectCategoryIds = (id) => {
+          categoryIds.push(id);
+          const children = childrenByParent.get(id) || [];
+          for (const childId of children) collectCategoryIds(childId);
+        };
+        collectCategoryIds(rootCategoryId);
+
+        conditions.push('p.categorie_id IN (?)');
+        params.push(categoryIds);
+      }
     }
 
     if (brand_id) {
@@ -575,15 +608,125 @@ router.get('/search', async (req, res, next) => {
       else if (missing_lang === 'fiche') conditions.push("(p.fiche_technique IS NULL OR p.fiche_technique = '')");
     }
 
+    if (type === 'service') {
+      conditions.push('COALESCE(p.est_service, 0) = 1');
+    } else if (type === 'non_stockable') {
+      conditions.push('COALESCE(p.est_service, 0) = 0 AND COALESCE(p.non_stockable, 0) = 1');
+    } else if (type === 'stockable') {
+      conditions.push('COALESCE(p.est_service, 0) = 0 AND COALESCE(p.non_stockable, 0) = 0');
+    }
+
     const whereSql = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
-    // Count total
     const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM products p ${whereSql}`, params);
     const total = countRows[0]?.total || 0;
 
-    // Fetch data
-    const querySql = `
-      SELECT p.*, b.id as b_id, b.nom as b_nom, c.nom as categorie_nom
+    const querySql = useSnapshot ? `
+      SELECT p.*, b.id as b_id, b.nom as b_nom, b.image_url as b_image_url,
+      (SELECT CASE WHEN COUNT(*) > 0 THEN SUM(ps.quantite) ELSE NULL END
+         FROM product_snapshot ps
+        WHERE ps.product_id = p.id) as snapshot_quantite_total,
+      (SELECT ps2.prix_achat
+         FROM product_snapshot ps2
+        WHERE ps2.product_id = p.id
+          AND ps2.quantite > 0
+          AND COALESCE(ps2.prix_achat, 0) > 0
+        ORDER BY ps2.created_at ASC, ps2.id ASC
+        LIMIT 1) as snapshot_prix_achat_old,
+      (SELECT ps2.prix_vente
+         FROM product_snapshot ps2
+        WHERE ps2.product_id = p.id
+          AND ps2.quantite > 0
+          AND COALESCE(ps2.prix_vente, 0) > 0
+        ORDER BY ps2.created_at ASC, ps2.id ASC
+        LIMIT 1) as snapshot_prix_vente_old,
+      (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+        'id', pi.id,
+        'image_url', pi.image_url,
+        'position', pi.position
+      )) FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.position ASC) as gallery,
+      (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+        'id', pv.id,
+        'variant_name', pv.variant_name,
+        'variant_type', pv.variant_type,
+        'reference', pv.reference,
+        'prix_achat', pv.prix_achat,
+        'cout_revient', pv.cout_revient,
+        'cout_revient_pourcentage', pv.cout_revient_pourcentage,
+        'prix_gros', pv.prix_gros,
+        'prix_gros_pourcentage', pv.prix_gros_pourcentage,
+        'prix_vente_pourcentage', pv.prix_vente_pourcentage,
+        'prix_vente', pv.prix_vente,
+        'image_url', pv.image_url,
+        'remise_client', pv.remise_client,
+        'remise_artisan', pv.remise_artisan,
+        'stock_quantity', pv.stock_quantity,
+        'snapshot_quantite_total', (SELECT CASE WHEN COUNT(*) > 0 THEN SUM(psv.quantite) ELSE NULL END
+           FROM product_snapshot psv
+          WHERE psv.variant_id = pv.id),
+        'snapshot_prix_achat_old', (SELECT ps3.prix_achat
+           FROM product_snapshot ps3
+          WHERE ps3.variant_id = pv.id
+            AND ps3.quantite > 0
+            AND COALESCE(ps3.prix_achat, 0) > 0
+          ORDER BY ps3.created_at ASC, ps3.id ASC
+          LIMIT 1),
+        'snapshot_prix_vente_old', (SELECT ps3.prix_vente
+           FROM product_snapshot ps3
+          WHERE ps3.variant_id = pv.id
+            AND ps3.quantite > 0
+            AND COALESCE(ps3.prix_vente, 0) > 0
+          ORDER BY ps3.created_at ASC, ps3.id ASC
+          LIMIT 1)
+      )) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
+      (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+        'id', pu.id,
+        'unit_name', pu.unit_name,
+        'conversion_factor', pu.conversion_factor,
+        'prix_vente', pu.prix_vente,
+        'facteur_isNormal', pu.facteur_isNormal,
+        'is_default', pu.is_default
+      )) FROM product_units pu WHERE pu.product_id = p.id) as units,
+      c.nom as categorie_nom
+      FROM products p
+      LEFT JOIN brands b ON p.brand_id = b.id
+      LEFT JOIN categories c ON p.categorie_id = c.id
+      ${whereSql}
+      ORDER BY p.id DESC
+      LIMIT ? OFFSET ?
+    ` : `
+      SELECT p.*, b.id as b_id, b.nom as b_nom, b.image_url as b_image_url,
+      (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+        'id', pi.id,
+        'image_url', pi.image_url,
+        'position', pi.position
+      )) FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.position ASC) as gallery,
+      (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+        'id', pv.id,
+        'variant_name', pv.variant_name,
+        'variant_type', pv.variant_type,
+        'reference', pv.reference,
+        'prix_achat', pv.prix_achat,
+        'cout_revient', pv.cout_revient,
+        'cout_revient_pourcentage', pv.cout_revient_pourcentage,
+        'prix_gros', pv.prix_gros,
+        'prix_gros_pourcentage', pv.prix_gros_pourcentage,
+        'prix_vente_pourcentage', pv.prix_vente_pourcentage,
+        'prix_vente', pv.prix_vente,
+        'image_url', pv.image_url,
+        'remise_client', pv.remise_client,
+        'remise_artisan', pv.remise_artisan,
+        'stock_quantity', pv.stock_quantity
+      )) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
+      (SELECT JSON_ARRAYAGG(JSON_OBJECT(
+        'id', pu.id,
+        'unit_name', pu.unit_name,
+        'conversion_factor', pu.conversion_factor,
+        'prix_vente', pu.prix_vente,
+        'facteur_isNormal', pu.facteur_isNormal,
+        'is_default', pu.is_default
+      )) FROM product_units pu WHERE pu.product_id = p.id) as units,
+      c.nom as categorie_nom
       FROM products p
       LEFT JOIN brands b ON p.brand_id = b.id
       LEFT JOIN categories c ON p.categorie_id = c.id
@@ -591,30 +734,134 @@ router.get('/search', async (req, res, next) => {
       ORDER BY p.id DESC
       LIMIT ? OFFSET ?
     `;
-    
-    // LIMIT/OFFSET must be integers
+
     const [rows] = await pool.query(querySql, [...params, limit, offset]);
 
-    const products = rows.map((r) => ({
-      id: r.id,
-      reference: String(r.id),
-      designation: r.designation,
-      designation_ar: r.designation_ar,
-      designation_en: r.designation_en,
-      designation_zh: r.designation_zh,
-      description: r.description,
-      description_ar: r.description_ar || null,
-      description_en: r.description_en || null,
-      description_zh: r.description_zh || null,
-      fiche_technique: r.fiche_technique,
-      fiche_technique_ar: r.fiche_technique_ar || null,
-      fiche_technique_en: r.fiche_technique_en || null,
-      fiche_technique_zh: r.fiche_technique_zh || null,
-      categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
-      brand: r.b_id ? { id: r.b_id, nom: r.b_nom } : undefined,
-      image_url: r.image_url,
-      has_variants: !!r.has_variants,
-    }));
+    const products = rows.map((r) => {
+      const gallery = typeof r.gallery === 'string' ? JSON.parse(r.gallery) : (r.gallery || []);
+      const variants = typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []);
+      const variantsWithSnapshot = Array.isArray(variants) ? variants.map((v) => ({
+        ...v,
+        snapshot_quantite_total: v?.snapshot_quantite_total !== null && v?.snapshot_quantite_total !== undefined ? Number(v.snapshot_quantite_total) : null,
+        snapshot_prix_achat_old: v?.snapshot_prix_achat_old !== null && v?.snapshot_prix_achat_old !== undefined ? Number(v.snapshot_prix_achat_old) : null,
+        snapshot_prix_vente_old: v?.snapshot_prix_vente_old !== null && v?.snapshot_prix_vente_old !== undefined ? Number(v.snapshot_prix_vente_old) : null,
+      })) : [];
+
+      return {
+        id: r.id,
+        reference: String(r.id),
+        designation: r.designation,
+        designation_ar: r.designation_ar,
+        designation_en: r.designation_en,
+        designation_zh: r.designation_zh,
+        categorie_id: r.categorie_id || 0,
+        categorie: r.categorie_id ? { id: r.categorie_id, nom: r.categorie_nom } : undefined,
+        categories: r.categorie_id ? [{ id: r.categorie_id, nom: r.categorie_nom }] : [],
+        brand: r.b_id ? { id: r.b_id, nom: r.b_nom, image_url: r.b_image_url } : undefined,
+        quantite: Number(r.quantite),
+        snapshot_quantite_total: useSnapshot && r.snapshot_quantite_total !== null && r.snapshot_quantite_total !== undefined ? Number(r.snapshot_quantite_total) : null,
+        kg: r.kg !== null && r.kg !== undefined ? Number(r.kg) : null,
+        prix_achat: Number(r.prix_achat),
+        snapshot_prix_achat_old: useSnapshot && r.snapshot_prix_achat_old !== null && r.snapshot_prix_achat_old !== undefined ? Number(r.snapshot_prix_achat_old) : null,
+        cout_revient_pourcentage: Number(r.cout_revient_pourcentage),
+        cout_revient: Number(r.cout_revient),
+        prix_gros_pourcentage: Number(r.prix_gros_pourcentage),
+        prix_gros: Number(r.prix_gros),
+        prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
+        prix_vente: Number(r.prix_vente),
+        snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
+        est_service: !!r.est_service,
+        non_stockable: !!r.non_stockable,
+        image_url: r.image_url,
+        remise_client: Number(r.remise_client ?? 0),
+        remise_artisan: Number(r.remise_artisan ?? 0),
+        gallery,
+        fiche_technique: r.fiche_technique,
+        fiche_technique_ar: r.fiche_technique_ar,
+        fiche_technique_en: r.fiche_technique_en,
+        fiche_technique_zh: r.fiche_technique_zh,
+        description: r.description,
+        description_ar: r.description_ar || null,
+        description_en: r.description_en || null,
+        description_zh: r.description_zh || null,
+        pourcentage_promo: Number(r.pourcentage_promo ?? 0),
+        ecom_published: !!r.ecom_published,
+        stock_partage_ecom: !!r.stock_partage_ecom,
+        stock_partage_ecom_qty: Number(r.stock_partage_ecom_qty ?? 0),
+        created_by: r.created_by,
+        updated_by: r.updated_by,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        has_variants: !!r.has_variants,
+        isObligatoireVariant: !!r.is_obligatoire_variant,
+        base_unit: r.base_unit,
+        categorie_base: r.categorie_base,
+        variants: variantsWithSnapshot,
+        units: typeof r.units === 'string' ? JSON.parse(r.units) : (r.units || []),
+      };
+    });
+
+    if (useSnapshot) {
+      const productIds = products.map((product) => product.id);
+      if (productIds.length > 0) {
+        const [allSnaps] = await pool.query(
+          `SELECT ps.id, ps.product_id, ps.variant_id,
+                  ps.prix_achat, ps.prix_vente, ps.cout_revient, ps.prix_gros,
+                  ps.quantite, ps.bon_commande_id, ps.created_at
+           FROM product_snapshot ps
+           WHERE ps.product_id IN (?)
+           ORDER BY ps.created_at DESC, ps.id DESC`,
+          [productIds]
+        );
+
+        const snapGrouped = {};
+        for (const snap of allSnaps) {
+          const key = `${snap.product_id}:${snap.variant_id || 0}`;
+          if (!snapGrouped[key]) snapGrouped[key] = [];
+          snapGrouped[key].push({
+            id: Number(snap.id),
+            prix_achat: snap.prix_achat !== null && snap.prix_achat !== undefined ? Number(snap.prix_achat) : null,
+            prix_vente: snap.prix_vente !== null && snap.prix_vente !== undefined ? Number(snap.prix_vente) : null,
+            cout_revient: snap.cout_revient !== null && snap.cout_revient !== undefined ? Number(snap.cout_revient) : null,
+            prix_gros: snap.prix_gros !== null && snap.prix_gros !== undefined ? Number(snap.prix_gros) : null,
+            quantite: Number(snap.quantite ?? 0),
+            bon_commande_id: snap.bon_commande_id ?? null,
+            created_at: snap.created_at,
+          });
+        }
+
+        const computeSnapshotDisplay = (snaps) => {
+          if (!snaps || snaps.length === 0) {
+            return { mode: 'product', data: null, rows: null };
+          }
+          const positiveSnaps = snaps.filter((snap) => snap.quantite > 0);
+          if (positiveSnaps.length === 0) {
+            return { mode: 'last_snapshot', data: snaps[0], rows: null };
+          }
+          if (positiveSnaps.length === 1) {
+            return { mode: 'single_positive', data: positiveSnaps[0], rows: null };
+          }
+          const firstPrixAchat = positiveSnaps[0].prix_achat;
+          const firstPrixVente = positiveSnaps[0].prix_vente;
+          const allSame = positiveSnaps.every((snap) => (
+            snap.prix_achat === firstPrixAchat && snap.prix_vente === firstPrixVente
+          ));
+          if (allSame) {
+            return { mode: 'uniform_positive', data: positiveSnaps[0], rows: null };
+          }
+          return { mode: 'multi_different', data: null, rows: positiveSnaps };
+        };
+
+        for (const product of products) {
+          product.snapshot_display = computeSnapshotDisplay(snapGrouped[`${product.id}:0`]);
+          if (Array.isArray(product.variants)) {
+            for (const variant of product.variants) {
+              variant.snapshot_display = computeSnapshotDisplay(snapGrouped[`${product.id}:${variant.id}`]);
+            }
+          }
+        }
+      }
+    }
 
     res.json({
       data: products,

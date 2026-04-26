@@ -17,8 +17,11 @@ import {
 } from "lucide-react";
 import { useGetProductsQuery } from "../store/api/productsApi";
 import { useGetAllClientsQuery, useGetAllFournisseursQuery } from "../store/api/contactsApi";
+import { useGetComptantQuery } from "../store/api/comptantApi";
+import { useGetSortiesQuery } from "../store/api/sortiesApi";
+import { useGetCommandesQuery } from "../store/api/commandesApi";
 import { useGetPaymentsQuery } from "../store/api/paymentsApi";
-import { useGetReportsBonsContextQuery } from "../store/api/bonsApi";
+import { useGetBonsByTypeQuery } from "../store/api/bonsApi";
 import { formatDateTimeWithHour } from "../utils/dateUtils";
 import { getBonNumeroDisplay } from "../utils/numero";
 import type { RootState } from "../store";
@@ -102,15 +105,14 @@ const ReportsPage: React.FC = () => {
   const { data: clients = [] } = useGetAllClientsQuery(undefined);
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
   const { data: products = [] } = useGetProductsQuery();
-  const { data: reportsBonsContext } = useGetReportsBonsContextQuery();
-  const bonsComptant = reportsBonsContext?.comptants || [];
-  const bonsSortie = reportsBonsContext?.sorties || [];
-  const bonsCommande = reportsBonsContext?.commandes || [];
-  const bonsVehicule = reportsBonsContext?.vehicules || [];
+  const { data: bonsComptant = [] } = useGetComptantQuery(undefined);
+  const { data: bonsSortie = [] } = useGetSortiesQuery(undefined);
+  const { data: bonsCommande = [] } = useGetCommandesQuery(undefined);
+  const { data: bonsVehicule = [] } = useGetBonsByTypeQuery("Vehicule");
   const { data: payments = [] } = useGetPaymentsQuery(undefined);
   // Avoirs (retours)
-  const avoirsClientRaw = reportsBonsContext?.avoirsClient || [];
-  const avoirsFournisseurRaw = reportsBonsContext?.avoirsFournisseur || [];
+  const { data: avoirsClientRaw = [] } = useGetBonsByTypeQuery("Avoir");
+  const { data: avoirsFournisseurRaw = [] } = useGetBonsByTypeQuery("AvoirFournisseur");
 
   /** ---------- State ---------- */
   const [dateFrom, setDateFrom] = useState("");

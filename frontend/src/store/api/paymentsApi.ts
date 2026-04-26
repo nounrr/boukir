@@ -1,10 +1,44 @@
 import { api } from './apiSlice';
 import type { Payment, CreatePaymentData } from '../../types';
 
+type PaymentsPagedArgs = {
+  page: number;
+  limit: number;
+  search?: string;
+  date?: string;
+  mode?: string;
+  status?: string;
+  sortBy?: 'numero' | 'date' | 'contact' | 'montant' | 'echeance' | 'id';
+  sortDir?: 'asc' | 'desc';
+};
+
+type PaymentsPagedResponse = {
+  data: Payment[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  totals: {
+    totalEncaissements: number;
+    totalEspeces: number;
+    totalCheques: number;
+    totalVirements: number;
+    totalTraites: number;
+    totalRemises: number;
+  };
+};
+
 export const paymentsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getPayments: builder.query<Payment[], void>({
       query: () => ({ url: '/payments' }),
+      providesTags: ['Payment'],
+    }),
+
+    getPaymentsPaged: builder.query<PaymentsPagedResponse, PaymentsPagedArgs>({
+      query: (params) => ({ url: '/payments/paged', params }),
       providesTags: ['Payment'],
     }),
 
@@ -84,6 +118,7 @@ export const paymentsApi = api.injectEndpoints({
 
 export const {
   useGetPaymentsQuery,
+  useGetPaymentsPagedQuery,
   useGetPaymentQuery,
   useCreatePaymentMutation,
   useUpdatePaymentMutation,

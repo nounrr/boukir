@@ -262,6 +262,137 @@ router.get('/', verifyToken, async (req, res) => {
   }
 });
 
+// Paginated payments list for CaissePage
+router.get('/paged', verifyToken, async (req, res) => {
+  try {
+    await ensurePaymentRemiseColumns();
+
+    const clampInt = (value, fallback, min, max) => {
+      const n = Number.parseInt(String(value ?? ''), 10);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.max(min, Math.min(max, n));
+    };
+
+    const page = clampInt(req.query.page, 1, 1, 100000);
+    const limit = clampInt(req.query.limit, 20, 1, 200);
+    const offset = (page - 1) * limit;
+    const search = String(req.query.search || '').trim();
+    const date = String(req.query.date || '').trim();
+    const mode = String(req.query.mode || '').trim();
+    const statuses = String(req.query.status || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const where = [];
+    const params = [];
+
+    if (date) {
+      where.push('DATE(p.date_paiement) = ?');
+      params.push(date);
+    }
+
+    if (mode && mode !== 'all') {
+      where.push('p.mode_paiement = ?');
+      params.push(mode);
+    }
+
+    if (statuses.length) {
+      where.push(`p.statut IN (${statuses.map(() => '?').join(',')})`);
+      params.push(...statuses);
+    }
+
+    if (search) {
+      const like = `%${search}%`;
+      const digits = search.replace(/\D+/g, '');
+      const phoneLike = digits ? `%${digits.length > 9 ? digits.slice(-9) : digits}%` : like;
+      where.push(`(
+        CAST(p.id AS CHAR) LIKE ?
+        OR p.numero LIKE ?
+        OR p.designation LIKE ?
+        OR p.reference LIKE ?
+        OR p.reference_virement LIKE ?
+        OR CAST(p.montant_total AS CHAR) LIKE ?
+        OR p.mode_paiement LIKE ?
+        OR p.type_paiement LIKE ?
+        OR p.banque LIKE ?
+        OR p.personnel LIKE ?
+        OR p.code_reglement LIKE ?
+        OR p.remise_account_name LIKE ?
+        OR c.nom_complet LIKE ?
+        OR c.societe LIKE ?
+        OR c.telephone LIKE ?
+        OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.telephone, ''), ' ', ''), '-', ''), '.', ''), '+', '') LIKE ?
+      )`);
+      params.push(like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, phoneLike);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const joins = 'LEFT JOIN contacts c ON c.id = p.contact_id';
+
+    const sortBy = String(req.query.sortBy || 'id');
+    const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const sortMap = {
+      numero: 'p.id',
+      date: 'COALESCE(p.date_paiement, p.created_at)',
+      contact: 'COALESCE(p.remise_account_name, c.nom_complet)',
+      montant: 'p.montant_total',
+      echeance: 'COALESCE(p.date_echeance, "9999-12-31")',
+      id: 'p.id',
+    };
+    const orderExpr = sortMap[sortBy] || sortMap.id;
+
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS total FROM payments p ${joins} ${whereSql}`,
+      params
+    );
+    const total = Number(countRows?.[0]?.total || 0);
+
+    const [totalsRows] = await pool.query(
+      `SELECT
+         COALESCE(SUM(p.montant_total), 0) AS totalEncaissements,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Espèces' THEN p.montant_total ELSE 0 END), 0) AS totalEspeces,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Chèque' THEN p.montant_total ELSE 0 END), 0) AS totalCheques,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Virement' THEN p.montant_total ELSE 0 END), 0) AS totalVirements,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Traite' THEN p.montant_total ELSE 0 END), 0) AS totalTraites,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Remise' THEN p.montant_total ELSE 0 END), 0) AS totalRemises
+       FROM payments p ${joins} ${whereSql}`,
+      params
+    );
+
+    const [rows] = await pool.query(
+      `SELECT p.*
+       FROM payments p
+       ${joins}
+       ${whereSql}
+       ORDER BY ${orderExpr} ${sortDir}, p.id ${sortDir}
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      data: rows.map(toPayment),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: total ? Math.ceil(total / limit) : 0,
+      },
+      totals: {
+        totalEncaissements: Number(totalsRows?.[0]?.totalEncaissements || 0),
+        totalEspeces: Number(totalsRows?.[0]?.totalEspeces || 0),
+        totalCheques: Number(totalsRows?.[0]?.totalCheques || 0),
+        totalVirements: Number(totalsRows?.[0]?.totalVirements || 0),
+        totalTraites: Number(totalsRows?.[0]?.totalTraites || 0),
+        totalRemises: Number(totalsRows?.[0]?.totalRemises || 0),
+      },
+    });
+  } catch (err) {
+    console.error('GET /payments/paged error:', err);
+    res.status(500).json({ message: 'Internal error', detail: String(err?.sqlMessage || err?.message || err) });
+  }
+});
+
 // GET /api/payments/personnel - distinct names used on cheques/traites
 router.get('/personnel', verifyToken, async (_req, res) => {
   try {

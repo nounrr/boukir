@@ -19,8 +19,7 @@ import {
   useGetContactsSummaryQuery,
   useGetSoldeCumuleCardQuery,
   useGetSoldeCumuleCardFournisseurQuery,
-  useGetContactQuery,
-  useGetContactHistoryQuery
+  useGetContactQuery // Added this
 } from '../store/api/contactsApi';
 import {
   useAssignContactsToGroupMutation,
@@ -32,20 +31,20 @@ import {
 } from '../store/api/contactGroupsApi';
 import { showError, showSuccess, showInfo, showConfirmation } from '../utils/notifications';
 import { useGetProductsQuery } from '../store/api/productsApi';
-import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
+import { useGetPaymentsQuery, useReorderPaymentsMutation } from '../store/api/paymentsApi';
 import ContactFormModal from '../components/ContactFormModal';
 import { useGetArtisanRequestsQuery, useApproveArtisanRequestMutation, useRejectArtisanRequestMutation } from '../store/api/notificationsApi';
 import ContactPrintModal from '../components/ContactPrintModal';
 import ContactPrintTemplate from '../components/ContactPrintTemplate';
 import PeriodConfig from '../components/PeriodConfig';
-import { useUpdateBonMutation } from '../store/api/bonsApi';
+import { useGetBonsByTypeQuery, useUpdateBonMutation } from '../store/api/bonsApi';
 import { formatDateDMY, formatDateTimeWithHour, normalizeDateTimeToMySQL } from '../utils/dateUtils';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
 import logo from '../components/logo.png';
 import { generatePDFBlobFromElement } from '../utils/pdf';
 import { uploadBonPdf } from '../utils/uploads';
-import { sumRemiseItemsTotal } from '../utils/remisesClientTotals';
+import { fetchClientRemisesWithItems, sumRemiseItemsTotal } from '../utils/remisesClientTotals';
 // Validation du formulaire de contact
 const contactValidationSchema = Yup.object({
   nom_complet: Yup.string().nullable(),
@@ -272,9 +271,6 @@ const ContactsPage: React.FC = () => {
   const { data: detailedContact } = useGetContactQuery(selectedContact?.id!, {
     skip: !selectedContact?.id
   });
-  const { data: contactHistory, refetch: refetchContactHistory } = useGetContactHistoryQuery(selectedContact?.id!, {
-    skip: !selectedContact?.id || !isDetailsModalOpen
-  });
 
   const getItemRemises = (item: any) => {
     const remises = {
@@ -345,7 +341,6 @@ const ContactsPage: React.FC = () => {
     return remises;
   };
   
-  const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde_cumule' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -512,17 +507,17 @@ const ContactsPage: React.FC = () => {
     });
   }, [groupEditContacts, groupEditSearch, groupEditMode, groupMemberIdSet]);
 
-  // Detail data must come from the selected-contact history endpoint only.
-  // Avoid loading every bon/payment table when opening the Contacts page.
-  const devis: any[] = [];
-  const commandes = contactHistory?.commandes ?? [];
-  const sorties = contactHistory?.sorties ?? [];
-  const comptants = contactHistory?.comptants ?? [];
-  const avoirsClient = contactHistory?.avoirsClient ?? [];
-  const avoirsFournisseur = contactHistory?.avoirsFournisseur ?? [];
-  const ecommerceOrders = contactHistory?.ecommerceOrders ?? [];
-  const avoirsEcommerce = contactHistory?.avoirsEcommerce ?? [];
-  const payments = contactHistory?.payments ?? [];
+  // Data: bons + paiements — RTK Query utilise le cache si déjà chargé, fetch seulement si cache vide
+  const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
+  const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
+  const { data: devis = [] } = useGetBonsByTypeQuery('Devis');
+  const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
+  const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
+  const { data: avoirsFournisseur = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
+  const { data: ecommerceOrders = [] } = useGetBonsByTypeQuery('Ecommerce');
+  const { data: avoirsEcommerce = [] } = useGetBonsByTypeQuery('AvoirEcommerce');
+
+  const { data: payments = [] } = useGetPaymentsQuery();
 
   // Util: filtre de période (accepte ISO ou format JJ-MM-YYYY). Inclusif.
   const isWithinDateRange = (dateValue?: string | null) => {
@@ -2079,9 +2074,6 @@ const ContactsPage: React.FC = () => {
       return;
     }
 
-    setContactRemises(Array.isArray(contactHistory?.remises) ? contactHistory.remises : []);
-    return;
-
     try {
       const allRemises = await fetchClientRemisesWithItems(authTokenValue);
 
@@ -2115,7 +2107,7 @@ const ContactsPage: React.FC = () => {
       console.error('Erreur chargement remises:', error);
       setContactRemises([]);
     }
-  }, [selectedContact?.id, selectedContact?.nom_complet, selectedContact?.societe, authTokenValue, contactHistory?.remises]);
+  }, [selectedContact?.id, selectedContact?.nom_complet, selectedContact?.societe, authTokenValue]);
 
   // Charger les remises du contact lorsqu'il change
   React.useEffect(() => {
@@ -3366,11 +3358,6 @@ const ContactsPage: React.FC = () => {
     setCurrentPage(1);
   }, [activeTab, clientSubTab, searchTerm, sortField, sortDirection]);
 
-  const handleContactSearch = () => {
-    setCurrentPage(1);
-    setSearchTerm(searchInput.trim());
-  };
-
   // Load payments from Redux (RTK Query) to enrich payment rows
   const paymentsMap = useMemo(() => {
     const m = new Map<string, any>();
@@ -3529,7 +3516,7 @@ const ContactsPage: React.FC = () => {
       {/* Section Paramètres */}
       {
         showSettings && (
-          <div className="mb-6 flex flex-col sm:flex-row gap-3">
+          <div className="mb-6">
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-800 flex items-center">
@@ -3942,22 +3929,11 @@ const ContactsPage: React.FC = () => {
               <input
                 type="text"
                 placeholder={`Rechercher (Nom, Société ou Téléphone) ${activeTab === 'clients' ? 'client' : 'fournisseur'}...`}
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleContactSearch();
-                }}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
-            <button
-              type="button"
-              onClick={handleContactSearch}
-              className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-            >
-              <Search size={18} />
-              Rechercher
-            </button>
           </div>
 
           {/* Stats */}

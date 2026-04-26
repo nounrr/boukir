@@ -926,6 +926,222 @@ router.get('/debug-solde', async (req, res) => {
   }
 });
 
+// GET /api/contacts/:id/history - Get only the selected contact's bons/payments/avoirs.
+router.get('/:id/history', async (req, res) => {
+  try {
+    const contactId = Number(req.params.id);
+    if (!Number.isFinite(contactId) || contactId <= 0) {
+      return res.status(400).json({ error: 'Invalid contact id' });
+    }
+
+    const [[contactRows], [sorties], [comptants], [commandes], [avoirsClient], [avoirsFournisseur], [payments], [ecommerceOrders], [avoirsEcommerce]] = await Promise.all([
+      pool.query('SELECT id, type, nom_complet, societe FROM contacts WHERE id = ? LIMIT 1', [contactId]),
+      pool.query(`
+        SELECT bs.*,
+          COALESCE(JSON_ARRAYAGG(
+            CASE WHEN si.id IS NULL THEN NULL ELSE JSON_OBJECT(
+              'id', si.id,
+              'product_id', si.product_id,
+              'produit_id', si.product_id,
+              'variant_id', si.variant_id,
+              'unit_id', si.unit_id,
+              'quantite', si.quantite,
+              'prix_unitaire', si.prix_unitaire,
+              'remise_pourcentage', si.remise_pourcentage,
+              'remise_montant', si.remise_montant,
+              'total', si.total,
+              'product_snapshot_id', si.product_snapshot_id
+            ) END
+          ), JSON_ARRAY()) AS items
+        FROM bons_sortie bs
+        LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
+        WHERE bs.client_id = ?
+        GROUP BY bs.id
+        ORDER BY bs.date_creation ASC, bs.id ASC
+      `, [contactId]),
+      pool.query(`
+        SELECT bc.*,
+          COALESCE(JSON_ARRAYAGG(
+            CASE WHEN ci.id IS NULL THEN NULL ELSE JSON_OBJECT(
+              'id', ci.id,
+              'product_id', ci.product_id,
+              'produit_id', ci.product_id,
+              'variant_id', ci.variant_id,
+              'unit_id', ci.unit_id,
+              'quantite', ci.quantite,
+              'prix_unitaire', ci.prix_unitaire,
+              'remise_pourcentage', ci.remise_pourcentage,
+              'remise_montant', ci.remise_montant,
+              'total', ci.total,
+              'product_snapshot_id', ci.product_snapshot_id
+            ) END
+          ), JSON_ARRAY()) AS items
+        FROM bons_comptant bc
+        LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
+        WHERE bc.client_id = ?
+        GROUP BY bc.id
+        ORDER BY bc.date_creation ASC, bc.id ASC
+      `, [contactId]),
+      pool.query(`
+        SELECT bcmd.*,
+          COALESCE(JSON_ARRAYAGG(
+            CASE WHEN ci.id IS NULL THEN NULL ELSE JSON_OBJECT(
+              'id', ci.id,
+              'product_id', ci.product_id,
+              'produit_id', ci.product_id,
+              'variant_id', ci.variant_id,
+              'unit_id', ci.unit_id,
+              'quantite', ci.quantite,
+              'prix_unitaire', ci.prix_unitaire,
+              'remise_pourcentage', ci.remise_pourcentage,
+              'remise_montant', ci.remise_montant,
+              'total', ci.total
+            ) END
+          ), JSON_ARRAY()) AS items
+        FROM bons_commande bcmd
+        LEFT JOIN commande_items ci ON ci.bon_commande_id = bcmd.id
+        WHERE bcmd.fournisseur_id = ?
+        GROUP BY bcmd.id
+        ORDER BY bcmd.date_creation ASC, bcmd.id ASC
+      `, [contactId]),
+      pool.query(`
+        SELECT ac.*,
+          COALESCE(JSON_ARRAYAGG(
+            CASE WHEN ai.id IS NULL THEN NULL ELSE JSON_OBJECT(
+              'id', ai.id,
+              'product_id', ai.product_id,
+              'produit_id', ai.product_id,
+              'variant_id', ai.variant_id,
+              'unit_id', ai.unit_id,
+              'quantite', ai.quantite,
+              'prix_unitaire', ai.prix_unitaire,
+              'remise_pourcentage', ai.remise_pourcentage,
+              'remise_montant', ai.remise_montant,
+              'total', ai.total,
+              'product_snapshot_id', ai.product_snapshot_id
+            ) END
+          ), JSON_ARRAY()) AS items
+        FROM avoirs_client ac
+        LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
+        WHERE ac.client_id = ?
+        GROUP BY ac.id
+        ORDER BY ac.date_creation ASC, ac.id ASC
+      `, [contactId]),
+      pool.query(`
+        SELECT af.*,
+          COALESCE(JSON_ARRAYAGG(
+            CASE WHEN afi.id IS NULL THEN NULL ELSE JSON_OBJECT(
+              'id', afi.id,
+              'product_id', afi.product_id,
+              'produit_id', afi.product_id,
+              'variant_id', afi.variant_id,
+              'unit_id', afi.unit_id,
+              'quantite', afi.quantite,
+              'prix_unitaire', afi.prix_unitaire,
+              'remise_pourcentage', afi.remise_pourcentage,
+              'remise_montant', afi.remise_montant,
+              'total', afi.total
+            ) END
+          ), JSON_ARRAY()) AS items
+        FROM avoirs_fournisseur af
+        LEFT JOIN avoir_fournisseur_items afi ON afi.avoir_fournisseur_id = af.id
+        WHERE af.fournisseur_id = ?
+        GROUP BY af.id
+        ORDER BY af.date_creation ASC, af.id ASC
+      `, [contactId]),
+      pool.query('SELECT * FROM payments WHERE contact_id = ? ORDER BY COALESCE(date_paiement, created_at) ASC, id ASC', [contactId]),
+      pool.query("SELECT * FROM ecommerce_orders WHERE user_id = ? ORDER BY created_at ASC, id ASC", [contactId]),
+      pool.query(`
+        SELECT ae.*
+        FROM avoirs_ecommerce ae
+        LEFT JOIN ecommerce_orders eo ON eo.id = ae.ecommerce_order_id
+        WHERE eo.user_id = ?
+        ORDER BY ae.created_at ASC, ae.id ASC
+      `, [contactId]),
+    ]);
+
+    if (!contactRows.length) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const contact = contactRows[0];
+    const legacyNames = [contact.nom_complet, contact.societe]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    const legacyNameWhere = legacyNames.length
+      ? ` OR (cr.contact_id IS NULL AND cr.type = 'client_abonne' AND LOWER(TRIM(cr.nom)) IN (${legacyNames.map(() => '?').join(',')}))`
+      : '';
+    const [remisesRows] = await pool.query(`
+      SELECT
+        cr.*,
+        COALESCE(SUM(CASE WHEN COALESCE(ir.statut, '') NOT LIKE 'Annul%' THEN ir.qte * ir.prix_remise ELSE 0 END), 0) AS total_remise,
+        COALESCE(JSON_ARRAYAGG(
+          CASE WHEN ir.id IS NULL THEN NULL ELSE JSON_OBJECT(
+            'id', ir.id,
+            'client_remise_id', ir.client_remise_id,
+            'product_id', ir.product_id,
+            'bon_id', ir.bon_id,
+            'bon_type', ir.bon_type,
+            'is_achat', ir.is_achat,
+            'qte', ir.qte,
+            'prix_remise', ir.prix_remise,
+            'statut', ir.statut,
+            'created_at', ir.created_at,
+            'reference', CAST(p.id AS CHAR),
+            'product_reference', CAST(p.id AS CHAR),
+            'designation', p.designation
+          ) END
+        ), JSON_ARRAY()) AS items
+      FROM client_remises cr
+      LEFT JOIN item_remises ir ON ir.client_remise_id = cr.id
+      LEFT JOIN products p ON p.id = ir.product_id
+      WHERE cr.contact_id = ?${legacyNameWhere}
+      GROUP BY cr.id
+      ORDER BY cr.id DESC
+    `, [contactId, ...legacyNames.map((value) => value.toLowerCase())]);
+
+    const normalizeItems = (rows, type) => rows.map((row) => {
+      const parsedItems = typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []);
+      return {
+        ...row,
+        type,
+        items: Array.isArray(parsedItems) ? parsedItems.filter(Boolean) : [],
+      };
+    });
+
+    const remises = remisesRows.map((row) => {
+      const parsedItems = typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []);
+      const isLegacy = row.contact_id == null && row.type === 'client_abonne';
+      return {
+        ...row,
+        _isLegacy: isLegacy,
+        total_remise: Number(row.total_remise || 0),
+        items: Array.isArray(parsedItems) ? parsedItems.filter(Boolean) : [],
+      };
+    });
+
+    res.json({
+      contactId,
+      sorties: normalizeItems(sorties, 'Sortie'),
+      comptants: normalizeItems(comptants, 'Comptant'),
+      commandes: normalizeItems(commandes, 'Commande'),
+      avoirsClient: normalizeItems(avoirsClient, 'Avoir'),
+      avoirsFournisseur: normalizeItems(avoirsFournisseur, 'AvoirFournisseur'),
+      payments,
+      ecommerceOrders: ecommerceOrders.map((row) => ({ ...row, type: 'Ecommerce' })),
+      avoirsEcommerce: avoirsEcommerce.map((row) => ({ ...row, type: 'AvoirEcommerce' })),
+      remises,
+    });
+  } catch (error) {
+    console.error('Error fetching contact history:', error);
+    res.status(500).json({
+      error: 'Failed to fetch contact history',
+      details: error?.sqlMessage || error?.message,
+      code: error?.code,
+    });
+  }
+});
+
 // GET /api/contacts/:id - Get contact by ID with calculated solde_cumule
 router.get('/:id', async (req, res) => {
   try {

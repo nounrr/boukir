@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Printer, Download } from 'lucide-react';
 import PaymentPrintTemplate from './PaymentPrintTemplate';
-import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
+import { useGetPaymentPrintBonsContextQuery } from '../store/api/bonsApi';
 
 interface PaymentPrintModalProps {
   isOpen: boolean;
@@ -27,11 +27,12 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
   const printRef = useRef<HTMLDivElement>(null);
 
   // Récupérer les bons nécessaires pour le calcul du solde cumulé (comme ContactsPage)
-  const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
-  const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
-  const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
-  const { data: avoirsClient = [] } = useGetBonsByTypeQuery('Avoir');
-  const { data: avoirsFournisseur = [] } = useGetBonsByTypeQuery('AvoirFournisseur');
+  const { data: bonsContext } = useGetPaymentPrintBonsContextQuery(undefined, { skip: !isOpen });
+  const sorties = bonsContext?.sorties || [];
+  const comptants = bonsContext?.comptants || [];
+  const commandes = bonsContext?.commandes || [];
+  const avoirsClient = bonsContext?.avoirsClient || [];
+  const avoirsFournisseur = bonsContext?.avoirsFournisseur || [];
 
   if (!isOpen) return null;
 

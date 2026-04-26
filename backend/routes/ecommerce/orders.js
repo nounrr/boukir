@@ -1656,6 +1656,7 @@ router.get('/', async (req, res, next) => {
     const rawPaymentStatus = req.query?.payment_status != null ? String(req.query.payment_status).trim() : null; // can be CSV
     const rawPaymentMethod = req.query?.payment_method != null ? String(req.query.payment_method).trim() : null;
     const rawDeliveryMethod = req.query?.delivery_method != null ? String(req.query.delivery_method).trim() : null;
+    const rawSearch = req.query?.q ?? req.query?.search;
 
     const page = Math.max(1, Number.parseInt(rawPage ?? '1', 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(rawLimit ?? '20', 10) || 20));
@@ -1793,6 +1794,23 @@ router.get('/', async (req, res, next) => {
       }
       whereParts.push('o.delivery_method = ?');
       whereParams.push(deliveryMethod);
+    }
+
+    if (rawSearch != null && String(rawSearch).trim() !== '') {
+      const like = `%${String(rawSearch).trim()}%`;
+      whereParts.push(`(
+        o.order_number LIKE ?
+        OR o.customer_name LIKE ?
+        OR o.customer_email LIKE ?
+        OR o.customer_phone LIKE ?
+        OR CAST(o.total_amount AS CHAR) LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM ecommerce_order_items oi_search
+          WHERE oi_search.order_id = o.id
+            AND (oi_search.product_name LIKE ? OR CAST(oi_search.product_id AS CHAR) LIKE ?)
+        )
+      )`);
+      whereParams.push(like, like, like, like, like, like, like);
     }
 
     const whereSql = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';

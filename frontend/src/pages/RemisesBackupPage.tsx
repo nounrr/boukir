@@ -3,7 +3,7 @@ import { Search, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, Plus, X, User, 
 import SearchableSelect from '../components/SearchableSelect';
 import BonFormModal from '../components/BonFormModal';
 import { getBonNumeroDisplay } from '../utils/numero';
-import { useGetRemisesBonsContextQuery, useGetRemisesForClientQuery } from '../store/api/bonsApi';
+import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation, useUpdateClientRemiseMutation, useDeleteClientRemiseMutation, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useUpdateRemiseItemMutation, useDeleteRemiseItemMutation } from '../store/api/remisesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetAllClientsQuery } from '../store/api/contactsApi';
@@ -152,11 +152,10 @@ const RemisesPage: React.FC = () => {
   // Direct clients (Contacts) for the “bons → client” remises view
   const { data: directClients = [] } = useGetAllClientsQuery();
 
-  // New system: bons data comes from one backend context request.
-  const { data: remisesBonsContext } = useGetRemisesBonsContextQuery();
-  const sortiesAll = remisesBonsContext?.sorties || [];
-  const comptantsAll = remisesBonsContext?.comptants || [];
-  const ecommerceOrdersAll = remisesBonsContext?.ecommerceOrders || [];
+  // New system: remises are stored per item on Sortie/Comptant, and beneficiary is stored on bon header
+  const { data: sortiesAll = [] } = useGetBonsByTypeQuery('Sortie');
+  const { data: comptantsAll = [] } = useGetBonsByTypeQuery('Comptant');
+  const { data: ecommerceOrdersAll = [] } = useGetBonsByTypeQuery('Ecommerce');
 
   useGetProductsQuery();
 
@@ -394,11 +393,6 @@ const RemisesPage: React.FC = () => {
 
   const [selectedDirectClient, setSelectedDirectClient] = useState<any>(null);
   const [isDirectDetailsOpen, setIsDirectDetailsOpen] = useState(false);
-  const [detailClientId, setDetailClientId] = useState<number | null>(null);
-  const { data: clientRemisesData, isFetching: isLoadingClientData } = useGetRemisesForClientQuery(
-    detailClientId as number,
-    { skip: detailClientId == null }
-  );
   const [editingBon, setEditingBon] = useState<any>(null);
   const [isBonEditOpen, setIsBonEditOpen] = useState(false);
   const [clientsWithItems, setClientsWithItems] = useState<any[]>([]);
@@ -531,9 +525,11 @@ const RemisesPage: React.FC = () => {
   const totalRemises = totalRemisesGlobal;
 
   const directClientBons = useMemo(() => {
-    if (!clientRemisesData) return [] as any[];
+    const id = Number(selectedDirectClient?.id);
+    if (!Number.isFinite(id)) return [] as any[];
     const hasRemise = (n: any) => Math.abs(Number(n || 0)) > 0.000001;
-    const list = [...(clientRemisesData.sorties || []), ...(clientRemisesData.comptants || [])]
+    const list = [...(sortiesAll as any[]), ...(comptantsAll as any[])]
+      .filter((b: any) => getBonClientId(b) === id)
       .map((b: any) => {
         const items = parseItems(b?.items);
         const itemsWithRemise = items.filter((it: any) => {
@@ -555,15 +551,21 @@ const RemisesPage: React.FC = () => {
         return tb - ta;
       });
     return list;
-  }, [clientRemisesData]);
+  }, [selectedDirectClient?.id, sortiesAll, comptantsAll]);
 
   const directClientEcommerceOrders = useMemo(() => {
-    if (!clientRemisesData) return [] as any[];
+    const id = Number(selectedDirectClient?.id);
+    if (!Number.isFinite(id)) return [] as any[];
     const hasRemise = (n: any) => Math.abs(Number(n || 0)) > 0.000001;
 
-    const list = (clientRemisesData.ecommerceOrders || [])
+    const list = (ecommerceOrdersAll as any[])
+      .filter((o: any) => {
+        const clientIdRaw = o?.client_id ?? o?.user_id ?? o?.ecommerce_raw?.user_id;
+        const clientId = clientIdRaw == null || clientIdRaw === '' ? null : Number(clientIdRaw);
+        return Number.isFinite(clientId) && Number(clientId) === id;
+      })
       .map((o: any) => {
-        const items = Array.isArray(o?.items) ? o.items : [];
+        const items = Array.isArray(o?.items) ? o.items : (Array.isArray(o?.ecommerce_raw?.items) ? o.ecommerce_raw.items : []);
         const itemsWithRemise = (items || []).filter((it: any) => {
           const d = computeEcommerceItemRemise(it);
           return Number(d || 0) !== 0;
@@ -583,7 +585,7 @@ const RemisesPage: React.FC = () => {
       });
 
     return list;
-  }, [clientRemisesData]);
+  }, [selectedDirectClient?.id, ecommerceOrdersAll]);
 
   const directClientTotalRemise = useMemo(() => {
     const fromBons = (directClientBons || []).reduce((sum: number, b: any) => sum + Number(b?._new_total_remise || 0), 0);
@@ -796,7 +798,6 @@ const RemisesPage: React.FC = () => {
                             title="Détails"
                             onClick={() => {
                               setSelectedDirectClient(c);
-                              setDetailClientId(id);
                               setIsDirectDetailsOpen(true);
                             }}
                           >
@@ -1112,14 +1113,14 @@ const RemisesPage: React.FC = () => {
             type="button"
             className="absolute inset-0"
             aria-label="Fermer le modal"
-            onClick={() => { setIsDirectDetailsOpen(false); setSelectedDirectClient(null); setDetailClientId(null); }}
+            onClick={() => { setIsDirectDetailsOpen(false); setSelectedDirectClient(null); }}
           />
           <div className="relative bg-white rounded-lg w-full max-w-8xl max-h-[95vh] overflow-y-auto">
             <div className="bg-blue-600 px-6 py-4 rounded-t-lg">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold text-white">Remises (bons) - {selectedDirectClient?.nom_complet || selectedDirectClient?.nom || '-'}</h2>
                 <button
-                  onClick={() => { setIsDirectDetailsOpen(false); setSelectedDirectClient(null); setDetailClientId(null); }}
+                  onClick={() => { setIsDirectDetailsOpen(false); setSelectedDirectClient(null); }}
                   className="text-white hover:text-gray-200"
                 >
                   <X size={18} />
@@ -1128,15 +1129,6 @@ const RemisesPage: React.FC = () => {
             </div>
 
             <div className="p-6 w-full space-y-4">
-              {isLoadingClientData && (
-                <div className="flex items-center justify-center py-8 text-blue-600">
-                  <svg className="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                  </svg>
-                  Chargement des données...
-                </div>
-              )}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="font-bold text-lg mb-2">Informations Client</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
@@ -1300,10 +1292,9 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void; o
   const [updateItem] = useUpdateRemiseItemMutation();
   const [deleteItem] = useDeleteRemiseItemMutation();
   const { data: products = [] } = useGetProductsQuery();
-  const { data: remisesBonsContext } = useGetRemisesBonsContextQuery();
-  const sorties = remisesBonsContext?.sorties || [];
-  const comptants = remisesBonsContext?.comptants || [];
-  const commandes = remisesBonsContext?.commandes || [];
+  const { data: sorties = [] } = useGetBonsByTypeQuery('Sortie');
+  const { data: comptants = [] } = useGetBonsByTypeQuery('Comptant');
+  const { data: commandes = [] } = useGetBonsByTypeQuery('Commande');
 
   const newSystemBons = useMemo(() => {
     const id = Number(clientRemise?.id);

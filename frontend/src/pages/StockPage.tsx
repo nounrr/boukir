@@ -6,7 +6,7 @@ import { Plus, Edit, Trash2, Search, Package, Settings, Eye } from 'lucide-react
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
-import { useGetProductsQuery, useDeleteProductMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation } from '../store/api/productsApi';
+import { useGetProductsPaginatedQuery, useDeleteProductMutation, useTranslateProductsMutation, useGenerateSpecsMutation, useToggleEcomStockMutation } from '../store/api/productsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
@@ -15,13 +15,34 @@ import Swal from 'sweetalert2';
 
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
+  const [searchInput, setSearchInput] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [activeTab, setActiveTab] = useState<'Produits' | 'Produits non stockables' | 'Services'>('Produits');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(30);
+
+  const productType =
+    activeTab === 'Services'
+      ? 'service'
+      : activeTab === 'Produits non stockables'
+        ? 'non_stockable'
+        : 'stockable';
+
   // Load from backend
-  const { data: productsApiData, refetch: refetchProducts } = useGetProductsQuery();
+  const { data: productsApiData, refetch: refetchProducts } = useGetProductsPaginatedQuery({
+    page: currentPage,
+    limit: itemsPerPage,
+    q: searchTerm || undefined,
+    category_id: filterCategory || undefined,
+    type: productType,
+  });
   const { data: categoriesApiData } = useGetCategoriesQuery();
   // Keep legacy selectors as fallback during transition
   const productsState = useSelector(selectProducts);
   const categoriesState = useSelector(selectCategories);
-  const products = productsApiData ?? productsState;
+  const products = productsApiData?.data ?? productsState;
+  const productsMeta = productsApiData?.meta;
   const categories = categoriesApiData ?? categoriesState;
 
   const categoryChildrenMap = useMemo(() => {
@@ -57,9 +78,6 @@ const StockPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
-  const [activeTab, setActiveTab] = useState<'Produits' | 'Produits non stockables' | 'Services'>('Produits');
   const [deleteProductMutation] = useDeleteProductMutation();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isTranslating, setIsTranslating] = useState(false);
@@ -69,9 +87,6 @@ const StockPage: React.FC = () => {
   const [generateSpecs] = useGenerateSpecsMutation();
   const [toggleEcomStock] = useToggleEcomStockMutation();
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(30);
   // Unit display selection per product (keyed by product id or originalId for variants)
   const [unitSelection, setUnitSelection] = useState<Record<string, string>>({});
   const [hoverPreview, setHoverPreview] = useState<null | {
@@ -246,21 +261,6 @@ const StockPage: React.FC = () => {
     return found ? found.label : (prod.base_unit || 'u');
   };
 
-  const categoryFilterIds = useMemo(() => {
-    if (!filterCategory) return null;
-    const rootId = Number(filterCategory);
-    if (!Number.isFinite(rootId)) return null;
-
-    const ids = new Set<number>();
-    const walk = (id: number) => {
-      ids.add(id);
-      const children = categoryChildrenMap.get(id) || [];
-      children.forEach((c) => walk(c.id));
-    };
-    walk(rootId);
-    return ids;
-  }, [filterCategory, categoryChildrenMap]);
-
   const handleEdit = (product: any) => {
     const realProduct = product.isVariantRow
       ? products.find((p: any) => p.id === product.originalId)
@@ -329,41 +329,7 @@ const StockPage: React.FC = () => {
     return rows;
   }, [products]);
 
-  const filteredProducts = flattenedProducts.filter((product: any) => {
-    // Tab filter first
-    if (activeTab === 'Produits' && (product.est_service || product.non_stockable)) return false;
-    if (activeTab === 'Produits non stockables' && (product.est_service || !product.non_stockable)) return false;
-    if (activeTab === 'Services' && !product.est_service) return false;
-
-    const term = (searchTerm ?? '').toLowerCase();
-    const refStr = String(product.reference ?? product.id ?? '').toLowerCase();
-    const variantRefStr = String(product.variant_reference ?? '').toLowerCase();
-    const parentRefStr = String(product.parent_reference ?? '').toLowerCase();
-    const designation = String(product.designation ?? '').toLowerCase();
-    const variantName = String(product.variant_name ?? '').toLowerCase();
-    const matchesSearch =
-      designation.includes(term) ||
-      refStr.includes(term) ||
-      variantRefStr.includes(term) ||
-      parentRefStr.includes(term) ||
-      variantName.includes(term);
-
-    const matchesCategory = !filterCategory || (() => {
-      const ids = categoryFilterIds;
-      if (!ids) return true;
-
-      // New: product.categories array
-      if (product.categories && Array.isArray(product.categories) && product.categories.length > 0) {
-        return product.categories.some((c: any) => ids.has(Number(c.id)));
-      }
-
-      // Fallback: legacy single category id
-      const cid = Number(product.categorie_id);
-      return Number.isFinite(cid) ? ids.has(cid) : false;
-    })();
-
-    return matchesSearch && matchesCategory;
-  });
+  const filteredProducts = flattenedProducts;
 
   const handleExportExcel = () => {
     try {
@@ -429,16 +395,21 @@ const StockPage: React.FC = () => {
   };
 
   // Pagination
-  const totalItems = filteredProducts.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const totalItems = productsMeta?.total ?? filteredProducts.length;
+  const totalPages = productsMeta?.totalPages ?? Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+  const paginatedProducts = filteredProducts;
 
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterCategory, activeTab]);
+  }, [searchTerm, filterCategory, activeTab, itemsPerPage]);
+
+  const handleSearch = () => {
+    setCurrentPage(1);
+    setSearchTerm(searchInput.trim());
+  };
 
   return (
     <div className="p-6">
@@ -783,17 +754,28 @@ const StockPage: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
             placeholder="Rechercher par ID ou désignation..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSearch();
+            }}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
+        <button
+          type="button"
+          onClick={handleSearch}
+          className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+        >
+          <Search size={18} />
+          Rechercher
+        </button>
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
