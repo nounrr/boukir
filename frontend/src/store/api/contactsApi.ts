@@ -78,6 +78,11 @@ const contactsApi = api.injectEndpoints({
       providesTags: (_result, _error, id) => [{ type: 'Contact', id }],
     }),
 
+    getContactHistory: builder.query<any, number>({
+      query: (id) => ({ url: `/contacts/${id}/history` }),
+      providesTags: (_result, _error, id) => [{ type: 'Contact', id }],
+    }),
+
     createContact: builder.mutation<Contact, CreateContactData & { created_by: number }>({
       query: (body) => ({
         url: '/contacts',
@@ -162,6 +167,7 @@ export const {
   useGetContactsQuery,
   useGetContactsSummaryQuery,
   useGetContactQuery,
+  useGetContactHistoryQuery,
   useCreateContactMutation,
   useUpdateContactMutation,
   useDeleteContactMutation,

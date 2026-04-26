@@ -108,6 +108,170 @@ function getStatsDetailSign(type) {
   }
 }
 
+router.get('/dashboard-summary', async (_req, res) => {
+  try {
+    const [
+      [[employeesRow]],
+      [[productsRow]],
+      [[lowStockRow]],
+      [[ordersRow]],
+      [[pendingOrdersRow]],
+      [[talonDueSoonRow]],
+      [recentBons],
+      [recentPayments],
+      [criticalProducts],
+      [[overdueTalonsRow]],
+    ] = await Promise.all([
+      pool.query("SELECT COUNT(*) AS total FROM employees WHERE deleted_at IS NULL"),
+      pool.query("SELECT COUNT(*) AS total FROM products WHERE COALESCE(is_deleted, 0) = 0"),
+      pool.query("SELECT COUNT(*) AS total FROM products WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(quantite, 0) <= 5"),
+      pool.query(`
+        SELECT SUM(total) AS total
+        FROM (
+          SELECT COUNT(*) AS total
+          FROM bons_sortie
+          WHERE DATE(date_creation) = CURDATE() AND statut IN ('En attente', 'Validé')
+          UNION ALL
+          SELECT COUNT(*) AS total
+          FROM bons_comptant
+          WHERE DATE(date_creation) = CURDATE() AND statut IN ('En attente', 'Validé')
+        ) x
+      `),
+      pool.query(`
+        SELECT SUM(total) AS total
+        FROM (
+          SELECT COUNT(*) AS total
+          FROM bons_sortie
+          WHERE statut IN ('Brouillon', 'En attente', 'En cours')
+          UNION ALL
+          SELECT COUNT(*) AS total
+          FROM bons_commande
+          WHERE statut IN ('Brouillon', 'En attente', 'En cours')
+        ) x
+      `),
+      pool.query(`
+        SELECT COUNT(*) AS total
+        FROM payments
+        WHERE talon_id IS NOT NULL
+          AND date_echeance IS NOT NULL
+          AND DATEDIFF(DATE(date_echeance), CURDATE()) <= 5
+      `),
+      pool.query(`
+        SELECT *
+        FROM (
+          SELECT 'Sortie' AS type, id, CONCAT('SOR', LPAD(id, 2, '0')) AS numero, date_creation, montant_total, statut
+          FROM bons_sortie
+          WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+          UNION ALL
+          SELECT 'Comptant' AS type, id, CONCAT('COM', LPAD(id, 2, '0')) AS numero, date_creation, montant_total, statut
+          FROM bons_comptant
+          WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+          UNION ALL
+          SELECT 'Commande' AS type, id, CONCAT('CMD', LPAD(id, 2, '0')) AS numero, date_creation, montant_total, statut
+          FROM bons_commande
+          WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+        ) recent
+        ORDER BY date_creation DESC
+        LIMIT 3
+      `),
+      pool.query(`
+        SELECT id, date_paiement, montant_total, mode_paiement
+        FROM payments
+        WHERE date_paiement >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+        ORDER BY date_paiement DESC
+        LIMIT 2
+      `),
+      pool.query(`
+        SELECT id, designation, quantite
+        FROM products
+        WHERE COALESCE(is_deleted, 0) = 0 AND COALESCE(quantite, 0) <= 2
+        ORDER BY quantite ASC, id ASC
+        LIMIT 1
+      `),
+      pool.query(`
+        SELECT COUNT(*) AS total
+        FROM payments
+        WHERE talon_id IS NOT NULL
+          AND date_echeance IS NOT NULL
+          AND DATE(date_echeance) < CURDATE()
+      `),
+    ]);
+
+    const formatAmount = (value) => new Intl.NumberFormat('fr-FR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 10,
+    }).format(Number(value || 0));
+
+    const activities = [];
+    const now = Date.now();
+    const priorityOrder = { critical: 0, high: 1, medium: 2 };
+
+    for (const bon of recentBons || []) {
+      const created = new Date(bon.date_creation).getTime();
+      const timeAgo = Number.isFinite(created) ? Math.floor((now - created) / (1000 * 60 * 60)) : 0;
+      const color = bon.type === 'Sortie' ? 'green' : bon.type === 'Comptant' ? 'blue' : 'purple';
+      activities.push({
+        type: 'bon',
+        message: `${bon.type} ${bon.numero || `#${bon.id}`} créé - ${formatAmount(bon.montant_total)} DH`,
+        time: timeAgo > 0 ? `Il y a ${timeAgo}h` : "À l'instant",
+        color,
+        priority: bon.statut === 'Validé' ? 'high' : 'medium',
+      });
+    }
+
+    for (const payment of recentPayments || []) {
+      const paidAt = new Date(payment.date_paiement).getTime();
+      const timeAgo = Number.isFinite(paidAt) ? Math.floor((now - paidAt) / (1000 * 60 * 60)) : 0;
+      activities.push({
+        type: 'payment',
+        message: `Paiement PAY${String(payment.id).padStart(2, '0')} - ${formatAmount(payment.montant_total)} DH (${payment.mode_paiement || 'Espèces'})`,
+        time: timeAgo > 0 ? `Il y a ${timeAgo}h` : "À l'instant",
+        color: 'yellow',
+        priority: 'high',
+      });
+    }
+
+    if (criticalProducts?.length) {
+      const product = criticalProducts[0];
+      activities.push({
+        type: 'alert',
+        message: `Stock critique: "${product.designation}" (${product.quantite || 0} restants)`,
+        time: 'Maintenant',
+        color: 'red',
+        priority: 'critical',
+      });
+    }
+
+    const overdueTalons = Number(overdueTalonsRow?.total || 0);
+    if (overdueTalons > 0) {
+      activities.push({
+        type: 'overdue',
+        message: `${overdueTalons} talon(s) en retard de paiement`,
+        time: 'Urgent',
+        color: 'red',
+        priority: 'critical',
+      });
+    }
+
+    activities.sort((a, b) => (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99));
+
+    res.json({
+      stats: {
+        employees: Number(employeesRow?.total || 0),
+        products: Number(productsRow?.total || 0),
+        orders: Number(ordersRow?.total || 0),
+        lowStock: Number(lowStockRow?.total || 0),
+        pendingOrders: Number(pendingOrdersRow?.total || 0),
+        talonDueSoon: Number(talonDueSoonRow?.total || 0),
+      },
+      recentActivity: activities.slice(0, 5),
+    });
+  } catch (error) {
+    console.error('GET /stats/dashboard-summary error:', error);
+    res.status(500).json({ message: 'Erreur résumé dashboard', error: error?.sqlMessage || error?.message });
+  }
+});
+
 function formatStatsDetailNumero(type, id, numero) {
   if (numero) return String(numero);
   const prefixes = {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Check, Plus } from 'lucide-react';
 import { addBon } from '../store/slices/bonsSlice';
+import { useCreateBonMutation } from '../store/api/bonsApi';
 import { generateBonReference } from '../utils/referenceUtils';
 import { showSuccess, showError } from '../utils/notifications';
 import { formatDateInputToMySQL, getCurrentDateTimeInput } from '../utils/dateUtils';
@@ -95,7 +96,9 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
   if (!isOpen) return null;
 
   // Fonction pour créer un avoir complet
-  const handleCreateFullAvoir = () => {
+  const [createBon] = useCreateBonMutation();
+
+  const handleCreateFullAvoir = async () => {
     if (isChefChauffeur) {
       showError('Permission refusée: Chef Chauffeur ne peut pas créer des avoirs.');
       return;
@@ -126,21 +129,22 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
         updated_at: new Date().toISOString()
       };
       
-      dispatch(addBon(newAvoir));
-      showSuccess('Avoir créé avec succès');
-      
-      if (onAvoirCreated) {
-        onAvoirCreated(newAvoir);
+      try {
+        const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+        showSuccess('Avoir créé avec succès');
+        if (onAvoirCreated) onAvoirCreated(created);
+        onClose();
+      } catch (err: any) {
+        console.error('Erreur création avoir (API):', err);
+        showError('Erreur lors de la création de l\'avoir sur le serveur');
       }
-      
-      onClose();
     } catch (error: any) {
       console.error('Erreur lors de la création de l\'avoir:', error);
     }
   };
 
   // Fonction pour créer un avoir partiel
-  const handleCreatePartialAvoir = () => {
+  const handleCreatePartialAvoir = async () => {
     if (isChefChauffeur) {
       showError('Permission refusée: Chef Chauffeur ne peut pas créer des avoirs.');
       return;
@@ -187,14 +191,15 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
         updated_at: new Date().toISOString()
       };
       
-      dispatch(addBon(newAvoir));
-      showSuccess('Avoir partiel créé avec succès');
-      
-      if (onAvoirCreated) {
-        onAvoirCreated(newAvoir);
+      try {
+        const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+        showSuccess('Avoir partiel créé avec succès');
+        if (onAvoirCreated) onAvoirCreated(created);
+        onClose();
+      } catch (err: any) {
+        console.error('Erreur création avoir partiel (API):', err);
+        showError('Erreur lors de la création de l\'avoir partiel sur le serveur');
       }
-      
-      onClose();
     } catch (error: any) {
       console.error('Erreur lors de la création de l\'avoir partiel:', error);
     }
@@ -245,7 +250,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
               bon_id: selectedBon?.id || ''
             }}
             validationSchema={validationSchema}
-            onSubmit={(values) => {
+            onSubmit={async (values) => {
               if (isChefChauffeur) {
                 showError('Permission refusée: Chef Chauffeur ne peut pas créer des avoirs.');
                 return;
@@ -296,14 +301,15 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                   updated_at: new Date().toISOString()
                 };
                 
-                dispatch(addBon(newAvoir));
-                showSuccess('Avoir libre créé avec succès');
-                
-                if (onAvoirCreated) {
-                  onAvoirCreated(newAvoir);
+                try {
+                  const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+                  showSuccess('Avoir libre créé avec succès');
+                  if (onAvoirCreated) onAvoirCreated(created);
+                  onClose();
+                } catch (err: any) {
+                  console.error('Erreur création avoir (API):', err);
+                  showError('Erreur lors de la création de l\'avoir sur le serveur');
                 }
-                
-                onClose();
               } else if (values.type_avoir === 'avoir_client') {
                 // Créer un avoir client
                 const client = clients.find((c: Contact) => c.id.toString() === values.client_id.toString());
@@ -334,14 +340,15 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                   updated_at: new Date().toISOString()
                 };
                 
-                dispatch(addBon(newAvoir));
-                showSuccess('Avoir client créé avec succès');
-                
-                if (onAvoirCreated) {
-                  onAvoirCreated(newAvoir);
+                try {
+                  const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+                  showSuccess('Avoir client créé avec succès');
+                  if (onAvoirCreated) onAvoirCreated(created);
+                  onClose();
+                } catch (err: any) {
+                  console.error('Erreur création avoir (API):', err);
+                  showError('Erreur lors de la création de l\'avoir sur le serveur');
                 }
-                
-                onClose();
               } else if (values.type_avoir === 'avoir_fournisseur') {
                 // Créer un avoir fournisseur
                 const fournisseur = fournisseurs.find((f: Contact) => f.id.toString() === values.fournisseur_id.toString());
@@ -372,14 +379,15 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                   updated_at: new Date().toISOString()
                 };
                 
-                dispatch(addBon(newAvoir));
-                showSuccess('Avoir fournisseur créé avec succès');
-                
-                if (onAvoirCreated) {
-                  onAvoirCreated(newAvoir);
+                try {
+                  const created = await createBon({ type: newAvoir.type, ...newAvoir }).unwrap();
+                  showSuccess('Avoir fournisseur créé avec succès');
+                  if (onAvoirCreated) onAvoirCreated(created);
+                  onClose();
+                } catch (err: any) {
+                  console.error('Erreur création avoir fournisseur (API):', err);
+                  showError('Erreur lors de la création de l\'avoir fournisseur sur le serveur');
                 }
-                
-                onClose();
               }
             }}
             innerRef={formikRef}

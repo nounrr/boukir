@@ -91,8 +91,31 @@ export interface StatsDetailsResponse {
   };
 }
 
+export interface DashboardSummaryResponse {
+  stats: {
+    employees: number;
+    products: number;
+    orders: number;
+    lowStock: number;
+    pendingOrders: number;
+    talonDueSoon: number;
+  };
+  recentActivity: Array<{
+    type: string;
+    message: string;
+    time: string;
+    color: string;
+    priority: 'critical' | 'high' | 'medium' | string;
+  }>;
+}
+
 export const statsApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
+    getDashboardSummary: builder.query<DashboardSummaryResponse, void>({
+      query: () => '/stats/dashboard-summary',
+      providesTags: ['Bon', 'Product'],
+    }),
+
     getChiffreAffairesStats: builder.query<
       ChiffreAffairesStatsResponse,
       { filterType: StatsFilterType; date?: string; startDate?: string; endDate?: string; month?: string }
@@ -133,4 +156,9 @@ export const statsApi = apiSlice.injectEndpoints({
   }),
 });
 
-export const { useGetChiffreAffairesStatsQuery, useGetChiffreAffairesDetailQuery, useGetStatsDetailsQuery } = statsApi;
+export const {
+  useGetDashboardSummaryQuery,
+  useGetChiffreAffairesStatsQuery,
+  useGetChiffreAffairesDetailQuery,
+  useGetStatsDetailsQuery,
+} = statsApi;

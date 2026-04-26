@@ -4,6 +4,38 @@ import type { Bon } from '../../types';
 // Shared union for bon-like types
 type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'AvoirEcommerce' | 'Vehicule' | 'Ecommerce';
 
+type PagedBonsArgs = {
+  type: AnyBonType;
+  page: number;
+  limit: number;
+  search?: string;
+  status?: string;
+  sortBy?: 'numero' | 'date' | 'contact' | 'montant';
+  sortDir?: 'asc' | 'desc';
+  paymentState?: 'paid' | 'unpaid';
+};
+
+type PagedBonsResponse = {
+  data: Bon[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+type BonsContextResponse = {
+  sorties?: Bon[];
+  comptants?: Bon[];
+  commandes?: Bon[];
+  avoirsClient?: Bon[];
+  avoirsFournisseur?: Bon[];
+  ecommerceOrders?: Bon[];
+  avoirsEcommerce?: Bon[];
+  vehicules?: Bon[];
+};
+
 export const bonsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getBons: builder.query<Bon[], void>({
@@ -259,6 +291,103 @@ export const bonsApi = api.injectEndpoints({
         return tags;
       },
     }),
+
+    getBonsByTypePaged: builder.query<PagedBonsResponse, PagedBonsArgs>({
+      query: ({ type, ...params }) => ({
+        url: `/bons/paged/${type}`,
+        params,
+      }),
+      transformResponse: (response: any, _meta, args) => {
+        if (args.type === 'Ecommerce' && Array.isArray(response?.orders)) {
+          const data = response.orders.map((o: any) => ({
+            ecommerce_raw: o,
+            id: o.id,
+            type: 'Ecommerce',
+            client_id: o.user_id ?? undefined,
+            numero: o.order_number,
+            date_creation: o.created_at || o.confirmed_at,
+            created_at: o.created_at || o.confirmed_at || new Date().toISOString(),
+            updated_at: o.updated_at || o.created_at || o.confirmed_at || new Date().toISOString(),
+            client_nom: o.contact_nom_complet || o.contact_name || o.customer_name,
+            customer_email: o.customer_email || o.email,
+            phone: o.customer_phone,
+            adresse_livraison: o.shipping_address?.city
+              ? `${o.shipping_address.line1 || ''}${o.shipping_address.line2 ? `, ${o.shipping_address.line2}` : ''}, ${o.shipping_address.city}`
+              : (o.shipping_address?.line1 || o.shipping_address_line1 || ''),
+            montant_total: Number(o.total_amount || 0),
+            statut: o.status || 'pending',
+            ecommerce_status: o.status || 'pending',
+            items: (o.items || []).map((i: any) => ({
+              id: i.id,
+              order_item_id: i.id,
+              bon_id: o.id,
+              produit_id: i.product_id,
+              product_id: i.product_id,
+              variant_id: i.variant_id ?? null,
+              unit_id: i.unit_id ?? null,
+              quantite: Number(i.quantity),
+              prix_unitaire: Number(i.unit_price),
+              montant_ligne: Number(i.subtotal),
+              total: Number(i.subtotal),
+              designation_custom: i.product_name,
+              produit: { id: i.product_id, designation: i.product_name, designation_ar: i.product_name_ar },
+            })),
+            is_solde: o.payment_method === 'solde' || !!o.solde_amount,
+            payment_method: o.payment_method,
+            payment_status: o.payment_status,
+            delivery_method: o.delivery_method,
+            pickup_location_id: o.pickup_location_id,
+            pickup_location: o.pickup_location_id ? { id: o.pickup_location_id } : null,
+          }));
+          return {
+            data,
+            pagination: {
+              page: Number(response.page || args.page || 1),
+              limit: Number(response.limit || args.limit || 30),
+              total: Number(response.total || data.length),
+              totalPages: Number(response.pages || 0),
+            },
+          };
+        }
+        return response;
+      },
+      providesTags: (result, _error, { type }) => {
+        let actual: any = type;
+        if (type === 'Avoir') actual = 'AvoirClient';
+        else if (type === 'AvoirComptant') actual = 'AvoirComptant';
+        else if (type === 'AvoirEcommerce') actual = 'AvoirEcommerce';
+        return result?.data
+          ? [...result.data.map(({ id }) => ({ type: actual, id })), { type: actual, id: 'LIST' }]
+          : [{ type: actual, id: 'LIST' }];
+      },
+    }),
+
+    getCaisseBonsContext: builder.query<BonsContextResponse, void>({
+      query: () => '/bons/context/caisse',
+      providesTags: [{ type: 'Bon', id: 'LIST' }],
+    }),
+
+    getRemisesBonsContext: builder.query<BonsContextResponse, void>({
+      query: () => '/bons/context/remises',
+      providesTags: [{ type: 'Bon', id: 'LIST' }],
+    }),
+
+    getRemisesForClient: builder.query<BonsContextResponse, number>({
+      query: (clientId) => `/bons/remises/client/${clientId}`,
+      providesTags: (_result, _error, clientId) => [
+        { type: 'Bon', id: `remises-client-${clientId}` },
+      ],
+    }),
+
+    getReportsBonsContext: builder.query<BonsContextResponse, void>({
+      query: () => '/bons/context/reports',
+      providesTags: [{ type: 'Bon', id: 'LIST' }],
+    }),
+
+    getPaymentPrintBonsContext: builder.query<BonsContextResponse, void>({
+      query: () => '/bons/context/payment-print',
+      providesTags: [{ type: 'Bon', id: 'LIST' }],
+    }),
     
   deleteBon: builder.mutation<{ success: boolean; id: number }, { id: number; type: AnyBonType }>({
       query: ({ id, type }) => {
@@ -485,6 +614,12 @@ export const bonsApi = api.injectEndpoints({
 export const {
   useGetBonsQuery,
   useGetBonsByTypeQuery,
+  useGetBonsByTypePagedQuery,
+  useGetCaisseBonsContextQuery,
+  useGetRemisesBonsContextQuery,
+  useGetRemisesForClientQuery,
+  useGetReportsBonsContextQuery,
+  useGetPaymentPrintBonsContextQuery,
   useGetBonQuery,
   useCreateBonMutation,
   useUpdateBonMutation,
