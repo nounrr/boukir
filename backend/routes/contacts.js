@@ -945,6 +945,11 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', si.product_id,
               'variant_id', si.variant_id,
               'unit_id', si.unit_id,
+              'reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
+              'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
+              'designation', p.designation,
+              'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
+              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
               'quantite', si.quantite,
               'prix_unitaire', si.prix_unitaire,
               'remise_pourcentage', si.remise_pourcentage,
@@ -955,6 +960,8 @@ router.get('/:id/history', async (req, res) => {
           ), JSON_ARRAY()) AS items
         FROM bons_sortie bs
         LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
+        LEFT JOIN products p ON p.id = si.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
         WHERE bs.client_id = ?
         GROUP BY bs.id
         ORDER BY bs.date_creation ASC, bs.id ASC
@@ -968,6 +975,11 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', ci.product_id,
               'variant_id', ci.variant_id,
               'unit_id', ci.unit_id,
+              'reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
+              'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
+              'designation', p.designation,
+              'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
+              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
               'quantite', ci.quantite,
               'prix_unitaire', ci.prix_unitaire,
               'remise_pourcentage', ci.remise_pourcentage,
@@ -978,6 +990,8 @@ router.get('/:id/history', async (req, res) => {
           ), JSON_ARRAY()) AS items
         FROM bons_comptant bc
         LEFT JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
+        LEFT JOIN products p ON p.id = ci.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
         WHERE bc.client_id = ?
         GROUP BY bc.id
         ORDER BY bc.date_creation ASC, bc.id ASC
@@ -991,15 +1005,23 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', ci.product_id,
               'variant_id', ci.variant_id,
               'unit_id', ci.unit_id,
+              'reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
+              'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
+              'designation', p.designation,
+              'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
+              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
               'quantite', ci.quantite,
               'prix_unitaire', ci.prix_unitaire,
               'remise_pourcentage', ci.remise_pourcentage,
               'remise_montant', ci.remise_montant,
-              'total', ci.total
+              'total', ci.total,
+              'product_snapshot_id', ci.product_snapshot_id
             ) END
           ), JSON_ARRAY()) AS items
         FROM bons_commande bcmd
         LEFT JOIN commande_items ci ON ci.bon_commande_id = bcmd.id
+        LEFT JOIN products p ON p.id = ci.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
         WHERE bcmd.fournisseur_id = ?
         GROUP BY bcmd.id
         ORDER BY bcmd.date_creation ASC, bcmd.id ASC
@@ -1013,6 +1035,11 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', ai.product_id,
               'variant_id', ai.variant_id,
               'unit_id', ai.unit_id,
+              'reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
+              'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
+              'designation', p.designation,
+              'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
+              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
               'quantite', ai.quantite,
               'prix_unitaire', ai.prix_unitaire,
               'remise_pourcentage', ai.remise_pourcentage,
@@ -1023,6 +1050,8 @@ router.get('/:id/history', async (req, res) => {
           ), JSON_ARRAY()) AS items
         FROM avoirs_client ac
         LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
+        LEFT JOIN products p ON p.id = ai.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
         WHERE ac.client_id = ?
         GROUP BY ac.id
         ORDER BY ac.date_creation ASC, ac.id ASC
@@ -1036,15 +1065,23 @@ router.get('/:id/history', async (req, res) => {
               'produit_id', afi.product_id,
               'variant_id', afi.variant_id,
               'unit_id', afi.unit_id,
+              'reference', COALESCE(CAST(p.id AS CHAR), CAST(afi.product_id AS CHAR)),
+              'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(afi.product_id AS CHAR)),
+              'designation', p.designation,
+              'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
+              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
               'quantite', afi.quantite,
               'prix_unitaire', afi.prix_unitaire,
               'remise_pourcentage', afi.remise_pourcentage,
               'remise_montant', afi.remise_montant,
-              'total', afi.total
+              'total', afi.total,
+              'product_snapshot_id', afi.product_snapshot_id
             ) END
           ), JSON_ARRAY()) AS items
         FROM avoirs_fournisseur af
         LEFT JOIN avoir_fournisseur_items afi ON afi.avoir_fournisseur_id = af.id
+        LEFT JOIN products p ON p.id = afi.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = afi.product_snapshot_id
         WHERE af.fournisseur_id = ?
         GROUP BY af.id
         ORDER BY af.date_creation ASC, af.id ASC
@@ -1100,11 +1137,17 @@ router.get('/:id/history', async (req, res) => {
       ORDER BY cr.id DESC
     `, [contactId, ...legacyNames.map((value) => value.toLowerCase())]);
 
-    const normalizeItems = (rows, type) => rows.map((row) => {
-      const parsedItems = typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []);
+    const normalizeItems = (rows, type, prefix) => rows.map((row) => {
+      let parsedItems = [];
+      try {
+        parsedItems = typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []);
+      } catch {
+        parsedItems = [];
+      }
       return {
         ...row,
         type,
+        numero: row.numero || `${prefix}${String(row.id).padStart(2, '0')}`,
         items: Array.isArray(parsedItems) ? parsedItems.filter(Boolean) : [],
       };
     });
@@ -1122,11 +1165,11 @@ router.get('/:id/history', async (req, res) => {
 
     res.json({
       contactId,
-      sorties: normalizeItems(sorties, 'Sortie'),
-      comptants: normalizeItems(comptants, 'Comptant'),
-      commandes: normalizeItems(commandes, 'Commande'),
-      avoirsClient: normalizeItems(avoirsClient, 'Avoir'),
-      avoirsFournisseur: normalizeItems(avoirsFournisseur, 'AvoirFournisseur'),
+      sorties: normalizeItems(sorties, 'Sortie', 'SOR'),
+      comptants: normalizeItems(comptants, 'Comptant', 'COM'),
+      commandes: normalizeItems(commandes, 'Commande', 'CMD'),
+      avoirsClient: normalizeItems(avoirsClient, 'Avoir', 'AVC'),
+      avoirsFournisseur: normalizeItems(avoirsFournisseur, 'AvoirFournisseur', 'AVF'),
       payments,
       ecommerceOrders: ecommerceOrders.map((row) => ({ ...row, type: 'Ecommerce' })),
       avoirsEcommerce: avoirsEcommerce.map((row) => ({ ...row, type: 'AvoirEcommerce' })),

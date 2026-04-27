@@ -249,9 +249,9 @@ router.get('/', verifyToken, async (req, res) => {
     if (date_from) { where.push('date_paiement >= ?'); params.push(String(date_from)); }
     if (date_to) { where.push('date_paiement <= ?'); params.push(String(date_to)); }
     if (search) {
-      where.push('(numero LIKE ? OR designation LIKE ? OR reference LIKE ? OR reference_virement LIKE ?)');
+      where.push('(CAST(id AS CHAR) LIKE ? OR numero LIKE ? OR designation LIKE ? OR code_reglement LIKE ? OR CAST(bon_id AS CHAR) LIKE ? OR remise_account_name LIKE ?)');
       const s = `%${String(search)}%`;
-      params.push(s, s, s, s);
+      params.push(s, s, s, s, s, s);
     }
     const sql = `SELECT * FROM payments ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC`;
   const [rows] = await pool.query(sql, params);
@@ -310,8 +310,7 @@ router.get('/paged', verifyToken, async (req, res) => {
         CAST(p.id AS CHAR) LIKE ?
         OR p.numero LIKE ?
         OR p.designation LIKE ?
-        OR p.reference LIKE ?
-        OR p.reference_virement LIKE ?
+        OR CAST(p.bon_id AS CHAR) LIKE ?
         OR CAST(p.montant_total AS CHAR) LIKE ?
         OR p.mode_paiement LIKE ?
         OR p.type_paiement LIKE ?
@@ -324,7 +323,7 @@ router.get('/paged', verifyToken, async (req, res) => {
         OR c.telephone LIKE ?
         OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.telephone, ''), ' ', ''), '-', ''), '.', ''), '+', '') LIKE ?
       )`);
-      params.push(like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, phoneLike);
+      params.push(like, like, like, like, like, like, like, like, like, like, like, like, like, like, phoneLike);
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';

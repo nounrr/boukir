@@ -573,6 +573,20 @@ const ContactsPage: React.FC = () => {
   };
 
 
+  const sameId = (a: any, b: any) => String(a ?? '') === String(b ?? '');
+  const getBonPrefix = (type: any) => {
+    if (type === 'Sortie') return 'SOR';
+    if (type === 'Comptant') return 'COM';
+    if (type === 'Commande') return 'CMD';
+    if (type === 'Avoir') return 'AVC';
+    if (type === 'AvoirFournisseur') return 'AVF';
+    return 'BON';
+  };
+  const getDisplayBonNumero = (bon: any) => {
+    const raw = String(bon?.numero ?? '').trim();
+    if (raw) return raw;
+    return `${getBonPrefix(bon?.type)}${String(bon?.id ?? '').padStart(2, '0')}`;
+  };
 
   // Bons du contact sélectionné
   const bonsForContact = useMemo(() => {
@@ -582,13 +596,13 @@ const ContactsPage: React.FC = () => {
     const list: any[] = [];
 
     if (isClient) {
-      for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
+      for (const b of sorties) if (sameId(b.client_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
       // Devis intentionally excluded from detail/transactions per requirement
-      for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
-      for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
+      for (const b of comptants) if (sameId(b.client_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
+      for (const b of avoirsClient) if (sameId(b.client_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
     } else {
-      for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
-      for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
+      for (const b of commandes) if (sameId(b.fournisseur_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
+      for (const b of avoirsFournisseur) if (sameId(b.fournisseur_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
     }
 
     return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
@@ -621,8 +635,8 @@ const ContactsPage: React.FC = () => {
       const bonItems = Array.isArray(b.items) ? b.items : [];
 
       for (const it of bonItems) {
-        const prod = products.find((p) => p.id === it.product_id);
-        const ref = prod ? String((prod as any).reference ?? prod.id) : String(it.product_id);
+        const prod = products.find((p) => sameId(p.id, it.product_id));
+        const ref = prod ? String((prod as any).reference ?? prod.id) : String(it.product_reference ?? it.reference ?? it.product_id ?? '');
         let des = prod ? (prod as any).designation : (it.designation || '');
         // Résoudre le nom de la variante
         const vId = (it as any).variant_id ?? (it as any).variantId;
@@ -653,7 +667,7 @@ const ContactsPage: React.FC = () => {
         items.push({
           id: `${b.id}-${it.product_id}-${it.id ?? `${items.length}`}`,
           bon_id: b.id,
-          bon_numero: b.numero,
+          bon_numero: getDisplayBonNumero(b),
           code_reglement: b.code_reglement,
           bon_type: b.type,
           bon_date: bDate,
@@ -938,12 +952,12 @@ const ContactsPage: React.FC = () => {
         const list: any[] = [];
 
         if (isClient) {
-          for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
-          for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
-          for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
+          for (const b of sorties) if (sameId(b.client_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Sortie' });
+          for (const b of comptants) if (sameId(b.client_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Comptant' });
+          for (const b of avoirsClient) if (sameId(b.client_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Avoir' });
         } else {
-          for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
-          for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
+          for (const b of commandes) if (sameId(b.fournisseur_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'Commande' });
+          for (const b of avoirsFournisseur) if (sameId(b.fournisseur_id, id) && isAllowedStatut(b.statut)) list.push({ ...b, type: 'AvoirFournisseur' });
         }
 
         return list.sort((a, b) => new Date(a.date_creation).getTime() - new Date(b.date_creation).getTime());
@@ -1142,20 +1156,20 @@ const ContactsPage: React.FC = () => {
     const id = selectedContact.id;
     const allBons: any[] = [];
     if (isClient) {
-      for (const b of sorties) if (b.client_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Sortie' });
-      for (const b of comptants) if (b.client_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Comptant' });
-      for (const b of avoirsClient) if (b.client_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Avoir' });
+      for (const b of sorties) if (sameId(b.client_id, id) && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Sortie' });
+      for (const b of comptants) if (sameId(b.client_id, id) && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Comptant' });
+      for (const b of avoirsClient) if (sameId(b.client_id, id) && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Avoir' });
     } else {
-      for (const b of commandes) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Commande' });
-      for (const b of avoirsFournisseur) if (b.fournisseur_id === id && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'AvoirFournisseur' });
+      for (const b of commandes) if (sameId(b.fournisseur_id, id) && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'Commande' });
+      for (const b of avoirsFournisseur) if (sameId(b.fournisseur_id, id) && isAllowedStatut(b.statut)) allBons.push({ ...b, type: 'AvoirFournisseur' });
     }
 
     const items: any[] = [];
     for (const b of allBons) {
       const bonItems = Array.isArray(b.items) ? b.items : [];
       for (const it of bonItems) {
-        const prod = products.find((p) => p.id === it.product_id);
-        const ref = prod ? String((prod as any).reference ?? prod.id) : String(it.product_id);
+        const prod = products.find((p) => sameId(p.id, it.product_id));
+        const ref = prod ? String((prod as any).reference ?? prod.id) : String(it.product_reference ?? it.reference ?? it.product_id ?? '');
         let des = prod ? (prod as any).designation : (it.designation || '');
         const vId = (it as any).variant_id ?? (it as any).variantId;
         if (vId && prod) {
@@ -1190,7 +1204,7 @@ const ContactsPage: React.FC = () => {
         const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
         items.push({
           id: `${b.id}-${it.product_id}-${it.id ?? `${items.length}`}`,
-          bon_id: b.id, bon_numero: b.numero, bon_type: b.type,
+          bon_id: b.id, bon_numero: getDisplayBonNumero(b), bon_type: b.type,
           bon_date: formatDateDMY(b.date_creation), bon_date_iso: b.date_creation, bon_statut: b.statut,
           product_id: it.product_id, product_reference: ref, product_designation: des,
           quantite: q, prix_unitaire: prixUnit, total, mouvement,
