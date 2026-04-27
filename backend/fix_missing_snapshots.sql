@@ -1,7 +1,7 @@
 -- ============================================================
--- DETECTION & FIX: Bons sans liaison snapshot (multi-snapshot products)
--- Condition: date_creation > 2026-03-31, product_snapshot_id IS NULL,
---            produit a plusieurs snapshots avec quantite > 0
+-- DETECTION & FIX: Bons sans liaison snapshot
+-- Condition: date_creation >= 2026-03-01, product_snapshot_id IS NULL,
+--            produit/variante avec au moins un snapshot exact, meme si quantite = 0
 -- ============================================================
 -- ETAPE 1: LANCER LA DETECTION D'ABORD, VERIFIER LES RESULTATS
 -- ETAPE 2: SEULEMENT APRES VERIFICATION, EXECUTER LES UPDATE
@@ -13,7 +13,7 @@
 -- ============================================================
 
 -- 1.1 Resume groupe par produit: produits ayant des items sans snapshot
---     et plusieurs snapshots disponibles avec quantite > 0
+--     et au moins un snapshot disponible, meme si quantite = 0
 --     Si le produit/variante n'a aucun snapshot exact en systeme,
 --     il est exclu par le JOIN product_snapshot ci-dessous.
 SELECT
@@ -49,14 +49,12 @@ FROM (
     JOIN products p ON p.id = ci.product_id
     JOIN product_snapshot ps ON ps.product_id = ci.product_id
         AND ((NULLIF(ci.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(ci.variant_id, 0))
-        AND ps.quantite > 0
     WHERE ci.product_snapshot_id IS NULL
-      AND bc.date_creation > '2026-03-31'
-      AND (COALESCE(p.has_variants, 0) = 0 OR NULLIF(ci.variant_id, 0) IS NOT NULL)
+      AND bc.date_creation >= '2026-03-01'
       AND p.prix_achat = 0
       AND p.cout_revient = 0
     GROUP BY bc.id, bc.date_creation, ci.id, ci.product_id, ci.variant_id, p.designation, ci.quantite
-    HAVING COUNT(ps.id) > 1
+    HAVING COUNT(ps.id) >= 1
 
     UNION ALL
 
@@ -76,14 +74,12 @@ FROM (
     JOIN products p ON p.id = si.product_id
     JOIN product_snapshot ps ON ps.product_id = si.product_id
         AND ((NULLIF(si.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(si.variant_id, 0))
-        AND ps.quantite > 0
     WHERE si.product_snapshot_id IS NULL
-      AND bs.date_creation > '2026-03-31'
-      AND (COALESCE(p.has_variants, 0) = 0 OR NULLIF(si.variant_id, 0) IS NOT NULL)
+      AND bs.date_creation >= '2026-03-01'
       AND p.prix_achat = 0
       AND p.cout_revient = 0
     GROUP BY bs.id, bs.date_creation, si.id, si.product_id, si.variant_id, p.designation, si.quantite
-    HAVING COUNT(ps.id) > 1
+    HAVING COUNT(ps.id) >= 1
 
     UNION ALL
 
@@ -103,14 +99,12 @@ FROM (
     JOIN products p ON p.id = aci.product_id
     JOIN product_snapshot ps ON ps.product_id = aci.product_id
         AND ((NULLIF(aci.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(aci.variant_id, 0))
-        AND ps.quantite > 0
     WHERE aci.product_snapshot_id IS NULL
-      AND ac.date_creation > '2026-03-31'
-      AND (COALESCE(p.has_variants, 0) = 0 OR NULLIF(aci.variant_id, 0) IS NOT NULL)
+      AND ac.date_creation >= '2026-03-01'
       AND p.prix_achat = 0
       AND p.cout_revient = 0
     GROUP BY ac.id, ac.date_creation, aci.id, aci.product_id, aci.variant_id, p.designation, aci.quantite
-    HAVING COUNT(ps.id) > 1
+    HAVING COUNT(ps.id) >= 1
 
     UNION ALL
 
@@ -130,14 +124,12 @@ FROM (
     JOIN products p ON p.id = acpi.product_id
     JOIN product_snapshot ps ON ps.product_id = acpi.product_id
         AND ((NULLIF(acpi.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(acpi.variant_id, 0))
-        AND ps.quantite > 0
     WHERE acpi.product_snapshot_id IS NULL
-      AND acp.date_creation > '2026-03-31'
-      AND (COALESCE(p.has_variants, 0) = 0 OR NULLIF(acpi.variant_id, 0) IS NOT NULL)
+      AND acp.date_creation >= '2026-03-01'
       AND p.prix_achat = 0
       AND p.cout_revient = 0
     GROUP BY acp.id, acp.date_creation, acpi.id, acpi.product_id, acpi.variant_id, p.designation, acpi.quantite
-    HAVING COUNT(ps.id) > 1
+    HAVING COUNT(ps.id) >= 1
 ) AS problemes
 GROUP BY problemes.product_id, problemes.variant_id, problemes.produit_nom
 ORDER BY nb_lignes_problematiques DESC, problemes.product_id, problemes.variant_id;
@@ -163,14 +155,12 @@ JOIN comptant_items ci ON ci.bon_comptant_id = bc.id
 JOIN products p ON p.id = ci.product_id
 JOIN product_snapshot ps ON ps.product_id = ci.product_id
     AND ((NULLIF(ci.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(ci.variant_id, 0))
-    AND ps.quantite > 0
 WHERE ci.product_snapshot_id IS NULL
-  AND bc.date_creation > '2026-03-31'
-  AND (COALESCE(p.has_variants, 0) = 0 OR NULLIF(ci.variant_id, 0) IS NOT NULL)
+  AND bc.date_creation >= '2026-03-01'
   AND p.prix_achat = 0
   AND p.cout_revient = 0
 GROUP BY bc.id, bc.date_creation, bc.client_nom, ci.id, ci.product_id, ci.variant_id, p.designation, ci.quantite, ci.prix_unitaire
-HAVING COUNT(ps.id) > 1
+HAVING COUNT(ps.id) >= 1
 
 UNION ALL
 
@@ -193,14 +183,12 @@ JOIN sortie_items si ON si.bon_sortie_id = bs.id
 JOIN products p ON p.id = si.product_id
 JOIN product_snapshot ps ON ps.product_id = si.product_id
     AND ((NULLIF(si.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(si.variant_id, 0))
-    AND ps.quantite > 0
 WHERE si.product_snapshot_id IS NULL
-  AND bs.date_creation > '2026-03-31'
-  AND (COALESCE(p.has_variants, 0) = 0 OR NULLIF(si.variant_id, 0) IS NOT NULL)
+  AND bs.date_creation >= '2026-03-01'
   AND p.prix_achat = 0
   AND p.cout_revient = 0
 GROUP BY bs.id, bs.date_creation, si.id, si.product_id, si.variant_id, p.designation, si.quantite, si.prix_unitaire
-HAVING COUNT(ps.id) > 1
+HAVING COUNT(ps.id) >= 1
 
 UNION ALL
 
@@ -223,14 +211,12 @@ JOIN avoir_client_items aci ON aci.avoir_client_id = ac.id
 JOIN products p ON p.id = aci.product_id
 JOIN product_snapshot ps ON ps.product_id = aci.product_id
     AND ((NULLIF(aci.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(aci.variant_id, 0))
-    AND ps.quantite > 0
 WHERE aci.product_snapshot_id IS NULL
-  AND ac.date_creation > '2026-03-31'
-  AND (COALESCE(p.has_variants, 0) = 0 OR NULLIF(aci.variant_id, 0) IS NOT NULL)
+  AND ac.date_creation >= '2026-03-01'
   AND p.prix_achat = 0
   AND p.cout_revient = 0
 GROUP BY ac.id, ac.date_creation, aci.id, aci.product_id, aci.variant_id, p.designation, aci.quantite, aci.prix_unitaire
-HAVING COUNT(ps.id) > 1
+HAVING COUNT(ps.id) >= 1
 
 UNION ALL
 
@@ -253,14 +239,12 @@ JOIN avoir_comptant_items acpi ON acpi.avoir_comptant_id = acp.id
 JOIN products p ON p.id = acpi.product_id
 JOIN product_snapshot ps ON ps.product_id = acpi.product_id
     AND ((NULLIF(acpi.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(acpi.variant_id, 0))
-    AND ps.quantite > 0
 WHERE acpi.product_snapshot_id IS NULL
-  AND acp.date_creation > '2026-03-31'
-  AND (COALESCE(p.has_variants, 0) = 0 OR NULLIF(acpi.variant_id, 0) IS NOT NULL)
+  AND acp.date_creation >= '2026-03-01'
   AND p.prix_achat = 0
   AND p.cout_revient = 0
 GROUP BY acp.id, acp.date_creation, acp.client_nom, acpi.id, acpi.product_id, acpi.variant_id, p.designation, acpi.quantite, acpi.prix_unitaire
-HAVING COUNT(ps.id) > 1
+HAVING COUNT(ps.id) >= 1
 
 ORDER BY date_creation DESC;
 
@@ -284,7 +268,6 @@ JOIN (
             FROM product_snapshot ps2
             WHERE ps2.product_id = ci2.product_id
               AND ((NULLIF(ci2.variant_id, 0) IS NULL AND ps2.variant_id IS NULL) OR ps2.variant_id = NULLIF(ci2.variant_id, 0))
-              AND ps2.quantite > 0
             ORDER BY
                 CASE WHEN ps2.quantite >= ci2.quantite THEN 0 ELSE 1 END,
                 ps2.created_at DESC
@@ -295,7 +278,6 @@ JOIN (
             FROM product_snapshot ps2
             WHERE ps2.product_id = ci2.product_id
               AND ((NULLIF(ci2.variant_id, 0) IS NULL AND ps2.variant_id IS NULL) OR ps2.variant_id = NULLIF(ci2.variant_id, 0))
-              AND ps2.quantite > 0
             ORDER BY
                 CASE WHEN ps2.quantite >= ci2.quantite THEN 0 ELSE 1 END,
                 ps2.created_at DESC
@@ -306,7 +288,6 @@ JOIN (
             FROM product_snapshot ps2
             WHERE ps2.product_id = ci2.product_id
               AND ((NULLIF(ci2.variant_id, 0) IS NULL AND ps2.variant_id IS NULL) OR ps2.variant_id = NULLIF(ci2.variant_id, 0))
-              AND ps2.quantite > 0
             ORDER BY
                 CASE WHEN ps2.quantite >= ci2.quantite THEN 0 ELSE 1 END,
                 ps2.created_at DESC
@@ -317,18 +298,20 @@ JOIN (
     JOIN products p2 ON p2.id = ci2.product_id
     JOIN product_snapshot ps ON ps.product_id = ci2.product_id
         AND ((NULLIF(ci2.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(ci2.variant_id, 0))
-        AND ps.quantite > 0
     WHERE ci2.product_snapshot_id IS NULL
-      AND bc.date_creation > '2026-03-31'
-      AND (COALESCE(p2.has_variants, 0) = 0 OR NULLIF(ci2.variant_id, 0) IS NOT NULL)
+      AND bc.date_creation >= '2026-03-01'
       AND p2.prix_achat = 0
       AND p2.cout_revient = 0
     GROUP BY ci2.id, ci2.product_id, ci2.variant_id, ci2.quantite
-    HAVING COUNT(ps.id) > 1
+    HAVING COUNT(ps.id) >= 1
 ) AS fix ON fix.item_id = ci.id
 SET
     ci.product_snapshot_id = fix.best_snapshot_id,
-    ci.prix_unitaire = fix.best_prix_vente
+    ci.prix_unitaire = fix.best_prix_vente,
+    ci.is_indisponible = CASE
+        WHEN (SELECT ps_check.quantite FROM product_snapshot ps_check WHERE ps_check.id = fix.best_snapshot_id) <= 0 THEN 1
+        ELSE ci.is_indisponible
+    END
 WHERE fix.best_snapshot_id IS NOT NULL;
 
 -- Deduire la quantite des snapshots lies (comptant)
@@ -336,7 +319,7 @@ UPDATE product_snapshot ps
 JOIN comptant_items ci ON ci.product_snapshot_id = ps.id
 JOIN bons_comptant bc ON bc.id = ci.bon_comptant_id
 SET ps.quantite = GREATEST(ps.quantite - ci.quantite, 0)
-WHERE bc.date_creation > '2026-03-31'
+WHERE bc.date_creation >= '2026-03-01'
   AND ci.product_snapshot_id IS NOT NULL;
 -- NOTE: cette deuxieme UPDATE ne s'applique qu'aux lignes qu'on vient de lier
 --       Si les bons etaient deja valides (snapshot_id existant), ils ne sont pas retouches
@@ -354,7 +337,6 @@ JOIN (
             FROM product_snapshot ps2
             WHERE ps2.product_id = si2.product_id
               AND ((NULLIF(si2.variant_id, 0) IS NULL AND ps2.variant_id IS NULL) OR ps2.variant_id = NULLIF(si2.variant_id, 0))
-              AND ps2.quantite > 0
             ORDER BY
                 CASE WHEN ps2.quantite >= si2.quantite THEN 0 ELSE 1 END,
                 ps2.created_at DESC
@@ -365,7 +347,6 @@ JOIN (
             FROM product_snapshot ps2
             WHERE ps2.product_id = si2.product_id
               AND ((NULLIF(si2.variant_id, 0) IS NULL AND ps2.variant_id IS NULL) OR ps2.variant_id = NULLIF(si2.variant_id, 0))
-              AND ps2.quantite > 0
             ORDER BY
                 CASE WHEN ps2.quantite >= si2.quantite THEN 0 ELSE 1 END,
                 ps2.created_at DESC
@@ -376,18 +357,20 @@ JOIN (
     JOIN products p2 ON p2.id = si2.product_id
     JOIN product_snapshot ps ON ps.product_id = si2.product_id
         AND ((NULLIF(si2.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(si2.variant_id, 0))
-        AND ps.quantite > 0
     WHERE si2.product_snapshot_id IS NULL
-      AND bs.date_creation > '2026-03-31'
-      AND (COALESCE(p2.has_variants, 0) = 0 OR NULLIF(si2.variant_id, 0) IS NOT NULL)
+      AND bs.date_creation >= '2026-03-01'
       AND p2.prix_achat = 0
       AND p2.cout_revient = 0
     GROUP BY si2.id, si2.product_id, si2.variant_id, si2.quantite
-    HAVING COUNT(ps.id) > 1
+    HAVING COUNT(ps.id) >= 1
 ) AS fix ON fix.item_id = si.id
 SET
     si.product_snapshot_id = fix.best_snapshot_id,
-    si.prix_unitaire = fix.best_prix_vente
+    si.prix_unitaire = fix.best_prix_vente,
+    si.is_indisponible = CASE
+        WHEN (SELECT ps_check.quantite FROM product_snapshot ps_check WHERE ps_check.id = fix.best_snapshot_id) <= 0 THEN 1
+        ELSE si.is_indisponible
+    END
 WHERE fix.best_snapshot_id IS NOT NULL;
 
 -- Deduire la quantite des snapshots lies (sortie)
@@ -395,7 +378,7 @@ UPDATE product_snapshot ps
 JOIN sortie_items si ON si.product_snapshot_id = ps.id
 JOIN bons_sortie bs ON bs.id = si.bon_sortie_id
 SET ps.quantite = GREATEST(ps.quantite - si.quantite, 0)
-WHERE bs.date_creation > '2026-03-31'
+WHERE bs.date_creation >= '2026-03-01'
   AND si.product_snapshot_id IS NOT NULL;
 
 
@@ -412,7 +395,6 @@ JOIN (
             FROM product_snapshot ps2
             WHERE ps2.product_id = aci2.product_id
               AND ((NULLIF(aci2.variant_id, 0) IS NULL AND ps2.variant_id IS NULL) OR ps2.variant_id = NULLIF(aci2.variant_id, 0))
-              AND ps2.quantite > 0
             ORDER BY
                 CASE WHEN ps2.quantite >= aci2.quantite THEN 0 ELSE 1 END,
                 ps2.created_at DESC
@@ -423,7 +405,6 @@ JOIN (
             FROM product_snapshot ps2
             WHERE ps2.product_id = aci2.product_id
               AND ((NULLIF(aci2.variant_id, 0) IS NULL AND ps2.variant_id IS NULL) OR ps2.variant_id = NULLIF(aci2.variant_id, 0))
-              AND ps2.quantite > 0
             ORDER BY
                 CASE WHEN ps2.quantite >= aci2.quantite THEN 0 ELSE 1 END,
                 ps2.created_at DESC
@@ -434,14 +415,12 @@ JOIN (
     JOIN products p2 ON p2.id = aci2.product_id
     JOIN product_snapshot ps ON ps.product_id = aci2.product_id
         AND ((NULLIF(aci2.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(aci2.variant_id, 0))
-        AND ps.quantite > 0
     WHERE aci2.product_snapshot_id IS NULL
-      AND ac.date_creation > '2026-03-31'
-      AND (COALESCE(p2.has_variants, 0) = 0 OR NULLIF(aci2.variant_id, 0) IS NOT NULL)
+      AND ac.date_creation >= '2026-03-01'
       AND p2.prix_achat = 0
       AND p2.cout_revient = 0
     GROUP BY aci2.id, aci2.product_id, aci2.variant_id, aci2.quantite
-    HAVING COUNT(ps.id) > 1
+    HAVING COUNT(ps.id) >= 1
 ) AS fix ON fix.item_id = aci.id
 SET
     aci.product_snapshot_id = fix.best_snapshot_id,
@@ -453,7 +432,7 @@ UPDATE product_snapshot ps
 JOIN avoir_client_items aci ON aci.product_snapshot_id = ps.id
 JOIN avoirs_client ac ON ac.id = aci.avoir_client_id
 SET ps.quantite = ps.quantite + aci.quantite
-WHERE ac.date_creation > '2026-03-31'
+WHERE ac.date_creation >= '2026-03-01'
   AND aci.product_snapshot_id IS NOT NULL;
 
 
@@ -470,7 +449,6 @@ JOIN (
             FROM product_snapshot ps2
             WHERE ps2.product_id = acpi2.product_id
               AND ((NULLIF(acpi2.variant_id, 0) IS NULL AND ps2.variant_id IS NULL) OR ps2.variant_id = NULLIF(acpi2.variant_id, 0))
-              AND ps2.quantite > 0
             ORDER BY
                 CASE WHEN ps2.quantite >= acpi2.quantite THEN 0 ELSE 1 END,
                 ps2.created_at DESC
@@ -481,7 +459,6 @@ JOIN (
             FROM product_snapshot ps2
             WHERE ps2.product_id = acpi2.product_id
               AND ((NULLIF(acpi2.variant_id, 0) IS NULL AND ps2.variant_id IS NULL) OR ps2.variant_id = NULLIF(acpi2.variant_id, 0))
-              AND ps2.quantite > 0
             ORDER BY
                 CASE WHEN ps2.quantite >= acpi2.quantite THEN 0 ELSE 1 END,
                 ps2.created_at DESC
@@ -492,14 +469,12 @@ JOIN (
     JOIN products p2 ON p2.id = acpi2.product_id
     JOIN product_snapshot ps ON ps.product_id = acpi2.product_id
         AND ((NULLIF(acpi2.variant_id, 0) IS NULL AND ps.variant_id IS NULL) OR ps.variant_id = NULLIF(acpi2.variant_id, 0))
-        AND ps.quantite > 0
     WHERE acpi2.product_snapshot_id IS NULL
-      AND acp.date_creation > '2026-03-31'
-      AND (COALESCE(p2.has_variants, 0) = 0 OR NULLIF(acpi2.variant_id, 0) IS NOT NULL)
+      AND acp.date_creation >= '2026-03-01'
       AND p2.prix_achat = 0
       AND p2.cout_revient = 0
     GROUP BY acpi2.id, acpi2.product_id, acpi2.variant_id, acpi2.quantite
-    HAVING COUNT(ps.id) > 1
+    HAVING COUNT(ps.id) >= 1
 ) AS fix ON fix.item_id = acpi.id
 SET
     acpi.product_snapshot_id = fix.best_snapshot_id,
@@ -511,6 +486,5 @@ UPDATE product_snapshot ps
 JOIN avoir_comptant_items acpi ON acpi.product_snapshot_id = ps.id
 JOIN avoirs_comptant acp ON acp.id = acpi.avoir_comptant_id
 SET ps.quantite = ps.quantite + acpi.quantite
-WHERE acp.date_creation > '2026-03-31'
+WHERE acp.date_creation >= '2026-03-01'
   AND acpi.product_snapshot_id IS NOT NULL;
-

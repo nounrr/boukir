@@ -88,8 +88,8 @@ const CaissePage = () => {
   const [createOpenedAt, setCreateOpenedAt] = useState<string | null>(null); // capture datetime à l'ouverture du modal création
 
   // Sorting
-  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | 'echeance' | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | 'echeance' | null>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -101,7 +101,7 @@ const CaissePage = () => {
   const { data: clients = [] } = useGetAllClientsQuery(undefined);
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery(undefined);
   const { data: talons = [] } = useGetTalonsQuery(undefined);
-  const paymentSortBy = sortField || 'id';
+  const paymentSortBy = sortField || 'date';
   const { data: paymentsPagedResponse } = useGetPaymentsPagedQuery({
     page: currentPage,
     limit: itemsPerPage,
@@ -239,7 +239,7 @@ const CaissePage = () => {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDirection(field === 'date' ? 'desc' : 'asc');
     }
   };
 
