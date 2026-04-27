@@ -146,7 +146,7 @@ const BonsPage = () => {
   const [itemsPerPage, setItemsPerPage] = useState(30);
 
   // Sorting
-  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | null>(null);
+  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | null>('numero');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Auth context
@@ -253,7 +253,7 @@ const BonsPage = () => {
     }
   }, [effectiveCurrentTab]);
 
-  const backendSortBy = sortField || 'date';
+  const backendSortBy = sortField || 'numero';
   const backendStatus = statusFilter.length ? statusFilter.join(',') : undefined;
   const backendPaymentState = currentTab === 'ComptantNonPaye'
     ? 'unpaid'
@@ -1126,7 +1126,7 @@ const BonsPage = () => {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDirection(field === 'numero' ? 'desc' : 'asc');
     }
   };
 
