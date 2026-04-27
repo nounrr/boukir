@@ -500,7 +500,7 @@ router.get('/paged/:type', async (req, res) => {
     );
     const total = Number(countRows?.[0]?.total || 0);
 
-    const sortBy = String(req.query.sortBy || 'date');
+    const sortBy = String(req.query.sortBy || 'numero');
     const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     const sortMap = {
       numero: 'b.id',
@@ -508,7 +508,7 @@ router.get('/paged/:type', async (req, res) => {
       contact: cfg.contactExpr,
       montant: cfg.amountExpr,
     };
-    const orderExpr = sortMap[sortBy] || sortMap.date;
+    const orderExpr = sortMap[sortBy] || sortMap.numero;
 
     const [rows] = await pool.query(
       `SELECT b.*, ${cfg.selectExtra}, ${buildItemsSql(cfg)}
