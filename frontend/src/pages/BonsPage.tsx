@@ -317,6 +317,9 @@ const BonsPage = () => {
     const pref = map[type] || (type?.slice(0, 3).toUpperCase());
     return `${pref}${String(id).padStart(2, '0')}`;
   };
+  const formatLinkedBonDisplay = (type: string, id: any) => {
+    return `${type} ${formatNumeroByType(type, Number(id))}`;
+  };
   const dispatch = useAppDispatch();
   // Column resizing state (persistent during the component lifetime)
   const showAuditCols = currentUser?.role === 'PDG' || currentUser?.role === 'Manager' || currentUser?.role === 'ManagerPlus';
@@ -1217,9 +1220,31 @@ const BonsPage = () => {
 
   // Fetch linked info for the visible bons
   useEffect(() => {
+    let cancelled = false;
+    const ids = paginatedBons
+      .map((bon: any) => Number(bon?.id))
+      .filter((id: number) => Number.isFinite(id) && id > 0);
+
+    if (ids.length === 0) {
+      setBonLinksMap({});
+      return;
+    }
+
     setBonLinksMap({});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTab, startIndex, endIndex, sortedBons.length]);
+    getBonLinksBatch({ type: effectiveCurrentTab, ids })
+      .unwrap()
+      .then((data) => {
+        if (!cancelled) setBonLinksMap(data || {});
+      })
+      .catch((error) => {
+        console.error('Erreur lors du chargement des liens de duplication:', error);
+        if (!cancelled) setBonLinksMap({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveCurrentTab, getBonLinksBatch, paginatedBons]);
 
   // showAuditCols already declared earlier; reuse it
 
@@ -2418,7 +2443,7 @@ const BonsPage = () => {
                     </>
                   )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
-                    Lié
+                    Duplication
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
                       onMouseDown={(e) => startResize(e, showAuditCols ? 10 : 8)}
@@ -2633,44 +2658,61 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-xs text-gray-700">
                         {(() => {
                           const bAny = bon as any;
-                          const extraIncoming: Array<{ from_type: string; from_id: any }> = [];
+                          const extraIncoming: Array<{ from_type: string; from_id: any; relation_type?: string }> = [];
                           const type = bon?.type || effectiveCurrentTab;
                           if (type === 'AvoirEcommerce') {
                             const orderId = bAny?.ecommerce_order_id ?? bAny?.order_id;
                             if (orderId != null && orderId !== '') {
-                              extraIncoming.push({ from_type: 'Ecommerce', from_id: orderId });
+                              extraIncoming.push({ from_type: 'Ecommerce', from_id: orderId, relation_type: 'origine' });
                             }
                           }
 
                           const lk = bonLinksMap[String(bon.id)] || { outgoing: [], incoming: [] };
+                          const incoming = [...extraIncoming, ...(lk.incoming || [])].filter((r, idx, arr) => {
+                            const key = `${r.relation_type || 'duplication'}:${r.from_type}:${r.from_id}`;
+                            return arr.findIndex((x) => `${x.relation_type || 'duplication'}:${x.from_type}:${x.from_id}` === key) === idx;
+                          });
+                          const outgoing = (lk.outgoing || []).filter((r, idx, arr) => {
+                            const key = `${r.relation_type || 'duplication'}:${r.to_type}:${r.to_id}`;
+                            return arr.findIndex((x) => `${x.relation_type || 'duplication'}:${x.to_type}:${x.to_id}` === key) === idx;
+                          });
                           if (
-                            (!lk.incoming || lk.incoming.length === 0) &&
-                            (!lk.outgoing || lk.outgoing.length === 0) &&
-                            extraIncoming.length === 0
+                            incoming.length === 0 &&
+                            outgoing.length === 0
                           ) {
                             return <span className="text-gray-400">-</span>;
                           }
+                          const showChain = incoming.length > 0 && outgoing.length > 0;
                           return (
                             <div className="space-y-1">
-                              {extraIncoming.map((r, idx) => (
-                                <div key={`x-in-${idx}`} className="flex items-center gap-1">
-                                  <span className="inline-block px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-700 rounded">de</span>
-                                  <span></span>
-                                  <span className="text-gray-500">{r.from_type} {formatNumeroByType(r.from_type, r.from_id)}</span>
+                              {showChain ? (
+                                <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1">
+                                  <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Chaîne</div>
+                                  <div className="text-[11px] font-medium text-slate-700">
+                                    {incoming.map((r) => formatLinkedBonDisplay(r.from_type, r.from_id)).join(', ')}
+                                    {' -> '}
+                                    {formatLinkedBonDisplay(type, bon.id)}
+                                    {' -> '}
+                                    {outgoing.map((r) => formatLinkedBonDisplay(r.to_type, r.to_id)).join(', ')}
+                                  </div>
+                                </div>
+                              ) : null}
+                              {incoming.map((r, idx) => (
+                                <div key={`in-${idx}`} className="flex flex-col gap-0.5">
+                                  <div className="flex items-center gap-1">
+                                    <span className="inline-block px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-700 rounded">Ancien</span>
+                                    <span className="text-gray-500">{formatLinkedBonDisplay(r.from_type, r.from_id)}</span>
+                                  </div>
+                                  <span className="text-[10px] text-gray-400">Duplique depuis ce bon</span>
                                 </div>
                               ))}
-                              {lk.incoming?.map((r, idx) => (
-                                <div key={`in-${idx}`} className="flex items-center gap-1">
-                                  <span className="inline-block px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-700 rounded">de</span>
-                                  <span></span>
-                                  <span className="text-gray-500">{r.from_type} {formatNumeroByType(r.from_type, r.from_id)}</span>
-                                </div>
-                              ))}
-                              {lk.outgoing?.map((r, idx) => (
-                                <div key={`out-${idx}`} className="flex items-center gap-1">
-                                  <span className="inline-block px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded">vers</span>
-                                  <span></span>
-                                  <span className="text-gray-500">{r.to_type} {formatNumeroByType(r.to_type, r.to_id)}</span>
+                              {outgoing.map((r, idx) => (
+                                <div key={`out-${idx}`} className="flex flex-col gap-0.5">
+                                  <div className="flex items-center gap-1">
+                                    <span className="inline-block px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded">Nouveau</span>
+                                    <span className="text-gray-500">{formatLinkedBonDisplay(r.to_type, r.to_id)}</span>
+                                  </div>
+                                  <span className="text-[10px] text-gray-400">Duplique vers ce bon</span>
                                 </div>
                               ))}
                             </div>
