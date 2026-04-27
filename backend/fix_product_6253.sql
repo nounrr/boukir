@@ -22,18 +22,31 @@ CREATE TEMPORARY TABLE fix_items_6253 (
 INSERT INTO fix_items_6253 (bon_type, item_id, item_qte)
 SELECT 'comptant', ci.id, ci.quantite
 FROM comptant_items ci
-WHERE ci.product_id = 6253 AND ci.product_snapshot_id IS NULL
+JOIN bons_comptant bc ON bc.id = ci.bon_comptant_id
+WHERE ci.product_id = 6253
+  AND ci.product_snapshot_id IS NULL
+  AND bc.date_creation >= '2026-03-01'
 UNION ALL
 SELECT 'sortie', si.id, si.quantite
 FROM sortie_items si
-WHERE si.product_id = 6253 AND si.product_snapshot_id IS NULL
+JOIN bons_sortie bs ON bs.id = si.bon_sortie_id
+WHERE si.product_id = 6253
+  AND si.product_snapshot_id IS NULL
+  AND bs.date_creation >= '2026-03-01'
 UNION ALL
 SELECT 'avoir_client', aci.id, aci.quantite
 FROM avoir_client_items aci
-WHERE aci.product_id = 6253 AND aci.product_snapshot_id IS NULL;
+JOIN avoirs_client ac ON ac.id = aci.avoir_client_id
+WHERE aci.product_id = 6253
+  AND aci.product_snapshot_id IS NULL
+  AND ac.date_creation >= '2026-03-01';
 
 CREATE TEMPORARY TABLE fix_mapping_6253 (
-    bon_type VARCHAR(20), item_id INT, item_qte DECIMAL(20,3), target_snapshot_id INT
+    bon_type VARCHAR(20),
+    item_id INT,
+    item_qte DECIMAL(20,3),
+    target_snapshot_id INT,
+    is_indisponible TINYINT DEFAULT 0
 );
 
 CREATE TEMPORARY TABLE snapshot_stock_6253 AS
@@ -72,7 +85,7 @@ BEGIN
             UPDATE snapshot_stock_6253 SET remaining = remaining + v_item_qte WHERE snapshot_id = v_snap_id;
         END IF;
 
-        INSERT INTO fix_mapping_6253 VALUES ('avoir_client', v_item_id, v_item_qte, v_snap_id);
+        INSERT INTO fix_mapping_6253 VALUES ('avoir_client', v_item_id, v_item_qte, v_snap_id, 0);
         DELETE FROM fix_items_6253 WHERE id = v_item_row_id;
     END LOOP;
 
@@ -90,9 +103,15 @@ BEGIN
         SET v_snap_id = NULL;
         SELECT COUNT(*) INTO v_count FROM snapshot_stock_6253 WHERE remaining > 0;
         IF v_count = 0 THEN
-            -- Plus de stock => items restants sans cible
-            INSERT INTO fix_mapping_6253 (bon_type, item_id, item_qte, target_snapshot_id)
-            SELECT bon_type, item_id, item_qte, NULL FROM fix_items_6253;
+            -- Plus de stock positif => lier au dernier snapshot, meme si sa quantite est 0.
+            SELECT id INTO v_snap_id
+            FROM product_snapshot
+            WHERE product_id = 6253
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1;
+
+            INSERT INTO fix_mapping_6253 (bon_type, item_id, item_qte, target_snapshot_id, is_indisponible)
+            SELECT bon_type, item_id, item_qte, v_snap_id, 1 FROM fix_items_6253;
             DELETE FROM fix_items_6253;
             LEAVE snap_loop;
         END IF;
@@ -141,7 +160,7 @@ BEGIN
             SET remaining = GREATEST(remaining - v_item_qte, 0)
             WHERE snapshot_id = v_snap_id;
 
-            INSERT INTO fix_mapping_6253 VALUES (v_bon_type, v_item_id, v_item_qte, v_snap_id);
+            INSERT INTO fix_mapping_6253 VALUES (v_bon_type, v_item_id, v_item_qte, v_snap_id, 0);
             DELETE FROM fix_items_6253 WHERE id = v_item_row_id;
         END LOOP;
     END LOOP;
@@ -150,6 +169,11 @@ DELIMITER ;
 
 CALL detect_fix_6253();
 DROP PROCEDURE IF EXISTS detect_fix_6253;
+
+SELECT bon_type, COUNT(*) AS nb_lignes_indisponibles
+FROM fix_mapping_6253
+WHERE is_indisponible = 1
+GROUP BY bon_type;
 
 SELECT
     ps.id                                                                          AS snapshot_id,
