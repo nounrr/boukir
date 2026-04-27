@@ -345,6 +345,12 @@ const findCatalogProductForItem = (item: any, products: any[] = []) => {
   }
 };
 
+const scaleDecimal = (value: any, factor: any = 1) => {
+  const n = Number(value) || 0;
+  const f = Number(factor) || 1;
+  return n * f;
+};
+
 const resolveItemCostContext = (
   item: any,
   products: any[] = [],
@@ -425,8 +431,8 @@ const resolveItemCostContext = (
     variantCR,
     productPA,
     productCR,
-    prix_achat: Number((basePA * convFactor).toFixed(2)),
-    cout_revient: Number((baseCR * convFactor).toFixed(2)),
+    prix_achat: scaleDecimal(basePA, convFactor),
+    cout_revient: scaleDecimal(baseCR, convFactor),
     source: snapshotPA || snapshotCR ? 'snapshot' : variantPA || variantCR ? 'variant' : productPA || productCR ? 'product' : 'item',
   };
 };
@@ -1435,8 +1441,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           // prix_unitaire (selling price) comes from the bon items table, NOT from snapshot
           const bestPA = Number(snapshotFound?.prix_achat) || Number(variantFound?.prix_achat);
           const bestCR = Number(snapshotFound?.cout_revient) || Number(variantFound?.cout_revient);
-          if (bestPA) prix_achat = Number((bestPA * convFactor).toFixed(2));
-          if (bestCR) cout_revient = Number((bestCR * convFactor).toFixed(2));
+          if (bestPA) prix_achat = scaleDecimal(bestPA, convFactor);
+          if (bestCR) cout_revient = scaleDecimal(bestCR, convFactor);
         } else {
           // No snapshot/variant — use item values or fallback to product catalog
           if (!prix_achat || prix_achat === 0) {
@@ -1444,12 +1450,12 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
               prix_achat = prix_unitaire;
             } else {
               const basePA = Number((productFound as any)?.prix_achat) || 0;
-              prix_achat = basePA ? Number((basePA * convFactor).toFixed(2)) : prix_achat;
+              prix_achat = basePA ? scaleDecimal(basePA, convFactor) : prix_achat;
             }
           }
           if (!cout_revient || cout_revient === 0) {
             const baseCR = Number((productFound as any)?.cout_revient) || 0;
-            cout_revient = baseCR ? Number((baseCR * convFactor).toFixed(2)) : cout_revient;
+            cout_revient = baseCR ? scaleDecimal(baseCR, convFactor) : cout_revient;
           }
           if (!prix_unitaire || prix_unitaire === 0) {
             prix_unitaire = Number((productFound as any)?.prix_vente) || prix_unitaire;
@@ -1781,8 +1787,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       // prix_unitaire is NOT patched — it comes from the bon items table (actual selling price)
       const currentPA = Number(item.prix_achat) || 0;
       const currentCR = Number(item.cout_revient) || 0;
-      const finalPA = Number((bestPA * convFactor).toFixed(2));
-      const finalCR = Number((bestCR * convFactor).toFixed(2));
+      const finalPA = scaleDecimal(bestPA, convFactor);
+      const finalCR = scaleDecimal(bestCR, convFactor);
       const resolvedCostContext = resolveItemCostContext(item, products as any[], snapshotProducts as any[]);
       const resolvedPA = Number(resolvedCostContext.prix_achat) || finalPA;
       const resolvedCR = Number(resolvedCostContext.cout_revient) || finalCR;
@@ -4231,13 +4237,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 resolved_baseAchat: baseAchat,
                                                 resolved_baseCoutRevient: baseCoutRevient,
                                                 unitFactor: factorSel,
-                                                final_prix_achat: Number((baseAchat * factorSel).toFixed(2)),
-                                                final_cout_revient: Number((baseCoutRevient * factorSel).toFixed(2)),
+                                                final_prix_achat: scaleDecimal(baseAchat, factorSel),
+                                                final_cout_revient: scaleDecimal(baseCoutRevient, factorSel),
                                               });
-                                              setFieldValue(`items.${index}.prix_achat`, Number((baseAchat * factorSel).toFixed(2)));
+                                              setFieldValue(`items.${index}.prix_achat`, scaleDecimal(baseAchat, factorSel));
                                               setFieldValue(
                                                 `items.${index}.cout_revient`,
-                                                Number((baseCoutRevient * factorSel).toFixed(2))
+                                                scaleDecimal(baseCoutRevient, factorSel)
                                               );
 
                                               // Update price based on variant
@@ -4248,7 +4254,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               // If a unit is already selected, apply its conversion factor to the variant price
                                               let effectivePrice = variantBasePrice;
                                               if (unitIdSel) {
-                                                effectivePrice = Number((variantBasePrice * factorSel).toFixed(2));
+                                                effectivePrice = scaleDecimal(variantBasePrice, factorSel);
                                               }
 
                                               if (values.type === 'Commande') {
@@ -4279,21 +4285,21 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             const factorSel = Number(unitSel?.conversion_factor || 1) || 1;
 
                                             // Always scale purchase/cost with unit factor
-                                            setFieldValue(`items.${index}.prix_achat`, Number((basePriceAchat * factorSel).toFixed(2)));
+                                            setFieldValue(`items.${index}.prix_achat`, scaleDecimal(basePriceAchat, factorSel));
                                             setFieldValue(
                                               `items.${index}.cout_revient`,
-                                              Number((baseCoutRevient * factorSel).toFixed(2))
+                                              scaleDecimal(baseCoutRevient, factorSel)
                                             );
 
                                             if (values.type === 'Commande') {
-                                              effectivePrice = Number((basePriceAchat * factorSel).toFixed(2));
+                                              effectivePrice = scaleDecimal(basePriceAchat, factorSel);
                                             } else {
                                               const unitPv = unitSel?.prix_vente;
                                               const pvNum = unitPv === null || unitPv === undefined ? null : Number(unitPv);
                                               if (pvNum !== null && Number.isFinite(pvNum)) {
-                                                effectivePrice = Number(pvNum.toFixed(2));
+                                                effectivePrice = pvNum;
                                               } else {
-                                                effectivePrice = Number((basePriceVente * factorSel).toFixed(2));
+                                                effectivePrice = scaleDecimal(basePriceVente, factorSel);
                                               }
                                             }
                                           } else {
@@ -4393,29 +4399,29 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               }
 
                                               // Always keep purchase/cost values aligned with unit conversion (even for sales bons)
-                                              setFieldValue(`items.${index}.prix_achat`, Number((baseA * factor).toFixed(2)));
-                                              setFieldValue(`items.${index}.cout_revient`, Number((baseCR * factor).toFixed(2)));
+                                              setFieldValue(`items.${index}.prix_achat`, scaleDecimal(baseA, factor));
+                                              setFieldValue(`items.${index}.cout_revient`, scaleDecimal(baseCR, factor));
                                               // 🔍 DEBUG: Unit selected (after variant override)
                                               console.log('🔵 [UNIT SELECT] final values', {
                                                 row: index,
                                                 baseA_afterVariant: baseA,
                                                 baseV_afterVariant: baseV,
                                                 baseCR_afterVariant: baseCR,
-                                                final_prix_achat: Number((baseA * factor).toFixed(2)),
-                                                final_cout_revient: Number((baseCR * factor).toFixed(2)),
+                                                final_prix_achat: scaleDecimal(baseA, factor),
+                                                final_cout_revient: scaleDecimal(baseCR, factor),
                                               });
 
                                               if (values.type === 'Commande') {
-                                                newPrice = Number((baseA * factor).toFixed(2));
+                                                newPrice = scaleDecimal(baseA, factor);
                                                 setFieldValue(`items.${index}.prix_achat`, newPrice);
                                               } else {
                                                 // If unit has an explicit selling price override, prefer it (only when no variant is selected)
                                                 const unitPv = unit?.prix_vente;
                                                 const pvNum = unitPv === null || unitPv === undefined ? null : Number(unitPv);
                                                 if (!selectedVariantId && pvNum !== null && Number.isFinite(pvNum)) {
-                                                  newPrice = Number(pvNum.toFixed(2));
+                                                  newPrice = pvNum;
                                                 } else {
-                                                  newPrice = Number((baseV * factor).toFixed(2));
+                                                  newPrice = scaleDecimal(baseV, factor);
                                                 }
                                                 setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                               }
@@ -4715,10 +4721,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                     // Apply factor to base values; fall back to formik if base is 0
                                     const displayPA = basePA
-                                      ? Number((basePA * factor).toFixed(2))
+                                      ? scaleDecimal(basePA, factor)
                                       : Number(item.prix_achat) || 0;
                                     const displayCR = baseCR
-                                      ? Number((baseCR * factor).toFixed(2))
+                                      ? scaleDecimal(baseCR, factor)
                                       : Number(item.cout_revient) || 0;
 
                                     return <div>{`PA${displayPA} CR${displayCR}`}</div>;
@@ -4917,7 +4923,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         if (f > 0) profitConvFactor = f;
       }
     }
-    const cr = baseCR > 0 ? Number((baseCR * profitConvFactor).toFixed(2)) : (Number(itemRow.cout_revient) || Number(itemRow.prix_achat) || 0);
+    const cr = baseCR > 0 ? scaleDecimal(baseCR, profitConvFactor) : (Number(itemRow.cout_revient) || Number(itemRow.prix_achat) || 0);
 
     const profit = (pv - cr) * q - remise * q;
     const cls = profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-400';
@@ -5166,7 +5172,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
             if (f > 0) mvFactor = f;
           }
         }
-        const coutRevient = mvBaseCR > 0 ? Number((mvBaseCR * mvFactor).toFixed(2)) : (Number(item.cout_revient) || Number(item.prix_achat) || 0);
+        const coutRevient = mvBaseCR > 0 ? scaleDecimal(mvBaseCR, mvFactor) : (Number(item.cout_revient) || Number(item.prix_achat) || 0);
         return sum + (prixVente - coutRevient) * q;
       }, 0);
       return formatFull(local);
