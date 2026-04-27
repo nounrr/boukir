@@ -592,11 +592,11 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
             ps.prix_achat = ci.prix_unitaire,
             ps.cout_revient = CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient
-              ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100)), 2)
+              ELSE ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100))
             END,
             ps.prix_gros = CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_gros
-              ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.prix_gros_pourcentage, 0) / 100)), 2)
+              ELSE ci.prix_unitaire * (1 + (COALESCE(ps.prix_gros_pourcentage, 0) / 100))
             END,
             ps.prix_vente_pourcentage = CASE
               WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN LEAST(GREATEST(COALESCE(ps.prix_vente_pourcentage, 0), -999.99), 999.99)
@@ -975,11 +975,11 @@ router.put('/:id', verifyToken, async (req, res) => {
             ps.en_validation = ?,
             ps.cout_revient = CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient
-              ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100)), 2)
+              ELSE ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100))
             END,
             ps.prix_gros = CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.prix_gros
-              ELSE ROUND(ci.prix_unitaire * (1 + (COALESCE(ps.prix_gros_pourcentage, 0) / 100)), 2)
+              ELSE ci.prix_unitaire * (1 + (COALESCE(ps.prix_gros_pourcentage, 0) / 100))
             END,
             ps.prix_vente_pourcentage = CASE
               WHEN ps.prix_vente IS NULL OR ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN LEAST(GREATEST(COALESCE(ps.prix_vente_pourcentage, 0), -999.99), 999.99)

@@ -82,6 +82,7 @@ import {
   ensureProductRemiseColumns,
 } from './utils/ensureRemiseSchema.js';
 import { ensureCategoryColumns } from './utils/ensureCategorySchema.js';
+import { ensurePricePrecisionColumns } from './utils/ensurePricePrecisionSchema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -95,6 +96,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
     await ensureBonsRemiseTargetColumns();
     await ensureEcommerceOrdersRemiseColumns();
     await ensureEcommerceOrderItemsRemiseColumns();
+    await ensurePricePrecisionColumns();
   } catch (e) {
     console.error('ensureRemiseSchema@boot:', e);
   }
