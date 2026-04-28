@@ -308,15 +308,20 @@ const CaissePage = () => {
 
     // Contact info (client or fournisseur)
     const cid = String(payment.contact_id || payment.client_id || payment.fournisseur_id || '');
+    push(cid);
     if (cid) {
       const c = clients.find((cl: any) => String(cl.id) === cid);
       const f = c ? undefined : fournisseurs.find((fo: any) => String(fo.id) === cid);
       if (c) {
+        push(c.id);
+        push(c.reference);
         push(c.nom_complet);
         push(c.telephone);
         push(c.societe);
       }
       if (f) {
+        push(f.id);
+        push(f.reference);
         push(f.nom_complet);
         push(f.telephone);
         push(f.societe);
@@ -1334,7 +1339,7 @@ const paymentValidationSchema = Yup.object({
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Rechercher (N° paiement, Nom, Société, Notes, Montant)..."
+              placeholder="Rechercher (N° paiement, Ref client, Nom, Société, Notes, Montant)..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => {

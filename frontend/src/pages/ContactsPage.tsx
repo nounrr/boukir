@@ -508,7 +508,8 @@ const ContactsPage: React.FC = () => {
       const n = String(c.nom_complet || '').toLowerCase();
       const s = String(c.societe || '').toLowerCase();
       const t = String(c.telephone || '').toLowerCase();
-      return n.includes(term) || s.includes(term) || t.includes(term);
+      const ref = String(c.reference || c.id || '').toLowerCase();
+      return ref.includes(term) || n.includes(term) || s.includes(term) || t.includes(term);
     });
   }, [groupEditContacts, groupEditSearch, groupEditMode, groupMemberIdSet]);
 
@@ -2991,7 +2992,8 @@ const ContactsPage: React.FC = () => {
       <h3>LISTE DES ${typeLabel} (${totalContacts})</h3>
           <table>
             <tr>
-        <th>Nom Complet</th>
+              <th>Ref</th>
+              <th>Nom Complet</th>
         <th>Société</th>
               <th>Téléphone</th>
               <th>Email</th>
@@ -3021,6 +3023,7 @@ const ContactsPage: React.FC = () => {
 
       const displayName = (contact.societe && contact.societe.trim()) ? contact.societe : (contact.nom_complet || 'N/A');
       return `<tr>
+                <td>${contact.reference || contact.id}</td>
                 <td><strong>${displayName}</strong></td>
                 <td>${contact.societe ? contact.societe : '-'}</td>
                 <td>${contact.telephone || 'N/A'}</td>
@@ -3033,7 +3036,7 @@ const ContactsPage: React.FC = () => {
               </tr>`;
     }).join('')}
             <tr class="total-row">
-              <td colspan="${activeTab === 'clients' ? '6' : '5'}"><strong>TOTAUX</strong></td>
+              <td colspan="${activeTab === 'clients' ? '7' : '6'}"><strong>TOTAUX</strong></td>
               <td class="numeric"><strong>${contactsList.reduce((s, c) => s + Number(c.solde || 0), 0).toFixed(3)} DH</strong></td>
               <td class="numeric"><strong>${totalSoldes.toFixed(3)} DH</strong></td>
               <td class="numeric"><strong>${contactsList.reduce((sum, contact) => {
@@ -3955,7 +3958,7 @@ const ContactsPage: React.FC = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
                 type="text"
-                placeholder={`Rechercher (Nom, Société ou Téléphone) ${activeTab === 'clients' ? 'client' : 'fournisseur'}...`}
+                placeholder={`Rechercher (Ref, Nom, Société ou Téléphone) ${activeTab === 'clients' ? 'client' : 'fournisseur'}...`}
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -4161,6 +4164,7 @@ const ContactsPage: React.FC = () => {
                     )}
                   </div>
                 </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ref</th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
                   onClick={() => handleSort('nom')}
@@ -4200,7 +4204,7 @@ const ContactsPage: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {visibleAccordionRows.length === 0 ? (
                 <tr>
-                  <td colSpan={activeTab === 'clients' ? 12 : 11} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={activeTab === 'clients' ? 14 : 13} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun {activeTab === 'clients' ? 'client' : 'fournisseur'} trouvé
                   </td>
                 </tr>
@@ -4229,6 +4233,9 @@ const ContactsPage: React.FC = () => {
                               </div>
                             );
                           })()}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-700">{contact.reference || contact.id}</div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm font-medium text-gray-900">{contact.nom_complet}</div>
@@ -4350,6 +4357,11 @@ const ContactsPage: React.FC = () => {
                           </div>
                         </td>
 
+                        {/* Ref */}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-500">-</div>
+                        </td>
+
                         {/* Nom du groupe */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2 min-w-0">
@@ -4442,6 +4454,9 @@ const ContactsPage: React.FC = () => {
                                   </div>
                                 );
                               })()}
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-700">{contact.reference || contact.id}</div>
                             </td>
                             <td className="px-6 py-4">
                               <div className="text-sm font-medium text-gray-900">
@@ -4625,6 +4640,7 @@ const ContactsPage: React.FC = () => {
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                      <div><span className="text-gray-500">Ref:</span> {contact.reference || contact.id}</div>
                       <div className="col-span-2"><span className="text-gray-500">Groupe:</span> {(contact as any).group_name || '-'}</div>
                       <div><span className="text-gray-500">Téléphone:</span> {contact.telephone || '-'}</div>
                       <div><span className="text-gray-500">Email:</span> {contact.email || '-'}</div>
@@ -4724,6 +4740,7 @@ const ContactsPage: React.FC = () => {
 
                             {/* Body grid */}
                             <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                              <div><span className="text-gray-500">Ref:</span> {contact.reference || contact.id}</div>
                               <div className="col-span-2"><span className="text-gray-500">Groupe:</span> {(contact as any).group_name || '-'}</div>
                               <div><span className="text-gray-500">Téléphone:</span> {contact.telephone || '-'}</div>
                               <div><span className="text-gray-500">Email:</span> {contact.email || '-'}</div>

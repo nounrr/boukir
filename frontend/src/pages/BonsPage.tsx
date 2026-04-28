@@ -93,6 +93,8 @@ const BonsPage = () => {
   const effectiveCurrentTab = normalizeBonTab(currentTab);
   const isUnpaidComptantTab = currentTab === 'ComptantNonPaye';
   const isComptantTab = effectiveCurrentTab === 'Comptant';
+  const showContactRefCol = effectiveCurrentTab !== 'Comptant' && effectiveCurrentTab !== 'Vehicule';
+  const contactRefColOffset = showContactRefCol ? 1 : 0;
   const currentTabLabel = BON_TAB_LABELS[currentTab];
   const effectiveCurrentTabLabel = BON_TAB_LABELS[effectiveCurrentTab];
 
@@ -324,13 +326,21 @@ const BonsPage = () => {
   // Column resizing state (persistent during the component lifetime)
   const showAuditCols = currentUser?.role === 'PDG' || currentUser?.role === 'Manager' || currentUser?.role === 'ManagerPlus';
   const defaultColWidths = useMemo(() => {
+    if (showContactRefCol) {
+      const base = ['120','120','80','220','160','220','120','80','120'];
+      if (showAuditCols) {
+        base.push('140','140');
+      }
+      base.push('180','120','140','120');
+      return base.map(v => `${v}px`);
+    }
     const base = ['120','120','220','160','220','120','80','120']; // numero,date,contact,téléphone,adresse,montant,poids,mouvement
     if (showAuditCols) {
       base.push('140','140'); // created_by, updated_by
     }
     base.push('180','120','140','120'); // lié, statut, payment_status, actions
     return base.map(v => `${v}px`);
-  }, [showAuditCols]);
+  }, [showAuditCols, showContactRefCol]);
 
   // Load column widths from localStorage or use defaults
   const getStoredColWidths = useCallback(() => {
@@ -732,6 +742,24 @@ const BonsPage = () => {
     return 'Non défini';
   };
 
+  const getContactRef = (bon: any) => {
+    const type = bon?.type || effectiveCurrentTab;
+    if (type === 'Comptant' || effectiveCurrentTab === 'Comptant' || type === 'Vehicule' || effectiveCurrentTab === 'Vehicule') {
+      return '-';
+    }
+
+    if (type === 'Commande' || type === 'AvoirFournisseur') {
+      return bon?.fournisseur_id ?? bon?.contact_id ?? '-';
+    }
+
+    const ecommerceRaw = bon?.ecommerce_raw ?? bon;
+    if (type === 'Ecommerce' || type === 'AvoirEcommerce') {
+      return ecommerceRaw?.user_id ?? ecommerceRaw?.contact_id ?? bon?.client_id ?? bon?.contact_id ?? '-';
+    }
+
+    return bon?.client_id ?? bon?.contact_id ?? '-';
+  };
+
   // Safely render any text value (handles Buffer-like {type:'Buffer', data:[..]})
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const isBufferLike = (o: any): o is { type: 'Buffer'; data: number[] } => {
@@ -803,6 +831,7 @@ const BonsPage = () => {
     try {
       push(getDisplayNumero(bon));
       push(bon?.statut);
+      push(getContactRef(bon));
       push(getContactName(bon));
       push(bon?.client_nom);
       push(bon?.fournisseur_nom);
@@ -854,6 +883,8 @@ const BonsPage = () => {
     if (clientId && clients.length > 0) {
       const client = clients.find((c: any) => String(c.id) === String(clientId));
       if (client) {
+        parts.push(String(client.id));
+        if (client.reference) parts.push(String(client.reference));
         if (client.telephone) phoneCandidates.push(String(client.telephone));
         if (client.nom_complet) parts.push(String(client.nom_complet));
       }
@@ -861,6 +892,8 @@ const BonsPage = () => {
     if (bon?.fournisseur_id && suppliers.length > 0) {
       const supplier = suppliers.find((s: any) => String(s.id) === String(bon.fournisseur_id));
       if (supplier) {
+        parts.push(String(supplier.id));
+        if (supplier.reference) parts.push(String(supplier.reference));
         if (supplier.telephone) phoneCandidates.push(String(supplier.telephone));
         if (supplier.nom_complet) parts.push(String(supplier.nom_complet));
       }
@@ -2216,7 +2249,7 @@ const BonsPage = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
-                placeholder="Rechercher par numéro, statut, client, téléphone ou montant..."
+                placeholder="Rechercher par numéro, ref client, statut, client, téléphone ou montant..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -2310,7 +2343,7 @@ const BonsPage = () => {
           <div className="responsive-table-container">
             <table
               className="responsive-table responsive-table-min divide-y divide-gray-200 table-mobile-compact"
-              style={{ minWidth: 960, tableLayout: 'fixed', width: 'auto' }}
+              style={{ minWidth: showContactRefCol ? 1040 : 960, tableLayout: 'fixed', width: 'auto' }}
             >
               {/* colgroup driven by colWidths so headers/cols can be resized */}
               <colgroup>
@@ -2352,6 +2385,16 @@ const BonsPage = () => {
                       title="Glisser pour redimensionner"
                     />
                   </th>
+                  {showContactRefCol && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
+                      Ref
+                      <span
+                        className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                        onMouseDown={(e) => startResize(e, 2)}
+                        title="Glisser pour redimensionner"
+                      />
+                    </th>
+                  )}
                   <th 
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 relative"
                     onClick={() => handleSort('contact')}
@@ -2368,7 +2411,7 @@ const BonsPage = () => {
                     </div>
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 2)}
+                      onMouseDown={(e) => startResize(e, 2 + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2377,7 +2420,7 @@ const BonsPage = () => {
                     Téléphone
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 3)}
+                      onMouseDown={(e) => startResize(e, 3 + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2386,7 +2429,7 @@ const BonsPage = () => {
                     Adresse livraison
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 4)}
+                      onMouseDown={(e) => startResize(e, 4 + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2402,7 +2445,7 @@ const BonsPage = () => {
                     </div>
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 5)}
+                      onMouseDown={(e) => startResize(e, 5 + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2410,7 +2453,7 @@ const BonsPage = () => {
                     Poids (kg)
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 6)}
+                      onMouseDown={(e) => startResize(e, 6 + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2418,7 +2461,7 @@ const BonsPage = () => {
                     Mouvement
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 7)}
+                      onMouseDown={(e) => startResize(e, 7 + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2428,7 +2471,7 @@ const BonsPage = () => {
                         Créé par
                         <span 
                           className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                          onMouseDown={(e) => startResize(e, 8)}
+                          onMouseDown={(e) => startResize(e, 8 + contactRefColOffset)}
                           title="Glisser pour redimensionner"
                         />
                       </th>
@@ -2436,7 +2479,7 @@ const BonsPage = () => {
                         Dernier modifié par
                         <span 
                           className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                          onMouseDown={(e) => startResize(e, 9)}
+                          onMouseDown={(e) => startResize(e, 9 + contactRefColOffset)}
                           title="Glisser pour redimensionner"
                         />
                       </th>
@@ -2446,7 +2489,7 @@ const BonsPage = () => {
                     Duplication
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, showAuditCols ? 10 : 8)}
+                      onMouseDown={(e) => startResize(e, (showAuditCols ? 10 : 8) + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2454,7 +2497,7 @@ const BonsPage = () => {
                     Statut
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, showAuditCols ? 11 : 9)}
+                      onMouseDown={(e) => startResize(e, (showAuditCols ? 11 : 9) + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2462,7 +2505,7 @@ const BonsPage = () => {
                     Payment status
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, showAuditCols ? 12 : 10)}
+                      onMouseDown={(e) => startResize(e, (showAuditCols ? 12 : 10) + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2470,7 +2513,7 @@ const BonsPage = () => {
                     Actions
                     <span 
                       className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, showAuditCols ? 13 : 11)}
+                      onMouseDown={(e) => startResize(e, (showAuditCols ? 13 : 11) + contactRefColOffset)}
                       title="Glisser pour redimensionner"
                     />
                   </th>
@@ -2479,7 +2522,7 @@ const BonsPage = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedBons.length === 0 ? (
                   <tr>
-                    <td colSpan={showAuditCols ? 14 : 12} className="px-6 py-4 text-center text-sm text-gray-500">
+                    <td colSpan={(showAuditCols ? 14 : 12) + contactRefColOffset} className="px-6 py-4 text-center text-sm text-gray-500">
                       Aucun bon trouvé pour {currentTabLabel}
                     </td>
                   </tr>
@@ -2493,6 +2536,11 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-sm">
                         <div className="text-sm text-gray-700">{formatDateTimeWithHour(bon.date_creation)}</div>
                       </td>
+                      {showContactRefCol && (
+                        <td className="px-4 py-2 text-sm font-medium text-gray-700">
+                          {getContactRef(bon)}
+                        </td>
+                      )}
                       <td className="px-4 py-2 text-sm">
                         {effectiveCurrentTab === 'Vehicule' ? (
                           (bon?.livraisons && Array.isArray(bon.livraisons) && bon.livraisons.length > 0) ? (

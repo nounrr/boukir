@@ -1800,6 +1800,7 @@ router.get('/', async (req, res, next) => {
       const like = `%${String(rawSearch).trim()}%`;
       whereParts.push(`(
         o.order_number LIKE ?
+        OR CAST(o.user_id AS CHAR) LIKE ?
         OR o.customer_name LIKE ?
         OR o.customer_email LIKE ?
         OR o.customer_phone LIKE ?
@@ -1810,7 +1811,7 @@ router.get('/', async (req, res, next) => {
             AND (oi_search.product_name LIKE ? OR CAST(oi_search.product_id AS CHAR) LIKE ?)
         )
       )`);
-      whereParams.push(like, like, like, like, like, like, like);
+      whereParams.push(like, like, like, like, like, like, like, like);
     }
 
     const whereSql = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
