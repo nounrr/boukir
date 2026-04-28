@@ -19,6 +19,7 @@ const bonPagedConfigs = {
     alias: 'b',
     prefix: 'CMD',
     contactExpr: 'f.nom_complet',
+    contactIdExpr: 'b.fournisseur_id',
     phoneExpr: 'b.phone',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts f ON f.id = b.fournisseur_id LEFT JOIN vehicules v ON v.id = b.vehicule_id`,
@@ -35,6 +36,7 @@ const bonPagedConfigs = {
     alias: 'b',
     prefix: 'SOR',
     contactExpr: 'c.nom_complet',
+    contactIdExpr: 'b.client_id',
     phoneExpr: 'b.phone',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id LEFT JOIN vehicules v ON v.id = b.vehicule_id`,
@@ -51,6 +53,7 @@ const bonPagedConfigs = {
     alias: 'b',
     prefix: 'COM',
     contactExpr: 'COALESCE(b.client_nom, c.nom_complet)',
+    contactIdExpr: 'b.client_id',
     phoneExpr: 'b.phone',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id LEFT JOIN vehicules v ON v.id = b.vehicule_id`,
@@ -67,6 +70,7 @@ const bonPagedConfigs = {
     alias: 'b',
     prefix: 'DEV',
     contactExpr: 'COALESCE(b.client_nom, c.nom_complet)',
+    contactIdExpr: 'b.client_id',
     phoneExpr: 'b.phone',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id`,
@@ -82,6 +86,7 @@ const bonPagedConfigs = {
     alias: 'b',
     prefix: 'AVC',
     contactExpr: 'c.nom_complet',
+    contactIdExpr: 'b.client_id',
     phoneExpr: 'b.phone',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id`,
@@ -97,6 +102,7 @@ const bonPagedConfigs = {
     alias: 'b',
     prefix: 'AVF',
     contactExpr: 'f.nom_complet',
+    contactIdExpr: 'b.fournisseur_id',
     phoneExpr: 'b.phone',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts f ON f.id = b.fournisseur_id`,
@@ -112,6 +118,7 @@ const bonPagedConfigs = {
     alias: 'b',
     prefix: 'AVCC',
     contactExpr: 'b.client_nom',
+    contactIdExpr: 'NULL',
     phoneExpr: 'b.phone',
     amountExpr: 'b.montant_total',
     joins: ``,
@@ -127,6 +134,7 @@ const bonPagedConfigs = {
     alias: 'b',
     prefix: 'VEH',
     contactExpr: 'v.nom',
+    contactIdExpr: 'NULL',
     phoneExpr: 'b.phone',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN vehicules v ON v.id = b.vehicule_id`,
@@ -144,6 +152,7 @@ const bonPagedConfigs = {
     alias: 'b',
     prefix: 'AVE',
     contactExpr: 'b.customer_name',
+    contactIdExpr: 'o.user_id',
     phoneExpr: 'b.customer_phone',
     amountExpr: 'b.montant_total',
     dateExpr: 'b.created_at',
@@ -466,6 +475,7 @@ router.get('/paged/:type', async (req, res) => {
       const like = `%${search}%`;
       whereParts.push(`(
         CAST(b.id AS CHAR) LIKE ?
+        OR CAST(${cfg.contactIdExpr || 'NULL'} AS CHAR) LIKE ?
         OR ${cfg.contactExpr} LIKE ?
         OR ${cfg.phoneExpr} LIKE ?
         OR b.statut LIKE ?
@@ -477,7 +487,7 @@ router.get('/paged/:type', async (req, res) => {
             AND (psearch.designation LIKE ? OR CAST(isearch.product_id AS CHAR) LIKE ?)
         )
       )`);
-      params.push(like, like, like, like, like, like, like);
+      params.push(like, like, like, like, like, like, like, like);
     }
 
     if (statuses.length) {

@@ -17,8 +17,8 @@ const applyContactsFilters = ({ type, search, clientSubTab, groupId }) => {
 
   if (search && String(search).trim() !== '') {
     const like = `%${String(search).trim()}%`;
-    whereSql += ' AND (c.nom_complet LIKE ? OR c.societe LIKE ? OR c.telephone LIKE ?)';
-    params.push(like, like, like);
+    whereSql += ' AND (CAST(c.id AS CHAR) LIKE ? OR c.nom_complet LIKE ? OR c.societe LIKE ? OR c.telephone LIKE ?)';
+    params.push(like, like, like, like);
   }
 
   if (clientSubTab && type === 'Client') {

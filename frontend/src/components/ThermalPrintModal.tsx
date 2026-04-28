@@ -253,6 +253,23 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return contact.nom_complet || contact.nom || contact.name || '';
   }, [contact]);
 
+  const contactRef = useMemo(() => {
+    const directRef = contact?.reference;
+    if (directRef != null && String(directRef).trim()) return String(directRef).trim();
+    if (contact?.id != null && Number(contact.id) > 0) return String(contact.id);
+
+    if (type === 'Commande' || type === 'AvoirFournisseur') {
+      return String(bon?.fournisseur_id ?? bon?.contact_id ?? '').trim();
+    }
+    if (type === 'Comptant' || type === 'Vehicule') {
+      return '';
+    }
+    const ecommerceRaw = bon?.ecommerce_raw ?? bon;
+    return String(ecommerceRaw?.user_id ?? ecommerceRaw?.contact_id ?? bon?.client_id ?? bon?.contact_id ?? '').trim();
+  }, [bon, contact, type]);
+
+  const contactRefLabel = type === 'Commande' || type === 'AvoirFournisseur' ? 'Ref fournisseur' : 'Ref client';
+
   const tel = useMemo(() => {
     const raw = bon?.phone ?? bon?.tel ?? bon?.telephone ?? contact?.telephone ?? contact?.tel ?? '';
     return raw ? String(raw).trim() : '';
@@ -432,6 +449,12 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   {contactName ? (
                     <>
                       Client: {contactName}
+                      <br />
+                    </>
+                  ) : null}
+                  {contactRef ? (
+                    <>
+                      {contactRefLabel}: {contactRef}
                       <br />
                     </>
                   ) : null}
