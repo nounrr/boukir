@@ -1485,12 +1485,19 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           } catch {}
         }
 
-        const quantite = Number(it.quantite ?? it.qty ?? 0) || 0;
-        const total = Number(it.total ?? it.montant_ligne ?? quantite * prix_unitaire) || quantite * prix_unitaire;
-
         // Preserve variant/unit selection in edit mode
         const variant_id = toIdString(it.variant_id ?? it.variantId ?? it.variant?.id);
         const unit_id = toIdString(it.unit_id ?? it.unitId ?? it.unit?.id);
+        if (initialValues?.type !== 'Commande' && variant_id && productFound?.variants?.length) {
+          const catalogVariant = (productFound.variants as any[]).find((v: any) => String(v.id) === String(variant_id));
+          if (catalogVariant) {
+            const variantPrixVente = Number(catalogVariant.prix_vente ?? (productFound as any)?.prix_vente ?? prix_unitaire) || 0;
+            prix_unitaire = scaleDecimal(variantPrixVente, convFactor);
+          }
+        }
+
+        const quantite = Number(it.quantite ?? it.qty ?? 0) || 0;
+        const total = quantite * prix_unitaire;
 
         return {
           _rowId: it._rowId || makeRowId(), // id stable
@@ -4107,13 +4114,26 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         }
                                         setFieldValue(`items.${index}.unit_id`, '');
 
-                                        // Use variant pricing if a variant was selected
+                                        const catalogProduct = (products as any[]).find(
+                                          (p: any) => String(p.id) === String(product.id)
+                                        );
+                                        const productVariantId = selectedVariant?.id || product.variant_id || null;
+                                        const catalogVariant = selectedVariant || (
+                                          productVariantId && catalogProduct?.variants?.length
+                                            ? (catalogProduct.variants as any[]).find(
+                                                (v: any) => String(v.id) === String(productVariantId)
+                                              ) || null
+                                            : null
+                                        );
+
+                                        // Use catalog variant selling price when a variant is selected.
+                                        // Snapshot prices remain only for purchase/cost history.
                                         const effectivePA = selectedVariant
                                           ? Number(selectedVariant.prix_achat ?? product.prix_achat ?? 0)
                                           : Number(product.prix_achat || 0);
-                                        const effectivePV = selectedVariant
-                                          ? Number(selectedVariant.prix_vente ?? product.prix_vente ?? 0)
-                                          : Number(product.prix_vente || 0);
+                                        const effectivePV = catalogVariant
+                                          ? Number(catalogVariant.prix_vente ?? catalogProduct?.prix_vente ?? product.prix_vente ?? 0)
+                                          : Number((catalogProduct?.prix_vente ?? product.prix_vente) || 0);
                                         const effectiveCR = selectedVariant
                                           ? Number(selectedVariant.cout_revient ?? product.cout_revient ?? 0)
                                           : Number(product.cout_revient || 0);
@@ -4130,7 +4150,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         );
                                         setFieldValue(
                                           `items.${index}.prix_vente_pourcentage`,
-                                          selectedVariant?.prix_vente_pourcentage ?? product.prix_vente_pourcentage ?? 0
+                                          catalogVariant?.prix_vente_pourcentage ?? product.prix_vente_pourcentage ?? 0
                                         );
                                         setFieldValue(`items.${index}.prix_unitaire`, effectivePV);
                                         const priceForDisplay = values.type === 'Commande' ? effectivePA : effectivePV;
