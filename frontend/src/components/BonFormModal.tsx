@@ -2752,19 +2752,23 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
   // Dernier prix pour Comptant/AvoirComptant par produit (ignore le client),
   // accepte les statuts "Validé" et "En attente". N'affecte pas la logique Sortie.
-  const getLastUnitPriceForComptantProduct = (
-    productId: string | number | undefined
-  ): number | null => {
-    if (!productId) return null;
+  const getLastUnitPricesForComptantProduct = (
+    productId: string | number | undefined,
+    variantId?: string | number | undefined,
+    unitId?: string | number | undefined,
+    limit = 4
+  ): number[] => {
+    if (!productId) return [];
     const pid = String(productId);
+    const wantedVariantId = variantId == null || variantId === '' ? null : String(variantId);
+    const wantedUnitId = unitId == null || unitId === '' ? null : String(unitId);
 
     type HistItem = { prix_unitaire?: number; total?: number; quantite?: number };
-    let bestPrice: number | null = null;
-    let bestTime = -1;
+    const prices: Array<{ price: number; time: number; bonId: number }> = [];
 
     const accepted = new Set(['validé', 'valide', 'validée', 'en attente']);
 
-    const scan = (bon: any) => {
+    const scan = (bon: any, requireExactVariantUnit: boolean) => {
       const statut = String(bon.statut || '').toLowerCase();
       if (!accepted.has(statut)) return; // n'inclut que Validé ou En attente
       const items = parseItems(bon.items);
@@ -2772,17 +2776,33 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       for (const it of items as HistItem[]) {
         const itPid = String((it as any).product_id ?? (it as any).id ?? '');
         if (itPid !== pid) continue;
+        if (requireExactVariantUnit) {
+          const itVariantId = (it as any).variant_id == null || (it as any).variant_id === '' ? null : String((it as any).variant_id);
+          const itUnitId = (it as any).unit_id == null || (it as any).unit_id === '' ? null : String((it as any).unit_id);
+          if (wantedVariantId !== null && itVariantId !== wantedVariantId) continue;
+          if (wantedUnitId !== null && itUnitId !== wantedUnitId) continue;
+        }
         const price = Number((it as any).prix_unitaire ?? (it as any).price ?? 0);
         if (!Number.isFinite(price) || price <= 0) continue;
-        if (bonTime > bestTime) {
-          bestTime = bonTime;
-          bestPrice = price;
-        }
+        prices.push({ price, time: bonTime, bonId: Number(bon.id || 0) });
       }
     };
 
-    for (const b of comptantHistory as any[]) scan(b);
-    return bestPrice;
+    const collect = (requireExactVariantUnit: boolean) => {
+      prices.length = 0;
+      for (const b of comptantHistory as any[]) scan(b, requireExactVariantUnit);
+      return [...prices]
+        .sort((a, b) => (b.time - a.time) || (b.bonId - a.bonId))
+        .slice(0, Math.max(1, limit))
+        .map((entry) => entry.price);
+    };
+
+    const requiresExactVariantUnit = wantedVariantId !== null || wantedUnitId !== null;
+    if (requiresExactVariantUnit) {
+      const exact = collect(true);
+      if (exact.length > 0) return exact;
+    }
+    return collect(false);
   };
 
   const getLastPurchasePriceForSupplierProduct = (
@@ -4852,9 +4872,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   })()}
   {/* Dernier prix pour Comptant/AvoirComptant (ignore le client, accepte Validé/En attente) */}
   {(values.items[index].product_id && (values.type === 'Comptant' || values.type === 'AvoirComptant')) && (() => {
-    const lastC = getLastUnitPriceForComptantProduct(values.items[index].product_id);
-    return lastC && Number.isFinite(lastC) ? (
-      <div className="text-xs text-gray-500 mt-1">Dernier (Comptant): {formatFull(Number(lastC))} DH</div>
+    const lastPrices = getLastUnitPricesForComptantProduct(
+      values.items[index].product_id,
+      values.items[index].variant_id,
+      values.items[index].unit_id,
+      4
+    );
+    return lastPrices.length > 0 ? (
+      <div className="text-xs text-gray-500 mt-1">
+        4 derniers prix (Comptant): {lastPrices.map((price) => `${formatFull(Number(price))} DH`).join(' / ')}
+      </div>
     ) : null;
   })()}
   {(values.fournisseur_id && values.items[index].product_id && (values.type === 'Commande' || values.type === 'AvoirFournisseur')) && (() => {
