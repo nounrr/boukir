@@ -1485,12 +1485,19 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           } catch {}
         }
 
-        const quantite = Number(it.quantite ?? it.qty ?? 0) || 0;
-        const total = Number(it.total ?? it.montant_ligne ?? quantite * prix_unitaire) || quantite * prix_unitaire;
-
         // Preserve variant/unit selection in edit mode
         const variant_id = toIdString(it.variant_id ?? it.variantId ?? it.variant?.id);
         const unit_id = toIdString(it.unit_id ?? it.unitId ?? it.unit?.id);
+        if (initialValues?.type !== 'Commande' && variant_id && productFound?.variants?.length) {
+          const catalogVariant = (productFound.variants as any[]).find((v: any) => String(v.id) === String(variant_id));
+          if (catalogVariant) {
+            const variantPrixVente = Number(catalogVariant.prix_vente ?? (productFound as any)?.prix_vente ?? prix_unitaire) || 0;
+            prix_unitaire = scaleDecimal(variantPrixVente, convFactor);
+          }
+        }
+
+        const quantite = Number(it.quantite ?? it.qty ?? 0) || 0;
+        const total = quantite * prix_unitaire;
 
         return {
           _rowId: it._rowId || makeRowId(), // id stable
@@ -2745,19 +2752,23 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
   // Dernier prix pour Comptant/AvoirComptant par produit (ignore le client),
   // accepte les statuts "Validé" et "En attente". N'affecte pas la logique Sortie.
-  const getLastUnitPriceForComptantProduct = (
-    productId: string | number | undefined
-  ): number | null => {
-    if (!productId) return null;
+  const getLastUnitPricesForComptantProduct = (
+    productId: string | number | undefined,
+    variantId?: string | number | undefined,
+    unitId?: string | number | undefined,
+    limit = 4
+  ): number[] => {
+    if (!productId) return [];
     const pid = String(productId);
+    const wantedVariantId = variantId == null || variantId === '' ? null : String(variantId);
+    const wantedUnitId = unitId == null || unitId === '' ? null : String(unitId);
 
     type HistItem = { prix_unitaire?: number; total?: number; quantite?: number };
-    let bestPrice: number | null = null;
-    let bestTime = -1;
+    const prices: Array<{ price: number; time: number; bonId: number }> = [];
 
     const accepted = new Set(['validé', 'valide', 'validée', 'en attente']);
 
-    const scan = (bon: any) => {
+    const scan = (bon: any, requireExactVariantUnit: boolean) => {
       const statut = String(bon.statut || '').toLowerCase();
       if (!accepted.has(statut)) return; // n'inclut que Validé ou En attente
       const items = parseItems(bon.items);
@@ -2765,17 +2776,33 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       for (const it of items as HistItem[]) {
         const itPid = String((it as any).product_id ?? (it as any).id ?? '');
         if (itPid !== pid) continue;
+        if (requireExactVariantUnit) {
+          const itVariantId = (it as any).variant_id == null || (it as any).variant_id === '' ? null : String((it as any).variant_id);
+          const itUnitId = (it as any).unit_id == null || (it as any).unit_id === '' ? null : String((it as any).unit_id);
+          if (wantedVariantId !== null && itVariantId !== wantedVariantId) continue;
+          if (wantedUnitId !== null && itUnitId !== wantedUnitId) continue;
+        }
         const price = Number((it as any).prix_unitaire ?? (it as any).price ?? 0);
         if (!Number.isFinite(price) || price <= 0) continue;
-        if (bonTime > bestTime) {
-          bestTime = bonTime;
-          bestPrice = price;
-        }
+        prices.push({ price, time: bonTime, bonId: Number(bon.id || 0) });
       }
     };
 
-    for (const b of comptantHistory as any[]) scan(b);
-    return bestPrice;
+    const collect = (requireExactVariantUnit: boolean) => {
+      prices.length = 0;
+      for (const b of comptantHistory as any[]) scan(b, requireExactVariantUnit);
+      return [...prices]
+        .sort((a, b) => (b.time - a.time) || (b.bonId - a.bonId))
+        .slice(0, Math.max(1, limit))
+        .map((entry) => entry.price);
+    };
+
+    const requiresExactVariantUnit = wantedVariantId !== null || wantedUnitId !== null;
+    if (requiresExactVariantUnit) {
+      const exact = collect(true);
+      if (exact.length > 0) return exact;
+    }
+    return collect(false);
   };
 
   const getLastPurchasePriceForSupplierProduct = (
@@ -4107,13 +4134,26 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         }
                                         setFieldValue(`items.${index}.unit_id`, '');
 
-                                        // Use variant pricing if a variant was selected
+                                        const catalogProduct = (products as any[]).find(
+                                          (p: any) => String(p.id) === String(product.id)
+                                        );
+                                        const productVariantId = selectedVariant?.id || product.variant_id || null;
+                                        const catalogVariant = selectedVariant || (
+                                          productVariantId && catalogProduct?.variants?.length
+                                            ? (catalogProduct.variants as any[]).find(
+                                                (v: any) => String(v.id) === String(productVariantId)
+                                              ) || null
+                                            : null
+                                        );
+
+                                        // Use catalog variant selling price when a variant is selected.
+                                        // Snapshot prices remain only for purchase/cost history.
                                         const effectivePA = selectedVariant
                                           ? Number(selectedVariant.prix_achat ?? product.prix_achat ?? 0)
                                           : Number(product.prix_achat || 0);
-                                        const effectivePV = selectedVariant
-                                          ? Number(selectedVariant.prix_vente ?? product.prix_vente ?? 0)
-                                          : Number(product.prix_vente || 0);
+                                        const effectivePV = catalogVariant
+                                          ? Number(catalogVariant.prix_vente ?? catalogProduct?.prix_vente ?? product.prix_vente ?? 0)
+                                          : Number((catalogProduct?.prix_vente ?? product.prix_vente) || 0);
                                         const effectiveCR = selectedVariant
                                           ? Number(selectedVariant.cout_revient ?? product.cout_revient ?? 0)
                                           : Number(product.cout_revient || 0);
@@ -4130,7 +4170,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         );
                                         setFieldValue(
                                           `items.${index}.prix_vente_pourcentage`,
-                                          selectedVariant?.prix_vente_pourcentage ?? product.prix_vente_pourcentage ?? 0
+                                          catalogVariant?.prix_vente_pourcentage ?? product.prix_vente_pourcentage ?? 0
                                         );
                                         setFieldValue(`items.${index}.prix_unitaire`, effectivePV);
                                         const priceForDisplay = values.type === 'Commande' ? effectivePA : effectivePV;
@@ -4832,9 +4872,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   })()}
   {/* Dernier prix pour Comptant/AvoirComptant (ignore le client, accepte Validé/En attente) */}
   {(values.items[index].product_id && (values.type === 'Comptant' || values.type === 'AvoirComptant')) && (() => {
-    const lastC = getLastUnitPriceForComptantProduct(values.items[index].product_id);
-    return lastC && Number.isFinite(lastC) ? (
-      <div className="text-xs text-gray-500 mt-1">Dernier (Comptant): {formatFull(Number(lastC))} DH</div>
+    const lastPrices = getLastUnitPricesForComptantProduct(
+      values.items[index].product_id,
+      values.items[index].variant_id,
+      values.items[index].unit_id,
+      4
+    );
+    return lastPrices.length > 0 ? (
+      <div className="text-xs text-gray-500 mt-1">
+        4 derniers prix (Comptant): {lastPrices.map((price) => `${formatFull(Number(price))} DH`).join(' / ')}
+      </div>
     ) : null;
   })()}
   {(values.fournisseur_id && values.items[index].product_id && (values.type === 'Commande' || values.type === 'AvoirFournisseur')) && (() => {

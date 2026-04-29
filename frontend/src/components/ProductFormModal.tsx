@@ -2274,7 +2274,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                           </button>
 
                           {/* Ligne 1: Infos de base */}
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pr-8">
+                          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pr-8">
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
                               <select
@@ -2344,6 +2344,28 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               />
                               {asStringError((formik.errors.variants?.[index] as any)?.stock_quantity) && (
                                 <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.stock_quantity)}</p>
+                              )}
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Prix Vente</label>
+                              <input
+                                type="number"
+                                name={`variants.${index}.prix_vente`}
+                                value={variant.prix_vente}
+                                onChange={(e) => {
+                                  if (!setNonNegativeFieldValue(`variants.${index}.prix_vente`, e.target.value)) return;
+                                }}
+                                onBlur={() => {
+                                  if (variantPrixVenteLock.lock) return;
+                                  void commitNonNegativeFieldValue(`variants.${index}.prix_vente`, (formik.values.variants?.[index] as any)?.prix_vente, 0);
+                                }}
+                                disabled={variantPrixVenteLock.lock}
+                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                placeholder="0.00"
+                                min={0}
+                              />
+                              {asStringError((formik.errors.variants?.[index] as any)?.prix_vente) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente)}</p>
                               )}
                             </div>
                           </div>
@@ -2456,7 +2478,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
                           {/* Prix et calculs variante — masqué si snapshots variante existent */}
                           {!(editingProduct && Array.isArray((variant as any)?.snapshot_rows) && (variant as any).snapshot_rows.length > 0) && (
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2 border-t border-gray-100">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-gray-100">
                             {/* Prix Achat */}
                             <div>
                               <div className="flex justify-between items-center mb-1">
@@ -2599,61 +2621,6 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               </div>
                             </div>
 
-                            {/* Prix Vente */}
-                            <div className="flex gap-2">
-                              <div className="w-1/3">
-                                <label className="block text-xs font-medium text-gray-500 mb-1">% Vente</label>
-                                <input
-                                  type="number"
-                                  name={`variants.${index}.prix_vente_pourcentage`}
-                                  value={variant.prix_vente_pourcentage}
-                                  disabled={variantPrixVenteLock.lock}
-                                  onChange={(e) => {
-                                    if (variantPrixVenteLock.lock) {
-                                      formik.setFieldValue(`variants.${index}.prix_vente_pourcentage`, 0);
-                                      formik.setFieldValue(`variants.${index}.prix_vente`, Number(variantPrixVenteLock.forcedPrixVente ?? 0));
-                                      return;
-                                    }
-                                    if (!setNonNegativeFieldValue(`variants.${index}.prix_vente_pourcentage`, e.target.value)) return;
-                                    const pct = toNonNegativeNum(e.target.value);
-                                    const pa = toNonNegativeNum(variant.prix_achat || 0);
-                                    formik.setFieldValue(`variants.${index}.prix_vente`, Number((pa * (1 + pct/100)).toFixed(2)));
-                                  }}
-                                  onBlur={() => {
-                                    if (variantPrixVenteLock.lock) return;
-                                    void commitNonNegativeFieldValue(`variants.${index}.prix_vente_pourcentage`, (formik.values.variants?.[index] as any)?.prix_vente_pourcentage, 0);
-                                  }}
-                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                  placeholder="%"
-                                  min={0}
-                                />
-                                {asStringError((formik.errors.variants?.[index] as any)?.prix_vente_pourcentage) && (
-                                  <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente_pourcentage)}</p>
-                                )}
-                              </div>
-                              <div className="w-2/3">
-                                <label className="block text-xs font-medium text-gray-500 mb-1">Prix Vente</label>
-                                <input
-                                  type="number"
-                                  name={`variants.${index}.prix_vente`}
-                                  value={variant.prix_vente}
-                                  onChange={(e) => {
-                                    if (!setNonNegativeFieldValue(`variants.${index}.prix_vente`, e.target.value)) return;
-                                  }}
-                                  onBlur={() => {
-                                    if (variantPrixVenteLock.lock) return;
-                                    void commitNonNegativeFieldValue(`variants.${index}.prix_vente`, (formik.values.variants?.[index] as any)?.prix_vente, 0);
-                                  }}
-                                  disabled={variantPrixVenteLock.lock}
-                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                  placeholder="0.00"
-                                  min={0}
-                                />
-                                {asStringError((formik.errors.variants?.[index] as any)?.prix_vente) && (
-                                  <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente)}</p>
-                                )}
-                              </div>
-                            </div>
                           </div>
                           )}
 
