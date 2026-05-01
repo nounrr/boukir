@@ -1519,6 +1519,37 @@ const ContactsPage: React.FC = () => {
     return { totalQty, totalAmount };
   }, []);
 
+  const computeDebitCreditForRows = React.useCallback((
+    rows: any[],
+    initialSolde = 0,
+    includeInitialSolde = false
+  ) => {
+    let totalVentes = 0;
+    let totalPaiements = 0;
+    let totalAvoirs = 0;
+
+    for (const row of rows || []) {
+      if (!row || row.syntheticInitial) continue;
+      const t = String(row.type || '').toLowerCase();
+      const amount = Math.abs(Number(row.total) || 0);
+      if (t === 'produit') {
+        totalVentes += amount;
+      } else if (t === 'paiement') {
+        totalPaiements += amount;
+      } else if (t.includes('avoir')) {
+        totalAvoirs += amount;
+      }
+    }
+
+    return {
+      totalDebit: totalVentes + (includeInitialSolde ? Math.abs(Number(initialSolde) || 0) : 0),
+      totalCredit: totalPaiements + totalAvoirs,
+      totalVentes,
+      totalPaiements,
+      totalAvoirs,
+    };
+  }, []);
+
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = getContactInitialSoldeForHistory(selectedContact);
@@ -1710,34 +1741,12 @@ const ContactsPage: React.FC = () => {
     if (!selectedContact) return { totalDebit: 0, totalCredit: 0, totalVentes: 0, totalPaiements: 0, totalAvoirs: 0 };
     const initialSolde = getContactInitialSoldeForHistory(selectedContact);
     const rows = (displayedProductHistory || []).filter((r: any) => !r?.syntheticInitial);
-    
-    let totalVentes = 0;
-    let totalPaiements = 0;
-    let totalAvoirs = 0;
-
-    for (const row of rows) {
-      const t = String(row.type || '').toLowerCase();
-      const amount = Number(row.total) || 0;
-      if (t === 'produit') {
-        totalVentes += amount;
-      } else if (t === 'paiement') {
-        totalPaiements += amount;
-      } else if (t.includes('avoir')) {
-        totalAvoirs += amount;
-      }
-    }
 
     // Quand un filtre de date est actif, ne pas ajouter le solde initial au débit
     // (on montre seulement les mouvements de la période filtrée)
     const hasDateFilter = !!(dateFrom || dateTo);
-    return {
-      totalDebit: hasDateFilter ? totalVentes : totalVentes + initialSolde,
-      totalCredit: totalPaiements + totalAvoirs,
-      totalVentes,
-      totalPaiements,
-      totalAvoirs,
-    };
-  }, [displayedProductHistory, selectedContact, dateFrom, dateTo, getContactInitialSoldeForHistory]);
+    return computeDebitCreditForRows(rows, initialSolde, !hasDateFilter);
+  }, [displayedProductHistory, selectedContact, dateFrom, dateTo, getContactInitialSoldeForHistory, computeDebitCreditForRows]);
 
   const newSystemRemiseDisplayed = useMemo(() => {
     const rows = (displayedProductHistory || []).filter((r: any) => r && !r.syntheticInitial);
@@ -2911,6 +2920,11 @@ const ContactsPage: React.FC = () => {
 
     // Pour sélection : somme des totaux sélectionnés uniquement (SANS solde initial)
     const selectedTotal = filteredProductsForDisplay2.reduce((acc, item) => acc + (Number(item?.total) || 0), 0);
+    const printDebitCredit = computeDebitCreditForRows(
+      filteredProductsForDisplay2,
+      getContactInitialSoldeForHistory(selectedContact),
+      !(dateFrom || dateTo) && !printHasSelection
+    );
 
     const productStatsArray = Object.values(productStats).sort((a: any, b: any) => b.montant_total - a.montant_total);
 
@@ -3147,12 +3161,12 @@ const ContactsPage: React.FC = () => {
               <div style="background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #1e40af; font-weight: 600;">Total Débit</p>
                 <p style="margin: 0; font-size: 8px; color: #6b7280;">${(dateFrom || dateTo) ? '(Ventes/Achats période)' : '(Ventes/Achats + Solde initial)'}</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #1e3a8a;">${filteredDebitCredit.totalDebit.toFixed(3)} DH</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #1e3a8a;">${printDebitCredit.totalDebit.toFixed(3)} DH</p>
               </div>
               <div style="background: #dcfce7; border: 2px solid #22c55e; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #166534; font-weight: 600;">Total Crédit</p>
                 <p style="margin: 0; font-size: 8px; color: #6b7280;">(Paiements + Avoirs)</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #14532d;">${filteredDebitCredit.totalCredit.toFixed(3)} DH</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: #14532d;">${printDebitCredit.totalCredit.toFixed(3)} DH</p>
               </div>
               <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #92400e; font-weight: 600;">Solde Final</p>
