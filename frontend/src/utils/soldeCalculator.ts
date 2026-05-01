@@ -4,7 +4,7 @@ import { displayBonNumero } from './numero';
 /**
  * Convention canonique du solde cumulé (calcul 100% côté front).
  *
- * - Client     : solde_cumule = solde - SUM(ventes) + SUM(paiements) + SUM(avoirs)
+ * - Client     : solde_cumule = -(solde + SUM(ventes) - SUM(paiements) - SUM(avoirs))
  *                 -> NEGATIF = le client nous doit, POSITIF = nous lui devons.
  * - Fournisseur: solde_cumule = solde + SUM(achats) - SUM(paiements) - SUM(avoirs)
  *                 -> POSITIF = nous lui devons, NEGATIF = il nous doit.
@@ -33,11 +33,7 @@ export function computeContactSoldeCumule(contact: SoldeTotals | null | undefine
   const avoirs = Math.abs(num(contact.total_avoirs));
   
   if (contact.type === 'Client') {
-    let cumul = solde - ventes;
-    const reglements = paiements + avoirs;
-    const sign = cumul < 0 ? -1 : 1;
-    cumul = sign * (Math.abs(cumul) - reglements);
-    return Number(cumul.toFixed(3));
+    return Number((-(solde + ventes - paiements - avoirs)).toFixed(3));
   }
 
   return Number((solde + ventes - paiements - avoirs).toFixed(3));

@@ -4433,7 +4433,7 @@ const ContactsPage: React.FC = () => {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Solde cumulé Client</p>
                   <p className="text-3xl font-bold text-gray-900">
-                    {(Number(soldeCumuleCard?.total_final ?? 0) || 0).toFixed(3)} DH
+                    {computeAggregateSoldeCumule(soldeCumuleCard, 'Client').toFixed(3)} DH
                   </p>
                 </div>
               </div>
