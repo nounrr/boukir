@@ -67,12 +67,14 @@ const CONTACT_PHONE_MAP_SUBQUERY = `
 const BALANCE_EXPR = `
   CASE
     WHEN c.type = 'Client' THEN
+      -(
       COALESCE(c.solde, 0)
       + COALESCE(ventes_client.total_ventes, 0)
       + COALESCE(ventes_comptant.total_ventes, 0)
       + COALESCE(ventes_ecommerce.total_ventes, 0)
       - COALESCE(paiements_client.total_paiements, 0)
       - COALESCE(avoirs_client.total_avoirs, 0)
+      )
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
@@ -168,6 +170,7 @@ const SINGLE_CONTACT_QUERY = `
     (
       CASE
         WHEN c.type = 'Client' THEN
+          -(
           COALESCE(c.solde, 0)
           + COALESCE((
             SELECT SUM(bs.montant_total)
@@ -203,6 +206,7 @@ const SINGLE_CONTACT_QUERY = `
               AND ac.statut IN ('En attente','Validé','Appliqué')
               AND LOWER(TRIM(ac.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
+          )
         WHEN c.type = 'Fournisseur' THEN
           COALESCE(c.solde, 0)
           + COALESCE((
@@ -607,7 +611,7 @@ router.get('/solde-cumule-card', async (_req, res) => {
     const total_paiements = Number(row.total_paiements || 0);
     const total_avoirs = Number(row.total_avoirs || 0);
     // Compat ascendante: ancienne convention (positif = client doit)
-    const total_final = total_solde + total_ventes - total_paiements - total_avoirs;
+    const total_final = -(total_solde + total_ventes - total_paiements - total_avoirs);
     res.json({ total_final, total_solde, total_ventes, total_paiements, total_avoirs });
   } catch (error) {
     console.error('Error fetching solde cumule card:', error);
