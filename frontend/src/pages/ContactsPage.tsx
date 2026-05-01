@@ -245,8 +245,7 @@ const ContactsPage: React.FC = () => {
         (normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir'))
       ) {
         const previousSoldeCumulatif2 = soldeCumulatif2;
-        const sign = soldeCumulatif2 < 0 ? -1 : 1;
-        soldeCumulatif2 = sign * (Math.abs(soldeCumulatif2) - value);
+        soldeCumulatif2 += value;
         return {
           ...item,
           previousSoldeCumulatif2: Number(previousSoldeCumulatif2.toFixed(3)),
@@ -287,8 +286,7 @@ const ContactsPage: React.FC = () => {
         if (normalizedType === 'produit' && (bonType.includes('sortie') || bonType.includes('comptant') || !bonType)) {
           soldeCumulatif -= value;
         } else if (normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir')) {
-          const sign = soldeCumulatif < 0 ? -1 : 1;
-          soldeCumulatif = sign * (Math.abs(soldeCumulatif) - value);
+          soldeCumulatif += value;
         }
       } else {
         soldeCumulatif += getHistorySoldeDelta(contact, item?.type, montant);
@@ -314,7 +312,7 @@ const ContactsPage: React.FC = () => {
     const usesAbs = normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir');
     let operator = current >= previous ? '+' : '-';
     if (contact?.type === 'Client' && (usesAbs || bonType.includes('avoir'))) {
-      operator = previous < 0 ? '+' : '-';
+      operator = '+';
     }
     const operand = usesAbs
       ? `abs(${rawAmount.toFixed(3)})`
@@ -337,7 +335,7 @@ const ContactsPage: React.FC = () => {
     let operator = delta >= 0 ? '+' : '-';
 
     if (contact?.type === 'Client' && usesAbs) {
-      operator = previous < 0 ? '+' : '-';
+      operator = '+';
     }
 
     const operand = usesAbs
