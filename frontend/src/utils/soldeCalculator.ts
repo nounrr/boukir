@@ -33,7 +33,7 @@ export function computeContactSoldeCumule(contact: SoldeTotals | null | undefine
   const avoirs = Math.abs(num(contact.total_avoirs));
   
   if (contact.type === 'Client') {
-    return Number((-(solde + ventes - paiements - avoirs)).toFixed(3));
+    return Number((-Math.abs(solde) - ventes + paiements + avoirs).toFixed(3));
   }
 
   return Number((solde + ventes - paiements - avoirs).toFixed(3));
