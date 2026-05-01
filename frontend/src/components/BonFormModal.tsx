@@ -303,8 +303,10 @@ const bonValidationSchema = Yup.object({
   adresse_livraison: Yup.string(),
   phone: Yup.string().trim(),
   isNotCalculated: Yup.boolean(),
-  client_id: Yup.number().when('type', ([type], schema) => {
-    if (type === 'Sortie' || type === 'Avoir') return schema.required('Client requis');
+  vendre_au_fournisseur: Yup.boolean(),
+  client_id: Yup.number().when(['type', 'vendre_au_fournisseur'], ([type, vendreAuFournisseur], schema) => {
+    if (type === 'Sortie' && !vendreAuFournisseur) return schema.required('Client requis');
+    if (type === 'Avoir') return schema.required('Client requis');
     // Pour Devis : client_id OU client_nom requis (pas les deux obligatoires)
     if (type === 'Devis') return schema.nullable();
     return schema.nullable();
@@ -319,8 +321,8 @@ const bonValidationSchema = Yup.object({
   ecommerce_order_id: Yup.string().optional(),
   order_number: Yup.string().optional(),
   customer_email: Yup.string().trim().optional(),
-  fournisseur_id: Yup.number().when('type', ([type], schema) => {
-    if (type === 'Commande' || type === 'AvoirFournisseur') return schema.required('Fournisseur requis');
+  fournisseur_id: Yup.number().when(['type', 'vendre_au_fournisseur'], ([type, vendreAuFournisseur], schema) => {
+    if (type === 'Commande' || type === 'AvoirFournisseur' || (type === 'Sortie' && vendreAuFournisseur)) return schema.required('Fournisseur requis');
     return schema.nullable();
   }),
   items: Yup.array().min(1, 'Au moins un produit requis'),
@@ -606,6 +608,7 @@ interface BonFormModalProps {
   initialValues?: any;
   onBonAdded?: (bon: any) => void;
   comptantPartialPaymentMode?: 'hidden' | 'required';
+  defaultVendreAuFournisseur?: boolean;
 }
 
 const BonFormModal: React.FC<BonFormModalProps> = ({
@@ -615,6 +618,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   initialValues,
   onBonAdded,
   comptantPartialPaymentMode = 'hidden',
+  defaultVendreAuFournisseur = false,
 }) => {
   const [previewMouvement, { data: mouvementPreviewResp, isLoading: mouvementPreviewLoading }] = usePreviewMouvementMutation();
 
@@ -1568,6 +1572,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         fournisseur_societe: initialValues.fournisseur_societe || '',
   adresse_livraison: initialValues.adresse_livraison || initialValues.adresse_livraison || '',
   phone: initialValues.phone || initialValues.customer_phone || '',
+        vendre_au_fournisseur: initialValues.vendre_au_fournisseur === true || initialValues.vendre_au_fournisseur === 1 || String(initialValues.vendre_au_fournisseur) === '1',
         isNotCalculated: initialValues.isNotCalculated === true || initialValues.isNotCalculated === 1 ? true : false,
         payer_partiellement: initialValues.non_paye === true || initialValues.non_paye === 1 || false,
         reste: initialValues.reste || 0,
@@ -1593,6 +1598,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       fournisseur_nom: '',
       fournisseur_adresse: '',
       fournisseur_societe: '',
+      vendre_au_fournisseur: currentTab === 'Sortie' && defaultVendreAuFournisseur,
     ecommerce_order_id: '',
     order_number: '',
     customer_name: '',
@@ -1630,7 +1636,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
   // Mémoïser les initial values pour éviter les resets Formik intempestifs
   const initialFormValues = useMemo(
     () => getInitialValues(),
-    [currentTab, initialValues?.id, comptantPartialPaymentMode] // ne PAS inclure products ici
+    [currentTab, initialValues?.id, comptantPartialPaymentMode, defaultVendreAuFournisseur] // ne PAS inclure products ici
   );
 
   // Seed la saisie brute quand initial values changent / modal ouvre
@@ -2104,7 +2110,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   phone: values.phone || null,
       isNotCalculated: values.isNotCalculated ? true : null,
       statut: values.statut || 'Brouillon',
-  client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce') ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
+  vendre_au_fournisseur: requestType === 'Sortie' && values.vendre_au_fournisseur ? 1 : undefined,
+  client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce' || (requestType === 'Sortie' && values.vendre_au_fournisseur)) ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
   reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
   non_paye: requestType === 'Comptant' ? !!values.payer_partiellement : undefined,
@@ -3221,7 +3228,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Client */}
-              {(values.type === 'Sortie' || values.type === 'Devis' || values.type === 'Avoir') && (
+              {((values.type === 'Sortie' && !values.vendre_au_fournisseur) || values.type === 'Devis' || values.type === 'Avoir') && (
                 <div>
                   <div className="flex items-center gap-2">
                     <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
@@ -3589,7 +3596,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Fournisseur */}
-              {(values.type === 'Commande' || values.type === 'AvoirFournisseur') && (
+              {(values.type === 'Commande' || values.type === 'AvoirFournisseur' || (values.type === 'Sortie' && values.vendre_au_fournisseur)) && (
                 <div>
                   <div className="flex items-center gap-2">
                     <label htmlFor="fournisseur_id" className="block text-sm font-medium text-gray-700 mb-1">
