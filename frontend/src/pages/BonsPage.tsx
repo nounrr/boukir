@@ -3,6 +3,7 @@ import type React from 'react';
   import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, Truck, RotateCcw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
+import { api } from '../store/api/apiSlice';
   import { Formik, Form, Field } from 'formik';
   import ProductFormModal from '../components/ProductFormModal';
   import ContactFormModal from '../components/ContactFormModal';
@@ -455,6 +456,11 @@ const BonsPage = () => {
   }, [colWidths, onMouseMove, stopResize]);
   // const [markBonAsAvoir] = useMarkBonAsAvoirMutation();
   const getStatusUpdateKey = useCallback((bon: any) => `${bon?.type || effectiveCurrentTab}:${bon?.id}`, [effectiveCurrentTab]);
+  const refreshAfterStatusChange = useCallback(() => {
+    dispatch(api.util.invalidateTags(['Product', 'Contact', { type: 'Bon', id: 'LIST' }]));
+    void refetchBons();
+    safeRefetchProducts();
+  }, [dispatch, refetchBons, safeRefetchProducts]);
 
   // Changer le statut d'un bon (Commande / Sortie / Comptant)
   const handleChangeStatus = async (bon: any, statut: 'Validé' | 'En attente' | 'Annulé' | 'Accepté' | 'Envoyé' | 'Refusé') => {
@@ -510,8 +516,8 @@ const BonsPage = () => {
       
       await updateBonStatus({ id: bon.id, statut, type: bon.type || effectiveCurrentTab }).unwrap();
       showSuccess(`Statut mis à jour: ${statut}`);
-      // IMPORTANT: refetch stock/products after status change (validation or cancel)
-      safeRefetchProducts();
+      // IMPORTANT: refresh list and stock/products after any status change.
+      refreshAfterStatusChange();
 
       // Auto-send WhatsApp if enabled and status is Validé
       if (autoSendWhatsApp && statut === 'Validé' && SHOW_WHATSAPP_BUTTON) {
@@ -528,7 +534,7 @@ const BonsPage = () => {
       // PARSING_ERROR + originalStatus 200 = backend a réussi mais le body de la réponse était invalide/vide
       if (error?.status === 'PARSING_ERROR' && error?.originalStatus === 200) {
         showSuccess(`Statut mis à jour: ${statut}`);
-        safeRefetchProducts();
+        refreshAfterStatusChange();
         return;
       }
       const status = error?.status;
@@ -556,7 +562,7 @@ const BonsPage = () => {
               force_clamp_percentages: true,
             }).unwrap();
             showSuccess(`Statut mis à jour: ${statut}`);
-            safeRefetchProducts();
+            refreshAfterStatusChange();
           } catch (retryError: any) {
             const retryMsg = retryError?.data?.message || retryError?.message || 'Erreur inconnue';
             showError(`Erreur lors du changement de statut: ${retryMsg}`);
