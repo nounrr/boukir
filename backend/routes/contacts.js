@@ -249,6 +249,8 @@ router.get('/', async (req, res) => {
       solde_cumule: 'solde_cumule',
     };
     const sortExpr = sortMap[normalizedSortBy] || sortMap.nom_complet;
+    const referenceSearch = String(search || '').trim();
+    const isReferenceSearch = /^\d+$/.test(referenceSearch);
 
     // Requête pour compter le total
     const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab, groupId });
@@ -352,13 +354,24 @@ router.get('/', async (req, res) => {
     // paginated results never split a group's members across different pages.
     // Contacts without a group (group_id IS NULL) sort after grouped ones.
     const groupPrefix = 'CASE WHEN c.group_id IS NOT NULL THEN 0 ELSE 1 END, c.group_id';
+    const referenceSearchOrder = isReferenceSearch
+      ? `CASE
+          WHEN CAST(c.id AS CHAR) = ? THEN 0
+          WHEN CAST(c.id AS CHAR) LIKE ? THEN 1
+          WHEN CAST(c.id AS CHAR) LIKE ? THEN 2
+          ELSE 3
+        END, CHAR_LENGTH(CAST(c.id AS CHAR)), CAST(c.id AS UNSIGNED),`
+      : '';
     if (sortExpr === 'solde_cumule') {
-      query += ` ORDER BY ${groupPrefix}, solde_cumule ${normalizedSortDir}, c.id ${normalizedSortDir}`;
+      query += ` ORDER BY ${referenceSearchOrder} ${groupPrefix}, solde_cumule ${normalizedSortDir}, c.id ${normalizedSortDir}`;
     } else {
       // Use COALESCE to keep NULLs stable
-      query += ` ORDER BY ${groupPrefix}, COALESCE(${sortExpr}, '') ${normalizedSortDir}, c.id ${normalizedSortDir}`;
+      query += ` ORDER BY ${referenceSearchOrder} ${groupPrefix}, COALESCE(${sortExpr}, '') ${normalizedSortDir}, c.id ${normalizedSortDir}`;
     }
     query += ' LIMIT ?, ?';
+    if (isReferenceSearch) {
+      params.push(referenceSearch, `${referenceSearch}%`, `%${referenceSearch}%`);
+    }
     params.push(offset, parseInt(limit));
 
     // NOTE: MySQL/MariaDB prepared statements may fail with LIMIT placeholders.
@@ -933,9 +946,11 @@ router.get('/:id/history', async (req, res) => {
     if (!Number.isFinite(contactId) || contactId <= 0) {
       return res.status(400).json({ error: 'Invalid contact id' });
     }
+    const requestedPageRaw = String(req.query.page || '1').toLowerCase();
+    const limit = Math.max(1, Math.min(30000, Number(req.query.limit || 30000) || 30000));
 
     const [[contactRows], [sorties], [comptants], [commandes], [avoirsClient], [avoirsFournisseur], [payments], [ecommerceOrders], [avoirsEcommerce]] = await Promise.all([
-      pool.query('SELECT id, type, nom_complet, societe FROM contacts WHERE id = ? LIMIT 1', [contactId]),
+      pool.query('SELECT id, type, nom_complet, societe, solde, created_at FROM contacts WHERE id = ? LIMIT 1', [contactId]),
       pool.query(`
         SELECT bs.*,
           COALESCE(JSON_ARRAYAGG(
@@ -1163,17 +1178,176 @@ router.get('/:id/history', async (req, res) => {
       };
     });
 
+    const isAllowedHistoryStatus = (s) => {
+      if (!s) return false;
+      const norm = String(s).toLowerCase().trim();
+      return !['annulé', 'annule', 'supprimé', 'supprime', 'brouillon', 'refusé', 'refuse', 'expiré', 'expire', 'cancelled', 'refunded'].includes(norm);
+    };
+    const formatDateDmyLocal = (value) => {
+      if (!value) return '';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '';
+      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    };
+    const bonPrefix = (type) => ({ Sortie: 'SOR', Comptant: 'COM', Commande: 'CMD', Avoir: 'AVC', AvoirFournisseur: 'AVF' }[type] || 'BON');
+    const bonNumero = (bon) => String(bon?.numero || `${bonPrefix(bon?.type)}${String(bon?.id ?? '').padStart(2, '0')}`);
+    const paymentNumero = (payment) => `PAY${String(payment?.numero ?? payment?.id ?? '').replace(/^(pay|pa|p-?)\s*[-:\s]*/i, '')}`;
+
+    const docs = contact.type === 'Client'
+      ? [
+          ...normalizeItems(sorties, 'Sortie', 'SOR').filter((b) => isAllowedHistoryStatus(b.statut)),
+          ...normalizeItems(comptants, 'Comptant', 'COM').filter((b) => isAllowedHistoryStatus(b.statut)),
+          ...normalizeItems(avoirsClient, 'Avoir', 'AVC').filter((b) => isAllowedHistoryStatus(b.statut)),
+        ]
+      : [
+          ...normalizeItems(commandes, 'Commande', 'CMD').filter((b) => isAllowedHistoryStatus(b.statut)),
+          ...normalizeItems(avoirsFournisseur, 'AvoirFournisseur', 'AVF').filter((b) => isAllowedHistoryStatus(b.statut)),
+        ];
+
+    const historyRows = [];
+    for (const b of docs) {
+      const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur') ? 'avoir' : 'produit';
+      const bonItems = Array.isArray(b.items) ? b.items : [];
+      for (const it of bonItems) {
+        const q = Number(it.quantite || 0) || 0;
+        const prixUnit = Number(it.prix_unitaire || 0) || 0;
+        const total = Number(it.total ?? (q * prixUnit)) || 0;
+        const cost = Number(it.cout_revient ?? it.prix_achat ?? 0) || 0;
+        const remiseMontant = Number(it.remise_montant || 0) || 0;
+        historyRows.push({
+          id: `${b.id}-${it.product_id}-${it.id ?? historyRows.length}`,
+          bon_id: b.id,
+          bon_numero: bonNumero(b),
+          code_reglement: b.code_reglement,
+          bon_type: b.type,
+          bon_date: formatDateDmyLocal(b.date_creation),
+          bon_date_iso: b.date_creation,
+          bon_statut: b.statut,
+          product_id: it.product_id,
+          product_reference: String(it.product_reference ?? it.reference ?? it.product_id ?? ''),
+          product_designation: it.designation || '',
+          quantite: q,
+          prix_unitaire: prixUnit,
+          total,
+          mouvement: (prixUnit - cost) * q,
+          remise_unitaire: remiseMontant,
+          remise_totale: remiseMontant * q,
+          benefice: ((prixUnit - cost) * q) - (remiseMontant * q),
+          type: itemType,
+          created_at: b.created_at,
+          remise_pourcentage: Number(it.remise_pourcentage || 0) || 0,
+          remise_montant: remiseMontant,
+          adresse_livraison: b.adresse_livraison || '',
+        });
+      }
+    }
+
+    for (const p of payments.filter((p) => isAllowedHistoryStatus(p.statut))) {
+      const paymentDate = p.date_paiement || p.date_creation || p.created_at;
+      historyRows.push({
+        id: `payment-${p.id}`,
+        bon_numero: paymentNumero(p),
+        bon_type: 'Paiement',
+        bon_id: p.bon_id,
+        code_reglement: p.code_reglement,
+        bon_date: formatDateDmyLocal(paymentDate),
+        bon_date_iso: paymentDate,
+        bon_statut: p.statut ? String(p.statut) : 'Paiement',
+        product_reference: 'PAIEMENT',
+        product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,
+        quantite: 1,
+        prix_unitaire: Number(p.montant ?? p.montant_total ?? 0) || 0,
+        total: Number(p.montant ?? p.montant_total ?? 0) || 0,
+        type: 'paiement',
+        created_at: p.created_at,
+        date_paiement_affichage: p.date_paiement,
+      });
+    }
+
+    historyRows.sort((a, b) => new Date(a.bon_date_iso || 0).getTime() - new Date(b.bon_date_iso || 0).getTime());
+    let soldeCumulatif = Number(contact.solde || 0) || 0;
+    let totalVentes = 0;
+    let totalPaiements = 0;
+    let totalAvoirs = 0;
+    let totalQty = 0;
+    let totalAmount = 0;
+    let totalNewRemise = 0;
+    for (const row of historyRows) {
+      const amount = Number(row.total || 0) || 0;
+      if (row.type === 'produit') {
+        soldeCumulatif += amount;
+        totalVentes += amount;
+        totalAmount += amount;
+        if (row.product_id != null) totalQty += Number(row.quantite || 0) || 0;
+        totalNewRemise += (Number(row.remise_montant || 0) || 0) * (Number(row.quantite || 0) || 0);
+      } else if (row.type === 'paiement') {
+        soldeCumulatif -= amount;
+        totalPaiements += amount;
+        totalAmount -= amount;
+      } else if (row.type === 'avoir') {
+        soldeCumulatif -= amount;
+        totalAvoirs += amount;
+        totalAmount -= amount;
+      }
+      row.soldeCumulatif = Number(soldeCumulatif.toFixed(3));
+    }
+
+    const rowGroups = [];
+    for (const row of historyRows) {
+      const key = row.type === 'paiement' ? `payment-${row.id}` : `${row.bon_type}-${row.bon_id}`;
+      const last = rowGroups[rowGroups.length - 1];
+      if (last?.key === key) last.rows.push(row);
+      else rowGroups.push({ key, rows: [row] });
+    }
+    const pages = [];
+    let currentRows = [];
+    let currentDocs = new Set();
+    for (const group of rowGroups) {
+      if (currentRows.length > 0 && currentRows.length + group.rows.length > limit) {
+        pages.push({ rows: currentRows, docs: currentDocs });
+        currentRows = [];
+        currentDocs = new Set();
+      }
+      currentRows.push(...group.rows);
+      for (const row of group.rows) {
+        if (row.type !== 'paiement' && row.bon_type && row.bon_id != null) currentDocs.add(`${row.bon_type}-${row.bon_id}`);
+      }
+    }
+    if (currentRows.length > 0 || pages.length === 0) pages.push({ rows: currentRows, docs: currentDocs });
+    const totalPages = pages.length;
+    const requestedPage = requestedPageRaw === 'last' ? totalPages : (Number(requestedPageRaw) || 1);
+    const page = Math.min(Math.max(1, requestedPage), totalPages);
+    const selectedPage = pages[page - 1] || { rows: [], docs: new Set() };
+    const keepDocs = (rows) => rows.filter((b) => selectedPage.docs.has(`${b.type}-${b.id}`));
+
     res.json({
       contactId,
-      sorties: normalizeItems(sorties, 'Sortie', 'SOR'),
-      comptants: normalizeItems(comptants, 'Comptant', 'COM'),
-      commandes: normalizeItems(commandes, 'Commande', 'CMD'),
-      avoirsClient: normalizeItems(avoirsClient, 'Avoir', 'AVC'),
-      avoirsFournisseur: normalizeItems(avoirsFournisseur, 'AvoirFournisseur', 'AVF'),
-      payments,
-      ecommerceOrders: ecommerceOrders.map((row) => ({ ...row, type: 'Ecommerce' })),
-      avoirsEcommerce: avoirsEcommerce.map((row) => ({ ...row, type: 'AvoirEcommerce' })),
+      sorties: keepDocs(normalizeItems(sorties, 'Sortie', 'SOR')),
+      comptants: keepDocs(normalizeItems(comptants, 'Comptant', 'COM')),
+      commandes: keepDocs(normalizeItems(commandes, 'Commande', 'CMD')),
+      avoirsClient: keepDocs(normalizeItems(avoirsClient, 'Avoir', 'AVC')),
+      avoirsFournisseur: keepDocs(normalizeItems(avoirsFournisseur, 'AvoirFournisseur', 'AVF')),
+      payments: selectedPage.rows.filter((r) => r.type === 'paiement').map((r) => payments.find((p) => `payment-${p.id}` === r.id)).filter(Boolean),
+      ecommerceOrders: [],
+      avoirsEcommerce: [],
       remises,
+      productHistoryRows: selectedPage.rows,
+      historyPagination: {
+        page,
+        limit,
+        totalRows: historyRows.length,
+        totalPages,
+        pageRows: selectedPage.rows.length,
+      },
+      historyTotals: {
+        finalSolde: Number(soldeCumulatif.toFixed(3)),
+        totalVentes,
+        totalPaiements,
+        totalAvoirs,
+        totalQty,
+        totalAmount,
+        totalNewRemise,
+      },
     });
   } catch (error) {
     console.error('Error fetching contact history:', error);

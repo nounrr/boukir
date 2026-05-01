@@ -48,11 +48,12 @@ import {
 // Centralize action/status icon size for easier adjustment
 const ACTION_ICON_SIZE = 24; // increased from 20 per user request
 
-type BonTabKey = 'Commande' | 'Sortie' | 'Comptant' | 'ComptantNonPaye' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
+type BonTabKey = 'Commande' | 'Sortie' | 'VendreFournisseur' | 'Comptant' | 'ComptantNonPaye' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
 
 const BON_TAB_LABELS: Record<BonTabKey, string> = {
   Commande: 'Bon de Commande',
   Sortie: 'Bon de Sortie',
+  VendreFournisseur: 'Vendre fournisseur',
   Comptant: 'Bon Comptant',
   ComptantNonPaye: 'Bon Comptant non payé',
   Vehicule: 'Bon Véhicule',
@@ -64,8 +65,8 @@ const BON_TAB_LABELS: Record<BonTabKey, string> = {
   Devis: 'Devis'
 };
 
-const normalizeBonTab = (tab: BonTabKey): Exclude<BonTabKey, 'ComptantNonPaye'> => (
-  tab === 'ComptantNonPaye' ? 'Comptant' : tab
+const normalizeBonTab = (tab: BonTabKey): Exclude<BonTabKey, 'ComptantNonPaye' | 'VendreFournisseur'> => (
+  tab === 'ComptantNonPaye' ? 'Comptant' : tab === 'VendreFournisseur' ? 'Sortie' : tab
 );
 
 const normalizeHumanName = (value: unknown) => {
@@ -259,6 +260,10 @@ const BonsPage = () => {
   const backendStatus = statusFilter.length ? statusFilter.join(',') : undefined;
   const backendPaymentState = currentTab === 'ComptantNonPaye'
     ? 'unpaid'
+    : currentTab === 'VendreFournisseur'
+      ? 'vendre_fournisseur'
+      : currentTab === 'Sortie'
+        ? 'normal_sortie'
     : currentTab === 'Comptant'
       ? 'paid'
       : undefined;
@@ -751,6 +756,9 @@ const BonsPage = () => {
     if (type === 'Commande' || type === 'AvoirFournisseur') {
       return bon?.fournisseur_id ?? bon?.contact_id ?? '-';
     }
+    if (type === 'Sortie' && bon?.vendre_au_fournisseur) {
+      return bon?.fournisseur_id ?? bon?.contact_id ?? '-';
+    }
 
     const ecommerceRaw = bon?.ecommerce_raw ?? bon;
     if (type === 'Ecommerce' || type === 'AvoirEcommerce') {
@@ -1195,7 +1203,11 @@ const BonsPage = () => {
         ? isBonComptantNonPaye(bon)
         : currentTab === 'Comptant'
           ? !isBonComptantNonPaye(bon)
-          : true;
+          : currentTab === 'VendreFournisseur'
+            ? (bon.vendre_au_fournisseur === 1 || bon.vendre_au_fournisseur === true || String(bon.vendre_au_fournisseur) === '1')
+            : currentTab === 'Sortie'
+              ? (bon.vendre_au_fournisseur !== 1 && bon.vendre_au_fournisseur !== true && String(bon.vendre_au_fournisseur) !== '1')
+              : true;
 
       return matchesSearch && matchesStatus && matchesPaymentState;
     });
@@ -1602,6 +1614,7 @@ const BonsPage = () => {
     const base = [
       { key: 'Commande', label: 'Bon de Commande' },
       { key: 'Sortie', label: 'Bon de Sortie' },
+      { key: 'VendreFournisseur', label: 'Vendre fournisseur' },
       { key: 'Comptant', label: 'Bon Comptant' },
       { key: 'ComptantNonPaye', label: 'Bon Comptant non payé' },
       { key: 'Vehicule', label: 'Bon Véhicule' },
@@ -3492,6 +3505,7 @@ const BonsPage = () => {
             onClose={() => setIsCreateModalOpen(false)}
             currentTab={effectiveCurrentTab as any}
             comptantPartialPaymentMode={isUnpaidComptantTab ? 'required' : 'hidden'}
+            defaultVendreAuFournisseur={currentTab === 'VendreFournisseur'}
             initialValues={selectedBon || undefined}
             onBonAdded={(newBon) => {
               // Le bon est automatiquement ajouté au store Redux

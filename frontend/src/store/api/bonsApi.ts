@@ -12,7 +12,7 @@ type PagedBonsArgs = {
   status?: string;
   sortBy?: 'numero' | 'date' | 'contact' | 'montant';
   sortDir?: 'asc' | 'desc';
-  paymentState?: 'paid' | 'unpaid';
+  paymentState?: 'paid' | 'unpaid' | 'vendre_fournisseur' | 'normal_sortie';
 };
 
 type PagedBonsResponse = {
