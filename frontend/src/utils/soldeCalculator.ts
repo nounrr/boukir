@@ -2,6 +2,66 @@ import type { Contact, Bon, Payment } from '../types';
 import { displayBonNumero } from './numero';
 
 /**
+ * Convention canonique du solde cumulé (calcul 100% côté front).
+ *
+ * - Client     : solde_cumule = solde - SUM(ventes) + SUM(paiements) + SUM(avoirs)
+ *                 -> NEGATIF = le client nous doit, POSITIF = nous lui devons.
+ * - Fournisseur: solde_cumule = solde + SUM(achats) - SUM(paiements) - SUM(avoirs)
+ *                 -> POSITIF = nous lui devons, NEGATIF = il nous doit.
+ *
+ * Cohérent avec le calcul ligne-par-ligne du tableau d'historique
+ * (voir ContactsPage.getHistorySoldeDelta).
+ */
+export interface SoldeTotals {
+  type?: Contact['type'] | string | null;
+  solde?: number | string | null;
+  total_ventes?: number | string | null;
+  total_paiements?: number | string | null;
+  total_avoirs?: number | string | null;
+}
+
+const num = (v: any) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+export function computeContactSoldeCumule(contact: SoldeTotals | null | undefined): number {
+  if (!contact) return 0;
+  const solde = num(contact.solde);
+  const ventes = Math.abs(num(contact.total_ventes));
+  const paiements = Math.abs(num(contact.total_paiements));
+  const avoirs = Math.abs(num(contact.total_avoirs));
+  
+  if (contact.type === 'Client') {
+    let cumul = solde - ventes;
+    const reglements = paiements + avoirs;
+    const sign = cumul < 0 ? -1 : 1;
+    cumul = sign * (Math.abs(cumul) - reglements);
+    return Number(cumul.toFixed(3));
+  }
+
+  return Number((solde + ventes - paiements - avoirs).toFixed(3));
+}
+
+/**
+ * Variante pour les cartes globales (totaux agrégés sur tous les contacts).
+ * Le `type` détermine la convention.
+ */
+export function computeAggregateSoldeCumule(
+  totals: { total_solde?: number; total_ventes?: number; total_paiements?: number; total_avoirs?: number } | null | undefined,
+  type: 'Client' | 'Fournisseur',
+): number {
+  if (!totals) return 0;
+  return computeContactSoldeCumule({
+    type,
+    solde: totals.total_solde,
+    total_ventes: totals.total_ventes,
+    total_paiements: totals.total_paiements,
+    total_avoirs: totals.total_avoirs,
+  });
+}
+
+/**
  * Calcule l'historique détaillé du solde d'un contact avec tous les bons et paiements
  * Utilise la même logique que ContactsPage et le backend pour garantir la cohérence
  */
@@ -126,7 +186,10 @@ export function calculateContactSoldeHistory(
         date: bon.date_bon || bon.created_at,
         numero: displayBonNumero(bon),
         typeLabel: bon.type,
-        // Avoirs en crédit (réduisent le solde), autres en débit
+        // Avoirs/Paiements augmentent la dette (logique inverse pour l'affichage/historique ici)
+        // Mais selon les consignes: "pour tous les bon doit etre - negative et pour tous les paiment et les avoir doit etre positive"
+        // debit/credit sont utilisés dans : soldeCumule = soldeCumule + transaction.debit - transaction.credit;
+        // Donc on veut: bons -> solde_cumule + montant. avoirs -> solde_cumule - montant.
         debit: isAvoir ? 0 : montant,
         credit: isAvoir ? montant : 0,
         soldeCumule: 0, // sera calculé après
