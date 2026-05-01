@@ -259,11 +259,27 @@ router.get('/', async (req, res) => {
     const [countResult] = await pool.execute(countQuery, countParams);
     const total = countResult[0].total;
 
+    // total_ventes/paiements/avoirs sont aussi exposés (sommes brutes par contact)
+    // pour permettre au frontend de calculer son propre solde_cumule avec sa convention.
     let query = `
-      SELECT 
+      SELECT
         c.*,
         cg.name AS group_name,
-        ${BALANCE_EXPR} AS solde_cumule
+        ${BALANCE_EXPR} AS solde_cumule,
+        (
+          COALESCE(ventes_client.total_ventes, 0)
+          + COALESCE(ventes_comptant.total_ventes, 0)
+          + COALESCE(ventes_ecommerce.total_ventes, 0)
+          + COALESCE(achats_fournisseur.total_achats, 0)
+        ) AS total_ventes,
+        (
+          COALESCE(paiements_client.total_paiements, 0)
+          + COALESCE(paiements_fournisseur.total_paiements, 0)
+        ) AS total_paiements,
+        (
+          COALESCE(avoirs_client.total_avoirs, 0)
+          + COALESCE(avoirs_fournisseur.total_avoirs, 0)
+        ) AS total_avoirs
       FROM contacts c
 
       LEFT JOIN contact_groups cg ON cg.id = c.group_id
@@ -383,10 +399,13 @@ router.get('/', async (req, res) => {
     console.log(`Résultats: ${rows.length} contacts`);
     console.log(`Type filter: ${type || 'Tous'}`);
 
-    // Convertir solde_cumule en nombre pour éviter les problèmes de type
+    // Convertir les champs numériques pour éviter les problèmes de type côté JS
     const processedRows = rows.map(row => ({
       ...row,
-      solde_cumule: Number(row.solde_cumule || 0)
+      solde_cumule: Number(row.solde_cumule || 0),
+      total_ventes: Number(row.total_ventes || 0),
+      total_paiements: Number(row.total_paiements || 0),
+      total_avoirs: Number(row.total_avoirs || 0),
     }));
 
     processedRows.forEach((contact, index) => {
@@ -521,136 +540,123 @@ router.get('/summary', async (req, res) => {
   }
 });
 
-// GET /api/contacts/solde-cumule-card - total global pour la card "Solde cumulé"
-// IMPORTANT: cette route applique volontairement une query fixe (sans pagination/filters)
-// pour correspondre exactement au calcul demandé.
+// GET /api/contacts/solde-cumule-card - totaux globaux pour la card "Solde cumulé Client"
+// Retourne les sommes brutes (solde, ventes, paiements, avoirs) afin que le frontend
+// applique sa propre convention de signe pour le solde cumulé.
+// `total_final` reste exposé pour compat ascendante (bons - paiements - avoirs + solde).
 router.get('/solde-cumule-card', async (_req, res) => {
   try {
     const sql = `
       SELECT
-      (
-          -- Bons de sortie
-          COALESCE((
-              SELECT SUM(montant_total)
-              FROM bons_sortie
-              WHERE client_id IS NOT NULL
-                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-          ),0)
+        COALESCE((
+            SELECT SUM(montant_total)
+            FROM bons_sortie
+            WHERE client_id IS NOT NULL
+              AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+        ),0)
+        +
+        COALESCE((
+            SELECT SUM(montant_total)
+            FROM bons_comptant
+            WHERE client_id IS NOT NULL
+              AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+        ),0)
+        +
+        COALESCE((
+            SELECT SUM(total_amount)
+            FROM ecommerce_orders
+            WHERE is_solde = 1
+              AND status IN ('pending','confirmed','processing','shipped','delivered')
+              AND LOWER(COALESCE(status, '')) NOT IN ('cancelled','refunded')
+        ),0) AS total_ventes,
 
-          -- Bons comptant
-          +
-          COALESCE((
-              SELECT SUM(montant_total)
-              FROM bons_comptant
-              WHERE client_id IS NOT NULL
-                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-          ),0)
+        COALESCE((
+            SELECT SUM(montant_total)
+            FROM payments
+            WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+              AND type_paiement = 'Client'
+              AND contact_id IS NOT NULL
+        ),0) AS total_paiements,
 
-          -- Avoirs client
-          -
-          COALESCE((
-              SELECT SUM(montant_total)
-              FROM avoirs_client
-              WHERE client_id IS NOT NULL
-                AND statut IN ('En attente','Validé','Appliqué')
-                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-          ),0)
+        COALESCE((
+            SELECT SUM(montant_total)
+            FROM avoirs_client
+            WHERE client_id IS NOT NULL
+              AND statut IN ('En attente','Validé','Appliqué')
+              AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+        ),0)
+        +
+        COALESCE((
+            SELECT SUM(montant_total)
+            FROM avoirs_ecommerce
+            WHERE statut IN ('En attente','Validé','Appliqué')
+              AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+        ),0) AS total_avoirs,
 
-          -- Paiements clients
-          -
-          COALESCE((
-              SELECT SUM(montant_total)
-              FROM payments
-              WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-                AND type_paiement = 'Client'
-                AND contact_id IS NOT NULL
-          ),0)
-
-          -- Solde contacts (clients uniquement)
-          +
-          COALESCE((
-              SELECT SUM(solde)
-              FROM contacts
-              WHERE type = 'Client'
-          ),0)
-
-          -- Commandes ecommerce
-          +
-          COALESCE((
-              SELECT SUM(total_amount)
-              FROM ecommerce_orders
-              WHERE is_solde = 1
-                AND status IN ('pending','confirmed','processing','shipped','delivered')
-                AND LOWER(COALESCE(status, '')) NOT IN ('cancelled','refunded')
-          ),0)
-
-          -- Avoirs ecommerce
-          -
-          COALESCE((
-              SELECT SUM(montant_total)
-              FROM avoirs_ecommerce
-              WHERE statut IN ('En attente','Validé','Appliqué')
-                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-          ),0)
-
-      ) AS total_final;
+        COALESCE((
+            SELECT SUM(solde)
+            FROM contacts
+            WHERE type = 'Client'
+        ),0) AS total_solde
     `;
 
     const [rows] = await pool.execute(sql);
     const row = rows?.[0] || {};
-    res.json({ total_final: Number(row.total_final || 0) });
+    const total_solde = Number(row.total_solde || 0);
+    const total_ventes = Number(row.total_ventes || 0);
+    const total_paiements = Number(row.total_paiements || 0);
+    const total_avoirs = Number(row.total_avoirs || 0);
+    // Compat ascendante: ancienne convention (positif = client doit)
+    const total_final = total_solde + total_ventes - total_paiements - total_avoirs;
+    res.json({ total_final, total_solde, total_ventes, total_paiements, total_avoirs });
   } catch (error) {
     console.error('Error fetching solde cumule card:', error);
     res.status(500).json({ error: 'Failed to fetch solde cumule card' });
   }
 });
 
-// GET /api/contacts/solde-cumule-card-fournisseur - total global fournisseur
+// GET /api/contacts/solde-cumule-card-fournisseur - totaux globaux fournisseur
+// Mêmes principes: retourne les sommes brutes pour calcul côté frontend.
 router.get('/solde-cumule-card-fournisseur', async (_req, res) => {
   try {
     const sql = `
       SELECT
-      (
-          -- Bons de commande (achats fournisseur)
-          COALESCE((
-              SELECT SUM(montant_total)
-              FROM bons_commande
-              WHERE fournisseur_id IS NOT NULL
-                AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-          ),0)
+        COALESCE((
+            SELECT SUM(montant_total)
+            FROM bons_commande
+            WHERE fournisseur_id IS NOT NULL
+              AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+        ),0) AS total_ventes,
 
-          -- Avoirs fournisseur
-          -
-          COALESCE((
-              SELECT SUM(montant_total)
-              FROM avoirs_fournisseur
-              WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-          ),0)
+        COALESCE((
+            SELECT SUM(montant_total)
+            FROM payments
+            WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+              AND type_paiement = 'Fournisseur'
+              AND contact_id IS NOT NULL
+        ),0) AS total_paiements,
 
-          -- Paiements fournisseur
-          -
-          COALESCE((
-              SELECT SUM(montant_total)
-              FROM payments
-              WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
-                AND type_paiement = 'Fournisseur'
-                AND contact_id IS NOT NULL
-          ),0)
+        COALESCE((
+            SELECT SUM(montant_total)
+            FROM avoirs_fournisseur
+            WHERE LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+        ),0) AS total_avoirs,
 
-          -- Solde contacts (fournisseurs uniquement)
-          +
-          COALESCE((
-              SELECT SUM(solde)
-              FROM contacts
-              WHERE type = 'Fournisseur'
-          ),0)
-
-      ) AS total_final;
+        COALESCE((
+            SELECT SUM(solde)
+            FROM contacts
+            WHERE type = 'Fournisseur'
+        ),0) AS total_solde
     `;
 
     const [rows] = await pool.execute(sql);
     const row = rows?.[0] || {};
-    res.json({ total_final: Number(row.total_final || 0) });
+    const total_solde = Number(row.total_solde || 0);
+    const total_ventes = Number(row.total_ventes || 0);
+    const total_paiements = Number(row.total_paiements || 0);
+    const total_avoirs = Number(row.total_avoirs || 0);
+    const total_final = total_solde + total_ventes - total_paiements - total_avoirs;
+    res.json({ total_final, total_solde, total_ventes, total_paiements, total_avoirs });
   } catch (error) {
     console.error('Error fetching solde cumule card fournisseur:', error);
     res.status(500).json({ error: 'Failed to fetch solde cumule card fournisseur' });
@@ -1272,20 +1278,25 @@ router.get('/:id/history', async (req, res) => {
     let totalQty = 0;
     let totalAmount = 0;
     let totalNewRemise = 0;
+    const isClientContact = contact.type === 'Client';
+    const getHistoryAmountSigned = (row, amount) => {
+      if (row.type === 'produit') return isClientContact ? -amount : amount;
+      if (row.type === 'paiement' || row.type === 'avoir') return isClientContact ? amount : -amount;
+      return 0;
+    };
+
     for (const row of historyRows) {
       const amount = Number(row.total || 0) || 0;
+      soldeCumulatif += getHistoryAmountSigned(row, amount);
       if (row.type === 'produit') {
-        soldeCumulatif += amount;
         totalVentes += amount;
         totalAmount += amount;
         if (row.product_id != null) totalQty += Number(row.quantite || 0) || 0;
         totalNewRemise += (Number(row.remise_montant || 0) || 0) * (Number(row.quantite || 0) || 0);
       } else if (row.type === 'paiement') {
-        soldeCumulatif -= amount;
         totalPaiements += amount;
         totalAmount -= amount;
       } else if (row.type === 'avoir') {
-        soldeCumulatif -= amount;
         totalAvoirs += amount;
         totalAmount -= amount;
       }

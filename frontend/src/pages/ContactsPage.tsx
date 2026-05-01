@@ -52,6 +52,7 @@ import logo from '../components/logo.png';
 import { generatePDFBlobFromElement } from '../utils/pdf';
 import { uploadBonPdf } from '../utils/uploads';
 import { sumRemiseItemsTotal } from '../utils/remisesClientTotals';
+import { computeContactSoldeCumule, computeAggregateSoldeCumule } from '../utils/soldeCalculator';
 // Validation du formulaire de contact
 const contactValidationSchema = Yup.object({
   nom_complet: Yup.string().nullable(),
@@ -172,17 +173,187 @@ const ContactsPage: React.FC = () => {
     );
   };
 
-  // Fonction pour détecter les contacts en retard de paiement (solde > 0 et pas de paiement depuis la période configurée)
+  // Convention du solde dans ce module :
+  //   - Solde NEGATIF  => le client/fournisseur nous doit
+  //   - Solde POSITIF  => nous lui devons
+  //
+  // Cumul (impact sur le solde) :
+  //   Client    : bon -> -value (le client doit plus)  ; paiement/avoir -> +value (on règle sa dette)
+  //   Fournisseur: bon -> +value (on lui doit plus)    ; paiement/avoir -> -value (on solde)
+  //
+  // Affichage par ligne : on inverse la convention pour montrer le SENS de l'opération
+  //   Client    : bon -> +value (vente)               ; paiement/avoir -> -value (encaissement)
+  //   Fournisseur: bon -> -value (achat)              ; paiement/avoir -> +value (décaissement)
+  const getHistorySoldeDelta = React.useCallback((contact: Contact | null | undefined, type: any, amount: number) => {
+    const normalizedType = String(type || '').toLowerCase();
+    const value = Math.abs(Number(amount) || 0);
+    const isClientContact = contact?.type === 'Client';
+
+    if (normalizedType === 'produit') return isClientContact ? -value : value;
+    if (normalizedType === 'paiement' || normalizedType.includes('avoir')) return isClientContact ? value : -value;
+    return 0;
+  }, []);
+
+  const getHistoryDisplayDelta = React.useCallback((contact: Contact | null | undefined, type: any, amount: number) => {
+    const normalizedType = String(type || '').toLowerCase();
+    const value = Math.abs(Number(amount) || 0);
+    const isClientContact = contact?.type === 'Client';
+
+    if (normalizedType === 'produit') return isClientContact ? value : -value;
+    if (normalizedType === 'paiement' || normalizedType.includes('avoir')) return isClientContact ? -value : value;
+    return 0;
+  }, []);
+
+  // Solde cumule 2: calcul simple separe, sans solde initial.
+  // Client: Sortie/Comptant => dette client (-), Paiement/Avoir => reduction dette (+abs).
+  const getHistorySoldeCumule2Delta = React.useCallback((contact: Contact | null | undefined, item: any) => {
+    const normalizedType = String(item?.type || '').toLowerCase();
+    const bonType = String(item?.bon_type || '').toLowerCase();
+    const value = Math.abs(Number(item?.total) || 0);
+
+    if (contact?.type === 'Client') {
+      if (normalizedType === 'produit' && (bonType.includes('sortie') || bonType.includes('comptant'))) return -value;
+      if (normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir')) return value;
+      return 0;
+    }
+
+    return 0;
+  }, []);
+
+  const recalculateHistoryRowsSoldeCumule2 = React.useCallback((
+    rows: any[],
+    contact: Contact | null | undefined
+  ) => {
+    let soldeCumulatif2 = 0;
+    return (rows || []).map((item: any) => {
+      if (item?.syntheticInitial) {
+        return { ...item, soldeCumulatif2: 0 };
+      }
+
+      const normalizedType = String(item?.type || '').toLowerCase();
+      const bonType = String(item?.bon_type || '').toLowerCase();
+      const value = Math.abs(Number(item?.total) || 0);
+
+      if (
+        contact?.type === 'Client' &&
+        (normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir'))
+      ) {
+        const previousSoldeCumulatif2 = soldeCumulatif2;
+        const sign = soldeCumulatif2 < 0 ? -1 : 1;
+        soldeCumulatif2 = sign * (Math.abs(soldeCumulatif2) - value);
+        return {
+          ...item,
+          previousSoldeCumulatif2: Number(previousSoldeCumulatif2.toFixed(3)),
+          soldeCumulatif2: Number(soldeCumulatif2.toFixed(3)),
+        };
+      } else {
+        const previousSoldeCumulatif2 = soldeCumulatif2;
+        soldeCumulatif2 += getHistorySoldeCumule2Delta(contact, item);
+        return {
+          ...item,
+          previousSoldeCumulatif2: Number(previousSoldeCumulatif2.toFixed(3)),
+          soldeCumulatif2: Number(soldeCumulatif2.toFixed(3)),
+        };
+      }
+    });
+  }, [getHistorySoldeCumule2Delta]);
+
+  const recalculateHistoryRowsSolde = React.useCallback((
+    rows: any[],
+    startSolde: number,
+    contact: Contact | null | undefined
+  ) => {
+    let soldeCumulatif = Number(startSolde) || 0;
+    return (rows || []).map((item: any) => {
+      if (item?.syntheticInitial) {
+        soldeCumulatif = Number(item.soldeCumulatif ?? soldeCumulatif) || 0;
+        return { ...item, previousSoldeCumulatif: soldeCumulatif, soldeCumulatif };
+      }
+
+      const montant = Number(item?.total) || 0;
+      const previousSoldeCumulatif = soldeCumulatif;
+
+      if (contact?.type === 'Client') {
+        const normalizedType = String(item?.type || '').toLowerCase();
+        const bonType = String(item?.bon_type || '').toLowerCase();
+        const value = Math.abs(montant);
+
+        if (normalizedType === 'produit' && (bonType.includes('sortie') || bonType.includes('comptant') || !bonType)) {
+          soldeCumulatif -= value;
+        } else if (normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir')) {
+          const sign = soldeCumulatif < 0 ? -1 : 1;
+          soldeCumulatif = sign * (Math.abs(soldeCumulatif) - value);
+        }
+      } else {
+        soldeCumulatif += getHistorySoldeDelta(contact, item?.type, montant);
+      }
+
+      return {
+        ...item,
+        previousSoldeCumulatif: Number(previousSoldeCumulatif.toFixed(3)),
+        soldeCumulatif: Number(soldeCumulatif.toFixed(3)),
+      };
+    });
+  }, [getHistorySoldeDelta]);
+
+  const getHistorySoldeFormula = React.useCallback((contact: Contact | null | undefined, item: any) => {
+    if (!item || item.syntheticInitial) return '';
+
+    const rawAmount = Number(item?.total) || 0;
+    const absAmount = Math.abs(rawAmount);
+    const current = Number(item?.soldeCumulatif ?? 0);
+    const previous = Number(item?.previousSoldeCumulatif ?? (current - getHistorySoldeDelta(contact, item?.type, rawAmount)));
+    const normalizedType = String(item?.type || '').toLowerCase();
+    const bonType = String(item?.bon_type || '').toLowerCase();
+    const usesAbs = normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir');
+    let operator = current >= previous ? '+' : '-';
+    if (contact?.type === 'Client' && (usesAbs || bonType.includes('avoir'))) {
+      operator = previous < 0 ? '+' : '-';
+    }
+    const operand = usesAbs
+      ? `abs(${rawAmount.toFixed(3)})`
+      : absAmount.toFixed(3);
+
+    return `${previous.toFixed(3)} ${operator} ${operand} = ${current.toFixed(3)}`;
+  }, [getHistorySoldeDelta]);
+
+  const getHistorySoldeCumule2Formula = React.useCallback((contact: Contact | null | undefined, item: any) => {
+    if (!item || item.syntheticInitial) return '';
+
+    const rawAmount = Number(item?.total) || 0;
+    const absAmount = Math.abs(rawAmount);
+    const current = Number(item?.soldeCumulatif2 ?? 0);
+    const normalizedType = String(item?.type || '').toLowerCase();
+    const bonType = String(item?.bon_type || '').toLowerCase();
+    const usesAbs = normalizedType === 'paiement' || normalizedType.includes('avoir') || bonType.includes('avoir');
+    const delta = getHistorySoldeCumule2Delta(contact, item);
+    let previous = Number(item?.previousSoldeCumulatif2 ?? (current - delta));
+    let operator = delta >= 0 ? '+' : '-';
+
+    if (contact?.type === 'Client' && usesAbs) {
+      operator = previous < 0 ? '+' : '-';
+    }
+
+    const operand = usesAbs
+      ? `abs(${rawAmount.toFixed(3)})`
+      : absAmount.toFixed(3);
+
+    return `${previous.toFixed(3)} ${operator} ${operand} = ${current.toFixed(3)}`;
+  }, [getHistorySoldeCumule2Delta]);
+
   const isOverdueContact = (contact: Contact, allPayments: any[]): boolean => {
     // 0. Ignorer les contacts archivés/supprimés (si le champ existe)
     if ((contact as any).deleted_at || (contact as any).archived || (contact as any).is_active === false) {
       return false;
     }
 
-    // 1. Vérifier que le solde cumulé est > 0
-    const solde = Number((contact as any).solde_cumule ?? 0) || 0;
-
-    if (solde <= 0) return false;
+    // 1. Vérifier qu'il y a une dette en cours
+    //    Convention nouvelle (calcul front via computeContactSoldeCumule):
+    //      Client      : cumul < 0  => le client nous doit
+    //      Fournisseur : cumul > 0  => nous lui devons
+    const cumul = computeContactSoldeCumule(contact);
+    const hasOpenDebt = contact.type === 'Fournisseur' ? cumul > 0 : cumul < 0;
+    if (!hasOpenDebt) return false;
 
     // 2. Dernière activité = max(dernier paiement, dernier bon)
     // - Paiements: seulement Validé/En attente
@@ -948,7 +1119,7 @@ const ContactsPage: React.FC = () => {
     // Appliquer le filtre de période maintenant :
     //  - Les bons sont déjà filtrés par date_creation dans bonsForContact
     //  - Les paiements doivent être filtrés ici via leur date_paiement (stockée dans bon_date_iso)
-    if (dateFrom || dateTo) {
+    if (false && (dateFrom || dateTo)) {
       const filtered = items.filter((it) => {
         // Priorité à la date ISO si disponible, sinon utiliser la date affichée (JJ-MM-YYYY)
         return isWithinDateRange(it.bon_date_iso || it.bon_date);
@@ -961,7 +1132,7 @@ const ContactsPage: React.FC = () => {
     // en prenant en compte TOUTES les transactions antérieures (même celles filtrées)
     let soldeDebutPeriode = Number(selectedContact?.solde ?? 0);
 
-    if (dateFrom || dateTo) {
+    if (false && (dateFrom || dateTo)) {
       // Créer une liste complète de TOUTES les transactions (sans filtre de période)
       const allItems: any[] = [];
 
@@ -1091,11 +1262,7 @@ const ContactsPage: React.FC = () => {
         // Si la transaction est antérieure au début de la période, l'inclure dans le calcul
         if (from && itemDate < from) {
           const montant = Number(item.total) || 0;
-          if (item.type === 'produit') {
-            soldeDebutPeriode += montant;
-          } else if (item.type === 'paiement' || item.type === 'avoir') {
-            soldeDebutPeriode -= montant;
-          }
+          soldeDebutPeriode += getHistorySoldeDelta(selectedContact, item.type, montant);
         }
       }
     }
@@ -1123,33 +1290,66 @@ const ContactsPage: React.FC = () => {
     let soldeCumulatif = soldeDebutPeriode;
     return items.map((item) => {
       const montant = Number(item.total) || 0;
-      if (item.type === 'produit') {
-        soldeCumulatif += montant; // débit (augmentation)
-      } else if (item.type === 'paiement' || item.type === 'avoir') {
-        soldeCumulatif -= montant; // crédit (diminution)
-      }
+      soldeCumulatif += getHistorySoldeDelta(selectedContact, item.type, montant);
       return { ...item, soldeCumulatif };
     });
-  }, [selectedContact, contactHistory?.productHistoryRows, bonsForContact, products, payments, dateFrom, dateTo]);
+  }, [selectedContact, contactHistory?.productHistoryRows, bonsForContact, products, payments, dateFrom, dateTo, getHistorySoldeDelta]);
 
   // Plus de filtre de statut dynamique
   const filteredProductHistory = productHistory;
+  const dateFilteredProductHistory = useMemo(() => {
+    return filteredProductHistory.filter((item: any) => {
+      if (item?.syntheticInitial) return true;
+      return isWithinDateRange(item?.bon_date_iso || item?.bon_date);
+    });
+  }, [filteredProductHistory, dateFrom, dateTo]);
 
   // Search term and filtering for the Products detail tab
   const [productSearch, setProductSearch] = useState('');
 
   const searchedProductHistory = useMemo(() => {
     const term = productSearch.trim().toLowerCase();
-    if (!term) return filteredProductHistory;
-    return filteredProductHistory.filter((i: any) => {
+    if (!term) return dateFilteredProductHistory;
+    return dateFilteredProductHistory.filter((i: any) => {
       const ref = String(i.product_reference || '').toLowerCase();
       const des = String(i.product_designation || '').toLowerCase();
       const num = String(i.bon_numero || '').toLowerCase();
       return ref.includes(term) || des.includes(term) || num.includes(term);
     });
-  }, [filteredProductHistory, productSearch]);
+  }, [dateFilteredProductHistory, productSearch]);
 
   // Historique complet des produits (SANS filtre de date) - utilisé pour les calculs de solde final et bénéfice
+  const soldeCumule2ByRowId = useMemo(() => {
+    const rowsWithSolde2 = recalculateHistoryRowsSoldeCumule2(
+      filteredProductHistory.filter((item: any) => !item?.syntheticInitial),
+      selectedContact
+    );
+    const map = new Map<string, any>();
+    rowsWithSolde2.forEach((item: any) => {
+      map.set(String(item.id), {
+        soldeCumulatif2: item.soldeCumulatif2,
+        previousSoldeCumulatif2: item.previousSoldeCumulatif2,
+      });
+    });
+    return map;
+  }, [filteredProductHistory, selectedContact, recalculateHistoryRowsSoldeCumule2]);
+
+  const soldeCumuleByRowId = useMemo(() => {
+    const rowsWithSolde = recalculateHistoryRowsSolde(
+      filteredProductHistory.filter((item: any) => !item?.syntheticInitial),
+      Number(selectedContact?.solde ?? 0),
+      selectedContact
+    );
+    const map = new Map<string, any>();
+    rowsWithSolde.forEach((item: any) => {
+      map.set(String(item.id), {
+        soldeCumulatif: item.soldeCumulatif,
+        previousSoldeCumulatif: item.previousSoldeCumulatif,
+      });
+    });
+    return map;
+  }, [filteredProductHistory, selectedContact, recalculateHistoryRowsSolde]);
+
   const allProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
     const initialSolde = Number(selectedContact?.solde ?? 0);
@@ -1253,24 +1453,20 @@ const ContactsPage: React.FC = () => {
     let soldeCumulatif = initialSolde;
     const withSolde = items.map((item) => {
       const montant = Number(item.total) || 0;
-      if (item.type === 'produit') soldeCumulatif += montant;
-      else if (item.type === 'paiement' || item.type === 'avoir') soldeCumulatif -= montant;
+      soldeCumulatif += getHistorySoldeDelta(selectedContact, item.type, montant);
       return { ...item, soldeCumulatif };
     });
     return [initRow, ...withSolde];
-  }, [selectedContact, sorties, comptants, avoirsClient, commandes, avoirsFournisseur, products, payments]);
+  }, [selectedContact, sorties, comptants, avoirsClient, commandes, avoirsFournisseur, products, payments, getHistorySoldeDelta]);
 
   // Solde net final (solde cumulé après la dernière ligne) pour le bloc récapitulatif
   const finalSoldeNet = useMemo(() => {
     if (!selectedContact) return 0;
-    if (contactHistory?.historyTotals?.finalSolde != null) {
-      return Number(contactHistory.historyTotals.finalSolde) || 0;
-    }
     const arr = allProductHistory; // Utiliser l'historique complet
     if (!arr || arr.length === 0) return Number(selectedContact.solde ?? 0);
     const last = arr[arr.length - 1];
     return Number(last.soldeCumulatif ?? selectedContact.solde ?? 0);
-  }, [allProductHistory, selectedContact, contactHistory?.historyTotals?.finalSolde]);
+  }, [allProductHistory, selectedContact]);
 
   // Totaux affichés (pour l'impression - doivent correspondre exactement au tableau)
   const displayedTotals = useMemo(() => {
@@ -1320,9 +1516,6 @@ const ContactsPage: React.FC = () => {
 
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
-    if (Array.isArray(contactHistory?.productHistoryRows)) {
-      return searchedProductHistory;
-    }
     const initialSolde = Number(selectedContact?.solde ?? 0);
     // Date d'ouverture du compte (ou date de création du contact)
     const ouverture = (selectedContact as any).date_ouverture || selectedContact.created_at || null;
@@ -1340,30 +1533,22 @@ const ContactsPage: React.FC = () => {
     }
 
     // Créer un map des soldes cumulés à partir de l'historique complet
-    const soldesMap = new Map<string, number>();
-    allProductHistory.forEach((item) => {
-      soldesMap.set(item.id, item.soldeCumulatif);
-    });
 
     // Filtrer les transactions par date mais garder les soldes calculés sur l'historique complet
-    const filteredTransactions = searchedProductHistory.map(item => ({
-      ...item,
-      soldeCumulatif: soldesMap.get(item.id) || item.soldeCumulatif
-    }));
-
     // Calculer le solde au début de la période filtrée
     let soldeDebutPeriode = initialSolde;
     if (dateFrom && !showSoldeInitial) {
       // Trouver le solde juste avant la période filtrée
-      const beforePeriod = allProductHistory.filter(item => {
+      const beforePeriod = productHistory.filter((item: any) => {
         if (item.syntheticInitial) return false;
         const itemDate = item.bon_date_iso || item.bon_date;
         if (!itemDate) return false;
-        return itemDate < dateFrom;
+        return new Date(itemDate).getTime() < new Date(`${dateFrom}T00:00:00`).getTime();
       });
       if (beforePeriod.length > 0) {
-        const lastBeforePeriod = beforePeriod[beforePeriod.length - 1];
-        soldeDebutPeriode = lastBeforePeriod.soldeCumulatif || initialSolde;
+        const recalculatedBeforePeriod = recalculateHistoryRowsSolde(beforePeriod, initialSolde, selectedContact);
+        const lastBeforePeriod = recalculatedBeforePeriod[recalculatedBeforePeriod.length - 1];
+        soldeDebutPeriode = Number(lastBeforePeriod?.soldeCumulatif ?? initialSolde);
       }
     }
 
@@ -1384,13 +1569,27 @@ const ContactsPage: React.FC = () => {
       syntheticInitial: true,
     } as any;
 
+    const filteredTransactions = searchedProductHistory
+      .filter((item: any) => !item?.syntheticInitial)
+      .map((item: any) => {
+        const solde = soldeCumuleByRowId.get(String(item.id));
+        return solde ? { ...item, ...solde } : item;
+      });
+
+    const rows = showSoldeInitial ? [initRow, ...filteredTransactions] : filteredTransactions;
+    const rowsWithSolde2 = rows.map((item: any) => {
+      if (item?.syntheticInitial) return { ...item, soldeCumulatif2: 0, previousSoldeCumulatif2: 0 };
+      const solde2 = soldeCumule2ByRowId.get(String(item.id));
+      return solde2 ? { ...item, ...solde2 } : item;
+    });
+
     // Pour l'affichage : montrer ou cacher le solde initial selon le filtre
     if (showSoldeInitial) {
-      return [initRow, ...filteredTransactions];
+      return rowsWithSolde2;
     } else {
       // Cacher le solde initial mais ajuster le premier élément pour montrer le bon solde de début
-      if (filteredTransactions.length > 0) {
-        const adjustedTransactions = [...filteredTransactions];
+      if (rowsWithSolde2.length > 0) {
+        const adjustedTransactions = [...rowsWithSolde2];
         // Le premier élément affiché doit montrer le solde de début de période
         adjustedTransactions[0] = {
           ...adjustedTransactions[0],
@@ -1398,9 +1597,9 @@ const ContactsPage: React.FC = () => {
         };
         return adjustedTransactions;
       }
-      return filteredTransactions;
+      return rowsWithSolde2;
     }
-  }, [searchedProductHistory, selectedContact, dateFrom, allProductHistory, contactHistory?.productHistoryRows]);
+  }, [searchedProductHistory, selectedContact, dateFrom, productHistory, recalculateHistoryRowsSolde, soldeCumuleByRowId, soldeCumule2ByRowId]);
 
   // Version complète pour les calculs (toujours avec solde initial pour les calculs corrects)
   const displayedProductHistoryWithInitial = useMemo(() => {
@@ -1408,17 +1607,8 @@ const ContactsPage: React.FC = () => {
     const initialSolde = Number(selectedContact?.solde ?? 0);
 
     // Créer un map des soldes cumulés à partir de l'historique complet
-    const soldesMap = new Map<string, number>();
-    allProductHistory.forEach((item) => {
-      soldesMap.set(item.id, item.soldeCumulatif);
-    });
 
     // Filtrer les transactions par date mais garder les soldes calculés sur l'historique complet
-    const filteredTransactions = searchedProductHistory.map(item => ({
-      ...item,
-      soldeCumulatif: soldesMap.get(item.id) || item.soldeCumulatif
-    }));
-
     const initRow = {
       id: 'initial-solde-produit-calc',
       bon_numero: '—',
@@ -1437,8 +1627,20 @@ const ContactsPage: React.FC = () => {
     } as any;
 
     // Toujours inclure le solde initial pour les calculs corrects
-    return [initRow, ...filteredTransactions];
-  }, [searchedProductHistory, selectedContact, allProductHistory]);
+    return [
+      initRow,
+      ...searchedProductHistory
+        .filter((item: any) => !item?.syntheticInitial)
+        .map((item: any) => {
+          const solde = soldeCumuleByRowId.get(String(item.id));
+          return solde ? { ...item, ...solde } : item;
+        }),
+    ].map((item: any) => {
+      if (item?.syntheticInitial) return { ...item, soldeCumulatif2: 0, previousSoldeCumulatif2: 0 };
+      const solde2 = soldeCumule2ByRowId.get(String(item.id));
+      return solde2 ? { ...item, ...solde2 } : item;
+    });
+  }, [searchedProductHistory, selectedContact, soldeCumuleByRowId, soldeCumule2ByRowId]);
 
   // Solde final affiché dans le tableau = dernière valeur soldeCumulatif de displayedProductHistory
   const tableSoldeFinal = useMemo(() => {
@@ -2124,8 +2326,7 @@ const ContactsPage: React.FC = () => {
         let soldeCumulatif = Number((selectedContact as any)?.solde ?? 0) || 0;
         return items.map((item) => {
           const montant = Number(item.total) || 0;
-          if (item.type === 'produit') soldeCumulatif += montant;
-          else if (item.type === 'paiement' || String(item.type || '').toLowerCase().includes('avoir')) soldeCumulatif -= montant;
+          soldeCumulatif += getHistorySoldeDelta(selectedContact, item.type, montant);
           return { ...item, soldeCumulatif };
         });
       };
@@ -3128,8 +3329,7 @@ const ContactsPage: React.FC = () => {
     // Calcul des statistiques globales
     const totalContacts = contactsList.length;
     const totalSoldes = contactsList.reduce((sum, contact) => {
-      const soldeActuel = Number((contact as any).solde_cumule ?? 0) || 0;
-      return sum + soldeActuel;
+      return sum + computeContactSoldeCumule(contact);
     }, 0);
 
     const printContent = `
@@ -3194,7 +3394,7 @@ const ContactsPage: React.FC = () => {
             ${contactsList.map(contact => {
       const base = Number(contact.solde) || 0;
       const id = contact.id;
-      const soldeActuel = Number((contact as any).solde_cumule ?? 0) || 0;
+      const soldeActuel = computeContactSoldeCumule(contact);
 
       // Compter les transactions
       let transactionCount = 0;
@@ -3422,16 +3622,31 @@ const ContactsPage: React.FC = () => {
   }, [contactReferenceSearchTerm, isContactReferenceSearch]);
 
   // IMPORTANT: le tri doit être fait côté backend, sinon la pagination est fausse.
+  const getContactSoldeDisplay = React.useCallback((contact: Contact) => {
+    return computeContactSoldeCumule(contact);
+  }, []);
+
   const sortedContacts = useMemo(() => {
-    if (!isContactReferenceSearch) return filteredContacts;
+    if (!isContactReferenceSearch && sortField !== 'solde_cumule') return filteredContacts;
     return [...filteredContacts].sort((a, b) => {
-      const rankDiff = getContactReferenceRank(a) - getContactReferenceRank(b);
-      if (rankDiff !== 0) return rankDiff;
-      const refA = String((a as any).reference || a.id || '');
-      const refB = String((b as any).reference || b.id || '');
-      return refA.length - refB.length || Number(a.id) - Number(b.id);
+      if (isContactReferenceSearch) {
+        const rankDiff = getContactReferenceRank(a) - getContactReferenceRank(b);
+        if (rankDiff !== 0) return rankDiff;
+        const refA = String((a as any).reference || a.id || '');
+        const refB = String((b as any).reference || b.id || '');
+        const refDiff = refA.length - refB.length || Number(a.id) - Number(b.id);
+        if (refDiff !== 0) return refDiff;
+      }
+
+      if (sortField === 'solde_cumule') {
+        const sa = getContactSoldeDisplay(a);
+        const sb = getContactSoldeDisplay(b);
+        return sortDirection === 'asc' ? sa - sb : sb - sa;
+      }
+
+      return 0;
     });
-  }, [filteredContacts, getContactReferenceRank, isContactReferenceSearch]);
+  }, [filteredContacts, getContactReferenceRank, getContactSoldeDisplay, isContactReferenceSearch, sortDirection, sortField]);
 
   // Fonction pour gérer le tri (solde_cumule = tri par solde cumulé côté backend)
   const handleSort = (field: 'nom' | 'societe' | 'solde_cumule') => {
@@ -3447,10 +3662,6 @@ const ContactsPage: React.FC = () => {
   const totalItems = activeTab === 'clients' ? (clientsPagination?.total || 0) : (fournisseursPagination?.total || 0);
   const totalPages = activeTab === 'clients' ? (clientsPagination?.totalPages || 1) : (fournisseursPagination?.totalPages || 1);
   const paginatedContacts = sortedContacts;
-
-  const getContactSoldeDisplay = React.useCallback((contact: Contact) => {
-    return Number((contact as any).solde_cumule ?? 0) || 0;
-  }, []);
 
   type AccordionRow =
     | { kind: 'contact'; contact: Contact }
@@ -3497,8 +3708,8 @@ const ContactsPage: React.FC = () => {
             const refDiff = refA.length - refB.length || Number(a.id) - Number(b.id);
             if (refDiff !== 0) return refDiff;
           }
-          const sa = Number((a as any).solde_cumule ?? 0) || 0;
-          const sb = Number((b as any).solde_cumule ?? 0) || 0;
+          const sa = getContactSoldeDisplay(a);
+          const sb = getContactSoldeDisplay(b);
           // Les contacts avec solde 0 vont en bas
           if (sa === 0 && sb !== 0) return 1;
           if (sa !== 0 && sb === 0) return -1;
@@ -3509,7 +3720,7 @@ const ContactsPage: React.FC = () => {
     }
 
     return rows;
-  }, [paginatedContacts, getContactReferenceRank, isContactReferenceSearch]);
+  }, [paginatedContacts, getContactReferenceRank, getContactSoldeDisplay, isContactReferenceSearch]);
 
   const expandedGroupIdForActiveTab = useMemo(() => {
     const prefix = `${activeTab}:`;
@@ -4443,9 +4654,9 @@ const ContactsPage: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           {(() => {
                             const display = getContactSoldeDisplay(contact);
-                            const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
-                            return (
-                              <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                          const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(display) > contact.plafond;
+                          return (
+                            <div className={`flex items-center gap-2 text-sm font-semibold ${display < 0 ? 'text-red-600' : display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
                                 {display.toFixed(3)} DH
                                 {overPlafond && (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
@@ -4664,9 +4875,9 @@ const ContactsPage: React.FC = () => {
                             <td className="px-6 py-4 whitespace-nowrap">
                               {(() => {
                                 const display = getContactSoldeDisplay(contact);
-                                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
+                                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(display) > contact.plafond;
                                 return (
-                                  <div className={`flex items-center gap-2 text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                                  <div className={`flex items-center gap-2 text-sm font-semibold ${display < 0 ? 'text-red-600' : display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
                                     {display.toFixed(3)} DH
                                     {overPlafond && (
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
@@ -4834,7 +5045,7 @@ const ContactsPage: React.FC = () => {
               if (row.kind === 'contact') {
                 const contact = row.contact;
                 const display = getContactSoldeDisplay(contact);
-                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
+                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(display) > contact.plafond;
 
                 return (
                   <div
@@ -4850,7 +5061,7 @@ const ContactsPage: React.FC = () => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                        <div className={`text-sm font-semibold ${display < 0 ? 'text-red-600' : display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
                           {display.toFixed(3)} DH
                           {overPlafond && (
                             <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
@@ -4928,7 +5139,7 @@ const ContactsPage: React.FC = () => {
                     <div className="mt-3 space-y-2">
                       {members.map((contact) => {
                         const display = getContactSoldeDisplay(contact);
-                        const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && display > contact.plafond;
+                        const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(display) > contact.plafond;
                         return (
                           <div
                             key={`group-${groupId}-member-${contact.id}`}
@@ -4949,7 +5160,7 @@ const ContactsPage: React.FC = () => {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <div className={`text-sm font-semibold ${display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                                <div className={`text-sm font-semibold ${display < 0 ? 'text-red-600' : display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
                                   {display.toFixed(3)} DH
                                   {overPlafond && (
                                     <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
@@ -5212,13 +5423,11 @@ const ContactsPage: React.FC = () => {
                       <div className="bg-white rounded-lg p-3 border">
                         <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
                         {(() => {
-                          const value = detailedContact?.solde_cumule ?? finalSoldeNet;
+                          const value = tableSoldeFinal;
                           return (
                             <div className="space-y-1">
                               <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(3)} DH</p>
-                              {detailedContact?.solde_cumule !== undefined && (
-                                <p className="text-xs text-gray-500">Calculé par le serveur</p>
-                              )}
+                              <p className="text-xs text-gray-500">Calculé ligne par ligne</p>
                             </div>
                           );
                         })()}
@@ -5787,7 +5996,7 @@ const ContactsPage: React.FC = () => {
                                             snapshot.isDragging ? 'shadow-lg bg-blue-50' : ''
                                           } ${
                                             (item.type || '').toLowerCase() === 'paiement' ? 'bg-green-100' : 
-                                            (item.type || '').toLowerCase() === 'avoir' ? 'bg-orange-100' : ''
+                                            (item.type || '').toLowerCase().includes('avoir') ? 'bg-purple-100' : ''
                                           }`}
                                         >
                                           <td className="px-2  whitespace-nowrap">
@@ -6001,10 +6210,23 @@ const ContactsPage: React.FC = () => {
                                   })()}
                                 </td>
                                 <td className="px-6  whitespace-nowrap text-sm text-right">
-                                  <div className={`font-semibold ${item.syntheticInitial ? 'text-gray-500' : item.type === 'paiement' ? 'text-green-600' : 'text-blue-600'}`}>
-                                    {item.syntheticInitial ? '—' : item.type === 'paiement' ? '-' : '+'}
-                                    {item.syntheticInitial ? '' : `${item.total.toFixed(3)} DH`}
-                                  </div>
+                                  {(() => {
+                                    const displayAmount = getHistoryDisplayDelta(selectedContact, item.type, Number(item.total) || 0);
+                                    const amountClass = item.syntheticInitial
+                                      ? 'text-gray-500'
+                                      : displayAmount < 0
+                                        ? 'text-green-600'
+                                        : displayAmount > 0
+                                          ? 'text-blue-600'
+                                          : 'text-gray-700';
+
+                                    return (
+                                      <div className={`font-semibold ${amountClass}`}>
+                                        {item.syntheticInitial ? '—' : displayAmount >= 0 ? '+' : '-'}
+                                        {item.syntheticInitial ? '' : `${Math.abs(displayAmount).toFixed(3)} DH`}
+                                      </div>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="px-6  whitespace-nowrap text-sm text-right">
                                   {item.syntheticInitial || item.type === 'paiement' ? (
@@ -6041,6 +6263,11 @@ const ContactsPage: React.FC = () => {
                                   >
                                     {Number(item.soldeCumulatif ?? 0).toFixed(3)} DH
                                   </div>
+                                  {!item.syntheticInitial && (
+                                    <div className="mt-1 text-[11px] font-mono text-gray-500 whitespace-nowrap">
+                                      {getHistorySoldeFormula(selectedContact, item)}
+                                    </div>
+                                  )}
                                 </td>
                               </tr>
                                       )}

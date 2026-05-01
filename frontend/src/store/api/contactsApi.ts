@@ -23,6 +23,10 @@ export interface ContactsSummaryResponse {
 
 export interface SoldeCumuleCardResponse {
   total_final: number;
+  total_solde?: number;
+  total_ventes?: number;
+  total_paiements?: number;
+  total_avoirs?: number;
 }
 
 const contactsApi = api.injectEndpoints({
