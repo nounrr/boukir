@@ -204,6 +204,12 @@ const ContactsPage: React.FC = () => {
     return 0;
   }, []);
 
+  const getContactInitialSoldeForHistory = React.useCallback((contact: Contact | null | undefined) => {
+    const solde = Number(contact?.solde ?? 0) || 0;
+    if (contact?.type === 'Client') return solde === 0 ? 0 : -Math.abs(solde);
+    return solde;
+  }, []);
+
   // Solde cumule 2: calcul simple separe, sans solde initial.
   // Client: Sortie/Comptant => dette client (-), Paiement/Avoir => reduction dette (+abs).
   const getHistorySoldeCumule2Delta = React.useCallback((contact: Contact | null | undefined, item: any) => {
@@ -1130,7 +1136,7 @@ const ContactsPage: React.FC = () => {
 
     // Si un filtre de période est actif, il faut d'abord calculer le solde au début de la période
     // en prenant en compte TOUTES les transactions antérieures (même celles filtrées)
-    let soldeDebutPeriode = Number(selectedContact?.solde ?? 0);
+    let soldeDebutPeriode = getContactInitialSoldeForHistory(selectedContact);
 
     if (false && (dateFrom || dateTo)) {
       // Créer une liste complète de TOUTES les transactions (sans filtre de période)
@@ -1293,7 +1299,7 @@ const ContactsPage: React.FC = () => {
       soldeCumulatif += getHistorySoldeDelta(selectedContact, item.type, montant);
       return { ...item, soldeCumulatif };
     });
-  }, [selectedContact, contactHistory?.productHistoryRows, bonsForContact, products, payments, dateFrom, dateTo, getHistorySoldeDelta]);
+  }, [selectedContact, contactHistory?.productHistoryRows, bonsForContact, products, payments, dateFrom, dateTo, getHistorySoldeDelta, getContactInitialSoldeForHistory]);
 
   // Plus de filtre de statut dynamique
   const filteredProductHistory = productHistory;
@@ -1337,7 +1343,7 @@ const ContactsPage: React.FC = () => {
   const soldeCumuleByRowId = useMemo(() => {
     const rowsWithSolde = recalculateHistoryRowsSolde(
       filteredProductHistory.filter((item: any) => !item?.syntheticInitial),
-      Number(selectedContact?.solde ?? 0),
+      getContactInitialSoldeForHistory(selectedContact),
       selectedContact
     );
     const map = new Map<string, any>();
@@ -1348,11 +1354,11 @@ const ContactsPage: React.FC = () => {
       });
     });
     return map;
-  }, [filteredProductHistory, selectedContact, recalculateHistoryRowsSolde]);
+  }, [filteredProductHistory, selectedContact, recalculateHistoryRowsSolde, getContactInitialSoldeForHistory]);
 
   const allProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
-    const initialSolde = Number(selectedContact?.solde ?? 0);
+    const initialSolde = getContactInitialSoldeForHistory(selectedContact);
 
     const initRow = {
       id: 'initial-solde-produit-all',
@@ -1457,16 +1463,17 @@ const ContactsPage: React.FC = () => {
       return { ...item, soldeCumulatif };
     });
     return [initRow, ...withSolde];
-  }, [selectedContact, sorties, comptants, avoirsClient, commandes, avoirsFournisseur, products, payments, getHistorySoldeDelta]);
+  }, [selectedContact, sorties, comptants, avoirsClient, commandes, avoirsFournisseur, products, payments, getHistorySoldeDelta, getContactInitialSoldeForHistory]);
 
   // Solde net final (solde cumulé après la dernière ligne) pour le bloc récapitulatif
   const finalSoldeNet = useMemo(() => {
     if (!selectedContact) return 0;
     const arr = allProductHistory; // Utiliser l'historique complet
-    if (!arr || arr.length === 0) return Number(selectedContact.solde ?? 0);
+    const initialSolde = getContactInitialSoldeForHistory(selectedContact);
+    if (!arr || arr.length === 0) return initialSolde;
     const last = arr[arr.length - 1];
-    return Number(last.soldeCumulatif ?? selectedContact.solde ?? 0);
-  }, [allProductHistory, selectedContact]);
+    return Number(last.soldeCumulatif ?? initialSolde);
+  }, [allProductHistory, selectedContact, getContactInitialSoldeForHistory]);
 
   // Totaux affichés (pour l'impression - doivent correspondre exactement au tableau)
   const displayedTotals = useMemo(() => {
@@ -1516,7 +1523,7 @@ const ContactsPage: React.FC = () => {
 
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
-    const initialSolde = Number(selectedContact?.solde ?? 0);
+    const initialSolde = getContactInitialSoldeForHistory(selectedContact);
     // Date d'ouverture du compte (ou date de création du contact)
     const ouverture = (selectedContact as any).date_ouverture || selectedContact.created_at || null;
     let showSoldeInitial = true;
@@ -1599,12 +1606,12 @@ const ContactsPage: React.FC = () => {
       }
       return rowsWithSolde2;
     }
-  }, [searchedProductHistory, selectedContact, dateFrom, productHistory, recalculateHistoryRowsSolde, soldeCumuleByRowId, soldeCumule2ByRowId]);
+  }, [searchedProductHistory, selectedContact, dateFrom, productHistory, recalculateHistoryRowsSolde, soldeCumuleByRowId, soldeCumule2ByRowId, getContactInitialSoldeForHistory]);
 
   // Version complète pour les calculs (toujours avec solde initial pour les calculs corrects)
   const displayedProductHistoryWithInitial = useMemo(() => {
     if (!selectedContact) return [] as any[];
-    const initialSolde = Number(selectedContact?.solde ?? 0);
+    const initialSolde = getContactInitialSoldeForHistory(selectedContact);
 
     // Créer un map des soldes cumulés à partir de l'historique complet
 
@@ -1640,7 +1647,7 @@ const ContactsPage: React.FC = () => {
       const solde2 = soldeCumule2ByRowId.get(String(item.id));
       return solde2 ? { ...item, ...solde2 } : item;
     });
-  }, [searchedProductHistory, selectedContact, soldeCumuleByRowId, soldeCumule2ByRowId]);
+  }, [searchedProductHistory, selectedContact, soldeCumuleByRowId, soldeCumule2ByRowId, getContactInitialSoldeForHistory]);
 
   // Solde final affiché dans le tableau = dernière valeur soldeCumulatif de displayedProductHistory
   const tableSoldeFinal = useMemo(() => {
@@ -1703,7 +1710,7 @@ const ContactsPage: React.FC = () => {
   // Utilisés dans les cartes frontend, le PDF modal et le handlePrint
   const filteredDebitCredit = useMemo(() => {
     if (!selectedContact) return { totalDebit: 0, totalCredit: 0, totalVentes: 0, totalPaiements: 0, totalAvoirs: 0 };
-    const initialSolde = Number(selectedContact?.solde ?? 0);
+    const initialSolde = getContactInitialSoldeForHistory(selectedContact);
     const rows = (displayedProductHistory || []).filter((r: any) => !r?.syntheticInitial);
     
     let totalVentes = 0;
@@ -1732,7 +1739,7 @@ const ContactsPage: React.FC = () => {
       totalPaiements,
       totalAvoirs,
     };
-  }, [displayedProductHistory, selectedContact, dateFrom, dateTo]);
+  }, [displayedProductHistory, selectedContact, dateFrom, dateTo, getContactInitialSoldeForHistory]);
 
   const newSystemRemiseDisplayed = useMemo(() => {
     const rows = (displayedProductHistory || []).filter((r: any) => r && !r.syntheticInitial);
@@ -2118,7 +2125,7 @@ const ContactsPage: React.FC = () => {
     const tel = contact.telephone || 'N/A';
     const email = contact.email || 'N/A';
     const ice = contact.ice || 'N/A';
-    const solde = Number(contact.solde || 0).toFixed(3) + ' DH';
+    const solde = getContactInitialSoldeForHistory(contact).toFixed(3) + ' DH';
     return `
       <table style="width:100%;border-collapse:collapse;margin:8px 0;">
         <tr>
@@ -2187,7 +2194,7 @@ const ContactsPage: React.FC = () => {
       const computeTotalsFromRows = (rows: any[]) => {
         let totalQty = 0;
         let totalAmount = 0;
-        let finalSolde = Number((selectedContact as any)?.solde ?? 0) || 0;
+        let finalSolde = getContactInitialSoldeForHistory(selectedContact);
 
         for (const r of rows) {
           if (r?.syntheticInitial) continue;
@@ -2323,7 +2330,7 @@ const ContactsPage: React.FC = () => {
 
         // Tri + solde cumulatif (sans filtre)
         items.sort((a, b) => new Date(a.bon_date_iso || a.bon_date).getTime() - new Date(b.bon_date_iso || b.bon_date).getTime());
-        let soldeCumulatif = Number((selectedContact as any)?.solde ?? 0) || 0;
+        let soldeCumulatif = getContactInitialSoldeForHistory(selectedContact);
         return items.map((item) => {
           const montant = Number(item.total) || 0;
           soldeCumulatif += getHistorySoldeDelta(selectedContact, item.type, montant);
@@ -5376,8 +5383,8 @@ const ContactsPage: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="bg-white rounded-lg p-3 border">
                         <p className="font-semibold text-gray-600 text-sm">Solde Initial:</p>
-                        <p className={`font-bold text-lg ${(Number(selectedContact.solde) || 0) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                          {(Number(selectedContact.solde) || 0).toFixed(3)} DH
+                        <p className={`font-bold text-lg ${getContactInitialSoldeForHistory(selectedContact) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                          {getContactInitialSoldeForHistory(selectedContact).toFixed(3)} DH
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-3 border">
