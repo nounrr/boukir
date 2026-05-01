@@ -503,6 +503,12 @@ router.get('/paged/:type', async (req, res) => {
       }
     }
 
+    if (type === 'Sortie' && paymentState === 'vendre_fournisseur') {
+      whereParts.push(`COALESCE(b.vendre_au_fournisseur, 0) = 1`);
+    } else if (type === 'Sortie' && paymentState === 'normal_sortie') {
+      whereParts.push(`COALESCE(b.vendre_au_fournisseur, 0) <> 1`);
+    }
+
     const whereSql = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS total FROM ${cfg.table} b ${cfg.joins} ${whereSql}`,

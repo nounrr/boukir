@@ -1,7 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken } from '../middleware/auth.js';
-import { getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
+import { getRemisePaymentAccounts, getDirectContactRemiseBalances } from '../utils/remisePaymentAccounts.js';
 
 const router = express.Router();
 
@@ -270,6 +270,17 @@ router.get('/clients/by-contact/:contactId', async (req, res) => {
   } catch (e) {
     console.error('remises clients by-contact error', e);
     res.status(500).json({ message: 'Erreur du serveur', detail: e?.message, code: e?.code });
+  }
+});
+
+// Remise disponible par contact direct (bons)
+router.get('/direct-contact-balances', verifyToken, async (req, res) => {
+  try {
+    const balances = await getDirectContactRemiseBalances(pool);
+    res.json(balances);
+  } catch (e) {
+    console.error('direct-contact-balances error', e);
+    res.status(500).json({ message: 'Erreur serveur' });
   }
 });
 

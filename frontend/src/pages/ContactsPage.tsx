@@ -39,6 +39,12 @@ import ContactPrintModal from '../components/ContactPrintModal';
 import ContactPrintTemplate from '../components/ContactPrintTemplate';
 import PeriodConfig from '../components/PeriodConfig';
 import { useUpdateBonMutation } from '../store/api/bonsApi';
+import {
+  useCreateClientRemiseMutation,
+  useCreateRemiseItemMutation,
+  useLazyGetClientAbonneByContactQuery,
+  useUpdateRemiseItemMutation,
+} from '../store/api/remisesApi';
 import { formatDateDMY, formatDateTimeWithHour, normalizeDateTimeToMySQL } from '../utils/dateUtils';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
@@ -123,6 +129,10 @@ const ContactsPage: React.FC = () => {
   const [deleteContactMutation] = useDeleteContactMutation();
   const [updateBonMutation] = useUpdateBonMutation();
   const [reorderPayments] = useReorderPaymentsMutation();
+  const [getClientAbonneByContact] = useLazyGetClientAbonneByContactQuery();
+  const [createClientRemise] = useCreateClientRemiseMutation();
+  const [createRemiseItem] = useCreateRemiseItemMutation();
+  const [updateRemiseItem] = useUpdateRemiseItemMutation();
 
   // Statuts considérés comme "actifs" (bons/paiements) pour les calculs
   const isAllowedStatut = (s: any) => {
@@ -253,8 +263,11 @@ const ContactsPage: React.FC = () => {
   const [selectedBonIds, setSelectedBonIds] = React.useState<Set<number>>(new Set());
   const [selectedProductIds, setSelectedProductIds] = React.useState<Set<string>>(new Set());
   const [showRemiseMode, setShowRemiseMode] = useState(false);
+  const [remiseMode, setRemiseMode] = useState<'create' | 'edit'>('create');
   const [selectedItemsForRemise, setSelectedItemsForRemise] = useState<Set<string>>(new Set());
   const [remisePrices, setRemisePrices] = useState<Record<string, number>>({});
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyPageSize = 30000;
 
   const [activeTab, setActiveTab] = useState<'clients' | 'fournisseurs' | 'groups'>('clients');
   const [clientSubTab, setClientSubTab] = useState<'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'>('all');
@@ -272,7 +285,11 @@ const ContactsPage: React.FC = () => {
   const { data: detailedContact } = useGetContactQuery(selectedContact?.id!, {
     skip: !selectedContact?.id
   });
-  const { data: contactHistory, refetch: refetchContactHistory } = useGetContactHistoryQuery(selectedContact?.id!, {
+  const { data: contactHistory, refetch: refetchContactHistory } = useGetContactHistoryQuery({
+    id: selectedContact?.id!,
+    page: historyPage,
+    limit: historyPageSize,
+  }, {
     skip: !selectedContact?.id || !isDetailsModalOpen
   });
 
@@ -612,6 +629,9 @@ const ContactsPage: React.FC = () => {
   // Historique produits + paiements (détails contact)
   const productHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
+    if (Array.isArray(contactHistory?.productHistoryRows)) {
+      return contactHistory.productHistoryRows;
+    }
 
     const resolveCost = (it: any) => {
       if (it == null) return 0;
@@ -1110,7 +1130,7 @@ const ContactsPage: React.FC = () => {
       }
       return { ...item, soldeCumulatif };
     });
-  }, [selectedContact, bonsForContact, products, payments, dateFrom, dateTo]);
+  }, [selectedContact, contactHistory?.productHistoryRows, bonsForContact, products, payments, dateFrom, dateTo]);
 
   // Plus de filtre de statut dynamique
   const filteredProductHistory = productHistory;
@@ -1243,11 +1263,14 @@ const ContactsPage: React.FC = () => {
   // Solde net final (solde cumulé après la dernière ligne) pour le bloc récapitulatif
   const finalSoldeNet = useMemo(() => {
     if (!selectedContact) return 0;
+    if (contactHistory?.historyTotals?.finalSolde != null) {
+      return Number(contactHistory.historyTotals.finalSolde) || 0;
+    }
     const arr = allProductHistory; // Utiliser l'historique complet
     if (!arr || arr.length === 0) return Number(selectedContact.solde ?? 0);
     const last = arr[arr.length - 1];
     return Number(last.soldeCumulatif ?? selectedContact.solde ?? 0);
-  }, [allProductHistory, selectedContact]);
+  }, [allProductHistory, selectedContact, contactHistory?.historyTotals?.finalSolde]);
 
   // Totaux affichés (pour l'impression - doivent correspondre exactement au tableau)
   const displayedTotals = useMemo(() => {
@@ -1297,6 +1320,9 @@ const ContactsPage: React.FC = () => {
 
   const displayedProductHistory = useMemo(() => {
     if (!selectedContact) return [] as any[];
+    if (Array.isArray(contactHistory?.productHistoryRows)) {
+      return searchedProductHistory;
+    }
     const initialSolde = Number(selectedContact?.solde ?? 0);
     // Date d'ouverture du compte (ou date de création du contact)
     const ouverture = (selectedContact as any).date_ouverture || selectedContact.created_at || null;
@@ -1374,7 +1400,7 @@ const ContactsPage: React.FC = () => {
       }
       return filteredTransactions;
     }
-  }, [searchedProductHistory, selectedContact, dateFrom, allProductHistory]);
+  }, [searchedProductHistory, selectedContact, dateFrom, allProductHistory, contactHistory?.productHistoryRows]);
 
   // Version complète pour les calculs (toujours avec solde initial pour les calculs corrects)
   const displayedProductHistoryWithInitial = useMemo(() => {
@@ -1421,6 +1447,55 @@ const ContactsPage: React.FC = () => {
     const last = arr[arr.length - 1];
     return Number(last.soldeCumulatif ?? finalSoldeNet);
   }, [displayedProductHistory, finalSoldeNet]);
+
+  const pagedProductHistoryChunks = useMemo(() => {
+    const rows = displayedProductHistory || [];
+    const chunks: any[][] = [];
+    let current: any[] = [];
+    let index = 0;
+
+    const getGroupKey = (row: any) => {
+      if (row?.syntheticInitial) return `synthetic-${row.id}`;
+      if (row?.type === 'paiement') return `payment-${row.id}`;
+      return `${row?.bon_type || ''}-${row?.bon_id || row?.id || index}`;
+    };
+
+    while (index < rows.length) {
+      const first = rows[index];
+      const key = getGroupKey(first);
+      const group: any[] = [];
+
+      while (index < rows.length && getGroupKey(rows[index]) === key) {
+        group.push(rows[index]);
+        index += 1;
+      }
+
+      if (current.length > 0 && current.length + group.length > historyPageSize) {
+        chunks.push(current);
+        current = [];
+      }
+
+      current.push(...group);
+    }
+
+    if (current.length > 0) chunks.push(current);
+    return chunks.length > 0 ? chunks : [[]];
+  }, [displayedProductHistory]);
+
+  const backendHistoryPagination = contactHistory?.historyPagination;
+  const historyTotalPages = Number(backendHistoryPagination?.totalPages || pagedProductHistoryChunks.length || 1);
+  const pagedProductHistory = backendHistoryPagination
+    ? displayedProductHistory
+    : (pagedProductHistoryChunks[Math.min(Math.max(historyPage, 1), historyTotalPages) - 1] || []);
+
+  useEffect(() => {
+    setHistoryPage((prev) => {
+      if (backendHistoryPagination) return Number(backendHistoryPagination.page || 1);
+      if (historyTotalPages <= 1) return 1;
+      if (prev < 1 || prev > historyTotalPages) return historyTotalPages;
+      return prev;
+    });
+  }, [historyTotalPages, backendHistoryPagination]);
 
   // Totaux Débit / Crédit filtrés (respectent dateFrom, dateTo, productSearch)
   // Utilisés dans les cartes frontend, le PDF modal et le handlePrint
@@ -1523,7 +1598,10 @@ const ContactsPage: React.FC = () => {
     [contactRemises]
   );
   const backendRemiseUsedTotal = Number(detailedContact?.remise_utilisee ?? 0);
-  const backendRemiseNewTotal = Number(detailedContact?.remise_gagnee_nouveau ?? 0) + Number(detailedContact?.remise_gagnee_ecommerce ?? 0);
+  const backendRemiseNewTotal = Math.max(
+    Number(detailedContact?.remise_gagnee_nouveau ?? 0) + Number(detailedContact?.remise_gagnee_ecommerce ?? 0),
+    Number(newSystemRemiseDisplayed.total ?? 0)
+  );
   const backendRemiseOldTotal = fetchedContactOldRemiseTotal;
   const backendRemiseEarnedTotal = fetchedContactOldRemiseTotal + backendRemiseNewTotal;
   const backendRemiseAvailableTotal = Math.max(0, backendRemiseEarnedTotal - backendRemiseUsedTotal);
@@ -1538,6 +1616,44 @@ const ContactsPage: React.FC = () => {
     const total = quantite > 0 ? remiseMontant * quantite : remiseMontant;
     return Number(total.toFixed(3));
   }, []);
+
+  const getExistingRemiseItemForProduct = React.useCallback((item: any) => {
+    if (!item || item.syntheticInitial || item.type !== 'produit') return null;
+
+    const bonIdItem = Number(item.bon_id);
+    const prodIdItem = item.product_id != null ? Number(item.product_id) : null;
+    const refItem = String(item.product_reference || item.reference || '').trim();
+
+    for (const remise of contactRemises || []) {
+      for (const remiseItem of remise?.items || []) {
+        const statut = String(remiseItem?.statut || '').toLowerCase();
+        if (statut.includes('annul')) continue;
+
+        const bonIdRemise = Number(remiseItem?.bon_id);
+        if (!bonIdItem || bonIdItem !== bonIdRemise) continue;
+
+        const prodIdRemise = remiseItem?.product_id != null ? Number(remiseItem.product_id) : null;
+        const refRemise = String(remiseItem?.reference || remiseItem?.product_reference || '').trim();
+
+        const sameProduct =
+          (prodIdItem != null && prodIdRemise != null && prodIdItem === prodIdRemise) ||
+          (refItem && refRemise && refItem === refRemise);
+
+        if (sameProduct) return { remise, remiseItem };
+      }
+    }
+
+    return null;
+  }, [contactRemises]);
+
+  const getEditableRemiseUnitPrice = React.useCallback((item: any) => {
+    const existingItemRemise = getExistingRemiseItemForProduct(item);
+    if (existingItemRemise?.remiseItem) {
+      return Number(existingItemRemise.remiseItem.prix_remise || 0) || 0;
+    }
+
+    return Number(item?.remise_montant ?? 0) || 0;
+  }, [getExistingRemiseItemForProduct]);
 
   const displayedRemiseSoldeByRow = useMemo(() => {
     const byRow: Record<string, number> = {};
@@ -1559,24 +1675,44 @@ const ContactsPage: React.FC = () => {
     return byRow;
   }, [displayedProductHistory, contactRemises, getBonDirectRemiseTotal]);
 
-  const getExistingRemiseTotal = React.useCallback((item: any) => {
-    if (!item || item.syntheticInitial || item.type !== 'produit') return 0;
-    const remises = getItemRemises(item);
-    const remiseFromBon = getBonDirectRemiseTotal(item);
-    return Number(remises.abonne || 0) + Number(remises.client || 0) + Number(remiseFromBon || 0);
-  }, [contactRemises, getBonDirectRemiseTotal]);
-
-  const isEligibleForManualRemise = React.useCallback((item: any) => {
+  const isRemiseSupportedProductRow = React.useCallback((item: any) => {
     if (!item || item.syntheticInitial) return false;
     if (item.type !== 'produit') return false;
     if (String(item.bon_type || '') === 'Avoir') return false;
-    return getExistingRemiseTotal(item) <= 0;
-  }, [getExistingRemiseTotal]);
+    const bonType = String(item.bon_type || '');
+    return bonType === 'Sortie' || bonType === 'Comptant';
+  }, []);
+
+  const hasEditableRemise = React.useCallback((item: any) => {
+    return isRemiseSupportedProductRow(item) && getEditableRemiseUnitPrice(item) > 0;
+  }, [getEditableRemiseUnitPrice, isRemiseSupportedProductRow]);
+
+  const isEligibleForNewRemise = React.useCallback((item: any) => {
+    return isRemiseSupportedProductRow(item) && !hasEditableRemise(item);
+  }, [hasEditableRemise, isRemiseSupportedProductRow]);
+
+  const isEligibleForEditRemise = React.useCallback((item: any) => {
+    return hasEditableRemise(item);
+  }, [hasEditableRemise]);
+
+  const newRemiseItems = useMemo(
+    () => (pagedProductHistory || []).filter((item: any) => isEligibleForNewRemise(item)),
+    [pagedProductHistory, isEligibleForNewRemise]
+  );
+
+  const editableRemiseItems = useMemo(
+    () => (pagedProductHistory || []).filter((item: any) => isEligibleForEditRemise(item)),
+    [pagedProductHistory, isEligibleForEditRemise]
+  );
 
   const eligibleDisplayedRemiseItems = useMemo(
-    () => (displayedProductHistory || []).filter((item: any) => isEligibleForManualRemise(item)),
-    [displayedProductHistory, isEligibleForManualRemise]
+    () => remiseMode === 'edit' ? editableRemiseItems : newRemiseItems,
+    [editableRemiseItems, newRemiseItems, remiseMode]
   );
+
+  const isEligibleForManualRemise = React.useCallback((item: any) => {
+    return remiseMode === 'edit' ? isEligibleForEditRemise(item) : isEligibleForNewRemise(item);
+  }, [isEligibleForEditRemise, isEligibleForNewRemise, remiseMode]);
 
   // Bons visibles dans le tableau (IDs uniques) — utile pour la sélection de bons
   const displayedBonIds = useMemo(() => {
@@ -1803,6 +1939,7 @@ const ContactsPage: React.FC = () => {
     setDateTo('');
     // Réinitialiser le mode remise
     setShowRemiseMode(false);
+    setRemiseMode('create');
     setRemisePrices({});
     setSelectedItemsForRemise(new Set());
   };
@@ -2138,22 +2275,37 @@ const ContactsPage: React.FC = () => {
   }, [loadContactRemises]);
 
   React.useEffect(() => {
+    setHistoryPage(999999);
+  }, [selectedContact?.id, dateFrom, dateTo, productSearch]);
+
+  React.useEffect(() => {
     if (!showRemiseMode) return;
 
     const eligibleIds = new Set(eligibleDisplayedRemiseItems.map((item: any) => String(item.id)));
+    const existingPriceById = new Map<string, number>();
+    if (remiseMode === 'edit') {
+      for (const item of eligibleDisplayedRemiseItems) {
+        const existingPrice = getEditableRemiseUnitPrice(item);
+        if (existingPrice > 0) existingPriceById.set(String(item.id), existingPrice);
+      }
+    }
 
     setSelectedItemsForRemise((prev) => {
       const next = new Set(Array.from(prev).filter((id) => eligibleIds.has(String(id))));
+      for (const id of existingPriceById.keys()) next.add(id);
       return next.size === prev.size ? prev : next;
     });
 
     setRemisePrices((prev) => {
-      const next = Object.fromEntries(
+      const next: Record<string, number> = Object.fromEntries(
         Object.entries(prev).filter(([id]) => eligibleIds.has(String(id)))
       );
+      for (const [id, price] of existingPriceById.entries()) {
+        if (next[id] == null) next[id] = price;
+      }
       return Object.keys(next).length === Object.keys(prev).length ? prev : next;
     });
-  }, [showRemiseMode, eligibleDisplayedRemiseItems]);
+  }, [showRemiseMode, eligibleDisplayedRemiseItems, getEditableRemiseUnitPrice, remiseMode]);
 
   // Fonction pour obtenir les remises d'un item spécifique
   const getItemRemisesLegacy = (item: any) => {
@@ -2283,20 +2435,23 @@ const ContactsPage: React.FC = () => {
         .map((itemId) => {
           const normalizedId = String(itemId);
           const item = eligibleDisplayedRemiseItems.find((p: any) => String(p.id) === normalizedId);
-          const prixRemise = Number(remisePrices[normalizedId] || 0);
+          const prixRemise = Number(remisePrices[normalizedId] ?? 0);
+          const existingItemRemise = getExistingRemiseItemForProduct(item);
+          const hasExistingDirectRemise = getBonDirectRemiseTotal(item) > 0;
 
-          if (!item || prixRemise <= 0) return null;
+          if (!item) return null;
+          if (prixRemise <= 0 && !existingItemRemise && !hasExistingDirectRemise) return null;
 
-          return { item, prixRemise, itemId: normalizedId };
+          return { item, prixRemise, itemId: normalizedId, existingItemRemise };
         })
-        .filter(Boolean) as Array<{ item: any; prixRemise: number; itemId: string }>;
+        .filter(Boolean) as Array<{ item: any; prixRemise: number; itemId: string; existingItemRemise: any }>;
 
       if (selectedRemiseItems.length === 0) {
         showError('Aucune remise valide Ã  enregistrer');
         return;
       }
 
-      const remisePromises = selectedRemiseItems.map(async ({ item, prixRemise, itemId }) => {
+      const remisePromises = selectedRemiseItems.map(async ({ item, prixRemise, itemId, existingItemRemise }) => {
         if (!isEligibleForManualRemise(item)) {
           console.warn(`Article ignorÃ© car dÃ©jÃ  remisé: ${itemId}`);
           return null;
@@ -2353,13 +2508,16 @@ const ContactsPage: React.FC = () => {
         .map((itemId) => {
           const normalizedId = String(itemId);
           const item = eligibleDisplayedRemiseItems.find((p: any) => String(p.id) === normalizedId);
-          const prixRemise = Number(remisePrices[normalizedId] || 0);
+          const prixRemise = Number(remisePrices[normalizedId] ?? 0);
+          const existingItemRemise = getExistingRemiseItemForProduct(item);
+          const hasExistingDirectRemise = getBonDirectRemiseTotal(item) > 0;
 
-          if (!item || prixRemise <= 0) return null;
+          if (!item) return null;
+          if (prixRemise <= 0 && !existingItemRemise && !hasExistingDirectRemise) return null;
 
-          return { item, prixRemise, itemId: normalizedId };
+          return { item, prixRemise, itemId: normalizedId, existingItemRemise };
         })
-        .filter(Boolean) as Array<{ item: any; prixRemise: number; itemId: string }>;
+        .filter(Boolean) as Array<{ item: any; prixRemise: number; itemId: string; existingItemRemise: any }>;
 
       if (selectedRemiseItems.length === 0) {
         showError('Aucune remise valide à enregistrer');
@@ -2432,10 +2590,20 @@ const ContactsPage: React.FC = () => {
         return payload;
       };
 
-      const remisePromises = selectedRemiseItems.map(async ({ item, prixRemise, itemId }) => {
+      const remisePromises = selectedRemiseItems.map(async ({ item, prixRemise, itemId, existingItemRemise }) => {
         if (!isEligibleForManualRemise(item)) {
           console.warn(`Article ignoré car déjà remisé: ${itemId}`);
           return null;
+        }
+
+        if (existingItemRemise?.remiseItem?.id) {
+          return updateRemiseItem({
+            id: Number(existingItemRemise.remiseItem.id),
+            data: {
+              qte: Number(item.quantite || 0) || 0,
+              prix_remise: prixRemise,
+            },
+          }).unwrap();
         }
 
         const bonType = String(item?.bon_type || '');
@@ -2455,7 +2623,12 @@ const ContactsPage: React.FC = () => {
       });
 
       await Promise.all(remisePromises.filter(Boolean));
-      await loadContactRemises();
+      const refreshedHistory: any = await refetchContactHistory();
+      if (Array.isArray(refreshedHistory?.data?.remises)) {
+        setContactRemises(refreshedHistory.data.remises);
+      } else {
+        await loadContactRemises();
+      }
       setShowRemiseMode(false);
       setRemisePrices({});
       setSelectedItemsForRemise(new Set());
@@ -2467,6 +2640,21 @@ const ContactsPage: React.FC = () => {
   };
 
   // Impression avec détails des produits et transactions
+  const startEditRemiseMode = React.useCallback((item?: any) => {
+    const targetPrice = item ? getEditableRemiseUnitPrice(item) : 0;
+    if (item && targetPrice <= 0) return;
+
+    if (!item && editableRemiseItems.length === 0) {
+      showInfo('Aucune remise visible Ã  modifier.');
+      return;
+    }
+
+    setRemiseMode('edit');
+    setRemisePrices(item ? { [String(item.id)]: targetPrice } : {});
+    setSelectedItemsForRemise(item ? new Set([String(item.id)]) : new Set());
+    setShowRemiseMode(true);
+  }, [editableRemiseItems.length, getEditableRemiseUnitPrice]);
+
   const handlePrint = () => {
     if (!selectedContact) return;
 
@@ -3222,9 +3410,28 @@ const ContactsPage: React.FC = () => {
 
   // Les filtres (search + sous-onglet) sont appliqués côté backend
   const filteredContacts = (activeTab === 'clients' ? clients : fournisseurs);
+  const contactReferenceSearchTerm = searchTerm.trim();
+  const isContactReferenceSearch = /^\d+$/.test(contactReferenceSearchTerm);
+  const getContactReferenceRank = React.useCallback((contact: Contact) => {
+    if (!isContactReferenceSearch) return 0;
+    const ref = String((contact as any).reference || contact.id || '').trim();
+    if (ref === contactReferenceSearchTerm) return 0;
+    if (ref.startsWith(contactReferenceSearchTerm)) return 1;
+    if (ref.includes(contactReferenceSearchTerm)) return 2;
+    return 3;
+  }, [contactReferenceSearchTerm, isContactReferenceSearch]);
 
   // IMPORTANT: le tri doit être fait côté backend, sinon la pagination est fausse.
-  const sortedContacts = useMemo(() => filteredContacts, [filteredContacts]);
+  const sortedContacts = useMemo(() => {
+    if (!isContactReferenceSearch) return filteredContacts;
+    return [...filteredContacts].sort((a, b) => {
+      const rankDiff = getContactReferenceRank(a) - getContactReferenceRank(b);
+      if (rankDiff !== 0) return rankDiff;
+      const refA = String((a as any).reference || a.id || '');
+      const refB = String((b as any).reference || b.id || '');
+      return refA.length - refB.length || Number(a.id) - Number(b.id);
+    });
+  }, [filteredContacts, getContactReferenceRank, isContactReferenceSearch]);
 
   // Fonction pour gérer le tri (solde_cumule = tri par solde cumulé côté backend)
   const handleSort = (field: 'nom' | 'societe' | 'solde_cumule') => {
@@ -3254,6 +3461,11 @@ const ContactsPage: React.FC = () => {
     const groups = new Map<number, { groupId: number; groupName: string; members: Contact[] }>();
 
     for (const c of paginatedContacts) {
+      if (isContactReferenceSearch) {
+        rows.push({ kind: 'contact', contact: c });
+        continue;
+      }
+
       const gidRaw = (c as any).group_id;
       const groupId = gidRaw != null ? Number(gidRaw) : 0;
       if (groupId) {
@@ -3277,6 +3489,14 @@ const ContactsPage: React.FC = () => {
     for (const row of rows) {
       if (row.kind === 'group') {
         row.members.sort((a, b) => {
+          if (isContactReferenceSearch) {
+            const rankDiff = getContactReferenceRank(a) - getContactReferenceRank(b);
+            if (rankDiff !== 0) return rankDiff;
+            const refA = String((a as any).reference || a.id || '');
+            const refB = String((b as any).reference || b.id || '');
+            const refDiff = refA.length - refB.length || Number(a.id) - Number(b.id);
+            if (refDiff !== 0) return refDiff;
+          }
           const sa = Number((a as any).solde_cumule ?? 0) || 0;
           const sb = Number((b as any).solde_cumule ?? 0) || 0;
           // Les contacts avec solde 0 vont en bas
@@ -3289,7 +3509,7 @@ const ContactsPage: React.FC = () => {
     }
 
     return rows;
-  }, [paginatedContacts]);
+  }, [paginatedContacts, getContactReferenceRank, isContactReferenceSearch]);
 
   const expandedGroupIdForActiveTab = useMemo(() => {
     const prefix = `${activeTab}:`;
@@ -5228,7 +5448,8 @@ const ContactsPage: React.FC = () => {
                         />
                       </div>
                       <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm">
-                        {displayedProductHistory.length} éléments
+                        {Number(backendHistoryPagination?.totalRows || displayedProductHistory.length)} éléments
+                        {historyTotalPages > 1 ? ` (${pagedProductHistory.length} affichés)` : ''}
                       </span>
                       <span className="text-xs text-gray-500">
                         {selectedProductIds.size > 0 ? `${selectedProductIds.size} produit(s) sélectionné(s)` : 'Aucun produit sélectionné'}
@@ -5255,30 +5476,62 @@ const ContactsPage: React.FC = () => {
                         </button>
                       )}
                       {selectedContact?.type === 'Client' && (
+                        <>
                         <button
                           onClick={() => {
-                            if (showRemiseMode) {
+                            if (showRemiseMode && remiseMode === 'create') {
                               setShowRemiseMode(false);
                               setRemisePrices({});
                               setSelectedItemsForRemise(new Set());
                               return;
                             }
 
-                            if (eligibleDisplayedRemiseItems.length === 0) {
+                            if (newRemiseItems.length === 0) {
                               showInfo('Aucun article visible n’est éligible à une nouvelle remise.');
                               return;
                             }
 
+                            setRemiseMode('create');
+                            setRemisePrices({});
+                            setSelectedItemsForRemise(new Set());
                             setShowRemiseMode(true);
                           }}
-                          className={`w-full sm:w-auto flex items-center gap-2 px-3 py-1 rounded-md transition-colors text-sm ${showRemiseMode
+                          className={`w-full sm:w-auto flex items-center gap-2 px-3 py-1 rounded-md transition-colors text-sm ${showRemiseMode && remiseMode === 'create'
                             ? 'bg-green-600 text-white hover:bg-green-700'
                             : 'bg-orange-600 text-white hover:bg-orange-700'
                             }`}
                         >
                           <Receipt size={14} />
-                          {showRemiseMode ? 'Annuler Remises' : `Appliquer Remise (${eligibleDisplayedRemiseItems.length})`}
+                          {showRemiseMode && remiseMode === 'create' ? 'Annuler Remises' : `Appliquer Remise (${newRemiseItems.length})`}
                         </button>
+                        <button
+                          onClick={() => {
+                            if (showRemiseMode && remiseMode === 'edit') {
+                              setShowRemiseMode(false);
+                              setRemisePrices({});
+                              setSelectedItemsForRemise(new Set());
+                              return;
+                            }
+
+                            if (editableRemiseItems.length === 0) {
+                              showInfo('Aucune remise visible Ã  modifier.');
+                              return;
+                            }
+
+                            setRemiseMode('edit');
+                            setRemisePrices({});
+                            setSelectedItemsForRemise(new Set());
+                            setShowRemiseMode(true);
+                          }}
+                          className={`w-full sm:w-auto flex items-center gap-2 px-3 py-1 rounded-md transition-colors text-sm ${showRemiseMode && remiseMode === 'edit'
+                            ? 'bg-green-600 text-white hover:bg-green-700'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                        >
+                          <Edit size={14} />
+                          {showRemiseMode && remiseMode === 'edit' ? 'Annuler Modification' : `Modifier Remise (${editableRemiseItems.length})`}
+                        </button>
+                        </>
                       )}
                       <button
                         onClick={openPrintProducts}
@@ -5386,6 +5639,47 @@ const ContactsPage: React.FC = () => {
                       </div>
                     </div>
                   )}
+                  {historyTotalPages > 1 && (
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                      <div className="text-gray-700">
+                        Page {Math.min(Math.max(historyPage, 1), historyTotalPages)} / {historyTotalPages} - {pagedProductHistory.length} ligne(s) affichée(s), bons non coupés
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setHistoryPage(1)}
+                          disabled={historyPage <= 1}
+                          className="px-3 py-1 rounded border bg-white text-gray-700 disabled:opacity-50"
+                        >
+                          Première
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                          disabled={historyPage <= 1}
+                          className="px-3 py-1 rounded border bg-white text-gray-700 disabled:opacity-50"
+                        >
+                          Précédente
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+                          disabled={historyPage >= historyTotalPages}
+                          className="px-3 py-1 rounded border bg-white text-gray-700 disabled:opacity-50"
+                        >
+                          Suivante
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryPage(historyTotalPages)}
+                          disabled={historyPage >= historyTotalPages}
+                          className="px-3 py-1 rounded border bg-white text-gray-700 disabled:opacity-50"
+                        >
+                          Dernière
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="w-full border border-gray-200 rounded-lg relative">
                     <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 0px)', minHeight: '400px' }}>
                       <table className="min-w-full divide-y divide-gray-200">
@@ -5395,10 +5689,10 @@ const ContactsPage: React.FC = () => {
                               <input
                                 type="checkbox"
                                 aria-label="Sélectionner tout"
-                                checked={displayedProductHistory.filter((i: any) => !i.syntheticInitial).every((i: any) => selectedProductIds.has(String(i.id))) && displayedProductHistory.filter((i: any) => !i.syntheticInitial).length > 0}
+                                checked={pagedProductHistory.filter((i: any) => !i.syntheticInitial).every((i: any) => selectedProductIds.has(String(i.id))) && pagedProductHistory.filter((i: any) => !i.syntheticInitial).length > 0}
                                 onChange={(e) => {
                                   const all = new Set<string>(selectedProductIds);
-                                  const nonInitial = displayedProductHistory.filter((i: any) => !i.syntheticInitial);
+                                  const nonInitial = pagedProductHistory.filter((i: any) => !i.syntheticInitial);
                                   if (e.target.checked) {
                                     nonInitial.forEach((i: any) => all.add(String(i.id)));
                                   } else {
@@ -5415,7 +5709,7 @@ const ContactsPage: React.FC = () => {
                                   type="checkbox"
                                   aria-label="Sélectionner les bons visibles"
                                   checked={(() => {
-                                    const nonInitial = Array.from(new Set((displayedProductHistory || []).filter((i: any) => !i.syntheticInitial && i.bon_id).map((i: any) => Number(i.bon_id))));
+                                    const nonInitial = Array.from(new Set((pagedProductHistory || []).filter((i: any) => !i.syntheticInitial && i.bon_id).map((i: any) => Number(i.bon_id))));
                                     return nonInitial.length > 0 && nonInitial.every((id) => selectedBonIds.has(id));
                                   })()}
                                   onChange={(e) => {
@@ -5424,7 +5718,7 @@ const ContactsPage: React.FC = () => {
                                       setSelectedBonIds(nextBons);
                                       setSelectedProductIds((prevProducts) => {
                                         const nextProducts = new Set(prevProducts);
-                                        (displayedProductHistory || []).forEach((item: any) => {
+                                        (pagedProductHistory || []).forEach((item: any) => {
                                           if (!item.syntheticInitial && item.bon_id && nextBons.has(Number(item.bon_id))) {
                                             nextProducts.add(String(item.id));
                                           }
@@ -5471,14 +5765,14 @@ const ContactsPage: React.FC = () => {
                                 ref={provided.innerRef}
                                 {...provided.droppableProps}
                               >
-                                {displayedProductHistory.length === 0 ? (
+                                {pagedProductHistory.length === 0 ? (
                                   <tr>
                                     <td colSpan={showRemiseMode && selectedContact?.type === 'Client' ? 19 : 17} className="px-6  text-center text-sm text-gray-500">
                                       Aucun produit trouvé pour cette période
                                     </td>
                                   </tr>
                                 ) : (
-                                  displayedProductHistory.map((item, index) => (
+                                  pagedProductHistory.map((item, index) => (
                                     <Draggable 
                                       key={item.id} 
                                       draggableId={String(item.id)} 
@@ -5524,7 +5818,7 @@ const ContactsPage: React.FC = () => {
 
                                                     // Vérifier si tous les produits de ce bon sont maintenant sélectionnés
                                                     if (bonId) {
-                                                      const allProductsOfBon = displayedProductHistory
+                                                      const allProductsOfBon = pagedProductHistory
                                                         .filter((p: any) => !p.syntheticInitial && Number(p.bon_id) === bonId)
                                                         .map((p: any) => String(p.id));
 
@@ -5612,7 +5906,11 @@ const ContactsPage: React.FC = () => {
                                   </div>
                                 </td>
                                 {/* Remises séparées par type */}
-                                <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
+                                <td
+                                  className="px-1  whitespace-nowrap text-sm text-right text-gray-900"
+                                  onDoubleClick={() => startEditRemiseMode(item)}
+                                  title={getEditableRemiseUnitPrice(item) > 0 ? 'Double clic pour modifier la remise' : undefined}
+                                >
                                   {(() => {
                                     if (item.syntheticInitial || item.type === 'paiement') return '-';
                                     const remises = getItemRemises(item);
@@ -5621,7 +5919,11 @@ const ContactsPage: React.FC = () => {
                                     return '-';
                                   })()}
                                 </td>
-                                <td className="px-1  whitespace-nowrap text-sm text-right text-gray-900">
+                                <td
+                                  className="px-1  whitespace-nowrap text-sm text-right text-gray-900"
+                                  onDoubleClick={() => startEditRemiseMode(item)}
+                                  title={getEditableRemiseUnitPrice(item) > 0 ? 'Double clic pour modifier la remise' : undefined}
+                                >
                                   {(() => {
                                     if (item.syntheticInitial || item.type === 'paiement') return '-';
                                     const remises = getItemRemises(item);
@@ -5649,15 +5951,16 @@ const ContactsPage: React.FC = () => {
                                           step="0.001"
                                           min="0"
                                           placeholder="0.000"
-                                          value={remisePrices[String(item.id)] || ''}
+                                          value={remisePrices[String(item.id)] ?? ''}
                                           onChange={(e) => {
                                             const itemId = String(item.id);
                                             const value = parseFloat(e.target.value) || 0;
+                                            const hadExistingRemise = getEditableRemiseUnitPrice(item) > 0;
                                             setRemisePrices(prev => ({
                                               ...prev,
                                               [itemId]: value
                                             }));
-                                            if (value > 0) {
+                                            if (value > 0 || hadExistingRemise) {
                                               setSelectedItemsForRemise(prev => new Set(prev).add(itemId));
                                             } else {
                                               setSelectedItemsForRemise(prev => {
@@ -5752,6 +6055,20 @@ const ContactsPage: React.FC = () => {
                       </table>
                     </div>
                   </div>
+
+                  {historyTotalPages > 1 && (
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                      <div className="text-gray-700">
+                        Page {Math.min(Math.max(historyPage, 1), historyTotalPages)} / {historyTotalPages} - {pagedProductHistory.length} ligne(s) affichée(s), bons non coupés
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setHistoryPage(1)} disabled={historyPage <= 1} className="px-3 py-1 rounded border bg-white text-gray-700 disabled:opacity-50">Première</button>
+                        <button type="button" onClick={() => setHistoryPage((p) => Math.max(1, p - 1))} disabled={historyPage <= 1} className="px-3 py-1 rounded border bg-white text-gray-700 disabled:opacity-50">Précédente</button>
+                        <button type="button" onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))} disabled={historyPage >= historyTotalPages} className="px-3 py-1 rounded border bg-white text-gray-700 disabled:opacity-50">Suivante</button>
+                        <button type="button" onClick={() => setHistoryPage(historyTotalPages)} disabled={historyPage >= historyTotalPages} className="px-3 py-1 rounded border bg-white text-gray-700 disabled:opacity-50">Dernière</button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Résumés */}
                   {searchedProductHistory.length > 0 && (

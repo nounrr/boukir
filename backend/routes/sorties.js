@@ -29,6 +29,7 @@ router.get('/', async (_req, res) => {
       SELECT
         bs.*,
         c.nom_complet AS client_nom,
+        f.nom_complet AS fournisseur_nom,
         v.nom         AS vehicule_nom,
         COALESCE((
           SELECT JSON_ARRAYAGG(
@@ -72,6 +73,7 @@ router.get('/', async (_req, res) => {
         ), JSON_ARRAY()) AS items
       FROM bons_sortie bs
       LEFT JOIN contacts  c ON c.id = bs.client_id
+      LEFT JOIN contacts  f ON f.id = bs.fournisseur_id
       LEFT JOIN vehicules v ON v.id = bs.vehicule_id
       ORDER BY bs.created_at DESC
     `);
@@ -151,6 +153,7 @@ router.get('/:id', async (req, res) => {
       SELECT
         bs.*,
         c.nom_complet AS client_nom,
+        f.nom_complet AS fournisseur_nom,
         v.nom         AS vehicule_nom,
         COALESCE((
           SELECT JSON_ARRAYAGG(
@@ -194,6 +197,7 @@ router.get('/:id', async (req, res) => {
         ), JSON_ARRAY()) AS items
       FROM bons_sortie bs
       LEFT JOIN contacts  c ON c.id = bs.client_id
+      LEFT JOIN contacts  f ON f.id = bs.fournisseur_id
       LEFT JOIN vehicules v ON v.id = bs.vehicule_id
       WHERE bs.id = ?
       LIMIT 1
@@ -245,6 +249,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const {
       date_creation,
       client_id,
+      fournisseur_id,
       vehicule_id,
       lieu_chargement,   // ⚠️ correspond exactement à ta colonne
   adresse_livraison,
@@ -252,7 +257,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       statut = 'Brouillon',
       items = [],
       created_by,
-      livraisons
+      livraisons,
+      vendre_au_fournisseur
     } = req.body || {};
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
@@ -267,7 +273,17 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       return res.status(400).json({ message: 'Champs requis manquants' });
     }
 
-    const cId  = client_id ?? null;
+    const vendreAuFournisseur = vendre_au_fournisseur === true || vendre_au_fournisseur === 1 || vendre_au_fournisseur === '1' ? 1 : 0;
+    const cId  = vendreAuFournisseur ? null : (client_id ?? null);
+    const fId  = vendreAuFournisseur ? (fournisseur_id ?? null) : null;
+    if (vendreAuFournisseur && !fId) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Fournisseur requis' });
+    }
+    if (!vendreAuFournisseur && !cId) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Client requis' });
+    }
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? 'Brouillon';
@@ -286,13 +302,15 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
 
     const [sortieResult] = await connection.execute(`
       INSERT INTO bons_sortie (
-        date_creation, client_id, phone, vehicule_id,
+        date_creation, client_id, fournisseur_id, vendre_au_fournisseur, phone, vehicule_id,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated,
         remise_is_client, remise_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       normalizedDateCreation,
       cId,
+      fId,
+      vendreAuFournisseur,
       phone,
       vId,
       lieu,
@@ -404,13 +422,15 @@ router.put('/:id', async (req, res) => {
     let {
       date_creation,
       client_id,
+      fournisseur_id,
       vehicule_id,
       lieu_chargement,   // ⚠️ même nom que la colonne
   adresse_livraison,
       montant_total,
       statut,
     items = [],
-    livraisons
+    livraisons,
+    vendre_au_fournisseur
     } = req.body || {};
     let phone = req.body?.phone ?? null;
     let isNotCalculated = req.body?.isNotCalculated === true ? true : null;
@@ -419,7 +439,7 @@ router.put('/:id', async (req, res) => {
     const remise_id = req.body?.remise_id;
     const remise_client_nom = req.body?.remise_client_nom;
 
-    const [exists] = await connection.execute('SELECT date_creation, client_id, vehicule_id, phone, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated, remise_is_client, remise_id FROM bons_sortie WHERE id = ? FOR UPDATE', [id]);
+    const [exists] = await connection.execute('SELECT date_creation, client_id, fournisseur_id, vendre_au_fournisseur, vehicule_id, phone, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated, remise_is_client, remise_id FROM bons_sortie WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon de sortie non trouvé' });
@@ -477,6 +497,8 @@ router.put('/:id', async (req, res) => {
       montant_total = sanitizedItems.reduce((s, r) => s + (Number(r.total) || 0), 0);
       date_creation = oldBon.date_creation;
       client_id = oldBon.client_id;
+      fournisseur_id = oldBon.fournisseur_id;
+      vendre_au_fournisseur = oldBon.vendre_au_fournisseur;
       vehicule_id = oldBon.vehicule_id;
       phone = oldBon.phone;
       lieu_chargement = oldBon.lieu_chargement;
@@ -491,7 +513,9 @@ router.put('/:id', async (req, res) => {
     }
 
     const normalizedDateCreation = normalizeSqlDateTime(date_creation);
-    const cId  = client_id ?? null;
+    const vendreAuFournisseur = vendre_au_fournisseur === true || vendre_au_fournisseur === 1 || vendre_au_fournisseur === '1' ? 1 : 0;
+    const cId  = vendreAuFournisseur ? null : (client_id ?? null);
+    const fId  = vendreAuFournisseur ? (fournisseur_id ?? null) : null;
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? null;
@@ -499,6 +523,14 @@ router.put('/:id', async (req, res) => {
     if (!normalizedDateCreation || montant_total == null || !statut) {
       await connection.rollback();
       return res.status(400).json({ message: 'Champs requis manquants' });
+    }
+    if (vendreAuFournisseur && !fId) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Fournisseur requis' });
+    }
+    if (!vendreAuFournisseur && !cId) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Client requis' });
     }
 
     const resolved = isChefChauffeur
@@ -517,13 +549,15 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute(`
       UPDATE bons_sortie SET
-        date_creation = ?, client_id = ?, phone = ?,
+        date_creation = ?, client_id = ?, fournisseur_id = ?, vendre_au_fournisseur = ?, phone = ?,
         vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?,
         remise_is_client = ?, remise_id = ?
       WHERE id = ?
     `, [
       normalizedDateCreation,
       cId,
+      fId,
+      vendreAuFournisseur,
       phone,
       vId,
       lieu,

@@ -265,3 +265,140 @@ export async function getRemisePaymentAccounts(db = pool, options = {}) {
 
   return onlyAvailable ? result.filter((row) => Number(row.available_total || 0) > 0) : result;
 }
+
+// ── Direct contact remise (no client_remises entry) ─────────────────────────
+
+const DIRECT_BON_AMOUNT_EXPR = `COALESCE(SUM(
+  CASE
+    WHEN COALESCE(items.remise_montant, 0) <> 0
+      THEN COALESCE(items.quantite, 0) * COALESCE(items.remise_montant, 0)
+    WHEN COALESCE(items.remise_pourcentage, 0) <> 0
+      THEN COALESCE(items.quantite, 0) * COALESCE(items.prix_unitaire, 0) * COALESCE(items.remise_pourcentage, 0) / 100
+    ELSE 0
+  END
+), 0)`;
+
+async function getDirectBonEarnedAll(db) {
+  const [sortieRows] = await db.execute(
+    `SELECT bs.client_id AS id, ${DIRECT_BON_AMOUNT_EXPR} AS total
+     FROM bons_sortie bs
+     INNER JOIN sortie_items items ON items.bon_sortie_id = bs.id
+     WHERE (COALESCE(bs.remise_is_client, 1) = 1 OR bs.remise_id IS NULL) AND bs.client_id IS NOT NULL
+     GROUP BY bs.client_id`
+  );
+  const [comptantRows] = await db.execute(
+    `SELECT bc.client_id AS id, ${DIRECT_BON_AMOUNT_EXPR} AS total
+     FROM bons_comptant bc
+     INNER JOIN comptant_items items ON items.bon_comptant_id = bc.id
+     WHERE (COALESCE(bc.remise_is_client, 1) = 1 OR bc.remise_id IS NULL) AND bc.client_id IS NOT NULL
+     GROUP BY bc.client_id`
+  );
+  const map = new Map();
+  for (const r of [...sortieRows, ...comptantRows]) {
+    const id = Number(r.id);
+    if (Number.isFinite(id)) map.set(id, (map.get(id) || 0) + Number(r.total || 0));
+  }
+  return map;
+}
+
+async function getUsedByContactDirect(db, contactIds) {
+  if (!contactIds.length) return new Map();
+  const [rows] = await db.execute(
+    `SELECT p.contact_id AS id, COALESCE(SUM(p.montant_total), 0) AS total
+     FROM payments p
+     WHERE p.mode_paiement = 'Remise'
+       AND p.remise_account_id IS NULL
+       AND p.contact_id IN (${makeInClause(contactIds)})
+       AND p.statut IN (${makeInClause(ACTIVE_REMISE_PAYMENT_STATUSES)})
+     GROUP BY p.contact_id`,
+    [...contactIds, ...ACTIVE_REMISE_PAYMENT_STATUSES]
+  );
+  return mapTotals(rows);
+}
+
+async function getDirectOldEarnedAll(db) {
+  try {
+    const [rows] = await db.execute(`
+      SELECT contact_id AS id, COALESCE(SUM(qte * prix_remise), 0) AS total
+      FROM ancien_remises_abonne
+      WHERE COALESCE(statut, '') NOT LIKE 'Annul%'
+      GROUP BY contact_id
+    `);
+    const map = new Map();
+    for (const r of rows) {
+      const id = Number(r.id);
+      if (Number.isFinite(id)) map.set(id, Number(r.total || 0));
+    }
+    return map;
+  } catch (e) {
+    return new Map();
+  }
+}
+
+export async function getDirectContactRemiseBalances(db = pool) {
+  const earnedMap = await getDirectBonEarnedAll(db);
+  const oldEarnedMap = await getDirectOldEarnedAll(db);
+  
+  const contactIdsSet = new Set([...earnedMap.keys(), ...oldEarnedMap.keys()]);
+  const contactIds = [...contactIdsSet];
+  if (!contactIds.length) return [];
+
+  const usedMap = await getUsedByContactDirect(db, contactIds);
+
+  const [contacts] = await db.execute(
+    `SELECT id, nom_complet, societe, telephone
+     FROM contacts WHERE id IN (${makeInClause(contactIds)})`,
+    contactIds
+  );
+
+  return contacts.map((c) => {
+    const cId = Number(c.id);
+    const earned = Math.max(0, (earnedMap.get(cId) || 0) + (oldEarnedMap.get(cId) || 0));
+    const used = usedMap.get(cId) || 0;
+    const available = Math.max(0, earned - used);
+    return {
+      contact_id: cId,
+      nom_complet: c.nom_complet,
+      societe: c.societe,
+      telephone: c.telephone,
+      earned_total: Math.round(earned * 100) / 100,
+      used_total: Math.round(used * 100) / 100,
+      available_total: Math.round(available * 100) / 100,
+    };
+  });
+}
+
+export async function getDirectContactRemiseInfo(db, contactId) {
+  const numId = Number(contactId);
+  if (!Number.isFinite(numId) || numId <= 0) throw Object.assign(new Error('Contact invalide'), { statusCode: 400 });
+
+  const [sortieRows] = await db.execute(
+    `SELECT ${DIRECT_BON_AMOUNT_EXPR} AS total
+     FROM bons_sortie bs
+     INNER JOIN sortie_items items ON items.bon_sortie_id = bs.id
+     WHERE (COALESCE(bs.remise_is_client, 1) = 1 OR bs.remise_id IS NULL) AND bs.client_id = ?`,
+    [numId]
+  );
+  const [comptantRows] = await db.execute(
+    `SELECT ${DIRECT_BON_AMOUNT_EXPR} AS total
+     FROM bons_comptant bc
+     INNER JOIN comptant_items items ON items.bon_comptant_id = bc.id
+     WHERE (COALESCE(bc.remise_is_client, 1) = 1 OR bc.remise_id IS NULL) AND bc.client_id = ?`,
+    [numId]
+  );
+  const earned = Math.max(0, Number(sortieRows[0]?.total || 0) + Number(comptantRows[0]?.total || 0));
+
+  const usedMap = await getUsedByContactDirect(db, [numId]);
+  const used = usedMap.get(numId) || 0;
+
+  const [contacts] = await db.execute('SELECT nom_complet FROM contacts WHERE id = ? LIMIT 1', [numId]);
+  if (!contacts.length) throw Object.assign(new Error('Contact introuvable'), { statusCode: 404 });
+
+  return {
+    contact_id: numId,
+    nom_complet: contacts[0].nom_complet,
+    earned_total: Math.round(earned * 100) / 100,
+    used_total: Math.round(used * 100) / 100,
+    available: Math.max(0, Math.round((earned - used) * 100) / 100),
+  };
+}

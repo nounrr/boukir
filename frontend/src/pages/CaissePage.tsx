@@ -30,7 +30,7 @@ import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
 import { useGetCaisseBonsContextQuery } from '../store/api/bonsApi';
 import { useGetAllClientsQuery, useGetAllFournisseursQuery } from '../store/api/contactsApi';
-import { useGetClientRemisesQuery } from '../store/api/remisesApi';
+import { useGetClientRemisesQuery, useGetDirectContactRemiseBalancesQuery } from '../store/api/remisesApi';
 import { useGetTalonsQuery } from '../store/api/talonsApi';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { canModifyPayments } from '../utils/permissions';
@@ -45,7 +45,9 @@ import PaymentPrintModal from '../components/PaymentPrintModal';
 import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
 import { calculateContactSoldeHistory } from '../utils/soldeCalculator';
 
-type RemiseAccountType = 'client-remise' | 'client_abonne';
+const DIRECT_CONTACT_OFFSET = 10_000_000;
+
+type RemiseAccountType = 'client-remise' | 'client_abonne' | 'direct-client';
 
 type RemisePaymentAccount = {
   id: number;
@@ -54,6 +56,7 @@ type RemisePaymentAccount = {
   contact_id?: number | null;
   contact_nom?: string | null;
   contact_societe?: string | null;
+  contact_reference?: string | null;
   earned_total?: number;
   used_total?: number;
   available_total?: number;
@@ -115,6 +118,7 @@ const CaissePage = () => {
   const needsAllPayments = isCreateModalOpen || isViewModalOpen || isPrintModalOpen;
   const { data: allPaymentsForHistory = [] } = useGetPaymentsQuery(undefined, { skip: !needsAllPayments });
   const { data: clientRemisesRaw = [] } = useGetClientRemisesQuery();
+  const { data: directContactBalances = [] } = useGetDirectContactRemiseBalancesQuery();
   const payments = paymentsPagedResponse?.data || [];
   const paymentsForHistory = needsAllPayments ? allPaymentsForHistory : payments;
   const [createPayment] = useCreatePaymentMutation();
@@ -144,6 +148,61 @@ const CaissePage = () => {
     }));
   }, [clientRemisesRaw]);
 
+  // Map contact_id → client_abonne account (for "clients bons" tab behavior in the filter)
+  const clientAbonneAccountByContactId = useMemo(() => {
+    const map = new Map<number, RemisePaymentAccount>();
+    for (const acc of remiseAccounts) {
+      if (acc.type === 'client_abonne' && acc.contact_id) {
+        map.set(acc.contact_id, acc);
+      }
+    }
+    return map;
+  }, [remiseAccounts]);
+
+  // All contacts with available remise, mirroring RemisesPage "clients bons" tab
+  const directClientAbonneAccounts = useMemo<RemisePaymentAccount[]>(() => {
+    const result: RemisePaymentAccount[] = [];
+    const seenContactIds = new Set<number>();
+
+    // 1. Contacts WITH a linked client_abonne account (use account ID + available)
+    for (const contact of clients) {
+      const cId = Number((contact as any).id);
+      if (!Number.isFinite(cId) || cId <= 0) continue;
+      const acc = clientAbonneAccountByContactId.get(cId);
+      if (!acc) continue;
+      seenContactIds.add(cId);
+      result.push({
+        ...acc,
+        nom: String((contact as any).nom_complet || (contact as any).nom || acc.nom),
+        contact_nom: null,
+        contact_societe: String((contact as any).societe || acc.contact_societe || ''),
+        contact_reference: String((contact as any).reference || ''),
+      });
+    }
+
+    // 2. Contacts WITHOUT linked account but WITH bons remise (direct-client flow)
+    for (const balance of directContactBalances) {
+      const cId = Number(balance.contact_id);
+      if (seenContactIds.has(cId)) continue;
+      if (Number(balance.available_total || 0) <= 0) continue;
+      result.push({
+        id: DIRECT_CONTACT_OFFSET + cId,
+        nom: String(balance.nom_complet || `Contact #${cId}`),
+        type: 'direct-client',
+        contact_id: cId,
+        contact_nom: null,
+        contact_societe: String(balance.societe || ''),
+        contact_reference: String(balance.reference || ''),
+        earned_total: Number(balance.earned_total || 0),
+        used_total: Number(balance.used_total || 0),
+        available_total: Number(balance.available_total || 0),
+      });
+    }
+
+    result.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    return result;
+  }, [clients, clientAbonneAccountByContactId, directContactBalances]);
+
   // Audit meta for payments (created_by_name / updated_by_name)
   const [paymentsMeta, setPaymentsMeta] = useState<Record<string, { created_by_name: any; updated_by_name: any }>>({});
 
@@ -168,12 +227,14 @@ const CaissePage = () => {
 
   const getRemiseTypeLabel = (type?: string | null) => {
     if (type === 'client_abonne') return 'Client abonné';
+    if (type === 'direct-client') return 'Client direct (bons)';
     return 'Client remise';
   };
 
   const getContactSelectLabel = (contact: Contact, kind: 'Client' | 'Fournisseur') => {
     const baseName = String(contact.nom_complet || `${kind} #${contact.id}`).trim();
     const extras = [
+      `#${contact.id}`,
       contact.societe ? String(contact.societe).trim() : '',
       contact.telephone ? String(contact.telephone).trim() : '',
       (contact as any).reference ? String((contact as any).reference).trim() : '',
@@ -885,8 +946,10 @@ const paymentValidationSchema = Yup.object({
         type_paiement: selectedPayment.type_paiement || 'Client',
         contact_optional: contactOptional,
         contact_id: selectedPayment.contact_id || '',
-        remise_account_id: selectedPayment.remise_account_id || '',
-        remise_filter_client_remise: selectedPayment.remise_account_type !== 'client_abonne',
+        remise_account_id: selectedPayment.remise_account_type === 'direct-client'
+          ? (selectedPayment.contact_id ? String(DIRECT_CONTACT_OFFSET + Number(selectedPayment.contact_id)) : '')
+          : (selectedPayment.remise_account_id || ''),
+        remise_filter_client_remise: selectedPayment.remise_account_type === 'client-remise',
         remise_filter_client_abonne: selectedPayment.remise_account_type !== 'client-remise',
         bon_id: selectedPayment.bon_id ? (selectedPayment.bon_type ? `${selectedPayment.bon_type}:${selectedPayment.bon_id}` : String(selectedPayment.bon_id)) : '',
         bon_type: selectedPayment.bon_type || '',
@@ -939,21 +1002,28 @@ const paymentValidationSchema = Yup.object({
       };
 
       const parsedBon = parseBonValue(values.bon_id);
-      const selectedRemiseAccount = values.remise_account_id
-        ? remiseAccounts.find((account) => Number(account.id) === Number(values.remise_account_id))
+      const selectedRemiseId = Number(values.remise_account_id || 0);
+      const isDirectContact = selectedRemiseId >= DIRECT_CONTACT_OFFSET;
+      const directContactId = isDirectContact ? selectedRemiseId - DIRECT_CONTACT_OFFSET : null;
+      const selectedRemiseAccount = !isDirectContact && selectedRemiseId
+        ? remiseAccounts.find((account) => Number(account.id) === selectedRemiseId)
         : undefined;
+      const selectedDirectBalance = isDirectContact
+        ? directContactBalances.find((b: any) => Number(b.contact_id) === directContactId)
+        : null;
+
       if (values.mode_paiement === 'Remise') {
-        if (!selectedRemiseAccount) {
+        if (!selectedRemiseAccount && !selectedDirectBalance) {
           showError('Sélectionnez un bénéficiaire remise');
           return;
         }
-        let allowedAmount = Number(selectedRemiseAccount.available_total || 0);
-        if (
-          selectedPayment &&
-          selectedPayment.mode_paiement === 'Remise' &&
-          Number(selectedPayment.remise_account_id || 0) === Number(selectedRemiseAccount.id) &&
-          ['En attente', 'Validé'].includes(String(selectedPayment.statut || ''))
-        ) {
+        let allowedAmount = selectedRemiseAccount
+          ? Number(selectedRemiseAccount.available_total || 0)
+          : Number(selectedDirectBalance?.available_total || 0);
+        if (selectedRemiseAccount && selectedPayment?.mode_paiement === 'Remise' && Number(selectedPayment.remise_account_id || 0) === Number(selectedRemiseAccount.id) && ['En attente', 'Validé'].includes(String(selectedPayment.statut || ''))) {
+          allowedAmount += Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0);
+        }
+        if (selectedDirectBalance && selectedPayment?.mode_paiement === 'Remise' && !selectedPayment.remise_account_id && Number(selectedPayment.contact_id) === directContactId && ['En attente', 'Validé'].includes(String(selectedPayment.statut || ''))) {
           allowedAmount += Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0);
         }
         if (Number(values.montant) > allowedAmount + 0.000001) {
@@ -985,11 +1055,15 @@ const paymentValidationSchema = Yup.object({
         id: selectedPayment ? selectedPayment.id : Date.now(),
       type_paiement: values.mode_paiement === 'Remise' ? 'Client' : (values.type_paiement || 'Client'),
       contact_id: values.mode_paiement === 'Remise'
-        ? (selectedRemiseAccount?.contact_id ? Number(selectedRemiseAccount.contact_id) : null)
+        ? (isDirectContact ? directContactId : (selectedRemiseAccount?.contact_id ? Number(selectedRemiseAccount.contact_id) : null))
         : (values.contact_id ? Number(values.contact_id) : null),
-      remise_account_id: values.mode_paiement === 'Remise' && selectedRemiseAccount ? Number(selectedRemiseAccount.id) : null,
-      remise_account_type: values.mode_paiement === 'Remise' && selectedRemiseAccount ? selectedRemiseAccount.type : null,
-      remise_account_name: values.mode_paiement === 'Remise' && selectedRemiseAccount ? selectedRemiseAccount.nom : null,
+      remise_account_id: values.mode_paiement === 'Remise' && !isDirectContact && selectedRemiseAccount ? Number(selectedRemiseAccount.id) : null,
+      remise_account_type: values.mode_paiement === 'Remise'
+        ? (isDirectContact ? 'direct-client' : (selectedRemiseAccount ? selectedRemiseAccount.type : null))
+        : null,
+      remise_account_name: values.mode_paiement === 'Remise'
+        ? (isDirectContact ? (selectedDirectBalance?.nom_complet || null) : (selectedRemiseAccount ? selectedRemiseAccount.nom : null))
+        : null,
   bon_id: parsedBon.bonId,
   bon_type: parsedBon.bonId ? parsedBon.bonType : null,
         montant_total: Number(values.montant),
@@ -2012,28 +2086,45 @@ const paymentValidationSchema = Yup.object({
               {({ values, setFieldValue }) => {
                 const isFournisseurPayment = values.type_paiement === 'Fournisseur';
                 const isRemisePayment = values.mode_paiement === 'Remise';
-                const selectedRemiseTypes = [
-                  values.remise_filter_client_remise ? 'client-remise' : null,
-                  values.remise_filter_client_abonne ? 'client_abonne' : null,
-                ].filter(Boolean) as RemiseAccountType[];
-                const filteredRemiseAccounts = remiseAccounts.filter((account) => {
-                  const matchesType = selectedRemiseTypes.length ? selectedRemiseTypes.includes(account.type) : true;
-                  const isSelected = Number(account.id) === Number(values.remise_account_id || 0);
-                  return matchesType && (Number(account.available_total || 0) > 0 || isSelected);
-                });
-                const selectedRemiseAccount = remiseAccounts.find((account) => Number(account.id) === Number(values.remise_account_id || 0));
-                const allowedRemiseAmount = (() => {
-                  if (!selectedRemiseAccount) return 0;
-                  let total = Number(selectedRemiseAccount.available_total || 0);
-                  if (
-                    selectedPayment &&
-                    selectedPayment.mode_paiement === 'Remise' &&
-                    Number(selectedPayment.remise_account_id || 0) === Number(selectedRemiseAccount.id) &&
-                    ['En attente', 'Validé'].includes(String(selectedPayment.statut || ''))
-                  ) {
-                    total += Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0);
+                const selectedRemiseId = Number(values.remise_account_id || 0);
+                const filteredRemiseAccounts: RemisePaymentAccount[] = [];
+                if (values.remise_filter_client_remise) {
+                  for (const acc of remiseAccounts) {
+                    if (acc.type !== 'client-remise') continue;
+                    if (Number(acc.available_total || 0) > 0 || Number(acc.id) === selectedRemiseId)
+                      filteredRemiseAccounts.push(acc);
                   }
-                  return total;
+                }
+                if (values.remise_filter_client_abonne) {
+                  for (const acc of directClientAbonneAccounts) {
+                    if (Number(acc.available_total || 0) > 0 || Number(acc.id) === selectedRemiseId)
+                      filteredRemiseAccounts.push(acc);
+                  }
+                }
+                const _isDirectContact = selectedRemiseId >= DIRECT_CONTACT_OFFSET;
+                const _directContactId = _isDirectContact ? selectedRemiseId - DIRECT_CONTACT_OFFSET : null;
+                const selectedRemiseAccount = !_isDirectContact && selectedRemiseId
+                  ? remiseAccounts.find((account) => Number(account.id) === selectedRemiseId)
+                  : null;
+                const selectedDirectBalance = _isDirectContact
+                  ? directContactBalances.find((b: any) => Number(b.contact_id) === _directContactId)
+                  : null;
+                const allowedRemiseAmount = (() => {
+                  if (selectedRemiseAccount) {
+                    let total = Number(selectedRemiseAccount.available_total || 0);
+                    if (selectedPayment?.mode_paiement === 'Remise' && Number(selectedPayment.remise_account_id || 0) === Number(selectedRemiseAccount.id) && ['En attente', 'Validé'].includes(String(selectedPayment.statut || ''))) {
+                      total += Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0);
+                    }
+                    return total;
+                  }
+                  if (selectedDirectBalance) {
+                    let total = Number(selectedDirectBalance.available_total || 0);
+                    if (selectedPayment?.mode_paiement === 'Remise' && !selectedPayment.remise_account_id && Number(selectedPayment.contact_id) === _directContactId && ['En attente', 'Validé'].includes(String(selectedPayment.statut || ''))) {
+                      total += Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0);
+                    }
+                    return total;
+                  }
+                  return 0;
                 })();
                 return (
                 <Form
@@ -2177,7 +2268,7 @@ const paymentValidationSchema = Yup.object({
                                   setFieldValue('bon_id', '');
                                 }}
                               />
-                              Client abonné
+                              Clients (bons)
                             </label>
                           </div>
                           <SearchableSelect
@@ -2187,6 +2278,7 @@ const paymentValidationSchema = Yup.object({
                               label: [
                                 account.nom,
                                 account.contact_nom || '',
+                                account.contact_reference || '',
                                 account.contact_societe || '',
                                 getRemiseTypeLabel(account.type),
                                 `${Number(account.available_total || 0).toFixed(2)} DH`,
@@ -2195,11 +2287,16 @@ const paymentValidationSchema = Yup.object({
                             }))}
                             value={values.remise_account_id ? String(values.remise_account_id) : ''}
                             onChange={(value) => {
-                              const account = remiseAccounts.find((entry) => Number(entry.id) === Number(value));
+                              const numVal = Number(value);
+                              const account = remiseAccounts.find((entry) => Number(entry.id) === numVal);
+                              const directAcc = !account ? directClientAbonneAccounts.find((a) => Number(a.id) === numVal) : null;
                               setFieldValue('remise_account_id', value);
                               setFieldValue('type_paiement', 'Client');
                               setFieldValue('contact_optional', true);
-                              setFieldValue('contact_id', account?.contact_id ? String(account.contact_id) : '');
+                              setFieldValue('contact_id',
+                                account?.contact_id ? String(account.contact_id) :
+                                (directAcc?.contact_id ? String(directAcc.contact_id) : '')
+                              );
                               setFieldValue('bon_id', '');
                             }}
                             placeholder="Sélectionner un bénéficiaire remise"
@@ -2207,11 +2304,11 @@ const paymentValidationSchema = Yup.object({
                             autoOpenOnFocus={true}
                           />
                           <ErrorMessage name="remise_account_id" component="div" className="text-red-500 text-sm mt-1" />
-                          {selectedRemiseAccount && (
+                          {(selectedRemiseAccount || selectedDirectBalance) && (
                             <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 space-y-1">
-                              <div>Type: {getRemiseTypeLabel(selectedRemiseAccount.type)}</div>
-                              <div>Total gagné: {Number(selectedRemiseAccount.earned_total || 0).toFixed(2)} DH</div>
-                              <div>Remise utilisée: {Number(selectedRemiseAccount.used_total || 0).toFixed(2)} DH</div>
+                              <div>Type: {getRemiseTypeLabel(selectedRemiseAccount?.type ?? (selectedDirectBalance ? 'direct-client' : undefined))}</div>
+                              <div>Total gagné: {Number(selectedRemiseAccount?.earned_total ?? selectedDirectBalance?.earned_total ?? 0).toFixed(2)} DH</div>
+                              <div>Remise utilisée: {Number(selectedRemiseAccount?.used_total ?? selectedDirectBalance?.used_total ?? 0).toFixed(2)} DH</div>
                               <div className="font-semibold">Disponible: {allowedRemiseAmount.toFixed(2)} DH</div>
                             </div>
                           )}

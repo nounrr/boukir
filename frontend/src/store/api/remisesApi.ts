@@ -67,6 +67,11 @@ export const remisesApi = api.injectEndpoints({
     getRemiseBons: build.query<any[], number>({
       query: (clientRemiseId) => `/remises/clients/${clientRemiseId}/bons`,
     }),
+
+    getDirectContactRemiseBalances: build.query<any[], void>({
+      query: () => '/remises/direct-contact-balances',
+      providesTags: [{ type: 'Remise', id: 'LIST' }],
+    }),
   }),
 });
 
@@ -76,6 +81,7 @@ export const {
   useGetRemisePaymentAccountsQuery,
   useGetAncienRemisesAbonnesQuery,
   useLazyGetClientAbonneByContactQuery,
+  useGetDirectContactRemiseBalancesQuery,
   useCreateClientRemiseMutation,
   useUpdateClientRemiseMutation,
   useDeleteClientRemiseMutation,

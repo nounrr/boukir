@@ -1,7 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { verifyToken, requireRole, requireRoles } from '../middleware/auth.js';
-import { ensurePaymentRemiseColumns, getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
+import { ensurePaymentRemiseColumns, getRemisePaymentAccounts, getDirectContactRemiseInfo } from '../utils/remisePaymentAccounts.js';
 
 const router = express.Router();
 
@@ -207,30 +207,63 @@ async function resolveRemisePaymentInput(db, payload, currentPayment = null) {
     throw error;
   }
 
-  const account = await getRemiseAccountOrThrow(db, payload?.remise_account_id ?? currentPayment?.remise_account_id);
-  let allowedAmount = Number(account.available_total || 0);
+  const rawAccountId = payload?.remise_account_id ?? currentPayment?.remise_account_id;
 
+  if (rawAccountId) {
+    // Flow via client_remises (existing)
+    const account = await getRemiseAccountOrThrow(db, rawAccountId);
+    let allowedAmount = Number(account.available_total || 0);
+    if (
+      currentPayment &&
+      String(currentPayment.mode_paiement || '') === 'Remise' &&
+      Number(currentPayment.remise_account_id || 0) === Number(account.id) &&
+      isActiveRemiseStatut(currentPayment.statut)
+    ) {
+      allowedAmount += Number(currentPayment.montant_total || 0);
+    }
+    if (amount > allowedAmount + 0.000001) {
+      const error = new Error(`Montant remise supérieur au disponible (${Number(allowedAmount).toFixed(2)} DH)`);
+      error.statusCode = 400;
+      throw error;
+    }
+    return {
+      typePaiement: 'Client',
+      contactId: toNullableNumber(account.contact_id),
+      remiseAccountId: account.id,
+      remiseAccountType: account.type,
+      remiseAccountName: account.nom,
+    };
+  }
+
+  // Flow direct contact (contact_id sans client_remises)
+  const contactId = toNullableNumber(payload?.contact_id ?? currentPayment?.contact_id);
+  if (!contactId) {
+    const error = new Error('Compte remise ou contact requis');
+    error.statusCode = 400;
+    throw error;
+  }
+  const info = await getDirectContactRemiseInfo(db, contactId);
+  let allowedAmount = info.available;
   if (
     currentPayment &&
     String(currentPayment.mode_paiement || '') === 'Remise' &&
-    Number(currentPayment.remise_account_id || 0) === Number(account.id) &&
+    !currentPayment.remise_account_id &&
+    Number(currentPayment.contact_id) === contactId &&
     isActiveRemiseStatut(currentPayment.statut)
   ) {
     allowedAmount += Number(currentPayment.montant_total || 0);
   }
-
   if (amount > allowedAmount + 0.000001) {
     const error = new Error(`Montant remise supérieur au disponible (${Number(allowedAmount).toFixed(2)} DH)`);
     error.statusCode = 400;
     throw error;
   }
-
   return {
     typePaiement: 'Client',
-    contactId: toNullableNumber(account.contact_id),
-    remiseAccountId: Number(account.id),
-    remiseAccountType: account.type,
-    remiseAccountName: account.nom,
+    contactId,
+    remiseAccountId: null,
+    remiseAccountType: 'direct-client',
+    remiseAccountName: info.nom_complet,
   };
 }
 

@@ -78,9 +78,20 @@ const contactsApi = api.injectEndpoints({
       providesTags: (_result, _error, id) => [{ type: 'Contact', id }],
     }),
 
-    getContactHistory: builder.query<any, number>({
-      query: (id) => ({ url: `/contacts/${id}/history` }),
-      providesTags: (_result, _error, id) => [{ type: 'Contact', id }],
+    getContactHistory: builder.query<any, number | { id: number; page?: number; limit?: number }>({
+      query: (arg) => {
+        const id = typeof arg === 'number' ? arg : arg.id;
+        const page = typeof arg === 'number' ? undefined : arg.page;
+        const limit = typeof arg === 'number' ? undefined : arg.limit;
+        return {
+          url: `/contacts/${id}/history`,
+          params: {
+            ...(page ? { page } : {}),
+            ...(limit ? { limit } : {}),
+          },
+        };
+      },
+      providesTags: (_result, _error, arg) => [{ type: 'Contact', id: typeof arg === 'number' ? arg : arg.id }],
     }),
 
     createContact: builder.mutation<Contact, CreateContactData & { created_by: number }>({
