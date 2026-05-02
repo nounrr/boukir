@@ -15,10 +15,10 @@ const BALANCE_EXPR = `
   CASE
     WHEN c.type = 'Client' THEN
       COALESCE(c.solde, 0)
-      + COALESCE(ventes_client.total_ventes, 0)
-      + COALESCE(ventes_ecommerce.total_ventes, 0)
-      - COALESCE(paiements_client.total_paiements, 0)
-      - COALESCE(avoirs_client.total_avoirs, 0)
+      - COALESCE(ventes_client.total_ventes, 0)
+      - COALESCE(ventes_ecommerce.total_ventes, 0)
+      + COALESCE(paiements_client.total_paiements, 0)
+      + COALESCE(avoirs_client.total_avoirs, 0)
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
