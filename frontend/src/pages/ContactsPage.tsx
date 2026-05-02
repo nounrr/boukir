@@ -206,7 +206,6 @@ const ContactsPage: React.FC = () => {
 
   const getContactInitialSoldeForHistory = React.useCallback((contact: Contact | null | undefined) => {
     const solde = Number(contact?.solde ?? 0) || 0;
-    if (contact?.type === 'Client') return solde === 0 ? 0 : -Math.abs(solde);
     return solde;
   }, []);
 
