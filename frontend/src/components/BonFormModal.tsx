@@ -306,7 +306,7 @@ const bonValidationSchema = Yup.object({
   vendre_au_fournisseur: Yup.boolean(),
   client_id: Yup.number().when(['type', 'vendre_au_fournisseur'], ([type, vendreAuFournisseur], schema) => {
     if (type === 'Sortie' && !vendreAuFournisseur) return schema.required('Client requis');
-    if (type === 'Avoir') return schema.required('Client requis');
+    if (type === 'Avoir' && !vendreAuFournisseur) return schema.required('Client requis');
     // Pour Devis : client_id OU client_nom requis (pas les deux obligatoires)
     if (type === 'Devis') return schema.nullable();
     return schema.nullable();
@@ -322,7 +322,7 @@ const bonValidationSchema = Yup.object({
   order_number: Yup.string().optional(),
   customer_email: Yup.string().trim().optional(),
   fournisseur_id: Yup.number().when(['type', 'vendre_au_fournisseur'], ([type, vendreAuFournisseur], schema) => {
-    if (type === 'Commande' || type === 'AvoirFournisseur' || (type === 'Sortie' && vendreAuFournisseur)) return schema.required('Fournisseur requis');
+    if (type === 'Commande' || type === 'AvoirFournisseur' || ((type === 'Sortie' || type === 'Avoir') && vendreAuFournisseur)) return schema.required('Fournisseur requis');
     return schema.nullable();
   }),
   items: Yup.array().min(1, 'Au moins un produit requis'),
@@ -1598,7 +1598,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       fournisseur_nom: '',
       fournisseur_adresse: '',
       fournisseur_societe: '',
-      vendre_au_fournisseur: currentTab === 'Sortie' && defaultVendreAuFournisseur,
+      vendre_au_fournisseur: (currentTab === 'Sortie' || currentTab === 'Avoir') && defaultVendreAuFournisseur,
     ecommerce_order_id: '',
     order_number: '',
     customer_name: '',
@@ -2110,8 +2110,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   phone: values.phone || null,
       isNotCalculated: values.isNotCalculated ? true : null,
       statut: values.statut || 'Brouillon',
-  vendre_au_fournisseur: requestType === 'Sortie' && values.vendre_au_fournisseur ? 1 : undefined,
-  client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce' || (requestType === 'Sortie' && values.vendre_au_fournisseur)) ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
+  vendre_au_fournisseur: (requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur ? 1 : undefined,
+  client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce' || ((requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur)) ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
   reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
   non_paye: requestType === 'Comptant' ? !!values.payer_partiellement : undefined,
@@ -3228,7 +3228,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Client */}
-              {((values.type === 'Sortie' && !values.vendre_au_fournisseur) || values.type === 'Devis' || values.type === 'Avoir') && (
+              {((values.type === 'Sortie' && !values.vendre_au_fournisseur) || values.type === 'Devis' || (values.type === 'Avoir' && !values.vendre_au_fournisseur)) && (
                 <div>
                   <div className="flex items-center gap-2">
                     <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
@@ -3596,7 +3596,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Fournisseur */}
-              {(values.type === 'Commande' || values.type === 'AvoirFournisseur' || (values.type === 'Sortie' && values.vendre_au_fournisseur)) && (
+              {(values.type === 'Commande' || values.type === 'AvoirFournisseur' || ((values.type === 'Sortie' || values.type === 'Avoir') && values.vendre_au_fournisseur)) && (
                 <div>
                   <div className="flex items-center gap-2">
                     <label htmlFor="fournisseur_id" className="block text-sm font-medium text-gray-700 mb-1">

@@ -850,6 +850,9 @@ router.post('/:id/mark-avoir', async (req, res) => {
       return res.status(404).json({ message: 'Bon de sortie non trouvé' });
     }
     const bs = rows[0];
+    const vendreAuFournisseur = bs.vendre_au_fournisseur === true || bs.vendre_au_fournisseur === 1 || String(bs.vendre_au_fournisseur) === '1' ? 1 : 0;
+    const avoirClientId = vendreAuFournisseur ? null : (bs.client_id ?? null);
+    const avoirFournisseurId = vendreAuFournisseur ? (bs.fournisseur_id ?? null) : null;
 
     // Créer l'avoir client (numero temporaire -> av{id})
   const today = new Date().toISOString().split('T')[0];
@@ -865,28 +868,28 @@ router.post('/:id/mark-avoir', async (req, res) => {
     let insertQuery, insertValues;
     if (hasBonOrigineId && hasBonOrigineType) {
       insertQuery = `INSERT INTO avoirs_client (
-         date_creation, client_id, bon_origine_id, bon_origine_type,
+         date_creation, client_id, fournisseur_id, vendre_au_fournisseur, bon_origine_id, bon_origine_type,
          lieu_chargement, montant_total, statut, created_by
-       ) VALUES (?, ?, ?, 'sortie', ?, ?, 'En attente', ?)`;
-      insertValues = [today, bs.client_id ?? null, bs.id, bs.lieu_chargement ?? null, bs.montant_total, created_by];
+       ) VALUES (?, ?, ?, ?, ?, 'sortie', ?, ?, 'En attente', ?)`;
+      insertValues = [today, avoirClientId, avoirFournisseurId, vendreAuFournisseur, bs.id, bs.lieu_chargement ?? null, bs.montant_total, created_by];
     } else if (hasBonOrigineId) {
       insertQuery = `INSERT INTO avoirs_client (
-         date_creation, client_id, bon_origine_id,
+         date_creation, client_id, fournisseur_id, vendre_au_fournisseur, bon_origine_id,
          lieu_chargement, montant_total, statut, created_by
-       ) VALUES (?, ?, ?, ?, ?, 'En attente', ?)`;
-      insertValues = [today, bs.client_id ?? null, bs.id, bs.lieu_chargement ?? null, bs.montant_total, created_by];
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'En attente', ?)`;
+      insertValues = [today, avoirClientId, avoirFournisseurId, vendreAuFournisseur, bs.id, bs.lieu_chargement ?? null, bs.montant_total, created_by];
     } else if (hasBonOrigineType) {
       insertQuery = `INSERT INTO avoirs_client (
-         date_creation, client_id, bon_origine_type,
+         date_creation, client_id, fournisseur_id, vendre_au_fournisseur, bon_origine_type,
          lieu_chargement, montant_total, statut, created_by
-       ) VALUES (?, ?, ?, 'sortie', ?, 'En attente', ?)`;
-      insertValues = [today, bs.client_id ?? null, bs.lieu_chargement ?? null, bs.montant_total, created_by];
+       ) VALUES (?, ?, ?, ?, 'sortie', ?, ?, 'En attente', ?)`;
+      insertValues = [today, avoirClientId, avoirFournisseurId, vendreAuFournisseur, bs.lieu_chargement ?? null, bs.montant_total, created_by];
     } else {
       insertQuery = `INSERT INTO avoirs_client (
-         date_creation, client_id,
+         date_creation, client_id, fournisseur_id, vendre_au_fournisseur,
          lieu_chargement, montant_total, statut, created_by
-       ) VALUES (?, ?, ?, ?, 'En attente', ?)`;
-      insertValues = [today, bs.client_id ?? null, bs.lieu_chargement ?? null, bs.montant_total, created_by];
+       ) VALUES (?, ?, ?, ?, ?, ?, 'En attente', ?)`;
+      insertValues = [today, avoirClientId, avoirFournisseurId, vendreAuFournisseur, bs.lieu_chargement ?? null, bs.montant_total, created_by];
     }
 
     const [insAvoir] = await connection.execute(insertQuery, insertValues);

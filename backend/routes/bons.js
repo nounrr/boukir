@@ -85,12 +85,12 @@ const bonPagedConfigs = {
     table: 'avoirs_client',
     alias: 'b',
     prefix: 'AVC',
-    contactExpr: 'c.nom_complet',
-    contactIdExpr: 'b.client_id',
+    contactExpr: 'CASE WHEN COALESCE(b.vendre_au_fournisseur, 0) = 1 THEN f.nom_complet ELSE c.nom_complet END',
+    contactIdExpr: 'CASE WHEN COALESCE(b.vendre_au_fournisseur, 0) = 1 THEN b.fournisseur_id ELSE b.client_id END',
     phoneExpr: 'b.phone',
     amountExpr: 'b.montant_total',
-    joins: `LEFT JOIN contacts c ON c.id = b.client_id`,
-    selectExtra: `c.nom_complet AS client_nom`,
+    joins: `LEFT JOIN contacts c ON c.id = b.client_id LEFT JOIN contacts f ON f.id = b.fournisseur_id`,
+    selectExtra: `c.nom_complet AS client_nom, f.nom_complet AS fournisseur_nom`,
     itemTable: 'avoir_client_items',
     itemFk: 'avoir_client_id',
     itemAlias: 'i',
@@ -506,6 +506,10 @@ router.get('/paged/:type', async (req, res) => {
     if (type === 'Sortie' && paymentState === 'vendre_fournisseur') {
       whereParts.push(`COALESCE(b.vendre_au_fournisseur, 0) = 1`);
     } else if (type === 'Sortie' && paymentState === 'normal_sortie') {
+      whereParts.push(`COALESCE(b.vendre_au_fournisseur, 0) <> 1`);
+    } else if (type === 'Avoir' && paymentState === 'vendre_fournisseur') {
+      whereParts.push(`COALESCE(b.vendre_au_fournisseur, 0) = 1`);
+    } else if (type === 'Avoir' && paymentState === 'normal_avoir_client') {
       whereParts.push(`COALESCE(b.vendre_au_fournisseur, 0) <> 1`);
     }
 
