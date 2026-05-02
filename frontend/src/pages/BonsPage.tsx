@@ -49,7 +49,7 @@ import {
 // Centralize action/status icon size for easier adjustment
 const ACTION_ICON_SIZE = 24; // increased from 20 per user request
 
-type BonTabKey = 'Commande' | 'Sortie' | 'VendreFournisseur' | 'Comptant' | 'ComptantNonPaye' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
+type BonTabKey = 'Commande' | 'Sortie' | 'VendreFournisseur' | 'Comptant' | 'ComptantNonPaye' | 'Avoir' | 'AvoirVendreFournisseur' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
 
 const BON_TAB_LABELS: Record<BonTabKey, string> = {
   Commande: 'Bon de Commande',
@@ -59,6 +59,7 @@ const BON_TAB_LABELS: Record<BonTabKey, string> = {
   ComptantNonPaye: 'Bon Comptant non payé',
   Vehicule: 'Bon Véhicule',
   Avoir: 'Avoir Client',
+  AvoirVendreFournisseur: 'Avoir vendre fournisseur',
   AvoirComptant: 'Avoir Comptant',
   AvoirFournisseur: 'Avoir Fournisseur',
   AvoirEcommerce: 'Avoir Ecommerce',
@@ -66,8 +67,8 @@ const BON_TAB_LABELS: Record<BonTabKey, string> = {
   Devis: 'Devis'
 };
 
-const normalizeBonTab = (tab: BonTabKey): Exclude<BonTabKey, 'ComptantNonPaye' | 'VendreFournisseur'> => (
-  tab === 'ComptantNonPaye' ? 'Comptant' : tab === 'VendreFournisseur' ? 'Sortie' : tab
+const normalizeBonTab = (tab: BonTabKey): Exclude<BonTabKey, 'ComptantNonPaye' | 'VendreFournisseur' | 'AvoirVendreFournisseur'> => (
+  tab === 'ComptantNonPaye' ? 'Comptant' : tab === 'VendreFournisseur' ? 'Sortie' : tab === 'AvoirVendreFournisseur' ? 'Avoir' : tab
 );
 
 const normalizeHumanName = (value: unknown) => {
@@ -263,8 +264,12 @@ const BonsPage = () => {
     ? 'unpaid'
     : currentTab === 'VendreFournisseur'
       ? 'vendre_fournisseur'
+    : currentTab === 'AvoirVendreFournisseur'
+      ? 'vendre_fournisseur'
       : currentTab === 'Sortie'
         ? 'normal_sortie'
+    : currentTab === 'Avoir'
+      ? 'normal_avoir_client'
     : currentTab === 'Comptant'
       ? 'paid'
       : undefined;
@@ -731,7 +736,7 @@ const BonsPage = () => {
     const type = bon?.type || effectiveCurrentTab;
     const freeClientName = cleanName(bon?.client_nom, bon?.customer_name, bon?.customerName);
     const freeSupplierName = cleanName(bon?.fournisseur_nom, bon?.supplier_name, bon?.supplierName);
-    if ((type === 'Commande' || type === 'AvoirFournisseur') && freeSupplierName) {
+    if ((type === 'Commande' || type === 'AvoirFournisseur' || (type === 'Avoir' && bon?.vendre_au_fournisseur)) && freeSupplierName) {
       return freeSupplierName;
     }
     if (
@@ -762,7 +767,7 @@ const BonsPage = () => {
     if (type === 'Commande' || type === 'AvoirFournisseur') {
       return bon?.fournisseur_id ?? bon?.contact_id ?? '-';
     }
-    if (type === 'Sortie' && bon?.vendre_au_fournisseur) {
+    if ((type === 'Sortie' || type === 'Avoir') && bon?.vendre_au_fournisseur) {
       return bon?.fournisseur_id ?? bon?.contact_id ?? '-';
     }
 
@@ -1211,8 +1216,12 @@ const BonsPage = () => {
           ? !isBonComptantNonPaye(bon)
           : currentTab === 'VendreFournisseur'
             ? (bon.vendre_au_fournisseur === 1 || bon.vendre_au_fournisseur === true || String(bon.vendre_au_fournisseur) === '1')
+            : currentTab === 'AvoirVendreFournisseur'
+              ? (bon.vendre_au_fournisseur === 1 || bon.vendre_au_fournisseur === true || String(bon.vendre_au_fournisseur) === '1')
             : currentTab === 'Sortie'
               ? (bon.vendre_au_fournisseur !== 1 && bon.vendre_au_fournisseur !== true && String(bon.vendre_au_fournisseur) !== '1')
+              : currentTab === 'Avoir'
+                ? (bon.vendre_au_fournisseur !== 1 && bon.vendre_au_fournisseur !== true && String(bon.vendre_au_fournisseur) !== '1')
               : true;
 
       return matchesSearch && matchesStatus && matchesPaymentState;
@@ -1625,6 +1634,7 @@ const BonsPage = () => {
       { key: 'ComptantNonPaye', label: 'Bon Comptant non payé' },
       { key: 'Vehicule', label: 'Bon Véhicule' },
       { key: 'Avoir', label: 'Avoir Client' },
+      { key: 'AvoirVendreFournisseur', label: 'Avoir vendre fournisseur' },
       { key: 'AvoirComptant', label: 'Avoir Comptant' },
       { key: 'AvoirFournisseur', label: 'Avoir Fournisseur' },
       { key: 'AvoirEcommerce', label: 'Avoir Ecommerce' },
@@ -2421,7 +2431,7 @@ const BonsPage = () => {
                     <div className="flex items-center gap-1">
                       {(() => {
                         if (effectiveCurrentTab === 'Vehicule') return 'Véhicule';
-                        if (effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'Commande') return 'Fournisseur';
+                        if (effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'Commande' || currentTab === 'AvoirVendreFournisseur') return 'Fournisseur';
                         return 'Client';
                       })()}
                       {sortField === 'contact' && (
@@ -3511,7 +3521,7 @@ const BonsPage = () => {
             onClose={() => setIsCreateModalOpen(false)}
             currentTab={effectiveCurrentTab as any}
             comptantPartialPaymentMode={isUnpaidComptantTab ? 'required' : 'hidden'}
-            defaultVendreAuFournisseur={currentTab === 'VendreFournisseur'}
+            defaultVendreAuFournisseur={currentTab === 'VendreFournisseur' || currentTab === 'AvoirVendreFournisseur'}
             initialValues={selectedBon || undefined}
             onBonAdded={(newBon) => {
               // Le bon est automatiquement ajouté au store Redux
@@ -4369,7 +4379,7 @@ const BonsPage = () => {
                 return found;
               }
               // Commande & AvoirFournisseur: suppliers; prefer fournisseur_id, fallback to contact_id
-              if (effectiveCurrentTab === 'Commande' || effectiveCurrentTab === 'AvoirFournisseur') {
+              if (effectiveCurrentTab === 'Commande' || effectiveCurrentTab === 'AvoirFournisseur' || (effectiveCurrentTab === 'Avoir' && b?.vendre_au_fournisseur)) {
                 const id = b.fournisseur_id ?? b.contact_id;
                 const found = suppliers.find((s) => String(s.id) === String(id)) || null;
                 return found || (b.fournisseur_nom ? ({ nom_complet: b.fournisseur_nom } as any) : null);

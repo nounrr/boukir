@@ -206,13 +206,12 @@ const ContactsPage: React.FC = () => {
 
   const getContactInitialSoldeForHistory = React.useCallback((contact: Contact | null | undefined) => {
     const solde = Number(contact?.solde ?? 0) || 0;
-    if (contact?.type === 'Client') return solde === 0 ? 0 : -Math.abs(solde);
     return solde;
   }, []);
 
-  const getVisibleSoldeCumule = React.useCallback((contact: Pick<Contact, 'type'> | null | undefined, value: number) => {
+  const getVisibleSoldeCumule = React.useCallback((_contact: Pick<Contact, 'type'> | null | undefined, value: number) => {
     const numericValue = Number(value) || 0;
-    return contact?.type === 'Client' ? -numericValue : numericValue;
+    return numericValue;
   }, []);
 
   // Solde cumule 2: calcul simple separe, sans solde initial.

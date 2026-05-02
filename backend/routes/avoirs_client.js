@@ -14,6 +14,7 @@ router.get('/', async (_req, res) => {
       SELECT
         ac.*,
         c.nom_complet AS client_nom,
+        f.nom_complet AS fournisseur_nom,
         COALESCE((
           SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
@@ -39,6 +40,7 @@ router.get('/', async (_req, res) => {
         ), JSON_ARRAY()) AS items
       FROM avoirs_client ac
       LEFT JOIN contacts c ON c.id = ac.client_id
+      LEFT JOIN contacts f ON f.id = ac.fournisseur_id
       ORDER BY ac.created_at DESC
     `);
 
@@ -73,6 +75,7 @@ router.get('/:id', async (req, res) => {
       SELECT
         ac.*,
         c.nom_complet AS client_nom,
+        f.nom_complet AS fournisseur_nom,
         COALESCE((
           SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
@@ -98,6 +101,7 @@ router.get('/:id', async (req, res) => {
         ), JSON_ARRAY()) AS items
       FROM avoirs_client ac
       LEFT JOIN contacts c ON c.id = ac.client_id
+      LEFT JOIN contacts f ON f.id = ac.fournisseur_id
       WHERE ac.id = ?
       LIMIT 1
     `, [id]);
@@ -132,6 +136,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const {
       date_creation,
       client_id,
+      fournisseur_id,
+      vendre_au_fournisseur,
       lieu_chargement,
       adresse_livraison,
       montant_total,
@@ -147,16 +153,26 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       return res.status(400).json({ message: 'Champs requis manquants' });
     }
 
-    const cId = client_id ?? null;
+    const vendreAuFournisseur = vendre_au_fournisseur === true || vendre_au_fournisseur === 1 || vendre_au_fournisseur === '1' ? 1 : 0;
+    const cId = vendreAuFournisseur ? null : (client_id ?? null);
+    const fId = vendreAuFournisseur ? (fournisseur_id ?? null) : null;
+    if (vendreAuFournisseur && !fId) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Fournisseur requis' });
+    }
+    if (!vendreAuFournisseur && !cId) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Client requis' });
+    }
     const lieu = lieu_chargement ?? null;
     const st = statut ?? 'En attente';
 
     const [resAvoir] = await connection.execute(`
       INSERT INTO avoirs_client (
-        date_creation, client_id, phone,
+        date_creation, client_id, fournisseur_id, vendre_au_fournisseur, phone,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, cId, phone, lieu, adresse_livraison ?? null, montant_total, st, created_by, isNotCalculated]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, cId, fId, vendreAuFournisseur, phone, lieu, adresse_livraison ?? null, montant_total, st, created_by, isNotCalculated]);
 
     const avoirId = resAvoir.insertId;
     const finalNumero = `AVC${String(avoirId).padStart(2, '0')}`;
@@ -226,6 +242,8 @@ router.put('/:id', async (req, res) => {
     let {
       date_creation,
       client_id,
+      fournisseur_id,
+      vendre_au_fournisseur,
       lieu_chargement,
       adresse_livraison,
       montant_total,
@@ -235,7 +253,7 @@ router.put('/:id', async (req, res) => {
     let phone = req.body?.phone ?? null;
     let isNotCalculated = req.body?.isNotCalculated === true ? true : null;
 
-    const [exists] = await connection.execute('SELECT date_creation, client_id, phone, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated FROM avoirs_client WHERE id = ? FOR UPDATE', [id]);
+    const [exists] = await connection.execute('SELECT date_creation, client_id, fournisseur_id, vendre_au_fournisseur, phone, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated FROM avoirs_client WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Avoir client non trouvé' });
@@ -292,6 +310,8 @@ router.put('/:id', async (req, res) => {
       montant_total = sanitizedItems.reduce((s, r) => s + (Number(r.total) || 0), 0);
       date_creation = oldBon.date_creation;
       client_id = oldBon.client_id;
+      fournisseur_id = oldBon.fournisseur_id;
+      vendre_au_fournisseur = oldBon.vendre_au_fournisseur;
       phone = oldBon.phone;
       lieu_chargement = oldBon.lieu_chargement;
       adresse_livraison = oldBon.adresse_livraison;
@@ -299,7 +319,17 @@ router.put('/:id', async (req, res) => {
       isNotCalculated = oldBon.isNotCalculated;
     }
 
-    const cId = client_id ?? null;
+    const vendreAuFournisseur = vendre_au_fournisseur === true || vendre_au_fournisseur === 1 || vendre_au_fournisseur === '1' ? 1 : 0;
+    const cId = vendreAuFournisseur ? null : (client_id ?? null);
+    const fId = vendreAuFournisseur ? (fournisseur_id ?? null) : null;
+    if (!isChefChauffeur && vendreAuFournisseur && !fId) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Fournisseur requis' });
+    }
+    if (!isChefChauffeur && !vendreAuFournisseur && !cId) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Client requis' });
+    }
     const lieu = lieu_chargement ?? null;
     const st = statut ?? null;
 
@@ -310,10 +340,10 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute(`
       UPDATE avoirs_client SET
-        date_creation = ?, client_id = ?, phone = ?,
+        date_creation = ?, client_id = ?, fournisseur_id = ?, vendre_au_fournisseur = ?, phone = ?,
         lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?
       WHERE id = ?
-    `, [date_creation, cId, phone, lieu, adresse_livraison ?? null, montant_total, st, isNotCalculated, id]);
+    `, [date_creation, cId, fId, vendreAuFournisseur, phone, lieu, adresse_livraison ?? null, montant_total, st, isNotCalculated, id]);
 
     // ✅ bonne colonne FK pour purge des items
     await connection.execute('DELETE FROM avoir_client_items WHERE avoir_client_id = ?', [id]);
@@ -475,9 +505,10 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
     }
 
     const [rows] = await connection.execute(`
-      SELECT ac.*, c.nom_complet AS client_nom
+      SELECT ac.*, c.nom_complet AS client_nom, f.nom_complet AS fournisseur_nom
       FROM avoirs_client ac
       LEFT JOIN contacts c ON c.id = ac.client_id
+      LEFT JOIN contacts f ON f.id = ac.fournisseur_id
       WHERE ac.id = ?
     `, [id]);
 
