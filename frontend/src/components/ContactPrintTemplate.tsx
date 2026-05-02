@@ -96,6 +96,10 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   // hideCumulative: when true, don't render the 'Solde Cumulé' column (for selected/compact prints)
   const showPrices = priceMode === 'WITH_PRICES';
   const initialSolde = Number((contact as any)?.solde ?? 0);
+  const visibleSoldeCumule = (value: any) => {
+    const numericValue = Number(value) || 0;
+    return contact?.type === 'Client' ? -numericValue : numericValue;
+  };
 
   const contactDisplayName =
     typeof contact?.societe === 'string' && contact.societe.trim()
@@ -334,7 +338,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                             {t.syntheticInitial ? '—' : reduceBalance ? '-' : '+'}
                             {t.syntheticInitial ? '' : fmt(t.montant)}
                           </td>
-                          {!hideCumulative && <td className="cell-num">{fmtNoDecimalsIfInt(t.soldeCumulatif)}</td>}
+                          {!hideCumulative && <td className="cell-num">{fmtNoDecimalsIfInt(visibleSoldeCumule(t.soldeCumulatif))}</td>}
                         </>
                       ) : (
                         <td>{t.syntheticInitial ? '-' : t.statut || (isPayment ? 'Paiement' : '-')}</td>
@@ -349,7 +353,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
           <div className="mt-3 flex justify-end">
             <div className="border border-gray-300 bg-gray-50 px-3 py-2 rounded">
               <div className="text-xs font-semibold text-gray-700">Solde final</div>
-              <div className="text-base font-bold text-gray-900">{fmtNoDecimalsIfInt(finalSoldeTransactions)} DH</div>
+              <div className="text-base font-bold text-gray-900">{fmtNoDecimalsIfInt(visibleSoldeCumule(finalSoldeTransactions))} DH</div>
             </div>
           </div>
         </div>
@@ -454,7 +458,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                             {it.syntheticInitial ? '—' : fmt(displayTotal)}
                           </td>
                           {!hideCumulative && (
-                            <td className="cell-num">{fmtNoDecimalsIfInt(it.soldeCumulatif)}</td>
+                            <td className="cell-num">{fmtNoDecimalsIfInt(visibleSoldeCumule(it.soldeCumulatif))}</td>
                           )}
                         </>
                       ) : (
@@ -477,7 +481,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                   <td className="cell-num">{totalQtyProducts}</td>
                   <td className="cell-num">—</td>
                   <td className="cell-num">{fmt(totalAmountProducts)}</td>
-                  {!hideCumulative && <td className="cell-num">{fmtNoDecimalsIfInt(finalSoldeProducts)}</td>}
+                  {!hideCumulative && <td className="cell-num">{fmtNoDecimalsIfInt(visibleSoldeCumule(finalSoldeProducts))}</td>}
                 </tr>
               </tfoot>
             )}
@@ -512,7 +516,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                 <div className="text-xs font-semibold text-gray-700">Solde Final</div>
                 <div className={`text-base font-bold ${
                   finalSoldeProducts > 0 ? 'text-red-700' : 'text-green-700'
-                }`}>{fmtNoDecimalsIfInt(finalSoldeProducts)} DH</div>
+                }`}>{fmtNoDecimalsIfInt(visibleSoldeCumule(finalSoldeProducts))} DH</div>
               </div>
             )}
           </div>

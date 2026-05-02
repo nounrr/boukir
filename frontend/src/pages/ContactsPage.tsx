@@ -210,6 +210,11 @@ const ContactsPage: React.FC = () => {
     return solde;
   }, []);
 
+  const getVisibleSoldeCumule = React.useCallback((contact: Pick<Contact, 'type'> | null | undefined, value: number) => {
+    const numericValue = Number(value) || 0;
+    return contact?.type === 'Client' ? -numericValue : numericValue;
+  }, []);
+
   // Solde cumule 2: calcul simple separe, sans solde initial.
   // Client: Sortie/Comptant => dette client (-), Paiement/Avoir => reduction dette (+abs).
   const getHistorySoldeCumule2Delta = React.useCallback((contact: Contact | null | undefined, item: any) => {
@@ -318,8 +323,17 @@ const ContactsPage: React.FC = () => {
       ? `abs(${rawAmount.toFixed(3)})`
       : absAmount.toFixed(3);
 
+    if (contact?.type === 'Client') {
+      const displayPrevious = getVisibleSoldeCumule(contact, previous);
+      const displayCurrent = getVisibleSoldeCumule(contact, current);
+      const displayDelta = getHistoryDisplayDelta(contact, item?.type, rawAmount);
+      const displayOperator = displayDelta >= 0 ? '+' : '-';
+
+      return `${displayPrevious.toFixed(3)} ${displayOperator} ${operand} = ${displayCurrent.toFixed(3)}`;
+    }
+
     return `${previous.toFixed(3)} ${operator} ${operand} = ${current.toFixed(3)}`;
-  }, [getHistorySoldeDelta]);
+  }, [getHistoryDisplayDelta, getHistorySoldeDelta, getVisibleSoldeCumule]);
 
   const getHistorySoldeCumule2Formula = React.useCallback((contact: Contact | null | undefined, item: any) => {
     if (!item || item.syntheticInitial) return '';
@@ -3145,7 +3159,7 @@ const ContactsPage: React.FC = () => {
                   <td class="numeric-col">${item.quantite || 0}</td>
                   <td class="numeric-col">${(item.prix_unitaire || 0).toFixed(3)} DH</td>
                   <td class="numeric-col">${(item.total || 0).toFixed(3)} DH</td>
-                  ${printHasSelection ? '' : `<td class="numeric-col"><strong>${(item.soldeCumulatif || 0).toFixed(3)} DH</strong></td>`}
+                  ${printHasSelection ? '' : `<td class="numeric-col"><strong>${getVisibleSoldeCumule(selectedContact, item.soldeCumulatif || 0).toFixed(3)} DH</strong></td>`}
                 </tr>`
     ).join('')}
               <tr class="total-row">
@@ -3153,7 +3167,7 @@ const ContactsPage: React.FC = () => {
                 <td class="numeric-col"><strong>${filteredProductsForDisplay2.reduce((s, p) => s + (p.quantite || 0), 0)}</strong></td>
                 <td></td>
                 <td class="numeric-col"><strong>${filteredProductsForDisplay2.reduce((s, p) => s + (p.total || 0), 0).toFixed(3)} DH</strong></td>
-                ${printHasSelection ? '' : `<td class="numeric-col"><strong>${filteredProductsForDisplay2.length > 0 ? (filteredProductsForDisplay2[filteredProductsForDisplay2.length - 1].soldeCumulatif || 0).toFixed(3) : '0.00'} DH</strong></td>`}
+                ${printHasSelection ? '' : `<td class="numeric-col"><strong>${filteredProductsForDisplay2.length > 0 ? getVisibleSoldeCumule(selectedContact, filteredProductsForDisplay2[filteredProductsForDisplay2.length - 1].soldeCumulatif || 0).toFixed(3) : '0.00'} DH</strong></td>`}
               </tr>
             </table>
             <!-- Bloc Débit / Crédit / Solde Final -->
@@ -3171,7 +3185,7 @@ const ContactsPage: React.FC = () => {
               <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 8px 16px; min-width: 180px; text-align: center;">
                 <p style="margin: 0; font-size: 9px; color: #92400e; font-weight: 600;">Solde Final</p>
                 <p style="margin: 0; font-size: 8px; color: #6b7280;">(Dernier solde cumulé du tableau)</p>
-                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: ${tableSoldeFinal > 0 ? '#dc2626' : '#16a34a'};">${tableSoldeFinal.toFixed(3)} DH</p>
+                <p style="margin: 4px 0 0; font-size: 14px; font-weight: bold; color: ${tableSoldeFinal > 0 ? '#dc2626' : '#16a34a'};">${getVisibleSoldeCumule(selectedContact, tableSoldeFinal).toFixed(3)} DH</p>
               </div>
             </div>
           </div>
@@ -3200,7 +3214,7 @@ const ContactsPage: React.FC = () => {
       })()} DH</p>
                 ${printHasSelection
                   ? `<p><strong>Solde final (sélection uniquement):</strong> ${selectedTotal.toFixed(3)} DH</p>`
-                  : `<p><strong>Solde final (dernier solde cumulé du tableau):</strong> ${tableSoldeFinal.toFixed(3)} DH</p>`}
+                  : `<p><strong>Solde final (dernier solde cumulé du tableau):</strong> ${getVisibleSoldeCumule(selectedContact, tableSoldeFinal).toFixed(3)} DH</p>`}
               </div>
             </div>
           </div>
@@ -4445,7 +4459,7 @@ const ContactsPage: React.FC = () => {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Solde cumulé Client</p>
                   <p className="text-3xl font-bold text-gray-900">
-                    {computeAggregateSoldeCumule(soldeCumuleCard, 'Client').toFixed(3)} DH
+                    {getVisibleSoldeCumule({ type: 'Client' }, computeAggregateSoldeCumule(soldeCumuleCard, 'Client')).toFixed(3)} DH
                   </p>
                 </div>
               </div>
@@ -4457,7 +4471,7 @@ const ContactsPage: React.FC = () => {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Solde cumulé Fournisseur</p>
                   <p className="text-3xl font-bold text-gray-900">
-                    {(Number(soldeCumuleFournisseurCard?.total_final ?? 0) || 0).toFixed(3)} DH
+                    {getVisibleSoldeCumule({ type: 'Fournisseur' }, computeAggregateSoldeCumule(soldeCumuleFournisseurCard, 'Fournisseur')).toFixed(3)} DH
                   </p>
                 </div>
               </div>
@@ -4672,10 +4686,11 @@ const ContactsPage: React.FC = () => {
                         {/* Solde en premier */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           {(() => {
-                            const display = getContactSoldeDisplay(contact);
-                          const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(display) > contact.plafond;
+                            const rawSolde = getContactSoldeDisplay(contact);
+                            const display = getVisibleSoldeCumule(contact, rawSolde);
+                          const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(rawSolde) > contact.plafond;
                           return (
-                            <div className={`flex items-center gap-2 text-sm font-semibold ${display < 0 ? 'text-red-600' : display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                            <div className={`flex items-center gap-2 text-sm font-semibold ${rawSolde < 0 ? 'text-red-600' : rawSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
                                 {display.toFixed(3)} DH
                                 {overPlafond && (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
@@ -5443,9 +5458,10 @@ const ContactsPage: React.FC = () => {
                         <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
                         {(() => {
                           const value = tableSoldeFinal;
+                          const displayValue = getVisibleSoldeCumule(selectedContact, value);
                           return (
                             <div className="space-y-1">
-                              <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{value.toFixed(3)} DH</p>
+                              <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{displayValue.toFixed(3)} DH</p>
                               <p className="text-xs text-gray-500">Calculé ligne par ligne</p>
                             </div>
                           );
@@ -6272,16 +6288,22 @@ const ContactsPage: React.FC = () => {
                                 </td>
                                 {/* Solde Cumulé colonne finale */}
                                 <td className="px-6  whitespace-nowrap text-right">
-                                  <div
-                                    className={`text-sm font-bold ${item.soldeCumulatif > 0
-                                      ? 'text-green-600'
-                                      : item.soldeCumulatif < 0
-                                        ? 'text-red-600'
-                                        : 'text-gray-600'
-                                      }`}
-                                  >
-                                    {Number(item.soldeCumulatif ?? 0).toFixed(3)} DH
-                                  </div>
+                                  {(() => {
+                                    const rawSolde = Number(item.soldeCumulatif ?? 0);
+                                    const displaySolde = getVisibleSoldeCumule(selectedContact, rawSolde);
+                                    return (
+                                      <div
+                                        className={`text-sm font-bold ${rawSolde > 0
+                                          ? 'text-green-600'
+                                          : rawSolde < 0
+                                            ? 'text-red-600'
+                                            : 'text-gray-600'
+                                          }`}
+                                      >
+                                        {displaySolde.toFixed(3)} DH
+                                      </div>
+                                    );
+                                  })()}
                                   {!item.syntheticInitial && (
                                     <div className="mt-1 text-[11px] font-mono text-gray-500 whitespace-nowrap">
                                       {getHistorySoldeFormula(selectedContact, item)}
@@ -6360,7 +6382,7 @@ const ContactsPage: React.FC = () => {
                           <div>
                             <p className="font-semibold text-gray-600">Solde Final:</p>
                             <p className={`text-lg font-bold ${tableSoldeFinal > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                              {tableSoldeFinal.toFixed(3)} DH
+                              {getVisibleSoldeCumule(selectedContact, tableSoldeFinal).toFixed(3)} DH
                             </p>
                             {(dateFrom || dateTo) && (
                               <p className="text-xs text-gray-500">Dernier solde cumulé du tableau</p>
