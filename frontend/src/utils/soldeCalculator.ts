@@ -179,7 +179,7 @@ export function calculateContactSoldeHistory(
       const montant = Number(bon.montant_total ?? 0);
       return {
         type: 'bon' as const,
-        date: bon.date_bon || bon.created_at,
+        date: bon.date_creation || (bon as any).created_at,
         numero: displayBonNumero(bon),
         typeLabel: bon.type,
         // Avoirs/Paiements augmentent la dette (logique inverse pour l'affichage/historique ici)
