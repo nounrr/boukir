@@ -4507,7 +4507,7 @@ const ContactsPage: React.FC = () => {
                 <div className="text-right">
                   <div className="text-xs uppercase tracking-wide text-gray-500">Total solde</div>
                   <div className={`text-2xl font-bold ${expandedGroupTotalSoldeForActiveTab > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                    {expandedGroupTotalSoldeForActiveTab.toFixed(3)} DH
+                    {getVisibleSoldeCumule({ type: activeTab === 'clients' ? 'Client' : 'Fournisseur' }, expandedGroupTotalSoldeForActiveTab).toFixed(3)} DH
                   </div>
                 </div>
               </div>
@@ -4804,6 +4804,7 @@ const ContactsPage: React.FC = () => {
                   const members = row.members || [];
                   const groupName = (row.groupName && row.groupName.trim()) ? row.groupName : `Groupe #${groupId}`;
                   const totalSolde = members.reduce((s, c) => s + getContactSoldeDisplay(c), 0);
+                  const displayTotalSolde = getVisibleSoldeCumule({ type: activeTab === 'clients' ? 'Client' : 'Fournisseur' }, totalSolde);
                   const hasOverdue = members.some((c) => isOverdueContact(c, payments));
 
                   return (
@@ -4815,7 +4816,7 @@ const ContactsPage: React.FC = () => {
                         {/* Solde total du groupe */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className={`flex items-center gap-2 text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                            {totalSolde.toFixed(3)} DH
+                            {displayTotalSolde.toFixed(3)} DH
                             <span className="text-xs text-gray-500 font-normal">
                               (Total groupe)
                             </span>
@@ -4908,10 +4909,11 @@ const ContactsPage: React.FC = () => {
                             {/* Solde en premier */}
                             <td className="px-6 py-4 whitespace-nowrap">
                               {(() => {
-                                const display = getContactSoldeDisplay(contact);
-                                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(display) > contact.plafond;
+                                const rawSolde = getContactSoldeDisplay(contact);
+                                const display = getVisibleSoldeCumule(contact, rawSolde);
+                                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(rawSolde) > contact.plafond;
                                 return (
-                                  <div className={`flex items-center gap-2 text-sm font-semibold ${display < 0 ? 'text-red-600' : display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                                  <div className={`flex items-center gap-2 text-sm font-semibold ${rawSolde < 0 ? 'text-red-600' : rawSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
                                     {display.toFixed(3)} DH
                                     {overPlafond && (
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
@@ -5078,8 +5080,9 @@ const ContactsPage: React.FC = () => {
             visibleAccordionRows.map((row) => {
               if (row.kind === 'contact') {
                 const contact = row.contact;
-                const display = getContactSoldeDisplay(contact);
-                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(display) > contact.plafond;
+                const rawSolde = getContactSoldeDisplay(contact);
+                const display = getVisibleSoldeCumule(contact, rawSolde);
+                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(rawSolde) > contact.plafond;
 
                 return (
                   <div
@@ -5095,7 +5098,7 @@ const ContactsPage: React.FC = () => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`text-sm font-semibold ${display < 0 ? 'text-red-600' : display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                        <div className={`text-sm font-semibold ${rawSolde < 0 ? 'text-red-600' : rawSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
                           {display.toFixed(3)} DH
                           {overPlafond && (
                             <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
@@ -5151,6 +5154,7 @@ const ContactsPage: React.FC = () => {
               const members = row.members || [];
               const groupName = (row.groupName && row.groupName.trim()) ? row.groupName : `Groupe #${groupId}`;
               const totalSolde = members.reduce((s, c) => s + getContactSoldeDisplay(c), 0);
+              const displayTotalSolde = getVisibleSoldeCumule({ type: activeTab === 'clients' ? 'Client' : 'Fournisseur' }, totalSolde);
 
               return (
                 <div key={`group-${groupId}`} className="p-4 bg-gray-50">
@@ -5166,14 +5170,15 @@ const ContactsPage: React.FC = () => {
                         <div className="text-xs text-gray-500">{members.length} membres</div>
                       </div>
                     </div>
-                    <div className={`text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>{totalSolde.toFixed(3)} DH</div>
+                    <div className={`text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>{displayTotalSolde.toFixed(3)} DH</div>
                   </button>
 
                   {isOpen && (
                     <div className="mt-3 space-y-2">
                       {members.map((contact) => {
-                        const display = getContactSoldeDisplay(contact);
-                        const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(display) > contact.plafond;
+                        const rawSolde = getContactSoldeDisplay(contact);
+                        const display = getVisibleSoldeCumule(contact, rawSolde);
+                        const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(rawSolde) > contact.plafond;
                         return (
                           <div
                             key={`group-${groupId}-member-${contact.id}`}
@@ -5194,7 +5199,7 @@ const ContactsPage: React.FC = () => {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <div className={`text-sm font-semibold ${display < 0 ? 'text-red-600' : display > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                                <div className={`text-sm font-semibold ${rawSolde < 0 ? 'text-red-600' : rawSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
                                   {display.toFixed(3)} DH
                                   {overPlafond && (
                                     <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
