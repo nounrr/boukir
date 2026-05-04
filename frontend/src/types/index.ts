@@ -265,7 +265,8 @@ export interface Contact {
   rib?: string | null;
   ice?: string | null;
   solde: number;
-  solde_cumule?: number; // Solde cumulé calculé côté backend
+  solde_cumule?: number;
+  total_cumule?: number | null;
   total_ventes?: number;
   total_paiements?: number;
   total_avoirs?: number;

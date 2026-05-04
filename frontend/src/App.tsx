@@ -23,6 +23,8 @@ import EmployeeArchivePage from './pages/EmployeeArchivePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
 import StockPage from './pages/StockPage';
 import ContactsPage from './pages/ContactsPage';
+import ClientsPage, { ClientDetailPage } from './pages/ClientsPage';
+import FournisseursPage, { FournisseurDetailPage } from './pages/FournisseursPage';
 import ContactArchiverPage from './pages/ContactArchiverPage';
 import BonsPage from './pages/BonsPage';
 import VehiculesPage from './pages/VehiculesPage';
@@ -234,6 +236,50 @@ const AppContent: React.FC = () => {
             <ProtectedRoute forbiddenRoles={['Employé']}>
               <LayoutWithAccessCheck>
                 <ContactsPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/clients"
+          element={
+            <ProtectedRoute forbiddenRoles={['Employé']}>
+              <LayoutWithAccessCheck>
+                <ClientsPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/clients/:id"
+          element={
+            <ProtectedRoute forbiddenRoles={['Employé']}>
+              <LayoutWithAccessCheck>
+                <ClientDetailPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/fournisseurs"
+          element={
+            <ProtectedRoute forbiddenRoles={['Employé']}>
+              <LayoutWithAccessCheck>
+                <FournisseursPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/fournisseurs/:id"
+          element={
+            <ProtectedRoute forbiddenRoles={['Employé']}>
+              <LayoutWithAccessCheck>
+                <FournisseurDetailPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

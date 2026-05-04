@@ -9,6 +9,10 @@ export interface PaginatedContactsResponse {
     total: number;
     totalPages: number;
   };
+  grandTotalCumule?: number;
+  grandTotalVentes?: number;
+  grandTotalPaiements?: number;
+  grandTotalAvoirs?: number;
 }
 
 export type ContactsSortBy = 'nom' | 'societe' | 'solde' | 'solde_cumule' | 'created_at';
@@ -124,10 +128,10 @@ const contactsApi = api.injectEndpoints({
       invalidatesTags: ['Contact'],
     }),
 
-    getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection }>({
-      query: ({ page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir } = {}) => ({ 
-        url: '/contacts', 
-        params: { 
+    getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection; dateFrom?: string; dateTo?: string }>({
+      query: ({ page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir, dateFrom, dateTo } = {}) => ({
+        url: '/contacts',
+        params: {
           type: 'Client',
           page,
           limit,
@@ -136,7 +140,9 @@ const contactsApi = api.injectEndpoints({
           ...(groupId ? { groupId } : {}),
           ...(sortBy ? { sortBy } : {}),
           ...(sortDir ? { sortDir } : {}),
-        } 
+          ...(dateFrom ? { dateFrom } : {}),
+          ...(dateTo ? { dateTo } : {}),
+        }
       }),
       providesTags: ['Contact'],
     }),

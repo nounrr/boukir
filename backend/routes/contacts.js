@@ -6,7 +6,7 @@ const router = express.Router();
 
 const isProd = process.env.NODE_ENV === 'production';
 
-const applyContactsFilters = ({ type, search, clientSubTab, groupId }) => {
+const applyContactsFilters = ({ type, search, clientSubTab, groupId, dateFrom, dateTo }) => {
   let whereSql = ' WHERE 1=1';
   const params = [];
 
@@ -40,6 +40,16 @@ const applyContactsFilters = ({ type, search, clientSubTab, groupId }) => {
       whereSql += ' AND c.group_id = ?';
       params.push(n);
     }
+  }
+
+  if (dateFrom && String(dateFrom).trim() !== '') {
+    whereSql += ' AND DATE(c.created_at) >= ?';
+    params.push(String(dateFrom).trim());
+  }
+
+  if (dateTo && String(dateTo).trim() !== '') {
+    whereSql += ' AND DATE(c.created_at) <= ?';
+    params.push(String(dateTo).trim());
   }
 
   return { whereSql, params };
@@ -79,6 +89,26 @@ const BALANCE_EXPR = `
       - COALESCE(paiements_fournisseur.total_paiements, 0)
       - COALESCE(avoirs_fournisseur.total_avoirs, 0)
     ELSE COALESCE(c.solde, 0)
+  END
+`;
+
+// Convention frontend : solde_initial + sorties + comptants - paiements - avoirs
+// positif = client doit de l'argent, négatif = crédit en faveur du client
+const TOTAL_CUMULE_EXPR = `
+  CASE
+    WHEN c.type = 'Client' THEN
+      COALESCE(c.solde, 0)
+      + COALESCE(ventes_client.total_ventes, 0)
+      + COALESCE(ventes_comptant.total_ventes, 0)
+      + COALESCE(ventes_ecommerce.total_ventes, 0)
+      - COALESCE(paiements_client.total_paiements, 0)
+      - COALESCE(avoirs_client.total_avoirs, 0)
+    WHEN c.type = 'Fournisseur' THEN
+      COALESCE(c.solde, 0)
+      + COALESCE(achats_fournisseur.total_achats, 0)
+      - COALESCE(paiements_fournisseur.total_paiements, 0)
+      - COALESCE(avoirs_fournisseur.total_avoirs, 0)
+    ELSE NULL
   END
 `;
 
@@ -235,7 +265,7 @@ const SINGLE_CONTACT_QUERY = `
 // GET /api/contacts - Get all contacts with optional type filter (avec solde_cumule calculé) et pagination
 router.get('/', async (req, res) => {
   try {
-    const { type, page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir } = req.query;
+    const { type, page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir, dateFrom, dateTo } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const normalizedSortDir = String(sortDir || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
@@ -253,7 +283,7 @@ router.get('/', async (req, res) => {
     const isReferenceSearch = /^\d+$/.test(referenceSearch);
 
     // Requête pour compter le total
-    const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab, groupId });
+    const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo });
     const countQuery = `SELECT COUNT(*) as total FROM contacts c${countWhereSql}`;
 
     const [countResult] = await pool.execute(countQuery, countParams);
@@ -266,6 +296,7 @@ router.get('/', async (req, res) => {
         c.*,
         cg.name AS group_name,
         ${BALANCE_EXPR} AS solde_cumule,
+        ${TOTAL_CUMULE_EXPR} AS total_cumule,
         (
           COALESCE(ventes_client.total_ventes, 0)
           + COALESCE(ventes_comptant.total_ventes, 0)
@@ -362,7 +393,7 @@ router.get('/', async (req, res) => {
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
     `;
 
-    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId });
+    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo });
     query += whereSql;
     // IMPORTANT: ordering must be done in SQL to keep pagination correct.
     // Use a whitelist to prevent SQL injection.
@@ -403,6 +434,7 @@ router.get('/', async (req, res) => {
     const processedRows = rows.map(row => ({
       ...row,
       solde_cumule: Number(row.solde_cumule || 0),
+      total_cumule: row.total_cumule !== null && row.total_cumule !== undefined ? Number(row.total_cumule) : null,
       total_ventes: Number(row.total_ventes || 0),
       total_paiements: Number(row.total_paiements || 0),
       total_avoirs: Number(row.total_avoirs || 0),
@@ -418,6 +450,54 @@ router.get('/', async (req, res) => {
       console.log(`... et ${processedRows.length - 10} autres contacts`);
     }
 
+    // Calcul des totaux globaux (tous les clients filtrés, pas seulement la page)
+    const { whereSql: totalWhereSql, params: totalParams } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo });
+    const totalCumuleQuery = `
+      SELECT
+        COALESCE(SUM(CASE 
+          WHEN c.type = 'Client' THEN
+            COALESCE(c.solde, 0)
+            + COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+            + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE client_id = c.id AND statut IN ('En attente','Validé','Appliqué') AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+          WHEN c.type = 'Fournisseur' THEN
+            COALESCE(c.solde, 0)
+            + COALESCE((SELECT SUM(montant_total) FROM bons_commande WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Fournisseur' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM avoirs_fournisseur WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+          ELSE NULL 
+        END), 0) AS grand_total_cumule,
+        COALESCE(SUM(CASE 
+          WHEN c.type = 'Client' THEN
+            COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+            + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+          WHEN c.type = 'Fournisseur' THEN
+            COALESCE((SELECT SUM(montant_total) FROM bons_commande WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+          ELSE NULL 
+        END), 0) AS grand_total_ventes,
+        COALESCE(SUM(CASE 
+          WHEN c.type = 'Client' THEN
+            COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+          WHEN c.type = 'Fournisseur' THEN
+            COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Fournisseur' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+          ELSE NULL 
+        END), 0) AS grand_total_paiements,
+        COALESCE(SUM(CASE 
+          WHEN c.type = 'Client' THEN
+            COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE client_id = c.id AND statut IN ('En attente','Validé','Appliqué') AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+          WHEN c.type = 'Fournisseur' THEN
+            COALESCE((SELECT SUM(montant_total) FROM avoirs_fournisseur WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
+          ELSE NULL 
+        END), 0) AS grand_total_avoirs
+      FROM contacts c${totalWhereSql}
+    `;
+    const [totalCumuleResult] = await pool.query(totalCumuleQuery, totalParams);
+    const grandTotalCumule = Number(totalCumuleResult[0]?.grand_total_cumule || 0);
+    const grandTotalVentes = Number(totalCumuleResult[0]?.grand_total_ventes || 0);
+    const grandTotalPaiements = Number(totalCumuleResult[0]?.grand_total_paiements || 0);
+    const grandTotalAvoirs = Number(totalCumuleResult[0]?.grand_total_avoirs || 0);
+
     // Retourner les données avec métadonnées de pagination
     res.json({
       data: processedRows,
@@ -426,7 +506,11 @@ router.get('/', async (req, res) => {
         limit: parseInt(limit),
         total: total,
         totalPages: Math.ceil(total / parseInt(limit))
-      }
+      },
+      grandTotalCumule,
+      grandTotalVentes,
+      grandTotalPaiements,
+      grandTotalAvoirs,
     });
   } catch (error) {
     console.error('Error fetching contacts:', error);
@@ -1379,14 +1463,19 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Contact not found' });
     }
 
-    // Convertir solde_cumule et les totaux en nombres
+    const r = rows[0];
+    const tv = Number(r.total_ventes || 0);
+    const tp = Number(r.total_paiements || 0);
+    const ta = Number(r.total_avoirs || 0);
+    const si = Number(r.solde || 0);
     const contact = {
-      ...rows[0],
-      solde_cumule: Number(rows[0].solde_cumule || 0),
-      total_ventes: Number(rows[0].total_ventes || 0),
-      total_paiements: Number(rows[0].total_paiements || 0),
-      total_avoirs: Number(rows[0].total_avoirs || 0),
-      solde: Number(rows[0].solde || 0),
+      ...r,
+      solde: si,
+      solde_cumule: Number(r.solde_cumule || 0),
+      total_ventes: tv,
+      total_paiements: tp,
+      total_avoirs: ta,
+      total_cumule: (String(r.type) === 'Client' || String(r.type) === 'Fournisseur') ? si + tv - tp - ta : null,
     };
 
     if (String(contact.type) === 'Client') {

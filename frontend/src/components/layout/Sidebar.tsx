@@ -42,6 +42,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { name: 'Promo codes', href: '/promo-codes', icon: Percent, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus') },
         { name: 'Hero Slides', href: '/hero-slides', icon: Image, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus') },
         { name: 'Contacts', href: '/contacts', icon: UserCheck, show: !isChefChauffeur && user?.role !== 'Employé' },
+        { name: 'Clients', href: '/clients', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
+        { name: 'Fournisseurs', href: '/fournisseurs', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
         { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: !isChefChauffeur && user?.role !== 'Employé' },
       ],
     },

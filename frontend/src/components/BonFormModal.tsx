@@ -399,7 +399,13 @@ const resolveItemCostContext = (
         const f = Number(unitObj.conversion_factor) || 1;
         if (f > 0) convFactor = f;
       }
+    } else if (item?.conversion_factor) {
+      const f = Number(item.conversion_factor) || 1;
+      if (f > 0) convFactor = f;
     }
+  } else if (item?.conversion_factor) {
+    const f = Number(item.conversion_factor) || 1;
+    if (f > 0) convFactor = f;
   }
 
   const itemPA = Number(item?.prix_achat ?? item?.pa ?? item?.prixA ?? 0) || 0;
@@ -4391,7 +4397,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const basePriceAchat = Number(snapshotProd?.prix_achat) || Number(product?.prix_achat) || 0;
                                     const basePriceVente = getCatalogPrixVente(product, values.items[index].variant_id);
                                     if (!product || units.length === 0) {
-                                      return <span className="text-xs text-gray-400">{baseUnit}</span>;
+                                      const displayUnit = !product && values.items[index].unite ? values.items[index].unite : baseUnit;
+                                      return <span className="text-xs text-gray-400">{displayUnit}</span>;
                                     }
                                     return (
                                       <select

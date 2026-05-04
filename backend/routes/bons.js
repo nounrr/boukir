@@ -168,10 +168,11 @@ const bonPagedConfigs = {
 const buildItemsSql = (cfg) => {
   const i = cfg.itemAlias;
   const snapshotJoin = cfg.itemSnapshot ? `LEFT JOIN product_snapshot ps ON ps.id = ${i}.product_snapshot_id` : '';
+  const unitJoin = cfg.itemHasVariantUnit === false ? '' : `LEFT JOIN product_units pu ON pu.id = ${i}.unit_id`;
   const priceFields = cfg.itemSnapshot
     ? `'prix_achat', COALESCE(ps.prix_achat, p.prix_achat), 'cout_revient', COALESCE(ps.cout_revient, p.cout_revient), 'product_snapshot_id', ${i}.product_snapshot_id,`
     : '';
-  const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'unit_id', ${i}.unit_id,`;
+  const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'unit_id', ${i}.unit_id, 'unite', pu.unit_name, 'conversion_factor', pu.conversion_factor,`;
   return `COALESCE((
     SELECT JSON_ARRAYAGG(JSON_OBJECT(
       'id', ${i}.id,
@@ -188,6 +189,7 @@ const buildItemsSql = (cfg) => {
     ))
     FROM ${cfg.itemTable} ${i}
     LEFT JOIN products p ON p.id = ${i}.product_id
+    ${unitJoin}
     ${snapshotJoin}
     WHERE ${i}.${cfg.itemFk} = b.id
   ), JSON_ARRAY()) AS items`;
@@ -242,6 +244,8 @@ async function getEcommerceRowsForContext() {
           'product_id', oi.product_id,
           'variant_id', oi.variant_id,
           'unit_id', oi.unit_id,
+          'unite', pu.unit_name,
+          'conversion_factor', pu.conversion_factor,
           'quantite', oi.quantity,
           'quantity', oi.quantity,
           'prix_unitaire', oi.unit_price,
@@ -261,6 +265,7 @@ async function getEcommerceRowsForContext() {
     FROM ecommerce_orders eo
     LEFT JOIN contacts c ON c.id = eo.user_id
     LEFT JOIN ecommerce_order_items oi ON oi.order_id = eo.id
+    LEFT JOIN product_units pu ON pu.id = oi.unit_id
     GROUP BY eo.id
     ORDER BY COALESCE(eo.created_at, eo.confirmed_at) DESC, eo.id DESC
   `);
@@ -391,6 +396,8 @@ router.get('/remises/client/:clientId', async (req, res) => {
                'product_id', oi.product_id,
                'variant_id', oi.variant_id,
                'unit_id', oi.unit_id,
+               'unite', pu.unit_name,
+               'conversion_factor', pu.conversion_factor,
                'quantite', oi.quantity,
                'quantity', oi.quantity,
                'prix_unitaire', oi.unit_price,
@@ -407,6 +414,7 @@ router.get('/remises/client/:clientId', async (req, res) => {
          FROM ecommerce_orders eo
          LEFT JOIN contacts c ON c.id = eo.user_id
          LEFT JOIN ecommerce_order_items oi ON oi.order_id = eo.id
+         LEFT JOIN product_units pu ON pu.id = oi.unit_id
          WHERE eo.user_id = ?
          GROUP BY eo.id
          ORDER BY COALESCE(eo.created_at, eo.confirmed_at) DESC, eo.id DESC`,
