@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(node -e ':*)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(grep -E \"\\\\.js$|\\\\.mjs$|index\")"
     ]
   }
 }

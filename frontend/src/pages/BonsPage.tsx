@@ -736,8 +736,16 @@ const BonsPage = () => {
     const type = bon?.type || effectiveCurrentTab;
     const freeClientName = cleanName(bon?.client_nom, bon?.customer_name, bon?.customerName);
     const freeSupplierName = cleanName(bon?.fournisseur_nom, bon?.supplier_name, bon?.supplierName);
-    if ((type === 'Commande' || type === 'AvoirFournisseur' || (type === 'Avoir' && bon?.vendre_au_fournisseur)) && freeSupplierName) {
+    const isVendreFournisseur = bon?.vendre_au_fournisseur === 1 || bon?.vendre_au_fournisseur === true || String(bon?.vendre_au_fournisseur) === '1';
+    if ((type === 'Commande' || type === 'AvoirFournisseur' || ((type === 'Avoir' || type === 'Sortie') && isVendreFournisseur)) && freeSupplierName) {
       return freeSupplierName;
+    }
+    if ((type === 'Sortie' || type === 'Avoir') && isVendreFournisseur) {
+      const fournisseurId = bon?.fournisseur_id ?? bon?.contact_id;
+      if (fournisseurId && suppliers.length > 0) {
+        const supplier = suppliers.find((s: any) => String(s.id) === String(fournisseurId));
+        return supplier ? supplier.nom_complet : 'Fournisseur supprimé';
+      }
     }
     if (
       (type === 'Sortie' || type === 'Comptant' || type === 'Avoir' || type === 'AvoirComptant' ||
@@ -747,13 +755,17 @@ const BonsPage = () => {
       return freeClientName;
     }
     const clientId = bon?.client_id ?? bon?.contact_id;
-    if (clientId && clients.length > 0) {
+    if (clientId && clients.length > 0 && !isVendreFournisseur) {
       const client = clients.find((c: any) => String(c.id) === String(clientId));
       return client ? client.nom_complet : 'Client supprimé';
     }
     if (bon?.fournisseur_id && suppliers.length > 0) {
       const supplier = suppliers.find((s: any) => String(s.id) === String(bon.fournisseur_id));
       return supplier ? supplier.nom_complet : 'Fournisseur supprimé';
+    }
+    if (clientId && clients.length > 0) {
+      const client = clients.find((c: any) => String(c.id) === String(clientId));
+      return client ? client.nom_complet : 'Client supprimé';
     }
     return 'Non défini';
   };
@@ -1068,7 +1080,13 @@ const BonsPage = () => {
           const f = toNum((u as any).conversion_factor);
           if (f > 0) convFactor = f;
         }
+      } else if (it.conversion_factor) {
+        const f = toNum(it.conversion_factor);
+        if (f > 0) convFactor = f;
       }
+    } else if (it.conversion_factor) {
+      const f = toNum(it.conversion_factor);
+      if (f > 0) convFactor = f;
     }
 
     return baseCost * convFactor;
