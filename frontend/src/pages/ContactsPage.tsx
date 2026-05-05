@@ -4454,30 +4454,6 @@ const ContactsPage: React.FC = () => {
            
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-center">
-                <DollarSign className="text-green-600" size={32} />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Solde cumulé Client</p>
-                  <p className="text-3xl font-bold text-gray-900">
-                    {getVisibleSoldeCumule({ type: 'Client' }, computeAggregateSoldeCumule(soldeCumuleCard, 'Client')).toFixed(3)} DH
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow">
-              <div className="flex items-center">
-                <DollarSign className="text-orange-600" size={32} />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Solde cumulé Fournisseur</p>
-                  <p className="text-3xl font-bold text-gray-900">
-                    {getVisibleSoldeCumule({ type: 'Fournisseur' }, computeAggregateSoldeCumule(soldeCumuleFournisseurCard, 'Fournisseur')).toFixed(3)} DH
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow">
-              <div className="flex items-center">
                 <Building2 className="text-purple-600" size={32} />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Avec ICE</p>
@@ -4615,18 +4591,6 @@ const ContactsPage: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                {/* Solde en premier */}
-                <th
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
-                  onClick={() => handleSort('solde_cumule')}
-                >
-                  <div className="flex items-center gap-2">
-                    {activeTab === 'clients' ? 'Solde à recevoir' : 'Solde à payer'}
-                    {sortField === 'solde_cumule' && (
-                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
-                    )}
-                  </div>
-                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ref</th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
@@ -4667,7 +4631,7 @@ const ContactsPage: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {visibleAccordionRows.length === 0 ? (
                 <tr>
-                  <td colSpan={activeTab === 'clients' ? 14 : 13} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={activeTab === 'clients' ? 13 : 12} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun {activeTab === 'clients' ? 'client' : 'fournisseur'} trouvé
                   </td>
                 </tr>
@@ -4682,22 +4646,6 @@ const ContactsPage: React.FC = () => {
                         className={`hover:bg-gray-50 cursor-pointer ${isOverdue ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
                         onClick={() => handleViewDetails(contact)}
                       >
-                        {/* Solde en premier */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {(() => {
-                            const rawSolde = getContactSoldeDisplay(contact);
-                            const display = getVisibleSoldeCumule(contact, rawSolde);
-                          const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(rawSolde) > contact.plafond;
-                          return (
-                            <div className={`flex items-center gap-2 text-sm font-semibold ${rawSolde < 0 ? 'text-red-600' : rawSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                                {display.toFixed(3)} DH
-                                {overPlafond && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-700">{contact.reference || contact.id}</div>
                         </td>
@@ -4802,8 +4750,6 @@ const ContactsPage: React.FC = () => {
                   const isOpen = expandedGroupKeys.has(key);
                   const members = row.members || [];
                   const groupName = (row.groupName && row.groupName.trim()) ? row.groupName : `Groupe #${groupId}`;
-                  const totalSolde = members.reduce((s, c) => s + getContactSoldeDisplay(c), 0);
-                  const displayTotalSolde = getVisibleSoldeCumule({ type: activeTab === 'clients' ? 'Client' : 'Fournisseur' }, totalSolde);
                   const hasOverdue = members.some((c) => isOverdueContact(c, payments));
 
                   return (
@@ -4812,16 +4758,6 @@ const ContactsPage: React.FC = () => {
                         className={`cursor-pointer ${hasOverdue ? 'bg-red-50 border-l-4 border-red-500' : 'bg-gray-50'} hover:bg-gray-100`}
                         onClick={() => toggleGroupExpanded(groupId)}
                       >
-                        {/* Solde total du groupe */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className={`flex items-center gap-2 text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                            {displayTotalSolde.toFixed(3)} DH
-                            <span className="text-xs text-gray-500 font-normal">
-                              (Total groupe)
-                            </span>
-                          </div>
-                        </td>
-
                         {/* Ref */}
                         <td className="px-4 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-500">-</div>
@@ -4905,22 +4841,6 @@ const ContactsPage: React.FC = () => {
                             className={`hover:bg-gray-50 cursor-pointer ${isOverdue ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
                             onClick={() => handleViewDetails(contact)}
                           >
-                            {/* Solde en premier */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              {(() => {
-                                const rawSolde = getContactSoldeDisplay(contact);
-                                const display = getVisibleSoldeCumule(contact, rawSolde);
-                                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(rawSolde) > contact.plafond;
-                                return (
-                                  <div className={`flex items-center gap-2 text-sm font-semibold ${rawSolde < 0 ? 'text-red-600' : rawSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                                    {display.toFixed(3)} DH
-                                    {overPlafond && (
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Dépasse plafond</span>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                            </td>
                             <td className="px-4 py-4 whitespace-nowrap">
                               <div className="text-sm font-medium text-gray-700">{contact.reference || contact.id}</div>
                             </td>
@@ -5079,9 +4999,6 @@ const ContactsPage: React.FC = () => {
             visibleAccordionRows.map((row) => {
               if (row.kind === 'contact') {
                 const contact = row.contact;
-                const rawSolde = getContactSoldeDisplay(contact);
-                const display = getVisibleSoldeCumule(contact, rawSolde);
-                const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(rawSolde) > contact.plafond;
 
                 return (
                   <div
@@ -5094,14 +5011,6 @@ const ContactsPage: React.FC = () => {
                         <div className="text-sm font-semibold text-gray-900 truncate">{contact.nom_complet}</div>
                         <div className="text-xs text-gray-500 truncate">
                           {(contact.societe && contact.societe.trim()) ? contact.societe : '-'}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-sm font-semibold ${rawSolde < 0 ? 'text-red-600' : rawSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                          {display.toFixed(3)} DH
-                          {overPlafond && (
-                            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -5152,8 +5061,6 @@ const ContactsPage: React.FC = () => {
               const isOpen = expandedGroupKeys.has(key);
               const members = row.members || [];
               const groupName = (row.groupName && row.groupName.trim()) ? row.groupName : `Groupe #${groupId}`;
-              const totalSolde = members.reduce((s, c) => s + getContactSoldeDisplay(c), 0);
-              const displayTotalSolde = getVisibleSoldeCumule({ type: activeTab === 'clients' ? 'Client' : 'Fournisseur' }, totalSolde);
 
               return (
                 <div key={`group-${groupId}`} className="p-4 bg-gray-50">
@@ -5169,15 +5076,11 @@ const ContactsPage: React.FC = () => {
                         <div className="text-xs text-gray-500">{members.length} membres</div>
                       </div>
                     </div>
-                    <div className={`text-sm font-semibold ${totalSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>{displayTotalSolde.toFixed(3)} DH</div>
                   </button>
 
                   {isOpen && (
                     <div className="mt-3 space-y-2">
                       {members.map((contact) => {
-                        const rawSolde = getContactSoldeDisplay(contact);
-                        const display = getVisibleSoldeCumule(contact, rawSolde);
-                        const overPlafond = activeTab === 'clients' && typeof contact.plafond === 'number' && contact.plafond > 0 && Math.abs(rawSolde) > contact.plafond;
                         return (
                           <div
                             key={`group-${groupId}-member-${contact.id}`}
@@ -5189,20 +5092,12 @@ const ContactsPage: React.FC = () => {
                               if (e.key === 'Enter' || e.key === ' ') handleViewDetails(contact);
                             }}
                           >
-                            {/* Top row: Name + Solde */}
-                            <div className="flex items-start justify-between gap-3">
+                            {/* Top row: Name */}
+                            <div className="flex items-start gap-3">
                               <div className="min-w-0">
                                 <div className="text-sm font-semibold text-gray-900 truncate">{contact.nom_complet}</div>
                                 <div className="text-xs text-gray-500 truncate">
                                   {(contact.societe && contact.societe.trim()) ? contact.societe : '-'}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className={`text-sm font-semibold ${rawSolde < 0 ? 'text-red-600' : rawSolde > 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                                  {display.toFixed(3)} DH
-                                  {overPlafond && (
-                                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">Dépasse</span>
-                                  )}
                                 </div>
                               </div>
                             </div>
@@ -5454,19 +5349,6 @@ const ContactsPage: React.FC = () => {
                                   <p className="text-xs text-gray-500">Disponible seulement pour les clients</p>
                                 </>
                               )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                      <div className="bg-white rounded-lg p-3 border">
-                        <p className="font-semibold text-gray-600 text-sm">Solde Cumulé:</p>
-                        {(() => {
-                          const value = tableSoldeFinal;
-                          const displayValue = getVisibleSoldeCumule(selectedContact, value);
-                          return (
-                            <div className="space-y-1">
-                              <p className={`font-bold text-lg ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>{displayValue.toFixed(3)} DH</p>
-                              <p className="text-xs text-gray-500">Calculé ligne par ligne</p>
                             </div>
                           );
                         })()}
@@ -6001,8 +5883,6 @@ const ContactsPage: React.FC = () => {
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Bénéfice</th>
                             <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Statut</th>
-                            {/* Solde Cumulé déplacé à la fin */}
-                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Solde Cumulé</th>
                           </tr>
                         </thead>
                         <DragDropContext onDragEnd={handleDragEnd}>
@@ -6015,7 +5895,7 @@ const ContactsPage: React.FC = () => {
                               >
                                 {pagedProductHistory.length === 0 ? (
                                   <tr>
-                                    <td colSpan={showRemiseMode && selectedContact?.type === 'Client' ? 19 : 17} className="px-6  text-center text-sm text-gray-500">
+                                    <td colSpan={showRemiseMode && selectedContact?.type === 'Client' ? 18 : 16} className="px-6  text-center text-sm text-gray-500">
                                       Aucun produit trouvé pour cette période
                                     </td>
                                   </tr>
@@ -6289,30 +6169,6 @@ const ContactsPage: React.FC = () => {
                                   >
                                     {item.syntheticInitial ? '-' : item.bon_statut}
                                   </span>
-                                </td>
-                                {/* Solde Cumulé colonne finale */}
-                                <td className="px-6  whitespace-nowrap text-right">
-                                  {(() => {
-                                    const rawSolde = Number(item.soldeCumulatif ?? 0);
-                                    const displaySolde = getVisibleSoldeCumule(selectedContact, rawSolde);
-                                    return (
-                                      <div
-                                        className={`text-sm font-bold ${rawSolde > 0
-                                          ? 'text-green-600'
-                                          : rawSolde < 0
-                                            ? 'text-red-600'
-                                            : 'text-gray-600'
-                                          }`}
-                                      >
-                                        {displaySolde.toFixed(3)} DH
-                                      </div>
-                                    );
-                                  })()}
-                                  {!item.syntheticInitial && (
-                                    <div className="mt-1 text-[11px] font-mono text-gray-500 whitespace-nowrap">
-                                      {getHistorySoldeFormula(selectedContact, item)}
-                                    </div>
-                                  )}
                                 </td>
                               </tr>
                                       )}

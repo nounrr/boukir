@@ -1078,8 +1078,8 @@ const FournisseursListPage: React.FC = () => {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-violet-600" onClick={() => handleSort('solde')}>
                   Solde <SortIcon col="solde" />
                 </th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200">
-                  Total cumulé
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 cursor-pointer select-none hover:text-violet-600" onClick={() => handleSort('solde_cumule')}>
+                  Total cumulé <SortIcon col="solde_cumule" />
                 </th>
               </tr>
             </thead>
