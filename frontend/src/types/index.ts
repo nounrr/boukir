@@ -389,7 +389,7 @@ export interface CreateVehiculeData {
 export interface Bon {
   id: number;
   numero?: string;
-  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Devis' | 'Vehicule' | 'Ecommerce' | 'AvoirEcommerce';
+  type: 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Devis' | 'Vehicule' | 'Ecommerce' | 'AvoirEcommerce';
   date_creation: string;
   date_echeance?: string;
   client_id?: number;
@@ -434,7 +434,7 @@ export interface BonItem {
 }
 
 export interface CreateBonData {
-  type: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Devis' | 'Vehicule' | 'Ecommerce' | 'AvoirEcommerce';
+  type: 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'Devis' | 'Vehicule' | 'Ecommerce' | 'AvoirEcommerce';
   date_creation: string;
   date_echeance?: string;
   client_id?: number;

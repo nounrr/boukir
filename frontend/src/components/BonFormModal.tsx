@@ -306,6 +306,7 @@ const bonValidationSchema = Yup.object({
   vendre_au_fournisseur: Yup.boolean(),
   client_id: Yup.number().when(['type', 'vendre_au_fournisseur'], ([type, vendreAuFournisseur], schema) => {
     if (type === 'Sortie' && !vendreAuFournisseur) return schema.required('Client requis');
+    if (type === 'Charge') return schema.required('Client requis');
     if (type === 'Avoir' && !vendreAuFournisseur) return schema.required('Client requis');
     // Pour Devis : client_id OU client_nom requis (pas les deux obligatoires)
     if (type === 'Devis') return schema.nullable();
@@ -610,7 +611,7 @@ const computeComptantMontantTotal = (
 interface BonFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
+  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
   initialValues?: any;
   onBonAdded?: (bon: any) => void;
   comptantPartialPaymentMode?: 'hidden' | 'required';
@@ -695,8 +696,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     [employeesAll]
   );
   const { data: products = [] } = useGetProductsQuery();
-  // Snapshot-expanded products for Sortie/Comptant/Avoir types
-  const useSnapshotSelection = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
+  // Snapshot-expanded products for Sortie/Comptant/Avoir/Charge types
+  const useSnapshotSelection = ['Sortie', 'Comptant', 'Charge', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
   const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection });
 
   // Smart filtering for snapshot products:
@@ -1075,17 +1076,25 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
   const createEmptyItem = () => ({
     _rowId: makeRowId(),
+    line_mode: 'normal',
     product_id: '',
     product_reference: '',
     designation: '',
+    designation_custom: '',
     quantite: 0,
     prix_achat: 0,
+    prix_gros: 0,
     prix_unitaire: 0,
     cout_revient: 0,
     kg: 0,
     total: 0,
     unite: 'pièce',
     product_snapshot_id: null,
+  });
+
+  const createDetailedItem = () => ({
+    ...createEmptyItem(),
+    line_mode: 'detail',
   });
 
   const appendEmptyItems = (requestedCount: number, focusLastRow = false) => {
@@ -1120,6 +1129,18 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         if (btn) (btn as any).focus?.();
       }, 50);
     }
+
+    return startIndex;
+  };
+
+  const appendDetailedItem = () => {
+    const current = formikRef.current?.values ?? { items: [] };
+    const currentItems = Array.isArray(current.items) ? current.items : [];
+    const startIndex = currentItems.length;
+
+    formikRef.current?.setFieldValue('items', [...currentItems, createDetailedItem()]);
+    setUnitPriceRaw((prev) => ({ ...prev, [startIndex]: '0' }));
+    setQtyRaw((prev) => ({ ...prev, [startIndex]: '0' }));
 
     return startIndex;
   };
@@ -1339,7 +1360,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
     // Only meaningful for these types (same as BonsPage column)
     const type = String((formikRef.current?.values as any)?.type || currentTab || '');
-    if (!['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(type)) return;
+    if (!['Sortie', 'Comptant', 'Charge', 'Avoir', 'AvoirComptant'].includes(type)) return;
 
     const handle = setTimeout(() => {
       try {
@@ -1349,11 +1370,15 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
           const pu = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
           const rm = parseFloat(normalizeDecimal(remiseRaw[idx] ?? String(item.remise_montant ?? ''))) || 0;
+          const cr = parseFloat(normalizeDecimal(String(item.cout_revient ?? item.cout_rev ?? item.cout ?? ''))) || 0;
+          const pa = parseFloat(normalizeDecimal(String(item.prix_achat ?? item.pa ?? item.prixA ?? ''))) || 0;
           return {
             ...item,
             quantite: q,
             prix_unitaire: pu,
             remise_montant: rm,
+            cout_revient: cr,
+            prix_achat: pa,
           };
         });
 
@@ -1444,9 +1469,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           }
         }
 
+        const isCommandeEdit = initialValues?.type === 'Commande';
+
         // Priority: snapshot → variant → item → product catalog
-        // When snapshot or variant exists, ALWAYS use their values (they are authoritative)
-        if (snapshotFound || variantFound) {
+        // For Commande edit mode, keep the purchase price stored on the bon item itself.
+        if (!isCommandeEdit && (snapshotFound || variantFound)) {
           // Snapshot/variant are the authoritative source for COST only (PA/CR)
           // prix_unitaire (selling price) comes from the bon items table, NOT from snapshot
           const bestPA = Number(snapshotFound?.prix_achat) || Number(variantFound?.prix_achat);
@@ -1456,7 +1483,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         } else {
           // No snapshot/variant — use item values or fallback to product catalog
           if (!prix_achat || prix_achat === 0) {
-            if (initialValues?.type === 'Commande' && prix_unitaire > 0) {
+            if (isCommandeEdit && prix_unitaire > 0) {
               prix_achat = prix_unitaire;
             } else {
               const basePA = Number((productFound as any)?.prix_achat) || 0;
@@ -1473,7 +1500,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         }
 
         if (resolvedCostContext.source !== 'item') {
-          prix_achat = resolvedCostContext.prix_achat;
+          if (!isCommandeEdit) {
+            prix_achat = resolvedCostContext.prix_achat;
+          }
           cout_revient = resolvedCostContext.cout_revient;
         }
 
@@ -1622,8 +1651,10 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           product_id: '',
           product_reference: '',
           designation: '',
+          designation_custom: '',
           quantite: 0,
           prix_achat: 0,
+          prix_gros: 0,
           prix_unitaire: 0,
           cout_revient: 0,
           kg: 0,
@@ -1963,10 +1994,34 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       return;
     }
 
+    if (values.type === 'Charge') {
+      const invalidDesignationRows = Array.isArray(values?.items)
+        ? values.items
+            .map((item: any, idx: number) => {
+              if (item?.line_mode !== 'detail') {
+                return String(item?.product_id || '').trim() ? -1 : idx;
+              }
+              const hasProduct = String(item?.product_id || '').trim() !== '';
+              const designation = String(item?.designation_custom ?? item?.designation ?? '').trim();
+              return hasProduct || designation ? -1 : idx;
+            })
+            .filter((i: number) => i >= 0)
+        : [];
+      if (invalidDesignationRows.length > 0) {
+        const humanRows = invalidDesignationRows.map((i: number) => i + 1).join(', ');
+        const msg = `Désignation requise pour les lignes ${humanRows}.`;
+        setFieldError?.('items', msg);
+        showError(msg);
+        setSubmitting(false);
+        return;
+      }
+    }
+
     // Variant mandatory guard
     const missingVariantRows = Array.isArray(values?.items)
       ? values.items
           .map((item: any, idx: number) => {
+            if (item?.line_mode === 'detail' || !item?.product_id) return -1;
             const product = products.find((p: any) => String(p.id) === String(item?.product_id));
             const variants = product?.variants ?? [];
             const hasVariants = Array.isArray(variants) && variants.length > 0;
@@ -1993,7 +2048,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       
       // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
       // Lire depuis unitPriceRaw en priorité (valeur saisie) pour éviter le décalage avec onBlur async
-      const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
+      const priceField = values.type === 'Commande' || values.type === 'Charge' ? 'prix_achat' : 'prix_unitaire';
       const u = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
         ? parseFloat(normalizeDecimal(unitPriceRaw[idx])) || 0
         : (typeof item[priceField] === 'string'
@@ -2139,7 +2194,39 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       created_by: user?.id || 1,
       // N'envoyer livraisons que si au moins un véhicule est défini
       livraisons: livraisonsClean.length ? livraisonsClean : undefined,
-      items: values.items.flatMap((item: any, idx: number) => {
+      items: requestType === 'Charge'
+        ? values.items.flatMap((item: any, idx: number) => {
+            const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
+            const prixAchat = typeof item.prix_achat === 'string'
+              ? parseFloat(String(item.prix_achat).replace(',', '.')) || 0
+              : Number(item.prix_achat) || 0;
+            const coutRevient = typeof item.cout_revient === 'string'
+              ? parseFloat(String(item.cout_revient).replace(',', '.')) || 0
+              : Number(item.cout_revient) || 0;
+            const prixGros = typeof item.prix_gros === 'string'
+              ? parseFloat(String(item.prix_gros).replace(',', '.')) || 0
+              : Number(item.prix_gros) || 0;
+            const prixVente = typeof item.prix_unitaire === 'string'
+              ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
+              : Number(item.prix_unitaire) || 0;
+            const designation = String(item.line_mode === 'detail' ? (item.designation_custom || item.designation || '') : (item.designation || item.designation_custom || '')).trim();
+            if ((!designation && !item.product_id) || q <= 0) return [];
+            return [{
+              product_id: item.product_id ? parseInt(item.product_id) : null,
+              variant_id: item.variant_id ? parseInt(item.variant_id) : null,
+              unit_id: item.unit_id ? parseInt(item.unit_id) : null,
+              product_snapshot_id: item.product_snapshot_id ? parseInt(item.product_snapshot_id) : null,
+              is_indisponible: item.is_indisponible ? 1 : 0,
+              designation_custom: designation,
+              quantite: q,
+              prix_achat: prixAchat,
+              cout_revient: coutRevient,
+              prix_gros: prixGros,
+              prix_unitaire: prixVente,
+              total: q * prixAchat,
+            }];
+          })
+        : values.items.flatMap((item: any, idx: number) => {
         const q =
           parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
         // Lire depuis unitPriceRaw en priorité (valeur saisie) pour éviter le décalage avec onBlur async
@@ -2916,7 +3003,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     // Calculer le montant du bon actuel en utilisant les valeurs passées en paramètre
     const montantBon = values.items.reduce((sum: number, item: any) => {
       const q = Number(item.quantite || 0);
-      const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
+      const priceField = values.type === 'Commande' || values.type === 'Charge' ? 'prix_achat' : 'prix_unitaire';
       const u = Number(item[priceField] || 0);
       return sum + q * u;
     }, 0);
@@ -3234,11 +3321,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Client */}
-              {((values.type === 'Sortie' && !values.vendre_au_fournisseur) || values.type === 'Devis' || (values.type === 'Avoir' && !values.vendre_au_fournisseur)) && (
+              {((values.type === 'Sortie' && !values.vendre_au_fournisseur) || values.type === 'Charge' || values.type === 'Devis' || (values.type === 'Avoir' && !values.vendre_au_fournisseur)) && (
                 <div>
                   <div className="flex items-center gap-2">
                     <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
-                      Client {(values.type === 'Sortie' || values.type === 'Avoir') ? '*' : '(optionnel)'}
+                      Client {(values.type === 'Sortie' || values.type === 'Avoir' || values.type === 'Charge') ? '*' : '(optionnel)'}
                     </label>
                     <button
                       type="button"
@@ -3710,6 +3797,19 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     >
                       <Plus size={16} className="mr-1" /> Ajouter ligne
                     </button>
+                    {values.type === 'Charge' && (
+                      <button
+                        type="button"
+                        disabled={isQtyOnlyEdit}
+                        onClick={() => {
+                          if (isQtyOnlyEdit) return;
+                          appendDetailedItem();
+                        }}
+                        className="flex items-center text-amber-600 hover:text-amber-800 disabled:opacity-60"
+                      >
+                        <Plus size={16} className="mr-1" /> Ajouter ligne détaillée
+                      </button>
+                    )}
 
                     <div className="flex items-center gap-2">
                       <input
@@ -3828,17 +3928,196 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                 )}
 
                 {(() => {
-                  const showProfitColumn = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type);
+                  if (false && values.type === 'Charge') {
+                    return (
+                      <>
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                          <div className="text-gray-700">
+                            {values.items.length === 0
+                              ? 'Aucune ligne charge'
+                              : `${values.items.length} lignes charge dans le bon`}
+                          </div>
+                        </div>
+
+                        <div className="responsive-table-container max-h-[58vh] rounded-lg border border-gray-200 bg-white shadow-sm">
+                          <FieldArray name="items">
+                            {({ remove }) => (
+                              <table className="min-w-full divide-y divide-gray-200 table-mobile-compact">
+                                <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm">
+                                  <tr>
+                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[220px]">Désignation</th>
+                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[220px]">Produit catalogue</th>
+                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">Qté</th>
+                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Prix achat</th>
+                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Cout revient</th>
+                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Prix gros</th>
+                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[110px]">Prix vente</th>
+                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[100px]">Total</th>
+                                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {values.items.map((row: any, index: number) => {
+                                    const isDetailedLine = row.line_mode === 'detail';
+                                    const chargeTotal = (Number(row.prix_achat) || 0) * (parseFloat(normalizeDecimal(qtyRaw[index] ?? String(row.quantite ?? ''))) || 0);
+                                    return (
+                                      <tr key={row._rowId || `charge-item-${index}`}>
+                                        <td className="px-1 py-2">
+                                          {isDetailedLine ? (
+                                            <input
+                                              type="text"
+                                              className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                              value={row.designation_custom ?? row.designation ?? ''}
+                                              onChange={(e) => {
+                                                setFieldValue(`items.${index}.designation_custom`, e.target.value);
+                                                setFieldValue(`items.${index}.designation`, e.target.value);
+                                              }}
+                                              placeholder="Ex: Charge 1 mazot"
+                                              disabled={isQtyOnlyEdit}
+                                            />
+                                          ) : (
+                                            <div className="space-y-1">
+                                              {String(row.designation || '').trim() && (
+                                                <div className="text-sm font-medium text-gray-800">
+                                                  {String(row.designation || '').trim()}
+                                                </div>
+                                              )}
+                                              {row.product_reference && (
+                                                <div className="text-[11px] text-gray-500">
+                                                  {`Ref ${row.product_reference}`}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </td>
+                                        <td className="px-1 py-2">
+                                          <SearchableSelect
+                                            options={products.map((p: any) => ({
+                                              value: String(p.id),
+                                              label: `${String(p.reference ?? p.id)} - ${p.designation}`,
+                                              data: p,
+                                            }))}
+                                            value={row.product_id ? String(row.product_id) : ''}
+                                            valueLabelFallback=""
+                                            onChange={(selectedValue) => {
+                                              const product = products.find((p: any) => String(p.id) === String(selectedValue));
+                                              if (!product) return;
+                                              const qty = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                              const prixAchat = Number(product.prix_achat || 0);
+                                              setFieldValue(`items.${index}.product_id`, product.id);
+                                              setFieldValue(`items.${index}.product_reference`, String(product.reference ?? product.id));
+                                              setFieldValue(`items.${index}.designation`, product.designation || '');
+                                              if (isDetailedLine && !String(values.items[index].designation_custom || '').trim()) {
+                                                setFieldValue(`items.${index}.designation_custom`, product.designation || '');
+                                              }
+                                              setFieldValue(`items.${index}.prix_achat`, prixAchat);
+                                              setFieldValue(`items.${index}.cout_revient`, Number(product.cout_revient || 0));
+                                              setFieldValue(`items.${index}.prix_gros`, Number(product.prix_gros || 0));
+                                              setFieldValue(`items.${index}.prix_unitaire`, Number(product.prix_vente || 0));
+                                              setFieldValue(`items.${index}.kg`, Number(product.kg || 0));
+                                              setFieldValue(`items.${index}.total`, qty * prixAchat);
+                                            }}
+                                            placeholder="Produit optionnel"
+                                            className="w-full"
+                                          />
+                                        </td>
+                                        <td className="px-1 py-2">
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                            value={qtyRaw[index] ?? String(row.quantite ?? '')}
+                                            onChange={(e) => {
+                                              const raw = e.target.value;
+                                              if (!isDecimalLike(raw)) return;
+                                              setQtyRaw((prev) => ({ ...prev, [index]: raw }));
+                                              const q = parseFloat(normalizeDecimal(raw)) || 0;
+                                              setFieldValue(`items.${index}.quantite`, q);
+                                              setFieldValue(`items.${index}.total`, q * (Number(values.items[index].prix_achat) || 0));
+                                            }}
+                                            disabled={isQtyOnlyEdit}
+                                          />
+                                        </td>
+                                        {(['prix_achat', 'cout_revient', 'prix_gros', 'prix_unitaire'] as const).map((field) => (
+                                          <td key={field} className="px-1 py-2">
+                                            <input
+                                              type="text"
+                                              inputMode="decimal"
+                                              className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                              value={String(values.items[index]?.[field] ?? '')}
+                                              onChange={(e) => {
+                                                const raw = e.target.value;
+                                                if (!isDecimalLike(raw)) return;
+                                                const nextValue = parseFloat(normalizeDecimal(raw)) || 0;
+                                                setFieldValue(`items.${index}.${field}`, nextValue);
+                                                if (field === 'prix_achat') {
+                                                  const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                                  setFieldValue(`items.${index}.total`, q * nextValue);
+                                                }
+                                              }}
+                                              disabled={isQtyOnlyEdit}
+                                            />
+                                          </td>
+                                        ))}
+                                        <td className="px-1 py-2 text-sm font-medium">{formatFull(chargeTotal)} DH</td>
+                                        <td className="px-1 py-2">
+                                          <button
+                                            type="button"
+                                            disabled={isQtyOnlyEdit}
+                                            onClick={() => {
+                                              remove(index);
+                                              setQtyRaw((prev) => {
+                                                const next = { ...prev };
+                                                delete next[index];
+                                                return next;
+                                              });
+                                            }}
+                                            className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                                          >
+                                            <Trash2 size={16} />
+                                          </button>
+                                          {!isDetailedLine && (
+                                            <button
+                                              type="button"
+                                              disabled={isQtyOnlyEdit}
+                                              onClick={() => {
+                                                setFieldValue(`items.${index}.line_mode`, 'detail');
+                                              }}
+                                              className="mt-2 block text-[11px] text-amber-700 hover:text-amber-900 disabled:opacity-50"
+                                            >
+                                              Passer en détaillée
+                                            </button>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </FieldArray>
+                        </div>
+                      </>
+                    );
+                  }
+
+                  const showProfitColumn = ['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(values.type);
                   const showRemiseColumn = showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant');
+                  const visibleEntries = (values.type === 'Charge'
+                    ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode !== 'detail')
+                    : values.items.map((row: any, index: number) => ({ row, index })));
+                  const detailedChargeEntries = values.type === 'Charge'
+                    ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode === 'detail')
+                    : [];
                   const emptyColSpan = 8 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0);
 
                   return (
                     <>
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
                         <div className="text-gray-700">
-                          {values.items.length === 0
+                          {visibleEntries.length === 0
                             ? 'Aucune ligne produit'
-                            : `${values.items.length} lignes produit dans le bon`}
+                            : `${visibleEntries.length} lignes produit dans le bon`}
                         </div>
                       </div>
 
@@ -3874,7 +4153,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               Total
                             </th>
-                            {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
+                            {['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(values.type) && (
                               <th className="px-2 py-2 text-left text-xs font-medium text-green-600 uppercase tracking-wider w-[80px]">
                                 Profit
                               </th>
@@ -3885,14 +4164,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                           </tr>
                               </thead>
                               <tbody className="bg-white divide-y divide-gray-200">
-                          {values.items.length === 0 ? (
+                          {visibleEntries.length === 0 ? (
                             <tr>
                               <td colSpan={emptyColSpan} className="px-4 py-4 text-center text-sm text-gray-500">
                                 Aucun produit ajouté. Cliquez sur "Ajouter un produit" pour commencer.
                               </td>
                             </tr>
                           ) : (
-                            values.items.map((row: any, index: number) => {
+                            visibleEntries.map(({ row, index }: any) => {
                               return (
                               <tr key={row._rowId || `item-${index}`}>
                                 {/* Produit combiné (Réf - Désignation) */}
@@ -4957,7 +5236,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 </td>
 
                                 {/* Profit par ligne */}
-                                {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
+                                {['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(values.type) && (
 <td className="px-1 py-2 w-[80px]">
   {(() => {
     const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
@@ -5067,6 +5346,132 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         </FieldArray>
                       </div>
 
+                      {values.type === 'Charge' && (
+                        <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <h4 className="text-sm font-semibold text-amber-900">Lignes détaillées</h4>
+                            <span className="text-xs text-amber-700">
+                              {detailedChargeEntries.length === 0
+                                ? 'Aucune ligne détaillée'
+                                : `${detailedChargeEntries.length} ligne(s) détaillée(s)`}
+                            </span>
+                          </div>
+
+                          {detailedChargeEntries.length === 0 ? (
+                            <div className="text-sm text-amber-800">
+                              Utilisez le bouton `Ajouter ligne détaillée` pour saisir un produit manuel.
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {detailedChargeEntries.map(({ row, index }: any) => {
+                                const chargeTotal = (Number(row.prix_achat) || 0) * (parseFloat(normalizeDecimal(qtyRaw[index] ?? String(row.quantite ?? ''))) || 0);
+                                return (
+                                  <div key={row._rowId || `charge-detail-${index}`} className="grid grid-cols-1 md:grid-cols-8 gap-3 rounded border border-amber-200 bg-white p-3">
+                                    <div className="md:col-span-2">
+                                      <label className="mb-1 block text-xs font-medium text-gray-700">Désignation</label>
+                                      <input
+                                        type="text"
+                                        className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                        value={row.designation_custom ?? row.designation ?? ''}
+                                        onChange={(e) => {
+                                          setFieldValue(`items.${index}.designation_custom`, e.target.value);
+                                          setFieldValue(`items.${index}.designation`, e.target.value);
+                                        }}
+                                        placeholder="Ex: Charge 1 mazot"
+                                        disabled={isQtyOnlyEdit}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-gray-700">Qté</label>
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                        value={qtyRaw[index] ?? String(row.quantite ?? '')}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          if (!isDecimalLike(raw)) return;
+                                          setQtyRaw((prev) => ({ ...prev, [index]: raw }));
+                                          const q = parseFloat(normalizeDecimal(raw)) || 0;
+                                          setFieldValue(`items.${index}.quantite`, q);
+                                          setFieldValue(`items.${index}.total`, q * (Number(values.items[index].prix_achat) || 0));
+                                        }}
+                                        disabled={isQtyOnlyEdit}
+                                      />
+                                    </div>
+                                    {(['prix_achat', 'cout_revient', 'prix_gros', 'prix_unitaire'] as const).map((field) => (
+                                      <div key={field}>
+                                        <label className="mb-1 block text-xs font-medium text-gray-700">
+                                          {field === 'prix_achat' ? 'Prix achat' : field === 'cout_revient' ? 'Cout revient' : field === 'prix_gros' ? 'Prix gros' : 'Prix vente'}
+                                        </label>
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                                          value={String(values.items[index]?.[field] ?? '')}
+                                          onChange={(e) => {
+                                            const raw = e.target.value;
+                                            if (!isDecimalLike(raw)) return;
+                                            const nextValue = parseFloat(normalizeDecimal(raw)) || 0;
+                                            setFieldValue(`items.${index}.${field}`, nextValue);
+                                            if (field === 'prix_achat') {
+                                              const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                              setFieldValue(`items.${index}.total`, q * nextValue);
+                                            }
+                                          }}
+                                          disabled={isQtyOnlyEdit}
+                                        />
+                                      </div>
+                                    ))}
+                                    <div className="flex items-end justify-between gap-3 md:col-span-8">
+                                      <div className="text-sm font-semibold text-gray-800">Total: {formatFull(chargeTotal)} DH</div>
+                                      <button
+                                        type="button"
+                                        disabled={isQtyOnlyEdit}
+                                        onClick={() => {
+                                          const nextItems = [...(values.items || [])];
+                                          nextItems.splice(index, 1);
+                                          setFieldValue('items', nextItems);
+
+                                          setUnitPriceRaw((prev) => {
+                                            const copy = { ...prev };
+                                            delete copy[index];
+                                            const compacted: Record<number, string> = {};
+                                            let j = 0;
+                                            for (let i = 0; i < values.items.length; i += 1) {
+                                              if (i === index) continue;
+                                              compacted[j] = copy[i] ?? '';
+                                              j += 1;
+                                            }
+                                            return compacted;
+                                          });
+
+                                          setQtyRaw((prev) => {
+                                            const copy = { ...prev };
+                                            delete copy[index];
+                                            const compacted: Record<number, string> = {};
+                                            let j = 0;
+                                            for (let i = 0; i < values.items.length; i += 1) {
+                                              if (i === index) continue;
+                                              compacted[j] = copy[i] ?? '';
+                                              j += 1;
+                                            }
+                                            return compacted;
+                                          });
+                                        }}
+                                        className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                     </>
                   );
                 })()}
@@ -5166,12 +5571,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   <span className="text-md font-semibold">Total:</span>
   <span className="text-md font-semibold">
     {formatFull(
-      values.items
+          values.items
         .reduce((sum: number, item: any, idx: number) => {
           const q =
             parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
           const u =
-            parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+            values.type === 'Charge'
+              ? (typeof item.prix_achat === 'string'
+                ? parseFloat(String(item.prix_achat).replace(',', '.')) || 0
+                : Number(item.prix_achat) || 0)
+              : (parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0);
           return sum + q * u;
         }, 0)
     )}{' '}
@@ -5214,6 +5623,18 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       const local = (values.items || []).reduce((sum: number, item: any, idx: number) => {
         const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
         const prixVente = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+        const itemCR =
+          parseFloat(normalizeDecimal(String(item.cout_revient ?? item.cout_rev ?? item.cout ?? ''))) || 0;
+        const itemPA =
+          parseFloat(normalizeDecimal(String(item.prix_achat ?? item.pa ?? item.prixA ?? ''))) || 0;
+        const remise =
+          parseFloat(normalizeDecimal(remiseRaw[idx] ?? String(item.remise_montant ?? item.remise_valeur ?? ''))) || 0;
+
+        if (item?.line_mode === 'detail') {
+          const coutRevientDetail = itemCR || itemPA;
+          return sum + (prixVente - coutRevientDetail) * q - remise * q;
+        }
+
         // Compute CR with unit conversion factor
         const mvProd = (products as any[]).find((p: any) => String(p.id) === String(item.product_id));
         let mvSnap: any = null;
@@ -5233,8 +5654,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
             if (f > 0) mvFactor = f;
           }
         }
-        const coutRevient = mvBaseCR > 0 ? scaleDecimal(mvBaseCR, mvFactor) : (Number(item.cout_revient) || Number(item.prix_achat) || 0);
-        return sum + (prixVente - coutRevient) * q;
+        const coutRevient = mvBaseCR > 0 ? scaleDecimal(mvBaseCR, mvFactor) : (itemCR || itemPA);
+        return sum + (prixVente - coutRevient) * q - remise * q;
       }, 0);
       return formatFull(local);
     })()}

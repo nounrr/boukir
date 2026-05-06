@@ -28,6 +28,7 @@ const bonPagedConfigs = {
     itemFk: 'bon_commande_id',
     itemAlias: 'i',
     itemSnapshot: true,
+    itemPriceJsonFields: `'prix_achat', ${'i'}.prix_unitaire, 'cout_revient', COALESCE(ps.cout_revient, p.cout_revient), 'product_snapshot_id', ${'i'}.product_snapshot_id,`,
     livraisonType: 'Commande',
   },
   Sortie: {
@@ -63,6 +64,26 @@ const bonPagedConfigs = {
     itemAlias: 'i',
     itemSnapshot: true,
     livraisonType: 'Comptant',
+  },
+  Charge: {
+    type: 'Charge',
+    table: 'bons_charge',
+    alias: 'b',
+    prefix: 'CHG',
+    contactExpr: 'c.nom_complet',
+    contactIdExpr: 'b.client_id',
+    phoneExpr: 'b.phone',
+    amountExpr: 'b.montant_total',
+    joins: `LEFT JOIN contacts c ON c.id = b.client_id`,
+    selectExtra: `c.nom_complet AS client_nom`,
+    itemTable: 'charge_items',
+    itemFk: 'bon_charge_id',
+    itemAlias: 'i',
+    itemHasVariantUnit: true,
+    itemSnapshot: true,
+    itemDesignationExpr: 'COALESCE(NULLIF(i.designation_custom, \'\'), p.designation)',
+    itemExtraJsonFields: `'designation_custom', i.designation_custom, 'prix_achat', i.prix_achat, 'cout_revient', i.cout_revient, 'prix_gros', i.prix_gros,`,
+    itemSearchExpr: 'COALESCE(NULLIF(isearch.designation_custom, \'\'), psearch.designation)',
   },
   Devis: {
     type: 'Devis',
@@ -169,19 +190,24 @@ const buildItemsSql = (cfg) => {
   const i = cfg.itemAlias;
   const snapshotJoin = cfg.itemSnapshot ? `LEFT JOIN product_snapshot ps ON ps.id = ${i}.product_snapshot_id` : '';
   const unitJoin = cfg.itemHasVariantUnit === false ? '' : `LEFT JOIN product_units pu ON pu.id = ${i}.unit_id`;
-  const priceFields = cfg.itemSnapshot
+  const priceFields = cfg.itemPriceJsonFields
+    ? cfg.itemPriceJsonFields.replaceAll("'i'.", `${i}.`)
+    : cfg.itemSnapshot
     ? `'prix_achat', COALESCE(ps.prix_achat, p.prix_achat), 'cout_revient', COALESCE(ps.cout_revient, p.cout_revient), 'product_snapshot_id', ${i}.product_snapshot_id,`
     : '';
   const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'unit_id', ${i}.unit_id, 'unite', pu.unit_name, 'conversion_factor', pu.conversion_factor,`;
+  const designationExpr = cfg.itemDesignationExpr || 'p.designation';
+  const extraJsonFields = cfg.itemExtraJsonFields || '';
   return `COALESCE((
     SELECT JSON_ARRAYAGG(JSON_OBJECT(
       'id', ${i}.id,
       'product_id', ${i}.product_id,
       ${variantUnitFields}
-      'designation', p.designation,
+      'designation', ${designationExpr},
       'quantite', ${i}.quantite,
       'prix_unitaire', ${i}.prix_unitaire,
       ${priceFields}
+      ${extraJsonFields}
       'remise_pourcentage', ${i}.remise_pourcentage,
       'remise_montant', ${i}.remise_montant,
       'total', ${i}.total,
@@ -492,7 +518,7 @@ router.get('/paged/:type', async (req, res) => {
           SELECT 1 FROM ${cfg.itemTable} isearch
           LEFT JOIN products psearch ON psearch.id = isearch.product_id
           WHERE isearch.${cfg.itemFk} = b.id
-            AND (psearch.designation LIKE ? OR CAST(isearch.product_id AS CHAR) LIKE ?)
+            AND (COALESCE(${cfg.itemSearchExpr || 'psearch.designation'}, '') LIKE ? OR CAST(isearch.product_id AS CHAR) LIKE ?)
         )
       )`);
       params.push(like, like, like, like, like, like, like, like);
