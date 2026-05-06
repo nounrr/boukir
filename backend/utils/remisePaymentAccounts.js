@@ -335,11 +335,31 @@ async function getDirectOldEarnedAll(db) {
   }
 }
 
+async function getRemiseContactItemsTotalAll(db) {
+  try {
+    const [rows] = await db.execute(`
+      SELECT contact_id AS id, COALESCE(SUM(qte * prix_remise), 0) AS total
+      FROM remise_contact_items
+      WHERE statut <> 'Annulé'
+      GROUP BY contact_id
+    `);
+    const map = new Map();
+    for (const r of rows) {
+      const id = Number(r.id);
+      if (Number.isFinite(id)) map.set(id, Number(r.total || 0));
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
 export async function getDirectContactRemiseBalances(db = pool) {
   const earnedMap = await getDirectBonEarnedAll(db);
   const oldEarnedMap = await getDirectOldEarnedAll(db);
-  
-  const contactIdsSet = new Set([...earnedMap.keys(), ...oldEarnedMap.keys()]);
+  const separeeMap = await getRemiseContactItemsTotalAll(db);
+
+  const contactIdsSet = new Set([...earnedMap.keys(), ...oldEarnedMap.keys(), ...separeeMap.keys()]);
   const contactIds = [...contactIdsSet];
   if (!contactIds.length) return [];
 
@@ -353,7 +373,9 @@ export async function getDirectContactRemiseBalances(db = pool) {
 
   return contacts.map((c) => {
     const cId = Number(c.id);
-    const earned = Math.max(0, (earnedMap.get(cId) || 0) + (oldEarnedMap.get(cId) || 0));
+    const earnedBons = (earnedMap.get(cId) || 0) + (oldEarnedMap.get(cId) || 0);
+    const separee = separeeMap.get(cId) || 0;
+    const earned = earnedBons + separee;
     const used = usedMap.get(cId) || 0;
     const available = Math.max(0, earned - used);
     return {
@@ -361,6 +383,8 @@ export async function getDirectContactRemiseBalances(db = pool) {
       nom_complet: c.nom_complet,
       societe: c.societe,
       telephone: c.telephone,
+      earned_bons_total: Math.round(earnedBons * 100) / 100,
+      earned_separee_total: Math.round(separee * 100) / 100,
       earned_total: Math.round(earned * 100) / 100,
       used_total: Math.round(used * 100) / 100,
       available_total: Math.round(available * 100) / 100,

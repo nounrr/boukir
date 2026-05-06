@@ -14,6 +14,24 @@ async function tableExists(table) {
   return rows.length > 0;
 }
 
+async function ensureRemiseContactItemsTable() {
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS remise_contact_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      contact_id INT NOT NULL,
+      product_id INT NOT NULL,
+      bon_id INT NULL,
+      bon_type ENUM('Commande','Sortie','Comptant') NULL,
+      qte INT NOT NULL DEFAULT 1,
+      prix_remise DECIMAL(10,2) NOT NULL DEFAULT 0,
+      statut ENUM('En attente','Validé','Annulé') NOT NULL DEFAULT 'En attente',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+}
+ensureRemiseContactItemsTable().catch(e => console.error('ensureRemiseContactItemsTable:', e));
+
 async function ensureRemisesTables() {
   // client_remises : toujours
   await pool.execute(`
@@ -536,6 +554,109 @@ router.delete('/items/:itemId', verifyToken, async (req, res) => {
   } catch (e) {
     console.error('remises items delete error', e);
     res.status(500).json({ message: 'Erreur du serveur', detail: e?.message, code: e?.code });
+  }
+});
+
+// ---- remise_contact_items : lignes de remise liées directement à un contact ----
+
+router.get('/contact/:contactId/items', verifyToken, async (req, res) => {
+  try {
+    await ensureRemiseContactItemsTable();
+    const { contactId } = req.params;
+    const hasProducts = await tableExists('products');
+    const sql = hasProducts
+      ? `SELECT rci.*, CAST(p.id AS CHAR) AS reference, p.designation
+         FROM remise_contact_items rci
+         LEFT JOIN products p ON p.id = rci.product_id
+         WHERE rci.contact_id = ?
+         ORDER BY rci.created_at DESC`
+      : `SELECT rci.*, NULL AS reference, NULL AS designation
+         FROM remise_contact_items rci
+         WHERE rci.contact_id = ?
+         ORDER BY rci.created_at DESC`;
+    const [rows] = await pool.execute(sql, [contactId]);
+    res.json(rows);
+  } catch (e) {
+    console.error('remise_contact_items list error', e);
+    res.status(500).json({ message: 'Erreur du serveur', detail: e?.message });
+  }
+});
+
+router.post('/contact/:contactId/items', verifyToken, async (req, res) => {
+  try {
+    await ensureRemiseContactItemsTable();
+    const { contactId } = req.params;
+    let { product_id, qte, prix_remise, statut, bon_id, bon_type } = req.body;
+    if (!product_id) return res.status(400).json({ message: 'product_id requis' });
+
+    const { finalBonId, finalBonType } = await resolveBonLink(bon_id, bon_type);
+
+    if ((req.user?.role || '') !== 'PDG' && (req.user?.role || '') !== 'ManagerPlus') {
+      statut = 'En attente';
+    } else {
+      statut = statut || 'En attente';
+    }
+
+    const [r] = await pool.execute(
+      `INSERT INTO remise_contact_items (contact_id, product_id, bon_id, bon_type, qte, prix_remise, statut)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [contactId, product_id, finalBonId, finalBonType, qte ?? 1, prix_remise ?? 0, statut]
+    );
+    const hasProducts = await tableExists('products');
+    const sql = hasProducts
+      ? `SELECT rci.*, CAST(p.id AS CHAR) AS reference, p.designation FROM remise_contact_items rci LEFT JOIN products p ON p.id = rci.product_id WHERE rci.id = ?`
+      : `SELECT rci.*, NULL AS reference, NULL AS designation FROM remise_contact_items rci WHERE rci.id = ?`;
+    const [row] = await pool.execute(sql, [r.insertId]);
+    res.status(201).json(row[0]);
+  } catch (e) {
+    console.error('remise_contact_items create error', e);
+    res.status(500).json({ message: 'Erreur du serveur', detail: e?.message });
+  }
+});
+
+router.patch('/contact-items/:itemId', verifyToken, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    let { product_id, qte, prix_remise, statut, bon_id, bon_type } = req.body;
+
+    if (bon_id !== undefined && (bon_type === undefined || bon_type === null)) {
+      const resolved = await resolveBonLink(bon_id, bon_type);
+      bon_id = resolved.finalBonId;
+      bon_type = resolved.finalBonType;
+    }
+
+    if ((req.user?.role || '') !== 'PDG' && (req.user?.role || '') !== 'ManagerPlus' && statut === 'Validé') {
+      statut = undefined;
+    }
+
+    const fields = [], vals = [];
+    for (const [k, v] of Object.entries({ product_id, qte, prix_remise, statut, bon_id, bon_type })) {
+      if (v !== undefined) { fields.push(`${k} = ?`); vals.push(v); }
+    }
+    if (!fields.length) return res.status(400).json({ message: 'Aucune modification' });
+    vals.push(itemId);
+
+    await pool.execute(`UPDATE remise_contact_items SET ${fields.join(', ')} WHERE id = ?`, vals);
+    const [row] = await pool.execute('SELECT * FROM remise_contact_items WHERE id = ?', [itemId]);
+    if (!row.length) return res.status(404).json({ message: 'Introuvable' });
+    res.json(row[0]);
+  } catch (e) {
+    console.error('remise_contact_items update error', e);
+    res.status(500).json({ message: 'Erreur du serveur', detail: e?.message });
+  }
+});
+
+router.delete('/contact-items/:itemId', verifyToken, async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    if ((req.user?.role || '') !== 'PDG') {
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
+    await pool.execute('DELETE FROM remise_contact_items WHERE id = ?', [itemId]);
+    res.json({ success: true, id: Number(itemId) });
+  } catch (e) {
+    console.error('remise_contact_items delete error', e);
+    res.status(500).json({ message: 'Erreur du serveur', detail: e?.message });
   }
 });
 

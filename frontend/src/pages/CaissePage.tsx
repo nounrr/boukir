@@ -9,7 +9,7 @@ import {
   Search, 
   Eye, 
   Edit, 
-  Trash2, 
+    Trash2, 
   Check,
   Clock,
   XCircle,
@@ -43,7 +43,6 @@ import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
 import PaymentPrintModal from '../components/PaymentPrintModal';
 import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
-import { calculateContactSoldeHistory } from '../utils/soldeCalculator';
 
 const DIRECT_CONTACT_OFFSET = 10_000_000;
 
@@ -1276,15 +1275,17 @@ const paymentValidationSchema = Yup.object({
     }
   };
 
-  // Récupérer le solde cumulé depuis les données backend (champ solde_cumule) sans recalcul local
-  function getContactSolde(contactId: string | number, type: 'Client' | 'Fournisseur') {
-    if (!contactId) return 0;
-    const idNum = Number(contactId);
-    const source = type === 'Client' ? clients : fournisseurs;
-    const contact = source.find((c: any) => Number(c.id) === idNum);
-    if (!contact) return 0;
-    return Number((contact as any).solde_cumule ?? 0) || 0;
-  }
+  const formatTotalCumule = (value: number) =>
+    `${new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} DH`;
+
+  const getContactTotalCumule = (contactId: string | number, type: 'Client' | 'Fournisseur') => {
+    if (!contactId) return null;
+    const source = type === 'Fournisseur' ? fournisseurs : clients;
+    const contact = source.find((c: any) => Number(c.id) === Number(contactId));
+    if (!contact) return null;
+    const total = (contact as any).total_cumule;
+    return total !== null && total !== undefined ? Number(total) || 0 : null;
+  };
 
   return (
     <div className="p-2 sm:p-3">
@@ -2332,11 +2333,16 @@ const paymentValidationSchema = Yup.object({
                             autoOpenOnFocus={true}
                           />
                           <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
-                          {values.contact_id && (
-                            <div className="mt-2 text-xs text-blue-700 font-semibold">
-                              Solde cumulé : {getContactSolde(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client')} DH
-                            </div>
-                          )}
+                          {values.contact_id && (() => {
+                            const totalCumule = getContactTotalCumule(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client');
+                            if (totalCumule === null) return null;
+                            const colorClass = totalCumule > 0 ? 'text-red-600' : totalCumule < 0 ? 'text-green-600' : 'text-gray-500';
+                            return (
+                              <div className={`mt-2 text-xs font-semibold ${colorClass}`}>
+                                Total cumulé : {formatTotalCumule(totalCumule)}
+                              </div>
+                            );
+                          })()}
                         </>
                       )}
                     </div>
@@ -2423,93 +2429,29 @@ const paymentValidationSchema = Yup.object({
                         className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         onChange={(e: any) => onBonChange(e, setFieldValue, (values.type_paiement as 'Client'|'Fournisseur'))}
                       >
-                        <option value="">💰 Paiement libre (sans bon associé)</option>
-                        {(() => {
-                          if ((!values.contact_id && !isRemisePayment) || (isRemisePayment && !selectedRemiseAccount?.contact_id) || bonsLoading) {
-                            return <option disabled>{bonsLoading ? 'Chargement...' : (isRemisePayment ? 'Aucun bon disponible pour ce bénéficiaire' : 'Sélectionnez un contact d\'abord')}</option>;
-                          }
-
-                          // Récupérer le contact
-                          const contact = (isFournisseurPayment ? fournisseurs : clients).find((c: Contact) => String(c.id) === String(values.contact_id));
-                          
-                          // Utiliser la même fonction que ContactsPage pour calculer l'historique
-                          const history = calculateContactSoldeHistory(
-                            contact,
-                            bons,
-                            paymentsForHistory,
-                            values.type_paiement as 'Client' | 'Fournisseur'
-                          );
-
-                          if (history.length === 0 || (history.length === 1 && history[0].type === 'initial')) {
-                            return <option disabled>Aucune transaction pour ce contact</option>;
-                          }
-
-                          const options: ReactNode[] = [];
-
-                          const formatItems = (items: any[]) => {
-                            if (!Array.isArray(items) || items.length === 0) return '';
-                            const parts = items
-                              .slice(0, 4)
-                              .map((it: any) => {
-                                const q = Number(it?.quantite ?? it?.qty ?? 0);
-                                const name = String(
-                                  it?.designation_custom ||
-                                  it?.designation ||
-                                  it?.produit?.designation ||
-                                  it?.produit?.nom ||
-                                  it?.produit?.name ||
-                                  it?.nom ||
-                                  it?.title ||
-                                  ''
-                                ).trim();
-                                if (!name) return '';
-                                return q > 0 ? `${name} x${q}` : name;
+                        <option value="">Paiement libre (sans bon associé)</option>
+                        {(!values.contact_id && !isRemisePayment) || (isRemisePayment && !selectedRemiseAccount?.contact_id) || bonsLoading
+                          ? <option disabled>{bonsLoading ? 'Chargement...' : (isRemisePayment ? 'Aucun bon disponible pour ce bénéficiaire' : 'Sélectionnez un contact d\'abord')}</option>
+                          : bons
+                              .filter((b: any) => {
+                                const cid = isRemisePayment ? selectedRemiseAccount?.contact_id : values.contact_id;
+                                if (!cid) return false;
+                                const clientMatch = !isFournisseurPayment && (String(b.client_id) === String(cid) || String(b.fournisseur_id) === String(cid));
+                                const fournisseurMatch = isFournisseurPayment && String(b.fournisseur_id) === String(cid);
+                                return clientMatch || fournisseurMatch;
                               })
-                              .filter(Boolean);
-                            if (!parts.length) return '';
-                            const suffix = items.length > 4 ? ' …' : '';
-                            return parts.join(', ') + suffix;
-                          };
-
-                          // Générer les options du select
-                          history.forEach((item) => {
-                            if (item.type === 'initial') {
-                              // Option pour le solde initial
-                              options.push(
-                                <option key="initial" disabled>
-                                  --- Solde Initial: {item.soldeCumule.toFixed(2)} DH ---
-                                </option>
-                              );
-                            } else if (item.type === 'bon') {
-                              const dateStr = new Date(item.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                              const isAvoir = item.typeLabel === 'Avoir' || item.typeLabel === 'AvoirFournisseur';
-                              const montant = item.debit || item.credit;
-                              const itemsLabel = formatItems(item?.data?.items || []);
-                              options.push(
-                                <option key={item.id} value={`${item.typeLabel}:${item.id}`}>
-                                  {dateStr} | {item.numero} | {isAvoir ? 'Avoir' : 'Bon'} {montant.toFixed(2)} DH | Solde: {item.soldeCumule.toFixed(2)} DH{itemsLabel ? ` | ${itemsLabel}` : ''}
-                                </option>
-                              );
-                            } else if (item.type === 'paiement') {
-                              // Afficher les paiements comme séparateurs (disabled)
-                              const dateStr = new Date(item.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                              options.push(
-                                <option key={`paiement-${item.id}`} disabled>
-                                  {dateStr} | ✓ Paiement {item.credit.toFixed(2)} DH | Solde: {item.soldeCumule.toFixed(2)} DH
-                                </option>
-                              );
-                            }
-                          });
-
-                          return options;
-                        })()}
+                              .map((b: any) => {
+                                const dateStr = b.date_creation ? new Date(b.date_creation).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+                                const montant = Number(b.montant_total ?? 0).toFixed(2);
+                                const num = b.numero ?? `#${b.id}`;
+                                return (
+                                  <option key={`${b.type}:${b.id}`} value={`${b.type}:${b.id}`}>
+                                    {dateStr} | {num} | {montant} DH
+                                  </option>
+                                );
+                              })
+                        }
                       </Field>
-                      {/* Affichage du solde cumulé total */}
-                      {values.contact_id && !isRemisePayment && (
-                        <div className="mt-1 text-xs font-semibold text-blue-700">
-                          💰 Solde cumulé {isFournisseurPayment ? 'du fournisseur' : 'du client'}: {getContactSolde(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client').toFixed(2)} DH
-                        </div>
-                      )}
                     </div>
 
                     <div>
