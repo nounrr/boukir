@@ -342,6 +342,41 @@ function computeHistoryItemBenefice(item: any, products: any[]): number | null {
   return Number((mouvement - remiseTotale).toFixed(3));
 }
 
+function historyItemMatchesSearch(item: any, products: any[], search: string): boolean {
+  if (!search) return true;
+  const variantLabel = getHistoryVariantLabel(item, products);
+  const haystack = [
+    item?.reference,
+    item?.product_reference,
+    item?.designation,
+    item?.product_designation,
+    variantLabel,
+  ]
+    .map((value) => String(value ?? '').toLowerCase().trim())
+    .filter(Boolean);
+  return haystack.some((value) => value.includes(search));
+}
+
+function filterHistoryBonsBySearch(bons: any[], products: any[], search: string): any[] {
+  if (!search) return bons;
+  return (bons ?? [])
+    .map((bon: any) => {
+      const items = Array.isArray(bon?.items) ? bon.items.filter((item: any) => historyItemMatchesSearch(item, products, search)) : [];
+      return { ...bon, items };
+    })
+    .filter((bon: any) => Array.isArray(bon.items) && bon.items.length > 0);
+}
+
+function filterCompletRowsBySearch(rows: CompletRow[], products: any[], search: string): CompletRow[] {
+  if (!search) return rows;
+  return rows.flatMap((row) => {
+    if (row.kind === 'paiement') return [];
+    const items = Array.isArray(row.data?.items) ? row.data.items.filter((item: any) => historyItemMatchesSearch(item, products, search)) : [];
+    if (items.length === 0) return [];
+    return [{ ...row, data: { ...row.data, items } }];
+  });
+}
+
 function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string, number> {
   const result = new Map<string, number>();
   let running = isNaN(soldeInitial) ? 0 : soldeInitial;
@@ -898,6 +933,7 @@ const FournisseurDetailPage: React.FC = () => {
   const [detail, setDetail] = useState(true);
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
+  const [productSearch, setProductSearch] = useState('');
   const { data: products = [] } = useGetProductsQuery();
   const { data: contact, isLoading: loadingContact } = useGetContactQuery(fournisseurId);
   const { data: history, isLoading: loadingHistory } = useGetContactHistoryQuery({ id: fournisseurId, limit: 30000 });
@@ -1080,7 +1116,22 @@ const FournisseurDetailPage: React.FC = () => {
     });
   }, [history, paySort, filterFrom, filterTo]);
 
-  const completRows = useMemo(() => buildCompletRows(history), [history]);
+  const normalizedProductSearch = useMemo(() => productSearch.trim().toLowerCase(), [productSearch]);
+  const hasProductSearch = normalizedProductSearch.length > 0;
+
+  const rawCompletRows = useMemo(() => buildCompletRows(history), [history]);
+  const completRows = useMemo(
+    () => filterCompletRowsBySearch(rawCompletRows, products, normalizedProductSearch),
+    [rawCompletRows, products, normalizedProductSearch]
+  );
+  const filteredCommandes = useMemo(
+    () => filterHistoryBonsBySearch(commandes, products, normalizedProductSearch),
+    [commandes, products, normalizedProductSearch]
+  );
+  const filteredAvoirs = useMemo(
+    () => filterHistoryBonsBySearch(avoirs, products, normalizedProductSearch),
+    [avoirs, products, normalizedProductSearch]
+  );
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
@@ -1146,11 +1197,12 @@ const FournisseurDetailPage: React.FC = () => {
   const solde: number = contact?.solde ?? 0;
 
   const showDetail = tab !== 'paiements';
+  const detailEnabled = detail || hasProductSearch;
 
   const tabs: { id: PageTab; label: string; count: number }[] = [
     { id: 'complet',   label: 'Complet',            count: visibleIds ? visibleIds.size : completRows.length },
-    { id: 'commandes', label: 'Bons Commande',       count: commandes.length },
-    { id: 'avoirs',    label: 'Avoirs Fournisseur',  count: avoirs.length },
+    { id: 'commandes', label: 'Bons Commande',       count: filteredCommandes.length },
+    { id: 'avoirs',    label: 'Avoirs Fournisseur',  count: filteredAvoirs.length },
     { id: 'paiements', label: 'Paiements',           count: paiements.length },
   ];
 
@@ -1397,11 +1449,31 @@ const FournisseurDetailPage: React.FC = () => {
           </div>
 
           {showDetail && (
+            <div className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-l border-gray-100">
+              <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              <input
+                type="text"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+                placeholder="Produit, variante, référence"
+                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 w-[220px]"
+              />
+              {productSearch && (
+                <button
+                  onClick={() => setProductSearch('')}
+                  className="text-xs text-gray-400 hover:text-red-500 transition-colors px-0.5"
+                >âœ•</button>
+              )}
+            </div>
+          )}
+
+          {showDetail && (
             <label className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none flex-shrink-0 border-l border-gray-100">
               <input
                 type="checkbox"
-                checked={detail}
+                checked={detailEnabled}
                 onChange={e => setDetail(e.target.checked)}
+                disabled={hasProductSearch}
                 className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
               />
               <span className="text-sm font-medium text-gray-600">Détail</span>
@@ -1414,10 +1486,10 @@ const FournisseurDetailPage: React.FC = () => {
           {/* ── Complet ── */}
           {tab === 'complet' && (
             completRows.length === 0
-              ? <Empty icon={<FileText />} label="Aucune opération" />
+              ? <Empty icon={<FileText />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucune opération"} />
               : <CompletTable
                   rows={completRows}
-                  detail={detail}
+                  detail={detailEnabled}
                   soldeInitial={contact?.solde ?? 0}
                   products={products}
                   visibleIds={visibleIds}
@@ -1433,16 +1505,16 @@ const FournisseurDetailPage: React.FC = () => {
 
           {/* ── Bons Commande ── */}
           {tab === 'commandes' && (
-            commandes.length === 0
-              ? <Empty icon={<ShoppingCart />} label="Aucun bon commande" />
-              : <BonTable bons={commandes} detail={detail} products={products} prefix="CMD" accentClass="text-violet-700" hoverClass="hover:bg-violet-50" itemBorderClass="border-violet-200" />
+            filteredCommandes.length === 0
+              ? <Empty icon={<ShoppingCart />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucun bon commande"} />
+              : <BonTable bons={filteredCommandes} detail={detailEnabled} products={products} prefix="CMD" accentClass="text-violet-700" hoverClass="hover:bg-violet-50" itemBorderClass="border-violet-200" />
           )}
 
           {/* ── Avoirs Fournisseur ── */}
           {tab === 'avoirs' && (
-            avoirs.length === 0
-              ? <Empty icon={<RotateCcw />} label="Aucun avoir fournisseur" />
-              : <BonTable bons={avoirs} detail={detail} products={products} prefix="AVF" accentClass="text-orange-700" hoverClass="hover:bg-orange-50" itemBorderClass="border-orange-200" />
+            filteredAvoirs.length === 0
+              ? <Empty icon={<RotateCcw />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucun avoir fournisseur"} />
+              : <BonTable bons={filteredAvoirs} detail={detailEnabled} products={products} prefix="AVF" accentClass="text-orange-700" hoverClass="hover:bg-orange-50" itemBorderClass="border-orange-200" />
           )}
 
           {/* ── Paiements ── */}
