@@ -1156,6 +1156,8 @@ const FournisseurDetailPage: React.FC = () => {
 
   const [printOpen, setPrintOpen] = useState(false);
 
+  const hasScopedPrint = !!filterFrom || !!filterTo || selectedIds.size > 0 || selectedItemIds.size > 0;
+
   const printProductHistory = useMemo(() => {
     if (!history || !contact) return [];
     const allRows = buildCompletRows(history);
@@ -1250,12 +1252,20 @@ const FournisseurDetailPage: React.FC = () => {
       });
     });
 
-    return result;
-  }, [history, contact, filterFrom, filterTo, selectedIds, selectedItemIds]);
+    if (!hasScopedPrint) return result;
+
+    let scopedSolde = 0;
+    return result.map((row: any) => {
+      const type = String(row.type || '').toLowerCase();
+      const amount = Number(row.total ?? 0);
+      if (type === 'produit') scopedSolde += amount;
+      else if (type === 'paiement' || type === 'avoir') scopedSolde -= amount;
+      return { ...row, soldeCumulatif: scopedSolde };
+    });
+  }, [history, contact, filterFrom, filterTo, selectedIds, selectedItemIds, hasScopedPrint]);
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
-    const hasScopedPrint = !!filterFrom || !!filterTo || selectedIds.size > 0 || selectedItemIds.size > 0;
     const totalQty = printProductHistory
       .filter((r: any) => r.type === 'produit' && Number(r.quantite) > 0)
       .reduce((s: number, r: any) => s + Number(r.quantite ?? 0), 0);

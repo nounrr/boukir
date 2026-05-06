@@ -248,11 +248,23 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   const dynamicSpacerHeight = Math.min(maxHeight, Math.max(baseHeight, baseHeight + Math.max(0, itemsCount - 5) * increment));
 
   const contact = client || fournisseur || ((bon?.type === 'Comptant' && bon?.client_nom) ? { nom_complet: bon.client_nom } as any : undefined);
-  const contactDisplayName = (
-    (typeof contact?.societe === 'string' && contact.societe.trim())
-      ? contact.societe
-      : (contact?.nom_complet || '-')
+  const isSupplierDocument = Boolean(
+    fournisseur ||
+    bon?.type === 'Commande' ||
+    bon?.type === 'AvoirFournisseur' ||
+    ((bon?.type === 'Sortie' || bon?.type === 'Avoir') &&
+      (bon?.vendre_au_fournisseur === 1 || bon?.vendre_au_fournisseur === true || String(bon?.vendre_au_fournisseur) === '1'))
   );
+  const contactSociete = (
+    typeof contact?.societe === 'string' && contact.societe.trim()
+      ? contact.societe.trim()
+      : (typeof bon?.fournisseur_societe === 'string' && bon.fournisseur_societe.trim())
+        ? bon.fournisseur_societe.trim()
+        : (typeof bon?.client_societe === 'string' && bon.client_societe.trim())
+          ? bon.client_societe.trim()
+          : ''
+  );
+  const contactPersonName = contact?.nom_complet || bon?.fournisseur_nom || bon?.client_nom || '';
   // — Toujours exposer téléphone / adresse livraison si présents, même sans contact —
   const contactId = (contact as any)?.id;
   const contactRef = (() => {
@@ -270,7 +282,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     const ecommerceRaw = bon?.ecommerce_raw ?? bon;
     return String(ecommerceRaw?.user_id ?? ecommerceRaw?.contact_id ?? bon?.client_id ?? bon?.contact_id ?? '').trim();
   })();
-  const contactRefLabel = fournisseur ? 'Ref fournisseur' : 'Ref client';
+  const contactRefLabel = isSupplierDocument ? 'Ref fournisseur' : 'Ref client';
   const tel = (bon?.phone ?? bon?.tel ?? bon?.telephone ?? (contact as any)?.telephone ?? (contact as any)?.tel ?? '') as string | undefined;
   const adrLiv = (bon?.adresse_livraison || bon?.adresseLivraison || '') as string | undefined;
   const hasContactOrInfo = Boolean(contact || (tel && String(tel).trim()) || (adrLiv && String(adrLiv).trim()));
@@ -406,9 +418,14 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
               </h3>
               <div className={`bg-gray-50 ${spacing.padding} rounded border-l-4 border-orange-500`}>
                 <div className={`grid grid-cols-2 ${spacing.gap} ${textSizes.normal}`}>
-                  {(contactDisplayName && contactDisplayName !== '-') && (
+                  {(contactSociete || contactPersonName) && (
                     <div className="flex flex-col">
-                      <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
+                      {contactPersonName && (
+                        <div><span className="font-medium">Nom:</span> {contactPersonName}</div>
+                      )}
+                      {contactSociete && (
+                        <div><span className="font-medium">Société:</span> {contactSociete}</div>
+                      )}
                       {contactRef && (
                         <div><span className="font-medium">{contactRefLabel}:</span> {contactRef}</div>
                       )}
@@ -417,7 +434,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
                       )}
                     </div>
                   )}
-                  {(!contactDisplayName || contactDisplayName === '-') && tel && String(tel).trim() && (
+                  {(!contactSociete && !contactPersonName) && tel && String(tel).trim() && (
                     <div><span className="font-medium">Téléphone:</span> {String(tel).trim()}</div>
                   )}
                   <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
