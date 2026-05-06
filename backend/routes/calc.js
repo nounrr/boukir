@@ -135,15 +135,18 @@ router.post('/mouvement', verifyToken, async (req, res) => {
       const fromSnapshot = Number.isFinite(snapId) ? snapshotCostById.get(snapId) : null;
       const varId = Number(it?.variant_id ?? it?.variantId);
       const fromVariant = Number.isFinite(varId) ? variantCostById.get(varId) : null;
+      const isDetailedLine = String(it?.line_mode || '') === 'detail';
 
       // Priority: snapshot → variant → item → product catalog (base values)
       const basePrixAchat =
+        (isDetailedLine ? (Number(it?.prix_achat) || 0) : 0) ||
         (fromSnapshot?.prix_achat) ||
         (fromVariant?.prix_achat) ||
         (Number(it?.prix_achat) || 0) ||
         (fromCatalog?.prix_achat ?? 0);
 
       const baseCoutRevient =
+        (isDetailedLine ? ((Number(it?.cout_revient) || 0) || (Number(it?.prix_achat) || 0)) : 0) ||
         (fromSnapshot?.cout_revient) ||
         (fromVariant?.cout_revient) ||
         (Number(it?.cout_revient) || 0) ||

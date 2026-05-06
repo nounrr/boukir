@@ -157,7 +157,9 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     const result: any[] = [];
     for (const it of src) {
       const pu = parseFloat(it.prix_unitaire || 0);
-      const key = `${it.product_id ?? it.produit_id ?? it.id ?? ''}:${it.variant_id ?? it.variantId ?? ''}:${pu}`;
+      const designationKey = String(it.designation_custom ?? it.designation ?? it.product_name ?? '').trim();
+      const productKey = it.product_id ?? it.produit_id ?? it.id ?? designationKey;
+      const key = `${productKey}:${it.variant_id ?? it.variantId ?? ''}:${pu}`;
       const existing = map.get(key);
       if (existing) {
         existing.quantite = parseFloat(existing.quantite || 0) + parseFloat(it.quantite || 0);
@@ -247,7 +249,7 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   const maxHeight = size === 'A5' ? 160 : 180;
   const dynamicSpacerHeight = Math.min(maxHeight, Math.max(baseHeight, baseHeight + Math.max(0, itemsCount - 5) * increment));
 
-  const contact = client || fournisseur || ((bon?.type === 'Comptant' && bon?.client_nom) ? { nom_complet: bon.client_nom } as any : undefined);
+  const contact = client || fournisseur || (((bon?.type === 'Comptant' || bon?.type === 'Charge') && bon?.client_nom) ? { nom_complet: bon.client_nom } as any : undefined);
   const isSupplierDocument = Boolean(
     fournisseur ||
     bon?.type === 'Commande' ||

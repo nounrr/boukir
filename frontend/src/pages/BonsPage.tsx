@@ -49,7 +49,7 @@ import {
 // Centralize action/status icon size for easier adjustment
 const ACTION_ICON_SIZE = 24; // increased from 20 per user request
 
-type BonTabKey = 'Commande' | 'Sortie' | 'VendreFournisseur' | 'Comptant' | 'ComptantNonPaye' | 'Avoir' | 'AvoirVendreFournisseur' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
+type BonTabKey = 'Commande' | 'Sortie' | 'VendreFournisseur' | 'Comptant' | 'ComptantNonPaye' | 'Charge' | 'Avoir' | 'AvoirVendreFournisseur' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
 
 const BON_TAB_LABELS: Record<BonTabKey, string> = {
   Commande: 'Bon de Commande',
@@ -57,6 +57,7 @@ const BON_TAB_LABELS: Record<BonTabKey, string> = {
   VendreFournisseur: 'Vendre fournisseur',
   Comptant: 'Bon Comptant',
   ComptantNonPaye: 'Bon Comptant non payé',
+  Charge: 'Bon Charge',
   Vehicule: 'Bon Véhicule',
   Avoir: 'Avoir Client',
   AvoirVendreFournisseur: 'Avoir vendre fournisseur',
@@ -319,6 +320,7 @@ const BonsPage = () => {
       'Commande': 'CMD',
       'Sortie': 'SOR',
       'Comptant': 'COM',
+      'Charge': 'CHG',
       'Devis': 'DEV',
       'Avoir': 'AVC',
       'AvoirFournisseur': 'AVF',
@@ -748,7 +750,7 @@ const BonsPage = () => {
       }
     }
     if (
-      (type === 'Sortie' || type === 'Comptant' || type === 'Avoir' || type === 'AvoirComptant' ||
+      (type === 'Sortie' || type === 'Comptant' || type === 'Charge' || type === 'Avoir' || type === 'AvoirComptant' ||
        type === 'Devis' || type === 'Ecommerce' || type === 'AvoirEcommerce') &&
       freeClientName
     ) {
@@ -1015,6 +1017,17 @@ const BonsPage = () => {
       const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));
       return Number.isFinite(n) ? n : 0;
     };
+
+    if (it?.line_mode === 'detail') {
+      return (
+        toNum(it.cout_revient) ||
+        toNum(it.cout_rev) ||
+        toNum(it.cout) ||
+        toNum(it.prix_achat) ||
+        toNum(it.pa) ||
+        toNum(it.prixA)
+      );
+    }
 
     // 1) Snapshot-level cost (priorité absolue: données historiques gelées)
     let baseCost = 0;
@@ -1332,6 +1345,7 @@ const BonsPage = () => {
       case 'Commande': return 'bons_commande';
       case 'Sortie': return 'bons_sortie';
       case 'Comptant': return 'bons_comptant';
+      case 'Charge': return 'bons_charge';
       case 'Devis': return 'devis';
       case 'Avoir': return 'avoirs_client';
       case 'AvoirFournisseur': return 'avoirs_fournisseur';
@@ -1355,7 +1369,7 @@ const BonsPage = () => {
     // Client selon type
     const type = bon?.type || currentTab;
     const clientId = bon?.client_id ?? bon?.contact_id;
-    if (['Sortie','Comptant','Avoir','AvoirComptant','Devis'].includes(type)) {
+    if (['Sortie','Comptant','Charge','Avoir','AvoirComptant','Devis'].includes(type)) {
       if (clientId && clients.length > 0) {
         const client = clients.find((c: any) => String(c.id) === String(clientId));
         if (client?.telephone) return String(client.telephone);
@@ -1471,7 +1485,7 @@ const BonsPage = () => {
       const type = bon?.type || currentTab;
       let resolvedClient: any;
       let resolvedSupplier: any;
-      if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'Devis'].includes(type)) {
+      if (['Sortie', 'Comptant', 'Charge', 'Avoir', 'AvoirComptant', 'Devis'].includes(type)) {
         const clientId = bon?.client_id ?? bon?.contact_id;
         if (clientId && clients.length > 0) {
           resolvedClient = clients.find((c: any) => String(c.id) === String(clientId));
@@ -1650,6 +1664,7 @@ const BonsPage = () => {
       { key: 'VendreFournisseur', label: 'Vendre fournisseur' },
       { key: 'Comptant', label: 'Bon Comptant' },
       { key: 'ComptantNonPaye', label: 'Bon Comptant non payé' },
+      { key: 'Charge', label: 'Bon Charge' },
       { key: 'Vehicule', label: 'Bon Véhicule' },
       { key: 'Avoir', label: 'Avoir Client' },
       { key: 'AvoirVendreFournisseur', label: 'Avoir vendre fournisseur' },
@@ -2700,9 +2715,9 @@ const BonsPage = () => {
                       <td className="px-4 py-2 text-sm">{formatNumber4(computeTotalPoids(bon))}</td>
                       <td className="px-4 py-2 text-sm">
                         {(() => {
-                          // Show mouvement only for sales/stock out types (Sortie, Comptant, Avoir, AvoirComptant)
+                          // Show mouvement only for sales/stock out types (Sortie, Comptant, Charge, Avoir, AvoirComptant)
                           const type = bon.type || effectiveCurrentTab;
-                          if (!['Sortie','Comptant','Avoir','AvoirComptant'].includes(type)) return <span className="text-gray-400">-</span>;
+                          if (!['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(type)) return <span className="text-gray-400">-</span>;
                           // If bon is marked as non-calculated, do not compute mouvement
                           const bAny = bon as any;
                           const nonCalculated = bAny?.isNotCalculated === true || bAny?.isNotCalculated === 1 || bAny?.is_not_calculated === true || bAny?.is_not_calculated === 1;
