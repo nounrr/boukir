@@ -277,6 +277,7 @@ router.get('/', async (req, res) => {
       societe: 'c.societe',
       solde: 'solde_cumule',
       solde_cumule: 'solde_cumule',
+      total_cumule: 'total_cumule',
     };
     const sortExpr = sortMap[normalizedSortBy] || sortMap.nom_complet;
     const referenceSearch = String(search || '').trim();
@@ -409,11 +410,11 @@ router.get('/', async (req, res) => {
           ELSE 3
         END, CHAR_LENGTH(CAST(c.id AS CHAR)), CAST(c.id AS UNSIGNED),`
       : '';
-    if (sortExpr === 'solde_cumule') {
-      query += ` ORDER BY ${referenceSearchOrder} ${groupPrefix}, solde_cumule ${normalizedSortDir}, c.id ${normalizedSortDir}`;
+    if (sortExpr === 'solde_cumule' || sortExpr === 'total_cumule') {
+      query += ` ORDER BY ${referenceSearchOrder} ${sortExpr} ${normalizedSortDir}, ${groupPrefix}, c.id ${normalizedSortDir}`;
     } else {
-      // Use COALESCE to keep NULLs stable
-      query += ` ORDER BY ${referenceSearchOrder} ${groupPrefix}, COALESCE(${sortExpr}, '') ${normalizedSortDir}, c.id ${normalizedSortDir}`;
+      // Keep explicit user sort first; group ordering is only a tie-breaker.
+      query += ` ORDER BY ${referenceSearchOrder} COALESCE(${sortExpr}, '') ${normalizedSortDir}, ${groupPrefix}, c.id ${normalizedSortDir}`;
     }
     query += ' LIMIT ?, ?';
     if (isReferenceSearch) {
@@ -476,7 +477,12 @@ router.get('/', async (req, res) => {
             COALESCE((SELECT SUM(montant_total) FROM bons_commande WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
           ELSE NULL 
         END), 0) AS grand_total_ventes,
-        COALESCE(SUM(CASE 
+        COALESCE(SUM(CASE
+          WHEN c.type = 'Client' THEN COALESCE(c.solde, 0)
+          WHEN c.type = 'Fournisseur' THEN COALESCE(c.solde, 0)
+          ELSE NULL
+        END), 0) AS grand_total_solde_initial,
+        COALESCE(SUM(CASE
           WHEN c.type = 'Client' THEN
             COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
@@ -494,6 +500,7 @@ router.get('/', async (req, res) => {
     `;
     const [totalCumuleResult] = await pool.query(totalCumuleQuery, totalParams);
     const grandTotalCumule = Number(totalCumuleResult[0]?.grand_total_cumule || 0);
+    const grandTotalSoldeInitial = Number(totalCumuleResult[0]?.grand_total_solde_initial || 0);
     const grandTotalVentes = Number(totalCumuleResult[0]?.grand_total_ventes || 0);
     const grandTotalPaiements = Number(totalCumuleResult[0]?.grand_total_paiements || 0);
     const grandTotalAvoirs = Number(totalCumuleResult[0]?.grand_total_avoirs || 0);
@@ -508,6 +515,7 @@ router.get('/', async (req, res) => {
         totalPages: Math.ceil(total / parseInt(limit))
       },
       grandTotalCumule,
+      grandTotalSoldeInitial,
       grandTotalVentes,
       grandTotalPaiements,
       grandTotalAvoirs,
@@ -678,7 +686,7 @@ router.get('/solde-cumule-card', async (_req, res) => {
         ),0) AS total_avoirs,
 
         COALESCE((
-            SELECT SUM(ABS(solde))
+            SELECT SUM(solde)
             FROM contacts
             WHERE type = 'Client'
         ),0) AS total_solde
@@ -690,9 +698,10 @@ router.get('/solde-cumule-card', async (_req, res) => {
     const total_ventes = Number(row.total_ventes || 0);
     const total_paiements = Number(row.total_paiements || 0);
     const total_avoirs = Number(row.total_avoirs || 0);
-    // Compat ascendante: ancienne convention (positif = client doit)
-    const total_final = -total_solde - total_ventes + total_paiements + total_avoirs;
-    res.json({ total_final, total_solde, total_ventes, total_paiements, total_avoirs });
+    const total_debit = total_solde + total_ventes;
+    const total_credit = total_paiements + total_avoirs;
+    const total_final = total_credit - total_debit;
+    res.json({ total_final, total_solde, total_debit, total_credit, total_ventes, total_paiements, total_avoirs });
   } catch (error) {
     console.error('Error fetching solde cumule card:', error);
     res.status(500).json({ error: 'Failed to fetch solde cumule card' });
@@ -739,8 +748,10 @@ router.get('/solde-cumule-card-fournisseur', async (_req, res) => {
     const total_ventes = Number(row.total_ventes || 0);
     const total_paiements = Number(row.total_paiements || 0);
     const total_avoirs = Number(row.total_avoirs || 0);
-    const total_final = total_solde + total_ventes - total_paiements - total_avoirs;
-    res.json({ total_final, total_solde, total_ventes, total_paiements, total_avoirs });
+    const total_debit = total_solde + total_ventes;
+    const total_credit = total_paiements + total_avoirs;
+    const total_final = total_credit - total_debit;
+    res.json({ total_final, total_solde, total_debit, total_credit, total_ventes, total_paiements, total_avoirs });
   } catch (error) {
     console.error('Error fetching solde cumule card fournisseur:', error);
     res.status(500).json({ error: 'Failed to fetch solde cumule card fournisseur' });

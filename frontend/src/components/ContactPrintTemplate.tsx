@@ -75,6 +75,56 @@ const getProductHistoryCodeReglement = (item: any) => {
     || '—';
 };
 
+const getProductHistorySnapshotLabel = (item: any) => {
+  const snapshotId = item?.product_snapshot_id;
+  return snapshotId != null && snapshotId !== '' ? `SNAP-${snapshotId}` : '';
+};
+
+const getProductHistoryReference = (item: any) => {
+  if (item?.syntheticInitial) return 'â€”';
+  const baseRef = item?.product_reference || 'â€”';
+  const snapshotLabel = getProductHistorySnapshotLabel(item);
+  return snapshotLabel ? `${baseRef} / ${snapshotLabel}` : baseRef;
+};
+
+const groupProductHistoryRowsForPrint = (rows: any[]) => {
+  const result: any[] = [];
+  const groups = new Map<string, any>();
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (row?.syntheticInitial || String(row?.type || '').toLowerCase() === 'paiement') {
+      result.push(row);
+      continue;
+    }
+
+    const key = [
+      row?.bon_numero ?? '',
+      row?.bon_date_iso ?? row?.bon_date ?? '',
+      row?.product_reference ?? '',
+      row?.product_designation ?? '',
+      row?.prix_unitaire ?? '',
+      row?.type ?? '',
+      row?.bon_statut ?? '',
+      row?.adresse_livraison ?? '',
+      getProductHistoryCodeReglement(row),
+    ].join('|');
+
+    const existing = groups.get(key);
+    if (!existing) {
+      const clone = { ...row };
+      groups.set(key, clone);
+      result.push(clone);
+      continue;
+    }
+
+    existing.quantite = (Number(existing.quantite) || 0) + (Number(row?.quantite) || 0);
+    existing.total = (Number(existing.total) || 0) + (Number(row?.total) || 0);
+    existing.soldeCumulatif = row?.soldeCumulatif ?? existing.soldeCumulatif;
+  }
+
+  return result;
+};
+
 const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   contact,
   mode,
@@ -149,6 +199,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   if (!(prList[0]?.syntheticInitial) && !skipInitialRow) {
     prList = [prInitialRow, ...prList];
   }
+  prList = groupProductHistoryRowsForPrint(prList);
 
   // Présence de colonnes (pour les libellés uniquement)
   const hasAnyAddress = prList.some(
@@ -428,6 +479,11 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                       {/* Désignation (wrap libre) */}
                       <td className="cell-wrap col-designation">
                         {it.syntheticInitial ? 'Solde initial' : it.product_designation}
+                        {!it.syntheticInitial && getProductHistorySnapshotLabel(it) ? (
+                          <span className="block text-[10px] text-amber-700 font-semibold">
+                            {getProductHistorySnapshotLabel(it)}
+                          </span>
+                        ) : null}
                       </td>
 
                       {showCodeReglementCol && (

@@ -4,7 +4,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import BonFormModal from '../components/BonFormModal';
 import { getBonNumeroDisplay } from '../utils/numero';
 import { useGetRemisesBonsContextQuery, useGetRemisesForClientQuery } from '../store/api/bonsApi';
-import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation, useUpdateClientRemiseMutation, useDeleteClientRemiseMutation, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useUpdateRemiseItemMutation, useDeleteRemiseItemMutation } from '../store/api/remisesApi';
+import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation, useUpdateClientRemiseMutation, useDeleteClientRemiseMutation, useGetRemiseItemsQuery, useCreateRemiseItemMutation, useUpdateRemiseItemMutation, useDeleteRemiseItemMutation, useGetContactRemiseItemsQuery, useCreateContactRemiseItemMutation, useUpdateContactRemiseItemMutation, useDeleteContactRemiseItemMutation, useGetDirectContactRemiseBalancesQuery } from '../store/api/remisesApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { useGetAllClientsQuery } from '../store/api/contactsApi';
 import { useAuth } from '../hooks/redux';
@@ -151,6 +151,16 @@ const RemisesPage: React.FC = () => {
 
   // Direct clients (Contacts) for the “bons → client” remises view
   const { data: directClients = [] } = useGetAllClientsQuery();
+  const { data: contactBalances = [], refetch: refetchContactBalances } = useGetDirectContactRemiseBalancesQuery();
+
+  const contactBalanceById = useMemo(() => {
+    const map = new Map<number, any>();
+    for (const b of contactBalances as any[]) {
+      const id = Number(b?.contact_id);
+      if (Number.isFinite(id)) map.set(id, b);
+    }
+    return map;
+  }, [contactBalances]);
 
   // New system: bons data comes from one backend context request.
   const { data: remisesBonsContext } = useGetRemisesBonsContextQuery();
@@ -231,7 +241,16 @@ const RemisesPage: React.FC = () => {
   const directAvailableByClientId = useMemo(() => {
     const map = new Map<number, number>();
 
+    // Priorité: utiliser les balances backend (incluent remise_contact_items)
+    for (const bal of contactBalances as any[]) {
+      const id = Number(bal?.contact_id);
+      if (!Number.isFinite(id)) continue;
+      map.set(id, Number(bal?.available_total || 0));
+    }
+
+    // Fallback pour clients sans balance backend
     for (const [clientId, earnedTotal] of directNewByClientId.totalById.entries()) {
+      if (map.has(clientId)) continue;
       const linkedAccount = clientAbonneByContactId.get(clientId);
       const archivedOld = Number(ancienAbonneByContactId.get(clientId)?.total_remise || 0);
       const oldEarned = (linkedAccount ? getAccountOldTotal(linkedAccount) : 0) + archivedOld;
@@ -252,7 +271,7 @@ const RemisesPage: React.FC = () => {
     }
 
     return map;
-  }, [directNewByClientId, clientAbonneByContactId, ancienAbonneByContactId]);
+  }, [directNewByClientId, clientAbonneByContactId, ancienAbonneByContactId, contactBalances]);
 
   const directClientRows = useMemo(() => {
     const map = new Map<number, any>();
@@ -301,8 +320,22 @@ const RemisesPage: React.FC = () => {
       }
     }
 
+    // Ajouter les contacts qui ont des remise_contact_items mais pas encore dans la map
+    for (const bal of contactBalances as any[]) {
+      const contactId = Number(bal?.contact_id);
+      if (!Number.isFinite(contactId) || map.has(contactId)) continue;
+      if (!Number(bal?.earned_separee_total || 0) && !Number(bal?.available_total || 0)) continue;
+      map.set(contactId, {
+        id: contactId,
+        nom_complet: bal?.nom_complet || `#${contactId}`,
+        nom: bal?.nom_complet || `#${contactId}`,
+        societe: bal?.societe || '',
+        telephone: bal?.telephone || '',
+      });
+    }
+
     return Array.from(map.values());
-  }, [directClients, clientAbonneByContactId, ancienAbonneByContactId]);
+  }, [directClients, clientAbonneByContactId, ancienAbonneByContactId, contactBalances]);
 
   const filteredDirectClients = useMemo(() => {
     const term = directSearch.trim().toLowerCase();
@@ -757,7 +790,8 @@ const RemisesPage: React.FC = () => {
                     </button>
                   </th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Ancien</th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Nouveau</th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Nouveau (bons)</th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Séparée</th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">
                     <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('remise')}>
                       Final
@@ -770,10 +804,12 @@ const RemisesPage: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-100">
                 {sortedDirectClients.map((c: any) => {
                   const id = Number(c?.id);
+                  const bal = contactBalanceById.get(id);
                   const total = directAvailableByClientId.get(id) || 0;
                   const count = (directNewByClientId.countById.get(id) || 0) + Number(c?._ancien_abonne?.lignes_count || 0) + (c?._client_abonne_account ? 1 : 0);
                   const ancien = Number(ancienAbonneByContactId.get(id)?.total_remise || 0) + (c?._client_abonne_account ? getAccountOldTotal(c._client_abonne_account) : 0);
-                  const nouveau = Number(directNewByClientId.totalById.get(id) || 0);
+                  const nouveau = Number(bal?.earned_bons_total ?? directNewByClientId.totalById.get(id) ?? 0);
+                  const separee = Number(bal?.earned_separee_total || 0);
                   return (
                     <tr key={id} className="hover:bg-gradient-to-r hover:from-blue-25 hover:to-cyan-25 transition-all duration-200">
                       <td className="px-6 py-4 font-medium text-gray-900">{c.nom_complet || c.nom || `#${id}`}</td>
@@ -785,6 +821,9 @@ const RemisesPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-lg font-bold text-amber-600">{Number(nouveau).toFixed(2)} DH</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={`text-lg font-bold ${separee < 0 ? 'text-red-600' : separee > 0 ? 'text-green-600' : 'text-gray-400'}`}>{separee.toFixed(2)} DH</span>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-lg font-bold text-blue-600">{Number(total).toFixed(2)} DH</span>
@@ -809,7 +848,7 @@ const RemisesPage: React.FC = () => {
                 })}
                 {sortedDirectClients.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
+                    <td colSpan={9} className="px-6 py-10 text-center text-sm text-gray-500">
                       Aucun client avec remise (nouveau système) trouvé.
                     </td>
                   </tr>
@@ -1154,23 +1193,27 @@ const RemisesPage: React.FC = () => {
                   </div>
                   <div>
                     {(() => {
+                      const bal = contactBalanceById.get(Number(selectedDirectClient?.id));
                       const linkedAccount = clientAbonneByContactId.get(Number(selectedDirectClient?.id));
-                      const usedTotal = linkedAccount ? getAccountUsedTotal(linkedAccount) : 0;
-                      const earnedTotal = Number(directClientOldRemise || 0) + Number(directClientTotalRemise || 0);
-                      const availableTotal = Math.max(0, earnedTotal - Number(usedTotal || 0));
+                      const usedTotal = bal ? Number(bal.used_total || 0) : (linkedAccount ? getAccountUsedTotal(linkedAccount) : 0);
+                      const separeeTotal = Number(bal?.earned_separee_total || 0);
+                      const availableTotal = bal ? Number(bal.available_total || 0) : Math.max(0, Number(directClientOldRemise || 0) + Number(directClientTotalRemise || 0) - usedTotal);
                       return (
                         <>
                           <p className="font-semibold text-gray-600">Remise disponible:</p>
                           <p className="font-bold text-blue-700">{availableTotal.toFixed(2)} DH</p>
                           <p className="text-xs text-gray-500">Ancien: {Number(directClientOldRemise || 0).toFixed(2)} DH</p>
-                          <p className="text-xs text-gray-500">Nouveau: {Number(directClientTotalRemise || 0).toFixed(2)} DH</p>
-                          <p className="text-xs text-gray-500">UtilisÃ©: {Number(usedTotal || 0).toFixed(2)} DH</p>
+                          <p className="text-xs text-gray-500">Nouveau (bons): {Number(directClientTotalRemise || 0).toFixed(2)} DH</p>
+                          {separeeTotal !== 0 && <p className={`text-xs font-medium ${separeeTotal < 0 ? 'text-red-500' : 'text-green-600'}`}>Séparée: {separeeTotal.toFixed(2)} DH</p>}
+                          <p className="text-xs text-gray-500">Utilisée: {usedTotal.toFixed(2)} DH</p>
                         </>
                       );
                     })()}
                   </div>
                 </div>
               </div>
+
+              <DirectClientRemiseItems contactId={Number(selectedDirectClient?.id)} onChanged={refetchContactBalances} section="form" />
 
               <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
@@ -1228,6 +1271,8 @@ const RemisesPage: React.FC = () => {
                   </table>
                 </div>
               </div>
+
+              <DirectClientRemiseItems contactId={Number(selectedDirectClient?.id)} onChanged={refetchContactBalances} section="table" />
 
               <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
@@ -1651,6 +1696,227 @@ const RemiseDetail: React.FC<{ clientRemise: any; onItemsChanged?: () => void; o
         </div>
 
   {/* Section achats supprimée: flux négatif géré via prix_remise négatif */}
+      </div>
+    </div>
+  );
+};
+
+const DirectClientRemiseItems: React.FC<{ contactId: number; onChanged?: () => void; section?: 'form' | 'table' }> = ({ contactId, onChanged, section }) => {
+  const { user } = useAuth();
+  const { data: items = [], refetch: refetchItems } = useGetContactRemiseItemsQuery(contactId, { skip: !contactId });
+  const [createItem] = useCreateContactRemiseItemMutation();
+  const [updateItem] = useUpdateContactRemiseItemMutation();
+  const [deleteItem] = useDeleteContactRemiseItemMutation();
+  const { data: products = [] } = useGetProductsQuery();
+  const { data: remisesBonsContext } = useGetRemisesBonsContextQuery();
+  const sorties = remisesBonsContext?.sorties || [];
+  const comptants = remisesBonsContext?.comptants || [];
+  const commandes = remisesBonsContext?.commandes || [];
+
+  const productOptions = useMemo(() => (products || []).map((p: any) => ({
+    value: String(p.id),
+    label: `${p.id}${p.designation ? ' - ' + p.designation : ''}`
+  })), [products]);
+
+  const bonOptions = useMemo(() => {
+    const fmt = (type: string, b: any) => {
+      const numero = getBonNumeroDisplay({ id: b?.id, type, numero: b?.numero });
+      const name = b?.nom_client || b?.nom_fournisseur || '-';
+      const total = Number(b?.montant_total ?? 0);
+      return { value: `${type}:${b.id}`, label: `${numero} _ ${name} - ${total} DH` };
+    };
+    return [
+      ...(sorties || []).map((b: any) => fmt('Sortie', b)),
+      ...(comptants || []).map((b: any) => fmt('Comptant', b)),
+      ...(commandes || []).map((b: any) => fmt('Commande', b)),
+    ];
+  }, [sorties, comptants, commandes]);
+
+  const [newItem, setNewItem] = useState({ product_id: '', qte: 1, prix_remise: 0, bon_select: '', isNegative: false });
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleAdd = async () => {
+    if (!newItem.product_id) return;
+    setIsCreating(true);
+    try {
+      let bon_id: number | undefined = undefined;
+      let bon_type: string | undefined = undefined;
+      if (!newItem.isNegative && newItem.bon_select) {
+        const [t, id] = newItem.bon_select.split(':');
+        bon_type = t;
+        bon_id = Number(id);
+      }
+      const prix = Math.abs(Number(newItem.prix_remise || 0));
+      const prixToSave = newItem.isNegative ? -prix : prix;
+      await createItem({ contactId, data: { product_id: newItem.product_id, qte: newItem.qte, prix_remise: prixToSave, statut: 'En attente', bon_id, bon_type } }).unwrap();
+      setNewItem({ product_id: '', qte: 1, prix_remise: 0, bon_select: '', isNegative: false });
+      await refetchItems();
+      onChanged?.();
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const itemsActive = (items as any[]).filter((it: any) => it.statut !== 'Annulé');
+  const totalItems = itemsActive.reduce((sum: number, it: any) => sum + Number(it.qte || 0) * Number(it.prix_remise || 0), 0);
+
+  if (section === 'form') {
+    return (
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-purple-100">
+        <div className="px-6 py-3 border-b border-gray-100 bg-gradient-to-r from-purple-50 to-blue-50">
+          <h3 className="text-sm font-semibold text-purple-800">Ajouter une remise séparée</h3>
+        </div>
+        <div className="px-6 py-4 bg-gray-50">
+          <div className="flex items-end gap-3 flex-wrap">
+            <div className="w-52">
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Produit</label>
+              <SearchableSelect options={productOptions} value={newItem.product_id} onChange={(v) => setNewItem({ ...newItem, product_id: v })} placeholder="Choisir un produit" />
+            </div>
+            <div className="w-24">
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Qté</label>
+              <input type="number" className="border rounded px-2 py-1.5 w-full text-sm" value={newItem.qte} onChange={(e) => setNewItem({ ...newItem, qte: Number(e.target.value) })} />
+            </div>
+            <div className="w-32">
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Montant remise</label>
+              <input type="number" className="border rounded px-2 py-1.5 w-full text-sm" placeholder="0" value={newItem.prix_remise} onChange={(e) => setNewItem({ ...newItem, prix_remise: Number(e.target.value) })} />
+            </div>
+            <div className="flex items-center gap-2 h-[34px]">
+              <input id={`direct-remise-neg-top-${contactId}`} type="checkbox" checked={newItem.isNegative} onChange={(e) => setNewItem({ ...newItem, isNegative: e.target.checked })} />
+              <label htmlFor={`direct-remise-neg-top-${contactId}`} className="text-sm text-gray-700 cursor-pointer select-none">Négative</label>
+            </div>
+            {!newItem.isNegative && (
+              <div className="w-52">
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Bon (optionnel)</label>
+                <SearchableSelect options={bonOptions} value={newItem.bon_select} onChange={(v) => setNewItem({ ...newItem, bon_select: v })} placeholder="Lier à un bon" />
+              </div>
+            )}
+            <button
+              className="px-4 py-1.5 bg-green-600 text-white rounded text-sm inline-flex items-center gap-1 disabled:opacity-50"
+              disabled={isCreating || !newItem.product_id}
+              onClick={handleAdd}
+            >
+              <Plus size={14} />
+              Ajouter
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-blue-50 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Lignes de remise séparées</h3>
+          <p className="text-xs text-gray-500 mt-1">Remises manuelles indépendantes des bons (positives ou négatives)</p>
+        </div>
+        <span className={`font-bold text-lg ${totalItems < 0 ? 'text-red-600' : 'text-purple-700'}`}>{totalItems.toFixed(2)} DH</span>
+      </div>
+
+      <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="w-52">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Produit</label>
+            <SearchableSelect options={productOptions} value={newItem.product_id} onChange={(v) => setNewItem({ ...newItem, product_id: v })} placeholder="Choisir un produit" />
+          </div>
+          <div className="w-24">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Qté</label>
+            <input type="number" className="border rounded px-2 py-1.5 w-full text-sm" value={newItem.qte} onChange={(e) => setNewItem({ ...newItem, qte: Number(e.target.value) })} />
+          </div>
+          <div className="w-32">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">Montant remise</label>
+            <input type="number" className="border rounded px-2 py-1.5 w-full text-sm" placeholder="0" value={newItem.prix_remise} onChange={(e) => setNewItem({ ...newItem, prix_remise: Number(e.target.value) })} />
+          </div>
+          <div className="flex items-center gap-2 h-[34px]">
+            <input id={`direct-remise-neg-${contactId}`} type="checkbox" checked={newItem.isNegative} onChange={(e) => setNewItem({ ...newItem, isNegative: e.target.checked })} />
+            <label htmlFor={`direct-remise-neg-${contactId}`} className="text-sm text-gray-700 cursor-pointer select-none">Négative</label>
+          </div>
+          {!newItem.isNegative && (
+            <div className="w-52">
+              <label className="text-xs font-medium text-gray-600 mb-1 block">Bon (optionnel)</label>
+              <SearchableSelect options={bonOptions} value={newItem.bon_select} onChange={(v) => setNewItem({ ...newItem, bon_select: v })} placeholder="Lier à un bon" />
+            </div>
+          )}
+          <button
+            className="px-4 py-1.5 bg-green-600 text-white rounded text-sm inline-flex items-center gap-1 disabled:opacity-50"
+            disabled={isCreating || !newItem.product_id}
+            onClick={handleAdd}
+          >
+            <Plus size={14} />
+            Ajouter
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 table-fixed">
+          <colgroup>
+            <col className="w-[26%]" />
+            <col className="w-[16%]" />
+            <col className="w-[7%]" />
+            <col className="w-[12%]" />
+            <col className="w-[12%]" />
+            <col className="w-[11%]" />
+            <col className="w-[10%]" />
+            <col className="w-[6%]" />
+          </colgroup>
+          <thead className="bg-gradient-to-r from-purple-50 to-blue-50">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs font-medium text-purple-700 uppercase tracking-wider">Produit</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-purple-700 uppercase tracking-wider">Bon</th>
+              <th className="px-4 py-2 text-right text-xs font-medium text-purple-700 uppercase tracking-wider">Qté</th>
+              <th className="px-4 py-2 text-right text-xs font-medium text-purple-700 uppercase tracking-wider">Montant</th>
+              <th className="px-4 py-2 text-right text-xs font-medium text-purple-700 uppercase tracking-wider">Total</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-purple-700 uppercase tracking-wider">Créé le</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-purple-700 uppercase tracking-wider">Statut</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-purple-700 uppercase tracking-wider">Act.</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-100">
+            {(items as any[]).map((it: any) => {
+              const lineTotal = Number(it.qte || 0) * Number(it.prix_remise || 0);
+              const isNeg = lineTotal < 0;
+              return (
+                <tr key={it.id} className={it.statut === 'Annulé' ? 'opacity-40' : ''}>
+                  <td className="px-4 py-2 max-w-0 truncate text-sm">{it.reference ? `${it.reference} - ${it.designation}` : it.product_id}</td>
+                  <td className="px-4 py-2 max-w-0 truncate text-sm text-gray-600">{it.bon_id ? `${it.bon_type || ''} #${it.bon_id}` : '-'}</td>
+                  <td className="px-4 py-2 text-right text-sm">{it.qte}</td>
+                  <td className={`px-4 py-2 text-right text-sm font-medium ${isNeg ? 'text-red-600' : 'text-green-700'}`}>{Number(it.prix_remise || 0)} DH</td>
+                  <td className={`px-4 py-2 text-right text-sm font-semibold ${isNeg ? 'text-red-600' : 'text-purple-700'}`}>{lineTotal.toFixed(2)} DH</td>
+                  <td className="px-4 py-2 text-sm text-gray-500">{it.created_at ? new Date(it.created_at).toLocaleDateString('fr-FR') : '-'}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-1">
+                      <button className={`p-1 rounded ${it.statut === 'En attente' ? 'bg-yellow-50 text-yellow-600' : 'text-gray-400 hover:text-yellow-600'}`} title="En attente" onClick={async () => { await updateItem({ id: it.id, data: { statut: 'En attente' } }).unwrap(); await refetchItems(); onChanged?.(); }}>
+                        <Clock size={15} />
+                      </button>
+                      {user?.role === 'PDG' && (
+                        <button className={`p-1 rounded ${it.statut === 'Validé' ? 'bg-green-50 text-green-600' : 'text-gray-400 hover:text-green-600'}`} title="Valider" onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Validé' } }).unwrap(); await refetchItems(); onChanged?.(); }}>
+                          <CheckCircle size={15} />
+                        </button>
+                      )}
+                      <button className={`p-1 rounded ${it.statut === 'Annulé' ? 'bg-red-50 text-red-600' : 'text-gray-400 hover:text-red-600'}`} title="Annuler" onClick={async () => { await updateItem({ id: it.id, data: { statut: 'Annulé' } }).unwrap(); await refetchItems(); onChanged?.(); }}>
+                        <XCircle size={15} />
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2">
+                    {user?.role === 'PDG' && (
+                      <button className="text-gray-400 hover:text-red-600" title="Supprimer" onClick={async () => { await deleteItem({ id: it.id, contactId }).unwrap(); await refetchItems(); onChanged?.(); }}>
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {(items as any[]).length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-6 py-6 text-center text-sm text-gray-400">Aucune ligne de remise séparée pour ce client.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

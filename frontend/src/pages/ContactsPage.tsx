@@ -552,7 +552,7 @@ const ContactsPage: React.FC = () => {
   
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<'nom' | 'societe' | 'solde_cumule' | null>(null);
+  const [sortField, setSortField] = useState<'nom' | 'societe' | 'total_cumule' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [isGroupEditModalOpen, setIsGroupEditModalOpen] = useState(false);
   const [groupEditId, setGroupEditId] = useState<number | null>(null);
@@ -3658,8 +3658,16 @@ const ContactsPage: React.FC = () => {
     return computeContactSoldeCumule(contact);
   }, []);
 
+  const getContactTotalCumuleDisplay = React.useCallback((contact: Contact) => {
+    const backendValue = (contact as any).total_cumule;
+    if (backendValue !== null && backendValue !== undefined && Number.isFinite(Number(backendValue))) {
+      return Number(backendValue);
+    }
+    return computeContactSoldeCumule(contact);
+  }, []);
+
   const sortedContacts = useMemo(() => {
-    if (!isContactReferenceSearch && sortField !== 'solde_cumule') return filteredContacts;
+    if (!isContactReferenceSearch && sortField !== 'total_cumule') return filteredContacts;
     return [...filteredContacts].sort((a, b) => {
       if (isContactReferenceSearch) {
         const rankDiff = getContactReferenceRank(a) - getContactReferenceRank(b);
@@ -3670,18 +3678,18 @@ const ContactsPage: React.FC = () => {
         if (refDiff !== 0) return refDiff;
       }
 
-      if (sortField === 'solde_cumule') {
-        const sa = getContactSoldeDisplay(a);
-        const sb = getContactSoldeDisplay(b);
+      if (sortField === 'total_cumule') {
+        const sa = getContactTotalCumuleDisplay(a);
+        const sb = getContactTotalCumuleDisplay(b);
         return sortDirection === 'asc' ? sa - sb : sb - sa;
       }
 
       return 0;
     });
-  }, [filteredContacts, getContactReferenceRank, getContactSoldeDisplay, isContactReferenceSearch, sortDirection, sortField]);
+  }, [filteredContacts, getContactReferenceRank, getContactTotalCumuleDisplay, isContactReferenceSearch, sortDirection, sortField]);
 
   // Fonction pour gérer le tri (solde_cumule = tri par solde cumulé côté backend)
-  const handleSort = (field: 'nom' | 'societe' | 'solde_cumule') => {
+  const handleSort = (field: 'nom' | 'societe' | 'total_cumule') => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
@@ -4559,7 +4567,7 @@ const ContactsPage: React.FC = () => {
                   <option value={30}>30</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
-                  <option value={0}>Tous</option>
+                  <option value={0}>Afficher tous</option>
                 </select>
               </div>
             </div>
@@ -4622,6 +4630,17 @@ const ContactsPage: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ICE</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RIB</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date création</th>
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('total_cumule')}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Total cumulÃ©
+                    {sortField === 'total_cumule' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
+                </th>
                 {activeTab === 'clients' && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plafond</th>
                 )}
@@ -4631,7 +4650,7 @@ const ContactsPage: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {visibleAccordionRows.length === 0 ? (
                 <tr>
-                  <td colSpan={activeTab === 'clients' ? 13 : 12} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={activeTab === 'clients' ? 14 : 13} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun {activeTab === 'clients' ? 'client' : 'fournisseur'} trouvé
                   </td>
                 </tr>
@@ -4699,6 +4718,13 @@ const ContactsPage: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                          {contact.total_cumule !== null && contact.total_cumule !== undefined
+                            ? <span className={`text-sm font-bold ${Number(contact.total_cumule) > 0 ? 'text-red-600' : Number(contact.total_cumule) < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                                {Number(contact.total_cumule).toFixed(3)} DH
+                              </span>
+                            : <span className="text-sm text-gray-400">-</span>}
                         </td>
                         {activeTab === 'clients' && (
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -4821,6 +4847,17 @@ const ContactsPage: React.FC = () => {
                           <div className="text-sm text-gray-500">-</div>
                         </td>
 
+                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                          {(() => {
+                            const totalCumule = members.reduce((sum, c) => sum + getContactTotalCumuleDisplay(c), 0);
+                            return (
+                              <div className={`text-sm font-bold ${totalCumule > 0 ? 'text-red-600' : totalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                                {totalCumule.toFixed(3)} DH
+                              </div>
+                            );
+                          })()}
+                        </td>
+
                         {activeTab === 'clients' && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-500">-</div>
@@ -4898,6 +4935,13 @@ const ContactsPage: React.FC = () => {
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
                             </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                              {contact.total_cumule !== null && contact.total_cumule !== undefined
+                                ? <span className={`text-sm font-bold ${Number(contact.total_cumule) > 0 ? 'text-red-600' : Number(contact.total_cumule) < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                                    {Number(contact.total_cumule).toFixed(3)} DH
+                                  </span>
+                                : <span className="text-sm text-gray-400">-</span>}
+                            </td>
                             {activeTab === 'clients' && (
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
@@ -4962,7 +5006,7 @@ const ContactsPage: React.FC = () => {
                 value={sortField || ''}
                 onChange={(e) => {
                   const v = e.target.value;
-                  if (v === 'nom' || v === 'societe' || v === 'solde_cumule') {
+                  if (v === 'nom' || v === 'societe' || v === 'total_cumule') {
                     handleSort(v);
                     return;
                   }
@@ -4974,7 +5018,7 @@ const ContactsPage: React.FC = () => {
                 <option value="">Par défaut</option>
                 <option value="nom">Nom</option>
                 <option value="societe">Société</option>
-                <option value="solde_cumule">Solde</option>
+                <option value="total_cumule">Total cumulé</option>
               </select>
               {sortField && (
                 <button
@@ -5306,13 +5350,15 @@ const ContactsPage: React.FC = () => {
                       <DollarSign size={16} />
                       Situation Financière
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-white rounded-lg p-3 border">
-                        <p className="font-semibold text-gray-600 text-sm">Solde Initial:</p>
-                        <p className={`font-bold text-lg ${getContactInitialSoldeForHistory(selectedContact) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                          {getContactInitialSoldeForHistory(selectedContact).toFixed(3)} DH
-                        </p>
-                      </div>
+                    <div className={`grid grid-cols-1 gap-4 ${selectedContact?.type === 'Fournisseur' ? 'md:grid-cols-1' : 'md:grid-cols-3'}`}>
+                      {selectedContact?.type !== 'Fournisseur' && (
+                        <div className="bg-white rounded-lg p-3 border">
+                          <p className="font-semibold text-gray-600 text-sm">Solde Initial:</p>
+                          <p className={`font-bold text-lg ${getContactInitialSoldeForHistory(selectedContact) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                            {getContactInitialSoldeForHistory(selectedContact).toFixed(3)} DH
+                          </p>
+                        </div>
+                      )}
                       <div className="bg-white rounded-lg p-3 border">
                         <p className="font-semibold text-gray-600 text-sm">Total des remises disponible</p>
                         {(() => {

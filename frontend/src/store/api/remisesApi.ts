@@ -72,6 +72,23 @@ export const remisesApi = api.injectEndpoints({
       query: () => '/remises/direct-contact-balances',
       providesTags: [{ type: 'Remise', id: 'LIST' }],
     }),
+
+    getContactRemiseItems: build.query<any[], number>({
+      query: (contactId) => `/remises/contact/${contactId}/items`,
+      providesTags: (_r, _e, contactId) => [{ type: 'RemiseItem', id: `CONTACT-${contactId}` }],
+    }),
+    createContactRemiseItem: build.mutation<any, { contactId: number; data: Partial<any> }>({
+      query: ({ contactId, data }) => ({ url: `/remises/contact/${contactId}/items`, method: 'POST', body: data }),
+      invalidatesTags: (_r, _e, { contactId }) => [{ type: 'RemiseItem', id: `CONTACT-${contactId}` }],
+    }),
+    updateContactRemiseItem: build.mutation<any, { id: number; data: Partial<any> }>({
+      query: ({ id, data }) => ({ url: `/remises/contact-items/${id}`, method: 'PATCH', body: data }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: 'RemiseItem', id: `CONTACT-ITEM-${id}` }],
+    }),
+    deleteContactRemiseItem: build.mutation<any, { id: number; contactId: number }>({
+      query: ({ id }) => ({ url: `/remises/contact-items/${id}`, method: 'DELETE' }),
+      invalidatesTags: (_r, _e, { contactId }) => [{ type: 'RemiseItem', id: `CONTACT-${contactId}` }],
+    }),
   }),
 });
 
@@ -90,4 +107,8 @@ export const {
   useUpdateRemiseItemMutation,
   useDeleteRemiseItemMutation,
   useGetRemiseBonsQuery,
+  useGetContactRemiseItemsQuery,
+  useCreateContactRemiseItemMutation,
+  useUpdateContactRemiseItemMutation,
+  useDeleteContactRemiseItemMutation,
 } = remisesApi;

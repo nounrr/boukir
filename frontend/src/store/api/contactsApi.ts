@@ -10,12 +10,13 @@ export interface PaginatedContactsResponse {
     totalPages: number;
   };
   grandTotalCumule?: number;
+  grandTotalSoldeInitial?: number;
   grandTotalVentes?: number;
   grandTotalPaiements?: number;
   grandTotalAvoirs?: number;
 }
 
-export type ContactsSortBy = 'nom' | 'societe' | 'solde' | 'solde_cumule' | 'created_at';
+export type ContactsSortBy = 'nom' | 'societe' | 'solde' | 'solde_cumule' | 'total_cumule' | 'created_at';
 export type SortDirection = 'asc' | 'desc';
 
 export interface ContactsSummaryResponse {
@@ -28,6 +29,8 @@ export interface ContactsSummaryResponse {
 export interface SoldeCumuleCardResponse {
   total_final: number;
   total_solde?: number;
+  total_debit?: number;
+  total_credit?: number;
   total_ventes?: number;
   total_paiements?: number;
   total_avoirs?: number;

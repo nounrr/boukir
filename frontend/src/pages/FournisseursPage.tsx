@@ -4,12 +4,16 @@ import {
   Search, Users, Phone, Mail, MapPin, Building2,
   ChevronLeft, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown,
   FileText, CreditCard, RotateCcw, Calendar, Hash, ArrowLeft,
-  Package, Printer, ShoppingCart,
+  Package, Printer, ShoppingCart, GripVertical,
 } from 'lucide-react';
-import { useGetFournisseursQuery, useGetContactHistoryQuery, useGetContactQuery } from '../store/api/contactsApi';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import type { DropResult } from '@hello-pangea/dnd';
+import { useGetFournisseursQuery, useGetContactHistoryQuery, useGetContactQuery, useGetSoldeCumuleCardFournisseurQuery } from '../store/api/contactsApi';
+import { useGetProductsQuery } from '../store/api/productsApi';
 import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
+import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100];
 
@@ -23,6 +27,17 @@ const fmtDate = (iso: string | null | undefined) => {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+const getSnapshotLabel = (item: any) => {
+  const snapshotId = item?.product_snapshot_id;
+  return snapshotId != null && snapshotId !== '' ? `SNAP-${snapshotId}` : '';
+};
+
+const getDisplayReference = (item: any) => {
+  const baseRef = item?.reference ?? item?.product_reference ?? 'â€”';
+  const snapshotLabel = getSnapshotLabel(item);
+  return snapshotLabel ? `${baseRef} / ${snapshotLabel}` : baseRef;
 };
 
 const STATUT_COLORS: Record<string, string> = {
@@ -63,24 +78,67 @@ const Empty: React.FC<{ icon: React.ReactNode; label: string }> = ({ icon, label
 interface BonTableProps {
   bons: any[];
   detail: boolean;
+  products?: any[];
   prefix: string;
   accentClass: string;
   hoverClass: string;
   itemBorderClass?: string;
 }
 
-const BonTable: React.FC<BonTableProps> = ({ bons, detail, prefix, accentClass, hoverClass, itemBorderClass = 'border-violet-200' }) => {
+type GroupedDisplayItem = {
+  item: any;
+  sourceItems: any[];
+  sourceIndices: number[];
+};
+
+const groupDisplayItems = (items: any[]): GroupedDisplayItem[] => {
+  const groups = new Map<string, GroupedDisplayItem>();
+  for (let idx = 0; idx < items.length; idx += 1) {
+    const item = items[idx];
+    const key = [
+      item?.product_id ?? item?.produit_id ?? '',
+      item?.reference ?? item?.product_reference ?? '',
+      item?.designation ?? item?.product_designation ?? '',
+      item?.variant_id ?? '',
+      item?.unit_id ?? '',
+      Number(item?.prix_unitaire ?? item?.prix_achat ?? 0),
+      Number(item?.remise_pourcentage ?? 0),
+      Number(item?.remise_montant ?? 0),
+    ].join('|');
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, {
+        item: { ...item },
+        sourceItems: [item],
+        sourceIndices: [idx],
+      });
+      continue;
+    }
+    existing.sourceItems.push(item);
+    existing.sourceIndices.push(idx);
+    existing.item.quantite = Number(existing.item.quantite ?? 0) + Number(item?.quantite ?? 0);
+    existing.item.total = Number(existing.item.total ?? 0) + Number(item?.total ?? ((Number(item?.quantite ?? 0) || 0) * (Number(item?.prix_unitaire ?? item?.prix_achat ?? 0) || 0)));
+  }
+  return Array.from(groups.values());
+};
+
+const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix, accentClass, hoverClass, itemBorderClass = 'border-violet-200' }) => {
   return (
     <table className="w-full text-sm">
       <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
         <tr>
           <th className="text-left px-4 py-3 font-semibold text-gray-600">N°</th>
           <th className="text-left px-4 py-3 font-semibold text-gray-600">Date</th>
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600">Référence</th>}
           {detail && <th className="text-left px-4 py-3 font-semibold text-gray-600">Désignation</th>}
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600">Variant</th>}
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600">Unité</th>}
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Adr. Livraison</th>}
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Code Règl.</th>}
           {detail && <th className="text-center px-3 py-3 font-semibold text-gray-600">Qté</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600">Prix unit.</th>}
-          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600">Remise</th>}
           <th className="text-right px-4 py-3 font-semibold text-gray-600">{detail ? 'Total ligne' : 'Montant'}</th>
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Bénéfice</th>}
           <th className="text-left px-4 py-3 font-semibold text-gray-600">Statut</th>
         </tr>
       </thead>
@@ -113,8 +171,9 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, prefix, accentClass, 
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
-                <td className="px-3 py-2.5 text-gray-400 text-xs italic" colSpan={4}>—</td>
+                <td className="px-3 py-2.5 text-gray-400 text-xs italic" colSpan={8}>—</td>
                 <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
+                <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
                 <td className="px-4 py-2.5">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
                 </td>
@@ -124,18 +183,22 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, prefix, accentClass, 
 
           return (
             <React.Fragment key={b.id}>
-              {items.map((item: any, iIdx: number) => {
+              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, iIdx: number) => {
                 const qte = Number(item.quantite ?? 0);
                 const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
-                const remisePct = Number(item.remise_pourcentage ?? 0);
-                const remiseMnt = Number(item.remise_montant ?? 0);
                 const total = Number(item.total ?? (qte * pu));
-                const hasRemise = remisePct > 0 || remiseMnt > 0;
+                const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
+                const variantLabel = getHistoryVariantLabel(item, products);
+                const unitLabel = getHistoryUnitLabel(item, products);
+
                 return (
-                  <tr key={`${b.id}-item-${iIdx}`} className={`bg-gray-50/60 border-l-4 ${itemBorderClass} ${hoverClass}/40 transition-colors`}>
+                  <tr key={`${b.id}-item-group-${sourceIndices.join('-')}`} className={`bg-gray-50/60 border-l-4 ${itemBorderClass} ${hoverClass}/40 transition-colors`}>
                     <td className={`px-4 py-2 font-mono text-xs font-semibold ${accentClass}`}>{bonNum}</td>
                     <td className="px-4 py-2 text-gray-500 text-xs">
                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">
+                      {item.reference ?? item.product_reference ?? <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1.5">
@@ -145,17 +208,24 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, prefix, accentClass, 
                         </span>
                       </div>
                     </td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{variantLabel}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{unitLabel}</td>
+                    <td className="px-3 py-2 text-xs text-gray-500 max-w-[120px] truncate" title={b.adresse_livraison ?? ''}>
+                      {groupIdx === 0 ? (b.adresse_livraison ?? <span className="text-gray-300">—</span>) : null}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">
+                      {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">—</span>) : null}
+                    </td>
                     <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700">{qte}</td>
                     <td className="px-3 py-2 text-right text-xs text-gray-600">{fmt(pu)}</td>
+                    <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
                     <td className="px-3 py-2 text-right text-xs">
-                      {hasRemise
-                        ? <span className="text-orange-500 font-medium">{remisePct > 0 ? `${remisePct}%` : fmt(remiseMnt)}</span>
+                      {benefice != null
+                        ? <span className={`font-semibold ${benefice > 0 ? 'text-green-600' : benefice < 0 ? 'text-red-600' : 'text-gray-400'}`}>{fmt(benefice)}</span>
                         : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
                     <td className="px-4 py-2">
-                      {iIdx === 0
-                        ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
+                      {groupIdx === 0 ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
                         : null}
                     </td>
                   </tr>
@@ -166,11 +236,18 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, prefix, accentClass, 
         })}
       </tbody>
       <tfoot className="bg-gray-50 border-t-2 border-gray-200">
-        <tr>
-          <td colSpan={detail ? 6 : 2} className="px-4 py-2.5 text-sm font-semibold text-gray-600">Total</td>
-          <td className="px-4 py-2.5 text-right font-bold text-gray-900">
+        <tr className="divide-x divide-gray-200">
+          <td colSpan={detail ? 8 : 2} className="px-4 py-2.5 text-right font-bold text-gray-600">Total</td>
+          {detail && <td className="px-3 py-2.5 text-center font-bold text-violet-700 bg-violet-50/20">
+            {bons.reduce((s, b) => s + (Array.isArray(b.items) ? b.items.reduce((is: number, i: any) => is + Number(i.quantite || 0), 0) : 0), 0)}
+          </td>}
+          {detail && <td className="bg-gray-100/10" />}
+          <td className="px-4 py-2.5 text-right font-bold text-gray-900 bg-gray-100/30">
             {fmt(bons.reduce((s: number, b: any) => s + (b.montant_total ?? 0), 0))}
           </td>
+          {detail && <td className="px-3 py-2.5 text-right font-bold text-emerald-700 bg-emerald-50/20">
+            {fmt(bons.reduce((s, b) => s + (Array.isArray(b.items) ? b.items.reduce((is: number, i: any) => is + (computeHistoryItemBenefice(i, products) ?? 0), 0) : 0), 0))}
+          </td>}
           <td />
         </tr>
       </tfoot>
@@ -206,6 +283,63 @@ function buildCompletRows(history: any): CompletRow[] {
 function safeNum(v: any): number {
   const n = Number(v);
   return isNaN(n) ? 0 : n;
+}
+
+function findHistoryProduct(item: any, products: any[]): any {
+  const pid = item?.product_id || item?.produit_id;
+  if (!pid) return null;
+  return (products || []).find((p: any) => String(p.id) === String(pid)) ?? null;
+}
+
+function getHistoryVariantLabel(item: any, products: any[]): string {
+  const product = findHistoryProduct(item, products);
+  const variantId = item?.variant_id ?? item?.variantId;
+  if (!product || !variantId) return '—';
+  const variant = ((product as any).variants || []).find((v: any) => String(v.id) === String(variantId));
+  return variant?.variant_name || '—';
+}
+
+function getHistoryUnitLabel(item: any, products: any[]): string {
+  const product = findHistoryProduct(item, products);
+  const unitId = item?.unit_id ?? item?.unitId;
+  if (!product || !unitId) return '—';
+  const unit = ((product as any).units || []).find((u: any) => String(u.id) === String(unitId));
+  return unit?.unit_name || '—';
+}
+
+function resolveHistoryItemCost(item: any, products: any[]): number {
+  if (item == null) return 0;
+  if (item.cout_revient !== undefined && item.cout_revient !== null) return Number(item.cout_revient) || 0;
+  if (item.prix_achat !== undefined && item.prix_achat !== null) return Number(item.prix_achat) || 0;
+
+  const product = findHistoryProduct(item, products);
+  if (!product) return 0;
+
+  const variantId = item?.variant_id ?? item?.variantId;
+  if (variantId) {
+    const variant = ((product as any).variants || []).find((v: any) => String(v.id) === String(variantId));
+    if (variant) {
+      if (variant.cout_revient !== undefined && variant.cout_revient !== null) return Number(variant.cout_revient) || 0;
+      if (variant.prix_achat !== undefined && variant.prix_achat !== null) return Number(variant.prix_achat) || 0;
+    }
+  }
+
+  if (product.cout_revient !== undefined && product.cout_revient !== null) return Number(product.cout_revient) || 0;
+  if (product.prix_achat !== undefined && product.prix_achat !== null) return Number(product.prix_achat) || 0;
+  return 0;
+}
+
+function computeHistoryItemBenefice(item: any, products: any[]): number | null {
+  if (!item) return null;
+  const qte = Number(item.quantite ?? 0) || 0;
+  const prixUnit = Number(item.prix_unitaire ?? item.prix_achat ?? item.prix ?? 0) || 0;
+  const cost = resolveHistoryItemCost(item, products);
+  const mouvement = (prixUnit - cost) * qte;
+  const remisePourcentage = parseFloat(String(item.remise_pourcentage ?? item.remise_pct ?? 0)) || 0;
+  const remiseMontant = parseFloat(String(item.remise_montant ?? item.remise_valeur ?? 0)) || 0;
+  const remiseUnitaire = remiseMontant > 0 ? remiseMontant : (remisePourcentage > 0 ? (prixUnit * remisePourcentage) / 100 : 0);
+  const remiseTotale = remiseUnitaire * qte;
+  return Number((mouvement - remiseTotale).toFixed(3));
 }
 
 function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string, number> {
@@ -258,6 +392,46 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
   return result;
 }
 
+// Même logique que ContactsPage (historique détail produits):
+// solde remise cumulé = somme des (remise_abonne + remise_client + remise_montant*quantite) au fil des items
+function buildRemiseCumuleDetail(rows: CompletRow[]): Map<string, number> {
+  const result = new Map<string, number>();
+  let running = 0;
+
+  const getBonDirectRemiseTotal = (item: any): number => {
+    if (!item) return 0;
+    const remiseMontant = Number(item.remise_montant ?? 0) || 0;
+    if (remiseMontant <= 0) return 0;
+    const quantite = Number(item.quantite ?? 0) || 0;
+    const total = quantite > 0 ? remiseMontant * quantite : remiseMontant;
+    return Number(total.toFixed(3));
+  };
+
+  for (const row of rows) {
+    if (row.kind === 'paiement') {
+      result.set(`paiement-${row.data.id}`, running);
+      continue;
+    }
+
+    const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
+    if (items.length === 0) {
+      result.set(`${row.kind}-${row.data.id}-item-0`, running);
+      continue;
+    }
+
+    items.forEach((item: any, iIdx: number) => {
+      const remiseAbonne = safeNum(item.remise_abonne ?? 0);
+      const remiseClient = safeNum(item.remise_client ?? 0);
+      const remiseFromBon = getBonDirectRemiseTotal(item);
+      const totalRowRemise = remiseAbonne + remiseClient + remiseFromBon;
+      if (totalRowRemise > 0) running += totalRowRemise;
+      result.set(`${row.kind}-${row.data.id}-item-${iIdx}`, Number(running.toFixed(3)));
+    });
+  }
+
+  return result;
+}
+
 function computeFinalSoldeCumule(history: any, soldeInitial: number): number {
   const rows = buildCompletRows(history);
   if (rows.length === 0) return soldeInitial;
@@ -277,10 +451,15 @@ interface CompletTableProps {
   rows: CompletRow[];
   detail: boolean;
   soldeInitial: number;
+  products?: any[];
   visibleIds?: Set<string>;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   onToggleAll?: (ids: string[]) => void;
+  selectedItemIds?: Set<string>;
+  onToggleItem?: (key: string) => void;
+  onToggleAllItems?: (keys: string[]) => void;
+  onCompletDragEnd?: (result: DropResult) => void;
 }
 
 const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string }> = {
@@ -288,11 +467,15 @@ const BON_META: Record<string, { label: string; badgeClass: string; accentClass:
   avoirFournisseur: { label: 'Avoir Fourn.',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-orange-700', hoverClass: 'hover:bg-orange-50', itemBorderClass: 'border-orange-200', prefix: 'AVF' },
 };
 
-const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, visibleIds, selectedIds, onToggleSelect, onToggleAll }) => {
+const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], visibleIds, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd }) => {
   const selectionMode = !!onToggleSelect;
   const soldeCumuleMap = useMemo(
     () => detail ? buildSoldeCumuleDetail(rows, soldeInitial) : buildSoldeCumule(rows, soldeInitial),
     [rows, soldeInitial, detail]
+  );
+  const remiseCumuleMap = useMemo(
+    () => detail ? buildRemiseCumuleDetail(rows) : new Map<string, number>(),
+    [rows, detail]
   );
 
   const visibleRowIds = useMemo(() => {
@@ -301,52 +484,102 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
       .map(r => `${r.kind}-${r.data.id}`);
   }, [rows, visibleIds]);
 
+  const visibleItemKeys = useMemo(() => {
+    if (!detail) return [];
+    const keys: string[] = [];
+    for (const row of rows) {
+      if (!visibleIds || visibleIds.has(`${row.kind}-${row.data.id}`)) {
+        if (row.kind === 'paiement') continue;
+        const bonKey = `${row.kind}-${row.data.id}`;
+        const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
+        if (items.length === 0) keys.push(`${bonKey}-item-0`);
+        else items.forEach((_, iIdx) => keys.push(`${bonKey}-item-${iIdx}`));
+      }
+    }
+    return keys;
+  }, [rows, visibleIds, detail]);
+
   const allVisibleSelected = selectionMode && visibleRowIds.length > 0 && visibleRowIds.every(id => selectedIds?.has(id));
+  const allItemsSelected = detail && !!onToggleAllItems && visibleItemKeys.length > 0 && visibleItemKeys.every(k => selectedItemIds?.has(k));
 
   const fmtSolde = (v: number) => {
     const color = v < 0 ? 'text-green-600' : v > 0 ? 'text-red-600' : 'text-gray-500';
     return <span className={`font-bold text-xs ${color}`}>{fmt(v)}</span>;
   };
 
+  const fmtRemise = (v: number) =>
+    `${(Number.isFinite(v) ? v : 0).toFixed(3)} MAD`;
+
   return (
     <table className="w-full text-sm">
       <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
         <tr>
           {selectionMode && (
-            <th className="px-3 py-3 w-8">
-              <input type="checkbox" checked={allVisibleSelected} onChange={() => onToggleAll?.(visibleRowIds)}
-                className="w-4 h-4 rounded border-gray-300 text-violet-600 cursor-pointer" />
+            <th className="px-2 py-3 w-8 text-center" title="Sélectionner bon complet">
+              <div className="flex flex-col items-center gap-0.5">
+                <FileText className="w-3.5 h-3.5 text-gray-400" />
+                <input type="checkbox" checked={allVisibleSelected} onChange={() => onToggleAll?.(visibleRowIds)}
+                  className="w-3.5 h-3.5 rounded border-gray-300 text-violet-600 cursor-pointer" />
+              </div>
+            </th>
+          )}
+          {selectionMode && detail && (
+            <th className="px-2 py-3 w-8 text-center" title="Sélectionner ligne individuelle">
+              <div className="flex flex-col items-center gap-0.5">
+                <Package className="w-3.5 h-3.5 text-gray-400" />
+                <input type="checkbox" checked={allItemsSelected} onChange={() => onToggleAllItems?.(visibleItemKeys)}
+                  className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 cursor-pointer" />
+              </div>
             </th>
           )}
           <th className="text-left px-4 py-3 font-semibold text-gray-600">Type</th>
           <th className="text-left px-4 py-3 font-semibold text-gray-600">N°</th>
           <th className="text-left px-4 py-3 font-semibold text-gray-600">Date</th>
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600">Référence</th>}
           {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600">Désignation</th>}
-          {detail && <th className="text-center px-3 py-3 font-semibold text-gray-600">Qté</th>}
-          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600">Prix unit.</th>}
-          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600">Remise</th>}
-          <th className="text-left px-4 py-3 font-semibold text-gray-600">RIB / Réf</th>
-          <th className="text-right px-4 py-3 font-semibold text-gray-600">{detail ? 'Total ligne' : 'Montant'}</th>
-          <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200">Solde cumulé</th>
-          <th className="text-left px-4 py-3 font-semibold text-gray-600">Statut / Mode</th>
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600">Variant</th>}
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600">Unité</th>}
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Adr. Livraison</th>}
+          {detail && <th className="text-left px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Code Règl.</th>}
+          {detail && <th className="text-center px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Qté</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Prix unit.</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise Abonné</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise Client</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise cumulée</th>}
+          <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">RIB / Réf</th>
+          <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">{detail ? 'Total ligne' : 'Montant'}</th>
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Bénéfice</th>}
+          <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 whitespace-nowrap">Solde cumulé</th>
+          <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Statut / Mode</th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-gray-100">
+      <DragDropContext onDragEnd={onCompletDragEnd ?? (() => undefined)}>
+      <Droppable droppableId="fournisseur-complet-history">
+        {(dropProvided) => (
+      <tbody
+        className="divide-y divide-gray-100"
+        ref={dropProvided.innerRef}
+        {...dropProvided.droppableProps}
+      >
         <tr className="bg-yellow-50 border-l-4 border-yellow-400">
           {selectionMode && <td />}
+          {selectionMode && detail && <td />}
           <td className="px-4 py-2.5">
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-yellow-100 text-yellow-700">Solde initial</span>
           </td>
           <td className="px-4 py-2.5 text-yellow-700 font-mono text-xs font-medium">—</td>
           <td className="px-4 py-2.5 text-gray-400 text-xs">—</td>
-          {detail && <><td /><td /><td /><td /></>}
+          {detail && <><td /><td /><td /><td /><td /><td /><td /><td /><td /><td /><td /></>}
           <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>
           <td className="px-4 py-2.5 text-right font-bold text-yellow-700">{fmt(soldeInitial)}</td>
+          {detail && <td />}
           <td className="px-4 py-2.5 text-right bg-yellow-100 border-l border-yellow-200">{fmtSolde(soldeInitial)}</td>
           <td className="px-4 py-2.5 text-xs text-gray-400">Solde de départ</td>
         </tr>
 
-        {rows.map((row, idx) => {
+        {(() => {
+          let dragIndex = 0;
+          return rows.map((row, idx) => {
           const rowId = `${row.kind}-${row.data.id}`;
           if (visibleIds && !visibleIds.has(rowId)) return null;
           const isSelected = selectedIds?.has(rowId) ?? false;
@@ -355,16 +588,34 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           if (row.kind === 'paiement') {
             const p = row.data;
             const rib = p.code_reglement || p.reference_virement || p.reference || null;
+            const rowIndex = dragIndex++;
             return (
-              <tr key={`pay-${p.id}-${idx}`} className={`hover:bg-green-50 transition-colors ${rowBg}`}>
+              <Draggable
+                key={`pay-${p.id}-${idx}`}
+                draggableId={`paiement-${p.id}`}
+                index={rowIndex}
+                isDragDisabled={!onCompletDragEnd}
+              >
+                {(dragProvided, snapshot) => (
+              <tr
+                ref={dragProvided.innerRef}
+                {...dragProvided.draggableProps}
+                className={`transition-colors ${snapshot.isDragging ? 'shadow-lg bg-violet-50' : `hover:bg-green-50 ${rowBg}`}`}
+              >
                 {selectionMode && (
-                  <td className="px-3 py-2.5">
+                  <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
-                      className="w-4 h-4 rounded border-gray-300 text-violet-600 cursor-pointer" />
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-violet-600 cursor-pointer" />
                   </td>
                 )}
+                {selectionMode && detail && <td />}
                 <td className="px-4 py-2.5">
-                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-700">Paiement</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span {...dragProvided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                      <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500" />
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-700">Paiement</span>
+                  </span>
                 </td>
                 <td className="px-4 py-2.5 font-mono text-green-700 font-medium text-xs">
                   {p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}
@@ -373,7 +624,22 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(p.date_paiement)}</span>
                   {p.date_echeance && <span className="text-gray-400 ml-4 block">Éch: {fmtDate(p.date_echeance)}</span>}
                 </td>
-                {detail && <td colSpan={4} />}
+                {/* detail: Référence(1) Désignation(2) Adr.Livraison(3) Code Règl.(4) Qté(5) Prix(6) */}
+                {detail && (
+                  <>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-600">{p.mode_paiement ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                    <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
+                  </>
+                )}
                 <td className="px-4 py-2.5 text-xs">
                   {rib ? <span className="flex items-center gap-1 font-mono text-gray-700"><Hash className="w-3 h-3 text-gray-400" />{rib}</span>
                        : <span className="text-gray-300">—</span>}
@@ -381,6 +647,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-4 py-2.5 text-right font-semibold text-green-700">
                   {fmt(Number(p.montant_total ?? p.montant ?? 0))}
                 </td>
+                {detail && <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>}
                 <td className="px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
                   {fmtSolde(soldeCumuleMap.get(`paiement-${p.id}`) ?? 0)}
                 </td>
@@ -388,6 +655,8 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '—'}</span>
                 </td>
               </tr>
+                )}
+              </Draggable>
             );
           }
 
@@ -398,12 +667,15 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           const bonNum = b.numero ?? `${meta.prefix}${String(b.id).padStart(2, '0')}`;
 
           if (!detail) {
+            const rowIndex = dragIndex++;
             return (
-              <tr key={`${bonKey}-${idx}`} className={`${meta.hoverClass} transition-colors ${rowBg}`}>
+              <Draggable key={`${bonKey}-${idx}`} draggableId={`${bonKey}-row`} index={rowIndex} isDragDisabled>
+                {(dragProvided) => (
+              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${rowBg}`}>
                 {selectionMode && (
-                  <td className="px-3 py-2.5">
+                  <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
-                      className="w-4 h-4 rounded border-gray-300 text-violet-600 cursor-pointer" />
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-violet-600 cursor-pointer" />
                   </td>
                 )}
                 <td className="px-4 py-2.5">
@@ -422,16 +694,29 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
                 </td>
               </tr>
+                )}
+              </Draggable>
             );
           }
 
           if (items.length === 0) {
+            const itemKey0 = `${bonKey}-item-0`;
+            const itemSelected0 = selectedItemIds?.has(itemKey0) ?? false;
+            const rowIndex = dragIndex++;
             return (
-              <tr key={`${bonKey}-${idx}`} className={`${meta.hoverClass} transition-colors ${rowBg}`}>
+              <Draggable key={`${bonKey}-${idx}`} draggableId={`${itemKey0}-empty`} index={rowIndex} isDragDisabled>
+                {(dragProvided) => (
+              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${isSelected ? '!bg-violet-50' : itemSelected0 ? '!bg-purple-50' : ''}`}>
                 {selectionMode && (
-                  <td className="px-3 py-2.5">
+                  <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
-                      className="w-4 h-4 rounded border-gray-300 text-violet-600 cursor-pointer" />
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-violet-600 cursor-pointer" />
+                  </td>
+                )}
+                {selectionMode && (
+                  <td className="px-2 py-2.5 text-center">
+                    <input type="checkbox" checked={itemSelected0} onChange={() => onToggleItem?.(itemKey0)}
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 cursor-pointer" />
                   </td>
                 )}
                 <td className="px-4 py-2.5">
@@ -441,37 +726,54 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
-                <td className="px-3 py-2.5 text-gray-400 text-xs italic" colSpan={4}>—</td>
+                <td className="px-3 py-2.5 text-gray-400 text-xs italic" colSpan={9}>—</td>
                 <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>
                 <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
+                <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>
                 <td className="px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
-                  {fmtSolde(soldeCumuleMap.get(`${bonKey}-item-0`) ?? 0)}
+                  {fmtSolde(soldeCumuleMap.get(itemKey0) ?? 0)}
                 </td>
                 <td className="px-4 py-2.5">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
                 </td>
               </tr>
+                )}
+              </Draggable>
             );
           }
 
           return (
             <React.Fragment key={`${bonKey}-${idx}`}>
-              {items.map((item: any, iIdx: number) => {
+              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx) => {
                 const qte = Number(item.quantite ?? 0);
                 const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
-                const remisePct = Number(item.remise_pourcentage ?? 0);
-                const remiseMnt = Number(item.remise_montant ?? 0);
                 const total = Number(item.total ?? (qte * pu));
-                const hasRemise = remisePct > 0 || remiseMnt > 0;
-                const itemSoldeKey = `${bonKey}-item-${iIdx}`;
+                const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
+                const variantLabel = getHistoryVariantLabel(item, products);
+                const unitLabel = getHistoryUnitLabel(item, products);
+                const sourceKeys = sourceIndices.map((sourceIdx) => `${bonKey}-item-${sourceIdx}`);
+                const lastItemSoldeKey = sourceKeys[sourceKeys.length - 1];
+                const itemSelected = sourceKeys.every((key) => selectedItemIds?.has(key));
+                    const remiseAbonne = sourceItems.reduce((sum, src) => sum + Number(src.remise_abonne ?? 0), 0);
+                    const remiseClient = sourceItems.reduce((sum, src) => sum + Number(src.remise_client ?? 0), 0);
+                    const soldeRemise = remiseCumuleMap.get(lastItemSoldeKey);
+                const rowIndex = dragIndex++;
                 return (
-                  <tr key={`${bonKey}-item-${iIdx}`} className={`bg-gray-50/60 border-l-4 ${meta.itemBorderClass} transition-colors ${meta.hoverClass}/40 ${isSelected ? '!bg-violet-50/60' : ''}`}>
+                  <Draggable key={lastItemSoldeKey} draggableId={lastItemSoldeKey} index={rowIndex} isDragDisabled>
+                    {(dragProvided) => (
+                  <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`bg-gray-50/60 border-l-4 ${meta.itemBorderClass} transition-colors ${isSelected ? '!bg-violet-50/60' : itemSelected ? '!bg-purple-50/60' : ''}`}>
                     {selectionMode && (
-                      <td className="px-3 py-2">
-                        {iIdx === 0 && (
+                      <td className="px-2 py-2 text-center">
+                        {groupIdx === 0 && (
                           <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
-                            className="w-4 h-4 rounded border-gray-300 text-violet-600 cursor-pointer" />
+                            className="w-3.5 h-3.5 rounded border-gray-300 text-violet-600 cursor-pointer" />
                         )}
+                      </td>
+                    )}
+                    {selectionMode && (
+                      <td className="px-2 py-2 text-center">
+                        <input type="checkbox" checked={itemSelected} onChange={() => sourceKeys.forEach((key) => onToggleItem?.(key))}
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 cursor-pointer" />
                       </td>
                     )}
                     <td className="px-4 py-2">
@@ -481,6 +783,9 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <td className="px-4 py-2 text-gray-500 text-xs">
                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                     </td>
+                    <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">
+                      {item.reference ?? item.product_reference ?? <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1.5">
                         <Package className="w-3 h-3 text-gray-400 flex-shrink-0" />
@@ -489,30 +794,93 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                         </span>
                       </div>
                     </td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{variantLabel}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{unitLabel}</td>
+                    <td className="px-3 py-2 text-xs text-gray-500 max-w-[120px] truncate" title={b.adresse_livraison ?? ''}>
+                      {groupIdx === 0 ? (b.adresse_livraison ?? <span className="text-gray-300">—</span>) : null}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">
+                      {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">—</span>) : null}
+                    </td>
                     <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700">{qte}</td>
                     <td className="px-3 py-2 text-right text-xs text-gray-600">{fmt(pu)}</td>
                     <td className="px-3 py-2 text-right text-xs">
-                      {hasRemise
-                        ? <span className="text-orange-500 font-medium">{remisePct > 0 ? `${remisePct}%` : fmt(remiseMnt)}</span>
-                        : <span className="text-gray-300">—</span>}
+                      {remiseAbonne > 0 ? <span className="text-blue-600 font-medium">{fmtRemise(remiseAbonne)}</span> : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs">
+                      {remiseClient > 0 ? <span className="text-purple-600 font-medium">{fmtRemise(remiseClient)}</span> : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs font-medium text-blue-600">
+                      {typeof soldeRemise === 'number' ? fmtRemise(soldeRemise) : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-4 py-2 text-gray-300 text-xs">—</td>
                     <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
+                    <td className="px-3 py-2 text-right text-xs">
+                      {benefice != null
+                        ? <span className={`font-semibold ${benefice > 0 ? 'text-green-600' : benefice < 0 ? 'text-red-600' : 'text-gray-400'}`}>{fmt(benefice)}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-4 py-2 text-right bg-yellow-50/70 border-l border-yellow-100">
-                      {fmtSolde(soldeCumuleMap.get(itemSoldeKey) ?? 0)}
+                      {fmtSolde(soldeCumuleMap.get(lastItemSoldeKey) ?? 0)}
                     </td>
                     <td className="px-4 py-2">
-                      {iIdx === 0
-                        ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
+                      {groupIdx === 0 ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
                         : null}
                     </td>
                   </tr>
+                    )}
+                  </Draggable>
                 );
               })}
             </React.Fragment>
           );
-        })}
+          });
+        })()}
+        {dropProvided.placeholder}
       </tbody>
+        )}
+      </Droppable>
+      </DragDropContext>
+      <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+        <tr className="divide-x divide-gray-200">
+          <td colSpan={selectionMode ? (detail ? 5 : 4) : (detail ? 3 : 2)} className="px-4 py-3 text-right font-bold text-gray-600 bg-gray-100/50">TOTAUX</td>
+          {detail && <td className="bg-gray-100/20" />}
+          {detail && <td className="bg-gray-100/20" />}
+          {detail && <td className="bg-gray-100/20" />}
+          {detail && <td className="bg-gray-100/20" />}
+          {detail && <td className="bg-gray-100/20" />}
+          {detail && <td className="bg-gray-100/20" />}
+          {!detail && <td className="bg-gray-100/20" />}
+          {detail && (
+            <td className="px-3 py-3 text-center font-bold text-violet-700 bg-violet-50/30">
+              {rows.reduce((s, row) => {
+                if (row.kind === 'paiement') return s;
+                const items = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
+                return s + items.reduce((is, i) => is + safeNum(i.quantite), 0);
+              }, 0)}
+            </td>
+          )}
+          {detail && <td className="bg-gray-100/20" />}
+          {detail && <td className="bg-gray-100/20" />}
+          {detail && (
+            <td className="bg-gray-100/20" />
+          )}
+          <td className="px-4 py-3 text-right font-bold text-gray-900 bg-gray-100/50">
+            {fmt(rows.reduce((s, row) => s + safeNum(row.data.montant_total ?? 0), 0))}
+          </td>
+          {detail && (
+            <td className="px-3 py-3 text-right font-bold text-emerald-700 bg-emerald-50/30">
+              {fmt(rows.reduce((s, row) => {
+                if (row.kind === 'paiement') return s;
+                const items = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
+                return s + items.reduce((is, i) => is + (computeHistoryItemBenefice(i, products) ?? 0), 0);
+              }, 0))}
+            </td>
+          )}
+          <td className="bg-gray-100/50" />
+          <td className="bg-gray-100/50" />
+        </tr>
+      </tfoot>
     </table>
   );
 };
@@ -530,9 +898,143 @@ const FournisseurDetailPage: React.FC = () => {
   const [detail, setDetail] = useState(true);
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
+  const { data: products = [] } = useGetProductsQuery();
   const { data: contact, isLoading: loadingContact } = useGetContactQuery(fournisseurId);
   const { data: history, isLoading: loadingHistory } = useGetContactHistoryQuery({ id: fournisseurId, limit: 30000 });
   const isLoading = loadingContact || loadingHistory;
+
+  const [reorderPayments] = useReorderPaymentsMutation();
+
+  const toMySQLDateTime = (date: Date): string => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  };
+
+  const handlePayDragEnd = async (result: DropResult) => {
+    if (!result.destination || result.destination.index === result.source.index) return;
+    const items = [...paiements];
+    const [moved] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, moved);
+
+    const prev = items[result.destination.index - 1];
+    const next = items[result.destination.index + 1];
+    const prevTs = prev ? new Date(prev.date_paiement || prev.created_at).getTime() : null;
+    const nextTs = next ? new Date(next.date_paiement || next.created_at).getTime() : null;
+
+    let newDate: string;
+    if (prevTs && nextTs) {
+      newDate = toMySQLDateTime(new Date((prevTs + nextTs) / 2));
+    } else if (prevTs) {
+      newDate = toMySQLDateTime(new Date(prevTs + 60000));
+    } else if (nextTs) {
+      newDate = toMySQLDateTime(new Date(nextTs - 60000));
+    } else {
+      return;
+    }
+
+    const paymentId = typeof moved.id === 'string' ? parseInt(String(moved.id).replace(/\D/g, '')) : moved.id;
+    try {
+      await reorderPayments({ contactId: fournisseurId, paymentOrders: [{ id: paymentId, newDate }] }).unwrap();
+    } catch (e) {
+      console.error('Erreur reorder paiement', e);
+    }
+  };
+
+  const getCompletDragItems = () => {
+    const items: any[] = [];
+    for (const row of completRows) {
+      const rowId = `${row.kind}-${row.data.id}`;
+      if (visibleIds && !visibleIds.has(rowId)) continue;
+
+      if (row.kind === 'paiement') {
+        items.push({
+          id: `paiement-${row.data.id}`,
+          paymentId: row.data.id,
+          type: 'paiement',
+          bon_id: null,
+          bon_date_iso: row.data.date_paiement || row.data.created_at,
+        });
+        continue;
+      }
+
+      const bonId = row.data.id;
+      const bonDate = row.data.date_creation;
+      const rowItems: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
+      if (!detail || rowItems.length === 0) {
+        items.push({
+          id: `${row.kind}-${bonId}-row`,
+          type: 'produit',
+          bon_id: bonId,
+          bon_date_iso: bonDate,
+        });
+        continue;
+      }
+
+      rowItems.forEach((item: any, iIdx: number) => {
+        items.push({
+          id: `${row.kind}-${bonId}-item-${iIdx}`,
+          type: 'produit',
+          bon_id: bonId,
+          bon_date_iso: bonDate,
+          item_id: item.id,
+        });
+      });
+    }
+    return items;
+  };
+
+  const handleCompletDragEnd = async (result: DropResult) => {
+    if (!result.destination || result.source.index === result.destination.index) return;
+
+    const items = getCompletDragItems();
+    const movedItem = items[result.source.index];
+    if (!movedItem || movedItem.type !== 'paiement') return;
+
+    const targetIndex = result.destination.index;
+    let targetItem = items[targetIndex];
+
+    if (targetItem && targetItem.type === 'produit' && targetItem.bon_id) {
+      const bonId = targetItem.bon_id;
+      let lastIndexOfBon = targetIndex;
+      for (let i = targetIndex + 1; i < items.length; i++) {
+        if (items[i].bon_id === bonId && items[i].type === 'produit') lastIndexOfBon = i;
+        else break;
+      }
+      targetItem = items[lastIndexOfBon];
+    }
+
+    let nextItem = null;
+    for (let i = targetIndex + 1; i < items.length; i++) {
+      if (items[i].bon_id !== targetItem?.bon_id) {
+        nextItem = items[i];
+        break;
+      }
+    }
+
+    const targetDateStr = targetItem?.bon_date_iso || targetItem?.bon_date;
+    let newDate: string;
+    if (targetDateStr) {
+      const targetDate = new Date(targetDateStr);
+      if (nextItem && (nextItem.bon_date_iso || nextItem.bon_date)) {
+        const nextDate = new Date(nextItem.bon_date_iso || nextItem.bon_date);
+        newDate = toMySQLDateTime(new Date((targetDate.getTime() + nextDate.getTime()) / 2));
+      } else {
+        newDate = toMySQLDateTime(new Date(targetDate.getTime() + 60000));
+      }
+    } else if (nextItem && (nextItem.bon_date_iso || nextItem.bon_date)) {
+      const nextDate = new Date(nextItem.bon_date_iso || nextItem.bon_date);
+      newDate = toMySQLDateTime(new Date(nextDate.getTime() - 60000));
+    } else {
+      newDate = toMySQLDateTime(new Date());
+    }
+
+    const paymentId = typeof movedItem.paymentId === 'string' ? parseInt(String(movedItem.paymentId).replace(/\D/g, '')) : movedItem.paymentId;
+    try {
+      await reorderPayments({ contactId: fournisseurId, paymentOrders: [{ id: paymentId, newDate }] }).unwrap();
+    } catch (e) {
+      console.error('Erreur reorder paiement complet', e);
+    }
+  };
 
   const inDateRange = (dateStr: string | undefined | null): boolean => {
     if (!filterFrom && !filterTo) return true;
@@ -581,6 +1083,7 @@ const FournisseurDetailPage: React.FC = () => {
   const completRows = useMemo(() => buildCompletRows(history), [history]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -600,10 +1103,29 @@ const FournisseurDetailPage: React.FC = () => {
     });
   };
 
+  const toggleItem = (key: string) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const toggleAllItems = (keys: string[]) => {
+    const allSelected = keys.every(k => selectedItemIds.has(k));
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) keys.forEach(k => next.delete(k));
+      else keys.forEach(k => next.add(k));
+      return next;
+    });
+  };
+
   const visibleIds = useMemo<Set<string> | undefined>(() => {
     if (!filterFrom && !filterTo) return undefined;
     const s = new Set<string>();
     for (const row of completRows) {
+      const rowKey = `${row.kind}-${row.data.id}`;
       const dateStr = row.kind === 'paiement'
         ? (row.data.date_paiement || row.data.created_at)
         : row.data.date_creation;
@@ -639,14 +1161,22 @@ const FournisseurDetailPage: React.FC = () => {
     const allRows = buildCompletRows(history);
     const soldeCumuleMap = buildSoldeCumuleDetail(allRows, contact.solde ?? 0);
     const rows = allRows.filter(row => {
+      const rowKey = `${row.kind}-${row.data.id}`;
       const dateStr = row.kind === 'paiement'
         ? (row.data.date_paiement || row.data.created_at)
         : row.data.date_creation;
       if (filterFrom || filterTo) {
         if (!inDateRange(dateStr)) return false;
       }
+      if (selectedItemIds.size > 0) {
+        if (row.kind === 'paiement') {
+          return selectedIds.has(rowKey);
+        }
+        const itemPrefix = `${rowKey}-item-`;
+        return Array.from(selectedItemIds).some((itemId) => itemId.startsWith(itemPrefix));
+      }
       if (selectedIds.size > 0) {
-        if (!selectedIds.has(`${row.kind}-${row.data.id}`)) return false;
+        if (!selectedIds.has(rowKey)) return false;
       }
       return true;
     });
@@ -698,11 +1228,13 @@ const FournisseurDetailPage: React.FC = () => {
       }
 
       items.forEach((item: any, iIdx: number) => {
+        const itemKey = `${bonKey}-item-${iIdx}`;
+        if (selectedItemIds.size > 0 && !selectedItemIds.has(itemKey)) return;
         const qte = Number(item.quantite ?? 0);
         const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
         const total = Number(item.total ?? (qte * pu));
         result.push({
-          id: `${bonKey}-item-${iIdx}`,
+          id: itemKey,
           bon_numero: bonNum,
           bon_date: dateIso,
           bon_date_iso: dateIso,
@@ -712,34 +1244,41 @@ const FournisseurDetailPage: React.FC = () => {
           prix_unitaire: pu,
           total,
           bon_statut: data.statut ?? '',
-          soldeCumulatif: soldeCumuleMap.get(`${kind}-${data.id}-item-${iIdx}`) ?? 0,
+          soldeCumulatif: soldeCumuleMap.get(itemKey) ?? 0,
           type: typeLabel,
         });
       });
     });
 
     return result;
-  }, [history, contact, filterFrom, filterTo, selectedIds]);
+  }, [history, contact, filterFrom, filterTo, selectedIds, selectedItemIds]);
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
-    const allCommandes = (history.commandes ?? []).filter((b: any) => !EXCLUDED.has(b.statut ?? ''));
-    const allAvoirs = (history.avoirsFournisseur ?? []).filter((b: any) => !EXCLUDED.has(b.statut ?? ''));
-    const allPaiements = (history.payments ?? []).filter((p: any) => !EXCLUDED.has(p.statut ?? ''));
-    const totalAchats = allCommandes.reduce((s: number, b: any) => s + Number(b.montant_total ?? 0), 0);
-    const totalPaiements = allPaiements.reduce((s: number, p: any) => s + Number(p.montant_total ?? p.montant ?? 0), 0);
-    const totalAvoirs = allAvoirs.reduce((s: number, b: any) => s + Number(b.montant_total ?? 0), 0);
+    const hasScopedPrint = !!filterFrom || !!filterTo || selectedIds.size > 0 || selectedItemIds.size > 0;
     const totalQty = printProductHistory
       .filter((r: any) => r.type === 'produit' && Number(r.quantite) > 0)
       .reduce((s: number, r: any) => s + Number(r.quantite ?? 0), 0);
+    const totalAchats = printProductHistory
+      .filter((r: any) => r.type === 'produit')
+      .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
+    const totalPaiements = printProductHistory
+      .filter((r: any) => r.type === 'paiement')
+      .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
+    const totalAvoirs = printProductHistory
+      .filter((r: any) => r.type === 'avoir')
+      .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
+    const finalSolde = hasScopedPrint
+      ? Number(printProductHistory[printProductHistory.length - 1]?.soldeCumulatif ?? 0)
+      : computeFinalSoldeCumule(history, contact.solde ?? 0);
     return {
       totalQty,
       totalAmount: totalAchats,
-      finalSolde: computeFinalSoldeCumule(history, contact.solde ?? 0),
-      totalDebit: totalAchats + Math.abs(contact.solde ?? 0),
+      finalSolde,
+      totalDebit: totalAchats,
       totalCredit: totalPaiements + totalAvoirs,
     };
-  }, [history, contact, printProductHistory]);
+  }, [history, contact, filterFrom, filterTo, printProductHistory, selectedIds, selectedItemIds]);
 
   if (isLoading) {
     return (
@@ -784,11 +1323,15 @@ const FournisseurDetailPage: React.FC = () => {
           className="flex items-center gap-2 px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
         >
           <Printer className="w-4 h-4" />
-          {selectedIds.size > 0 ? `Imprimer sélection (${selectedIds.size})` : 'Imprimer'}
+          {selectedItemIds.size > 0
+            ? `Imprimer lignes (${selectedItemIds.size})`
+            : selectedIds.size > 0
+              ? `Imprimer bons (${selectedIds.size})`
+              : 'Imprimer'}
         </button>
-        {selectedIds.size > 0 && (
+        {(selectedIds.size > 0 || selectedItemIds.size > 0) && (
           <button
-            onClick={() => setSelectedIds(new Set())}
+            onClick={() => { setSelectedIds(new Set()); setSelectedItemIds(new Set()); }}
             className="text-xs text-gray-400 hover:text-red-500 transition-colors px-1"
             title="Effacer la sélection"
           >✕</button>
@@ -866,10 +1409,15 @@ const FournisseurDetailPage: React.FC = () => {
                   rows={completRows}
                   detail={detail}
                   soldeInitial={contact?.solde ?? 0}
+                  products={products}
                   visibleIds={visibleIds}
                   selectedIds={selectedIds}
                   onToggleSelect={toggleSelect}
                   onToggleAll={toggleAll}
+                  selectedItemIds={selectedItemIds}
+                  onToggleItem={toggleItem}
+                  onToggleAllItems={toggleAllItems}
+                  onCompletDragEnd={handleCompletDragEnd}
                 />
           )}
 
@@ -877,14 +1425,14 @@ const FournisseurDetailPage: React.FC = () => {
           {tab === 'commandes' && (
             commandes.length === 0
               ? <Empty icon={<ShoppingCart />} label="Aucun bon commande" />
-              : <BonTable bons={commandes} detail={detail} prefix="CMD" accentClass="text-violet-700" hoverClass="hover:bg-violet-50" itemBorderClass="border-violet-200" />
+              : <BonTable bons={commandes} detail={detail} products={products} prefix="CMD" accentClass="text-violet-700" hoverClass="hover:bg-violet-50" itemBorderClass="border-violet-200" />
           )}
 
           {/* ── Avoirs Fournisseur ── */}
           {tab === 'avoirs' && (
             avoirs.length === 0
               ? <Empty icon={<RotateCcw />} label="Aucun avoir fournisseur" />
-              : <BonTable bons={avoirs} detail={detail} prefix="AVF" accentClass="text-orange-700" hoverClass="hover:bg-orange-50" itemBorderClass="border-orange-200" />
+              : <BonTable bons={avoirs} detail={detail} products={products} prefix="AVF" accentClass="text-orange-700" hoverClass="hover:bg-orange-50" itemBorderClass="border-orange-200" />
           )}
 
           {/* ── Paiements ── */}
@@ -892,9 +1440,11 @@ const FournisseurDetailPage: React.FC = () => {
             paiements.length === 0
               ? <Empty icon={<CreditCard />} label="Aucun paiement" />
               : (
+                <DragDropContext onDragEnd={handlePayDragEnd}>
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <th className="w-6 px-2 py-3" />
                       <th className="text-left px-4 py-3 font-semibold text-gray-600">N°</th>
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-violet-600" onClick={() => togglePaySort('date')}>
                         Date <PaySortIcon col="date" />
@@ -908,35 +1458,56 @@ const FournisseurDetailPage: React.FC = () => {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {paiements.map((p: any) => {
-                      const rib = p.code_reglement || p.reference_virement || p.reference || null;
-                      return (
-                        <tr key={p.id} className="hover:bg-green-50 transition-colors">
-                          <td className="px-4 py-3 font-mono text-green-700 font-medium text-xs">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}</td>
-                          <td className="px-4 py-3 text-gray-600">
-                            <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />{fmtDate(p.date_paiement)}</span>
-                            {p.date_echeance && <span className="text-xs text-gray-400 ml-5 block">Échéance: {fmtDate(p.date_echeance)}</span>}
-                          </td>
-                          <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '—'}</span></td>
-                          <td className="px-4 py-3">
-                            {rib ? <span className="flex items-center gap-1.5 text-gray-700 font-mono text-xs"><Hash className="w-3 h-3 text-gray-400" />{rib}</span>
-                                 : <span className="text-gray-300 text-xs">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmt(Number(p.montant_total ?? p.montant ?? 0))}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
+                  <Droppable droppableId="paiements-fournisseur">
+                    {(provided) => (
+                      <tbody
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className="divide-y divide-gray-100"
+                      >
+                        {paiements.map((p: any, index: number) => {
+                          const rib = p.code_reglement || p.reference_virement || p.reference || null;
+                          return (
+                            <Draggable key={String(p.id)} draggableId={String(p.id)} index={index}>
+                              {(prov, snap) => (
+                                <tr
+                                  ref={prov.innerRef}
+                                  {...prov.draggableProps}
+                                  className={`transition-colors ${snap.isDragging ? 'shadow-lg bg-violet-50' : 'hover:bg-green-50'}`}
+                                >
+                                  <td className="px-2 py-3 text-center" {...prov.dragHandleProps}>
+                                    <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500 mx-auto cursor-grab active:cursor-grabbing" />
+                                  </td>
+                                  <td className="px-4 py-3 font-mono text-green-700 font-medium text-xs">{p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}</td>
+                                  <td className="px-4 py-3 text-gray-600">
+                                    <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />{fmtDate(p.date_paiement)}</span>
+                                    {p.date_echeance && <span className="text-xs text-gray-400 ml-5 block">Échéance: {fmtDate(p.date_echeance)}</span>}
+                                  </td>
+                                  <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '—'}</span></td>
+                                  <td className="px-4 py-3">
+                                    {rib ? <span className="flex items-center gap-1.5 text-gray-700 font-mono text-xs"><Hash className="w-3 h-3 text-gray-400" />{rib}</span>
+                                         : <span className="text-gray-300 text-xs">—</span>}
+                                  </td>
+                                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmt(Number(p.montant_total ?? p.montant ?? 0))}</td>
+                                </tr>
+                              )}
+                            </Draggable>
+                          );
+                        })}
+                        {provided.placeholder}
+                      </tbody>
+                    )}
+                  </Droppable>
                   <tfoot className="bg-gray-50 border-t border-gray-200">
                     <tr>
-                      <td colSpan={4} className="px-4 py-2 text-sm font-semibold text-gray-600">Total</td>
+                      <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-gray-600">Total</td>
                       <td className="px-4 py-2 text-right font-bold text-green-700">
                         {fmt(paiements.reduce((s: number, p: any) => s + Number(p.montant_total ?? p.montant ?? 0), 0))}
                       </td>
                     </tr>
                   </tfoot>
                 </table>
+                </DragDropContext>
               )
           )}
 
@@ -953,7 +1524,7 @@ const FournisseurDetailPage: React.FC = () => {
           productHistory={printProductHistory}
           dateFrom={filterFrom || undefined}
           dateTo={filterTo || undefined}
-          skipInitialRow={!!filterFrom || selectedIds.size > 0}
+          skipInitialRow={!!filterFrom || selectedIds.size > 0 || selectedItemIds.size > 0}
           hideCumulative={false}
           totalQty={printTotals.totalQty}
           totalAmount={printTotals.totalAmount}
@@ -1011,6 +1582,18 @@ const FournisseursListPage: React.FC = () => {
   const fournisseurs = data?.data ?? [];
   const totalPages = data?.pagination?.totalPages ?? 0;
   const total = data?.pagination?.total ?? 0;
+  const grandTotalCumule = data?.grandTotalCumule ?? null;
+  const grandTotalSoldeInitial = data?.grandTotalSoldeInitial ?? null;
+  const grandTotalVentes = data?.grandTotalVentes ?? null;
+  const grandTotalPaiements = data?.grandTotalPaiements ?? null;
+  const grandTotalAvoirs = data?.grandTotalAvoirs ?? null;
+  const { data: soldeCumuleCard } = useGetSoldeCumuleCardFournisseurQuery();
+  const totalDebitFournisseurs = (typeof soldeCumuleCard?.total_debit === 'number')
+    ? soldeCumuleCard.total_debit
+    : (grandTotalSoldeInitial !== null && grandTotalVentes !== null ? grandTotalSoldeInitial + grandTotalVentes : null);
+  const totalCreditFournisseurs = (typeof soldeCumuleCard?.total_credit === 'number')
+    ? soldeCumuleCard.total_credit
+    : (grandTotalPaiements !== null && grandTotalAvoirs !== null ? grandTotalPaiements + grandTotalAvoirs : null);
 
   const handleSort = (col: ContactsSortBy) => {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -1041,6 +1624,29 @@ const FournisseursListPage: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Fournisseurs</h1>
           <p className="text-sm text-gray-500">{total} fournisseur{total !== 1 ? 's' : ''} au total</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl border border-violet-100 px-4 py-3">
+          <p className="text-xs text-gray-400 mb-1">Débit: solde initial + commandes</p>
+          <p className="font-bold text-sm text-violet-700">{totalDebitFournisseurs !== null ? fmt(totalDebitFournisseurs) : '—'}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-green-100 px-4 py-3">
+          <p className="text-xs text-gray-400 mb-1">Crédit: paiements + avoirs</p>
+          <p className="font-bold text-sm text-green-700">{totalCreditFournisseurs !== null ? fmt(totalCreditFournisseurs) : '—'}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-orange-100 px-4 py-3">
+          <p className="text-xs text-gray-400 mb-1">Total solde initial</p>
+          <p className="font-bold text-sm text-orange-700">{grandTotalSoldeInitial !== null ? fmt(grandTotalSoldeInitial) : '—'}</p>
+        </div>
+        <div className="bg-yellow-50 rounded-xl border border-yellow-200 px-4 py-3">
+          <p className="text-xs text-gray-400 mb-1">Total cumulé (tous les fournisseurs)</p>
+          {typeof soldeCumuleCard?.total_final === 'number'
+            ? <p className={`font-bold text-sm ${soldeCumuleCard.total_final > 0 ? 'text-red-600' : soldeCumuleCard.total_final < 0 ? 'text-green-600' : 'text-gray-500'}`}>{fmt(soldeCumuleCard.total_final)}</p>
+            : grandTotalCumule !== null
+              ? <p className={`font-bold text-sm ${grandTotalCumule > 0 ? 'text-red-600' : grandTotalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>{fmt(grandTotalCumule)}</p>
+              : <p className="text-sm text-gray-300">—</p>}
         </div>
       </div>
 
@@ -1078,8 +1684,8 @@ const FournisseursListPage: React.FC = () => {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-violet-600" onClick={() => handleSort('solde')}>
                   Solde <SortIcon col="solde" />
                 </th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 cursor-pointer select-none hover:text-violet-600" onClick={() => handleSort('solde_cumule')}>
-                  Total cumulé <SortIcon col="solde_cumule" />
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 cursor-pointer select-none hover:text-violet-600" onClick={() => handleSort('total_cumule')}>
+                  Total cumulé <SortIcon col="total_cumule" />
                 </th>
               </tr>
             </thead>
@@ -1182,3 +1788,6 @@ const FournisseursListPage: React.FC = () => {
 
 export { FournisseurDetailPage };
 export default FournisseursListPage;
+
+
+
