@@ -3665,7 +3665,7 @@ const ContactsPage: React.FC = () => {
     const avoirs = Number((contact as any)?.total_avoirs ?? 0) || 0;
     const debit = solde + ventes;
     const credit = paiements + avoirs;
-    return Number((credit - debit).toFixed(3));
+    return Number((debit - credit).toFixed(3));
   }, []);
 
   const getContactTotalCumuleDisplay = React.useCallback((contact: Contact) => {

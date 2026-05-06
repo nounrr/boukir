@@ -1699,7 +1699,7 @@ const ClientsListPage: React.FC = () => {
     ? soldeCumuleCard.total_credit
     : (grandTotalPaiements !== null && grandTotalAvoirs !== null ? grandTotalPaiements + grandTotalAvoirs : null);
   const totalCumuleClients = (totalCreditClients !== null && totalDebitClients !== null)
-    ? totalCreditClients - totalDebitClients
+    ? totalDebitClients - totalCreditClients
     : grandTotalCumule;
 
   const handleSort = (col: ContactsSortBy) => {
