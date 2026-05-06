@@ -27,6 +27,109 @@ ensureRemiseSchema();
 
 const router = Router();
 
+let _hasProductSnapshotTableCache = null;
+async function hasProductSnapshotTable(db) {
+  if (_hasProductSnapshotTableCache !== null) return _hasProductSnapshotTableCache;
+  try {
+    const [rows] = await db.query(
+      `SELECT COUNT(*) AS cnt
+       FROM information_schema.tables
+       WHERE table_schema = DATABASE()
+         AND table_name = 'product_snapshot'`
+    );
+    _hasProductSnapshotTableCache = Number(rows?.[0]?.cnt || 0) > 0;
+  } catch (e) {
+    _hasProductSnapshotTableCache = false;
+  }
+  return _hasProductSnapshotTableCache;
+}
+
+let _hasEcommerceOrderItemsIsIndisponibleColumnCache = null;
+async function hasEcommerceOrderItemsIsIndisponibleColumn(db) {
+  if (_hasEcommerceOrderItemsIsIndisponibleColumnCache !== null) {
+    return _hasEcommerceOrderItemsIsIndisponibleColumnCache;
+  }
+  try {
+    const [rows] = await db.query(
+      `SELECT COUNT(*) AS cnt
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'ecommerce_order_items'
+         AND COLUMN_NAME = 'is_indisponible'`
+    );
+    _hasEcommerceOrderItemsIsIndisponibleColumnCache = Number(rows?.[0]?.cnt || 0) > 0;
+  } catch (e) {
+    _hasEcommerceOrderItemsIsIndisponibleColumnCache = false;
+  }
+  return _hasEcommerceOrderItemsIsIndisponibleColumnCache;
+}
+
+async function ensureEcommerceSnapshotAllocationsTable(db) {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ecommerce_order_item_snapshot_allocations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      order_id INT NOT NULL,
+      order_item_id INT NOT NULL,
+      product_id INT NOT NULL,
+      variant_id INT NULL,
+      snapshot_id INT NOT NULL,
+      quantity DECIMAL(12,3) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_order_id (order_id),
+      INDEX idx_order_item_id (order_item_id),
+      INDEX idx_snapshot_id (snapshot_id)
+    ) ENGINE=InnoDB
+  `);
+}
+
+async function consumeSnapshotStockFIFO(connection, { productId, variantId, quantity, allowPartial = false }) {
+  const qtyRequested = Number(quantity);
+  if (!Number.isFinite(qtyRequested) || qtyRequested <= 0) return [];
+
+  const [snapshotRows] = await connection.query(
+    `SELECT id, quantite
+     FROM product_snapshot
+     WHERE product_id = ?
+       AND ((variant_id = ?) OR (variant_id IS NULL AND ? IS NULL))
+       AND quantite > 0
+     ORDER BY created_at ASC, id ASC
+     FOR UPDATE`,
+    [productId, variantId, variantId]
+  );
+
+  const available = snapshotRows.reduce((sum, r) => sum + Number(r.quantite || 0), 0);
+  if (available < qtyRequested && !allowPartial) {
+    const err = new Error('INSUFFICIENT_SNAPSHOT_STOCK');
+    err.code = 'INSUFFICIENT_SNAPSHOT_STOCK';
+    err.available = available;
+    err.requested = qtyRequested;
+    throw err;
+  }
+
+  const allocations = [];
+  const qtyToConsume = allowPartial ? Math.min(qtyRequested, available) : qtyRequested;
+  if (!(qtyToConsume > 0)) return [];
+
+  let remaining = qtyToConsume;
+
+  for (const row of snapshotRows) {
+    if (remaining <= 0) break;
+    const rowQty = Number(row.quantite || 0);
+    if (!(rowQty > 0)) continue;
+    const take = Math.min(remaining, rowQty);
+    await connection.query(
+      `UPDATE product_snapshot
+       SET quantite = quantite - ?
+       WHERE id = ?`,
+      [take, row.id]
+    );
+    allocations.push({ snapshot_id: row.id, quantity: take });
+    remaining -= take;
+  }
+
+  return allocations;
+}
+
 // ==================== QUOTE (NO ORDER CREATION) ====================
 // POST /api/ecommerce/orders/quote
 // Purpose: compute totals + shipping for checkout step 1/summary UI.
@@ -37,6 +140,7 @@ router.post('/quote', async (req, res, next) => {
   const connection = await pool.getConnection();
 
   try {
+    const snapshotEnabled = await hasProductSnapshotTable(connection);
     const {
       delivery_method = 'delivery', // 'delivery' | 'pickup'
       promo_code,
@@ -48,7 +152,11 @@ router.post('/quote', async (req, res, next) => {
       shipping_lng,
     } = req.body || {};
 
-    const userId = req.user?.id || null;
+    const rawUserId = req.user?.id || null;
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const allowBackorder = true;
+    const isEmployeeToken = role.length > 0 && req.user?.cin != null && req.user?.type_compte == null;
+    const userId = isEmployeeToken ? null : rawUserId;
 
     const normalizedDeliveryMethod = String(delivery_method || 'delivery').trim();
     const allowedDeliveryMethods = new Set(['delivery', 'pickup']);
@@ -85,7 +193,65 @@ router.post('/quote', async (req, res, next) => {
         });
       }
 
-      const [cartItems] = await connection.query(`
+      const cartItemsQuery = snapshotEnabled
+        ? `
+        SELECT 
+          ci.id as cart_item_id,
+          ci.product_id,
+          ci.variant_id,
+          ci.unit_id,
+          ci.quantity,
+          p.designation,
+          p.designation_ar,
+          p.prix_vente as base_price,
+          (
+            SELECT ps.prix_vente
+            FROM product_snapshot ps
+            WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+            ORDER BY ps.created_at DESC, ps.id DESC
+            LIMIT 1
+          ) as snapshot_base_price,
+          (
+            SELECT COALESCE(SUM(ps.quantite), 0)
+            FROM product_snapshot ps
+            WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+          ) as snapshot_stock,
+          p.pourcentage_promo,
+          p.prix_achat as product_prix_achat,
+          p.cout_revient as product_cout_revient,
+          p.kg as product_kg,
+          p.stock_partage_ecom_qty,
+          p.has_variants,
+          p.is_obligatoire_variant,
+          p.ecom_published,
+          p.is_deleted,
+          pv.variant_name,
+          pv.variant_type,
+          pv.prix_vente as variant_price,
+          (
+            SELECT ps.prix_vente
+            FROM product_snapshot ps
+            WHERE ps.variant_id = pv.id
+            ORDER BY ps.created_at DESC, ps.id DESC
+            LIMIT 1
+          ) as snapshot_variant_price,
+          (
+            SELECT COALESCE(SUM(ps.quantite), 0)
+            FROM product_snapshot ps
+            WHERE ps.variant_id = pv.id
+          ) as snapshot_variant_stock,
+          pv.prix_achat as variant_prix_achat,
+          pv.cout_revient as variant_cout_revient,
+          pv.stock_quantity as variant_stock,
+          pu.unit_name,
+          pu.conversion_factor
+        FROM cart_items ci
+        INNER JOIN products p ON ci.product_id = p.id
+        LEFT JOIN product_variants pv ON ci.variant_id = pv.id
+        LEFT JOIN product_units pu ON ci.unit_id = pu.id
+        WHERE ci.user_id = ?
+      `
+        : `
         SELECT 
           ci.id as cart_item_id,
           ci.product_id,
@@ -117,7 +283,9 @@ router.post('/quote', async (req, res, next) => {
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
         LEFT JOIN product_units pu ON ci.unit_id = pu.id
         WHERE ci.user_id = ?
-      `, [userId]);
+      `;
+
+      const [cartItems] = await connection.query(cartItemsQuery, [userId]);
 
       if (cartItems.length === 0) {
         return res.status(400).json({ message: 'Panier vide' });
@@ -130,7 +298,60 @@ router.post('/quote', async (req, res, next) => {
       }
 
       for (const item of items) {
-        const [productRows] = await connection.query(`
+        const productQuery = snapshotEnabled
+          ? `
+          SELECT 
+            p.id as product_id,
+            p.designation,
+            p.designation_ar,
+            p.prix_vente as base_price,
+            (
+              SELECT ps.prix_vente
+              FROM product_snapshot ps
+              WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+              ORDER BY ps.created_at DESC, ps.id DESC
+              LIMIT 1
+            ) as snapshot_base_price,
+            (
+              SELECT COALESCE(SUM(ps.quantite), 0)
+              FROM product_snapshot ps
+              WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+            ) as snapshot_stock,
+            p.pourcentage_promo,
+            p.prix_achat as product_prix_achat,
+            p.cout_revient as product_cout_revient,
+            p.kg as product_kg,
+            p.stock_partage_ecom_qty,
+            p.has_variants,
+            p.is_obligatoire_variant,
+            p.ecom_published,
+            p.is_deleted,
+            pv.variant_name,
+            pv.variant_type,
+            pv.prix_vente as variant_price,
+            (
+              SELECT ps.prix_vente
+              FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id
+              ORDER BY ps.created_at DESC, ps.id DESC
+              LIMIT 1
+            ) as snapshot_variant_price,
+            (
+              SELECT COALESCE(SUM(ps.quantite), 0)
+              FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id
+            ) as snapshot_variant_stock,
+            pv.prix_achat as variant_prix_achat,
+            pv.cout_revient as variant_cout_revient,
+            pv.stock_quantity as variant_stock,
+            pu.unit_name,
+            pu.conversion_factor
+          FROM products p
+          LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
+          LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
+          WHERE p.id = ?
+        `
+          : `
           SELECT 
             p.id as product_id,
             p.designation,
@@ -157,7 +378,9 @@ router.post('/quote', async (req, res, next) => {
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
           LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
           WHERE p.id = ?
-        `, [item.variant_id || null, item.unit_id || null, item.product_id]);
+        `;
+
+        const [productRows] = await connection.query(productQuery, [item.variant_id || null, item.unit_id || null, item.product_id]);
 
         if (productRows.length === 0) {
           return res.status(400).json({
@@ -204,9 +427,14 @@ router.post('/quote', async (req, res, next) => {
       }
 
       // Effective selling price
-      let unitPrice = Number(item.base_price);
-      if (item.variant_id && item.variant_price !== null) {
-        unitPrice = Number(item.variant_price);
+      let unitPrice = snapshotEnabled
+        ? Number(item.snapshot_base_price ?? item.base_price)
+        : Number(item.base_price);
+      if (item.variant_id) {
+        const candidate = snapshotEnabled
+          ? (item.snapshot_variant_price ?? item.variant_price)
+          : item.variant_price;
+        if (candidate !== null && candidate !== undefined) unitPrice = Number(candidate);
       }
 
       // Unit cost for profit (variant preferred)
@@ -241,10 +469,14 @@ router.post('/quote', async (req, res, next) => {
 
       // Stock validation (quote should match checkout validations)
       const availableStock = item.variant_id
-        ? Number(item.variant_stock || 0)
-        : Number(item.stock_partage_ecom_qty || 0);
+        ? (snapshotEnabled
+          ? Number(item.snapshot_variant_stock ?? item.variant_stock ?? 0)
+          : Number(item.variant_stock || 0))
+        : (snapshotEnabled
+          ? Number(item.snapshot_stock ?? item.stock_partage_ecom_qty ?? 0)
+          : Number(item.stock_partage_ecom_qty || 0));
 
-      if (Number(item.quantity) > availableStock) {
+      if (!allowBackorder && Number(item.quantity) > availableStock) {
         return res.status(400).json({
           message: `Stock insuffisant pour ${item.designation}`,
           available: availableStock,
@@ -395,6 +627,11 @@ router.post('/', async (req, res, next) => {
   try {
     await connection.beginTransaction();
 
+    const snapshotEnabled = await hasProductSnapshotTable(connection);
+    if (snapshotEnabled) {
+      await ensureEcommerceSnapshotAllocationsTable(connection);
+    }
+
     // Safety: never accept raw card details in this API.
     // If you integrate card payments, only send a provider token/intent id.
     const forbiddenCardKeys = [
@@ -459,7 +696,11 @@ router.post('/', async (req, res, next) => {
       shipping_lng,
     } = req.body;
 
-    const userId = req.user?.id || null; // NULL for guest orders
+    const rawUserId = req.user?.id || null; // NULL for guest orders
+    const role = req.user?.role != null ? String(req.user.role).trim() : '';
+    const allowBackorder = true;
+    const isEmployeeToken = role.length > 0 && req.user?.cin != null && req.user?.type_compte == null;
+    const userId = isEmployeeToken ? null : rawUserId;
 
     // Normalize coordinates
     const finalLat = normalizeLatLng(shipping_location)?.lat || shipping_lat || null;
@@ -616,7 +857,65 @@ router.post('/', async (req, res, next) => {
     // Get items from cart (authenticated users) or from request body (guest)
     if (use_cart && userId) {
       // Get items from user's cart
-      const [cartItems] = await connection.query(`
+      const cartItemsQuery = snapshotEnabled
+        ? `
+        SELECT
+          ci.id as cart_item_id,
+          ci.product_id,
+          ci.variant_id,
+          ci.unit_id,
+          ci.quantity,
+          p.designation,
+          p.designation_ar,
+          p.prix_vente as base_price,
+          (
+            SELECT ps.prix_vente
+            FROM product_snapshot ps
+            WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+            ORDER BY ps.created_at DESC, ps.id DESC
+            LIMIT 1
+          ) as snapshot_base_price,
+          (
+            SELECT COALESCE(SUM(ps.quantite), 0)
+            FROM product_snapshot ps
+            WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+          ) as snapshot_stock,
+          p.pourcentage_promo,
+          p.prix_achat as product_prix_achat,
+          p.cout_revient as product_cout_revient,
+          p.kg as product_kg,
+          p.stock_partage_ecom_qty,
+          p.has_variants,
+          p.is_obligatoire_variant,
+          p.ecom_published,
+          p.is_deleted,
+          pv.variant_name,
+          pv.variant_type,
+          pv.prix_vente as variant_price,
+          (
+            SELECT ps.prix_vente
+            FROM product_snapshot ps
+            WHERE ps.variant_id = pv.id
+            ORDER BY ps.created_at DESC, ps.id DESC
+            LIMIT 1
+          ) as snapshot_variant_price,
+          (
+            SELECT COALESCE(SUM(ps.quantite), 0)
+            FROM product_snapshot ps
+            WHERE ps.variant_id = pv.id
+          ) as snapshot_variant_stock,
+          pv.prix_achat as variant_prix_achat,
+          pv.cout_revient as variant_cout_revient,
+          pv.stock_quantity as variant_stock,
+          pu.unit_name,
+          pu.conversion_factor
+        FROM cart_items ci
+        INNER JOIN products p ON ci.product_id = p.id
+        LEFT JOIN product_variants pv ON ci.variant_id = pv.id
+        LEFT JOIN product_units pu ON ci.unit_id = pu.id
+        WHERE ci.user_id = ?
+      `
+        : `
         SELECT
           ci.id as cart_item_id,
           ci.product_id,
@@ -648,7 +947,9 @@ router.post('/', async (req, res, next) => {
         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
         LEFT JOIN product_units pu ON ci.unit_id = pu.id
         WHERE ci.user_id = ?
-      `, [userId]);
+      `;
+
+      const [cartItems] = await connection.query(cartItemsQuery, [userId]);
 
       if (cartItems.length === 0) {
         await connection.rollback();
@@ -665,7 +966,60 @@ router.post('/', async (req, res, next) => {
 
       // Fetch product details for provided items
       for (const item of items) {
-        const [productRows] = await connection.query(`
+        const productQuery = snapshotEnabled
+          ? `
+          SELECT 
+            p.id as product_id,
+            p.designation,
+            p.designation_ar,
+            p.prix_vente as base_price,
+            (
+              SELECT ps.prix_vente
+              FROM product_snapshot ps
+              WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+              ORDER BY ps.created_at DESC, ps.id DESC
+              LIMIT 1
+            ) as snapshot_base_price,
+            (
+              SELECT COALESCE(SUM(ps.quantite), 0)
+              FROM product_snapshot ps
+              WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+            ) as snapshot_stock,
+            p.pourcentage_promo,
+            p.prix_achat as product_prix_achat,
+            p.cout_revient as product_cout_revient,
+            p.kg as product_kg,
+            p.stock_partage_ecom_qty,
+            p.has_variants,
+            p.is_obligatoire_variant,
+            p.ecom_published,
+            p.is_deleted,
+            pv.variant_name,
+            pv.variant_type,
+            pv.prix_vente as variant_price,
+            (
+              SELECT ps.prix_vente
+              FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id
+              ORDER BY ps.created_at DESC, ps.id DESC
+              LIMIT 1
+            ) as snapshot_variant_price,
+            (
+              SELECT COALESCE(SUM(ps.quantite), 0)
+              FROM product_snapshot ps
+              WHERE ps.variant_id = pv.id
+            ) as snapshot_variant_stock,
+            pv.prix_achat as variant_prix_achat,
+            pv.cout_revient as variant_cout_revient,
+            pv.stock_quantity as variant_stock,
+            pu.unit_name,
+            pu.conversion_factor
+          FROM products p
+          LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
+          LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
+          WHERE p.id = ?
+        `
+          : `
           SELECT 
             p.id as product_id,
             p.designation,
@@ -692,7 +1046,9 @@ router.post('/', async (req, res, next) => {
           LEFT JOIN product_variants pv ON pv.id = ? AND pv.product_id = p.id
           LEFT JOIN product_units pu ON pu.id = ? AND pu.product_id = p.id
           WHERE p.id = ?
-        `, [item.variant_id || null, item.unit_id || null, item.product_id]);
+        `;
+
+        const [productRows] = await connection.query(productQuery, [item.variant_id || null, item.unit_id || null, item.product_id]);
 
         if (productRows.length === 0) {
           await connection.rollback();
@@ -744,9 +1100,14 @@ router.post('/', async (req, res, next) => {
       }
 
       // Determine effective price
-      let unitPrice = Number(item.base_price);
-      if (item.variant_id && item.variant_price !== null) {
-        unitPrice = Number(item.variant_price);
+      let unitPrice = snapshotEnabled
+        ? Number(item.snapshot_base_price ?? item.base_price)
+        : Number(item.base_price);
+      if (item.variant_id) {
+        const candidate = snapshotEnabled
+          ? (item.snapshot_variant_price ?? item.variant_price)
+          : item.variant_price;
+        if (candidate !== null && candidate !== undefined) unitPrice = Number(candidate);
       }
 
       // Determine cost per unit (for profit/marge calculation)
@@ -781,11 +1142,16 @@ router.post('/', async (req, res, next) => {
         : unitPrice;
 
       // Check stock availability
-      const availableStock = item.variant_id 
-        ? Number(item.variant_stock || 0)
-        : Number(item.stock_partage_ecom_qty || 0);
+      const availableStock = item.variant_id
+        ? (snapshotEnabled
+          ? Number(item.snapshot_variant_stock ?? item.variant_stock ?? 0)
+          : Number(item.variant_stock || 0))
+        : (snapshotEnabled
+          ? Number(item.snapshot_stock ?? item.stock_partage_ecom_qty ?? 0)
+          : Number(item.stock_partage_ecom_qty || 0));
 
-      if (Number(item.quantity) > availableStock) {
+      const isIndisponible = Number(item.quantity) > availableStock;
+      if (!allowBackorder && isIndisponible) {
         await connection.rollback();
         return res.status(400).json({ 
           message: `Stock insuffisant pour ${item.designation}`,
@@ -812,9 +1178,13 @@ router.post('/', async (req, res, next) => {
         unit_name: item.unit_name,
         unit_price: priceAfterPromo,
         quantity: Number(item.quantity),
+        available_stock: availableStock,
         subtotal: itemSubtotal,
         discount_percentage: promoPercentage,
         discount_amount: discountAmount,
+
+        // Backoffice/staff orders may intentionally include out-of-stock items.
+        is_indisponible: allowBackorder ? isIndisponible : false,
 
         // Fields for profit/marge calculation (aligned with backoffice mouvementCalc)
         prix_unitaire: priceAfterPromo,
@@ -1085,6 +1455,8 @@ router.post('/', async (req, res, next) => {
 
     const orderId = orderResult.insertId;
 
+    const hasIsIndisponibleColumn = await hasEcommerceOrderItemsIsIndisponibleColumn(connection);
+
     // Safety net: always persist computed solde flags/amount server-side.
     // This also helps when older running code created orders with defaults.
     await connection.query(
@@ -1097,25 +1469,23 @@ router.post('/', async (req, res, next) => {
     // Insert order items and reduce stock
     for (const item of validatedItems) {
       // Insert order item
-      await connection.query(`
-        INSERT INTO ecommerce_order_items (
-          order_id,
-          product_id,
-          variant_id,
-          unit_id,
-          product_name,
-          product_name_ar,
-          variant_name,
-          variant_type,
-          unit_name,
-          unit_price,
-          quantity,
-          subtotal,
-          discount_percentage,
-          discount_amount,
-          is_indisponible
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
+      const insertColumns = [
+        'order_id',
+        'product_id',
+        'variant_id',
+        'unit_id',
+        'product_name',
+        'product_name_ar',
+        'variant_name',
+        'variant_type',
+        'unit_name',
+        'unit_price',
+        'quantity',
+        'subtotal',
+        'discount_percentage',
+        'discount_amount',
+      ];
+      const insertValues = [
         orderId,
         item.product_id,
         item.variant_id,
@@ -1130,24 +1500,74 @@ router.post('/', async (req, res, next) => {
         item.subtotal,
         item.discount_percentage,
         item.discount_amount,
-        item.is_indisponible ? 1 : 0
-      ]);
+      ];
 
-      // **REDUCE STOCK** - This is where the stock reduction happens
-      if (item.variant_id) {
-        // Reduce variant stock
-        await connection.query(`
-          UPDATE product_variants
-          SET stock_quantity = stock_quantity - ?
-          WHERE id = ?
-        `, [item.quantity, item.variant_id]);
+      if (hasIsIndisponibleColumn) {
+        insertColumns.push('is_indisponible');
+        insertValues.push(item.is_indisponible ? 1 : 0);
+      }
+
+      const placeholders = insertColumns.map(() => '?').join(', ');
+      const [orderItemResult] = await connection.query(
+        `INSERT INTO ecommerce_order_items (${insertColumns.join(', ')})
+         VALUES (${placeholders})`,
+        insertValues
+      );
+
+      const orderItemId = orderItemResult.insertId;
+
+      // **REDUCE STOCK**
+      if (snapshotEnabled) {
+        const allocations = await consumeSnapshotStockFIFO(connection, {
+          productId: item.product_id,
+          variantId: item.variant_id || null,
+          quantity: item.quantity,
+          allowPartial: true,
+        });
+
+        for (const alloc of allocations) {
+          await connection.query(
+            `INSERT INTO ecommerce_order_item_snapshot_allocations (
+              order_id,
+              order_item_id,
+              product_id,
+              variant_id,
+              snapshot_id,
+              quantity
+            ) VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              orderId,
+              orderItemId,
+              item.product_id,
+              item.variant_id || null,
+              alloc.snapshot_id,
+              alloc.quantity,
+            ]
+          );
+        }
       } else {
-        // Reduce main product stock
-        await connection.query(`
-          UPDATE products
-          SET stock_partage_ecom_qty = stock_partage_ecom_qty - ?
-          WHERE id = ?
-        `, [item.quantity, item.product_id]);
+        // Legacy stock reduction (fallback)
+        const qtyToDecrement = Math.max(0, Math.min(Number(item.quantity) || 0, Number(item.available_stock) || 0));
+
+        if (!(Number(qtyToDecrement) > 0)) {
+          continue;
+        }
+
+        if (item.variant_id) {
+          await connection.query(
+            `UPDATE product_variants
+             SET stock_quantity = stock_quantity - ?
+             WHERE id = ?`,
+            [qtyToDecrement, item.variant_id]
+          );
+        } else {
+          await connection.query(
+            `UPDATE products
+             SET stock_partage_ecom_qty = stock_partage_ecom_qty - ?
+             WHERE id = ?`,
+            [qtyToDecrement, item.product_id]
+          );
+        }
       }
     }
 
@@ -1201,6 +1621,14 @@ router.post('/', async (req, res, next) => {
 
   } catch (err) {
     await connection.rollback();
+    if (err?.code === 'INSUFFICIENT_SNAPSHOT_STOCK') {
+      return res.status(400).json({
+        message: 'Stock insuffisant (snapshot) pour finaliser la commande',
+        code: err.code,
+        available: err.available,
+        requested: err.requested,
+      });
+    }
     next(err);
   } finally {
     connection.release();
@@ -2727,20 +3155,81 @@ router.post('/:id/cancel', async (req, res, next) => {
       WHERE order_id = ?
     `, [orderId]);
 
-    // Restore stock for each item
-    for (const item of items) {
-      if (item.variant_id) {
-        await connection.query(`
-          UPDATE product_variants
-          SET stock_quantity = stock_quantity + ?
-          WHERE id = ?
-        `, [item.quantity, item.variant_id]);
+    const snapshotEnabled = await hasProductSnapshotTable(connection);
+    if (snapshotEnabled) {
+      await ensureEcommerceSnapshotAllocationsTable(connection);
+
+      const [allocs] = await connection.query(
+        `SELECT snapshot_id, quantity, product_id, variant_id
+         FROM ecommerce_order_item_snapshot_allocations
+         WHERE order_id = ?`,
+        [orderId]
+      );
+
+      if (allocs.length > 0) {
+        for (const alloc of allocs) {
+          const [updateResult] = await connection.query(
+            `UPDATE product_snapshot
+             SET quantite = quantite + ?
+             WHERE id = ?`,
+            [alloc.quantity, alloc.snapshot_id]
+          );
+          if ((updateResult?.affectedRows || 0) === 0) {
+            const [priceRows] = await connection.query(
+              `SELECT prix_vente
+               FROM product_snapshot
+               WHERE product_id = ?
+                 AND ((variant_id = ?) OR (variant_id IS NULL AND ? IS NULL))
+               ORDER BY created_at DESC, id DESC
+               LIMIT 1`,
+              [alloc.product_id, alloc.variant_id, alloc.variant_id]
+            );
+            const fallbackPrice = priceRows?.[0]?.prix_vente ?? 0;
+            await connection.query(
+              `INSERT INTO product_snapshot (product_id, variant_id, prix_vente, quantite, created_at)
+               VALUES (?, ?, ?, ?, NOW())`,
+              [alloc.product_id, alloc.variant_id, fallbackPrice, alloc.quantity]
+            );
+          }
+        }
       } else {
-        await connection.query(`
-          UPDATE products
-          SET stock_partage_ecom_qty = stock_partage_ecom_qty + ?
-          WHERE id = ?
-        `, [item.quantity, item.product_id]);
+        // If allocations are missing (older orders), restore as a new snapshot lot.
+        for (const item of items) {
+          const [priceRows] = await connection.query(
+            `SELECT prix_vente
+             FROM product_snapshot
+             WHERE product_id = ?
+               AND ((variant_id = ?) OR (variant_id IS NULL AND ? IS NULL))
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1`,
+            [item.product_id, item.variant_id, item.variant_id]
+          );
+          const fallbackPrice = priceRows?.[0]?.prix_vente ?? 0;
+          await connection.query(
+            `INSERT INTO product_snapshot (product_id, variant_id, prix_vente, quantite, created_at)
+             VALUES (?, ?, ?, ?, NOW())`,
+            [item.product_id, item.variant_id, fallbackPrice, item.quantity]
+          );
+        }
+      }
+    } else {
+      // Restore legacy stock for each item
+      for (const item of items) {
+        if (item.variant_id) {
+          await connection.query(
+            `UPDATE product_variants
+             SET stock_quantity = stock_quantity + ?
+             WHERE id = ?`,
+            [item.quantity, item.variant_id]
+          );
+        } else {
+          await connection.query(
+            `UPDATE products
+             SET stock_partage_ecom_qty = stock_partage_ecom_qty + ?
+             WHERE id = ?`,
+            [item.quantity, item.product_id]
+          );
+        }
       }
     }
 

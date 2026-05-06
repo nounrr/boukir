@@ -77,7 +77,7 @@ const CONTACT_PHONE_MAP_SUBQUERY = `
 const BALANCE_EXPR = `
   CASE
     WHEN c.type = 'Client' THEN
-      -ABS(COALESCE(c.solde, 0))
+      COALESCE(c.solde, 0)
       - COALESCE(ventes_client.total_ventes, 0)
       - COALESCE(ventes_comptant.total_ventes, 0)
       - COALESCE(ventes_ecommerce.total_ventes, 0)
@@ -198,7 +198,7 @@ const SINGLE_CONTACT_QUERY = `
     (
       CASE
         WHEN c.type = 'Client' THEN
-          -ABS(COALESCE(c.solde, 0))
+          COALESCE(c.solde, 0)
           - COALESCE((
             SELECT SUM(bs.montant_total)
             FROM bons_sortie bs

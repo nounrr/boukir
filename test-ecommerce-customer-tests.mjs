@@ -148,6 +148,25 @@ async function pickProductsForTests() {
 
   assert(list.ok, `Products list failed: ${list.status}`);
 
+  // Sanity check: utility types (categorie_base) filter metadata + filtering
+  const utilityTypes = list.json?.filters?.utility_types;
+  if (Array.isArray(utilityTypes) && utilityTypes.length > 0) {
+    const pickedType = utilityTypes.find((t) => t === 'Professionel' || t === 'Maison') || utilityTypes[0];
+    const filtered = await apiRequest(
+      `/api/ecommerce/products?in_stock_only=true&limit=20&sort=newest&categorie_base=${encodeURIComponent(pickedType)}`,
+      { method: 'GET' }
+    );
+    assert(filtered.ok, `Products list (categorie_base=${pickedType}) failed: ${filtered.status}`);
+    const filteredProducts = filtered.json?.products;
+    assert(Array.isArray(filteredProducts), 'Filtered products response missing products array');
+    for (const p of filteredProducts) {
+      assert(
+        p?.categorie_base === pickedType,
+        `Filtered products include mismatched categorie_base (expected ${pickedType}, got ${p?.categorie_base})`
+      );
+    }
+  }
+
   // Response is { products, filters, pagination, ... }
   const products = list.json?.products;
   assert(Array.isArray(products) && products.length > 0, 'No products returned from /api/ecommerce/products');

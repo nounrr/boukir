@@ -77,29 +77,45 @@ async function executeMigration(filename) {
     
     // Read SQL file
     const sql = fs.readFileSync(filePath, 'utf8');
-    
-    // Split by semicolons but be careful with stored procedures/functions
-    // This is a simple split - for complex migrations, consider using a proper SQL parser
-    const statements = sql
+
+    // Remove comment-only lines and empty lines first.
+    // Important: splitting on ';' first can create chunks that *start* with '--'
+    // but contain valid SQL afterwards (e.g. section headers), which would be
+    // incorrectly filtered out.
+    const cleanSql = sql
+      .split('\n')
+      .filter(line => {
+        const trimmed = line.trim();
+        return trimmed && !trimmed.startsWith('--');
+      })
+      .join('\n')
+      .trim();
+
+    if (!cleanSql) {
+      console.log('  ⚠ No SQL statements found');
+      return { success: true, filename };
+    }
+
+    // Split by semicolons (simple splitter)
+    const statements = cleanSql
       .split(';')
       .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+      .filter(stmt => stmt.length > 0);
 
     await connection.beginTransaction();
 
     // Execute each statement
     for (let i = 0; i < statements.length; i++) {
       const statement = statements[i];
-      if (statement) {
-        try {
-          await connection.query(statement);
-        } catch (err) {
-          // Some statements might fail if columns already exist, log but continue
-          if (err.code === 'ER_DUP_FIELDNAME' || err.code === 'ER_DUP_KEYNAME') {
-            console.log(`  ⚠ Skipped (already exists): statement ${i + 1}`);
-          } else {
-            throw err;
-          }
+      try {
+        await connection.query(statement);
+      } catch (err) {
+        // Some statements might fail if columns/keys already exist, log but continue
+        if (err.code === 'ER_DUP_FIELDNAME' || err.code === 'ER_DUP_KEYNAME') {
+          console.log(`  ⚠ Skipped (already exists): statement ${i + 1}`);
+        } else {
+          console.error(`  ✗ Failed at statement ${i + 1}/${statements.length}`);
+          throw err;
         }
       }
     }
@@ -245,8 +261,12 @@ async function listMigrations() {
       console.log(`${status} | ${file}`);
     }
 
+    const executedInDir = allFiles.filter(f => executedMigrations.includes(f)).length;
+
     console.log('='.repeat(80));
-    console.log(`\nTotal: ${allFiles.length} | Executed: ${executedMigrations.length} | Pending: ${allFiles.length - executedMigrations.length}\n`);
+    console.log(
+      `\nTotal: ${allFiles.length} | Executed: ${executedInDir} | Pending: ${allFiles.length - executedInDir} | Executed (all-time): ${executedMigrations.length}\n`
+    );
 
   } catch (err) {
     console.error('Error listing migrations:', err);

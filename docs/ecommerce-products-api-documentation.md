@@ -146,6 +146,8 @@ Returns paginated list of published products with lightweight data.
 | `search` | string | - | Search in designation and description |
 | `min_price` | number | - | Minimum price filter |
 | `max_price` | number | - | Maximum price filter |
+| `categorie_base` | string | - | Utility type filter (comma-separated): `Professionel`, `Maison` |
+| `utility_type` | string | - | Alias for `categorie_base` (accepts common FR/EN values like `professional`, `home`) |
 | `sort` | string | `newest` | Sort order: `newest`, `price_asc`, `price_desc`, `popular`, `promo` |
 | `limit` | number | `50` | Number of products per page |
 | `offset` | number | `0` | Pagination offset |
@@ -159,6 +161,10 @@ Returns paginated list of published products with lightweight data.
     limit: number;
     offset: number;
     hasMore: boolean;
+  };
+  filters?: {
+    // ... existing filter metadata
+    utility_types?: string[]; // e.g. ['Professionel', 'Maison']
   };
 }
 ```

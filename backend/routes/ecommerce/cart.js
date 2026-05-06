@@ -3,6 +3,23 @@ import pool from '../../db/pool.js';
 
 const router = Router();
 
+let _hasProductSnapshotTableCache = null;
+async function hasProductSnapshotTable(db) {
+  if (_hasProductSnapshotTableCache !== null) return _hasProductSnapshotTableCache;
+  try {
+    const [rows] = await db.query(
+      `SELECT COUNT(*) AS cnt
+       FROM information_schema.tables
+       WHERE table_schema = DATABASE()
+         AND table_name = 'product_snapshot'`
+    );
+    _hasProductSnapshotTableCache = Number(rows?.[0]?.cnt || 0) > 0;
+  } catch (e) {
+    _hasProductSnapshotTableCache = false;
+  }
+  return _hasProductSnapshotTableCache;
+}
+
 // UI-only limit; prevents abuse and keeps UX consistent.
 // Real stock is still enforced by stock checks.
 const PURCHASE_LIMIT = 20;
@@ -21,6 +38,11 @@ function toSafeNumber(value, defaultValue = 0) {
 
 function isInStock(stockQty) {
   return toSafeNumber(stockQty) > 0;
+}
+
+function isBackofficeRequest(req) {
+  const role = req.user?.role != null ? String(req.user.role).trim() : '';
+  return role.length > 0;
 }
 
 // ==================== DEBUG: CHECK USER ====================
@@ -66,8 +88,72 @@ router.get('/', async (req, res, next) => {
       return res.status(401).json({ message: 'Authentification requise' });
     }
 
+    const backoffice = isBackofficeRequest(req);
+
+    const snapshotEnabled = await hasProductSnapshotTable(pool);
+
     // Get all cart items for this user
-    const [cartItems] = await pool.query(`
+    const cartQuery = snapshotEnabled
+      ? `
+      SELECT 
+        ci.id,
+        ci.product_id,
+        ci.variant_id,
+        ci.unit_id,
+        ci.quantity,
+        ci.created_at,
+        ci.updated_at,
+        p.designation,
+        p.prix_vente as base_price,
+        (
+          SELECT ps.prix_vente
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+          ORDER BY ps.created_at DESC, ps.id DESC
+          LIMIT 1
+        ) as snapshot_base_price,
+        p.pourcentage_promo,
+        p.remise_client,
+        p.remise_artisan,
+        p.image_url,
+        p.stock_partage_ecom_qty,
+        (
+          SELECT COALESCE(SUM(ps.quantite), 0)
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+        ) as snapshot_stock,
+        p.has_variants,
+        p.is_obligatoire_variant,
+        pv.variant_name,
+        pv.prix_vente as variant_price,
+        (
+          SELECT ps.prix_vente
+          FROM product_snapshot ps
+          WHERE ps.variant_id = pv.id
+          ORDER BY ps.created_at DESC, ps.id DESC
+          LIMIT 1
+        ) as snapshot_variant_price,
+        pv.stock_quantity as variant_stock,
+        (
+          SELECT COALESCE(SUM(ps.quantite), 0)
+          FROM product_snapshot ps
+          WHERE ps.variant_id = pv.id
+        ) as snapshot_variant_stock,
+        pv.image_url as variant_image_url,
+        pv.remise_client as variant_remise_client,
+        pv.remise_artisan as variant_remise_artisan,
+        pu.unit_name,
+        pu.conversion_factor
+      FROM cart_items ci
+      INNER JOIN products p ON ci.product_id = p.id
+      LEFT JOIN product_variants pv ON ci.variant_id = pv.id
+      LEFT JOIN product_units pu ON ci.unit_id = pu.id
+      WHERE ci.user_id = ?
+        AND p.ecom_published = 1
+        AND COALESCE(p.is_deleted, 0) = 0
+      ORDER BY ci.created_at DESC
+    `
+      : `
       SELECT 
         ci.id,
         ci.product_id,
@@ -101,18 +187,24 @@ router.get('/', async (req, res, next) => {
         AND p.ecom_published = 1
         AND COALESCE(p.is_deleted, 0) = 0
       ORDER BY ci.created_at DESC
-    `, [userId]);
+    `;
+
+    const [cartItems] = await pool.query(cartQuery, [userId]);
 
     // Process each cart item
     const items = cartItems.map(item => {
       // Determine effective price based on variant/unit
-      let effectivePrice = toSafeNumber(item.base_price);
+      let effectivePrice = snapshotEnabled
+        ? toSafeNumber(item.snapshot_base_price ?? item.base_price)
+        : toSafeNumber(item.base_price);
       let effectiveRemiseClient = toSafeNumber(item.remise_client);
       let effectiveRemiseArtisan = toSafeNumber(item.remise_artisan);
       
       // If variant is selected, use variant price
       if (item.variant_id && item.variant_price !== null) {
-        effectivePrice = toSafeNumber(item.variant_price);
+        effectivePrice = snapshotEnabled
+          ? toSafeNumber(item.snapshot_variant_price ?? item.variant_price)
+          : toSafeNumber(item.variant_price);
         effectiveRemiseClient = toSafeNumber(item.variant_remise_client);
         effectiveRemiseArtisan = toSafeNumber(item.variant_remise_artisan);
       }
@@ -130,12 +222,16 @@ router.get('/', async (req, res, next) => {
 
       // Calculate stock availability
       const availableStock = item.variant_id
-        ? toSafeNumber(item.variant_stock)
-        : toSafeNumber(item.stock_partage_ecom_qty);
+        ? (snapshotEnabled
+          ? toSafeNumber(item.snapshot_variant_stock ?? item.variant_stock)
+          : toSafeNumber(item.variant_stock))
+        : (snapshotEnabled
+          ? toSafeNumber(item.snapshot_stock ?? item.stock_partage_ecom_qty)
+          : toSafeNumber(item.stock_partage_ecom_qty));
 
       const quantity = toSafeNumber(item.quantity);
       const inStock = availableStock > 0;
-      const isAvailable = inStock && availableStock >= quantity;
+      const isAvailable = true;
 
       // Calculate subtotal
       const subtotal = priceAfterPromo * quantity;
@@ -154,7 +250,7 @@ router.get('/', async (req, res, next) => {
           image_url: primaryImage,
           has_variants: !!item.has_variants,
           is_obligatoire_variant: Number(item.is_obligatoire_variant || 0) === 1,
-          isObligatoireVariant: Number(item.is_obligatoire_variant || 0) === 1
+          isObligatoireVariant: Number(item.is_obligatoire_variant || 0) === 1,
         },
         variant: item.variant_id ? {
           id: item.variant_id,
@@ -167,7 +263,9 @@ router.get('/', async (req, res, next) => {
           conversion_factor: toSafeNumber(item.conversion_factor)
         } : null,
         pricing: {
-          base_price: Number(item.base_price),
+          base_price: snapshotEnabled
+            ? Number(item.snapshot_base_price ?? item.base_price)
+            : Number(item.base_price),
           effective_price: effectivePrice,
           promo_percentage: promoPercentage,
           price_after_promo: priceAfterPromo,
@@ -282,6 +380,8 @@ router.post('/items', async (req, res, next) => {
     const unitId = unit_id ? Number(unit_id) : null;
     const qty = Math.max(1, toSafeNumber(quantity, 1));
 
+    const backoffice = isBackofficeRequest(req);
+
     if (qty > PURCHASE_LIMIT) {
       return res.status(400).json({
         message: `Quantité max par article: ${PURCHASE_LIMIT}`,
@@ -312,9 +412,12 @@ router.post('/items', async (req, res, next) => {
 
     const product = productRows[0];
 
+    const snapshotEnabled = await hasProductSnapshotTable(pool);
+
     if (!product.ecom_published || product.is_deleted) {
       return res.status(400).json({ message: 'Ce produit n\'est pas disponible' });
     }
+
 
     const requiresVariant = Number(product.has_variants || 0) === 1 && Number(product.is_obligatoire_variant || 0) === 1;
     if (requiresVariant && !variantId) {
@@ -327,6 +430,15 @@ router.post('/items', async (req, res, next) => {
 
     // Validate variant if provided
     let availableStock = toSafeNumber(product.stock_partage_ecom_qty);
+    if (snapshotEnabled) {
+      const [stockRows] = await pool.query(
+        `SELECT COALESCE(SUM(quantite), 0) as qty
+         FROM product_snapshot
+         WHERE product_id = ? AND variant_id IS NULL`,
+        [productId]
+      );
+      availableStock = toSafeNumber(stockRows?.[0]?.qty);
+    }
     if (variantId) {
       const [variantRows] = await pool.query(`
         SELECT stock_quantity
@@ -339,17 +451,19 @@ router.post('/items', async (req, res, next) => {
       }
 
       availableStock = toSafeNumber(variantRows[0].stock_quantity);
+      if (snapshotEnabled) {
+        const [stockRows] = await pool.query(
+          `SELECT COALESCE(SUM(quantite), 0) as qty
+           FROM product_snapshot
+           WHERE variant_id = ?`,
+          [variantId]
+        );
+        availableStock = toSafeNumber(stockRows?.[0]?.qty);
+      }
     }
 
     // Guard: treat 0/NULL/invalid stock as out of stock (same as products `in_stock`)
-    if (!(availableStock > 0)) {
-      return res.status(400).json({
-        message: 'Produit en rupture de stock',
-        code: 'OUT_OF_STOCK',
-        product_id: productId,
-        variant_id: variantId
-      });
-    }
+    // Global feature: do not block cart actions on stock.
 
     // Validate unit if provided
     if (unitId) {
@@ -390,16 +504,7 @@ router.post('/items', async (req, res, next) => {
         });
       }
 
-      // Check stock availability
-      if (newQuantity > availableStock) {
-        return res.status(400).json({ 
-          message: 'Quantité non disponible en stock',
-          code: 'INSUFFICIENT_STOCK',
-          product_id: productId,
-          variant_id: variantId,
-          requested_quantity: newQuantity
-        });
-      }
+      // Global feature: do not block cart actions on stock.
 
       await pool.query(`
         UPDATE cart_items
@@ -415,16 +520,7 @@ router.post('/items', async (req, res, next) => {
       });
     } else {
       // Add new item to cart
-      // Check stock availability
-      if (qty > availableStock) {
-        return res.status(400).json({ 
-          message: 'Quantité non disponible en stock',
-          code: 'INSUFFICIENT_STOCK',
-          product_id: productId,
-          variant_id: variantId,
-          requested_quantity: qty
-        });
-      }
+      // Global feature: do not block cart actions on stock.
 
       const [result] = await pool.query(`
         INSERT INTO cart_items (user_id, product_id, variant_id, unit_id, quantity, created_at, updated_at)
@@ -451,6 +547,8 @@ router.put('/items/:id', async (req, res, next) => {
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
+
+    const backoffice = isBackofficeRequest(req);
 
     const cartItemId = Number(req.params.id);
     const { quantity } = req.body;
@@ -526,26 +624,33 @@ router.put('/items/:id', async (req, res, next) => {
     const cartItem = cartItems[0];
 
     // Determine available stock
-    const availableStock = cartItem.variant_id 
+    const snapshotEnabled = await hasProductSnapshotTable(pool);
+
+    let availableStock = cartItem.variant_id
       ? toSafeNumber(cartItem.variant_stock)
       : toSafeNumber(cartItem.stock_partage_ecom_qty);
 
-    if (!(availableStock > 0)) {
-      return res.status(400).json({
-        message: 'Produit en rupture de stock',
-        code: 'OUT_OF_STOCK',
-        requested_quantity: qty
-      });
+    if (snapshotEnabled) {
+      if (cartItem.variant_id) {
+        const [stockRows] = await pool.query(
+          `SELECT COALESCE(SUM(quantite), 0) as qty
+           FROM product_snapshot
+           WHERE variant_id = ?`,
+          [cartItem.variant_id]
+        );
+        availableStock = toSafeNumber(stockRows?.[0]?.qty);
+      } else {
+        const [stockRows] = await pool.query(
+          `SELECT COALESCE(SUM(quantite), 0) as qty
+           FROM product_snapshot
+           WHERE product_id = ? AND variant_id IS NULL`,
+          [cartItem.product_id]
+        );
+        availableStock = toSafeNumber(stockRows?.[0]?.qty);
+      }
     }
 
-    // Check stock availability
-    if (qty > availableStock) {
-      return res.status(400).json({ 
-        message: 'Quantité non disponible en stock',
-        code: 'INSUFFICIENT_STOCK',
-        requested_quantity: qty
-      });
-    }
+    // Global feature: do not block cart actions on stock.
 
     // Update quantity
     await pool.query(`
@@ -634,6 +739,32 @@ router.get('/suggestions', async (req, res, next) => {
       return res.status(401).json({ message: 'Authentification requise' });
     }
 
+    const snapshotEnabled = await hasProductSnapshotTable(pool);
+    const priceExpr = snapshotEnabled
+      ? `COALESCE((
+          SELECT ps.prix_vente
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id AND ps.variant_id IS NULL
+          ORDER BY ps.created_at DESC, ps.id DESC
+          LIMIT 1
+        ), p.prix_vente)`
+      : 'p.prix_vente';
+    const anyStockExpr = snapshotEnabled
+      ? `(
+          SELECT COALESCE(SUM(ps.quantite), 0)
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id
+        )`
+      : 'COALESCE(p.stock_partage_ecom_qty, 0)';
+    const inStockWhereExpr = snapshotEnabled
+      ? `EXISTS (
+          SELECT 1
+          FROM product_snapshot ps
+          WHERE ps.product_id = p.id
+            AND ps.quantite > 0
+        )`
+      : 'p.stock_partage_ecom_qty > 0';
+
     const limit = Math.min(Number(req.query.limit) || 4, 12); // Max 12 suggestions
 
     // Get user's cart items
@@ -693,12 +824,12 @@ router.get('/suggestions', async (req, res, next) => {
           p.designation_ar,
           p.designation_en,
           p.designation_zh,
-          p.prix_vente,
+          ${priceExpr} as prix_vente,
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
           p.image_url,
-          p.stock_partage_ecom_qty,
+          ${anyStockExpr} as stock_qty,
           p.has_variants,
           p.categorie_id,
           p.brand_id,
@@ -714,7 +845,7 @@ router.get('/suggestions', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
-          AND p.stock_partage_ecom_qty > 0
+          AND ${inStockWhereExpr}
           ${cartProductIds.length > 0 ? `AND p.id NOT IN (${cartPlaceholders})` : ''}
         ORDER BY relevance_score DESC, p.created_at DESC
         LIMIT ?
@@ -763,7 +894,7 @@ router.get('/suggestions', async (req, res, next) => {
             image_url: img.image_url,
             position: img.position
           })),
-          in_stock: toSafeNumber(p.stock_partage_ecom_qty) > 0,
+          in_stock: toSafeNumber(p.stock_qty) > 0,
           purchase_limit: PURCHASE_LIMIT,
           has_variants: !!p.has_variants,
           brand: p.brand_id ? {
@@ -791,12 +922,12 @@ router.get('/suggestions', async (req, res, next) => {
           p.designation_ar,
           p.designation_en,
           p.designation_zh,
-          p.prix_vente,
+          ${priceExpr} as prix_vente,
           p.pourcentage_promo,
           p.remise_client,
           p.remise_artisan,
           p.image_url,
-          p.stock_partage_ecom_qty,
+          ${anyStockExpr} as stock_qty,
           p.has_variants,
           b.id as brand_id,
           b.nom as brand_nom,
@@ -807,7 +938,7 @@ router.get('/suggestions', async (req, res, next) => {
         LEFT JOIN categories c ON p.categorie_id = c.id
         WHERE p.ecom_published = 1
           AND COALESCE(p.is_deleted, 0) = 0
-          AND p.stock_partage_ecom_qty > 0
+          AND ${inStockWhereExpr}
         ORDER BY 
           CASE WHEN p.pourcentage_promo > 0 THEN 1 ELSE 2 END,
           p.pourcentage_promo DESC,
@@ -848,7 +979,7 @@ router.get('/suggestions', async (req, res, next) => {
             image_url: img.image_url,
             position: img.position
           })),
-          in_stock: toSafeNumber(p.stock_partage_ecom_qty) > 0,
+          in_stock: toSafeNumber(p.stock_qty) > 0,
           purchase_limit: PURCHASE_LIMIT,
           has_variants: !!p.has_variants,
           brand: p.brand_id ? {
@@ -883,6 +1014,10 @@ router.post('/validate', async (req, res, next) => {
     if (!userId) {
       return res.status(401).json({ message: 'Authentification requise' });
     }
+
+    const backoffice = isBackofficeRequest(req);
+
+    const snapshotEnabled = await hasProductSnapshotTable(pool);
 
     // Get all cart items with stock info
     const [cartItems] = await pool.query(`
@@ -949,50 +1084,46 @@ router.post('/validate', async (req, res, next) => {
       }
 
       // Check stock availability
-      const availableStock = item.variant_id
+      let availableStock = item.variant_id
         ? toSafeNumber(item.variant_stock)
         : toSafeNumber(item.stock_partage_ecom_qty);
 
-      const requestedQty = toSafeNumber(item.quantity);
-      const inStock = availableStock > 0;
-
-      const itemName = item.variant_id
-        ? `${item.designation} (${item.variant_name})`
-        : item.designation;
-
-      if (!inStock) {
-        issues.push({
-          cart_item_id: item.id,
-          product_id: item.product_id,
-          variant_id: item.variant_id,
-          issue: 'out_of_stock',
-          message: `${itemName}: produit en rupture de stock`,
-          requested_quantity: requestedQty
-        });
-        continue;
+      if (snapshotEnabled) {
+        if (item.variant_id) {
+          const [stockRows] = await pool.query(
+            `SELECT COALESCE(SUM(quantite), 0) as qty
+             FROM product_snapshot
+             WHERE variant_id = ?`,
+            [item.variant_id]
+          );
+          availableStock = toSafeNumber(stockRows?.[0]?.qty);
+        } else {
+          const [stockRows] = await pool.query(
+            `SELECT COALESCE(SUM(quantite), 0) as qty
+             FROM product_snapshot
+             WHERE product_id = ? AND variant_id IS NULL`,
+            [item.product_id]
+          );
+          availableStock = toSafeNumber(stockRows?.[0]?.qty);
+        }
       }
 
-      if (requestedQty > availableStock) {
-        issues.push({
-          cart_item_id: item.id,
-          product_id: item.product_id,
-          variant_id: item.variant_id,
-          issue: 'insufficient_stock',
-          message: `${itemName}: stock insuffisant`,
-          requested_quantity: requestedQty
-        });
-      }
+      // Global feature: never fail validation due to stock.
     }
 
-    const isValid = issues.length === 0;
+    // Backoffice/staff can proceed even if stock is insufficient.
+    const blockingIssues = backoffice
+      ? issues.filter((i) => i.issue !== 'out_of_stock' && i.issue !== 'insufficient_stock')
+      : issues;
+    const isValid = blockingIssues.length === 0;
 
     res.json({
       valid: isValid,
       total_items: cartItems.length,
       issues: issues,
-      message: isValid 
-        ? 'Panier valide' 
-        : `${issues.length} problème(s) détecté(s)`
+      message: isValid
+        ? 'Panier valide'
+        : `${blockingIssues.length} problème(s) détecté(s)`
     });
   } catch (err) {
     next(err);
