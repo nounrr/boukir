@@ -3658,13 +3658,19 @@ const ContactsPage: React.FC = () => {
     return computeContactSoldeCumule(contact);
   }, []);
 
-  const getContactTotalCumuleDisplay = React.useCallback((contact: Contact) => {
-    const backendValue = (contact as any).total_cumule;
-    if (backendValue !== null && backendValue !== undefined && Number.isFinite(Number(backendValue))) {
-      return Number(backendValue);
-    }
-    return computeContactSoldeCumule(contact);
+  const getContactTotalCumuleValue = React.useCallback((contact: Contact) => {
+    const solde = Number(contact?.solde ?? 0) || 0;
+    const ventes = Number((contact as any)?.total_ventes ?? 0) || 0;
+    const paiements = Number((contact as any)?.total_paiements ?? 0) || 0;
+    const avoirs = Number((contact as any)?.total_avoirs ?? 0) || 0;
+    const debit = solde + ventes;
+    const credit = paiements + avoirs;
+    return Number((credit - debit).toFixed(3));
   }, []);
+
+  const getContactTotalCumuleDisplay = React.useCallback((contact: Contact) => {
+    return getContactTotalCumuleValue(contact);
+  }, [getContactTotalCumuleValue]);
 
   const sortedContacts = useMemo(() => {
     if (!isContactReferenceSearch && sortField !== 'total_cumule') return filteredContacts;
@@ -4720,11 +4726,14 @@ const ContactsPage: React.FC = () => {
                           <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          {contact.total_cumule !== null && contact.total_cumule !== undefined
-                            ? <span className={`text-sm font-bold ${Number(contact.total_cumule) > 0 ? 'text-red-600' : Number(contact.total_cumule) < 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                                {Number(contact.total_cumule).toFixed(3)} DH
+                          {(() => {
+                            const totalCumule = getContactTotalCumuleValue(contact);
+                            return (
+                              <span className={`text-sm font-bold ${totalCumule > 0 ? 'text-red-600' : totalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                                {totalCumule.toFixed(3)} DH
                               </span>
-                            : <span className="text-sm text-gray-400">-</span>}
+                            );
+                          })()}
                         </td>
                         {activeTab === 'clients' && (
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -4936,11 +4945,14 @@ const ContactsPage: React.FC = () => {
                               <div className="text-sm text-gray-700">{formatDateTimeWithHour((contact.date_creation || contact.created_at) as string)}</div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right">
-                              {contact.total_cumule !== null && contact.total_cumule !== undefined
-                                ? <span className={`text-sm font-bold ${Number(contact.total_cumule) > 0 ? 'text-red-600' : Number(contact.total_cumule) < 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                                    {Number(contact.total_cumule).toFixed(3)} DH
+                              {(() => {
+                                const totalCumule = getContactTotalCumuleValue(contact);
+                                return (
+                                  <span className={`text-sm font-bold ${totalCumule > 0 ? 'text-red-600' : totalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                                    {totalCumule.toFixed(3)} DH
                                   </span>
-                                : <span className="text-sm text-gray-400">-</span>}
+                                );
+                              })()}
                             </td>
                             {activeTab === 'clients' && (
                               <td className="px-6 py-4 whitespace-nowrap">

@@ -1698,6 +1698,9 @@ const ClientsListPage: React.FC = () => {
   const totalCreditClients = (typeof soldeCumuleCard?.total_credit === 'number')
     ? soldeCumuleCard.total_credit
     : (grandTotalPaiements !== null && grandTotalAvoirs !== null ? grandTotalPaiements + grandTotalAvoirs : null);
+  const totalCumuleClients = (totalCreditClients !== null && totalDebitClients !== null)
+    ? totalCreditClients - totalDebitClients
+    : grandTotalCumule;
 
   const handleSort = (col: ContactsSortBy) => {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -1743,11 +1746,9 @@ const ClientsListPage: React.FC = () => {
         </div>
         <div className="bg-yellow-50 rounded-xl border border-yellow-200 px-4 py-3">
           <p className="text-xs text-gray-400 mb-1">Total cumulé (tous les clients)</p>
-          {typeof soldeCumuleCard?.total_final === 'number'
-            ? <p className={`font-bold text-sm ${soldeCumuleCard.total_final > 0 ? 'text-red-600' : soldeCumuleCard.total_final < 0 ? 'text-green-600' : 'text-gray-500'}`}>{fmt(soldeCumuleCard.total_final)}</p>
-            : grandTotalCumule !== null
-              ? <p className={`font-bold text-sm ${grandTotalCumule > 0 ? 'text-red-600' : grandTotalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>{fmt(grandTotalCumule)}</p>
-              : <p className="text-sm text-gray-300">—</p>}
+          {totalCumuleClients !== null
+            ? <p className={`font-bold text-sm ${totalCumuleClients > 0 ? 'text-red-600' : totalCumuleClients < 0 ? 'text-green-600' : 'text-gray-500'}`}>{fmt(totalCumuleClients)}</p>
+            : <p className="text-sm text-gray-300">-</p>}
         </div>
       </div>
 
