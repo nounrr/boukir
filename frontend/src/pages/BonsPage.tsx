@@ -4381,7 +4381,18 @@ const BonsPage = () => {
               setSelectedBonForPrint(null);
             }}
             bon={selectedBonForPrint}
-            type={((effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirComptant') ? 'AvoirClient' : effectiveCurrentTab) as any}
+            type={(() => {
+              const b = selectedBonForPrint;
+              if (effectiveCurrentTab === 'AvoirComptant') return 'AvoirClient';
+              if (effectiveCurrentTab === 'Avoir') {
+                const vendreFournisseur =
+                  b?.vendre_au_fournisseur === 1 ||
+                  b?.vendre_au_fournisseur === true ||
+                  String(b?.vendre_au_fournisseur) === '1';
+                return vendreFournisseur ? 'Avoir' : 'AvoirClient';
+              }
+              return effectiveCurrentTab;
+            })() as any}
             products={products}
             contact={(() => {
               const b = selectedBonForPrint;

@@ -34,12 +34,27 @@ export function bonPrefix(type?: string) {
   }
 }
 
-export function getBonNumeroDisplay(bon: { id?: number | string; type?: string; numero?: string }, width = 2) {
-  // If backend still provides a numero, prefer it; otherwise compute from type + id
+const isVendreAuFournisseur = (bon: any) =>
+  bon?.vendre_au_fournisseur === 1 ||
+  bon?.vendre_au_fournisseur === true ||
+  String(bon?.vendre_au_fournisseur) === '1';
+
+export function getBonNumeroDisplay(bon: { id?: number | string; type?: string; numero?: string; vendre_au_fournisseur?: number | boolean | string }, width = 2) {
   const id = bon?.id;
   const type = bon?.type;
-  const computed = (id != null && id !== '') ? `${bonPrefix(type)}${padId(id, width)}` : '';
-  return bon?.numero ?? computed;
+  const numericPart = (() => {
+    const raw = String(bon?.numero ?? '');
+    const match = raw.match(/(\d+)/);
+    return match?.[1] || padId(id ?? '', width);
+  })();
+
+  let prefix = bonPrefix(type);
+  if ((type === 'Sortie' || type === 'Avoir') && isVendreAuFournisseur(bon)) {
+    prefix = type === 'Sortie' ? 'SORF' : 'AVVF';
+  }
+
+  const computed = numericPart ? `${prefix}${numericPart}` : '';
+  return computed || String(bon?.numero ?? '');
 }
 
 // Standardized display (business) prefixes: Commande=CMD, Sortie=SOR, Comptant=CMP

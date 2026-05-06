@@ -3,6 +3,7 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { X, Printer } from 'lucide-react';
 import logo from './logo3.png';
 import logo1 from './logo1WB.png';
+import { getBonNumeroDisplay } from '../utils/numero';
 
 interface ThermalPrintModalProps {
   isOpen: boolean;
@@ -28,7 +29,15 @@ const formatDateTime = (date: string) => {
   return d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 };
 
-const getTypeLabel = (t: string) => {
+const getTypeLabel = (t: string, bon?: any) => {
+  const isAvoirVendreFournisseur =
+    t === 'Avoir' &&
+    (bon?.vendre_au_fournisseur === 1 ||
+      bon?.vendre_au_fournisseur === true ||
+      String(bon?.vendre_au_fournisseur) === '1');
+
+  if (isAvoirVendreFournisseur) return 'AVOIR VENDRE FOURNISSEUR';
+
   const map: Record<string, string> = {
     Commande: 'COMMANDE',
     Sortie: 'DEVIS',
@@ -42,6 +51,11 @@ const getTypeLabel = (t: string) => {
   };
   return map[t] ?? 'BON';
 };
+
+const isVendreAuFournisseur = (bon: any) =>
+  bon?.vendre_au_fournisseur === 1 ||
+  bon?.vendre_au_fournisseur === true ||
+  String(bon?.vendre_au_fournisseur) === '1';
 
 const parseBonItems = (bon: any, items: any[]): any[] => {
   if (Array.isArray(items) && items.length) return items;
@@ -247,18 +261,29 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
   }, [parsedItems]);
 
   // Toujours afficher téléphone/adresse livraison si présents, même sans contact
-  const contactName = useMemo(() => {
-    if (!contact) return '';
-    if (typeof contact.societe === 'string' && contact.societe.trim()) return contact.societe;
-    return contact.nom_complet || contact.nom || contact.name || '';
-  }, [contact]);
+  const isSupplierDocument = useMemo(
+    () => type === 'Commande' || type === 'AvoirFournisseur' || ((type === 'Sortie' || type === 'Avoir') && isVendreAuFournisseur(bon)),
+    [bon, type]
+  );
+
+  const contactSociete = useMemo(() => {
+    if (typeof contact?.societe === 'string' && contact.societe.trim()) return contact.societe.trim();
+    if (typeof bon?.fournisseur_societe === 'string' && bon.fournisseur_societe.trim()) return bon.fournisseur_societe.trim();
+    if (typeof bon?.client_societe === 'string' && bon.client_societe.trim()) return bon.client_societe.trim();
+    return '';
+  }, [bon, contact]);
+
+  const contactPersonName = useMemo(() => {
+    if (contact?.nom_complet || contact?.nom || contact?.name) return contact.nom_complet || contact.nom || contact.name || '';
+    return bon?.fournisseur_nom || bon?.client_nom || '';
+  }, [bon, contact]);
 
   const contactRef = useMemo(() => {
     const directRef = contact?.reference;
     if (directRef != null && String(directRef).trim()) return String(directRef).trim();
     if (contact?.id != null && Number(contact.id) > 0) return String(contact.id);
 
-    if (type === 'Commande' || type === 'AvoirFournisseur') {
+    if (type === 'Commande' || type === 'AvoirFournisseur' || ((type === 'Sortie' || type === 'Avoir') && isVendreAuFournisseur(bon))) {
       return String(bon?.fournisseur_id ?? bon?.contact_id ?? '').trim();
     }
     if (type === 'Comptant' || type === 'Vehicule') {
@@ -268,7 +293,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return String(ecommerceRaw?.user_id ?? ecommerceRaw?.contact_id ?? bon?.client_id ?? bon?.contact_id ?? '').trim();
   }, [bon, contact, type]);
 
-  const contactRefLabel = type === 'Commande' || type === 'AvoirFournisseur' ? 'Ref fournisseur' : 'Ref client';
+  const contactRefLabel = isSupplierDocument ? 'Ref fournisseur' : 'Ref client';
 
   const tel = useMemo(() => {
     const raw = bon?.phone ?? bon?.tel ?? bon?.telephone ?? contact?.telephone ?? contact?.tel ?? '';
@@ -280,7 +305,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return raw ? String(raw).trim() : '';
   }, [bon]);
 
-  const hasRightInfo = Boolean((contactName && contactName.trim()) || tel || adrLiv);
+  const hasRightInfo = Boolean((contactSociete && contactSociete.trim()) || (contactPersonName && contactPersonName.trim()) || tel || adrLiv);
 
   const isAvoir = ['AvoirClient', 'AvoirFournisseur', 'Avoir', 'AvoirComptant'].includes(type);
 
@@ -441,14 +466,20 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                 width="25%"
               />
               <div className='text-center'>
-                <div className="thermal-info">{getTypeLabel(type)}</div>
+                <div className="thermal-info">{getTypeLabel(type, bon)}</div>
                 <div className="thermal-info"></div>
               </div>
               {hasRightInfo ? (
                 <div className="thermal-info" style={{ marginTop: '2mm' }}>
-                  {contactName ? (
+                  {contactPersonName ? (
                     <>
-                      Client: {contactName}
+                      Nom: {contactPersonName}
+                      <br />
+                    </>
+                  ) : null}
+                  {contactSociete ? (
+                    <>
+                      Société: {contactSociete}
                       <br />
                     </>
                   ) : null}
@@ -489,7 +520,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
               <span>GSM: 0650812894 - Tél: 0666216657</span>
               <br />
               <span>
-                {bon?.numero ? `#${bon.numero}` : ''}
+                {bon ? `#${getBonNumeroDisplay(bon as any)}` : ''}
                 {' '}
                 {formatDateTime(bon?.date_creation || new Date().toISOString())}
               </span>
