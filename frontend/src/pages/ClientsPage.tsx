@@ -1427,6 +1427,8 @@ const ClientDetailPage: React.FC = () => {
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
+    const includeInitialInDebit = !hasScopedPrint;
+    const initialSoldeForDebit = Math.abs(Number(contact.solde ?? 0) || 0);
     const totalQty = printProductHistory
       .filter((r: any) => r.type === 'produit' && Number(r.quantite) > 0)
       .reduce((s: number, r: any) => s + Number(r.quantite ?? 0), 0);
@@ -1446,10 +1448,10 @@ const ClientDetailPage: React.FC = () => {
       totalQty,
       totalAmount: totalVentes,
       finalSolde,
-      totalDebit: totalVentes,
+      totalDebit: totalVentes + (includeInitialInDebit ? initialSoldeForDebit : 0),
       totalCredit: totalPaiements + totalAvoirs,
     };
-  }, [history, contact, filterFrom, filterTo, printProductHistory, selectedIds, selectedItemIds]);
+  }, [history, contact, printProductHistory, hasScopedPrint]);
 
 
 
@@ -1734,6 +1736,7 @@ const ClientDetailPage: React.FC = () => {
           finalSolde={printTotals.finalSolde}
           totalDebit={printTotals.totalDebit}
           totalCredit={printTotals.totalCredit}
+          totalDebitSubtitle={hasScopedPrint ? '(Sorties + Comptant)' : '(Sorties + Comptant + Solde initial)'}
         />
       )}
 
