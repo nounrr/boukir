@@ -1310,7 +1310,9 @@ const ClientDetailPage: React.FC = () => {
     });
   };
 
-  const hasScopedPrint = !!filterFrom || !!filterTo || selectedIds.size > 0 || selectedItemIds.size > 0;
+  const hasDateFilter = !!filterFrom || !!filterTo;
+  const hasSelectionScopedPrint = selectedIds.size > 0 || selectedItemIds.size > 0;
+  const hasScopedPrint = hasDateFilter || hasSelectionScopedPrint;
 
   const printProductHistory = useMemo(() => {
     if (!history || !contact) return [];
@@ -1409,7 +1411,9 @@ const ClientDetailPage: React.FC = () => {
       });
     });
 
-    if (!hasScopedPrint) return result;
+    // Le filtre date garde le vrai cumul historique.
+    // Seule une impression par sélection recalcule un cumul local.
+    if (!hasSelectionScopedPrint) return result;
 
     let scopedSolde = 0;
     return result.map((row: any) => {
@@ -1419,7 +1423,7 @@ const ClientDetailPage: React.FC = () => {
       else if (type === 'paiement' || type === 'avoir') scopedSolde += amount;
       return { ...row, soldeCumulatif: scopedSolde };
     });
-  }, [history, contact, filterFrom, filterTo, selectedIds, selectedItemIds, hasScopedPrint]);
+  }, [history, contact, filterFrom, filterTo, selectedIds, selectedItemIds, hasSelectionScopedPrint]);
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
@@ -1723,7 +1727,7 @@ const ClientDetailPage: React.FC = () => {
           productHistory={printProductHistory}
           dateFrom={filterFrom || undefined}
           dateTo={filterTo || undefined}
-          skipInitialRow={!!filterFrom || selectedIds.size > 0 || selectedItemIds.size > 0}
+          skipInitialRow={hasDateFilter || hasSelectionScopedPrint}
           hideCumulative={false}
           totalQty={printTotals.totalQty}
           totalAmount={printTotals.totalAmount}
