@@ -1018,7 +1018,61 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     });
   }, [ (formik.values as any)?.remise_client, (formik.values as any)?.remise_artisan, variantUseProductRemise ]);
 
+  const costRuleViolations = useMemo(() => {
+    const messages: string[] = [];
+
+    const parentPrixAchat = toNonNegativeNum(formik.values.prix_achat ?? 0);
+    const parentCoutRevient = priceRaw.cout_revient !== ''
+      ? toNonNegativeNum(priceRaw.cout_revient)
+      : toNonNegativeNum(dynamicPrices.cout_revient);
+
+    if (parentPrixAchat > parentCoutRevient) {
+      messages.push('Produit: prix achat supérieur au coût de revient.');
+    }
+
+    if (Array.isArray(formik.values.variants)) {
+      formik.values.variants.forEach((variant: any, index: number) => {
+        const variantPrixAchat = toNonNegativeNum(variant?.prix_achat ?? 0);
+        const variantCoutRevient = toNonNegativeNum(variant?.cout_revient ?? 0);
+        if (variantPrixAchat > variantCoutRevient) {
+          const variantLabel = String(variant?.variant_name || '').trim() || `#${index + 1}`;
+          messages.push(`Variante ${variantLabel}: prix achat supérieur au coût de revient.`);
+        }
+      });
+    }
+
+    const snapshotEntries: any[] = [];
+    if (Array.isArray(productSnapshotRows)) snapshotEntries.push(...productSnapshotRows);
+    if (Array.isArray(formik.values.variants)) {
+      for (const variant of formik.values.variants as any[]) {
+        if (Array.isArray((variant as any)?.snapshot_rows)) snapshotEntries.push(...(variant as any).snapshot_rows);
+      }
+    }
+
+    const seenSnapshotIds = new Set<string>();
+    snapshotEntries.forEach((snapshot: any) => {
+      const snapshotId = String(snapshot?.id ?? snapshot?.snapshot_id ?? '');
+      if (!snapshotId || seenSnapshotIds.has(snapshotId)) return;
+      seenSnapshotIds.add(snapshotId);
+
+      const snapshotPrixAchat = toNonNegativeNum(getSnapshotEditValue(snapshot, 'prix_achat'));
+      const snapshotCoutRevient = toNonNegativeNum(getSnapshotEditValue(snapshot, 'cout_revient'));
+      if (snapshotPrixAchat > snapshotCoutRevient) {
+        messages.push(`Snapshot #${snapshotId}: prix achat supérieur au coût de revient.`);
+      }
+    });
+
+    return messages;
+  }, [formik.values.prix_achat, formik.values.variants, priceRaw.cout_revient, dynamicPrices.cout_revient, productSnapshotRows, snapshotEdits]);
+
+  const hasCostRuleViolation = costRuleViolations.length > 0;
+
   const handlePrimarySubmit = async () => {
+    if (hasCostRuleViolation) {
+      setSubmitErrorMessages(costRuleViolations);
+      return;
+    }
+
     const errors = await formik.validateForm();
     const formHasErrors = hasNestedErrors(errors);
 
@@ -1064,6 +1118,17 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           }}
           className="p-6 space-y-6"
         >
+          {hasCostRuleViolation && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="mb-1 font-semibold">Impossible d'enregistrer ce produit.</div>
+              <div className="space-y-1">
+                {costRuleViolations.slice(0, 8).map((message, index) => (
+                  <div key={`${message}-${index}`}>{message}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {submitErrorMessages.length > 0 && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               <div className="mb-1 font-semibold">Le formulaire contient encore des champs invalides.</div>
@@ -2831,8 +2896,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               onClick={() => {
                 void handlePrimarySubmit();
               }}
-              disabled={formik.isSubmitting || savingSnapshots}
+              disabled={formik.isSubmitting || savingSnapshots || hasCostRuleViolation}
               className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all"
+              title={hasCostRuleViolation ? "Impossible d'enregistrer: prix achat supérieur au coût de revient" : undefined}
             >
               {formik.isSubmitting ? (editingProduct ? 'Mise à jour...' : 'Ajout...') : savingSnapshots ? 'Enregistrement...' : (editingProduct ? 'Mettre à jour' : 'Ajouter')}
             </button>

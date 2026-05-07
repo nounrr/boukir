@@ -5625,7 +5625,7 @@ const ContactsPage: React.FC = () => {
                       </div>
                     )}
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                      <div className="relative">
+                      <div className="hidden">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                         <input
                           type="text"
@@ -5721,6 +5721,16 @@ const ContactsPage: React.FC = () => {
                         </button>
                         </>
                       )}
+                      <div className="relative w-full sm:w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        <input
+                          type="text"
+                          placeholder="Rechercher produit (RÃ©fÃ©rence, DÃ©signation, NumÃ©ro bon)"
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                          className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                        />
+                      </div>
                       <button
                         onClick={openPrintProducts}
                         className="w-full sm:w-auto flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm"

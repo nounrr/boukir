@@ -377,6 +377,41 @@ function getHistoryUnitLabel(item: any, products: any[]): string {
   return unit?.unit_name || '—';
 }
 
+function historyItemMatchesSearch(item: any, products: any[], search: string): boolean {
+  if (!search) return true;
+  const variantLabel = getHistoryVariantLabel(item, products);
+  const haystack = [
+    item?.reference,
+    item?.product_reference,
+    item?.designation,
+    item?.product_designation,
+    variantLabel,
+  ]
+    .map((value) => String(value ?? '').toLowerCase().trim())
+    .filter(Boolean);
+  return haystack.some((value) => value.includes(search));
+}
+
+function filterHistoryBonsBySearch(bons: any[], products: any[], search: string): any[] {
+  if (!search) return bons;
+  return (bons ?? [])
+    .map((bon: any) => {
+      const items = Array.isArray(bon?.items) ? bon.items.filter((item: any) => historyItemMatchesSearch(item, products, search)) : [];
+      return { ...bon, items };
+    })
+    .filter((bon: any) => Array.isArray(bon.items) && bon.items.length > 0);
+}
+
+function filterCompletRowsBySearch(rows: CompletRow[], products: any[], search: string): CompletRow[] {
+  if (!search) return rows;
+  return rows.flatMap((row) => {
+    if (row.kind === 'paiement') return [];
+    const items = Array.isArray(row.data?.items) ? row.data.items.filter((item: any) => historyItemMatchesSearch(item, products, search)) : [];
+    if (items.length === 0) return [];
+    return [{ ...row, data: { ...row.data, items } }];
+  });
+}
+
 function computeHistoryItemBenefice(item: any, products: any[]): number | null {
   if (!item) return null;
 
@@ -985,6 +1020,7 @@ const ClientDetailPage: React.FC = () => {
   const [detail, setDetail] = useState(true);
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
+  const [productSearch, setProductSearch] = useState('');
   const { data: contact, isLoading: loadingContact } = useGetContactQuery(clientId);
   const { data: history, isLoading: loadingHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
   const { data: products = [] } = useGetProductsQuery();
@@ -1177,7 +1213,26 @@ const ClientDetailPage: React.FC = () => {
   }, [history, paySort, filterFrom, filterTo]);
 
   // completRows = TOUTES les rows (jamais filtrées) — le solde cumulé reste exact
-  const completRows = useMemo(() => buildCompletRows(history), [history]);
+  const normalizedProductSearch = useMemo(() => productSearch.trim().toLowerCase(), [productSearch]);
+  const hasProductSearch = normalizedProductSearch.length > 0;
+
+  const rawCompletRows = useMemo(() => buildCompletRows(history), [history]);
+  const completRows = useMemo(
+    () => filterCompletRowsBySearch(rawCompletRows, products, normalizedProductSearch),
+    [rawCompletRows, products, normalizedProductSearch]
+  );
+  const filteredSorties = useMemo(
+    () => filterHistoryBonsBySearch(sorties, products, normalizedProductSearch),
+    [sorties, products, normalizedProductSearch]
+  );
+  const filteredBons = useMemo(
+    () => filterHistoryBonsBySearch(bons, products, normalizedProductSearch),
+    [bons, products, normalizedProductSearch]
+  );
+  const filteredAvoirs = useMemo(
+    () => filterHistoryBonsBySearch(avoirs, products, normalizedProductSearch),
+    [avoirs, products, normalizedProductSearch]
+  );
 
   // visibleIds = set des ids visibles selon le filtre date (null = tout visible)
   const visibleIds = useMemo<Set<string> | undefined>(() => {
@@ -1205,12 +1260,13 @@ const ClientDetailPage: React.FC = () => {
   const solde: number = contact?.solde ?? 0;
 
   const showDetail = tab !== 'paiements';
+  const detailEnabled = detail || hasProductSearch;
 
   const tabs: { id: PageTab; label: string; count: number }[] = [
     { id: 'complet', label: 'Complet', count: visibleIds ? visibleIds.size : completRows.length },
-    { id: 'sorties', label: 'Bons Sortie', count: sorties.length },
-    { id: 'bons', label: 'Bons Comptant', count: bons.length },
-    { id: 'avoirs', label: 'Avoirs Client', count: avoirs.length },
+    { id: 'sorties', label: 'Bons Sortie', count: filteredSorties.length },
+    { id: 'bons', label: 'Bons Comptant', count: filteredBons.length },
+    { id: 'avoirs', label: 'Avoirs Client', count: filteredAvoirs.length },
     { id: 'paiements', label: 'Paiements', count: paiements.length },
   ];
 
@@ -1501,11 +1557,31 @@ const ClientDetailPage: React.FC = () => {
 
           {/* Checkbox détail — uniquement sur sortie / comptant / avoir */}
           {showDetail && (
+            <div className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-l border-gray-100">
+              <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              <input
+                type="text"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+                placeholder="Produit, variante, référence"
+                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-[220px]"
+              />
+              {productSearch && (
+                <button
+                  onClick={() => setProductSearch('')}
+                  className="text-xs text-gray-400 hover:text-red-500 transition-colors px-0.5"
+                >âœ•</button>
+              )}
+            </div>
+          )}
+
+          {showDetail && (
             <label className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none flex-shrink-0 border-l border-gray-100">
               <input
                 type="checkbox"
-                checked={detail}
+                checked={detailEnabled}
                 onChange={e => setDetail(e.target.checked)}
+                disabled={hasProductSearch}
                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
               />
               <span className="text-sm font-medium text-gray-600">Détail</span>
@@ -1519,10 +1595,10 @@ const ClientDetailPage: React.FC = () => {
           {/* ── Complet ── */}
           {tab === 'complet' && (
             completRows.length === 0
-              ? <Empty icon={<FileText />} label="Aucune opération" />
+              ? <Empty icon={<FileText />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucune opération"} />
               : <CompletTable
                   rows={completRows}
-                  detail={detail}
+                  detail={detailEnabled}
                   soldeInitial={contact?.solde ?? 0}
                   products={products}
                   remises={history?.remises ?? []}
@@ -1539,23 +1615,23 @@ const ClientDetailPage: React.FC = () => {
 
           {/* ── Bons Sortie ── */}
           {tab === 'sorties' && (
-            sorties.length === 0
-              ? <Empty icon={<FileText />} label="Aucun bon sortie" />
-              : <BonTable bons={sorties} detail={detail} products={products} prefix="SOR" accentClass="text-blue-700" hoverClass="hover:bg-blue-50" />
+            filteredSorties.length === 0
+              ? <Empty icon={<FileText />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucun bon sortie"} />
+              : <BonTable bons={filteredSorties} detail={detailEnabled} products={products} prefix="SOR" accentClass="text-blue-700" hoverClass="hover:bg-blue-50" />
           )}
 
           {/* ── Bons Comptant ── */}
           {tab === 'bons' && (
-            bons.length === 0
-              ? <Empty icon={<FileText />} label="Aucun bon comptant" />
-              : <BonTable bons={bons} detail={detail} products={products} prefix="COM" accentClass="text-sky-700" hoverClass="hover:bg-sky-50" />
+            filteredBons.length === 0
+              ? <Empty icon={<FileText />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucun bon comptant"} />
+              : <BonTable bons={filteredBons} detail={detailEnabled} products={products} prefix="COM" accentClass="text-sky-700" hoverClass="hover:bg-sky-50" />
           )}
 
           {/* ── Avoirs Client ── */}
           {tab === 'avoirs' && (
-            avoirs.length === 0
-              ? <Empty icon={<RotateCcw />} label="Aucun avoir client" />
-              : <BonTable bons={avoirs} detail={detail} products={products} prefix="AVC" accentClass="text-orange-700" hoverClass="hover:bg-orange-50" />
+            filteredAvoirs.length === 0
+              ? <Empty icon={<RotateCcw />} label={hasProductSearch ? "Aucun produit trouvé" : "Aucun avoir client"} />
+              : <BonTable bons={filteredAvoirs} detail={detailEnabled} products={products} prefix="AVC" accentClass="text-orange-700" hoverClass="hover:bg-orange-50" />
           )}
 
           {/* ── Paiements ── */}
