@@ -1533,9 +1533,7 @@ const ContactsPage: React.FC = () => {
   }, []);
 
   const computeDebitCreditForRows = React.useCallback((
-    rows: any[],
-    initialSolde = 0,
-    includeInitialSolde = false
+    rows: any[]
   ) => {
     let totalVentes = 0;
     let totalPaiements = 0;
@@ -1555,7 +1553,7 @@ const ContactsPage: React.FC = () => {
     }
 
     return {
-      totalDebit: totalVentes + (includeInitialSolde ? Math.abs(Number(initialSolde) || 0) : 0),
+      totalDebit: totalVentes,
       totalCredit: totalPaiements + totalAvoirs,
       totalVentes,
       totalPaiements,
@@ -1752,14 +1750,9 @@ const ContactsPage: React.FC = () => {
   // Utilisés dans les cartes frontend, le PDF modal et le handlePrint
   const filteredDebitCredit = useMemo(() => {
     if (!selectedContact) return { totalDebit: 0, totalCredit: 0, totalVentes: 0, totalPaiements: 0, totalAvoirs: 0 };
-    const initialSolde = getContactInitialSoldeForHistory(selectedContact);
     const rows = (displayedProductHistory || []).filter((r: any) => !r?.syntheticInitial);
-
-    // Quand un filtre de date est actif, ne pas ajouter le solde initial au débit
-    // (on montre seulement les mouvements de la période filtrée)
-    const hasDateFilter = !!(dateFrom || dateTo);
-    return computeDebitCreditForRows(rows, initialSolde, !hasDateFilter);
-  }, [displayedProductHistory, selectedContact, dateFrom, dateTo, getContactInitialSoldeForHistory, computeDebitCreditForRows]);
+    return computeDebitCreditForRows(rows);
+  }, [displayedProductHistory, selectedContact, computeDebitCreditForRows]);
 
   const newSystemRemiseDisplayed = useMemo(() => {
     const rows = (displayedProductHistory || []).filter((r: any) => r && !r.syntheticInitial);
@@ -2933,11 +2926,7 @@ const ContactsPage: React.FC = () => {
 
     // Pour sélection : somme des totaux sélectionnés uniquement (SANS solde initial)
     const selectedTotal = filteredProductsForDisplay2.reduce((acc, item) => acc + (Number(item?.total) || 0), 0);
-    const printDebitCredit = computeDebitCreditForRows(
-      filteredProductsForDisplay2,
-      getContactInitialSoldeForHistory(selectedContact),
-      !(dateFrom || dateTo) && !printHasSelection
-    );
+    const printDebitCredit = computeDebitCreditForRows(filteredProductsForDisplay2);
 
     const productStatsArray = Object.values(productStats).sort((a: any, b: any) => b.montant_total - a.montant_total);
 
