@@ -437,7 +437,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           groups[key].calculs.push(c);
           groups[key].total += amount;
         }
-        const order = ['Comptant', 'Sortie', 'Commande', 'Avoir', 'Bon Véhicule'];
+        const order = ['Comptant', 'Sortie', 'Commande', 'Avoir', 'Charge', 'Bon Véhicule'];
         const groupKeys = Object.keys(groups).sort((a, b) => {
           const ia = order.indexOf(a);
           const ib = order.indexOf(b);
@@ -535,14 +535,14 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                           {formatAmount(chiffre.total)} DH
                         </div>
                       </div>
-                      {chiffre.type === 'CA_NET' && chiffre.calculs.some((c: CalculDetail) => c.bonType === 'Avoir') && (
+                      {chiffre.type === 'CA_NET' && chiffre.calculs.some((c: CalculDetail) => c.bonType === 'Avoir' || c.bonType === 'Charge') && (
                         <div className="text-sm text-gray-500 mt-2">
-                          * Les avoirs client sont soustraits du total
+                          * Les avoirs client et les bons charge sont soustraits du total
                         </div>
                       )}
                       {chiffre.type === 'BENEFICIAIRE' && (
                         <div className="text-sm text-gray-500 mt-2">
-                          * Calcul: Profits (Ventes) - Profits (Avoirs Client) - Profits (Avoirs Comptant) - Montant Total (Bons Véhicule)
+                          * Calcul: Profits (Ventes) - Profits (Avoirs Client) - Profits (Avoirs Comptant) - Montant Total (Bons Charge) - Montant Total (Bons Véhicule)
                           <br />
                           * Profit ligne = ((PV - Coût) × Qté)
                           <br />
@@ -550,7 +550,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                           <br />
                           * Les remises sont déduites du profit : Profit ligne = (PV - Coût) × Qté - Remise × Qté
                           <br />
-                          * Les bons véhicule sont déduits en montant total (pas en profit)
+                          * Les bons charge et les bons véhicule sont déduits en montant total
                         </div>
                       )}
                     </div>

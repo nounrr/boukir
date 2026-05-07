@@ -261,24 +261,18 @@ const BonsPage = () => {
 
   const backendSortBy = sortField || 'numero';
   const backendStatus = statusFilter.length ? statusFilter.join(',') : undefined;
-  const backendPaymentState = currentTab === 'ComptantNonPaye'
-    ? 'unpaid'
-    : currentTab === 'VendreFournisseur'
-      ? 'vendre_fournisseur'
-    : currentTab === 'AvoirVendreFournisseur'
-      ? 'vendre_fournisseur'
-      : currentTab === 'Sortie'
-        ? 'normal_sortie'
+  const backendPaymentState = currentTab === 'Sortie'
+    ? 'normal_sortie'
     : currentTab === 'Avoir'
       ? 'normal_avoir_client'
-    : currentTab === 'Comptant'
-      ? 'paid'
-      : undefined;
+      : currentTab === 'Comptant'
+        ? 'paid'
+        : undefined;
 
   // RTK Query hooks
   // Load only the current tab from the backend with server-side pagination/search.
   const { data: bonsResponse, isLoading: bonsLoading, refetch: refetchBons } = useGetBonsByTypePagedQuery({
-    type: effectiveCurrentTab,
+    type: currentTab,
     page: currentPage,
     limit: itemsPerPage,
     search: searchTerm || undefined,
@@ -4423,7 +4417,11 @@ const BonsPage = () => {
                 return found;
               }
               // Commande & AvoirFournisseur: suppliers; prefer fournisseur_id, fallback to contact_id
-              if (effectiveCurrentTab === 'Commande' || effectiveCurrentTab === 'AvoirFournisseur' || (effectiveCurrentTab === 'Avoir' && b?.vendre_au_fournisseur)) {
+              if (
+                effectiveCurrentTab === 'Commande' ||
+                effectiveCurrentTab === 'AvoirFournisseur' ||
+                ((effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Avoir') && b?.vendre_au_fournisseur)
+              ) {
                 const id = b.fournisseur_id ?? b.contact_id;
                 const found = suppliers.find((s) => String(s.id) === String(id)) || null;
                 return found || (b.fournisseur_nom ? ({ nom_complet: b.fournisseur_nom } as any) : null);

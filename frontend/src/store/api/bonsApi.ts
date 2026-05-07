@@ -3,9 +3,10 @@ import type { Bon } from '../../types';
 
 // Shared union for bon-like types
 type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'AvoirEcommerce' | 'Vehicule' | 'Ecommerce';
+type PagedBonType = AnyBonType | 'ComptantNonPaye' | 'VendreFournisseur' | 'AvoirVendreFournisseur';
 
 type PagedBonsArgs = {
-  type: AnyBonType;
+  type: PagedBonType;
   page: number;
   limit: number;
   search?: string;
@@ -301,10 +302,29 @@ export const bonsApi = api.injectEndpoints({
     }),
 
     getBonsByTypePaged: builder.query<PagedBonsResponse, PagedBonsArgs>({
-      query: ({ type, ...params }) => ({
-        url: `/bons/paged/${type}`,
-        params,
-      }),
+      query: ({ type, paymentState, ...params }) => {
+        let backendType: AnyBonType = type as AnyBonType;
+        let resolvedPaymentState = paymentState;
+
+        if (type === 'ComptantNonPaye') {
+          backendType = 'Comptant';
+          resolvedPaymentState = resolvedPaymentState ?? 'unpaid';
+        } else if (type === 'VendreFournisseur') {
+          backendType = 'Sortie';
+          resolvedPaymentState = resolvedPaymentState ?? 'vendre_fournisseur';
+        } else if (type === 'AvoirVendreFournisseur') {
+          backendType = 'Avoir';
+          resolvedPaymentState = resolvedPaymentState ?? 'vendre_fournisseur';
+        }
+
+        return {
+          url: `/bons/paged/${backendType}`,
+          params: {
+            ...params,
+            ...(resolvedPaymentState ? { paymentState: resolvedPaymentState } : {}),
+          },
+        };
+      },
       transformResponse: (response: any, _meta, args) => {
         if (args.type === 'Ecommerce' && Array.isArray(response?.orders)) {
           const data = response.orders.map((o: any) => ({
