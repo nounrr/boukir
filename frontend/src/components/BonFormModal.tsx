@@ -354,6 +354,19 @@ const scaleDecimal = (value: any, factor: any = 1) => {
   return n * f;
 };
 
+const getLatestSnapshotEntry = (entries: any[] = []) => {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  return entries.reduce((latest: any, current: any) => {
+    const latestId = Number(latest?.snapshot_id ?? latest?.id ?? 0) || 0;
+    const currentId = Number(current?.snapshot_id ?? current?.id ?? 0) || 0;
+    if (currentId !== latestId) return currentId > latestId ? current : latest;
+
+    const latestTime = new Date(latest?.created_at ?? latest?.date_creation ?? 0).getTime();
+    const currentTime = new Date(current?.created_at ?? current?.date_creation ?? 0).getTime();
+    return currentTime > latestTime ? current : latest;
+  });
+};
+
 const resolveItemCostContext = (
   item: any,
   products: any[] = [],
@@ -782,6 +795,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
           (Number(a.fifo_priority) || 999) - (Number(b.fifo_priority) || 999)
         );
         const oldest = sortedSnaps[0];
+        const latest = getLatestSnapshotEntry(snapshotEntries) || oldest;
         const totalQty = snapshotEntries.reduce((sum: number, s: any) => {
           const qty = Number(s.snapshot_quantite ?? 0);
           return sum + (qty > 0 ? qty : 0);
@@ -792,9 +806,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
           _isMerged: true,
           _mergedSnapshots: sortedSnaps,
           snapshot_quantite: totalQty,
-          prix_achat: oldest.prix_achat,
+          prix_achat: latest?.prix_achat ?? oldest?.prix_achat,
           prix_vente: oldest.prix_vente,
-          cout_revient: oldest.cout_revient,
+          cout_revient: latest?.cout_revient ?? latest?.prix_achat ?? oldest?.cout_revient,
         });
         finalResult.push(...nonSnapshotEntries);
       } else {
@@ -5013,7 +5027,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const factor = unitObj ? (Number(unitObj.conversion_factor) || 1) : 1;
 
                                     // Resolve base PA/CR for display only.
-                                    // If several active snapshots have stock, show the highest PA/CR in SERIE.
+                                    // If several active snapshots have stock, show the latest snapshot values.
                                     let snapshotProd: any = null;
                                     const snapId = item.product_snapshot_id;
                                     if (snapId && snapshotProducts.length > 0) {
@@ -5031,21 +5045,19 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       const isActive = flag == null ? true : Number(flag) !== 0;
                                       return isActive && Number(snap.snapshot_quantite ?? 0) > 0;
                                     });
-                                    const maxActivePA = activeSnapshotsForRow.length > 1
-                                      ? activeSnapshotsForRow.reduce((max: number, snap: any) => Math.max(max, Number(snap.prix_achat) || 0), 0)
-                                      : 0;
-                                    const maxActiveCR = activeSnapshotsForRow.length > 1
-                                      ? activeSnapshotsForRow.reduce((max: number, snap: any) => Math.max(max, Number(snap.cout_revient) || Number(snap.prix_achat) || 0), 0)
-                                      : 0;
+                                    const latestActiveSnapshot = activeSnapshotsForRow.length > 0
+                                      ? getLatestSnapshotEntry(activeSnapshotsForRow)
+                                      : null;
 
                                     const basePA =
-                                      maxActivePA ||
+                                      Number(latestActiveSnapshot?.prix_achat) ||
                                       Number(snapshotProd?.prix_achat) ||
                                       Number(variant?.prix_achat) ||
                                       Number(product?.prix_achat) ||
                                       0;
                                     const baseCR =
-                                      maxActiveCR ||
+                                      Number(latestActiveSnapshot?.cout_revient) ||
+                                      Number(latestActiveSnapshot?.prix_achat) ||
                                       Number(snapshotProd?.cout_revient) ||
                                       Number((variant as any)?.cout_revient) ||
                                       Number(product?.cout_revient) ||
