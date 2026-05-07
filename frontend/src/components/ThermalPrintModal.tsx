@@ -293,7 +293,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return String(ecommerceRaw?.user_id ?? ecommerceRaw?.contact_id ?? bon?.client_id ?? bon?.contact_id ?? '').trim();
   }, [bon, contact, type]);
 
-  const contactRefLabel = isSupplierDocument ? 'Ref fournisseur' : 'Ref client';
+  const contactRefLabel = isSupplierDocument ? 'No fournisseur' : 'No client';
 
   const tel = useMemo(() => {
     const raw = bon?.phone ?? bon?.tel ?? bon?.telephone ?? contact?.telephone ?? contact?.tel ?? '';
@@ -305,7 +305,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
     return raw ? String(raw).trim() : '';
   }, [bon]);
 
-  const hasRightInfo = Boolean((contactSociete && contactSociete.trim()) || (contactPersonName && contactPersonName.trim()) || tel || adrLiv);
+  const hasRightInfo = Boolean((contactSociete && contactSociete.trim()) || (contactPersonName && contactPersonName.trim()) || (contactRef && contactRef.trim()) || tel || adrLiv);
 
   const isAvoir = ['AvoirClient', 'AvoirFournisseur', 'Avoir', 'AvoirComptant'].includes(type);
 
