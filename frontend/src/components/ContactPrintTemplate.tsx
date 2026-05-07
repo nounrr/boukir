@@ -547,7 +547,7 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
             {totalDebit !== undefined && (
               <div className="border-2 border-blue-400 bg-blue-50 px-3 py-2 rounded-lg text-center min-w-[140px]">
                 <div className="text-xs font-semibold text-blue-800">Total Débit</div>
-                <div className="text-[10px] text-gray-500">(Ventes/Achats + Solde initial)</div>
+                <div className="text-[10px] text-gray-500">(Sorties + Comptant)</div>
                 <div className="text-base font-bold text-blue-900">{fmt(totalDebit)} DH</div>
               </div>
             )}
