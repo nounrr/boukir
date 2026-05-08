@@ -83,6 +83,7 @@ export async function getContactSoldeCumule(db, contactId) {
       WHERE type_paiement = 'Client'
         AND contact_id = ?
         AND statut IN ('En attente','Validé')
+        AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) paiements_client ON c.type = 'Client'
 
@@ -92,6 +93,7 @@ export async function getContactSoldeCumule(db, contactId) {
       FROM payments
       WHERE type_paiement = 'Fournisseur'
         AND contact_id = ?
+        AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) paiements_fournisseur ON c.type = 'Fournisseur'
 

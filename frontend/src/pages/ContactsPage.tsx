@@ -138,17 +138,17 @@ const ContactsPage: React.FC = () => {
   // Statuts considérés comme "actifs" (bons/paiements) pour les calculs
   const isAllowedStatut = (s: any) => {
     if (!s) return false;
-    const norm = String(s).toLowerCase().trim();
+    const norm = String(s)
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
     return !(
-      norm === 'annulé' ||
-      norm === 'annule' ||
-      norm === 'supprimé' ||
-      norm === 'supprime' ||
+      norm.startsWith('annul') ||
+      norm.startsWith('supprim') ||
       norm === 'brouillon' ||
-      norm === 'refusé' ||
-      norm === 'refuse' ||
-      norm === 'expiré' ||
-      norm === 'expire'
+      norm.startsWith('refus') ||
+      norm.startsWith('expir')
     );
   };
 
@@ -158,18 +158,18 @@ const ContactsPage: React.FC = () => {
 
   const isActiveBonStatut = (s: any) => {
     if (!s) return false;
-    const norm = String(s).toLowerCase();
+    const norm = String(s)
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
     // On ignore les bons non confirmés / annulés / supprimés
     return !(
-      norm === 'annulé' ||
-      norm === 'annule' ||
-      norm === 'supprimé' ||
-      norm === 'supprime' ||
+      norm.startsWith('annul') ||
+      norm.startsWith('supprim') ||
       norm === 'brouillon' ||
-      norm === 'refusé' ||
-      norm === 'refuse' ||
-      norm === 'expiré' ||
-      norm === 'expire'
+      norm.startsWith('refus') ||
+      norm.startsWith('expir')
     );
   };
 

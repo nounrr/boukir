@@ -67,7 +67,12 @@ function rowsToMap(rows, keyField) {
 }
 
 function formatDayKey(v) {
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date) {
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, '0');
+    const d = String(v.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
   if (typeof v === 'string') {
     // MySQL DATE sometimes comes as 'YYYY-MM-DD' or 'YYYY-MM-DDT...'
     if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
@@ -744,7 +749,7 @@ router.get('/chiffre-affaires', async (req, res) => {
              SUM(remiseBon) AS remises,
              SUM(bonCount) AS bonCount
       FROM (
-        SELECT DATE(bs.date_creation) AS day,
+        SELECT DATE_FORMAT(bs.date_creation, '%Y-%m-%d') AS day,
                bs.id AS bon_id,
                bs.montant_total AS totalBon,
            COALESCE(SUM((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
@@ -764,7 +769,7 @@ router.get('/chiffre-affaires', async (req, res) => {
 
         UNION ALL
 
-        SELECT DATE(bc.date_creation) AS day,
+        SELECT DATE_FORMAT(bc.date_creation, '%Y-%m-%d') AS day,
                bc.id AS bon_id,
                bc.montant_total AS totalBon,
            COALESCE(SUM((ci.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ci.quantite - (COALESCE(ci.remise_montant, 0) * ci.quantite)), 0) AS profitNetBon,
@@ -784,7 +789,7 @@ router.get('/chiffre-affaires', async (req, res) => {
 
         UNION ALL
 
-        SELECT DATE(o.created_at) AS day,
+        SELECT DATE_FORMAT(o.created_at, '%Y-%m-%d') AS day,
                o.id AS bon_id,
                o.total_amount AS totalBon,
            COALESCE(SUM((oi.unit_price - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * oi.quantity - COALESCE(oi.remise_amount, 0)), 0) AS profitNetBon,
@@ -812,7 +817,7 @@ router.get('/chiffre-affaires', async (req, res) => {
              SUM(profitBrutBon) AS profitBrut,
              SUM(remiseBon) AS remises
       FROM (
-        SELECT DATE(ac.date_creation) AS day,
+        SELECT DATE_FORMAT(ac.date_creation, '%Y-%m-%d') AS day,
                ac.id AS bon_id,
                ac.montant_total AS totalBon,
            COALESCE(SUM((ai.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai.quantite - (COALESCE(ai.remise_montant, 0) * ai.quantite)), 0) AS profitNetBon,
@@ -840,7 +845,7 @@ router.get('/chiffre-affaires', async (req, res) => {
              SUM(profitBrutBon) AS profitBrut,
              SUM(remiseBon) AS remises
       FROM (
-        SELECT DATE(ac2.date_creation) AS day,
+        SELECT DATE_FORMAT(ac2.date_creation, '%Y-%m-%d') AS day,
                ac2.id AS bon_id,
                ac2.montant_total AS totalBon,
            COALESCE(SUM((ai2.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai2.quantite - (COALESCE(ai2.remise_montant, 0) * ai2.quantite)), 0) AS profitNetBon,
@@ -868,7 +873,7 @@ router.get('/chiffre-affaires', async (req, res) => {
              SUM(profitBrutBon) AS profitBrut,
              SUM(remiseBon) AS remises
       FROM (
-        SELECT DATE(ae.date_creation) AS day,
+        SELECT DATE_FORMAT(ae.date_creation, '%Y-%m-%d') AS day,
                ae.id AS bon_id,
                ae.montant_total AS totalBon,
            COALESCE(SUM((i.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * i.quantite - (COALESCE(i.remise_montant, 0) * i.quantite)), 0) AS profitNetBon,
@@ -890,7 +895,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     `;
 
     const chargesSql = `
-      SELECT DATE(bch.date_creation) AS day,
+      SELECT DATE_FORMAT(bch.date_creation, '%Y-%m-%d') AS day,
              COALESCE(SUM(bch.montant_total), 0) AS total
       FROM bons_charge bch
       WHERE LOWER(TRIM(COALESCE(bch.statut, ''))) IN ${VALID_STATUSES_SQL}
@@ -900,7 +905,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     `;
 
     const vehiculeSql = `
-      SELECT DATE(bv.date_creation) AS day,
+      SELECT DATE_FORMAT(bv.date_creation, '%Y-%m-%d') AS day,
              COALESCE(SUM(bv.montant_total), 0) AS total
       FROM bons_vehicule bv
       WHERE LOWER(TRIM(COALESCE(bv.statut, ''))) IN ${VALID_STATUSES_SQL}
@@ -911,7 +916,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     `;
 
     const commandesSql = `
-      SELECT DATE(bcmd.date_creation) AS day,
+      SELECT DATE_FORMAT(bcmd.date_creation, '%Y-%m-%d') AS day,
              COALESCE(SUM(bcmd.montant_total), 0) AS total
       FROM bons_commande bcmd
       WHERE LOWER(TRIM(COALESCE(bcmd.statut, ''))) IN ${VALID_STATUSES_SQL}
@@ -998,6 +1003,8 @@ router.get('/chiffre-affaires', async (req, res) => {
           chiffreAffairesAchatBrut,
           chiffreAchats: achatsTotal,
           totalRemises,
+          totalCharges: chargesTotal,
+          totalBonsVehicule: vehiculeTotal,
         };
       })
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -1012,6 +1019,8 @@ router.get('/chiffre-affaires', async (req, res) => {
     const totalChiffreAffaires = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAffaires), 0);
     const totalChiffreAffairesAchat = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAffairesAchat), 0);
     const totalChiffreAchats = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAchats), 0);
+    const totalCharges = Array.from(chargesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
+    const totalBonsVehicule = Array.from(vehiculeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
 
     const totalRemisesVente = Array.from(ventesMap.values()).reduce((s, r) => s + roundSafe(r.remises), 0);
     const totalRemisesAvoirClient = Array.from(avoirsClientMap.values()).reduce((s, r) => s + roundSafe(r.remises), 0);
@@ -1090,6 +1099,8 @@ router.get('/chiffre-affaires', async (req, res) => {
       totalChiffreAffaires,
       totalChiffreAffairesAchat,
       totalChiffreAchats,
+      totalCharges,
+      totalBonsVehicule,
       totalBons,
       dailyData,
       totalRemisesNet: totalRemisesVente - totalRemisesAvoir,

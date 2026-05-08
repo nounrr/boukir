@@ -61,6 +61,20 @@ const MODE_COLORS: Record<string, string> = {
 const modeColor = (m: string) => MODE_COLORS[m] ?? 'bg-gray-100 text-gray-600';
 
 const EXCLUDED = new Set(['Annulé', 'Annule', 'Supprimé', 'Supprime', 'Brouillon', 'Refusé', 'Refuse', 'Expiré', 'Expire']);
+const isExcludedStatus = (value: any): boolean => {
+  const status = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return (
+    status.startsWith('annul') ||
+    status.startsWith('supprim') ||
+    status === 'brouillon' ||
+    status.startsWith('refus') ||
+    status.startsWith('expir')
+  );
+};
 
 // ─── Empty state ─────────────────────────────────────────────────────────────
 
@@ -276,16 +290,16 @@ type RemiseSplit = {
 function buildCompletRows(history: any): CompletRow[] {
   const rows: CompletRow[] = [
     ...(history?.sorties ?? [])
-      .filter((b: any) => !EXCLUDED.has(b.statut ?? ''))
+      .filter((b: any) => !isExcludedStatus(b.statut))
       .map((d: any) => ({ kind: 'sortie' as const, date: new Date(d.date_creation).getTime(), data: d })),
     ...(history?.comptants ?? [])
-      .filter((b: any) => !EXCLUDED.has(b.statut ?? ''))
+      .filter((b: any) => !isExcludedStatus(b.statut))
       .map((d: any) => ({ kind: 'comptant' as const, date: new Date(d.date_creation).getTime(), data: d })),
     ...(history?.avoirsClient ?? [])
-      .filter((b: any) => !EXCLUDED.has(b.statut ?? ''))
+      .filter((b: any) => !isExcludedStatus(b.statut))
       .map((d: any) => ({ kind: 'avoir' as const, date: new Date(d.date_creation).getTime(), data: d })),
     ...(history?.payments ?? [])
-      .filter((p: any) => !EXCLUDED.has(p.statut ?? ''))
+      .filter((p: any) => !isExcludedStatus(p.statut))
       .map((p: any) => ({ kind: 'paiement' as const, date: new Date(p.date_paiement || p.created_at).getTime(), data: p })),
   ];
   return rows.sort((a, b) => a.date - b.date);
@@ -1178,24 +1192,24 @@ const ClientDetailPage: React.FC = () => {
 
   const sorties = useMemo(() =>
     (history?.sorties ?? [])
-      .filter((b: any) => !EXCLUDED.has(b.statut ?? '') && inDateRange(b.date_creation))
+      .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
       .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
     [history, filterFrom, filterTo]);
 
   const bons = useMemo(() =>
     (history?.comptants ?? [])
-      .filter((b: any) => !EXCLUDED.has(b.statut ?? '') && inDateRange(b.date_creation))
+      .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
       .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
     [history, filterFrom, filterTo]);
 
   const avoirs = useMemo(() =>
     (history?.avoirsClient ?? [])
-      .filter((b: any) => !EXCLUDED.has(b.statut ?? '') && inDateRange(b.date_creation))
+      .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
       .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
     [history, filterFrom, filterTo]);
 
   const paiements = useMemo(() => {
-    const raw = (history?.payments ?? []).filter((p: any) => !EXCLUDED.has(p.statut ?? '') && inDateRange(p.date_paiement || p.created_at));
+    const raw = (history?.payments ?? []).filter((p: any) => !isExcludedStatus(p.statut) && inDateRange(p.date_paiement || p.created_at));
     return raw.sort((a: any, b: any) => {
       let va: any, vb: any;
       if (paySort.col === 'date') {

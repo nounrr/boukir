@@ -252,6 +252,7 @@ const ChiffreAffairesPage: React.FC = () => {
                   <p className="text-xl font-bold text-emerald-900">
                     {formatAmount(chiffreAffairesData.totalChiffreAffairesAchat)} DH
                   </p>
+                  <p className="text-xs text-emerald-700 mt-1">Apres deduction des bons charge (montant total) et bons vehicule</p>
                   <div className="mt-3 pt-3 border-t border-emerald-200">
                     <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Taux profit</p>
                     <p className="text-xl font-bold text-gray-900 mt-0.5">{formatProfitPercentage(totalProfitPct)}</p>
