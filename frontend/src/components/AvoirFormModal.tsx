@@ -6,6 +6,7 @@ import { useCreateBonMutation } from '../store/api/bonsApi';
 import { generateBonReference } from '../utils/referenceUtils';
 import { showSuccess, showError } from '../utils/notifications';
 import { formatDateInputToMySQL, getCurrentDateTimeInput } from '../utils/dateUtils';
+import { useContactSoldeCumule } from '../hooks/useContactSoldeCumule';
 import type { RootState } from '../store';
 import type { Bon, Contact } from '../types';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
@@ -19,6 +20,36 @@ interface AvoirFormModalProps {
   bonOrigine?: any; // Le bon à partir duquel on crée l'avoir (optionnel maintenant)
   onAvoirCreated?: (avoir: any) => void;
 }
+
+const ContactSoldeCumuleHint: React.FC<{
+  contactId?: string | number | null;
+  contactType: 'Client' | 'Fournisseur';
+  colorClassName?: string;
+  labelClassName?: string;
+  valueClassName?: string;
+}> = ({
+  contactId,
+  contactType,
+  colorClassName = 'bg-blue-50',
+  labelClassName = 'text-blue-700',
+  valueClassName = 'text-blue-800',
+}) => {
+  const numericId = contactId ? Number(contactId) : null;
+  const { soldeCumule, contact, isLoading } = useContactSoldeCumule(numericId, contactType);
+
+  if (!numericId) return null;
+
+  const hasValue = contact && Number.isFinite(Number(soldeCumule));
+
+  return (
+    <div className={`mt-2 p-2 rounded ${colorClassName}`}>
+      <span className={`text-sm font-medium ${labelClassName}`}>Solde cumule: </span>
+      <span className={`text-sm font-semibold ${valueClassName}`}>
+        {isLoading ? 'Chargement...' : hasValue ? `${Number(soldeCumule).toFixed(2)} DH` : '-'}
+      </span>
+    </div>
+  );
+};
 
 const validationSchema = Yup.object({
   type_avoir: Yup.string().required('Type d\'avoir requis'),
@@ -506,6 +537,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                             ))}
                           </Field>
                           <ErrorMessage name="client_id" component="div" className="text-red-500 text-sm mt-1" />
+                          {values.client_id && <ContactSoldeCumuleHint contactId={values.client_id} contactType="Client" />}
                         </div>
                         <div className="pt-6">
                           <button
@@ -541,6 +573,15 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                             ))}
                           </Field>
                           <ErrorMessage name="fournisseur_id" component="div" className="text-red-500 text-sm mt-1" />
+                          {values.fournisseur_id && (
+                            <ContactSoldeCumuleHint
+                              contactId={values.fournisseur_id}
+                              contactType="Fournisseur"
+                              colorClassName="bg-orange-50"
+                              labelClassName="text-orange-700"
+                              valueClassName="text-orange-800"
+                            />
+                          )}
                         </div>
                         <div className="pt-6">
                           <button
@@ -626,6 +667,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                           ))}
                         </Field>
                         <ErrorMessage name="client_id" component="div" className="text-red-500 text-sm mt-1" />
+                        {values.client_id && <ContactSoldeCumuleHint contactId={values.client_id} contactType="Client" />}
                       </div>
                       <div className="pt-6">
                         <button
@@ -710,6 +752,15 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                           ))}
                         </Field>
                         <ErrorMessage name="fournisseur_id" component="div" className="text-red-500 text-sm mt-1" />
+                        {values.fournisseur_id && (
+                          <ContactSoldeCumuleHint
+                            contactId={values.fournisseur_id}
+                            contactType="Fournisseur"
+                            colorClassName="bg-orange-50"
+                            labelClassName="text-orange-700"
+                            valueClassName="text-orange-800"
+                          />
+                        )}
                       </div>
                       <div className="pt-6">
                         <button

@@ -236,7 +236,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           );
         })}
       </tbody>
-      <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+      {!detail && <tfoot className="bg-gray-50 border-t-2 border-gray-200">
         <tr className="divide-x divide-gray-200">
           <td colSpan={detail ? 8 : 2} className="px-4 py-2.5 text-right font-bold text-gray-600">Total</td>
           {detail && <td className="px-3 py-2.5 text-center font-bold text-blue-700 bg-blue-50/20">
@@ -251,7 +251,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           </td>}
           <td className="bg-gray-100/10" />
         </tr>
-      </tfoot>
+      </tfoot>}
     </table>
   );
 };

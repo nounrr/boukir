@@ -21,6 +21,7 @@ import { useGetAllClientsQuery, useGetAllFournisseursQuery, useCreateContactMuta
 import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
 import { useAuth } from '../hooks/redux';
+import { useContactSoldeCumule } from '../hooks/useContactSoldeCumule';
 import type { Contact } from '../types';
 import ProductFormModal from './ProductFormModal';
 import ContactFormModal from './ContactFormModal';
@@ -283,6 +284,36 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
           aria-label="Fermer la liste"
         />
       )}
+    </div>
+  );
+};
+
+const ContactSoldeCumuleHint: React.FC<{
+  contactId?: string | number | null;
+  contactType: 'Client' | 'Fournisseur';
+  colorClassName?: string;
+  labelClassName?: string;
+  valueClassName?: string;
+}> = ({
+  contactId,
+  contactType,
+  colorClassName = 'bg-blue-50',
+  labelClassName = 'text-blue-700',
+  valueClassName = 'text-blue-800',
+}) => {
+  const numericId = contactId ? Number(contactId) : null;
+  const { soldeCumule, contact, isLoading } = useContactSoldeCumule(numericId, contactType);
+
+  if (!numericId) return null;
+
+  const hasValue = contact && Number.isFinite(Number(soldeCumule));
+
+  return (
+    <div className={`mt-2 p-2 rounded ${colorClassName}`}>
+      <span className={`text-sm font-medium ${labelClassName}`}>Solde cumule: </span>
+      <span className={`text-sm font-semibold ${valueClassName}`}>
+        {isLoading ? 'Chargement...' : hasValue ? `${Number(soldeCumule).toFixed(2)} DH` : '-'}
+      </span>
     </div>
   );
 };
@@ -3449,18 +3480,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     autoOpenOnFocus
                   />
                   <ErrorMessage name="client_id" component="div" className="text-red-500 text-sm mt-1" />
-                  {values.client_id && (
-                    <div className="mt-2 p-2 bg-blue-50 rounded">
-                      <span className="text-sm text-blue-700 font-medium">Solde cumulé: </span>
-                      <span className="text-sm text-blue-800 font-semibold">
-                        {(() => {
-                          const selectedClient = clients.find((c: Contact) => c.id.toString() === values.client_id.toString());
-                          const solde = Number(selectedClient?.solde_cumule ?? 0);
-                          return Number.isFinite(solde) ? `${solde.toFixed(2)} DH` : '—';
-                        })()}
-                      </span>
-                    </div>
-                  )}
+                  {values.client_id && <ContactSoldeCumuleHint contactId={values.client_id} contactType="Client" />}
                   {values.client_adresse && (
                     <div className="mt-2 p-2 bg-gray-50 rounded">
                       <span className="text-sm text-gray-600">Adresse: </span>
@@ -3751,16 +3771,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   />
                   <ErrorMessage name="fournisseur_id" component="div" className="text-red-500 text-sm mt-1" />
                   {values.fournisseur_id && (
-                    <div className="mt-2 p-2 bg-blue-50 rounded">
-                      <span className="text-sm text-blue-700 font-medium">Solde cumulé: </span>
-                      <span className="text-sm text-blue-800 font-semibold">
-                        {(() => {
-                          const fournisseurSel = fournisseurs.find((f: Contact) => f.id.toString() === values.fournisseur_id.toString());
-                          const solde = Number(fournisseurSel?.solde_cumule ?? 0);
-                          return Number.isFinite(solde) ? `${solde.toFixed(2)} DH` : '—';
-                        })()}
-                      </span>
-                    </div>
+                    <ContactSoldeCumuleHint
+                      contactId={values.fournisseur_id}
+                      contactType="Fournisseur"
+                      colorClassName="bg-orange-50"
+                      labelClassName="text-orange-700"
+                      valueClassName="text-orange-800"
+                    />
                   )}
                   {values.fournisseur_adresse && (
                     <div className="mt-2 p-2 bg-gray-50 rounded">
