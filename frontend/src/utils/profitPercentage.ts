@@ -14,6 +14,6 @@ export const formatProfitPercentage = (value?: number | null): string => {
 
   return `${new Intl.NumberFormat('fr-FR', {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 3,
   }).format(value)}%`;
 };
