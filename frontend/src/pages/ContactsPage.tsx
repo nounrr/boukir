@@ -5277,14 +5277,6 @@ const ContactsPage: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-bold text-white">Détails - {selectedContact.nom_complet}</h2>
                   <div className="flex items-center gap-4">
-                    <button
-                      onClick={handlePrint}
-                      className="flex items-center gap-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-md transition-colors font-medium border border-white border-opacity-30"
-                      title="Imprimer rapport détaillé avec produits et transactions (selon filtres appliqués)"
-                    >
-                      <FileText size={16} />
-                      Rapport Détaillé
-                    </button>
                     {SHOW_WHATSAPP_BUTTON && (
                       <button
                         onClick={handleSendWhatsAppContactProducts}
@@ -5720,14 +5712,6 @@ const ContactsPage: React.FC = () => {
                           className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
                         />
                       </div>
-                      <button
-                        onClick={openPrintProducts}
-                        className="w-full sm:w-auto flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm"
-                        title="Imprimer uniquement le détail des produits"
-                      >
-                        <Printer size={14} />
-                        Imprimer
-                      </button>
                       {/* Contact Print Modal (unified for transactions/products) */}
                       {printModal.open && selectedContact && (
                         <ContactPrintModal
