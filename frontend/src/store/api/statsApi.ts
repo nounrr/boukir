@@ -9,12 +9,16 @@ export interface ChiffreAffairesDayRow {
   chiffreAffairesAchatBrut: number;
   chiffreAchats: number;
   totalRemises: number;
+  totalCharges?: number;
+  totalBonsVehicule?: number;
 }
 
 export interface ChiffreAffairesStatsResponse {
   totalChiffreAffaires: number;
   totalChiffreAffairesAchat: number;
   totalChiffreAchats: number;
+  totalCharges?: number;
+  totalBonsVehicule?: number;
   totalBons: number;
   dailyData: ChiffreAffairesDayRow[];
   totalRemisesNet: number;

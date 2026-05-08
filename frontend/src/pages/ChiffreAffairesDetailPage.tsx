@@ -415,6 +415,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
               <div className="mt-3 pt-3 border-t border-gray-200">
                 <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Taux profit jour</div>
                 <div className="text-2xl font-bold text-gray-900 mt-0.5">{formatProfitPercentage(dayProfitPct)}</div>
+                <div className="text-xs text-gray-500 mt-1">Apres deduction des bons charge (montant total) et bons vehicule</div>
               </div>
             )}
             <div className="text-sm text-gray-500">

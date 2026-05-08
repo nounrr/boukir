@@ -202,6 +202,7 @@ const DashboardPage: React.FC = () => {
               <div className="ml-3">
                 <p className="text-sm font-medium text-gray-500">Chiffre bénéficiaire (aujourd'hui)</p>
                 <p className="text-2xl font-semibold text-gray-900">{formatAmount(todayFinancialStats?.totalChiffreAffairesAchat ?? 0)} DH</p>
+                <p className="text-xs text-gray-500 mt-1">Apres deduction des bons charge (montant total) et bons vehicule</p>
                 <div className="mt-3 pt-3 border-t border-gray-100">
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Taux profit</p>
                   <p className="text-xl font-bold text-gray-900 mt-0.5">{formatProfitPercentage(todayProfitPct)}</p>

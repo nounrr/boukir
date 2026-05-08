@@ -30,6 +30,15 @@ type PaymentsPagedResponse = {
   };
 };
 
+export type PaymentPrintBalance = {
+  paymentId: number;
+  contactId: number | null;
+  contactType: 'Client' | 'Fournisseur' | string | null;
+  soldeAvant: number;
+  montantPaiement: number;
+  soldeApres: number;
+};
+
 export const paymentsApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getPayments: builder.query<Payment[], void>({
@@ -45,6 +54,11 @@ export const paymentsApi = api.injectEndpoints({
     getPayment: builder.query<Payment, number>({
       query: (id) => ({ url: `/payments/${id}` }),
       providesTags: (_result, _error, id) => [{ type: 'Payment', id }],
+    }),
+
+    getPaymentPrintBalance: builder.query<PaymentPrintBalance, number>({
+      query: (id) => ({ url: `/payments/${id}/print-balance` }),
+      providesTags: (_result, _error, id) => [{ type: 'Payment', id }, 'Contact'],
     }),
 
     createPayment: builder.mutation<Payment, CreatePaymentData & { created_by: number }>({
@@ -120,6 +134,7 @@ export const {
   useGetPaymentsQuery,
   useGetPaymentsPagedQuery,
   useGetPaymentQuery,
+  useGetPaymentPrintBalanceQuery,
   useCreatePaymentMutation,
   useUpdatePaymentMutation,
   useChangePaymentStatusMutation,

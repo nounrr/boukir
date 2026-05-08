@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { Contact } from '../types';
 import CompanyHeader from './CompanyHeader';
-import { useGetContactQuery } from '../store/api/contactsApi';
+import { useGetPaymentPrintBalanceQuery } from '../store/api/paymentsApi';
 
 interface PaymentPrintTemplateProps {
   payment: any;
@@ -53,7 +53,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
 
   const contactIdRaw = payment?.contact_id ?? payment?.client_id ?? payment?.fournisseur_id ?? null;
   const contactIdNum = contactIdRaw != null ? Number(contactIdRaw) : null;
-  const { data: contactFromApi } = useGetContactQuery(contactIdNum as any, { skip: !contactIdNum });
+  const { data: printBalance } = useGetPaymentPrintBalanceQuery(Number(payment?.id), { skip: !payment?.id });
 
   const formatHeure = (dateStr: string) => {
     if (!dateStr) return "";
@@ -112,20 +112,18 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
     return isNaN(num) ? 0 : num;
   };
 
-  // Calcul du solde cumulé (privilégier le solde_cumule backend si dispo; sinon fallback logique locale)
+  // Calcul du solde cumulé: API historique du paiement, fallback local si indisponible.
   const calculateCumulativeSaldo = () => {
     const contactEntity = client || fournisseur;
-    const soldeCumuleBackend = (contactFromApi as any)?.solde_cumule ?? (contactEntity as any)?.solde_cumule;
     const startingSolde = Number(contactEntity?.solde ?? 0); // fallback
     const contactId = contactIdNum;
-    const isClient = payment.type_paiement === 'Client' || !!client;
+    const isClient = payment.type_paiement === 'Client' || printBalance?.contactType === 'Client' || (!!client && !fournisseur);
 
-    // Si le backend fournit solde_cumule, on l'utilise comme "solde après" (plus fiable, tient compte des règles backend)
-    if (soldeCumuleBackend != null && soldeCumuleBackend !== '' && !isNaN(Number(soldeCumuleBackend))) {
-      const montantPaiement = amountOf(payment);
-      const soldoApres = Number(soldeCumuleBackend) as number;
-      // Le paiement réduit le solde, donc le solde avant = après + montant payé
-      const soldoAvant = soldoApres + montantPaiement;
+    // Source principale: solde avant/après calculé côté API à la date du paiement.
+    if (printBalance) {
+      const montantPaiement = Number(printBalance.montantPaiement ?? amountOf(payment)) || 0;
+      const soldoApres = Number(printBalance.soldeApres ?? 0) || 0;
+      const soldoAvant = Number(printBalance.soldeAvant ?? 0) || 0;
       const soldoAvantLabel = isClient ? 'Solde à recevoir avant paiement' : 'Solde à payer avant paiement';
       const soldoApresLabel = isClient ? 'Solde à recevoir après paiement' : 'Solde à payer après paiement';
       const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE À RECEVOIR' : 'NOUVEAU SOLDE À PAYER';

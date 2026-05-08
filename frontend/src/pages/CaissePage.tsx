@@ -2800,8 +2800,8 @@ const paymentValidationSchema = Yup.object({
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           payment={selectedPayment}
-          client={clients.find(c => c.id === selectedPayment.contact_id)}
-          fournisseur={fournisseurs.find(f => f.id === selectedPayment.contact_id)}
+          client={selectedPayment.type_paiement === 'Client' ? clients.find(c => c.id === selectedPayment.contact_id) : undefined}
+          fournisseur={selectedPayment.type_paiement === 'Fournisseur' ? fournisseurs.find(f => f.id === selectedPayment.contact_id) : undefined}
           allPayments={paymentsForHistory}
         />
       )}

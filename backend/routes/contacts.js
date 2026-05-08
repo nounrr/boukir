@@ -168,6 +168,7 @@ const SINGLE_CONTACT_QUERY = `
             FROM payments p
             WHERE p.type_paiement = 'Client'
               AND p.contact_id = c.id
+              AND LOWER(TRIM(p.statut)) NOT LIKE 'annul%'
               AND LOWER(TRIM(p.statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
           ), 0)
         WHEN c.type = 'Fournisseur' THEN
@@ -176,6 +177,7 @@ const SINGLE_CONTACT_QUERY = `
             FROM payments pf
             WHERE pf.type_paiement = 'Fournisseur'
               AND pf.contact_id = c.id
+              AND LOWER(TRIM(pf.statut)) NOT LIKE 'annul%'
               AND LOWER(TRIM(pf.statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
           ), 0)
         ELSE 0
@@ -238,6 +240,7 @@ const SINGLE_CONTACT_QUERY = `
             FROM payments p
             WHERE p.type_paiement = 'Client'
               AND p.contact_id = c.id
+              AND LOWER(TRIM(p.statut)) NOT LIKE 'annul%'
               AND LOWER(TRIM(p.statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
           ), 0)
           + COALESCE((
@@ -267,6 +270,7 @@ const SINGLE_CONTACT_QUERY = `
             FROM payments pf
             WHERE pf.type_paiement = 'Fournisseur'
               AND pf.contact_id = c.id
+              AND LOWER(TRIM(pf.statut)) NOT LIKE 'annul%'
               AND LOWER(TRIM(pf.statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
           ), 0)
           - COALESCE((
@@ -397,18 +401,20 @@ router.get('/', async (req, res) => {
 
       -- Paiements client
       LEFT JOIN (
-        SELECT contact_id, SUM(montant_total) AS total_paiements
-        FROM payments
-        WHERE type_paiement = 'Client'
+      SELECT contact_id, SUM(montant_total) AS total_paiements
+      FROM payments
+      WHERE type_paiement = 'Client'
+          AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
           AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
         GROUP BY contact_id
       ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
 
       -- Paiements fournisseur
       LEFT JOIN (
-        SELECT contact_id, SUM(montant_total) AS total_paiements
-        FROM payments
-        WHERE type_paiement = 'Fournisseur'
+      SELECT contact_id, SUM(montant_total) AS total_paiements
+      FROM payments
+      WHERE type_paiement = 'Fournisseur'
+          AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
           AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
         GROUP BY contact_id
       ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
@@ -506,13 +512,13 @@ router.get('/', async (req, res) => {
             COALESCE(c.solde, 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
-            - COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE client_id = c.id AND statut IN ('En attente','ValidÃ©','AppliquÃ©') AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
             COALESCE(c.solde, 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_commande WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            - COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Fournisseur' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Fournisseur' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_fournisseur WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           ELSE NULL 
@@ -533,9 +539,9 @@ router.get('/', async (req, res) => {
         END), 0) AS grand_total_solde_initial,
         COALESCE(SUM(CASE
           WHEN c.type = 'Client' THEN
-            COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
-            COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Fournisseur' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Fournisseur' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           ELSE NULL 
         END), 0) AS grand_total_paiements,
         COALESCE(SUM(CASE 
@@ -645,17 +651,19 @@ router.get('/summary', async (req, res) => {
       ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
 
       LEFT JOIN (
-        SELECT contact_id, SUM(montant_total) AS total_paiements
-        FROM payments
-        WHERE type_paiement = 'Client'
+      SELECT contact_id, SUM(montant_total) AS total_paiements
+      FROM payments
+      WHERE type_paiement = 'Client'
+          AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
           AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
         GROUP BY contact_id
       ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
-        SELECT contact_id, SUM(montant_total) AS total_paiements
-        FROM payments
-        WHERE type_paiement = 'Fournisseur'
+      SELECT contact_id, SUM(montant_total) AS total_paiements
+      FROM payments
+      WHERE type_paiement = 'Fournisseur'
+          AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
           AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
         GROUP BY contact_id
       ) paiements_fournisseur ON paiements_fournisseur.contact_id = c.id AND c.type = 'Fournisseur'
@@ -734,6 +742,7 @@ router.get('/solde-cumule-card', async (_req, res) => {
             SELECT SUM(montant_total)
             FROM payments
             WHERE LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
+              AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
               AND type_paiement = 'Client'
               AND contact_id IS NOT NULL
         ),0) AS total_paiements,
@@ -848,6 +857,7 @@ router.get('/solde-cumule-card-fournisseur', async (_req, res) => {
             SELECT SUM(montant_total)
             FROM payments
             WHERE LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
+              AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
               AND type_paiement = 'Fournisseur'
               AND contact_id IS NOT NULL
         ),0) AS total_paiements,
@@ -1486,8 +1496,20 @@ router.get('/:id/history', async (req, res) => {
 
     const isAllowedHistoryStatus = (s) => {
       if (!s) return false;
-      const norm = String(s).toLowerCase().trim();
-      return !['annulÃ©', 'annule', 'supprimÃ©', 'supprime', 'brouillon', 'refusÃ©', 'refuse', 'expirÃ©', 'expire', 'cancelled', 'refunded'].includes(norm);
+      const norm = String(s)
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+      return !(
+        norm.startsWith('annul') ||
+        norm.startsWith('supprim') ||
+        norm === 'brouillon' ||
+        norm.startsWith('refus') ||
+        norm.startsWith('expir') ||
+        norm === 'cancelled' ||
+        norm === 'refunded'
+      );
     };
     const formatDateDmyLocal = (value) => {
       if (!value) return '';

@@ -170,6 +170,46 @@ function isActiveRemiseStatut(statut) {
   return canonical === 'En attente' || canonical === 'Validé';
 }
 
+function isActiveBalanceStatus(statut) {
+  const norm = String(statut || '').toLowerCase().trim();
+  return ![
+    'annulé',
+    'annulÃ©',
+    'annule',
+    'annulÃƒÂ©',
+    'supprimé',
+    'supprimÃ©',
+    'supprime',
+    'supprimÃƒÂ©',
+    'brouillon',
+    'refusé',
+    'refusÃ©',
+    'refuse',
+    'refusÃƒÂ©',
+    'expiré',
+    'expirÃ©',
+    'expire',
+    'expirÃƒÂ©',
+    'cancelled',
+    'refunded',
+  ].includes(norm);
+}
+
+const txDateMs = (value) => {
+  if (!value) return 0;
+  const d = new Date(String(value).replace(' ', 'T'));
+  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+};
+
+const txSort = (a, b) => {
+  const dateDiff = txDateMs(a.date) - txDateMs(b.date);
+  if (dateDiff !== 0) return dateDiff;
+  const kindOrder = { sale: 0, avoir: 1, payment: 2 };
+  const kindDiff = (kindOrder[a.kind] ?? 9) - (kindOrder[b.kind] ?? 9);
+  if (kindDiff !== 0) return kindDiff;
+  return Number(a.id || 0) - Number(b.id || 0);
+};
+
 async function getRemiseAccountOrThrow(db, remiseAccountId) {
   const numericId = toNullableNumber(remiseAccountId);
   if (!numericId) {
@@ -440,6 +480,140 @@ router.get('/personnel', verifyToken, async (_req, res) => {
     res.status(500).json({ message: 'Internal error', detail: String(err?.sqlMessage || err?.message || err) });
   }
 });
+
+// GET /api/payments/:id/print-balance
+// Balance historique pour le PDF caisse. Ne pas utiliser le solde actuel du contact
+// pour un ancien paiement: on rejoue les mouvements jusqu'au paiement demande.
+router.get('/:id/print-balance', verifyToken, async (req, res) => {
+  try {
+    const paymentId = Number(req.params.id);
+    if (!Number.isFinite(paymentId) || paymentId <= 0) {
+      return res.status(400).json({ error: 'Invalid payment id' });
+    }
+
+    const [paymentRows] = await pool.query('SELECT * FROM payments WHERE id = ? LIMIT 1', [paymentId]);
+    const payment = paymentRows?.[0];
+    if (!payment) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    const contactId = Number(payment.contact_id);
+    if (!Number.isFinite(contactId) || contactId <= 0) {
+      const amount = Number(payment.montant_total || 0) || 0;
+      return res.json({
+        paymentId,
+        contactId: null,
+        contactType: payment.type_paiement || null,
+        soldeAvant: 0,
+        montantPaiement: amount,
+        soldeApres: -amount,
+      });
+    }
+
+    const [
+      contactResult,
+      sortiesResult,
+      comptantsResult,
+      commandesResult,
+      sortiesVendreFournisseurResult,
+      avoirsClientResult,
+      avoirsFournisseurResult,
+      avoirsClientVendreFournisseurResult,
+      paymentsResult,
+      ecommerceOrdersResult,
+    ] = await Promise.all([
+      pool.query('SELECT id, type, solde FROM contacts WHERE id = ? LIMIT 1', [contactId]),
+      pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM bons_sortie WHERE client_id = ?', [contactId]),
+      pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM bons_comptant WHERE client_id = ?', [contactId]),
+      pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM bons_commande WHERE fournisseur_id = ?', [contactId]),
+      pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM bons_sortie WHERE fournisseur_id = ? AND COALESCE(vendre_au_fournisseur, 0) = 1', [contactId]),
+      pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM avoirs_client WHERE client_id = ?', [contactId]),
+      pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM avoirs_fournisseur WHERE fournisseur_id = ?', [contactId]),
+      pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM avoirs_client WHERE fournisseur_id = ? AND COALESCE(vendre_au_fournisseur, 0) = 1', [contactId]),
+      pool.query('SELECT id, type_paiement, contact_id, montant_total, date_paiement, created_at, statut FROM payments WHERE contact_id = ?', [contactId]),
+      pool.query("SELECT id, total_amount, created_at, status FROM ecommerce_orders WHERE user_id = ? AND is_solde = 1 AND status IN ('pending','confirmed','processing','shipped','delivered')", [contactId]),
+    ]);
+
+    const contact = contactResult?.[0]?.[0];
+    if (!contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const contactType = String(contact.type || payment.type_paiement || '');
+    const isClient = contactType === 'Client';
+    const txs = [];
+    const pushTx = (rows, kind, deltaSign, amountKey = 'montant_total', dateKey = 'date_creation') => {
+      for (const row of rows || []) {
+        if (!isActiveBalanceStatus(row.statut ?? row.status)) continue;
+        txs.push({
+          kind,
+          id: row.id,
+          date: row[dateKey] || row.created_at,
+          delta: deltaSign * (Number(row[amountKey] || 0) || 0),
+        });
+      }
+    };
+
+    if (isClient) {
+      pushTx(sortiesResult[0], 'sale', 1);
+      pushTx(comptantsResult[0], 'sale', 1);
+      pushTx(ecommerceOrdersResult[0], 'sale', 1, 'total_amount', 'created_at');
+      pushTx(avoirsClientResult[0], 'avoir', -1);
+    } else {
+      pushTx(commandesResult[0], 'sale', 1);
+      pushTx(sortiesVendreFournisseurResult[0], 'sale', 1);
+      pushTx(avoirsFournisseurResult[0], 'avoir', -1);
+      pushTx(avoirsClientVendreFournisseurResult[0], 'avoir', -1);
+    }
+
+    for (const row of paymentsResult[0] || []) {
+      if (!isActiveBalanceStatus(row.statut)) continue;
+      if (String(row.type_paiement || '') !== contactType) continue;
+      txs.push({
+        kind: 'payment',
+        id: row.id,
+        date: row.date_paiement || row.created_at,
+        delta: -(Number(row.montant_total || 0) || 0),
+      });
+    }
+
+    txs.sort(txSort);
+    let solde = Number(contact.solde || 0) || 0;
+    let soldeAvant = solde;
+    let soldeApres = solde;
+    let found = false;
+
+    for (const tx of txs) {
+      if (tx.kind === 'payment' && Number(tx.id) === paymentId) {
+        soldeAvant = solde;
+        solde += tx.delta;
+        soldeApres = solde;
+        found = true;
+        break;
+      }
+      solde += tx.delta;
+    }
+
+    if (!found) {
+      const amount = Number(payment.montant_total || 0) || 0;
+      soldeAvant = solde;
+      soldeApres = solde - amount;
+    }
+
+    res.json({
+      paymentId,
+      contactId,
+      contactType,
+      soldeAvant: Number(soldeAvant.toFixed(3)),
+      montantPaiement: Number(payment.montant_total || 0) || 0,
+      soldeApres: Number(soldeApres.toFixed(3)),
+    });
+  } catch (err) {
+    console.error('GET /payments/:id/print-balance error:', err);
+    res.status(500).json({ message: 'Internal error', detail: String(err?.sqlMessage || err?.message || err) });
+  }
+});
+
 router.get('/:id', verifyToken, async (req, res) => {
 	try {
   await ensurePaymentRemiseColumns();
