@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, TrendingUp, TrendingDown, ArrowLeft, Package } from 'lucide-react';
+import { Calendar, TrendingUp, TrendingDown, ArrowLeft, Package, ReceiptText, Handshake } from 'lucide-react';
 import { useGetChiffreAffairesStatsQuery } from '../store/api/statsApi';
 import { calculateProfitPercentage, formatProfitPercentage } from '../utils/profitPercentage';
 
@@ -10,7 +10,12 @@ interface ChiffreAffairesData {
   chiffreAffaires: number; // CA Net brut (sans remises)
   chiffreAffairesAchat: number; // Profit net (après remises)
   chiffreAffairesAchatBrut: number; // Profit brut (avant remises) pour contrôle
+  profitSansCharges?: number;
+  profitNetApresCharges?: number;
   chiffreAchats: number;
+  totalVentesFournisseur?: number;
+  profitVentesFournisseur?: number;
+  totalCharges: number;
   totalRemises: number; // Remises totales du jour (ventes - avoirs)
 }
 
@@ -19,7 +24,7 @@ const formatAmount = (amount: number): string => {
   // Préserver les décimales exactes, sans arrondi forcé
   return new Intl.NumberFormat('fr-FR', {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 10, // Permet jusqu'à 10 décimales si nécessaire
+    maximumFractionDigits: 3,
   }).format(amount);
 };
 
@@ -78,6 +83,9 @@ const ChiffreAffairesPage: React.FC = () => {
         totalChiffreAffaires: 0,
         totalChiffreAffairesAchat: 0,
         totalChiffreAchats: 0,
+        totalVentesFournisseur: 0,
+        totalProfitVentesFournisseur: 0,
+        totalCharges: 0,
         totalBons: 0,
         dailyData: [] as ChiffreAffairesData[],
         totalRemisesNet: 0,
@@ -226,10 +234,10 @@ const ChiffreAffairesPage: React.FC = () => {
         </div>
       )}
 
-      {/* Summary Tab with 3 metrics */}
+      {/* Summary Tab with metrics */}
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="p-4 md:p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 md:gap-6">
             {/* Chiffre d'Affaires Net */}
             <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
               <div className="flex items-center">
@@ -274,6 +282,36 @@ const ChiffreAffairesPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Charges */}
+            <div className="bg-rose-50 p-4 rounded-lg border-l-4 border-rose-500">
+              <div className="flex items-center">
+                <ReceiptText className="h-6 w-6 text-rose-600 mr-3" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-rose-700 truncate">Charges</p>
+                  <p className="text-xl font-bold text-rose-900">
+                    {formatAmount(chiffreAffairesData.totalCharges || 0)} DH
+                  </p>
+                  <p className="text-xs text-rose-600 mt-1">Total des bons charge</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Ventes fournisseur */}
+            <div className="bg-orange-50 p-4 rounded-lg border-l-4 border-orange-500">
+              <div className="flex items-center">
+                <Handshake className="h-6 w-6 text-orange-600 mr-3" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-orange-700 truncate">Ventes fournisseur</p>
+                  <p className="text-xl font-bold text-orange-900">
+                    {formatAmount(chiffreAffairesData.totalVentesFournisseur || 0)} DH
+                  </p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    Profit: {formatAmount(chiffreAffairesData.totalProfitVentesFournisseur || 0)} DH
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -294,10 +332,13 @@ const ChiffreAffairesPage: React.FC = () => {
                   CA Net (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Bénéfice Net (DH)
+                  Profit sans charge (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  % Profit
+                  Charges (DH)
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Profit net (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Remises (DH)
@@ -309,7 +350,10 @@ const ChiffreAffairesPage: React.FC = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {chiffreAffairesData.dailyData.map((day: ChiffreAffairesData) => {
-                const profitPct = calculateProfitPercentage(day.chiffreAffairesAchat, day.chiffreAffaires);
+                const charges = day.totalCharges || 0;
+                const profitSansCharges =
+                  day.profitSansCharges ?? day.chiffreAffairesAchat + charges + ((day as any).totalBonsVehicule || 0);
+                const profitNetApresCharges = day.profitNetApresCharges ?? profitSansCharges - charges;
                 return (
                 <tr key={day.date} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -329,13 +373,18 @@ const ChiffreAffairesPage: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-emerald-900">
-                      {formatAmount(day.chiffreAffairesAchat)} DH
+                    <div className="text-sm font-medium text-emerald-700">
+                      {formatAmount(profitSansCharges)} DH
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-emerald-700">
-                      {formatProfitPercentage(profitPct)}
+                    <div className="text-sm font-medium text-rose-700">
+                      {formatAmount(charges)} DH
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-emerald-900">
+                      {formatAmount(profitNetApresCharges)} DH
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -353,7 +402,7 @@ const ChiffreAffairesPage: React.FC = () => {
               })}
               {chiffreAffairesData.dailyData.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                     Aucune donnée disponible pour cette période
                   </td>
                 </tr>

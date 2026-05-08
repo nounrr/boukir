@@ -810,6 +810,33 @@ router.get('/chiffre-affaires', async (req, res) => {
       ORDER BY day DESC
     `;
 
+    const ventesFournisseurSql = `
+      SELECT day,
+             SUM(totalBon) AS ca,
+             SUM(profitNetBon) AS profitNet,
+             SUM(bonCount) AS bonCount
+      FROM (
+        SELECT DATE_FORMAT(bs.date_creation, '%Y-%m-%d') AS day,
+               bs.id AS bon_id,
+               bs.montant_total AS totalBon,
+               COALESCE(SUM((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite - (COALESCE(si.remise_montant, 0) * si.quantite)), 0) AS profitNetBon,
+               1 AS bonCount
+        FROM bons_sortie bs
+        LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
+        LEFT JOIN products p ON p.id = si.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('si', 'ps')}
+        LEFT JOIN product_units pu ON pu.id = si.unit_id
+        WHERE LOWER(TRIM(COALESCE(bs.statut, ''))) IN ${VALID_STATUSES_SQL}
+          AND COALESCE(bs.isNotCalculated, 0) <> 1
+          AND COALESCE(bs.vendre_au_fournisseur, 0) = 1
+          ${sortieFilter.sql}
+        GROUP BY bs.id, day
+      ) t
+      GROUP BY day
+      ORDER BY day DESC
+    `;
+
     const avoirsClientSql = `
       SELECT day,
              SUM(totalBon) AS ca,
@@ -938,6 +965,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const commandesParams = [...commandeFilter.params];
 
     const [ventesRows] = await pool.query(ventesSql, ventesParams);
+    const [ventesFournisseurRows] = await pool.query(ventesFournisseurSql, [...sortieFilter.params]);
     const [avoirsClientRows] = await pool.query(avoirsClientSql, avoirsClientParams);
     const [avoirsComptantRows] = await pool.query(avoirsComptantSql, avoirsComptantParams);
     const [avoirsEcommerceRows] = await pool.query(avoirsEcommerceSql, avoirsEcommerceParams);
@@ -946,6 +974,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const [commandesRows] = await pool.query(commandesSql, commandesParams);
 
     const ventesMap = rowsToMap(ventesRows, 'day');
+    const ventesFournisseurMap = rowsToMap(ventesFournisseurRows, 'day');
     const avoirsClientMap = rowsToMap(avoirsClientRows, 'day');
     const avoirsComptantMap = rowsToMap(avoirsComptantRows, 'day');
     const avoirsEcommerceMap = rowsToMap(avoirsEcommerceRows, 'day');
@@ -955,6 +984,7 @@ router.get('/chiffre-affaires', async (req, res) => {
 
     const days = new Set([
       ...Array.from(ventesMap.keys()),
+      ...Array.from(ventesFournisseurMap.keys()),
       ...Array.from(avoirsClientMap.keys()),
       ...Array.from(avoirsComptantMap.keys()),
       ...Array.from(avoirsEcommerceMap.keys()),
@@ -971,6 +1001,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const dailyDataRaw = Array.from(days)
       .map((day) => {
         const v = ventesMap.get(day) || {};
+        const vf = ventesFournisseurMap.get(day) || {};
         const aClient = avoirsClientMap.get(day) || {};
         const aComptant = avoirsComptantMap.get(day) || {};
         const aEcom = avoirsEcommerceMap.get(day) || {};
@@ -991,6 +1022,8 @@ router.get('/chiffre-affaires', async (req, res) => {
         const vehiculeTotal = roundSafe(veh.total);
         const achatsTotal = roundSafe(cmd.total);
 
+        const profitSansCharges = ventesProfitNet - avoirsProfitNet;
+        const profitNetApresCharges = profitSansCharges - chargesTotal;
         const chiffreAffaires = ventesCA - avoirsCA - chargesTotal;
         const chiffreAffairesAchat = ventesProfitNet - avoirsProfitNet - chargesTotal - vehiculeTotal;
         const chiffreAffairesAchatBrut = ventesProfitBrut - avoirsProfitBrut - chargesTotal - vehiculeTotal;
@@ -1001,7 +1034,11 @@ router.get('/chiffre-affaires', async (req, res) => {
           chiffreAffaires,
           chiffreAffairesAchat,
           chiffreAffairesAchatBrut,
+          profitSansCharges,
+          profitNetApresCharges,
           chiffreAchats: achatsTotal,
+          totalVentesFournisseur: roundSafe(vf.ca),
+          profitVentesFournisseur: roundSafe(vf.profitNet),
           totalRemises,
           totalCharges: chargesTotal,
           totalBonsVehicule: vehiculeTotal,
@@ -1019,6 +1056,8 @@ router.get('/chiffre-affaires', async (req, res) => {
     const totalChiffreAffaires = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAffaires), 0);
     const totalChiffreAffairesAchat = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAffairesAchat), 0);
     const totalChiffreAchats = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAchats), 0);
+    const totalVentesFournisseur = Array.from(ventesFournisseurMap.values()).reduce((s, r) => s + roundSafe(r.ca), 0);
+    const totalProfitVentesFournisseur = Array.from(ventesFournisseurMap.values()).reduce((s, r) => s + roundSafe(r.profitNet), 0);
     const totalCharges = Array.from(chargesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
     const totalBonsVehicule = Array.from(vehiculeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
 
@@ -1099,6 +1138,8 @@ router.get('/chiffre-affaires', async (req, res) => {
       totalChiffreAffaires,
       totalChiffreAffairesAchat,
       totalChiffreAchats,
+      totalVentesFournisseur,
+      totalProfitVentesFournisseur,
       totalCharges,
       totalBonsVehicule,
       totalBons,
@@ -1163,11 +1204,11 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
 
             UNION ALL
 
-            SELECT ('Sortie' COLLATE ${UNION_COLLATION}) AS bonType,
+            SELECT ((CASE WHEN COALESCE(bs.vendre_au_fournisseur, 0) = 1 THEN 'Vente Fournisseur' ELSE 'Sortie' END) COLLATE ${UNION_COLLATION}) AS bonType,
               bs.id AS bonId,
-             (CONCAT('SOR', LPAD(bs.id, GREATEST(LENGTH(bs.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+             (CONCAT(CASE WHEN COALESCE(bs.vendre_au_fournisseur, 0) = 1 THEN 'SORF' ELSE 'SOR' END, LPAD(bs.id, GREATEST(LENGTH(bs.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
               bs.montant_total AS totalBon,
-             (COALESCE(ct_bs.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
+             (COALESCE(ct_f.nom_complet, ct_bs.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
              (p.designation COLLATE ${UNION_COLLATION}) AS designation,
               si.product_id AS product_id,
               ${buildVariantIdExpr('si', 'ps')} AS variant_id,
@@ -1186,6 +1227,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
               (((si.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * si.quantite) - (COALESCE(si.remise_montant, 0) * si.quantite)) AS profit
             FROM bons_sortie bs
             LEFT JOIN contacts ct_bs ON ct_bs.id = bs.client_id
+            LEFT JOIN contacts ct_f ON ct_f.id = bs.fournisseur_id
             LEFT JOIN sortie_items si ON si.bon_sortie_id = bs.id
             LEFT JOIN products p ON p.id = si.product_id
             LEFT JOIN product_snapshot ps ON ps.id = si.product_snapshot_id
@@ -1229,11 +1271,11 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     `;
 
         const avoirsLinesSql = `
-          SELECT ('Avoir' COLLATE ${UNION_COLLATION}) AS bonType,
+          SELECT ((CASE WHEN COALESCE(ac.vendre_au_fournisseur, 0) = 1 THEN 'Avoir Vente Fournisseur' ELSE 'Avoir' END) COLLATE ${UNION_COLLATION}) AS bonType,
             ac.id AS bonId,
-           (CONCAT('AVC', LPAD(ac.id, GREATEST(LENGTH(ac.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+           (CONCAT(CASE WHEN COALESCE(ac.vendre_au_fournisseur, 0) = 1 THEN 'AVVF' ELSE 'AVC' END, LPAD(ac.id, GREATEST(LENGTH(ac.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
             ac.montant_total AS totalBon,
-           (COALESCE(ct_ac.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
+           (COALESCE(ct_af.nom_complet, ct_ac.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
            (p.designation COLLATE ${UNION_COLLATION}) AS designation,
             ai.product_id AS product_id,
             ${buildVariantIdExpr('ai', 'ps')} AS variant_id,
@@ -1252,6 +1294,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
             (((ai.prix_unitaire - ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')}) * ai.quantite) - (COALESCE(ai.remise_montant, 0) * ai.quantite)) AS profit
           FROM avoirs_client ac
           LEFT JOIN contacts ct_ac ON ct_ac.id = ac.client_id
+          LEFT JOIN contacts ct_af ON ct_af.id = ac.fournisseur_id
           LEFT JOIN avoir_client_items ai ON ai.avoir_client_id = ac.id
           LEFT JOIN products p ON p.id = ai.product_id
           LEFT JOIN product_snapshot ps ON ps.id = ai.product_snapshot_id
@@ -1470,7 +1513,8 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const ventesCalculs = buildCalculs(ventesLines);
     const avoirsCalculs = buildCalculs(avoirsLines);
     const commandesCalculs = buildCalculs(commandesLines);
-    const chargesCalculs = buildCalculs(chargesLines).map((c) => ({
+    const chargesDisplayCalculs = buildCalculs(chargesLines);
+    const chargesCalculs = chargesDisplayCalculs.map((c) => ({
       ...c,
       totalBon: -roundSafe(c.totalBon),
       profitBon: -roundSafe(Math.abs(c.totalBon)),
@@ -1506,6 +1550,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const beneficiaireTotal = beneficiaireCalculs.reduce((s, c) => s + roundSafe(c.profitBon), 0);
 
     const achatsTotal = commandesCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
+    const chargesTotal = chargesDisplayCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
 
     const chiffresDetail = [
       {
@@ -1528,6 +1573,13 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
         total: achatsTotal,
         bons: commandesCalculs.map((c) => ({ id: c.bonId })),
         calculs: commandesCalculs,
+      },
+      {
+        type: 'CHARGES',
+        title: 'Charges (Bons Charge)',
+        total: chargesTotal,
+        bons: chargesDisplayCalculs.map((c) => ({ id: c.bonId })),
+        calculs: chargesDisplayCalculs,
       },
     ];
 

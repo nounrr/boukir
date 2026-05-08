@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, FileText, TrendingUp, DollarSign, Package, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, FileText, TrendingUp, DollarSign, Package, Calculator, ChevronDown, ChevronUp, ReceiptText } from 'lucide-react';
 import { useGetChiffreAffairesDetailQuery } from '../store/api/statsApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import { calculateProfitPercentage, formatProfitPercentage } from '../utils/profitPercentage';
@@ -18,7 +18,7 @@ interface BonDetail {
 }
 
 interface ChiffreDetail {
-  type: 'CA_NET' | 'BENEFICIAIRE' | 'ACHATS';
+  type: 'CA_NET' | 'BENEFICIAIRE' | 'ACHATS' | 'CHARGES';
   title: string;
   icon: React.ReactNode;
   color: string;
@@ -61,8 +61,8 @@ const ChiffreAffairesDetailPage: React.FC = () => {
   const { data: products = [] } = useGetProductsQuery(undefined); // Fetch products for name resolution
 
   // État pour les accordéons (fermés par défaut)
-  const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
-  const [openSubAccordions, setOpenSubAccordions] = useState<Set<string>>(new Set());
+  const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set(['CHARGES']));
+  const [openSubAccordions, setOpenSubAccordions] = useState<Set<string>>(new Set(['CHARGES:Charge']));
 
   const toggleAccordion = (chiffreType: string) => {
     setOpenAccordions(prev => {
@@ -313,15 +313,28 @@ const ChiffreAffairesDetailPage: React.FC = () => {
     // Préserver les décimales exactes, sans arrondi forcé
     return new Intl.NumberFormat('fr-FR', {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 10, // Permet jusqu'à 10 décimales si nécessaire
+      maximumFractionDigits: 3,
     }).format(amount);
   };
 
   const chiffresDetail = useMemo(() => {
     return chiffresDetailResp.map((section) => {
       const icon =
-        section.type === 'CA_NET' ? <DollarSign size={20} /> : section.type === 'BENEFICIAIRE' ? <TrendingUp size={20} /> : <Package size={20} />;
-      const color = section.type === 'CA_NET' ? 'text-yellow-600' : section.type === 'BENEFICIAIRE' ? 'text-emerald-600' : 'text-indigo-600';
+        section.type === 'CA_NET'
+          ? <DollarSign size={20} />
+          : section.type === 'BENEFICIAIRE'
+            ? <TrendingUp size={20} />
+            : section.type === 'CHARGES'
+              ? <ReceiptText size={20} />
+              : <Package size={20} />;
+      const color =
+        section.type === 'CA_NET'
+          ? 'text-yellow-600'
+          : section.type === 'BENEFICIAIRE'
+            ? 'text-emerald-600'
+            : section.type === 'CHARGES'
+              ? 'text-rose-600'
+              : 'text-indigo-600';
       return {
         ...section,
         icon,
@@ -395,7 +408,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
         {chiffresDetail.map((chiffre) => (
           <div key={chiffre.type} className="bg-white rounded-lg shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
@@ -438,7 +451,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           groups[key].calculs.push(c);
           groups[key].total += amount;
         }
-        const order = ['Comptant', 'Sortie', 'Commande', 'Avoir', 'Charge', 'Bon Véhicule'];
+        const order = ['Comptant', 'Sortie', 'Vente Fournisseur', 'Commande', 'Avoir', 'Avoir Vente Fournisseur', 'Charge', 'Bon Véhicule'];
         const groupKeys = Object.keys(groups).sort((a, b) => {
           const ia = order.indexOf(a);
           const ib = order.indexOf(b);
@@ -539,6 +552,11 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                       {chiffre.type === 'CA_NET' && chiffre.calculs.some((c: CalculDetail) => c.bonType === 'Avoir' || c.bonType === 'Charge') && (
                         <div className="text-sm text-gray-500 mt-2">
                           * Les avoirs client et les bons charge sont soustraits du total
+                        </div>
+                      )}
+                      {chiffre.type === 'CHARGES' && (
+                        <div className="text-sm text-gray-500 mt-2">
+                          * Total des bons charge du jour avec le dÃ©tail des lignes
                         </div>
                       )}
                       {chiffre.type === 'BENEFICIAIRE' && (

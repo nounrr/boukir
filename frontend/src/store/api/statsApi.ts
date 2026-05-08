@@ -7,7 +7,11 @@ export interface ChiffreAffairesDayRow {
   chiffreAffaires: number;
   chiffreAffairesAchat: number;
   chiffreAffairesAchatBrut: number;
+  profitSansCharges?: number;
+  profitNetApresCharges?: number;
   chiffreAchats: number;
+  totalVentesFournisseur?: number;
+  profitVentesFournisseur?: number;
   totalRemises: number;
   totalCharges?: number;
   totalBonsVehicule?: number;
@@ -17,6 +21,8 @@ export interface ChiffreAffairesStatsResponse {
   totalChiffreAffaires: number;
   totalChiffreAffairesAchat: number;
   totalChiffreAchats: number;
+  totalVentesFournisseur?: number;
+  totalProfitVentesFournisseur?: number;
   totalCharges?: number;
   totalBonsVehicule?: number;
   totalBons: number;
@@ -59,7 +65,7 @@ export interface ChiffreDetailCalcul {
 }
 
 export interface ChiffreDetailSection {
-  type: 'CA_NET' | 'BENEFICIAIRE' | 'ACHATS';
+  type: 'CA_NET' | 'BENEFICIAIRE' | 'ACHATS' | 'CHARGES';
   title: string;
   total: number;
   bons: Array<{ id: number }>;
