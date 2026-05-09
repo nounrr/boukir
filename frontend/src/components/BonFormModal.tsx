@@ -4474,7 +4474,21 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         setFieldValue(`items.${index}.designation`, product.designation || '');
                                         
                                         // Set snapshot reference
-                                        setFieldValue(`items.${index}.product_snapshot_id`, product.snapshot_id || null);
+                                        // For merged lots: resolve the best FIFO snapshot from _mergedSnapshots or snapshotProducts
+                                        let resolvedSnapshotId: number | null = product.snapshot_id || null;
+                                        if (!resolvedSnapshotId && product._isMerged) {
+                                          const mergedSnaps: any[] = product._mergedSnapshots ?? [];
+                                          const bestMergedSnap = mergedSnaps.length > 0
+                                            ? mergedSnaps[0] // already sorted by fifo_priority
+                                            : findSnapshotForProductVariant(
+                                                snapshotProducts as any[],
+                                                product.id,
+                                                selectedVariant?.id ?? product.variant_id ?? null,
+                                                Number(product.prix_vente ?? 0)
+                                              );
+                                          resolvedSnapshotId = bestMergedSnap?.snapshot_id ?? null;
+                                        }
+                                        setFieldValue(`items.${index}.product_snapshot_id`, resolvedSnapshotId);
                                         
                                         // Handle variant: from flat Commande selection or from snapshot
                                         if (selectedVariant) {
