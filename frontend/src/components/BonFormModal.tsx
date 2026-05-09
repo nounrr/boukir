@@ -1485,7 +1485,39 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           })()
         : [];
 
-      const normalizedItems = (rawItems || []).map((it: any) => {
+      // ── Pre-merge FIFO-split rows using raw backend values ──
+      // FIFO rows share same product_id + variant_id; ALWAYS merge same product+variant on edit.
+      // The user explicitly wants a single visual line per product, snapshots collected for display.
+      const preMergeMap = new Map<string, any>();
+      const preMergedRaw: any[] = [];
+      for (const it of (rawItems || [])) {
+        const pid = String(it.product_id ?? it.produit_id ?? it.product?.id ?? '');
+        const vid = String(it.variant_id ?? it.variantId ?? it.variant?.id ?? '');
+        if (!pid) {
+          // Skip merging for items without a product (custom designation lines)
+          preMergedRaw.push({ ...it, _merged_snapshot_ids: it.product_snapshot_id ? [it.product_snapshot_id] : [] });
+          continue;
+        }
+        const key = `${pid}:${vid}`;
+        if (preMergeMap.has(key)) {
+          const ex = preMergeMap.get(key)!;
+          ex.quantite = Number(ex.quantite ?? 0) + Number(it.quantite ?? 0);
+          ex.total = Number(ex.total ?? 0) + Number(it.total ?? 0);
+          if (it.product_snapshot_id) {
+            if (!Array.isArray(ex._merged_snapshot_ids)) ex._merged_snapshot_ids = [];
+            if (!ex._merged_snapshot_ids.includes(it.product_snapshot_id)) {
+              ex._merged_snapshot_ids.push(it.product_snapshot_id);
+            }
+          }
+          ex.product_snapshot_id = null;
+        } else {
+          const clone = { ...it, _merged_snapshot_ids: it.product_snapshot_id ? [it.product_snapshot_id] : [] };
+          preMergeMap.set(key, clone);
+          preMergedRaw.push(clone);
+        }
+      }
+
+      const normalizedItems = (preMergedRaw || []).map((it: any) => {
         const toIdString = (v: any): string => {
           if (v == null || v === '') return '';
           // Handle mysql Buffer-like values defensively
@@ -1633,23 +1665,33 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         };
       });
 
-      // ── Merge items with same product_id + variant_id + prix_unitaire into a single row ──
+      // ── Merge items with same product_id + variant_id into a single row ──
       // This collapses FIFO-split rows back into one visible line.
       // On re-submit, the FIFO logic will re-split them to the correct snapshots.
       const mergedItems: any[] = [];
       const mergeMap = new Map<string, any>();
       for (const item of normalizedItems) {
-        const pu = Number(item.prix_unitaire ?? 0);
-        const key = `${item.product_id}:${item.variant_id || ''}:${pu}`;
+        if (!item.product_id) {
+          mergedItems.push({ ...item, merged_snapshot_ids: Array.isArray(item._merged_snapshot_ids) ? item._merged_snapshot_ids : (item.product_snapshot_id ? [item.product_snapshot_id] : []) });
+          continue;
+        }
+        const key = `${item.product_id}:${item.variant_id || ''}`;
         if (mergeMap.has(key)) {
           const existing = mergeMap.get(key)!;
           existing.quantite = Number(existing.quantite) + Number(item.quantite || 0);
           existing.total = Number(existing.total) + Number(item.total || 0);
-          // Clear snapshot_id so FIFO allocation re-runs on submit
+          // Collect snapshot IDs not already tracked by pre-merge
+          const incomingIds: any[] = Array.isArray(item._merged_snapshot_ids) ? item._merged_snapshot_ids : (item.product_snapshot_id ? [item.product_snapshot_id] : []);
+          for (const sid of incomingIds) {
+            if (sid && !existing.merged_snapshot_ids.includes(sid)) existing.merged_snapshot_ids.push(sid);
+          }
           existing.product_snapshot_id = null;
         } else {
+          // Prefer pre-merge snapshot list if available
+          const snapIds: any[] = Array.isArray(item._merged_snapshot_ids) ? item._merged_snapshot_ids : (item.product_snapshot_id ? [item.product_snapshot_id] : []);
           const merged = {
             ...item,
+            merged_snapshot_ids: snapIds,
           };
           mergeMap.set(key, merged);
           mergedItems.push(merged);
@@ -2335,14 +2377,20 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
         // Applies to all roles when snapshots were merged (same prix_vente)
         if (!snapId && useSnapshotSelection && snapshotProducts?.length && item.product_id) {
           const itemPV = Number(pu) || 0;
+          const explicitMergedIds: any[] = Array.isArray(item.merged_snapshot_ids) ? item.merged_snapshot_ids : [];
           const allSnaps = (snapshotProducts as any[])
-            .filter((s: any) =>
-              String(s.id) === String(item.product_id) &&
-              String(s.variant_id || '') === String(item.variant_id || '') &&
-              s.snapshot_id &&
-              Number(s.snapshot_quantite) > 0 &&
-              Number(s.prix_vente ?? 0) === itemPV // match same prix_vente group
-            )
+            .filter((s: any) => {
+              if (!s.snapshot_id) return false;
+              if (String(s.id) !== String(item.product_id)) return false;
+              if (String(s.variant_id || '') !== String(item.variant_id || '')) return false;
+              if (Number(s.snapshot_quantite) <= 0) return false;
+              // If user-tracked merged ids exist (from auto-collection on qty overflow), use them directly
+              if (explicitMergedIds.length > 0) {
+                return explicitMergedIds.map(String).includes(String(s.snapshot_id));
+              }
+              // Otherwise fall back to same-prix_vente grouping
+              return Number(s.prix_vente ?? 0) === itemPV;
+            })
             .sort((a: any, b: any) => (Number(a.fifo_priority) || 999) - (Number(b.fifo_priority) || 999));
 
           if (allSnaps.length > 0) {
@@ -4949,7 +4997,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         return;
       }
       
-      // --- Auto-split: si qté dépasse le snapshot dispo, caper et créer nouvelle ligne ---
+      // --- Auto-snapshot collection: si qté dépasse le snapshot dispo, garder UNE seule ligne ---
+      // et collecter les snapshot IDs traversés dans merged_snapshot_ids pour affichage en orange.
+      // La FIFO allocation au submit s'occupera de splitter en plusieurs items backend.
       if (useSnapshotSelection && snapshotProducts.length > 0) {
         const currentSnapId = values.items[index].product_snapshot_id;
         if (currentSnapId) {
@@ -4959,69 +5009,34 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
             const prodId = currentSnap.id;
             const varId = currentSnap.variant_id || 0;
 
-            // Find next FIFO snapshot for same product+variant with qty > 0
-            const nextSnap = snapshotProducts.find((p: any) =>
-              p.id === prodId &&
-              (p.variant_id || 0) === varId &&
-              p.snapshot_id !== currentSnapId &&
-              Number(p.snapshot_quantite ?? 0) > 0 &&
-              Number(p.fifo_priority ?? 999) > Number(currentSnap.fifo_priority ?? 0)
-            );
-
-            // If no other snapshot has qty > 0, allow the qty freely without splitting
-            if (!nextSnap) {
-              // fall through to normal setFieldValue below
-            } else {
-              // Cap current line at snapshot max
-              const excess = q - snapQty;
-              const cappedQ = snapQty;
-              setFieldValue(`items.${index}.quantite`, cappedQ);
-              setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(cappedQ) }));
-              const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
-              setFieldValue(`items.${index}.total`, cappedQ * u);
-
-              // Check if there is yet another snapshot after nextSnap (to know if nextSnap is the last)
-              const snapAfterNext = snapshotProducts.find((p: any) =>
+            // Collect all FIFO snapshots that will be consumed by this quantity
+            const allSnapsForProduct = (snapshotProducts as any[])
+              .filter((p: any) =>
                 p.id === prodId &&
                 (p.variant_id || 0) === varId &&
-                p.snapshot_id !== currentSnapId &&
-                p.snapshot_id !== nextSnap.snapshot_id &&
+                p.snapshot_id &&
                 Number(p.snapshot_quantite ?? 0) > 0 &&
-                Number(p.fifo_priority ?? 999) > Number(nextSnap.fifo_priority ?? 0)
-              );
+                Number(p.fifo_priority ?? 999) >= Number(currentSnap.fifo_priority ?? 0)
+              )
+              .sort((a: any, b: any) => Number(a.fifo_priority ?? 999) - Number(b.fifo_priority ?? 999));
 
-              // Create new row with next snapshot and remaining qty.
-              // If nextSnap is the last available snapshot (nothing after it), allow full excess.
-              const catalogProduct = products.find((p: any) => String(p.id) === String(nextSnap.id));
-              const nextPrice = getCatalogPrixVente(catalogProduct, nextSnap.variant_id);
-              const nextPA = nextSnap.prix_achat || 0;
-              const priceForNew = values.type === 'Commande' ? nextPA : nextPrice;
-              const newRowQty = snapAfterNext
-                ? Math.min(excess, Number(nextSnap.snapshot_quantite ?? 0))
-                : excess; // last snapshot: accept any qty without capping
-              const newItem = {
-                _rowId: makeRowId(),
-                product_id: nextSnap.id,
-                product_reference: String(nextSnap.reference ?? nextSnap.id),
-                designation: nextSnap.designation || '',
-                quantite: newRowQty,
-                prix_achat: nextSnap.prix_achat || 0,
-                prix_unitaire: nextPrice,
-                cout_revient: nextSnap.cout_revient || 0,
-                kg: nextSnap.kg ?? 0,
-                total: newRowQty * priceForNew,
-                unite: 'pièce',
-                product_snapshot_id: nextSnap.snapshot_id,
-                variant_id: nextSnap.variant_id || '',
-                cout_revient_pourcentage: nextSnap.cout_revient_pourcentage ?? 0,
-                prix_gros_pourcentage: nextSnap.prix_gros_pourcentage ?? 0,
-                prix_vente_pourcentage: nextSnap.prix_vente_pourcentage ?? 0,
-              };
-              const newIdx = values.items.length;
-              setFieldValue('items', [...values.items, newItem]);
-              setQtyRaw((prev) => ({ ...prev, [newIdx]: formatNumber(newRowQty) }));
-              setUnitPriceRaw((prev) => ({ ...prev, [newIdx]: String(priceForNew) }));
-              return; // Already handled
+            const consumedSnapshotIds: any[] = [];
+            let remaining = q;
+            for (const s of allSnapsForProduct) {
+              if (remaining <= 0) break;
+              consumedSnapshotIds.push(s.snapshot_id);
+              remaining -= Number(s.snapshot_quantite ?? 0);
+            }
+
+            if (consumedSnapshotIds.length > 1) {
+              // Update merged_snapshot_ids on the existing line; do NOT create a new row
+              setFieldValue(`items.${index}.merged_snapshot_ids`, consumedSnapshotIds);
+              setFieldValue(`items.${index}.product_snapshot_id`, null);
+              setFieldValue(`items.${index}.quantite`, q);
+              setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) }));
+              const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+              setFieldValue(`items.${index}.total`, q * u);
+              return;
             }
           }
         }
@@ -5153,9 +5168,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     return <div>{`PA${displayPA} CR${displayCR}`}</div>;
                                   })()}
                                   <div className="text-[9px] text-orange-600">
-                                    snap:{String(values.items[index].product_snapshot_id || '-')}
-                                    {' '}v:{String(values.items[index].variant_id || '-')}
-                                    {' '}u:{String(values.items[index].unit_id || '-')}
+                                    {(() => {
+                                      const item = values.items[index];
+                                      const mergedIds: any[] = Array.isArray(item.merged_snapshot_ids) && item.merged_snapshot_ids.length > 0
+                                        ? item.merged_snapshot_ids
+                                        : item.product_snapshot_id ? [item.product_snapshot_id] : [];
+                                      return <>
+                                        snap:{mergedIds.length > 0 ? mergedIds.join('+') : '-'}
+                                        {' '}v:{String(item.variant_id || '-')}
+                                        {' '}u:{String(item.unit_id || '-')}
+                                      </>;
+                                    })()}
                                   </div>
                                 </td>
 
