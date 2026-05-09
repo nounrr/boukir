@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Search, Users, Phone, Mail, MapPin, Building2,
   ChevronLeft, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown,
   FileText, CreditCard, RotateCcw, Calendar, Hash, ArrowLeft,
-  Package, Printer, ShoppingCart, GripVertical,
+  Package, Printer, ShoppingCart, GripVertical, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -961,6 +961,43 @@ const FournisseurDetailPage: React.FC = () => {
   const { data: history, isLoading: loadingHistory } = useGetContactHistoryQuery({ id: fournisseurId, limit: 30000 });
   const isLoading = loadingContact || loadingHistory;
 
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const didAutoScrollRef = useRef(false);
+  const [isAtBottom, setIsAtBottom] = useState(false);
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  };
+  const scrollToTop = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+      setIsAtBottom(atBottom);
+    };
+    el.addEventListener('scroll', onScroll);
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (didAutoScrollRef.current) return;
+    if (isLoading || !history) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+      didAutoScrollRef.current = true;
+      setIsAtBottom(true);
+    });
+  }, [isLoading, history]);
+
   const [reorderPayments] = useReorderPaymentsMutation();
 
   const toMySQLDateTime = (date: Date): string => {
@@ -1439,6 +1476,22 @@ const FournisseurDetailPage: React.FC = () => {
           </p>
         </div>
         <button
+          type="button"
+          onClick={scrollToTop}
+          title="Aller en haut"
+          className="w-6 h-6 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-sm flex items-center justify-center transition-colors"
+        >
+          <ChevronUp className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          title="Aller en bas"
+          className="w-6 h-6 rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-sm flex items-center justify-center transition-colors"
+        >
+          <ChevronDown className="w-3.5 h-3.5" />
+        </button>
+        <button
           onClick={() => setPrintOpen(true)}
           disabled={isLoading || !history}
           className="flex items-center gap-2 px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
@@ -1460,8 +1513,8 @@ const FournisseurDetailPage: React.FC = () => {
       </div>
 
       {/* Tabs + filtre date + checkbox dÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©tail */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center border-b border-gray-200 overflow-x-auto">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden relative">
+        <div className="flex items-center border-b border-gray-200 overflow-x-auto sticky top-0 z-20 bg-white">
           <div className="flex flex-1">
             {tabs.map(t => (
               <button
@@ -1540,7 +1593,7 @@ const FournisseurDetailPage: React.FC = () => {
           )}
         </div>
 
-        <div className="overflow-x-auto">
+        <div ref={scrollRef} className="overflow-auto max-h-[calc(100vh-220px)] relative">
 
           {/* ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ Complet ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ */}
           {tab === 'complet' && (
