@@ -720,6 +720,7 @@ router.get('/solde-cumule-card', async (_req, res) => {
             SELECT SUM(montant_total)
             FROM bons_sortie
             WHERE client_id IS NOT NULL
+              AND COALESCE(vendre_au_fournisseur, 0) = 0
               AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
         ),0)
         +
@@ -751,6 +752,7 @@ router.get('/solde-cumule-card', async (_req, res) => {
             SELECT SUM(montant_total)
             FROM avoirs_client
             WHERE client_id IS NOT NULL
+              AND COALESCE(vendre_au_fournisseur, 0) = 0
               AND statut IN ('En attente','ValidÃ©','AppliquÃ©')
               AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
         ),0)
@@ -810,9 +812,9 @@ router.get('/solde-cumule-card', async (_req, res) => {
     const total_avoirs_fournisseur = Number(detail.total_avoirs_fournisseur || 0);
     const total_avoirs_vendre_fournisseur = Number(detail.total_avoirs_vendre_fournisseur || 0);
 
-    const total_debit = total_solde + total_commandes + total_avoirs_vendre_fournisseur;
-    const total_credit = total_paiements + total_avoirs_fournisseur + total_bons_vendre_fournisseur;
-    const total_final = total_credit - total_debit;
+    const total_debit = total_solde + total_ventes;
+    const total_credit = total_paiements + total_avoirs;
+    const total_final = total_debit - total_credit;
     res.json({
       total_final,
       total_solde,
@@ -891,8 +893,8 @@ router.get('/solde-cumule-card-fournisseur', async (_req, res) => {
     const total_paiements = Number(row.total_paiements || 0);
     const total_avoirs_fournisseur = Number(row.total_avoirs_fournisseur || 0);
     const total_avoirs_vendre_fournisseur = Number(row.total_avoirs_vendre_fournisseur || 0);
-    const total_debit = total_solde + total_commandes + total_avoirs_vendre_fournisseur;
-    const total_credit = total_paiements + total_avoirs_fournisseur + total_bons_vendre_fournisseur;
+    const total_credit = total_solde + total_commandes + total_avoirs_vendre_fournisseur;
+    const total_debit = total_paiements + total_avoirs_fournisseur + total_bons_vendre_fournisseur;
     const total_final = total_credit - total_debit;
     res.json({
       total_final,
