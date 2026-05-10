@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { useGetClientsQuery, useGetContactHistoryQuery, useGetContactQuery, useGetSoldeCumuleCardQuery } from '../store/api/contactsApi';
+import { useGetClientsQuery, useGetContactHistoryQuery, useGetContactQuery } from '../store/api/contactsApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
@@ -1816,7 +1816,7 @@ const ClientDetailPage: React.FC = () => {
 const ClientsListPage: React.FC = () => {
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [itemsPerPage, setItemsPerPage] = useState(0);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortBy, setSortBy] = useState<ContactsSortBy>('nom');
@@ -1841,26 +1841,13 @@ const ClientsListPage: React.FC = () => {
     dateTo: dateTo || undefined,
   });
 
-  // Card globale (tous les clients) : route dédiée côté API
-  const { data: soldeCumuleCard } = useGetSoldeCumuleCardQuery();
-
   const clients = data?.data ?? [];
   const totalPages = data?.pagination?.totalPages ?? 0;
   const total = data?.pagination?.total ?? 0;
-  const grandTotalCumule = data?.grandTotalCumule ?? null;
-  const grandTotalSoldeInitial = data?.grandTotalSoldeInitial ?? null;
-  const grandTotalVentes = data?.grandTotalVentes ?? null;
-  const grandTotalPaiements = data?.grandTotalPaiements ?? null;
-  const grandTotalAvoirs = data?.grandTotalAvoirs ?? null;
-  const totalDebitClients = (typeof soldeCumuleCard?.total_debit === 'number')
-    ? soldeCumuleCard.total_debit
-    : (grandTotalSoldeInitial !== null && grandTotalVentes !== null ? grandTotalSoldeInitial + grandTotalVentes : null);
-  const totalCreditClients = (typeof soldeCumuleCard?.total_credit === 'number')
-    ? soldeCumuleCard.total_credit
-    : (grandTotalPaiements !== null && grandTotalAvoirs !== null ? grandTotalPaiements + grandTotalAvoirs : null);
-  const totalCumuleClients = (totalCreditClients !== null && totalDebitClients !== null)
-    ? totalDebitClients - totalCreditClients
-    : grandTotalCumule;
+  const totalCumuleClients = clients.reduce(
+    (acc: number, c: any) => acc + (Number(c?.total_cumule) || 0),
+    0
+  );
 
   const handleSort = (col: ContactsSortBy) => {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -1895,20 +1882,10 @@ const ClientsListPage: React.FC = () => {
       </div>
 
       {/* Stats globales */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl border border-blue-100 px-4 py-3">
-          <p className="text-xs text-gray-400 mb-1">Débit: solde initial + sorties + comptant</p>
-          <p className="font-bold text-sm text-blue-700">{totalDebitClients !== null ? fmt(totalDebitClients) : 'â€”'}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-green-100 px-4 py-3">
-          <p className="text-xs text-gray-400 mb-1">Crédit: paiements + avoirs</p>
-          <p className="font-bold text-sm text-green-700">{totalCreditClients !== null ? fmt(totalCreditClients) : '—'}</p>
-        </div>
+      <div className="grid grid-cols-1 gap-3">
         <div className="bg-yellow-50 rounded-xl border border-yellow-200 px-4 py-3">
-          <p className="text-xs text-gray-400 mb-1">Total cumulé (tous les clients)</p>
-          {totalCumuleClients !== null
-            ? <p className={`font-bold text-sm ${totalCumuleClients > 0 ? 'text-red-600' : totalCumuleClients < 0 ? 'text-green-600' : 'text-gray-500'}`}>{fmt(totalCumuleClients)}</p>
-            : <p className="text-sm text-gray-300">-</p>}
+          <p className="text-xs text-gray-400 mb-1">Solde cumulé (tous les clients)</p>
+          <p className={`font-bold text-sm ${totalCumuleClients > 0 ? 'text-red-600' : totalCumuleClients < 0 ? 'text-green-600' : 'text-gray-500'}`}>{fmt(totalCumuleClients)}</p>
         </div>
       </div>
 
