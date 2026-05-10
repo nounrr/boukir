@@ -598,10 +598,10 @@ interface CompletTableProps {
   onCompletDragEnd?: (result: DropResult) => void;
 }
 
-const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string }> = {
+const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string }> = {
   sortie:   { label: 'Sortie',   badgeClass: 'bg-blue-100 text-blue-700',    accentClass: 'text-blue-700',   hoverClass: 'hover:bg-blue-50',   itemBorderClass: 'border-blue-200',   prefix: 'SOR' },
   comptant: { label: 'Comptant', badgeClass: 'bg-sky-100 text-sky-700',      accentClass: 'text-sky-700',    hoverClass: 'hover:bg-sky-50',    itemBorderClass: 'border-sky-200',    prefix: 'COM' },
-  avoir:    { label: 'Avoir',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-orange-700', hoverClass: 'hover:bg-orange-50', itemBorderClass: 'border-orange-200', prefix: 'AVC' },
+  avoir:    { label: 'Avoir',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-orange-700', hoverClass: 'hover:bg-orange-50', itemBorderClass: 'border-orange-200', prefix: 'AVC', bgClass: 'bg-orange-50' },
 };
 
 const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], remises = [], visibleIds, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd }) => {
@@ -739,7 +739,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
               <tr
                 ref={dragProvided.innerRef}
                 {...dragProvided.draggableProps}
-                className={`transition-colors ${snapshot.isDragging ? 'shadow-lg bg-blue-50' : `hover:bg-green-50 ${rowBg}`}`}
+                className={`transition-colors ${snapshot.isDragging ? 'shadow-lg bg-blue-50' : `hover:bg-green-50 ${rowBg || 'bg-green-50'}`}`}
               >
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
@@ -818,7 +818,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
             return (
               <Draggable key={`${bonKey}-${idx}`} draggableId={`${bonKey}-row`} index={rowIndex} isDragDisabled>
                 {(dragProvided) => (
-              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${rowBg}`}>
+              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${rowBg || meta.bgClass || ''}`}>
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
@@ -854,7 +854,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
             return (
               <Draggable key={`${bonKey}-${idx}`} draggableId={`${itemKey0}-empty`} index={rowIndex} isDragDisabled>
                 {(dragProvided) => (
-              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${isSelected ? '!bg-blue-50' : itemSelected0 ? '!bg-purple-50' : ''}`}>
+              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${isSelected ? '!bg-blue-50' : itemSelected0 ? '!bg-purple-50' : (meta.bgClass || '')}`}>
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
@@ -925,7 +925,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 return (
                   <Draggable key={lastItemSoldeKey} draggableId={lastItemSoldeKey} index={rowIndex} isDragDisabled>
                     {(dragProvided) => (
-                  <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`bg-gray-50/60 border-l-4 ${meta.itemBorderClass} transition-colors ${isSelected ? '!bg-blue-50/60' : itemSelected ? '!bg-purple-50/60' : ''}`}>
+                  <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.bgClass ? meta.bgClass : 'bg-gray-50/60'} border-l-4 ${meta.itemBorderClass} transition-colors ${isSelected ? '!bg-blue-50/60' : itemSelected ? '!bg-purple-50/60' : ''}`}>
                     {selectionMode && (
                       <td className="px-2 py-2 text-center">
                         {groupIdx === 0 && (
@@ -1309,6 +1309,9 @@ const ClientDetailPage: React.FC = () => {
   const nomDisplay = contact?.nom_complet || contact?.societe || `Client #${clientId}`;
   const initial = nomDisplay.charAt(0).toUpperCase();
   const solde: number = contact?.solde ?? 0;
+  const totalCumule: number = history && contact
+    ? -computeFinalSoldeCumule(history, contact.solde ?? 0)
+    : 0;
 
   const showDetail = tab !== 'paiements';
   const detailEnabled = detail || hasProductSearch;
@@ -1541,6 +1544,12 @@ const ClientDetailPage: React.FC = () => {
           <p className="text-xs text-gray-400">Solde</p>
           <p className={`font-bold text-base ${solde < 0 ? 'text-red-600' : solde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
             {fmt(solde)}
+          </p>
+        </div>
+        <div className="text-right px-3 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200">
+          <p className="text-xs text-gray-400">Total cumulé</p>
+          <p className={`font-bold text-base ${totalCumule > 0 ? 'text-red-600' : totalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+            {fmt(totalCumule)}
           </p>
         </div>
         <button
@@ -1813,14 +1822,16 @@ const ClientDetailPage: React.FC = () => {
 
 // ─── Liste clients ─────────────────────────────────────────────────────────────
 
+const CLIENTS_SCROLL_KEY = 'clientsListScrollY';
+
 const ClientsListPage: React.FC = () => {
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(0);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [sortBy, setSortBy] = useState<ContactsSortBy>('nom');
-  const [sortDir, setSortDir] = useState<SortDirection>('asc');
+  const [sortBy, setSortBy] = useState<ContactsSortBy>('total_cumule');
+  const [sortDir, setSortDir] = useState<SortDirection>('desc');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -1844,6 +1855,24 @@ const ClientsListPage: React.FC = () => {
   const clients = data?.data ?? [];
   const totalPages = data?.pagination?.totalPages ?? 0;
   const total = data?.pagination?.total ?? 0;
+
+  React.useEffect(() => {
+    if (isLoading || isFetching) return;
+    const saved = sessionStorage.getItem(CLIENTS_SCROLL_KEY);
+    if (saved !== null) {
+      const y = Number(saved);
+      if (!isNaN(y)) {
+        requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'auto' }));
+      }
+      sessionStorage.removeItem(CLIENTS_SCROLL_KEY);
+    }
+  }, [isLoading, isFetching]);
+
+  const handleRowClick = (id: number) => {
+    sessionStorage.setItem(CLIENTS_SCROLL_KEY, String(window.scrollY));
+    navigate(`/clients/${id}`);
+  };
+
   const totalCumuleClients = clients.reduce(
     (acc: number, c: any) => acc + (Number(c?.total_cumule) || 0),
     0
@@ -1957,7 +1986,7 @@ const ClientsListPage: React.FC = () => {
                     </td></tr>
                   : clients.map((client: Contact, idx: number) => (
                       <tr key={client.id} className="hover:bg-blue-50 transition-colors cursor-pointer"
-                        onClick={() => navigate(`/clients/${client.id}`)}>
+                        onClick={() => handleRowClick(client.id)}>
                         <td className="px-4 py-3 text-gray-400 text-xs">{(itemsPerPage === 0 ? 0 : (currentPage - 1) * itemsPerPage) + idx + 1}</td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-500">{client.id}</td>
                         <td className="px-4 py-3">
