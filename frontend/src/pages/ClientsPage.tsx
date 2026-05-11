@@ -1146,13 +1146,14 @@ const ClientDetailPage: React.FC = () => {
         continue;
       }
 
-      rowItems.forEach((item: any, iIdx: number) => {
+      groupDisplayItems(rowItems).forEach(({ sourceIndices }) => {
+        const lastSourceIdx = sourceIndices[sourceIndices.length - 1];
         items.push({
-          id: `${row.kind}-${bonId}-item-${iIdx}`,
+          id: `${row.kind}-${bonId}-item-${lastSourceIdx}`,
           type: 'produit',
           bon_id: bonId,
           bon_date_iso: bonDate,
-          item_id: item.id,
+          item_id: rowItems[lastSourceIdx]?.id,
         });
       });
     }
