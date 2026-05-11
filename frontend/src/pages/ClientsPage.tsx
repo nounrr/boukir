@@ -14,6 +14,8 @@ import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
+import { useRemiseEditor, type RemiseEligibleItem } from '../hooks/useRemiseEditor';
+import RemiseEditorBar from '../components/RemiseEditorBar';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
 
@@ -596,6 +598,7 @@ interface CompletTableProps {
   onToggleItem?: (key: string) => void;
   onToggleAllItems?: (keys: string[]) => void;
   onCompletDragEnd?: (result: DropResult) => void;
+  remiseEditor?: import('../hooks/useRemiseEditor').UseRemiseEditorResult;
 }
 
 const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string }> = {
@@ -604,7 +607,8 @@ const BON_META: Record<string, { label: string; badgeClass: string; accentClass:
   avoir:    { label: 'Avoir',    badgeClass: 'bg-white/90 text-orange-700', accentClass: 'text-white', hoverClass: 'hover:brightness-95', itemBorderClass: 'border-orange-700', prefix: 'AVC', bgClass: 'colored-row bg-orange-500' },
 };
 
-const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], remises = [], visibleIds, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd }) => {
+const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], remises = [], visibleIds, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd, remiseEditor }) => {
+  const showRemiseInputs = !!remiseEditor?.showRemiseMode;
   const selectionMode = !!onToggleSelect;
   const soldeCumuleMap = useMemo(
     () => detail ? buildSoldeCumuleDetail(rows, soldeInitial) : buildSoldeCumule(rows, soldeInitial),
@@ -682,6 +686,8 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           {detail && <th className="text-center px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Qté</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Prix unit.</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise Abonné</th>}
+          {detail && showRemiseInputs && <th className="text-right px-3 py-3 font-semibold text-orange-700 whitespace-nowrap bg-orange-50">Prix Remise</th>}
+          {detail && showRemiseInputs && <th className="text-right px-3 py-3 font-semibold text-orange-700 whitespace-nowrap bg-orange-50">Total Remise</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise Client</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise cumulée</th>}
           {!detail && <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">RIB / Réf</th>}
@@ -781,7 +787,11 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 )}
                 {detail && <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>}
                 {detail && <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>}
+                {/* Remise Abonné */}
                 {detail && <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>}
+                {detail && showRemiseInputs && <td className="px-3 py-2.5 text-gray-300 text-xs bg-orange-50/40">—</td>}
+                {detail && showRemiseInputs && <td className="px-3 py-2.5 text-gray-300 text-xs bg-orange-50/40">—</td>}
+                {/* Remise Client + Remise cumulée */}
                 {detail && <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>}
                 {detail && <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>}
                 {!detail && (
@@ -874,7 +884,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
-                {/* Référence, Désignation, Adr.Livraison, Code Règl., Qté, Prix */}
+                {/* Référence, Désignation, Variant, Unité, Adr.Livraison, Code Règl., Qté, Prix, RemAbo, [PrixRem, TotRem], RemCli, RemCum */}
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-400 text-xs italic">—</td>
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
@@ -884,6 +894,8 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
+                {showRemiseInputs && <td className="px-3 py-2.5 text-gray-300 text-xs bg-orange-50/40">—</td>}
+                {showRemiseInputs && <td className="px-3 py-2.5 text-gray-300 text-xs bg-orange-50/40">—</td>}
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
@@ -978,6 +990,52 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <td className="px-3 py-2 text-right text-xs">
                       {remiseAbonne > 0 ? <span className="text-blue-600 font-medium">{fmtRemise(remiseAbonne)}</span> : <span className="text-gray-300">—</span>}
                     </td>
+                    {/* Prix Remise (input) + Total Remise (calculé) */}
+                    {showRemiseInputs && (() => {
+                      const head = sourceItems[0];
+                      if (!head?.id || !remiseEditor) {
+                        return (
+                          <>
+                            <td className="px-3 py-2 text-right text-xs bg-orange-50/40 text-gray-300">—</td>
+                            <td className="px-3 py-2 text-right text-xs bg-orange-50/40 text-gray-300">—</td>
+                          </>
+                        );
+                      }
+                      const bonType: 'Sortie' | 'Comptant' = row.kind === 'sortie' ? 'Sortie' : 'Comptant';
+                      if (bonType !== 'Sortie' && bonType !== 'Comptant') {
+                        return (
+                          <>
+                            <td className="px-3 py-2 text-right text-xs bg-orange-50/40 text-gray-300">—</td>
+                            <td className="px-3 py-2 text-right text-xs bg-orange-50/40 text-gray-300">—</td>
+                          </>
+                        );
+                      }
+                      const eligibleId = `${row.kind}-${b.id}-item-${head.id}`;
+                      const totalQte = sourceItems.reduce((s, src) => s + (Number(src.quantite ?? 0) || 0), 0);
+                      const price = remiseEditor.remisePrices[eligibleId] ?? '';
+                      const totalRem = (Number(price) || 0) * totalQte;
+                      return (
+                        <>
+                          <td className="px-3 py-2 text-right text-xs bg-orange-50/40">
+                            <input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              placeholder="0.000"
+                              value={price === '' ? '' : String(price)}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value) || 0;
+                                remiseEditor.setItemPrice(eligibleId, v);
+                              }}
+                              className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-right"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs bg-orange-50/40 font-medium text-green-700">
+                            {totalRem > 0 ? `${totalRem.toFixed(3)} DH` : <span className="text-gray-300">—</span>}
+                          </td>
+                        </>
+                      );
+                    })()}
                     {/* Remise Client */}
                     <td className="px-3 py-2 text-right text-xs">
                       {remiseClient > 0 ? <span className="text-purple-600 font-medium">{fmtRemise(remiseClient)}</span> : <span className="text-gray-300">—</span>}
@@ -1036,7 +1094,7 @@ const ClientDetailPage: React.FC = () => {
   const [filterTo, setFilterTo] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const { data: contact, isLoading: loadingContact } = useGetContactQuery(clientId);
-  const { data: history, isLoading: loadingHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
+  const { data: history, isLoading: loadingHistory, refetch: refetchHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
   const { data: products = [] } = useGetProductsQuery();
   const isLoading = loadingContact || loadingHistory;
 
@@ -1299,6 +1357,46 @@ const ClientDetailPage: React.FC = () => {
     }
     return s;
   }, [completRows, filterFrom, filterTo]);
+
+  // ── Remise editor (Appliquer Remise — patch directement sortie_items.remise_montant) ──
+  const remiseVisibleItems = useMemo<RemiseEligibleItem[]>(() => {
+    const out: RemiseEligibleItem[] = [];
+    for (const row of completRows) {
+      if (row.kind === 'paiement') continue;
+      if (row.kind === 'avoir') continue;
+      if (visibleIds && !visibleIds.has(`${row.kind}-${row.data.id}`)) continue;
+      const bonId = Number(row.data.id);
+      const bonType: 'Sortie' | 'Comptant' = row.kind === 'sortie' ? 'Sortie' : 'Comptant';
+      const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
+      const groups = groupDisplayItems(items);
+      for (const { item: groupItem, sourceItems } of groups) {
+        const head = sourceItems[0];
+        if (!head?.product_id) continue;
+        const totalQte = sourceItems.reduce((s, src) => s + (Number(src.quantite ?? 0) || 0), 0);
+        out.push({
+          id: `${row.kind}-${bonId}-item-${head.id}`,
+          bon_id: bonId,
+          bon_type: bonType,
+          product_id: Number(head.product_id),
+          product_reference: head.product_reference ?? head.reference ?? null,
+          reference: head.reference ?? head.product_reference ?? null,
+          quantite: totalQte,
+          remise_montant: Number(groupItem.remise_montant ?? head.remise_montant ?? 0) || 0,
+          sourceItemIds: sourceItems.map((s) => Number(s.id)).filter((n) => Number.isFinite(n)),
+        });
+      }
+    }
+    return out;
+  }, [completRows, visibleIds]);
+
+  const remiseEditor = useRemiseEditor({
+    contact: contact ? { id: contact.id, nom_complet: contact.nom_complet, telephone: contact.telephone, rib: contact.rib } : null,
+    enabled: tab === 'complet' && (detail || hasProductSearch),
+    visibleItems: remiseVisibleItems,
+    sorties: history?.sorties ?? [],
+    comptants: history?.comptants ?? [],
+    onSaved: async () => { await refetchHistory(); },
+  });
 
   const PaySortIcon = ({ col }: { col: typeof paySort.col }) =>
     paySort.col !== col
@@ -1672,6 +1770,13 @@ const ClientDetailPage: React.FC = () => {
           )}
         </div>
 
+        {/* Remise Editor Bar (Appliquer / Modifier Remise) */}
+        {tab === 'complet' && detailEnabled && (
+          <div className="px-4 py-2 border-b border-gray-100 bg-white">
+            <RemiseEditorBar editor={remiseEditor} />
+          </div>
+        )}
+
         {/* Content */}
         <div ref={scrollRef} className="overflow-auto max-h-[calc(100vh-220px)] relative">
 
@@ -1693,6 +1798,7 @@ const ClientDetailPage: React.FC = () => {
                   onToggleItem={toggleItem}
                   onToggleAllItems={toggleAllItems}
                   onCompletDragEnd={handleCompletDragEnd}
+                  remiseEditor={remiseEditor}
                 />
           )}
 
