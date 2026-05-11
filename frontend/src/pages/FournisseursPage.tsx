@@ -1091,9 +1091,10 @@ const FournisseurDetailPage: React.FC = () => {
     if (!movedItem || movedItem.type !== 'paiement') { console.log('[CompletDragEnd:Fournisseur] abort: not a paiement'); return; }
 
     const targetIndex = result.destination.index;
+    const movingDown = targetIndex > result.source.index;
     let targetItem = items[targetIndex];
 
-    if (targetItem && targetItem.type === 'produit' && targetItem.bon_id) {
+    if (movingDown && targetItem && targetItem.type === 'produit' && targetItem.bon_id) {
       const bonId = targetItem.bon_id;
       let lastIndexOfBon = targetIndex;
       for (let i = targetIndex + 1; i < items.length; i++) {
@@ -1101,29 +1102,22 @@ const FournisseurDetailPage: React.FC = () => {
         else break;
       }
       targetItem = items[lastIndexOfBon];
-    }
-
-    let nextItem = null;
-    for (let i = targetIndex + 1; i < items.length; i++) {
-      if (items[i].bon_id !== targetItem?.bon_id) {
-        nextItem = items[i];
-        break;
+    } else if (!movingDown && targetItem && targetItem.type === 'produit' && targetItem.bon_id) {
+      const bonId = targetItem.bon_id;
+      let firstIndexOfBon = targetIndex;
+      for (let i = targetIndex - 1; i >= 0; i--) {
+        if (items[i].bon_id === bonId && items[i].type === 'produit') firstIndexOfBon = i;
+        else break;
       }
+      targetItem = items[firstIndexOfBon];
     }
 
     const targetDateStr = targetItem?.bon_date_iso || targetItem?.bon_date;
     let newDate: string;
     if (targetDateStr) {
       const targetDate = new Date(targetDateStr);
-      if (nextItem && (nextItem.bon_date_iso || nextItem.bon_date)) {
-        const nextDate = new Date(nextItem.bon_date_iso || nextItem.bon_date);
-        newDate = toMySQLDateTime(new Date((targetDate.getTime() + nextDate.getTime()) / 2));
-      } else {
-        newDate = toMySQLDateTime(new Date(targetDate.getTime() + 60000));
-      }
-    } else if (nextItem && (nextItem.bon_date_iso || nextItem.bon_date)) {
-      const nextDate = new Date(nextItem.bon_date_iso || nextItem.bon_date);
-      newDate = toMySQLDateTime(new Date(nextDate.getTime() - 60000));
+      const delta = movingDown ? 60000 : -60000;
+      newDate = toMySQLDateTime(new Date(targetDate.getTime() + delta));
     } else {
       newDate = toMySQLDateTime(new Date());
     }
