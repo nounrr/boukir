@@ -197,7 +197,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
 
           return (
             <React.Fragment key={b.id}>
-              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, iIdx: number) => {
+              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx: number) => {
                 const qte = Number(item.quantite ?? 0);
                 const pu = Number(item.prix_unitaire ?? item.prix_achat ?? 0);
                 const total = Number(item.total ?? (qte * pu));
@@ -1417,6 +1417,8 @@ const FournisseurDetailPage: React.FC = () => {
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
+    const includeInitialInDebit = !hasSelectionScopedPrint;
+    const initialSoldeForDebit = Math.abs(Number(contact.solde ?? 0) || 0);
     const totalQty = printProductHistory
       .filter((r: any) => r.type === 'produit' && Number(r.quantite) > 0)
       .reduce((s: number, r: any) => s + Number(r.quantite ?? 0), 0);
@@ -1436,10 +1438,10 @@ const FournisseurDetailPage: React.FC = () => {
       totalQty,
       totalAmount: totalAchats,
       finalSolde,
-      totalDebit: totalAchats,
+      totalDebit: totalAchats + (includeInitialInDebit ? initialSoldeForDebit : 0),
       totalCredit: totalPaiements + totalAvoirs,
     };
-  }, [history, contact, filterFrom, filterTo, printProductHistory, selectedIds, selectedItemIds]);
+  }, [history, contact, filterFrom, filterTo, printProductHistory, selectedIds, selectedItemIds, hasScopedPrint, hasSelectionScopedPrint]);
 
   if (isLoading) {
     return (
@@ -1746,6 +1748,7 @@ const FournisseurDetailPage: React.FC = () => {
           finalSolde={printTotals.finalSolde}
           totalDebit={printTotals.totalDebit}
           totalCredit={printTotals.totalCredit}
+          totalDebitSubtitle={hasSelectionScopedPrint ? '(Achats)' : '(Achats + Solde initial)'}
         />
       )}
 
