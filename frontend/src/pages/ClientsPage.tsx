@@ -198,7 +198,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
 
           return (
             <React.Fragment key={b.id}>
-              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, iIdx: number) => {
+              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx: number) => {
                 const qte = Number(item.quantite ?? 0);
                 const pu = Number(item.prix_unitaire ?? 0);
                 const total = Number(item.total ?? (qte * pu));
@@ -1481,7 +1481,7 @@ const ClientDetailPage: React.FC = () => {
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
-    const includeInitialInDebit = !hasScopedPrint;
+    const includeInitialInDebit = !hasSelectionScopedPrint;
     const initialSoldeForDebit = Math.abs(Number(contact.solde ?? 0) || 0);
     const totalQty = printProductHistory
       .filter((r: any) => r.type === 'produit' && Number(r.quantite) > 0)
@@ -1505,7 +1505,7 @@ const ClientDetailPage: React.FC = () => {
       totalDebit: totalVentes + (includeInitialInDebit ? initialSoldeForDebit : 0),
       totalCredit: totalPaiements + totalAvoirs,
     };
-  }, [history, contact, printProductHistory, hasScopedPrint]);
+  }, [history, contact, printProductHistory, hasScopedPrint, hasSelectionScopedPrint]);
 
 
 
@@ -1631,7 +1631,7 @@ const ClientDetailPage: React.FC = () => {
             />
             {(filterFrom || filterTo) && (
               <button
-                onClick={() => { setFilterFrom(''); setFilterTo(''); }}
+                  onClick={() => { setFilterFrom(''); setFilterTo(''); }}
                 className="text-xs text-gray-400 hover:text-red-500 transition-colors px-0.5"
               >✕</button>
             )}
@@ -1812,7 +1812,7 @@ const ClientDetailPage: React.FC = () => {
           finalSolde={printTotals.finalSolde}
           totalDebit={printTotals.totalDebit}
           totalCredit={printTotals.totalCredit}
-          totalDebitSubtitle={hasScopedPrint ? '(Sorties + Comptant)' : '(Sorties + Comptant + Solde initial)'}
+          totalDebitSubtitle={hasSelectionScopedPrint ? '(Sorties + Comptant)' : '(Sorties + Comptant + Solde initial)'}
         />
       )}
 
