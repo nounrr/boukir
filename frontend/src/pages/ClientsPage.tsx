@@ -1810,8 +1810,8 @@ const ClientDetailPage: React.FC = () => {
           totalQty={printTotals.totalQty}
           totalAmount={printTotals.totalAmount}
           finalSolde={printTotals.finalSolde}
-          totalDebit={printTotals.totalDebit}
-          totalCredit={printTotals.totalCredit}
+          totalDebit={hasDateFilter ? undefined : printTotals.totalDebit}
+          totalCredit={hasDateFilter ? undefined : printTotals.totalCredit}
           totalDebitSubtitle={hasSelectionScopedPrint ? '(Sorties + Comptant)' : '(Sorties + Comptant + Solde initial)'}
         />
       )}
