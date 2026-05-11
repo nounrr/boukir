@@ -600,8 +600,8 @@ interface CompletTableProps {
 
 const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string }> = {
   sortie:   { label: 'Sortie',   badgeClass: 'bg-blue-100 text-blue-700',    accentClass: 'text-blue-700',   hoverClass: 'hover:bg-blue-50',   itemBorderClass: 'border-blue-200',   prefix: 'SOR' },
-  comptant: { label: 'Comptant', badgeClass: 'bg-sky-100 text-sky-700',      accentClass: 'text-sky-700',    hoverClass: 'hover:bg-sky-50',    itemBorderClass: 'border-sky-200',    prefix: 'COM' },
-  avoir:    { label: 'Avoir',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-orange-700', hoverClass: 'hover:bg-orange-50', itemBorderClass: 'border-orange-200', prefix: 'AVC', bgClass: 'bg-orange-50' },
+  comptant: { label: 'Comptant', badgeClass: 'bg-white/90 text-sky-700',      accentClass: 'text-white',    hoverClass: 'hover:brightness-95',    itemBorderClass: 'border-sky-700',    prefix: 'COM', bgClass: 'colored-row bg-sky-500' },
+  avoir:    { label: 'Avoir',    badgeClass: 'bg-white/90 text-orange-700', accentClass: 'text-white', hoverClass: 'hover:brightness-95', itemBorderClass: 'border-orange-700', prefix: 'AVC', bgClass: 'colored-row bg-orange-500' },
 };
 
 const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], remises = [], visibleIds, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd }) => {
@@ -700,20 +700,20 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
         {...dropProvided.droppableProps}
       >
         {/* ── Ligne solde initial ── */}
-        <tr className="bg-yellow-50 border-l-4 border-yellow-400">
+        <tr className="colored-row bg-yellow-500 border-l-4 border-yellow-700">
           {selectionMode && <td />}
           {selectionMode && detail && <td />}
           <td className="px-4 py-2.5">
-            <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-yellow-100 text-yellow-700">Solde initial</span>
+            <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-white/90 text-yellow-800">Solde initial</span>
           </td>
-          <td className="px-4 py-2.5 text-yellow-700 font-mono text-xs font-medium">—</td>
-          <td className="px-4 py-2.5 text-gray-400 text-xs">—</td>
+          <td className="px-4 py-2.5 text-white font-mono text-xs font-medium">—</td>
+          <td className="px-4 py-2.5 text-white/90 text-xs">—</td>
           {detail && <><td /><td /><td /><td /><td /><td /><td /><td /><td /><td /><td /></>}
-          {!detail && <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>}
-          <td className="px-4 py-2.5 text-right font-bold text-yellow-700">{fmt(soldeInitial)}</td>
+          {!detail && <td className="px-4 py-2.5 text-white/80 text-xs">—</td>}
+          <td className="px-4 py-2.5 text-right font-bold text-white">{fmt(soldeInitial)}</td>
           {detail && <td />}
-          <td className="px-4 py-2.5 text-right bg-yellow-100 border-l border-yellow-200">{fmtSolde(soldeInitial)}</td>
-          <td className="px-4 py-2.5 text-xs text-gray-400">Solde de départ</td>
+          <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">{fmtSolde(soldeInitial)}</td>
+          <td className="px-4 py-2.5 text-xs text-white/90">Solde de départ</td>
         </tr>
 
         {(() => {
@@ -739,7 +739,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
               <tr
                 ref={dragProvided.innerRef}
                 {...dragProvided.draggableProps}
-                className={`transition-colors ${snapshot.isDragging ? 'shadow-lg bg-blue-50' : `hover:bg-green-50 ${rowBg || 'bg-green-50'}`}`}
+                className={`transition-colors colored-row ${snapshot.isDragging ? 'shadow-lg bg-blue-500' : `hover:brightness-95 ${rowBg || 'bg-green-500'}`}`}
               >
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
@@ -753,15 +753,15 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <span {...dragProvided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
                       <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500" />
                     </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-700">Paiement</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-white/90 text-green-700">Paiement</span>
                   </span>
                 </td>
-                <td className="px-4 py-2.5 font-mono text-green-700 font-medium text-xs">
+                <td className="px-4 py-2.5 font-mono text-white font-medium text-xs">
                   {p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}
                 </td>
-                <td className="px-4 py-2.5 text-gray-600 text-xs">
-                  <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(p.date_paiement)}</span>
-                  {p.date_echeance && <span className="text-gray-400 ml-4 block">Éch: {fmtDate(p.date_echeance)}</span>}
+                <td className="px-4 py-2.5 text-white/90 text-xs">
+                  <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-white/70" />{fmtDate(p.date_paiement)}</span>
+                  {p.date_echeance && <span className="text-white/70 ml-4 block">Éch: {fmtDate(p.date_echeance)}</span>}
                 </td>
                 {/* detail: Référence(1) Désignation(2) Adr.Livraison(3) Code Règl.(4) Qté(5) Prix(6) */}
                 {detail && <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>}
@@ -790,11 +790,11 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                          : <span className="text-gray-300">—</span>}
                   </td>
                 )}
-                <td className="px-4 py-2.5 text-right font-semibold text-green-700">
+                <td className="px-4 py-2.5 text-right font-semibold text-white">
                   {fmt(Number(p.montant_total ?? p.montant ?? 0))}
                 </td>
                 {detail && <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>}
-                <td className="px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
+                <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
                   {fmtSolde(soldeCumuleMap.get(`paiement-${p.id}`) ?? 0)}
                 </td>
                 <td className="px-4 py-2.5">
@@ -834,7 +834,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 </td>
                 <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>
                 <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
-                <td className="px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
+                <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
                   {fmtSolde(soldeCumuleMap.get(bonKey) ?? 0)}
                 </td>
                 <td className="px-4 py-2.5">
@@ -888,7 +888,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
                 <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
-                <td className="px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
+                <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
                   {fmtSolde(soldeCumuleMap.get(itemKey0) ?? 0)}
                 </td>
                 <td className="px-4 py-2.5">
@@ -995,7 +995,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                         : <span className="text-gray-300">—</span>}
                     </td>
                     {/* Solde cumulé */}
-                    <td className="px-4 py-2 text-right bg-yellow-50/70 border-l border-yellow-100">
+                    <td className="solde-cumule-cell px-4 py-2 text-right bg-yellow-50/70 border-l border-yellow-100">
                       {fmtSolde(soldeCumuleMap.get(lastItemSoldeKey) ?? 0)}
                     </td>
                     {/* Statut */}
@@ -1824,17 +1824,38 @@ const ClientDetailPage: React.FC = () => {
 // ─── Liste clients ─────────────────────────────────────────────────────────────
 
 const CLIENTS_SCROLL_KEY = 'clientsListScrollY';
+const CLIENTS_STATE_KEY = 'clientsListState';
+
+type ClientsListSavedState = {
+  search?: string;
+  sortBy?: ContactsSortBy;
+  sortDir?: SortDirection;
+  dateFrom?: string;
+  dateTo?: string;
+  currentPage?: number;
+  itemsPerPage?: number;
+};
+
+const readSavedClientsState = (): ClientsListSavedState => {
+  try {
+    const raw = sessionStorage.getItem(CLIENTS_STATE_KEY);
+    return raw ? (JSON.parse(raw) as ClientsListSavedState) : {};
+  } catch {
+    return {};
+  }
+};
 
 const ClientsListPage: React.FC = () => {
   const navigate = useNavigate();
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(0);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [sortBy, setSortBy] = useState<ContactsSortBy>('total_cumule');
-  const [sortDir, setSortDir] = useState<SortDirection>('desc');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const savedState = React.useRef<ClientsListSavedState>(readSavedClientsState()).current;
+  const [currentPage, setCurrentPage] = useState(savedState.currentPage ?? 1);
+  const [itemsPerPage, setItemsPerPage] = useState(savedState.itemsPerPage ?? 0);
+  const [search, setSearch] = useState(savedState.search ?? '');
+  const [debouncedSearch, setDebouncedSearch] = useState(savedState.search ?? '');
+  const [sortBy, setSortBy] = useState<ContactsSortBy>(savedState.sortBy ?? 'total_cumule');
+  const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'desc');
+  const [dateFrom, setDateFrom] = useState(savedState.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(savedState.dateTo ?? '');
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -1867,10 +1888,15 @@ const ClientsListPage: React.FC = () => {
       }
       sessionStorage.removeItem(CLIENTS_SCROLL_KEY);
     }
+    sessionStorage.removeItem(CLIENTS_STATE_KEY);
   }, [isLoading, isFetching]);
 
   const handleRowClick = (id: number) => {
     sessionStorage.setItem(CLIENTS_SCROLL_KEY, String(window.scrollY));
+    const stateToSave: ClientsListSavedState = {
+      search, sortBy, sortDir, dateFrom, dateTo, currentPage, itemsPerPage,
+    };
+    sessionStorage.setItem(CLIENTS_STATE_KEY, JSON.stringify(stateToSave));
     navigate(`/clients/${id}`);
   };
 

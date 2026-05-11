@@ -4209,7 +4209,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     );
                   }
 
-                  const showProfitColumn = ['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(values.type);
+                  const showProfitColumn = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type);
                   const showRemiseColumn = showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant');
                   const visibleEntries = (values.type === 'Charge'
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode !== 'detail')
@@ -4261,7 +4261,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               Total
                             </th>
-                            {['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(values.type) && (
+                            {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
                               <th className="px-2 py-2 text-left text-xs font-medium text-green-600 uppercase tracking-wider w-[80px]">
                                 Profit
                               </th>
@@ -5349,7 +5349,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 </td>
 
                                 {/* Profit par ligne */}
-                                {['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(values.type) && (
+                                {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
 <td className="px-1 py-2 w-[80px]">
   {(() => {
     const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;

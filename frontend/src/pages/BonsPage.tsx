@@ -2513,14 +2513,16 @@ const BonsPage = () => {
                       title="Glisser pour redimensionner"
                     />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
-                    Mouvement
-                    <span 
-                      className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
-                      onMouseDown={(e) => startResize(e, 7 + contactRefColOffset)}
-                      title="Glisser pour redimensionner"
-                    />
-                  </th>
+                  {effectiveCurrentTab !== 'Charge' && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
+                      Mouvement
+                      <span
+                        className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 bg-blue-200 opacity-30 hover:opacity-80 transition-opacity"
+                        onMouseDown={(e) => startResize(e, 7 + contactRefColOffset)}
+                        title="Glisser pour redimensionner"
+                      />
+                    </th>
+                  )}
                   {showAuditCols && (
                     <>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
@@ -2707,11 +2709,12 @@ const BonsPage = () => {
                         })()}
                       </td>
                       <td className="px-4 py-2 text-sm">{formatNumber4(computeTotalPoids(bon))}</td>
+                      {effectiveCurrentTab !== 'Charge' && (
                       <td className="px-4 py-2 text-sm">
                         {(() => {
-                          // Show mouvement only for sales/stock out types (Sortie, Comptant, Charge, Avoir, AvoirComptant)
+                          // Show mouvement only for sales/stock out types (Sortie, Comptant, Avoir, AvoirComptant)
                           const type = bon.type || effectiveCurrentTab;
-                          if (!['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(type)) return <span className="text-gray-400">-</span>;
+                          if (!['Sortie','Comptant','Avoir','AvoirComptant'].includes(type)) return <span className="text-gray-400">-</span>;
                           // If bon is marked as non-calculated, do not compute mouvement
                           const bAny = bon as any;
                           const nonCalculated = bAny?.isNotCalculated === true || bAny?.isNotCalculated === 1 || bAny?.is_not_calculated === true || bAny?.is_not_calculated === 1;
@@ -2742,6 +2745,7 @@ const BonsPage = () => {
                           );
                         })()}
                       </td>
+                      )}
                       {showAuditCols && (
                         <>
                           <td className="px-4 py-2 text-sm">

@@ -7,6 +7,36 @@
   width: 200% !important;
 }
 
+/* Forces all text inside a colored bon row to be white, except elements
+   whose own background is white/light (badges) which keep their own color,
+   and except the "Solde cumulé" cell which keeps its original styling. */
+.colored-row {
+  color: #ffffff !important;
+}
+.colored-row td:not(.solde-cumule-cell),
+.colored-row td:not(.solde-cumule-cell) *:not(.rounded-full) {
+  color: #ffffff !important;
+}
+/* Badges with white-ish background keep their own text color. */
+.colored-row [class*="bg-white"],
+.colored-row [class*="bg-white"] * {
+  color: inherit !important;
+}
+/* Statut / mode badges (rounded-full pills) inside colored rows:
+   force a white background so the badge stays readable, and keep its
+   own dark text color (the bg-*-100 utility is overridden, the text-*-700
+   utility wins because it has higher specificity than the inherited row color). */
+.colored-row .rounded-full {
+  background-color: #ffffff !important;
+}
+/* "Solde cumulé" cell keeps its original dark text. The inner span from
+   fmtSolde sets its own Tailwind text color (text-red-600 / text-green-600
+   / text-gray-500), which is not affected by colored-row rules since
+   td:not(.solde-cumule-cell) excludes this cell from the !important override. */
+.colored-row td.solde-cumule-cell {
+  color: #374151; /* gray-700 default for any non-spanned text */
+}
+
 /* ========= Responsive Tables Utilities ========= */
 /* Wrapper enabling horizontal scroll on small devices to avoid browser auto-zoom */
 .responsive-table-container {
