@@ -1079,11 +1079,15 @@ const FournisseurDetailPage: React.FC = () => {
   };
 
   const handleCompletDragEnd = async (result: DropResult) => {
-    if (!result.destination || result.source.index === result.destination.index) return;
+    console.log('[CompletDragEnd:Fournisseur] result=', result);
+    if (!result.destination) { console.log('[CompletDragEnd:Fournisseur] abort: no destination'); return; }
+    if (result.source.index === result.destination.index) { console.log('[CompletDragEnd:Fournisseur] abort: same index'); return; }
 
     const items = getCompletDragItems();
+    console.log('[CompletDragEnd:Fournisseur] items count=', items.length, 'srcIdx=', result.source.index, 'dstIdx=', result.destination.index);
     const movedItem = items[result.source.index];
-    if (!movedItem || movedItem.type !== 'paiement') return;
+    console.log('[CompletDragEnd:Fournisseur] movedItem=', movedItem);
+    if (!movedItem || movedItem.type !== 'paiement') { console.log('[CompletDragEnd:Fournisseur] abort: not a paiement'); return; }
 
     const targetIndex = result.destination.index;
     let targetItem = items[targetIndex];
@@ -1124,10 +1128,12 @@ const FournisseurDetailPage: React.FC = () => {
     }
 
     const paymentId = typeof movedItem.paymentId === 'string' ? parseInt(String(movedItem.paymentId).replace(/\D/g, '')) : movedItem.paymentId;
+    console.log('[CompletDragEnd:Fournisseur] sending request paymentId=', paymentId, 'newDate=', newDate);
     try {
-      await reorderPayments({ contactId: fournisseurId, paymentOrders: [{ id: paymentId, newDate }] }).unwrap();
+      const res = await reorderPayments({ contactId: fournisseurId, paymentOrders: [{ id: paymentId, newDate }] }).unwrap();
+      console.log('[CompletDragEnd:Fournisseur] success', res);
     } catch (e) {
-      console.error('Erreur reorder paiement complet', e);
+      console.error('[CompletDragEnd:Fournisseur] Erreur reorder paiement complet', e);
     }
   };
 
