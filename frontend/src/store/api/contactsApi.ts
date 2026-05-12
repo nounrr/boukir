@@ -197,6 +197,15 @@ const contactsApi = api.injectEndpoints({
       providesTags: ['Contact'],
     }),
 
+    getAllChargeClients: builder.query<Contact[], void>({
+      query: () => ({
+        url: '/contacts',
+        params: { type: 'Client', page: 1, limit: 10000, only_charge: true }
+      }),
+      transformResponse: (response: PaginatedContactsResponse) => response.data,
+      providesTags: ['Contact'],
+    }),
+
     getAllFournisseurs: builder.query<Contact[], void>({
       query: () => ({ 
         url: '/contacts', 
@@ -220,6 +229,7 @@ export const {
   useGetFournisseursQuery,
   useGetChargesQuery,
   useGetAllClientsQuery,
+  useGetAllChargeClientsQuery,
   useGetAllFournisseursQuery,
 } = contactsApi;
 

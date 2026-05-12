@@ -53,6 +53,7 @@ interface ContactFormModalProps {
   clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests';
   initialValues?: Partial<Contact>;
   onContactAdded?: (contact: Contact) => void;
+  defaultIsCharge?: boolean;
 }
 
 const ContactFormModal: React.FC<ContactFormModalProps> = ({
@@ -62,6 +63,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   clientSubTab,
   initialValues,
   onContactAdded,
+  defaultIsCharge = false,
 }) => {
   const [createContact] = useCreateContactMutation();
   const [updateContact] = useUpdateContactMutation();
@@ -73,6 +75,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   if (!isOpen) return null;
 
   const defaultValues = {
+    ...initialValues,
     societe: '',
     nom_complet: '',
     prenom: '',
@@ -88,8 +91,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     solde: 0,
     plafond: contactType === 'Client' ? 0 : null,
     isSolde: Boolean((initialValues as any)?.isSolde ?? (initialValues as any)?.is_solde ?? false),
-    is_charge: Boolean((initialValues as any)?.is_charge ?? false),
-    ...initialValues
+    is_charge: Boolean((initialValues as any)?.is_charge ?? defaultIsCharge),
   };
 
   const title = initialValues?.id 
@@ -175,7 +177,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
             }
           }}
         >
-          {({ errors, touched, setFieldValue }) => (
+          {({ errors, touched, values, setFieldValue }) => (
             <Form className="space-y-4">
               {/* Checkbox isSolde - en haut (clients seulement) */}
               {contactType === 'Client' && (
@@ -194,10 +196,12 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
 
               {/* Checkbox is_charge */}
               <div className="flex items-center space-x-2">
-                <Field
+                <input
                   id="is_charge"
                   name="is_charge"
                   type="checkbox"
+                  checked={Boolean((values as any).is_charge)}
+                  onChange={(e) => setFieldValue('is_charge', e.target.checked)}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
                 <label htmlFor="is_charge" className="text-sm font-medium text-gray-700">
