@@ -25,6 +25,7 @@ import StockPage from './pages/StockPage';
 import ContactsPage from './pages/ContactsPage';
 import ClientsPage, { ClientDetailPage } from './pages/ClientsPage';
 import FournisseursPage, { FournisseurDetailPage } from './pages/FournisseursPage';
+import ChargesPage, { ChargeDetailPage } from './pages/ChargesPage';
 import ContactArchiverPage from './pages/ContactArchiverPage';
 import BonsPage from './pages/BonsPage';
 import VehiculesPage from './pages/VehiculesPage';
@@ -269,6 +270,28 @@ const AppContent: React.FC = () => {
             <ProtectedRoute forbiddenRoles={['Employé']}>
               <LayoutWithAccessCheck>
                 <FournisseursPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/charges"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <ChargesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/charges/:id"
+          element={
+            <ProtectedRoute forbiddenRoles={['Employé']}>
+              <LayoutWithAccessCheck>
+                <ChargeDetailPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

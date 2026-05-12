@@ -7,15 +7,17 @@
   width: 200% !important;
 }
 
-/* Forces all text inside a colored bon row to be white, except elements
+/* Forces all text inside a colored bon row to be BLACK + BOLD, except elements
    whose own background is white/light (badges) which keep their own color,
    and except the "Solde cumulé" cell which keeps its original styling. */
 .colored-row {
-  color: #ffffff !important;
+  color: #111827 !important;
+  font-weight: 700 !important;
 }
 .colored-row td:not(.solde-cumule-cell),
 .colored-row td:not(.solde-cumule-cell) *:not(.rounded-full) {
-  color: #ffffff !important;
+  color: #111827 !important;
+  font-weight: 700 !important;
 }
 /* Badges with white-ish background keep their own text color. */
 .colored-row [class*="bg-white"],

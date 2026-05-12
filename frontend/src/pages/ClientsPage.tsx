@@ -331,12 +331,24 @@ function isAnnuleStatut(value: any): boolean {
   return status.startsWith('annul');
 }
 
+function isLegacyRemiseBonItem(item: any): boolean {
+  const legacyId = item?.legacy_remise_client_id ?? item?.legacyRemiseClientId;
+  return legacyId != null && legacyId !== '';
+}
+
 function getDirectRemiseTotal(item: any): number {
   if (!item) return 0;
+  if (isLegacyRemiseBonItem(item)) return 0;
+  const quantite = safeNum(item.quantite ?? item.qte ?? 0);
+  if (!quantite) return 0;
+  const prixUnitaire = safeNum(item.prix_unitaire ?? item.prix ?? item.price ?? 0);
   const remiseMontant = safeNum(item.remise_montant ?? 0);
-  if (remiseMontant <= 0) return 0;
-  const quantite = safeNum(item.quantite ?? 0);
-  const total = quantite > 0 ? remiseMontant * quantite : remiseMontant;
+  const remisePourcentage = safeNum(item.remise_pourcentage ?? 0);
+  const remiseUnitaire = remiseMontant !== 0
+    ? remiseMontant
+    : (remisePourcentage !== 0 ? (prixUnitaire * remisePourcentage) / 100 : 0);
+  if (remiseUnitaire === 0) return 0;
+  const total = quantite * remiseUnitaire;
   return Number(total.toFixed(3));
 }
 
@@ -496,6 +508,11 @@ function getItemRemises(item: any, remises: any[]): RemiseSplit {
   return result;
 }
 
+function getItemClientRemiseTotal(item: any, remises: any[]): number {
+  if (!item || !Array.isArray(remises) || remises.length === 0) return 0;
+  return getItemRemises(item, remises).client;
+}
+
 function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string, number> {
   const result = new Map<string, number>();
   let running = isNaN(soldeInitial) ? 0 : soldeInitial;
@@ -550,8 +567,8 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
   return result;
 }
 
-// Même logique que ContactsPage (historique détail produits):
-// solde remise cumulé = somme des (remise_abonne + remise_client + remise_montant*quantite) au fil des items
+// Le solde remise cumulé du détail client suit les colonnes visibles:
+// remise du bon (colonne Remise Abonné) + remise client_remises.
 function buildRemiseCumuleDetail(rows: CompletRow[], remises: any[] = []): Map<string, number> {
   const result = new Map<string, number>();
   let running = 0;
@@ -569,11 +586,9 @@ function buildRemiseCumuleDetail(rows: CompletRow[], remises: any[] = []): Map<s
     }
 
     items.forEach((item: any, iIdx: number) => {
-      const matchedRemises = getItemRemises({ ...item, bon_id: row.data.id }, remises);
-      const remiseAbonne = matchedRemises.abonne;
-      const remiseClient = matchedRemises.client;
-      const remiseFromBon = getHistoryRowBonRemise(row.kind, item);
-      const totalRowRemise = remiseAbonne + remiseClient + remiseFromBon;
+      const remiseAbonne = getHistoryRowBonRemise(row.kind, item);
+      const remiseClient = getItemClientRemiseTotal({ ...item, bon_id: row.data.id }, remises);
+      const totalRowRemise = remiseAbonne + remiseClient;
       if (totalRowRemise > 0) {
         running += totalRowRemise;
         result.set(`${row.kind}-${row.data.id}-item-${iIdx}`, Number(running.toFixed(3)));
@@ -603,8 +618,8 @@ interface CompletTableProps {
 
 const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string }> = {
   sortie:   { label: 'Sortie',   badgeClass: 'bg-blue-100 text-blue-700',    accentClass: 'text-blue-700',   hoverClass: 'hover:bg-blue-50',   itemBorderClass: 'border-blue-200',   prefix: 'SOR' },
-  comptant: { label: 'Comptant', badgeClass: 'bg-white/90 text-sky-700',      accentClass: 'text-white',    hoverClass: 'hover:brightness-95',    itemBorderClass: 'border-sky-700',    prefix: 'COM', bgClass: 'colored-row bg-sky-500' },
-  avoir:    { label: 'Avoir',    badgeClass: 'bg-white/90 text-orange-700', accentClass: 'text-white', hoverClass: 'hover:brightness-95', itemBorderClass: 'border-orange-700', prefix: 'AVC', bgClass: 'colored-row bg-orange-500' },
+  comptant: { label: 'Comptant', badgeClass: 'bg-white/90 text-sky-700',      accentClass: 'text-black',    hoverClass: 'hover:brightness-95',    itemBorderClass: 'border-sky-700',    prefix: 'COM', bgClass: 'colored-row bg-sky-500/50' },
+  avoir:    { label: 'Avoir',    badgeClass: 'bg-white/90 text-orange-700', accentClass: 'text-black', hoverClass: 'hover:brightness-95', itemBorderClass: 'border-orange-700', prefix: 'AVC', bgClass: 'colored-row bg-orange-500/50' },
 };
 
 const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], remises = [], visibleIds, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd, remiseEditor }) => {
@@ -706,20 +721,20 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
         {...dropProvided.droppableProps}
       >
         {/* ── Ligne solde initial ── */}
-        <tr className="colored-row bg-yellow-500 border-l-4 border-yellow-700">
+        <tr className="colored-row bg-yellow-500/50 border-l-4 border-yellow-700">
           {selectionMode && <td />}
           {selectionMode && detail && <td />}
           <td className="px-4 py-2.5">
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-white/90 text-yellow-800">Solde initial</span>
           </td>
-          <td className="px-4 py-2.5 text-white font-mono text-xs font-medium">—</td>
-          <td className="px-4 py-2.5 text-white/90 text-xs">—</td>
+          <td className="px-4 py-2.5 text-black font-mono text-xs font-medium">—</td>
+          <td className="px-4 py-2.5 text-black/90 text-xs">—</td>
           {detail && <><td /><td /><td /><td /><td /><td /><td /><td /><td /><td /><td /></>}
           {!detail && <td className="px-4 py-2.5 text-white/80 text-xs">—</td>}
-          <td className="px-4 py-2.5 text-right font-bold text-white">{fmt(soldeInitial)}</td>
+          <td className="px-4 py-2.5 text-right font-bold text-black">{fmt(soldeInitial)}</td>
           {detail && <td />}
           <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">{fmtSolde(soldeInitial)}</td>
-          <td className="px-4 py-2.5 text-xs text-white/90">Solde de départ</td>
+          <td className="px-4 py-2.5 text-xs text-black/90">Solde de départ</td>
         </tr>
 
         {(() => {
@@ -745,7 +760,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
               <tr
                 ref={dragProvided.innerRef}
                 {...dragProvided.draggableProps}
-                className={`transition-colors colored-row ${snapshot.isDragging ? 'shadow-lg bg-blue-500' : `hover:brightness-95 ${rowBg || 'bg-green-500'}`}`}
+                className={`transition-colors colored-row ${snapshot.isDragging ? 'shadow-lg bg-blue-500/50' : `hover:brightness-95 ${rowBg || 'bg-green-500/50'}`}`}
               >
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
@@ -762,10 +777,10 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-white/90 text-green-700">Paiement</span>
                   </span>
                 </td>
-                <td className="px-4 py-2.5 font-mono text-white font-medium text-xs">
+                <td className="px-4 py-2.5 font-mono text-black font-medium text-xs">
                   {p.numero ?? `PAY${String(p.id).padStart(3, '0')}`}
                 </td>
-                <td className="px-4 py-2.5 text-white/90 text-xs">
+                <td className="px-4 py-2.5 text-black/90 text-xs">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-white/70" />{fmtDate(p.date_paiement)}</span>
                   {p.date_echeance && <span className="text-white/70 ml-4 block">Éch: {fmtDate(p.date_echeance)}</span>}
                 </td>
@@ -925,12 +940,10 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 const lastItemSoldeKey = sourceKeys[sourceKeys.length - 1];
                 const itemSelected = sourceKeys.every((key) => selectedItemIds?.has(key));
                 const remiseAbonne = sourceItems.reduce((sum, src) => {
-                  const matched = getItemRemises({ ...src, bon_id: b.id }, remises);
-                  return sum + matched.abonne;
+                  return sum + getHistoryRowBonRemise(row.kind, src);
                 }, 0);
                 const remiseClient = sourceItems.reduce((sum, src) => {
-                  const matched = getItemRemises({ ...src, bon_id: b.id }, remises);
-                  return sum + matched.client + getHistoryRowBonRemise(row.kind, src);
+                  return sum + getItemClientRemiseTotal({ ...src, bon_id: b.id }, remises);
                 }, 0);
                 const soldeRemise = remiseCumuleMap.get(lastItemSoldeKey);
                 const rowIndex = dragIndex++;
@@ -1331,6 +1344,13 @@ const ClientDetailPage: React.FC = () => {
     () => filterCompletRowsBySearch(rawCompletRows, products, normalizedProductSearch),
     [rawCompletRows, products, normalizedProductSearch]
   );
+  const totalBenefice = useMemo(() => {
+    return rawCompletRows.reduce((sum: number, row: CompletRow) => {
+      if (row.kind === 'paiement') return sum;
+      const items: any[] = Array.isArray(row.data?.items) ? row.data.items.filter((item: any) => item && item.id) : [];
+      return sum + items.reduce((itemSum: number, item: any) => itemSum + (computeHistoryItemBenefice(item, products) ?? 0), 0);
+    }, 0);
+  }, [rawCompletRows, products]);
   const filteredSorties = useMemo(
     () => filterHistoryBonsBySearch(sorties, products, normalizedProductSearch),
     [sorties, products, normalizedProductSearch]
@@ -1409,7 +1429,7 @@ const ClientDetailPage: React.FC = () => {
   const initial = nomDisplay.charAt(0).toUpperCase();
   const solde: number = contact?.solde ?? 0;
   const totalCumule: number = history && contact
-    ? -computeFinalSoldeCumule(history, contact.solde ?? 0)
+    ? computeFinalSoldeCumule(history, contact.solde ?? 0)
     : 0;
 
   const showDetail = tab !== 'paiements';
@@ -1596,7 +1616,7 @@ const ClientDetailPage: React.FC = () => {
       .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
     const finalSolde = hasScopedPrint
       ? Number(printProductHistory[printProductHistory.length - 1]?.soldeCumulatif ?? 0)
-      : -computeFinalSoldeCumule(history, contact.solde ?? 0);
+      : computeFinalSoldeCumule(history, contact.solde ?? 0);
     return {
       totalQty,
       totalAmount: totalVentes,
@@ -1649,6 +1669,12 @@ const ClientDetailPage: React.FC = () => {
           <p className="text-xs text-gray-400">Total cumulé</p>
           <p className={`font-bold text-base ${totalCumule > 0 ? 'text-red-600' : totalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
             {fmt(totalCumule)}
+          </p>
+        </div>
+        <div className="text-right px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200">
+          <p className="text-xs text-gray-400">BÃ©nÃ©fice total</p>
+          <p className={`font-bold text-base ${totalBenefice > 0 ? 'text-green-600' : totalBenefice < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+            {fmt(totalBenefice)}
           </p>
         </div>
         <button
@@ -1942,6 +1968,10 @@ type ClientsListSavedState = {
   itemsPerPage?: number;
 };
 
+type ClientsAccordionRow =
+  | { kind: 'client'; client: Contact }
+  | { kind: 'group'; groupId: number; groupName: string; members: Contact[] };
+
 const readSavedClientsState = (): ClientsListSavedState => {
   try {
     const raw = sessionStorage.getItem(CLIENTS_STATE_KEY);
@@ -1962,6 +1992,7 @@ const ClientsListPage: React.FC = () => {
   const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'desc');
   const [dateFrom, setDateFrom] = useState(savedState.dateFrom ?? '');
   const [dateTo, setDateTo] = useState(savedState.dateTo ?? '');
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -1978,6 +2009,7 @@ const ClientsListPage: React.FC = () => {
     sortBy, sortDir,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    exclude_charge: true,
   });
 
   const clients = data?.data ?? [];
@@ -2011,6 +2043,78 @@ const ClientsListPage: React.FC = () => {
     0
   );
 
+  const accordionRows: ClientsAccordionRow[] = useMemo(() => {
+    const rows: ClientsAccordionRow[] = [];
+    const groups = new Map<number, { groupId: number; groupName: string; members: Contact[] }>();
+
+    for (const client of clients) {
+      const groupIdRaw = (client as any)?.group_id;
+      const groupId = groupIdRaw != null && groupIdRaw !== '' ? Number(groupIdRaw) : 0;
+
+      if (groupId) {
+        let group = groups.get(groupId);
+        if (!group) {
+          group = {
+            groupId,
+            groupName: String((client as any)?.group_name || ''),
+            members: [],
+          };
+          groups.set(groupId, group);
+          rows.push({ kind: 'group', groupId, groupName: group.groupName, members: group.members });
+        }
+        group.members.push(client);
+      } else {
+        rows.push({ kind: 'client', client });
+      }
+    }
+
+    return rows;
+  }, [clients]);
+
+  const toggleGroupExpanded = React.useCallback((groupId: number) => {
+    const key = `clients:${groupId}`;
+    setExpandedGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        for (const current of Array.from(next)) {
+          if (current.startsWith('clients:')) next.delete(current);
+        }
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setExpandedGroupKeys((prev) => {
+      const validKeys = new Set(
+        accordionRows
+          .filter((row): row is Extract<ClientsAccordionRow, { kind: 'group' }> => row.kind === 'group')
+          .map((row) => `clients:${row.groupId}`)
+      );
+      const next = new Set(Array.from(prev).filter((key) => validKeys.has(key)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [accordionRows]);
+
+  const expandedGroupId = useMemo(() => {
+    for (const key of expandedGroupKeys) {
+      if (!key.startsWith('clients:')) continue;
+      const rawId = key.slice('clients:'.length);
+      const groupId = Number(rawId);
+      return Number.isFinite(groupId) ? groupId : null;
+    }
+    return null;
+  }, [expandedGroupKeys]);
+
+  const visibleAccordionRows = useMemo(() => {
+    if (!expandedGroupId) return accordionRows;
+    const expandedRow = accordionRows.find((row) => row.kind === 'group' && row.groupId === expandedGroupId);
+    return expandedRow ? [expandedRow] : accordionRows;
+  }, [accordionRows, expandedGroupId]);
+
   const handleSort = (col: ContactsSortBy) => {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortBy(col); setSortDir('asc'); }
@@ -2031,6 +2135,103 @@ const ClientsListPage: React.FC = () => {
     else if (currentPage >= totalPages - 3) pages.push(1, -1, totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
     else pages.push(1, -1, currentPage - 1, currentPage, currentPage + 1, -2, totalPages);
     return pages;
+  };
+
+  const renderClientDataRow = (client: Contact, rowLabel: string | number, rowKey?: string) => (
+    <tr key={rowKey ?? client.id} className="hover:bg-blue-50 transition-colors cursor-pointer" onClick={() => handleRowClick(client.id)}>
+      <td className="px-4 py-3 text-gray-400 text-xs">{rowLabel}</td>
+      <td className="px-4 py-3 font-mono text-xs text-gray-500">{client.id}</td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-bold text-blue-600">
+              {(client.nom_complet || client.societe || '?').charAt(0).toUpperCase()}
+            </span>
+          </div>
+          <div>
+            <p className="font-medium text-gray-900 leading-tight">{client.nom_complet}</p>
+            {client.reference && <p className="text-xs text-gray-400">RÃ©f: {client.reference}</p>}
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        {client.societe
+          ? <div className="flex items-center gap-1.5 text-gray-700"><Building2 className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />{client.societe}</div>
+          : <span className="text-gray-300">â€”</span>}
+      </td>
+      <td className="px-4 py-3">
+        <div className="space-y-0.5">
+          {client.telephone && <div className="flex items-center gap-1.5 text-gray-600 text-xs"><Phone className="w-3 h-3 text-gray-400" />{client.telephone}</div>}
+          {client.email && <div className="flex items-center gap-1.5 text-gray-600 text-xs"><Mail className="w-3 h-3 text-gray-400" /><span className="truncate max-w-[160px]">{client.email}</span></div>}
+          {!client.telephone && !client.email && <span className="text-gray-300 text-xs">â€”</span>}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        {client.adresse
+          ? <div className="flex items-center gap-1.5 text-gray-600 text-xs"><MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" /><span className="truncate max-w-[180px]">{client.adresse}</span></div>
+          : <span className="text-gray-300 text-xs">â€”</span>}
+      </td>
+      <td className="px-4 py-3 text-right">
+        <span className={`font-semibold text-sm ${client.solde < 0 ? 'text-red-600' : client.solde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+          {fmt(client.solde)}
+        </span>
+      </td>
+      <td className="px-4 py-3 text-right bg-yellow-50/60 border-l border-yellow-100">
+        {client.total_cumule !== null && client.total_cumule !== undefined
+          ? <span className={`font-bold text-sm ${client.total_cumule > 0 ? 'text-red-600' : client.total_cumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+              {fmt(client.total_cumule)}
+            </span>
+          : <span className="text-gray-300 text-xs">â€”</span>}
+      </td>
+    </tr>
+  );
+
+  const renderAccordionRow = (row: ClientsAccordionRow, idx: number) => {
+    const rowLabel = (itemsPerPage === 0 ? 0 : (currentPage - 1) * itemsPerPage) + idx + 1;
+
+    if (row.kind === 'client') {
+      return renderClientDataRow(row.client, rowLabel);
+    }
+
+    const key = `clients:${row.groupId}`;
+    const isOpen = expandedGroupKeys.has(key);
+    const groupName = row.groupName.trim() || `Groupe #${row.groupId}`;
+    const groupSolde = row.members.reduce((sum, member) => sum + Number(member.solde || 0), 0);
+    const groupTotalCumule = row.members.reduce((sum, member) => sum + Number(member.total_cumule || 0), 0);
+
+    return (
+      <React.Fragment key={`group-${row.groupId}`}>
+        <tr className="bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer" onClick={() => toggleGroupExpanded(row.groupId)}>
+          <td className="px-4 py-3 text-gray-400 text-xs">{rowLabel}</td>
+          <td className="px-4 py-3 font-mono text-xs text-gray-500">G{row.groupId}</td>
+          <td className="px-4 py-3">
+            <div className="flex items-center gap-2">
+              {isOpen ? <ChevronDown className="w-4 h-4 text-blue-600" /> : <ChevronRight className="w-4 h-4 text-blue-600" />}
+              <div>
+                <p className="font-semibold text-gray-900 leading-tight">{groupName}</p>
+                <p className="text-xs text-gray-500">{row.members.length} client{row.members.length > 1 ? 's' : ''}</p>
+              </div>
+            </div>
+          </td>
+          <td className="px-4 py-3 text-gray-600">
+            <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Groupe</span>
+          </td>
+          <td className="px-4 py-3 text-gray-400 text-xs">â€”</td>
+          <td className="px-4 py-3 text-gray-400 text-xs">â€”</td>
+          <td className="px-4 py-3 text-right">
+            <span className={`font-semibold text-sm ${groupSolde < 0 ? 'text-red-600' : groupSolde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+              {fmt(groupSolde)}
+            </span>
+          </td>
+          <td className="px-4 py-3 text-right bg-yellow-50/60 border-l border-yellow-100">
+            <span className={`font-bold text-sm ${groupTotalCumule > 0 ? 'text-red-600' : groupTotalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+              {fmt(groupTotalCumule)}
+            </span>
+          </td>
+        </tr>
+        {isOpen && row.members.map((client) => renderClientDataRow(client, 'â€¢', `group-${row.groupId}-client-${client.id}`))}
+      </React.Fragment>
+    );
   };
 
   return (
@@ -2113,11 +2314,11 @@ const ClientsListPage: React.FC = () => {
                       ))}
                     </tr>
                   ))
-                : clients.length === 0
+                : visibleAccordionRows.length === 0
                   ? <tr><td colSpan={8} className="px-4 py-14 text-center text-gray-400">
                       <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" /><p>Aucun client trouvé</p>
                     </td></tr>
-                  : clients.map((client: Contact, idx: number) => (
+                  : (visibleAccordionRows.map((row, idx: number) => renderAccordionRow(row, idx)) || clients.map((client: Contact, idx: number) => (
                       <tr key={client.id} className="hover:bg-blue-50 transition-colors cursor-pointer"
                         onClick={() => handleRowClick(client.id)}>
                         <td className="px-4 py-3 text-gray-400 text-xs">{(itemsPerPage === 0 ? 0 : (currentPage - 1) * itemsPerPage) + idx + 1}</td>
@@ -2165,7 +2366,7 @@ const ClientsListPage: React.FC = () => {
                             : <span className="text-gray-300 text-xs">—</span>}
                         </td>
                       </tr>
-                    ))
+                    )))
               }
             </tbody>
           </table>

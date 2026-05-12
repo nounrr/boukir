@@ -70,7 +70,7 @@ const MobileBottomNav: React.FC = () => {
       key: 'gestion', label: 'Gestion', icon: Users,
       items: [
         { name: 'Employés', to: '/employees', show: canManageEmployees(user) },
-        { name: 'Contacts', to: '/contacts', show: false },
+        { name: 'Contacts', to: '/contacts', show: user?.role !== 'Employé' },
       ],
     },
     // Profil retiré du menu (accès via header). Outils supprimé selon demande.

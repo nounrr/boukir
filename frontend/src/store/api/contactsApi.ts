@@ -131,8 +131,8 @@ const contactsApi = api.injectEndpoints({
       invalidatesTags: ['Contact'],
     }),
 
-    getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection; dateFrom?: string; dateTo?: string }>({
-      query: ({ page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir, dateFrom, dateTo } = {}) => ({
+    getClients: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; clientSubTab?: 'all' | 'backoffice' | 'ecommerce' | 'artisan-requests'; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection; dateFrom?: string; dateTo?: string; exclude_charge?: boolean; only_charge?: boolean }>({
+      query: ({ page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir, dateFrom, dateTo, exclude_charge, only_charge } = {}) => ({
         url: '/contacts',
         params: {
           type: 'Client',
@@ -145,6 +145,8 @@ const contactsApi = api.injectEndpoints({
           ...(sortDir ? { sortDir } : {}),
           ...(dateFrom ? { dateFrom } : {}),
           ...(dateTo ? { dateTo } : {}),
+          ...(exclude_charge ? { exclude_charge } : {}),
+          ...(only_charge ? { only_charge } : {}),
         }
       }),
       providesTags: ['Contact'],
@@ -166,11 +168,30 @@ const contactsApi = api.injectEndpoints({
       providesTags: ['Contact'],
     }),
 
+    getCharges: builder.query<PaginatedContactsResponse, { page?: number; limit?: number; search?: string; groupId?: number; sortBy?: ContactsSortBy; sortDir?: SortDirection; dateFrom?: string; dateTo?: string }>({
+      query: ({ page = 1, limit = 50, search, groupId, sortBy, sortDir, dateFrom, dateTo } = {}) => ({
+        url: '/contacts',
+        params: {
+          type: 'Client',
+          only_charge: true,
+          page,
+          limit,
+          ...(search ? { search } : {}),
+          ...(groupId ? { groupId } : {}),
+          ...(sortBy ? { sortBy } : {}),
+          ...(sortDir ? { sortDir } : {}),
+          ...(dateFrom ? { dateFrom } : {}),
+          ...(dateTo ? { dateTo } : {}),
+        }
+      }),
+      providesTags: ['Contact'],
+    }),
+
     // Endpoints pour charger TOUS les contacts (pour compatibilité avec les autres pages)
     getAllClients: builder.query<Contact[], void>({
       query: () => ({ 
         url: '/contacts', 
-        params: { type: 'Client', page: 1, limit: 10000 } 
+        params: { type: 'Client', page: 1, limit: 10000, exclude_charge: true } 
       }),
       transformResponse: (response: PaginatedContactsResponse) => response.data,
       providesTags: ['Contact'],
@@ -197,6 +218,7 @@ export const {
   useDeleteContactMutation,
   useGetClientsQuery,
   useGetFournisseursQuery,
+  useGetChargesQuery,
   useGetAllClientsQuery,
   useGetAllFournisseursQuery,
 } = contactsApi;
