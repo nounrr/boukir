@@ -6,7 +6,7 @@ const router = express.Router();
 
 const isProd = process.env.NODE_ENV === 'production';
 
-const applyContactsFilters = ({ type, search, clientSubTab, groupId, dateFrom, dateTo }) => {
+const applyContactsFilters = ({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge, onlyCharge }) => {
   let whereSql = ' WHERE 1=1';
   const params = [];
 
@@ -52,6 +52,14 @@ const applyContactsFilters = ({ type, search, clientSubTab, groupId, dateFrom, d
     params.push(String(dateTo).trim());
   }
 
+  if (excludeCharge) {
+    whereSql += ' AND (c.is_charge IS NULL OR c.is_charge = 0)';
+  }
+
+  if (onlyCharge) {
+    whereSql += ' AND c.is_charge = 1';
+  }
+
   return { whereSql, params };
 };
 
@@ -83,6 +91,7 @@ const BALANCE_EXPR = `
       - COALESCE(ventes_ecommerce.total_ventes, 0)
       + COALESCE(paiements_client.total_paiements, 0)
       + COALESCE(avoirs_client.total_avoirs, 0)
+      - COALESCE(charges_client.total_charges, 0)
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
@@ -103,6 +112,7 @@ const TOTAL_CUMULE_EXPR = `
       + COALESCE(ventes_ecommerce.total_ventes, 0)
       - COALESCE(paiements_client.total_paiements, 0)
       - COALESCE(avoirs_client.total_avoirs, 0)
+      + COALESCE(charges_client.total_charges, 0)
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
@@ -122,26 +132,10 @@ const SINGLE_CONTACT_QUERY = `
     (
       CASE
         WHEN c.type = 'Client' THEN
-          COALESCE((
-            SELECT SUM(bs.montant_total)
-            FROM bons_sortie bs
-            WHERE bs.client_id = c.id
-              AND LOWER(TRIM(bs.statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
-          ), 0) +
-          COALESCE((
-            SELECT SUM(bc2.montant_total)
-            FROM bons_comptant bc2
-            WHERE bc2.client_id = c.id
-              AND LOWER(TRIM(bc2.statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
-          ), 0) + 
-          COALESCE((
-            SELECT SUM(o.total_amount)
-            FROM ecommerce_orders o
-            WHERE o.is_solde = 1
-              AND o.status IN ('pending','confirmed','processing','shipped','delivered')
-              AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
-              AND o.user_id = c.id
-          ), 0)
+            COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
+            + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
         WHEN c.type = 'Fournisseur' THEN
           COALESCE((
             SELECT SUM(bc.montant_total)
@@ -219,13 +213,13 @@ const SINGLE_CONTACT_QUERY = `
             SELECT SUM(bs.montant_total)
             FROM bons_sortie bs
             WHERE bs.client_id = c.id
-              AND LOWER(TRIM(bs.statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
+              AND LOWER(TRIM(bs.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
             SELECT SUM(bc2.montant_total)
             FROM bons_comptant bc2
             WHERE bc2.client_id = c.id
-              AND LOWER(TRIM(bc2.statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
+              AND LOWER(TRIM(bc2.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
             SELECT SUM(o.total_amount)
@@ -235,20 +229,26 @@ const SINGLE_CONTACT_QUERY = `
               AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
               AND o.user_id = c.id
           ), 0)
+          - COALESCE((
+            SELECT SUM(bch.montant_total)
+            FROM bons_charge bch
+            WHERE bch.client_id = c.id
+              AND LOWER(TRIM(bch.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ), 0)
           + COALESCE((
             SELECT SUM(p.montant_total)
             FROM payments p
             WHERE p.type_paiement = 'Client'
               AND p.contact_id = c.id
               AND LOWER(TRIM(p.statut)) NOT LIKE 'annul%'
-              AND LOWER(TRIM(p.statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
+              AND LOWER(TRIM(p.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           + COALESCE((
             SELECT SUM(ac.montant_total)
             FROM avoirs_client ac
             WHERE ac.client_id = c.id
-              AND ac.statut IN ('En attente','ValidÃ©','AppliquÃ©')
-              AND LOWER(TRIM(ac.statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
+              AND ac.statut IN ('En attente','Validé','Appliqué')
+              AND LOWER(TRIM(ac.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
         WHEN c.type = 'Fournisseur' THEN
           COALESCE(c.solde, 0)
@@ -297,7 +297,7 @@ const SINGLE_CONTACT_QUERY = `
 // GET /api/contacts - Get all contacts with optional type filter (avec solde_cumule calculÃ©) et pagination
 router.get('/', async (req, res) => {
   try {
-    const { type, page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir, dateFrom, dateTo } = req.query;
+    const { type, page = 1, limit = 50, search, clientSubTab, groupId, sortBy, sortDir, dateFrom, dateTo, exclude_charge, only_charge } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     const normalizedSortDir = String(sortDir || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
@@ -316,7 +316,7 @@ router.get('/', async (req, res) => {
     const isReferenceSearch = /^\d+$/.test(referenceSearch);
 
     // RequÃªte pour compter le total
-    const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo });
+    const { whereSql: countWhereSql, params: countParams } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge: exclude_charge === 'true', onlyCharge: only_charge === 'true' });
     const countQuery = `SELECT COUNT(*) as total FROM contacts c${countWhereSql}`;
 
     const [countResult] = await pool.execute(countQuery, countParams);
@@ -334,6 +334,7 @@ router.get('/', async (req, res) => {
           COALESCE(ventes_client.total_ventes, 0)
           + COALESCE(ventes_comptant.total_ventes, 0)
           + COALESCE(ventes_ecommerce.total_ventes, 0)
+          + COALESCE(charges_client.total_charges, 0)
           + COALESCE(achats_fournisseur.total_achats, 0)
         ) AS total_ventes,
         (
@@ -380,6 +381,15 @@ router.get('/', async (req, res) => {
           AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded')
         GROUP BY c_link.id
       ) ventes_ecommerce ON ventes_ecommerce.contact_id = c.id AND c.type = 'Client'
+
+      -- Charges client = bons_charge
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_charges
+        FROM bons_charge
+        WHERE client_id IS NOT NULL
+          AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
+        GROUP BY client_id
+      ) charges_client ON charges_client.client_id = c.id AND c.type = 'Client'
 
       -- Achats fournisseur = bons_commande + bons_sortie(vendre au fournisseur)
       LEFT JOIN (
@@ -446,7 +456,7 @@ router.get('/', async (req, res) => {
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
     `;
 
-    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo });
+    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge: exclude_charge === 'true', onlyCharge: only_charge === 'true' });
     query += whereSql;
     // IMPORTANT: ordering must be done in SQL to keep pagination correct.
     // Use a whitelist to prevent SQL injection.
@@ -504,7 +514,7 @@ router.get('/', async (req, res) => {
     }
 
     // Calcul des totaux globaux (tous les clients filtrÃ©s, pas seulement la page)
-    const { whereSql: totalWhereSql, params: totalParams } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo });
+    const { whereSql: totalWhereSql, params: totalParams } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge: exclude_charge === 'true', onlyCharge: only_charge === 'true' });
     const totalCumuleQuery = `
       SELECT
         COALESCE(SUM(CASE 
@@ -512,6 +522,8 @@ router.get('/', async (req, res) => {
             COALESCE(c.solde, 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
+            + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
+            + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE client_id = c.id AND statut IN ('En attente','ValidÃ©','AppliquÃ©') AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
@@ -589,8 +601,8 @@ router.get('/', async (req, res) => {
 // GET /api/contacts/summary - Stats globales (count, solde cumulÃ©, avec ICE)
 router.get('/summary', async (req, res) => {
   try {
-    const { type, search, clientSubTab, groupId } = req.query;
-    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId });
+    const { type, search, clientSubTab, groupId, exclude_charge, only_charge } = req.query;
+    const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId, excludeCharge: exclude_charge === 'true', onlyCharge: only_charge === 'true' });
 
     const summaryQuery = `
       SELECT
@@ -1205,7 +1217,7 @@ router.get('/:id/history', async (req, res) => {
     const requestedPageRaw = String(req.query.page || '1').toLowerCase();
     const limit = Math.max(1, Math.min(30000, Number(req.query.limit || 30000) || 30000));
 
-    const [[contactRows], [sorties], [comptants], [commandes], [sortiesVendreFournisseur], [avoirsClient], [avoirsFournisseur], [avoirsClientVendreFournisseur], [payments], [ecommerceOrders], [avoirsEcommerce]] = await Promise.all([
+    const [[contactRows], [sorties], [comptants], [charges], [commandes], [sortiesVendreFournisseur], [avoirsClient], [avoirsFournisseur], [avoirsClientVendreFournisseur], [payments], [ecommerceOrders], [avoirsEcommerce]] = await Promise.all([
       pool.query('SELECT id, type, nom_complet, societe, solde, created_at FROM contacts WHERE id = ? LIMIT 1', [contactId]),
       pool.query(`
         SELECT bs.*,
@@ -1266,6 +1278,36 @@ router.get('/:id/history', async (req, res) => {
         WHERE bc.client_id = ?
         GROUP BY bc.id
         ORDER BY bc.date_creation ASC, bc.id ASC
+      `, [contactId]),
+      pool.query(`
+        SELECT bch.*,
+          COALESCE(JSON_ARRAYAGG(
+            CASE WHEN chi.id IS NULL THEN NULL ELSE JSON_OBJECT(
+              'id', chi.id,
+              'product_id', chi.product_id,
+              'produit_id', chi.product_id,
+              'variant_id', chi.variant_id,
+              'unit_id', chi.unit_id,
+              'reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
+              'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
+              'designation', p.designation,
+              'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
+              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'quantite', chi.quantite,
+              'prix_unitaire', chi.prix_unitaire,
+              'remise_pourcentage', chi.remise_pourcentage,
+              'remise_montant', chi.remise_montant,
+              'total', chi.total,
+              'product_snapshot_id', chi.product_snapshot_id
+            ) END
+          ), JSON_ARRAY()) AS items
+        FROM bons_charge bch
+        LEFT JOIN charge_items chi ON chi.bon_charge_id = bch.id
+        LEFT JOIN products p ON p.id = chi.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = chi.product_snapshot_id
+        WHERE bch.client_id = ?
+        GROUP BY bch.id
+        ORDER BY bch.date_creation ASC, bch.id ASC
       `, [contactId]),
       pool.query(`
         SELECT bcmd.*,
@@ -1522,6 +1564,7 @@ router.get('/:id/history', async (req, res) => {
     const bonPrefix = (type) => ({
       Sortie: 'SOR',
       Comptant: 'COM',
+      Charge: 'CHG',
       Commande: 'CMD',
       SortieVendreFournisseur: 'SVF',
       Avoir: 'AVC',
@@ -1535,6 +1578,7 @@ router.get('/:id/history', async (req, res) => {
       ? [
           ...normalizeItems(sorties, 'Sortie', 'SOR').filter((b) => isAllowedHistoryStatus(b.statut)),
           ...normalizeItems(comptants, 'Comptant', 'COM').filter((b) => isAllowedHistoryStatus(b.statut)),
+          ...normalizeItems(charges, 'Charge', 'CHG').filter((b) => isAllowedHistoryStatus(b.statut)),
           ...normalizeItems(avoirsClient, 'Avoir', 'AVC').filter((b) => isAllowedHistoryStatus(b.statut)),
         ]
       : [
@@ -1546,7 +1590,9 @@ router.get('/:id/history', async (req, res) => {
 
     const historyRows = [];
     for (const b of docs) {
-      const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur' || b.type === 'AvoirClientVendreFournisseur') ? 'avoir' : 'produit';
+      const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur' || b.type === 'AvoirClientVendreFournisseur') ? 'avoir'
+        : b.type === 'Charge' ? 'charge_produit'
+        : 'produit';
       const bonItems = Array.isArray(b.items) ? b.items : [];
       for (const it of bonItems) {
         const q = Number(it.quantite || 0) || 0;
@@ -1614,6 +1660,7 @@ router.get('/:id/history', async (req, res) => {
     let totalNewRemise = 0;
     const isClientContact = contact.type === 'Client';
     const getHistoryAmountSigned = (row, amount) => {
+      if (row.type === 'charge_produit') return -amount; // bons_charge = debit, adds to balance owed
       if (row.type === 'produit') return isClientContact ? -amount : amount;
       if (row.type === 'paiement' || row.type === 'avoir') return isClientContact ? amount : -amount;
       return 0;
@@ -1669,6 +1716,7 @@ router.get('/:id/history', async (req, res) => {
       contactId,
       sorties: keepDocs(normalizeItems(sorties, 'Sortie', 'SOR')),
       comptants: keepDocs(normalizeItems(comptants, 'Comptant', 'COM')),
+      charges: keepDocs(normalizeItems(charges, 'Charge', 'CHG')),
       commandes: keepDocs(normalizeItems(commandes, 'Commande', 'CMD')),
       sortiesVendreFournisseur: keepDocs(normalizeItems(sortiesVendreFournisseur, 'SortieVendreFournisseur', 'SVF')),
       avoirsClient: keepDocs(normalizeItems(avoirsClient, 'Avoir', 'AVC')),
@@ -1796,7 +1844,8 @@ router.post('/', async (req, res) => {
       email_verified,
       source,
       group_id,
-      created_by
+      created_by,
+      is_charge
     } = req.body;
 
     const columnExists = async (tableName, columnName) => {
@@ -1834,9 +1883,9 @@ router.post('/', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO contacts 
-       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null)]
+       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, is_charge, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null), (is_charge ? 1 : 0)]
     );
 
     // Optional: persist solde eligibility if column exists.
@@ -1901,7 +1950,8 @@ router.put('/:id', async (req, res) => {
       email_verified,
       source,
       group_id,
-      updated_by
+      updated_by,
+      is_charge
     } = req.body;
 
     const normalizeEmptyToNull = (value) => {
@@ -1996,6 +2046,10 @@ router.put('/:id', async (req, res) => {
         updates.push('is_solde = ?');
         params.push(normalized ? 1 : 0);
       }
+    }
+    if (is_charge !== undefined) {
+      updates.push('is_charge = ?');
+      params.push(is_charge ? 1 : 0);
     }
     if (demande_artisan !== undefined) { updates.push('demande_artisan = ?'); params.push(demande_artisan); }
     if (artisan_approuve !== undefined) { updates.push('artisan_approuve = ?'); params.push(artisan_approuve); }

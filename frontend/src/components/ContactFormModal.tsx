@@ -88,6 +88,7 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     solde: 0,
     plafond: contactType === 'Client' ? 0 : null,
     isSolde: Boolean((initialValues as any)?.isSolde ?? (initialValues as any)?.is_solde ?? false),
+    is_charge: Boolean((initialValues as any)?.is_charge ?? false),
     ...initialValues
   };
 
@@ -130,7 +131,8 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 rib: values.rib || '',
                 type: contactType,
                 solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
-                is_solde: (values as any).isSolde ? 1 : 0,
+                is_solde: Boolean((values as any).isSolde),
+                is_charge: Boolean((values as any).is_charge),
                 group_id: (values as any).group_id === '' || (values as any).group_id == null ? null : Number((values as any).group_id),
                 ...(contactType === 'Client' && { 
                   plafond: values.plafond != null ? Number(values.plafond as any) : undefined 
@@ -189,6 +191,19 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   </label>
                 </div>
               )}
+
+              {/* Checkbox is_charge */}
+              <div className="flex items-center space-x-2">
+                <Field
+                  id="is_charge"
+                  name="is_charge"
+                  type="checkbox"
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="is_charge" className="text-sm font-medium text-gray-700">
+                  Est une charge
+                </label>
+              </div>
 
               {/* Nom complet - pleine largeur */}
               <div>

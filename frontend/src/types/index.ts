@@ -295,6 +295,7 @@ export interface Contact {
   group_id?: number | null;
   group_name?: string | null;
   isSolde?: boolean; // Indique si le client peut commander en solde (crédit)
+  is_charge?: boolean;
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -334,6 +335,7 @@ export interface CreateContactData {
   email_verified?: boolean;
   source?: 'backoffice' | 'ecommerce';
   group_id?: number | null;
+  is_charge?: boolean;
 }
 
 // Types pour les véhicules
