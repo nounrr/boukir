@@ -16,7 +16,7 @@ import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantPaymentsQuery, useGetComptantQuery } from '../store/api/comptantApi';
-import { useGetAllClientsQuery, useGetAllFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
+import { useGetAllClientsQuery, useGetAllChargeClientsQuery, useGetAllFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
 // Removed unused: useGetPaymentsQuery
 import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
@@ -974,6 +974,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     return options;
   }, [products]);
   const { data: clients = [] } = useGetAllClientsQuery();
+  const { data: chargeClients = [] } = useGetAllChargeClientsQuery();
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined);
@@ -1006,6 +1007,18 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isSendingWhatsAppPdf, setIsSendingWhatsAppPdf] = useState(false);
   const apiBaseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
+  const allClients = useMemo(() => {
+    const merged = [...clients, ...chargeClients];
+    const byId = new Map<string, Contact>();
+    merged.forEach((client: Contact) => {
+      byId.set(String(client.id), client);
+    });
+    return Array.from(byId.values());
+  }, [clients, chargeClients]);
+  const selectableClients = useMemo(
+    () => (String(currentTab || (initialValues as any)?.type || '') === 'Charge' ? chargeClients : clients),
+    [chargeClients, clients, currentTab, initialValues]
+  );
   const productMap = useMemo(() => {
     const map = new Map<string, any>();
     (products || []).forEach((prod: any) => {
@@ -1169,6 +1182,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const createDetailedItem = () => ({
     ...createEmptyItem(),
     line_mode: 'detail',
+    quantite: 1,
   });
 
   const appendEmptyItems = (requestedCount: number, focusLastRow = false) => {
@@ -1214,7 +1228,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
     formikRef.current?.setFieldValue('items', [...currentItems, createDetailedItem()]);
     setUnitPriceRaw((prev) => ({ ...prev, [startIndex]: '0' }));
-    setQtyRaw((prev) => ({ ...prev, [startIndex]: '0' }));
+    setQtyRaw((prev) => ({ ...prev, [startIndex]: '1' }));
 
     return startIndex;
   };
@@ -3462,7 +3476,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     </button>
                   </div>
                   <SearchableSelect
-                    options={clients.map((c: Contact) => {
+                    options={selectableClients.map((c: Contact) => {
                       const soldeCumule = Number(c.solde_cumule ?? 0) || 0;
                       const plafond = Number(c.plafond || 0);
                       const isOverLimit = plafond > 0 && soldeCumule > plafond;
@@ -3484,7 +3498,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     disabled={isQtyOnlyEdit}
                     onChange={async (clientId) => {
                       if (isQtyOnlyEdit) return;
-                      const client = clients.find((c: Contact) => c.id.toString() === clientId);
+                      const client = selectableClients.find((c: Contact) => c.id.toString() === clientId);
                       if (!client) {
                         setFieldValue('client_id', clientId);
                         return;
@@ -5477,13 +5491,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                           ) : (
                             <div className="space-y-3">
                               {detailedChargeEntries.map(({ row, index }: any) => {
-                                const chargeTotal = (Number(row.prix_achat) || 0) * (parseFloat(normalizeDecimal(qtyRaw[index] ?? String(row.quantite ?? ''))) || 0);
                                 return (
-                                  <div key={row._rowId || `charge-detail-${index}`} className="grid grid-cols-1 md:grid-cols-8 gap-3 rounded border border-amber-200 bg-white p-3">
-                                    <div className="md:col-span-2">
+                                  <div key={row._rowId || `charge-detail-${index}`} className="grid grid-cols-1 gap-3 rounded border border-amber-200 bg-white p-3">
+                                    <div className="hidden">
                                       <label className="mb-1 block text-xs font-medium text-gray-700">Désignation</label>
-                                      <input
-                                        type="text"
+                                      <textarea
                                         className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
                                         value={row.designation_custom ?? row.designation ?? ''}
                                         onChange={(e) => {
@@ -5492,6 +5504,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         }}
                                         placeholder="Ex: Charge 1 mazot"
                                         disabled={isQtyOnlyEdit}
+                                        rows={3}
                                       />
                                     </div>
                                     <div>
@@ -5513,7 +5526,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       />
                                     </div>
                                     {(['prix_achat', 'cout_revient', 'prix_gros', 'prix_unitaire'] as const).map((field) => (
-                                      <div key={field}>
+                                      <div key={field} className="hidden">
                                         <label className="mb-1 block text-xs font-medium text-gray-700">
                                           {field === 'prix_achat' ? 'Prix achat' : field === 'cout_revient' ? 'Cout revient' : field === 'prix_gros' ? 'Prix gros' : 'Prix vente'}
                                         </label>
@@ -5536,8 +5549,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         />
                                       </div>
                                     ))}
-                                    <div className="flex items-end justify-between gap-3 md:col-span-8">
-                                      <div className="text-sm font-semibold text-gray-800">Total: {formatFull(chargeTotal)} DH</div>
+                                    <div className="flex items-end justify-end gap-3 md:col-span-8">
+                                      <div className="hidden text-sm font-semibold text-gray-800">Total: {formatFull(chargeTotal)} DH</div>
                                       <button
                                         type="button"
                                         disabled={isQtyOnlyEdit}
@@ -5917,6 +5930,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         isOpen={!!isContactModalOpen}
         onClose={() => setIsContactModalOpen(null)}
         contactType={isContactModalOpen || 'Client'}
+        defaultIsCharge={isContactModalOpen === 'Client' && String(currentTab || (initialValues as any)?.type || '') === 'Charge'}
         onContactAdded={(newContact) => {
           // Sélection AUTO du contact nouvellement créé
           showSuccess(`${newContact.type} ajouté avec succès!`);
@@ -5953,7 +5967,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           bon={initialValues}
-          client={clients.find((c: Contact) => c.id.toString() === initialValues.client_id?.toString())}
+          client={allClients.find((c: Contact) => c.id.toString() === initialValues.client_id?.toString())}
           fournisseur={fournisseurs.find((f: Contact) => f.id.toString() === initialValues.fournisseur_id?.toString())}
         />
       )}

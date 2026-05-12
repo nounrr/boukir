@@ -3993,17 +3993,17 @@ const ContactsPage: React.FC = () => {
                 <FileText size={16} />
                 Rapport Global ({sortedContacts.length})
               </button>
-              <button
-                onClick={() => {
-                  setEditingContact(null);
-                  formik.resetForm();
-                  setIsModalOpen(true);
-                }}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-              >
-                <Plus size={20} />
-                Nouveau {activeTab === 'clients' ? 'Client' : 'Fournisseur'}
-              </button>
+                <button
+                  onClick={() => {
+                    setEditingContact(null);
+                    formik.resetForm();
+                    setIsModalOpen(true);
+                  }}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+                >
+                  <Plus size={20} />
+                  Nouveau {activeTab === 'clients' ? 'Client' : 'Fournisseur'}
+                </button>
             </>
           )}
         </div>

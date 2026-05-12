@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Search, Users, Phone, Mail, MapPin, Building2,
   ChevronLeft, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown,
-  FileText, CreditCard, RotateCcw, Calendar, Hash, ArrowLeft,
+  FileText, CreditCard, RotateCcw, Calendar, Hash, ArrowLeft, Plus,
   Package, Printer, ShoppingCart, GripVertical, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -13,6 +13,7 @@ import { useGetProductsQuery } from '../store/api/productsApi';
 import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
+import ContactFormModal from '../components/ContactFormModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
@@ -1800,6 +1801,7 @@ const readSavedChargesState = (): ChargesListSavedState => {
 
 const ChargesListPage: React.FC = () => {
   const navigate = useNavigate();
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const savedState = React.useRef<ChargesListSavedState>(readSavedChargesState()).current;
   const [currentPage, setCurrentPage] = useState(savedState.currentPage ?? 1);
   const [itemsPerPage, setItemsPerPage] = useState(savedState.itemsPerPage ?? 0);
@@ -1878,12 +1880,22 @@ const ChargesListPage: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="p-2 bg-violet-100 rounded-lg"><Users className="w-6 h-6 text-violet-600" /></div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Charges</h1>
-          <p className="text-sm text-gray-500">{total} charge{total !== 1 ? 's' : ''} au total</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-violet-100 rounded-lg"><Users className="w-6 h-6 text-violet-600" /></div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Charges</h1>
+            <p className="text-sm text-gray-500">{total} charge{total !== 1 ? 's' : ''} au total</p>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setIsContactModalOpen(true)}
+          className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Nouveau Charge
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-3">
@@ -2025,6 +2037,14 @@ const ChargesListPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ContactFormModal
+        isOpen={isContactModalOpen}
+        onClose={() => setIsContactModalOpen(false)}
+        contactType="Client"
+        defaultIsCharge={true}
+        onContactAdded={() => setIsContactModalOpen(false)}
+      />
     </div>
   );
 };
