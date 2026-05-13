@@ -32,19 +32,20 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
   const { user } = useAuth();
   const isChefChauffeur = user?.role === 'ChefChauffeur';
 
+  // Grouped navigation for desktop sidebar (mobile uses bottom nav)
   const groups: { title: string; items: { name: string; href: string; icon: any; show: boolean }[] }[] = [
     {
-      title: 'GÃ©nÃ©ral',
+      title: 'Général',
       items: [
         { name: 'Tableau de bord', href: '/dashboard', icon: Home, show: !isChefChauffeur },
         { name: 'Remises', href: '/remises', icon: Percent, show: !isChefChauffeur },
         { name: 'Promo codes', href: '/promo-codes', icon: Percent, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus') },
         { name: 'Hero Slides', href: '/hero-slides', icon: Image, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus') },
-        { name: 'Contacts', href: '/contacts', icon: UserCheck, show: !isChefChauffeur && user?.role !== 'EmployÃ©' },
-        { name: 'Clients', href: '/clients', icon: Users, show: !isChefChauffeur && user?.role !== 'EmployÃ©' },
-        { name: 'Fournisseurs', href: '/fournisseurs', icon: Users, show: !isChefChauffeur && user?.role !== 'EmployÃ©' },
-        { name: 'Charges', href: '/charges', icon: Users, show: !isChefChauffeur && user?.role === 'PDG' },
-        { name: 'Contacts ArchivÃ©s', href: '/contacts-archiver', icon: Archive, show: !isChefChauffeur && user?.role !== 'EmployÃ©' },
+        { name: 'Contacts', href: '/contacts', icon: UserCheck, show: !isChefChauffeur && user?.role !== 'Employé' },
+        { name: 'Clients', href: '/clients', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
+        { name: 'Fournisseurs', href: '/fournisseurs', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
+        { name: 'Charges', href: '/charges', icon: Users, show: !isChefChauffeur && user?.role !== 'Employé' },
+        { name: 'Contacts Archivés', href: '/contacts-archiver', icon: Archive, show: !isChefChauffeur && user?.role !== 'Employé' },
       ],
     },
     {
@@ -53,16 +54,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { name: 'Stock', href: '/stock', icon: Package, show: !isChefChauffeur },
         { name: 'Produits Translate', href: '/products/translate', icon: Languages, show: !isChefChauffeur },
         { name: 'Inventaire', href: '/inventaire', icon: ClipboardList, show: !isChefChauffeur && user?.role !== undefined },
-        { name: 'CatÃ©gories', href: '/categories', icon: Tags, show: !isChefChauffeur },
+        { name: 'Catégories', href: '/categories', icon: Tags, show: !isChefChauffeur },
         { name: 'Marques', href: '/brands', icon: Award, show: !isChefChauffeur },
-        { name: 'Produits archivÃ©s', href: '/products/archived', icon: Package, show: !isChefChauffeur && user?.role === 'PDG' },
+        { name: 'Produits archivés', href: '/products/archived', icon: Package, show: !isChefChauffeur && user?.role === 'PDG' },
       ],
     },
     {
-      title: 'OpÃ©rations',
+      title: 'Opérations',
       items: [
         { name: 'Bons', href: '/bons', icon: FileText, show: true },
-        { name: 'VÃ©hicules', href: '/vehicules', icon: Truck, show: isChefChauffeur || user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
+        { name: 'Véhicules', href: '/vehicules', icon: Truck, show: isChefChauffeur || user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
         { name: 'Caisse', href: '/caisse', icon: CreditCard, show: !isChefChauffeur },
         { name: 'Talons', href: '/talons', icon: ClipboardList, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
         { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
@@ -71,9 +72,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
     {
       title: 'Administration',
       items: [
-        { name: 'EmployÃ©s', href: '/employees', icon: Users, show: !isChefChauffeur && canManageEmployees(user) },
-        { name: 'Mes Informations', href: '/employee/self', icon: Users, show: !isChefChauffeur && user?.role === 'EmployÃ©' },
-        { name: "Horaires d'AccÃ¨s", href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },
+        { name: 'Employés', href: '/employees', icon: Users, show: !isChefChauffeur && canManageEmployees(user) },
+        { name: 'Mes Informations', href: '/employee/self', icon: Users, show: !isChefChauffeur && user?.role === 'Employé' },
+        { name: "Horaires d'Accès", href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },
       ],
     },
     {
@@ -81,7 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       items: [
         { name: 'Audit', href: '/audit', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
         { name: 'Rapports', href: '/reports', icon: BarChart3, show: !isChefChauffeur && user?.role === 'PDG' },
-        { name: 'Stats dÃ©taillÃ©es', href: '/reports/details', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
+        { name: 'Stats détaillées', href: '/reports/details', icon: Activity, show: !isChefChauffeur && user?.role === 'PDG' },
       ],
     },
     {

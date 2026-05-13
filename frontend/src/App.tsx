@@ -124,7 +124,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <DashboardPage />
               </LayoutWithAccessCheck>
@@ -234,7 +234,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/contacts"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute forbiddenRoles={['Employé']}>
               <LayoutWithAccessCheck>
                 <ContactsPage />
               </LayoutWithAccessCheck>
@@ -245,7 +245,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/clients"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute forbiddenRoles={['Employé']}>
               <LayoutWithAccessCheck>
                 <ClientsPage />
               </LayoutWithAccessCheck>
@@ -256,7 +256,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/clients/:id"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute forbiddenRoles={['Employé']}>
               <LayoutWithAccessCheck>
                 <ClientDetailPage />
               </LayoutWithAccessCheck>
@@ -267,7 +267,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/fournisseurs"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute forbiddenRoles={['Employé']}>
               <LayoutWithAccessCheck>
                 <FournisseursPage />
               </LayoutWithAccessCheck>
@@ -289,7 +289,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/charges/:id"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute forbiddenRoles={['Employé']}>
               <LayoutWithAccessCheck>
                 <ChargeDetailPage />
               </LayoutWithAccessCheck>
@@ -300,7 +300,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/fournisseurs/:id"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute forbiddenRoles={['Employé']}>
               <LayoutWithAccessCheck>
                 <FournisseurDetailPage />
               </LayoutWithAccessCheck>
@@ -311,7 +311,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/contacts-archiver"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute forbiddenRoles={['Employé']}>
               <LayoutWithAccessCheck>
                 <ContactArchiverPage />
               </LayoutWithAccessCheck>
