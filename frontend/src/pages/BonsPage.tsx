@@ -31,6 +31,7 @@ import {
   useCreateComptantPaymentMutation,
   useDeleteComptantPaymentMutation
 } from '../store/api/comptantApi';
+import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
@@ -157,9 +158,11 @@ const BonsPage = () => {
 
   // Auth context
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const { data: uiSettings } = useGetUiSettingsQuery();
   const isPdg = currentUser?.role === 'PDG';
   const isEmployee = currentUser?.role === 'Employé';
   const isChefChauffeur = currentUser?.role === 'ChefChauffeur';
+  const canSeeEcommerce = (uiSettings?.toggles?.showEcommerceBons ?? true) && (isPdg || isChefChauffeur);
   // Manager full access only for Commande & AvoirFournisseur
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
   const isManager = currentUser?.role === 'Manager';
@@ -189,7 +192,6 @@ const BonsPage = () => {
   // - Ecommerce + AvoirEcommerce: allowed for PDG and ChefChauffeur
   // - Devis: not allowed for ChefChauffeur
   useEffect(() => {
-    const canSeeEcommerce = isPdg || isChefChauffeur;
     if (!canSeeEcommerce && (currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce')) {
       setCurrentTab('Commande');
       return;
@@ -202,7 +204,7 @@ const BonsPage = () => {
     if (isChefChauffeur && currentTab === 'Devis') {
       setCurrentTab('Sortie');
     }
-  }, [isPdg, isChefChauffeur, currentTab]);
+  }, [canSeeEcommerce, isChefChauffeur, currentTab]);
 
   // Helper to build the per-type storage key for auto-send checkbox
   const getAutoSendKey = (type: string) => `autoSendWhatsAppOnValidation_${type}`;
@@ -1674,13 +1676,13 @@ const BonsPage = () => {
       return base.filter((t) => t.key !== 'Devis' && t.key !== 'Commande');
     }
 
-    // Non-PDG: hide ecommerce tabs
-    if (!isPdg) {
+    // Non-PDG or hidden setting: hide ecommerce tabs
+    if (!canSeeEcommerce) {
       return base.filter((t) => t.key !== 'Ecommerce' && t.key !== 'AvoirEcommerce');
     }
 
     return base;
-  }, [isPdg, isChefChauffeur]);
+  }, [canSeeEcommerce, isChefChauffeur]);
 
   const toMySQLDateTime = (d: Date = new Date()) => d.toISOString().slice(0, 19).replace('T', ' ');
 

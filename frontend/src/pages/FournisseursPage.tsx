@@ -15,6 +15,8 @@ import type { Contact } from '../types';
 import ContactPrintModal from '../components/ContactPrintModal';
 import ContactFormModal from '../components/ContactFormModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
+import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
+import { getUiBadgeStyle, getUiLineConfig, getUiRowStyle } from '../utils/uiSettings';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
 
@@ -29,6 +31,9 @@ const fmtDate = (iso: string | null | undefined) => {
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
+
+const parseFilterDateStart = (value: string) => new Date(`${value}T00:00:00`).getTime();
+const parseFilterDateEnd = (value: string) => new Date(`${value}T23:59:59.999`).getTime();
 
 const getSnapshotLabel = (item: any) => {
   const snapshotId = item?.product_snapshot_id;
@@ -138,6 +143,14 @@ const groupDisplayItems = (items: any[]): GroupedDisplayItem[] => {
 };
 
 const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix, accentClass, hoverClass, itemBorderClass = 'border-violet-200' }) => {
+  const { data: uiSettings } = useGetUiSettingsQuery();
+  const styleKeyByPrefix: Record<string, string> = {
+    CMD: 'bon_commande',
+    SVF: 'bon_sortie_vendre_fournisseur',
+    AVF: 'bon_avoir_fournisseur',
+    AVV: 'bon_avoir_vendre',
+  };
+  const styleConfig = getUiLineConfig(uiSettings, styleKeyByPrefix[prefix] ?? '');
   return (
     <table className="w-full text-sm">
       <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
@@ -164,7 +177,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
 
           if (!detail) {
             return (
-              <tr key={b.id} className={`${hoverClass} transition-colors`}>
+              <tr key={b.id} className={`${hoverClass} transition-colors`} style={getUiRowStyle(styleConfig)}>
                 <td className={`px-4 py-3 font-mono font-medium ${accentClass}`}>{bonNum}</td>
                 <td className="px-4 py-3 text-gray-600">
                   <span className="flex items-center gap-1.5">
@@ -181,7 +194,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
 
           if (items.length === 0) {
             return (
-              <tr key={b.id} className={`${hoverClass} transition-colors`}>
+              <tr key={b.id} className={`${hoverClass} transition-colors`} style={getUiRowStyle(styleConfig)}>
                 <td className={`px-4 py-2.5 font-mono font-medium ${accentClass}`}>{bonNum}</td>
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
                   <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-gray-400" />{fmtDate(b.date_creation)}</span>
@@ -207,7 +220,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                 const unitLabel = getHistoryUnitLabel(item, products);
 
                 return (
-                  <tr key={`${b.id}-item-group-${sourceIndices.join('-')}`} className={`bg-gray-50/60 border-l-4 ${itemBorderClass} ${hoverClass}/40 transition-colors`}>
+                  <tr key={`${b.id}-item-group-${sourceIndices.join('-')}`} className={`bg-gray-50/60 border-l-4 ${itemBorderClass} ${hoverClass}/40 transition-colors`} style={getUiRowStyle(styleConfig)}>
                     <td className={`px-4 py-2 font-mono text-xs font-semibold ${accentClass}`}>{bonNum}</td>
                     <td className="px-4 py-2 text-gray-500 text-xs">
                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
@@ -226,7 +239,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{variantLabel}</td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{unitLabel}</td>
                     <td className="px-3 py-2 text-xs text-gray-500 max-w-[120px] truncate" title={b.adresse_livraison ?? ''}>
-                      {groupIdx === 0 ? (b.adresse_livraison ?? <span className="text-gray-300">-</span>) : null}
+                      {b.adresse_livraison ?? <span className="text-gray-300">-</span>}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">
                       {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">-</span>) : null}
@@ -515,6 +528,7 @@ interface CompletTableProps {
   soldeInitial: number;
   products?: any[];
   visibleIds?: Set<string>;
+  showInitialRow?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   onToggleAll?: (ids: string[]) => void;
@@ -524,15 +538,16 @@ interface CompletTableProps {
   onCompletDragEnd?: (result: DropResult) => void;
 }
 
-const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string }> = {
-  commande:         { label: 'Commande',        badgeClass: 'bg-violet-100 text-violet-700', accentClass: 'text-violet-700', hoverClass: 'hover:bg-violet-50', itemBorderClass: 'border-violet-200', prefix: 'CMD', bgClass: 'colored-row bg-violet-50' },
-  sortieVendreFournisseur: { label: 'Vendre Fourn.', badgeClass: 'bg-red-100 text-red-700', accentClass: 'text-red-700', hoverClass: 'hover:bg-red-100', itemBorderClass: 'border-red-200', prefix: 'SVF', bgClass: 'colored-row bg-red-50' },
-  avoirFournisseur: { label: 'Avoir Fourn.',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-orange-700', hoverClass: 'hover:bg-orange-100', itemBorderClass: 'border-orange-200', prefix: 'AVF', bgClass: 'colored-row bg-orange-50' },
-  avoirClientVendreFournisseur: { label: 'Avoir Vendre', badgeClass: 'bg-purple-100 text-purple-700', accentClass: 'text-purple-700', hoverClass: 'hover:bg-purple-100', itemBorderClass: 'border-purple-200', prefix: 'AVV', bgClass: 'colored-row bg-purple-50' },
+const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string; styleKey: string }> = {
+  commande:         { label: 'Commande',        badgeClass: 'bg-violet-100 text-violet-700', accentClass: 'text-violet-700', hoverClass: 'hover:bg-violet-100', itemBorderClass: 'border-violet-200', prefix: 'CMD', bgClass: 'colored-row bg-violet-100', styleKey: 'bon_commande' },
+  sortieVendreFournisseur: { label: 'Vendre Fourn.', badgeClass: 'bg-red-100 text-red-700', accentClass: 'text-red-700', hoverClass: 'hover:bg-red-100', itemBorderClass: 'border-red-200', prefix: 'SVF', bgClass: 'colored-row bg-red-100', styleKey: 'bon_sortie_vendre_fournisseur' },
+  avoirFournisseur: { label: 'Avoir Fourn.',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-orange-700', hoverClass: 'hover:bg-orange-100', itemBorderClass: 'border-orange-200', prefix: 'AVF', bgClass: 'colored-row bg-orange-100', styleKey: 'bon_avoir_fournisseur' },
+  avoirClientVendreFournisseur: { label: 'Avoir Vendre', badgeClass: 'bg-purple-100 text-purple-700', accentClass: 'text-purple-700', hoverClass: 'hover:bg-purple-100', itemBorderClass: 'border-purple-200', prefix: 'AVV', bgClass: 'colored-row bg-purple-100', styleKey: 'bon_avoir_vendre' },
 };
 
-const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], visibleIds, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd }) => {
+const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], visibleIds, showInitialRow = true, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd }) => {
   const selectionMode = !!onToggleSelect;
+  const { data: uiSettings } = useGetUiSettingsQuery();
   const soldeCumuleMap = useMemo(
     () => detail ? buildSoldeCumuleDetail(rows, soldeInitial) : buildSoldeCumule(rows, soldeInitial),
     [rows, soldeInitial, detail]
@@ -625,7 +640,8 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
         ref={dropProvided.innerRef}
         {...dropProvided.droppableProps}
       >
-        <tr className="colored-row bg-yellow-500/50 border-l-4 border-yellow-700">
+        {showInitialRow && (
+        <tr className="colored-row bg-yellow-100 border-l-4 border-yellow-500/70">
           {selectionMode && <td />}
           {selectionMode && detail && <td />}
           <td className="px-4 py-2.5">
@@ -640,6 +656,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">{fmtSolde(soldeInitial)}</td>
           <td className="px-4 py-2.5 text-xs text-black/90">Solde de depart</td>
         </tr>
+        )}
 
         {(() => {
           let dragIndex = 0;
@@ -647,11 +664,12 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           const rowId = `${row.kind}-${row.data.id}`;
           if (visibleIds && !visibleIds.has(rowId)) return null;
           const isSelected = selectedIds?.has(rowId) ?? false;
-          const rowBg = isSelected ? 'bg-violet-50' : '';
+          const rowBg = isSelected ? 'bg-violet-100' : '';
 
           if (row.kind === 'paiement') {
             const p = row.data;
             const isSupplierFoPayment = Number(p.payment ?? 0) === 1;
+            const paymentStyleConfig = getUiLineConfig(uiSettings, isSupplierFoPayment ? 'payment_supplier_fo' : 'payment_standard');
             const rib = p.code_reglement || p.reference_virement || p.reference || null;
             const rowIndex = dragIndex++;
             return (
@@ -665,7 +683,8 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
               <tr
                 ref={dragProvided.innerRef}
                 {...dragProvided.draggableProps}
-                className={`transition-colors colored-row ${snapshot.isDragging ? 'shadow-lg bg-violet-100' : `${isSupplierFoPayment ? 'hover:bg-purple-100' : 'hover:bg-green-100'} ${rowBg || (isSupplierFoPayment ? 'bg-purple-50' : 'bg-green-50')}`}`}
+                className={`transition-colors colored-row ${snapshot.isDragging ? 'shadow-lg bg-violet-100' : `${isSupplierFoPayment ? 'hover:bg-purple-100' : 'hover:bg-green-100'} ${rowBg || (isSupplierFoPayment ? 'bg-purple-100' : 'bg-green-100')}`}`}
+                style={getUiRowStyle(paymentStyleConfig)}
               >
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
@@ -679,7 +698,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <span {...dragProvided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
                       <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500" />
                     </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isSupplierFoPayment ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{isSupplierFoPayment ? 'Paiement FO' : 'Paiement'}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isSupplierFoPayment ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`} style={getUiBadgeStyle(paymentStyleConfig)}>{isSupplierFoPayment ? 'Paiement FO' : 'Paiement'}</span>
                   </span>
                 </td>
                 <td className="px-4 py-2.5 font-mono text-black font-medium text-xs">
@@ -727,6 +746,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
 
           const b = row.data;
           const meta = BON_META[row.kind];
+          const metaStyleConfig = getUiLineConfig(uiSettings, meta.styleKey);
           const bonKey = `${row.kind}-${b.id}`;
           const items: any[] = Array.isArray(b.items) ? b.items.filter((i: any) => i && i.id) : [];
           const bonNum = b.numero ?? `${meta.prefix}${String(b.id).padStart(2, '0')}`;
@@ -736,7 +756,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
             return (
               <Draggable key={`${bonKey}-${idx}`} draggableId={`${bonKey}-row`} index={rowIndex} isDragDisabled>
                 {(dragProvided) => (
-              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${rowBg || meta.bgClass || ''}`}>
+              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${rowBg || meta.bgClass || ''}`} style={getUiRowStyle(metaStyleConfig)}>
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
@@ -744,7 +764,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   </td>
                 )}
                 <td className="px-4 py-2.5">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`}>{meta.label}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                 </td>
                 <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}</td>
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
@@ -771,7 +791,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
             return (
               <Draggable key={`${bonKey}-${idx}`} draggableId={`${itemKey0}-empty`} index={rowIndex} isDragDisabled>
                 {(dragProvided) => (
-              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${isSelected ? '!bg-violet-50' : itemSelected0 ? '!bg-purple-50' : (meta.bgClass || '')}`}>
+              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${isSelected ? '!bg-violet-50' : itemSelected0 ? '!bg-purple-50' : (meta.bgClass || '')}`} style={getUiRowStyle(metaStyleConfig)}>
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
@@ -785,7 +805,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   </td>
                 )}
                 <td className="px-4 py-2.5">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`}>{meta.label}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                 </td>
                 <td className={`px-4 py-2.5 font-mono font-medium text-xs ${meta.accentClass}`}>{bonNum}</td>
                 <td className="px-4 py-2.5 text-gray-600 text-xs">
@@ -826,7 +846,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 return (
                   <Draggable key={lastItemSoldeKey} draggableId={lastItemSoldeKey} index={rowIndex} isDragDisabled>
                     {(dragProvided) => (
-                  <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.bgClass ? meta.bgClass : 'bg-gray-50/60'} border-l-4 ${meta.itemBorderClass} transition-colors ${isSelected ? '!bg-violet-50/60' : itemSelected ? '!bg-purple-50/60' : ''}`}>
+                  <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.bgClass ? meta.bgClass : 'bg-gray-50/60'} border-l-4 ${meta.itemBorderClass} transition-colors ${isSelected ? '!bg-violet-50/60' : itemSelected ? '!bg-purple-50/60' : ''}`} style={getUiRowStyle(metaStyleConfig)}>
                     {selectionMode && (
                       <td className="px-2 py-2 text-center">
                         {groupIdx === 0 && (
@@ -842,7 +862,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                       </td>
                     )}
                     <td className="px-4 py-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`}>{meta.label}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${meta.badgeClass}`} style={getUiBadgeStyle(metaStyleConfig)}>{meta.label}</span>
                     </td>
                     <td className={`px-4 py-2 font-mono text-xs font-semibold ${meta.accentClass}`}>{bonNum}</td>
                     <td className="px-4 py-2 text-gray-500 text-xs">
@@ -862,7 +882,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{variantLabel}</td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{unitLabel}</td>
                     <td className="px-3 py-2 text-xs text-gray-500 max-w-[120px] truncate" title={b.adresse_livraison ?? ''}>
-                      {groupIdx === 0 ? (b.adresse_livraison ?? <span className="text-gray-300">-</span>) : null}
+                      {b.adresse_livraison ?? <span className="text-gray-300">-</span>}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-500 font-mono whitespace-nowrap">
                       {groupIdx === 0 ? (b.code_reglement ?? <span className="text-gray-300">-</span>) : null}
@@ -1145,8 +1165,8 @@ const FournisseurDetailPage: React.FC = () => {
     if (!dateStr) return false;
     const d = new Date(dateStr).getTime();
     if (isNaN(d)) return false;
-    if (filterFrom && d < new Date(filterFrom).getTime()) return false;
-    if (filterTo && d > new Date(filterTo + 'T23:59:59').getTime()) return false;
+    if (filterFrom && d < parseFilterDateStart(filterFrom)) return false;
+    if (filterTo && d > parseFilterDateEnd(filterTo)) return false;
     return true;
   };
 
@@ -1627,6 +1647,7 @@ const FournisseurDetailPage: React.FC = () => {
                   soldeInitial={contact?.solde ?? 0}
                   products={products}
                   visibleIds={visibleIds}
+                  showInitialRow={!hasDateFilter}
                   selectedIds={selectedIds}
                   onToggleSelect={toggleSelect}
                   onToggleAll={toggleAll}

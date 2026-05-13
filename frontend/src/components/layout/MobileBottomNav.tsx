@@ -8,6 +8,7 @@ import {
   BarChart3,
   X,
   DollarSign,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/redux';
 import { canManageEmployees } from '../../utils/permissions';
@@ -72,6 +73,7 @@ const MobileBottomNav: React.FC = () => {
       items: [
         { name: 'Employés', to: '/employees', show: canManageEmployees(user) },
         { name: 'Contacts', to: '/contacts', show: user?.role !== 'Employé' },
+        { name: 'Paramètres UI', to: '/settings/ui', show: user?.role === 'PDG' },
       ],
     },
     // Profil retiré du menu (accès via header). Outils supprimé selon demande.

@@ -56,6 +56,7 @@ import WhatsAppTestPage from './pages/WhatsAppTestPage';
 import InventoryPage from './pages/InventoryPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProductsTranslatePage from './pages/ProductsTranslatePage';
+import UiSettingsPage from './pages/UiSettingsPage';
 
 // Composant Layout avec accès aux fonctions de monitoring
 const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -403,6 +404,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <CaissePage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/settings/ui"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <UiSettingsPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

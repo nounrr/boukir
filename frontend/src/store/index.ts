@@ -18,6 +18,7 @@ import './api/bonsApi';
 import './api/paymentsApi';
 import './api/talonsApi';
 import './api/accessSchedulesApi';
+import './api/uiSettingsApi';
 
 import productsReducer from './slices/productsSlice';
 import categoriesReducer from './slices/categoriesSlice';
