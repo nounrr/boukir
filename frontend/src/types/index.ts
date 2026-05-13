@@ -470,6 +470,7 @@ export interface Payment {
   numero: string;
   type_paiement: 'Client' | 'Fournisseur';
   contact_id: number | null; // ID du client ou fournisseur
+  payment?: number;
   remise_account_id?: number | null;
   remise_account_type?: 'client-remise' | 'client_abonne' | null;
   remise_account_name?: string | null;
@@ -504,6 +505,7 @@ export interface CreatePaymentData {
   numero: string;
   type_paiement: 'Client' | 'Fournisseur';
   contact_id: number | null;
+  payment?: number;
   remise_account_id?: number | null;
   remise_account_type?: 'client-remise' | 'client_abonne' | null;
   remise_account_name?: string | null;

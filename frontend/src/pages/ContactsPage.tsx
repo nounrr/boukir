@@ -950,7 +950,7 @@ const ContactsPage: React.FC = () => {
       items.push({
         id: `payment-${p.id}`,
         bon_numero: getDisplayNumeroPayment(p),
-        bon_type: 'Paiement',
+            bon_type: Number(p.payment ?? 0) === 1 ? 'Paiement FO' : 'Paiement',
         bon_id: p.bon_id,
         code_reglement: p.code_reglement,
         bon_date: formatDateDMY(paymentDateIso || new Date().toISOString()), // AFFICHER la vraie date du paiement (ou fallback)
@@ -961,8 +961,10 @@ const ContactsPage: React.FC = () => {
         quantite: 1,
         prix_unitaire: Number(p.montant ?? p.montant_total ?? 0) || 0,
         total: Number(p.montant ?? p.montant_total ?? 0) || 0,
-        type: 'paiement',
-        created_at: p.created_at,
+            type: 'paiement',
+            payment: Number(p.payment ?? 0),
+            mode: p.mode_paiement,
+            created_at: p.created_at,
         date_paiement_affichage: p.date_paiement, // Garder pour référence
       });
     }
@@ -1457,12 +1459,12 @@ const ContactsPage: React.FC = () => {
     );
     for (const p of paymentsForContact) {
       items.push({
-        id: `payment-${p.id}`, bon_numero: getDisplayNumeroPayment(p), bon_type: 'Paiement',
+        id: `payment-${p.id}`, bon_numero: getDisplayNumeroPayment(p), bon_type: Number(p.payment ?? 0) === 1 ? 'Paiement FO' : 'Paiement',
         bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()),
         bon_date_iso: p.date_paiement || p.created_at, bon_statut: p.statut ? String(p.statut) : 'Paiement',
         product_reference: 'PAIEMENT', product_designation: `Paiement ${p.mode_paiement || 'Espèces'}`,
         quantite: 1, prix_unitaire: Number(p.montant ?? p.montant_total ?? 0) || 0,
-        total: Number(p.montant ?? p.montant_total ?? 0) || 0, type: 'paiement', created_at: p.created_at,
+        total: Number(p.montant ?? p.montant_total ?? 0) || 0, type: 'paiement', payment: Number(p.payment ?? 0), mode: p.mode_paiement, created_at: p.created_at,
       });
     }
     // Tri + soldeCumulatif
@@ -2327,7 +2329,7 @@ const ContactsPage: React.FC = () => {
           items.push({
             id: `payment-${p.id}`,
             bon_numero: getDisplayNumeroPayment(p),
-            bon_type: 'Paiement',
+            bon_type: Number(p.payment ?? 0) === 1 ? 'Paiement FO' : 'Paiement',
             bon_date: formatDateDMY(p.date_paiement || new Date().toISOString()),
             bon_date_iso: p.date_paiement,
             bon_statut: p.statut ? String(p.statut) : 'Paiement',
@@ -2337,6 +2339,8 @@ const ContactsPage: React.FC = () => {
             prix_unitaire: Number(p.montant ?? p.montant_total ?? 0) || 0,
             total: Number(p.montant ?? p.montant_total ?? 0) || 0,
             type: 'paiement',
+            payment: Number(p.payment ?? 0),
+            mode: p.mode_paiement,
             created_at: p.created_at,
           });
         }
@@ -5955,8 +5959,9 @@ const ContactsPage: React.FC = () => {
                                           className={`hover:bg-gray-50 ${
                                             snapshot.isDragging ? 'shadow-lg bg-blue-50' : ''
                                           } ${
-                                            (item.type || '').toLowerCase() === 'paiement' ? 'bg-green-100' : 
-                                            (item.type || '').toLowerCase().includes('avoir') ? 'bg-purple-100' : ''
+                                            (item.type || '').toLowerCase() === 'paiement'
+                                              ? (Number((item as any).payment ?? 0) === 1 ? 'bg-purple-50' : 'bg-green-50')
+                                              : (item.type || '').toLowerCase().includes('avoir') ? 'bg-orange-50' : ''
                                           }`}
                                         >
                                           <td className="px-2  whitespace-nowrap">
@@ -6035,7 +6040,9 @@ const ContactsPage: React.FC = () => {
                                 </td>
                                 <td className="px-6  whitespace-nowrap">
                                   <span
-                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${item.bon_type === 'Solde initial' ? 'bg-gray-200 text-gray-700' : item.bon_type === 'Paiement'
+                                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${item.bon_type === 'Solde initial' ? 'bg-gray-200 text-gray-700' : item.bon_type === 'Paiement FO'
+                                      ? 'bg-purple-200 text-purple-700'
+                                      : item.bon_type === 'Paiement'
                                       ? 'bg-green-200 text-green-700'
                                       : item.bon_type === 'Ecommerce'
                                         ? 'bg-indigo-200 text-indigo-800'

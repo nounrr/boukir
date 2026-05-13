@@ -9,6 +9,22 @@ ensurePaymentRemiseColumns().catch((err) => {
   console.error('ensurePaymentRemiseColumns:', err);
 });
 
+async function ensurePaymentFlagColumn() {
+  try {
+    const [rows] = await pool.query("SHOW COLUMNS FROM payments LIKE 'payment'");
+    if (!Array.isArray(rows) || rows.length === 0) {
+      await pool.query("ALTER TABLE payments ADD COLUMN payment TINYINT(1) NOT NULL DEFAULT 0 AFTER image_url");
+    }
+  } catch (err) {
+    console.error('ensurePaymentFlagColumn:', err);
+    throw err;
+  }
+}
+
+ensurePaymentFlagColumn().catch((err) => {
+  console.error('ensurePaymentFlagColumn init:', err);
+});
+
 // date helpers
 const isYMD = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const isYMDTime = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s);
@@ -124,6 +140,7 @@ const toPayment = (r) => ({
   personnel: r.personnel || null,
   code_reglement: r.code_reglement || null,
   image_url: r.image_url || null,
+  payment: Number(r.payment ?? 0),
   talon_id: r.talon_id || null,
   statut: r.statut || null,
   created_by: r.created_by ?? null,
@@ -630,6 +647,7 @@ router.get('/:id', verifyToken, async (req, res) => {
 router.post('/', verifyToken, async (req, res) => {
 	try {
     await ensurePaymentRemiseColumns();
+    await ensurePaymentFlagColumn();
     const {
       type_paiement = 'Client',
 			contact_id,
@@ -644,6 +662,7 @@ router.post('/', verifyToken, async (req, res) => {
       personnel = null,
       code_reglement = null,
       image_url = null,
+      payment = 0,
       talon_id = null,
       created_by = null,
       remise_account_id = null,
@@ -666,6 +685,7 @@ router.post('/', verifyToken, async (req, res) => {
       const cleanBonId = bon_id ? Number(bon_id) : null;
       const cleanBonType = bon_type != null && String(bon_type).trim() !== '' ? String(bon_type).trim() : null;
       const cleanTalonId = talon_id ? Number(talon_id) : null;
+      const cleanPayment = Number(payment) === 1 ? 1 : 0;
       const cleanDatePaiement = toYMDTime(date_paiement, true);
       const cleanDateEcheance = toYMD(date_echeance);
 
@@ -766,10 +786,10 @@ router.post('/', verifyToken, async (req, res) => {
       const [result] = await connection.query(
       `INSERT INTO payments
         (numero, type_paiement, contact_id, remise_account_id, remise_account_type, remise_account_name, bon_id, bon_type, montant_total, mode_paiement, date_paiement, designation,
-         date_echeance, banque, personnel, code_reglement, image_url, talon_id, statut, created_by, created_at, date_ajout_reelle)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         date_echeance, banque, personnel, code_reglement, image_url, payment, talon_id, statut, created_by, created_at, date_ajout_reelle)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ['', remiseFields.typePaiement, remiseFields.contactId, remiseFields.remiseAccountId, remiseFields.remiseAccountType, remiseFields.remiseAccountName, cleanBonId, cleanBonType, montant_total, mode_paiement, cleanDatePaiement, designation,
-        cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanTalonId, statut, created_by, createdAtValue, dateAjoutReelleStr]
+        cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanPayment, cleanTalonId, statut, created_by, createdAtValue, dateAjoutReelleStr]
     );
       await connection.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
       const [rows] = await connection.query('SELECT * FROM payments WHERE id = ?', [result.insertId]);
@@ -796,6 +816,7 @@ router.post('/', verifyToken, async (req, res) => {
 router.put('/:id', verifyToken, async (req, res) => {
 	try {
     await ensurePaymentRemiseColumns();
+    await ensurePaymentFlagColumn();
     const { id } = req.params;
     const data = req.body || {};
     const [currentRows] = await pool.query('SELECT * FROM payments WHERE id = ?', [id]);
@@ -811,6 +832,9 @@ router.put('/:id', verifyToken, async (req, res) => {
     if (Object.hasOwn(data, 'date_echeance')) {
       const de = toYMD(data.date_echeance); // DATE simple
       data.date_echeance = de; // null allowed
+    }
+    if (Object.hasOwn(data, 'payment')) {
+      data.payment = Number(data.payment) === 1 ? 1 : 0;
     }
     // Validate statut if provided according to user role and normalize to canonical label
     const allowedAllPut = ['En attente','Validé','Refusé','Annulé'];
@@ -840,7 +864,7 @@ router.put('/:id', verifyToken, async (req, res) => {
 
       const fields = [
         'type_paiement','contact_id','remise_account_id','remise_account_type','remise_account_name','bon_id','bon_type','montant_total','mode_paiement','date_paiement','designation',
-        'date_echeance','banque','personnel','code_reglement','image_url','talon_id','statut','updated_by'
+        'date_echeance','banque','personnel','code_reglement','image_url','payment','talon_id','statut','updated_by'
       ];
       const setParts = [];
 		  const values = [];

@@ -65,6 +65,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { name: 'Bons', href: '/bons', icon: FileText, show: true },
         { name: 'Véhicules', href: '/vehicules', icon: Truck, show: isChefChauffeur || user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
         { name: 'Caisse', href: '/caisse', icon: CreditCard, show: !isChefChauffeur },
+        { name: 'Fond de caisse', href: '/fond-caisse', icon: Wallet, show: !isChefChauffeur },
         { name: 'Talons', href: '/talons', icon: ClipboardList, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
         { name: 'Talon Caisse', href: '/talon-caisse', icon: Wallet, show: !isChefChauffeur && (user?.role === 'PDG' || user?.role === 'ManagerPlus') },
       ],
