@@ -264,7 +264,18 @@ const CaissePage = () => {
 
   const getPaymentTypeBadge = (payment: Payment) => {
     if (payment.mode_paiement === 'Remise') return 'Remise';
+    if (payment.type_paiement === 'Fournisseur' && Number((payment as any).payment ?? 0) === 1) return 'Paiement FO';
     return payment.type_paiement;
+  };
+
+  const isSupplierFoPayment = (payment: Payment) =>
+    payment.type_paiement === 'Fournisseur' && Number((payment as any).payment ?? 0) === 1;
+
+  const getPaymentTypeBadgeClasses = (payment: Payment) => {
+    if (isSupplierFoPayment(payment)) return 'bg-purple-100 text-purple-800';
+    if (payment.type_paiement === 'Fournisseur') return 'bg-orange-100 text-orange-800';
+    if (payment.mode_paiement === 'Remise') return 'bg-amber-100 text-amber-800';
+    return 'bg-emerald-100 text-emerald-800';
   };
   
   // Bons from database: utiliser les mêmes sources que BonFormModal
@@ -945,6 +956,7 @@ const paymentValidationSchema = Yup.object({
         type_paiement: selectedPayment.type_paiement || 'Client',
         contact_optional: contactOptional,
         contact_id: selectedPayment.contact_id || '',
+        payment_fournisseur: Number((selectedPayment as any).payment || 0) === 1,
         remise_account_id: selectedPayment.remise_account_type === 'direct-client'
           ? (selectedPayment.contact_id ? String(DIRECT_CONTACT_OFFSET + Number(selectedPayment.contact_id)) : '')
           : (selectedPayment.remise_account_id || ''),
@@ -968,6 +980,7 @@ const paymentValidationSchema = Yup.object({
       type_paiement: 'Client',
       contact_optional: false,
       contact_id: '',
+      payment_fournisseur: false,
       remise_account_id: '',
       remise_filter_client_remise: true,
       remise_filter_client_abonne: true,
@@ -1056,6 +1069,7 @@ const paymentValidationSchema = Yup.object({
       contact_id: values.mode_paiement === 'Remise'
         ? (isDirectContact ? directContactId : (selectedRemiseAccount?.contact_id ? Number(selectedRemiseAccount.contact_id) : null))
         : (values.contact_id ? Number(values.contact_id) : null),
+      payment: values.type_paiement === 'Fournisseur' && values.payment_fournisseur ? 1 : 0,
       remise_account_id: values.mode_paiement === 'Remise' && !isDirectContact && selectedRemiseAccount ? Number(selectedRemiseAccount.id) : null,
       remise_account_type: values.mode_paiement === 'Remise'
         ? (isDirectContact ? 'direct-client' : (selectedRemiseAccount ? selectedRemiseAccount.type : null))
@@ -1110,6 +1124,7 @@ const paymentValidationSchema = Yup.object({
           banque: paymentData.banque,
           personnel: paymentData.personnel,
           code_reglement: paymentData.code_reglement,
+          payment: paymentData.payment,
           talon_id: paymentData.talon_id,
           image_url: paymentData.image_url,
           created_by: user?.id || 1,
@@ -1596,7 +1611,7 @@ const paymentValidationSchema = Yup.object({
                 paginatedPayments.map((payment: Payment) => (
                   <tr
                     key={payment.id}
-                    className={`hover:bg-gray-50 transition-colors ${payment.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70 shadow-[inset_0_0_0_9999px_rgba(34,197,94,0.06)]' : ''}`}
+                    className={`hover:bg-gray-50 transition-colors ${payment.statut === 'Validé' ? (isSupplierFoPayment(payment) ? 'bg-purple-100 border-l-4 border-purple-500/70 shadow-[inset_0_0_0_9999px_rgba(168,85,247,0.06)]' : 'bg-green-100 border-l-4 border-green-500/70 shadow-[inset_0_0_0_9999px_rgba(34,197,94,0.06)]') : ''}`}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{getDisplayNumeroPayment(payment)}</div>
@@ -1610,13 +1625,7 @@ const paymentValidationSchema = Yup.object({
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-sm text-gray-900">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            payment.type_paiement === 'Fournisseur'
-                              ? 'bg-orange-100 text-orange-800'
-                              : payment.mode_paiement === 'Remise'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-emerald-100 text-emerald-800'
-                          }`}
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getPaymentTypeBadgeClasses(payment)}`}
                         >
                           {getPaymentTypeBadge(payment)}
                         </span>
@@ -1910,7 +1919,7 @@ const paymentValidationSchema = Yup.object({
             return (
               <div
                 key={payment.id}
-                className={`rounded-lg shadow p-2 flex flex-col gap-2 transition-colors ${payment.statut === 'Validé' ? 'bg-green-100 border-l-4 border-green-500/70' : 'bg-white'}`}
+                className={`rounded-lg shadow p-2 flex flex-col gap-2 transition-colors ${payment.statut === 'Validé' ? (isSupplierFoPayment(payment) ? 'bg-purple-100 border-l-4 border-purple-500/70' : 'bg-green-100 border-l-4 border-green-500/70') : 'bg-white'}`}
               >
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
@@ -1925,7 +1934,7 @@ const paymentValidationSchema = Yup.object({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1 text-xs">
-                  <span className={`px-2 py-0.5 rounded-full ${payment.type_paiement === 'Fournisseur' ? 'bg-orange-100 text-orange-800' : payment.mode_paiement === 'Remise' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>{getPaymentTypeBadge(payment)}</span>
+                  <span className={`px-2 py-0.5 rounded-full ${getPaymentTypeBadgeClasses(payment)}`}>{getPaymentTypeBadge(payment)}</span>
                   <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{payment.mode_paiement}</span>
                   {payment.image_url && (payment.mode_paiement === 'Chèque' || payment.mode_paiement === 'Traite') && (
                     <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700">Image</span>
@@ -2230,6 +2239,7 @@ const paymentValidationSchema = Yup.object({
                           onChange={(e: any) => {
                             setFieldValue('type_paiement', e.target.value);
                             setFieldValue('contact_id', '');
+                            setFieldValue('payment_fournisseur', false);
                             setFieldValue('bon_id', '');
                           }}
                         >
@@ -2333,6 +2343,16 @@ const paymentValidationSchema = Yup.object({
                             autoOpenOnFocus={true}
                           />
                           <ErrorMessage name="contact_id" component="div" className="text-red-500 text-sm mt-1" />
+                          {isFournisseurPayment && values.contact_id && (
+                            <label className="mt-3 inline-flex items-center gap-2 text-sm text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(values.payment_fournisseur)}
+                                onChange={(e) => setFieldValue('payment_fournisseur', e.target.checked)}
+                              />
+                              Payment fournisseur
+                            </label>
+                          )}
                           {values.contact_id && (() => {
                             const totalCumule = getContactTotalCumule(values.contact_id, isFournisseurPayment ? 'Fournisseur' : 'Client');
                             if (totalCumule === null) return null;

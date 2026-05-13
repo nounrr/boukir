@@ -30,6 +30,7 @@ import ContactArchiverPage from './pages/ContactArchiverPage';
 import BonsPage from './pages/BonsPage';
 import VehiculesPage from './pages/VehiculesPage';
 import CaissePage from './pages/CaissePage';
+import FondCaissePage from './pages/FondCaissePage';
 import ReportsPage from './pages/ReportsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import CategoryManagementPage from './pages/CategoryManagementPage';
@@ -402,6 +403,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <CaissePage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/fond-caisse"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <FondCaissePage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

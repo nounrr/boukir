@@ -398,6 +398,10 @@ function filterCompletRowsBySearch(rows: CompletRow[], products: any[], search: 
   });
 }
 
+function isReverseSupplierPayment(payment: any): boolean {
+  return Number(payment?.payment ?? 0) === 1;
+}
+
 function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string, number> {
   const result = new Map<string, number>();
   let running = isNaN(soldeInitial) ? 0 : soldeInitial;
@@ -405,6 +409,8 @@ function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string,
     const montant = safeNum(row.data.montant_total ?? row.data.montant ?? 0);
     if (row.kind === 'commande') {
       running += montant;
+    } else if (row.kind === 'paiement') {
+      running += isReverseSupplierPayment(row.data) ? montant : -montant;
     } else {
       running -= montant;
     }
@@ -419,7 +425,7 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
   for (const row of rows) {
     if (row.kind === 'paiement') {
       const montant = safeNum(row.data.montant_total ?? row.data.montant ?? 0);
-      running -= montant;
+      running += isReverseSupplierPayment(row.data) ? montant : -montant;
       result.set(`paiement-${row.data.id}`, running);
     } else {
       const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
@@ -519,10 +525,10 @@ interface CompletTableProps {
 }
 
 const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string }> = {
-  commande:         { label: 'Commande',        badgeClass: 'bg-violet-100 text-violet-700', accentClass: 'text-violet-700', hoverClass: 'hover:bg-violet-50', itemBorderClass: 'border-violet-200', prefix: 'CMD' },
-  sortieVendreFournisseur: { label: 'Vendre Fourn.', badgeClass: 'bg-white/90 text-red-700', accentClass: 'text-black', hoverClass: 'hover:brightness-95', itemBorderClass: 'border-red-700', prefix: 'SVF', bgClass: 'colored-row bg-red-500/50' },
-  avoirFournisseur: { label: 'Avoir Fourn.',    badgeClass: 'bg-white/90 text-orange-700', accentClass: 'text-black', hoverClass: 'hover:brightness-95', itemBorderClass: 'border-orange-700', prefix: 'AVF', bgClass: 'colored-row bg-orange-500/50' },
-  avoirClientVendreFournisseur: { label: 'Avoir Vendre', badgeClass: 'bg-white/90 text-purple-700', accentClass: 'text-black', hoverClass: 'hover:brightness-95', itemBorderClass: 'border-purple-700', prefix: 'AVV', bgClass: 'colored-row bg-purple-500/50' },
+  commande:         { label: 'Commande',        badgeClass: 'bg-violet-100 text-violet-700', accentClass: 'text-violet-700', hoverClass: 'hover:bg-violet-50', itemBorderClass: 'border-violet-200', prefix: 'CMD', bgClass: 'colored-row bg-violet-50' },
+  sortieVendreFournisseur: { label: 'Vendre Fourn.', badgeClass: 'bg-red-100 text-red-700', accentClass: 'text-red-700', hoverClass: 'hover:bg-red-100', itemBorderClass: 'border-red-200', prefix: 'SVF', bgClass: 'colored-row bg-red-50' },
+  avoirFournisseur: { label: 'Avoir Fourn.',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-orange-700', hoverClass: 'hover:bg-orange-100', itemBorderClass: 'border-orange-200', prefix: 'AVF', bgClass: 'colored-row bg-orange-50' },
+  avoirClientVendreFournisseur: { label: 'Avoir Vendre', badgeClass: 'bg-purple-100 text-purple-700', accentClass: 'text-purple-700', hoverClass: 'hover:bg-purple-100', itemBorderClass: 'border-purple-200', prefix: 'AVV', bgClass: 'colored-row bg-purple-50' },
 };
 
 const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial, products = [], visibleIds, selectedIds, onToggleSelect, onToggleAll, selectedItemIds, onToggleItem, onToggleAllItems, onCompletDragEnd }) => {
@@ -645,6 +651,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
 
           if (row.kind === 'paiement') {
             const p = row.data;
+            const isSupplierFoPayment = Number(p.payment ?? 0) === 1;
             const rib = p.code_reglement || p.reference_virement || p.reference || null;
             const rowIndex = dragIndex++;
             return (
@@ -658,7 +665,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
               <tr
                 ref={dragProvided.innerRef}
                 {...dragProvided.draggableProps}
-                className={`transition-colors colored-row ${snapshot.isDragging ? 'shadow-lg bg-violet-500/50' : `hover:brightness-95 ${rowBg || 'bg-green-500/50'}`}`}
+                className={`transition-colors colored-row ${snapshot.isDragging ? 'shadow-lg bg-violet-100' : `${isSupplierFoPayment ? 'hover:bg-purple-100' : 'hover:bg-green-100'} ${rowBg || (isSupplierFoPayment ? 'bg-purple-50' : 'bg-green-50')}`}`}
               >
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
@@ -672,7 +679,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <span {...dragProvided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
                       <GripVertical className="w-4 h-4 text-gray-300 hover:text-gray-500" />
                     </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-white/90 text-green-700">Paiement</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isSupplierFoPayment ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{isSupplierFoPayment ? 'Paiement FO' : 'Paiement'}</span>
                   </span>
                 </td>
                 <td className="px-4 py-2.5 font-mono text-black font-medium text-xs">
@@ -702,7 +709,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   {rib ? <span className="flex items-center gap-1 font-mono text-gray-700"><Hash className="w-3 h-3 text-gray-400" />{rib}</span>
                        : <span className="text-gray-300">-</span>}
                 </td>
-                <td className="px-4 py-2.5 text-right font-semibold text-white">
+                <td className={`px-4 py-2.5 text-right font-semibold ${isSupplierFoPayment ? 'text-purple-700' : 'text-green-700'}`}>
                   {fmt(Number(p.montant_total ?? p.montant ?? 0))}
                 </td>
                 {detail && <td className="px-4 py-2.5 text-gray-300 text-xs">-</td>}
@@ -710,7 +717,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   {fmtSolde(soldeCumuleMap.get(`paiement-${p.id}`) ?? 0)}
                 </td>
                 <td className="px-4 py-2.5">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '-'}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isSupplierFoPayment ? 'bg-purple-100 text-purple-700' : modeColor(p.mode_paiement ?? '')}`}>{p.mode_paiement ?? '-'}</span>
                 </td>
               </tr>
                 )}
@@ -1354,6 +1361,7 @@ const FournisseurDetailPage: React.FC = () => {
           quantite: 0,
           prix_unitaire: 0,
           total: Number(data.montant_total ?? data.montant ?? 0),
+          payment: Number(data.payment ?? 0),
           bon_statut: data.statut ?? '',
           soldeCumulatif: soldeCumuleMap.get(`paiement-${data.id}`) ?? 0,
           type: 'paiement',
@@ -1412,7 +1420,8 @@ const FournisseurDetailPage: React.FC = () => {
       const type = String(row.type || '').toLowerCase();
       const amount = Number(row.total ?? 0);
       if (type === 'produit') scopedSolde += amount;
-      else if (type === 'paiement' || type === 'avoir') scopedSolde -= amount;
+      else if (type === 'paiement') scopedSolde += row.payment === 1 ? amount : -amount;
+      else if (type === 'avoir') scopedSolde -= amount;
       return { ...row, soldeCumulatif: scopedSolde };
     });
   }, [history, contact, filterFrom, filterTo, selectedIds, selectedItemIds, hasSelectionScopedPrint]);

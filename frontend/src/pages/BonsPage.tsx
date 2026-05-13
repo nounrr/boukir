@@ -2967,7 +2967,7 @@ const BonsPage = () => {
                             if (!canValidate) return null;
                             
                             // Show validation for different tab types
-                            const showForCommande = (effectiveCurrentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant'));
+                            const showForCommande = (effectiveCurrentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant' || effectiveCurrentTab === 'Charge'));
                             const showForAvoir = ((effectiveCurrentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || 
                               ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant')));
                             const showForDevis = effectiveCurrentTab === 'Devis' && (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus');

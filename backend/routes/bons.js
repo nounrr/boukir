@@ -72,7 +72,7 @@ const bonPagedConfigs = {
     prefix: 'CHG',
     contactExpr: 'c.nom_complet',
     contactIdExpr: 'b.client_id',
-    phoneExpr: 'b.phone',
+    phoneExpr: 'COALESCE(c.telephone, \'\')',
     amountExpr: 'b.montant_total',
     joins: `LEFT JOIN contacts c ON c.id = b.client_id`,
     selectExtra: `c.nom_complet AS client_nom`,
