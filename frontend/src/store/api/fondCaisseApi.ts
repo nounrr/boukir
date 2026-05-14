@@ -5,11 +5,15 @@ export type FondCaisseMouvement = {
   bonComptantPaye: number;
   paiementBonComptantNonPaye: number;
   paiementClientCaisse: number;
+  transfertVersCoffre: number;
   bonChargeInclusCaisse: number;
   bonVehicule: number;
-  avoirClient: number;
+  avoirComptant: number;
   entrees: number;
   sorties: number;
+  coffreEntrees: number;
+  coffreSorties: number;
+  mouvementNetCoffre: number;
   mouvementNet: number;
 };
 

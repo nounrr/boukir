@@ -4,6 +4,7 @@ import {
   FileText, Filter, BarChart3, TrendingUp, AlertTriangle, CheckCircle
 } from 'lucide-react';
 import { useGetVehiculesQuery, useDeleteVehiculeMutation } from '../store/api/vehiculesApi';
+import { useGetAllVehiculesBonsStatsQuery } from '../store/api/bonsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import VehiculeFormModal from '../components/VehiculeFormModal';
 import VehiculeDetailsModal from '../components/VehiculeDetailsModal';
@@ -33,6 +34,12 @@ const VehiculesPage = () => {
   // RTK Query hooks
   const { data: vehicules = [], isLoading } = useGetVehiculesQuery();
   const [deleteVehiculeMutation] = useDeleteVehiculeMutation();
+  const { data: vehStatsResp } = useGetAllVehiculesBonsStatsQuery();
+  const vehStatsMap = useMemo(() => {
+    const map = new Map<number, { bons_vehicule: { count: number; montant: number }; autres_bons: { count: number; montant: number } }>();
+    (vehStatsResp?.data || []).forEach(s => map.set(Number(s.vehicule_id), { bons_vehicule: s.bons_vehicule, autres_bons: s.autres_bons }));
+    return map;
+  }, [vehStatsResp]);
 
   // Calculs des statistiques (simulé pour l'instant sans les bons)
   const statistiques = useMemo(() => {
@@ -503,8 +510,17 @@ const VehiculesPage = () => {
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Date création
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Activité
+                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Nb Bons Véh.
+                </th>
+                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Montant Bons Véh.
+                </th>
+                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Nb Autres Bons
+                </th>
+                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  Montant Autres Bons
                 </th>
                 <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Actions
@@ -514,7 +530,7 @@ const VehiculesPage = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedVehicules.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center">
+                  <td colSpan={11} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center">
                       <Truck className="w-12 h-12 text-gray-400 mb-4" />
                       <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun véhicule trouvé</h3>
@@ -593,14 +609,30 @@ const VehiculesPage = () => {
                         {formatDateTimeWithHour(vehicule.date_creation)}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-medium text-gray-900">
-                          {statistiques.bonsParVehicule.get(vehicule.id) || 0}
-                        </div>
-                        <span className="text-xs text-gray-500">bons</span>
-                      </div>
-                    </td>
+                    {(() => {
+                      const s = vehStatsMap.get(vehicule.id) || { bons_vehicule: { count: 0, montant: 0 }, autres_bons: { count: 0, montant: 0 } };
+                      const fmt = (n: number) => Number(n || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+                      return (
+                        <>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
+                              {s.bons_vehicule.count}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <div className="text-sm font-semibold text-green-700">{fmt(s.bons_vehicule.montant)} DH</div>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                              {s.autres_bons.count}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <div className="text-sm font-semibold text-purple-700">{fmt(s.autres_bons.montant)} DH</div>
+                          </td>
+                        </>
+                      );
+                    })()}
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <div className="flex justify-end gap-2">
                         <button

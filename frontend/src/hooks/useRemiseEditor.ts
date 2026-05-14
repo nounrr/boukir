@@ -37,10 +37,14 @@ export interface UseRemiseEditorParams {
   onSaved?: () => Promise<void> | void;
 }
 
+export type RemiseTargetMode = 'abonne' | 'client';
+
 export function useRemiseEditor(params: UseRemiseEditorParams) {
   const { contact, enabled, visibleItems, sorties, comptants, onSaved } = params;
 
   const [showRemiseMode, setShowRemiseMode] = useState(false);
+  const [remiseTargetMode, setRemiseTargetMode] = useState<RemiseTargetMode>('abonne');
+  const [targetClientRemiseId, setTargetClientRemiseId] = useState<number | null>(null);
   const [remisePrices, setRemisePrices] = useState<Record<string, number>>({});
   const [selectedItemsForRemise, setSelectedItemsForRemise] = useState<Set<string>>(new Set());
 
@@ -86,7 +90,9 @@ export function useRemiseEditor(params: UseRemiseEditorParams) {
 
   // ────────────── actions UI ──────────────
 
-  const enterMode = useCallback(() => {
+  const enterMode = useCallback((mode: RemiseTargetMode = 'abonne') => {
+    setRemiseTargetMode(mode);
+    if (mode === 'abonne') setTargetClientRemiseId(null);
     setRemisePrices({});
     setSelectedItemsForRemise(new Set());
     setShowRemiseMode(true);
@@ -96,6 +102,7 @@ export function useRemiseEditor(params: UseRemiseEditorParams) {
     setShowRemiseMode(false);
     setRemisePrices({});
     setSelectedItemsForRemise(new Set());
+    setTargetClientRemiseId(null);
   }, []);
 
   const setItemPrice = useCallback((itemId: string, value: number) => {
@@ -221,6 +228,12 @@ export function useRemiseEditor(params: UseRemiseEditorParams) {
       showError('Aucune remise à enregistrer');
       return;
     }
+    if (remiseTargetMode === 'client' && !Number.isFinite(targetClientRemiseId as any)) {
+      console.warn('Mode client sans client-remise cible');
+      console.groupEnd();
+      showError('Sélectionnez un client remise cible');
+      return;
+    }
 
     try {
       const toApply = Array.from(selectedItemsForRemise)
@@ -318,9 +331,10 @@ export function useRemiseEditor(params: UseRemiseEditorParams) {
           isNotCalculated: patch.bon.isNotCalculated ? true : null,
           statut: patch.bon.statut || 'Brouillon',
           montant_total: updatedItems.reduce((sum: number, line: any) => sum + (Number(line.total) || 0), 0),
-          // Force "même client du bon" → la remise est créditée au client du bon
-          remise_is_client: 1,
-          remise_id: null,
+          // Mode 'abonne' → créditée au client du bon (remise sur remise_montant des items).
+          // Mode 'client' → créditée à un autre client-remise (le backend met les items à 0 et crée item_remises).
+          remise_is_client: remiseTargetMode === 'abonne' ? 1 : 0,
+          remise_id: remiseTargetMode === 'client' ? Number(targetClientRemiseId) : null,
           items: updatedItems,
           livraisons:
             Array.isArray(patch.bon?.livraisons) && patch.bon.livraisons.length > 0
@@ -385,6 +399,8 @@ export function useRemiseEditor(params: UseRemiseEditorParams) {
     comptants,
     updateBonMutation,
     onSaved,
+    remiseTargetMode,
+    targetClientRemiseId,
   ]);
 
   // Avoid "buildUpdatedBonPayload not used" warning while keeping it exported via closure.
@@ -392,6 +408,9 @@ export function useRemiseEditor(params: UseRemiseEditorParams) {
 
   return {
     showRemiseMode,
+    remiseTargetMode,
+    targetClientRemiseId,
+    setTargetClientRemiseId,
     remisePrices,
     selectedItemsForRemise,
     eligibleItems,

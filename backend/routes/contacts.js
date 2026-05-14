@@ -95,8 +95,10 @@ const BALANCE_EXPR = `
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
+      - COALESCE(sorties_vendre_fournisseur.total_sorties, 0)
       - COALESCE(paiements_fournisseur.total_paiements, 0)
       - COALESCE(avoirs_fournisseur.total_avoirs, 0)
+      + COALESCE(avoirs_vendre_fournisseur.total_avoirs, 0)
     ELSE COALESCE(c.solde, 0)
   END
 `;
@@ -116,8 +118,10 @@ const TOTAL_CUMULE_EXPR = `
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
+      - COALESCE(sorties_vendre_fournisseur.total_sorties, 0)
       - COALESCE(paiements_fournisseur.total_paiements, 0)
       - COALESCE(avoirs_fournisseur.total_avoirs, 0)
+      + COALESCE(avoirs_vendre_fournisseur.total_avoirs, 0)
     ELSE NULL
   END
 `;
@@ -151,7 +155,7 @@ const SINGLE_CONTACT_QUERY = `
             FROM bons_commande bc
             WHERE bc.fournisseur_id = c.id
               AND LOWER(TRIM(bc.statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-          ), 0) +
+          ), 0) -
           COALESCE((
             SELECT SUM(bs.montant_total)
             FROM bons_sortie bs
@@ -203,7 +207,7 @@ const SINGLE_CONTACT_QUERY = `
             FROM avoirs_fournisseur af
             WHERE af.fournisseur_id = c.id
               AND LOWER(TRIM(af.statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-          ), 0) +
+          ), 0) -
           COALESCE((
             SELECT SUM(acf.montant_total)
             FROM avoirs_client acf
@@ -267,7 +271,7 @@ const SINGLE_CONTACT_QUERY = `
             WHERE bc.fournisseur_id = c.id
               AND LOWER(TRIM(bc.statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
           ), 0)
-          + COALESCE((
+          - COALESCE((
             SELECT SUM(bs.montant_total)
             FROM bons_sortie bs
             WHERE bs.fournisseur_id = c.id
@@ -288,7 +292,7 @@ const SINGLE_CONTACT_QUERY = `
             WHERE af.fournisseur_id = c.id
               AND LOWER(TRIM(af.statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
           ), 0)
-          - COALESCE((
+          + COALESCE((
             SELECT SUM(acf.montant_total)
             FROM avoirs_client acf
             WHERE acf.fournisseur_id = c.id
@@ -345,6 +349,7 @@ router.get('/', async (req, res) => {
           + COALESCE(ventes_ecommerce.total_ventes, 0)
           + COALESCE(charges_client.total_charges, 0)
           + COALESCE(achats_fournisseur.total_achats, 0)
+          - COALESCE(sorties_vendre_fournisseur.total_sorties, 0)
         ) AS total_ventes,
         (
           COALESCE(paiements_client.total_paiements, 0)
@@ -353,6 +358,7 @@ router.get('/', async (req, res) => {
         (
           COALESCE(avoirs_client.total_avoirs, 0)
           + COALESCE(avoirs_fournisseur.total_avoirs, 0)
+          - COALESCE(avoirs_vendre_fournisseur.total_avoirs, 0)
         ) AS total_avoirs
       FROM contacts c
 
@@ -400,23 +406,24 @@ router.get('/', async (req, res) => {
         GROUP BY client_id
       ) charges_client ON charges_client.client_id = c.id AND c.type = 'Client'
 
-      -- Achats fournisseur = bons_commande + bons_sortie(vendre au fournisseur)
+      -- Achats fournisseur = bons_commande
       LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_achats
-        FROM (
-          SELECT fournisseur_id, montant_total
-          FROM bons_commande
-          WHERE fournisseur_id IS NOT NULL
-            AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-          UNION ALL
-          SELECT fournisseur_id, montant_total
-          FROM bons_sortie
-          WHERE fournisseur_id IS NOT NULL
-            AND COALESCE(vendre_au_fournisseur, 0) = 1
-            AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        ) supplier_bons
+        FROM bons_commande
+        WHERE fournisseur_id IS NOT NULL
+          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
         GROUP BY fournisseur_id
       ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+
+      -- Sorties vendre fournisseur: deduites du cumul fournisseur
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_sorties
+        FROM bons_sortie
+        WHERE fournisseur_id IS NOT NULL
+          AND COALESCE(vendre_au_fournisseur, 0) = 1
+          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
+        GROUP BY fournisseur_id
+      ) sorties_vendre_fournisseur ON sorties_vendre_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
 
       -- Paiements client
       LEFT JOIN (
@@ -447,22 +454,24 @@ router.get('/', async (req, res) => {
         GROUP BY client_id
       ) avoirs_client ON avoirs_client.client_id = c.id AND c.type = 'Client'
 
-      -- Avoirs fournisseur = avoirs_fournisseur + avoirs_client(vendre au fournisseur)
+      -- Avoirs fournisseur classiques
       LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
-        FROM (
-          SELECT fournisseur_id, montant_total
-          FROM avoirs_fournisseur
-          WHERE LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-          UNION ALL
-          SELECT fournisseur_id, montant_total
-          FROM avoirs_client
-          WHERE fournisseur_id IS NOT NULL
-            AND COALESCE(vendre_au_fournisseur, 0) = 1
-            AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        ) supplier_avoirs
+        FROM avoirs_fournisseur
+        WHERE fournisseur_id IS NOT NULL
+          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
         GROUP BY fournisseur_id
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+
+      -- Avoir vendre fournisseur: ajoute au cumul fournisseur
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_client
+        WHERE fournisseur_id IS NOT NULL
+          AND COALESCE(vendre_au_fournisseur, 0) = 1
+          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
+        GROUP BY fournisseur_id
+      ) avoirs_vendre_fournisseur ON avoirs_vendre_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
     `;
 
     const { whereSql, params } = applyContactsFilters({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge: exclude_charge === 'true', onlyCharge: only_charge === 'true' });
@@ -538,10 +547,10 @@ router.get('/', async (req, res) => {
           WHEN c.type = 'Fournisseur' THEN
             COALESCE(c.solde, 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_commande WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            + COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             - COALESCE((SELECT ${SUPPLIER_PAYMENT_SUM_EXPR} FROM payments WHERE type_paiement = 'Fournisseur' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_fournisseur WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            - COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            + COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           ELSE NULL 
         END), 0) AS grand_total_cumule,
         COALESCE(SUM(CASE 
@@ -550,7 +559,7 @@ router.get('/', async (req, res) => {
             + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
             COALESCE((SELECT SUM(montant_total) FROM bons_commande WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            + COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           ELSE NULL 
         END), 0) AS grand_total_ventes,
         COALESCE(SUM(CASE
@@ -570,7 +579,7 @@ router.get('/', async (req, res) => {
             COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE client_id = c.id AND statut IN ('En attente','Valide','Applique') AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
             COALESCE((SELECT SUM(montant_total) FROM avoirs_fournisseur WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            + COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           ELSE NULL 
         END), 0) AS grand_total_avoirs
       FROM contacts c${totalWhereSql}
@@ -656,20 +665,20 @@ router.get('/summary', async (req, res) => {
 
       LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_achats
-        FROM (
-          SELECT fournisseur_id, montant_total
-          FROM bons_commande
-          WHERE fournisseur_id IS NOT NULL
-            AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-          UNION ALL
-          SELECT fournisseur_id, montant_total
-          FROM bons_sortie
-          WHERE fournisseur_id IS NOT NULL
-            AND COALESCE(vendre_au_fournisseur, 0) = 1
-            AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        ) supplier_bons
+        FROM bons_commande
+        WHERE fournisseur_id IS NOT NULL
+          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
         GROUP BY fournisseur_id
       ) achats_fournisseur ON achats_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_sorties
+        FROM bons_sortie
+        WHERE fournisseur_id IS NOT NULL
+          AND COALESCE(vendre_au_fournisseur, 0) = 1
+          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
+        GROUP BY fournisseur_id
+      ) sorties_vendre_fournisseur ON sorties_vendre_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
 
       LEFT JOIN (
       SELECT contact_id, SUM(montant_total) AS total_paiements
@@ -699,19 +708,20 @@ router.get('/summary', async (req, res) => {
 
       LEFT JOIN (
         SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
-        FROM (
-          SELECT fournisseur_id, montant_total
-          FROM avoirs_fournisseur
-          WHERE LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-          UNION ALL
-          SELECT fournisseur_id, montant_total
-          FROM avoirs_client
-          WHERE fournisseur_id IS NOT NULL
-            AND COALESCE(vendre_au_fournisseur, 0) = 1
-            AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
-        ) supplier_avoirs
+        FROM avoirs_fournisseur
+        WHERE fournisseur_id IS NOT NULL
+          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
         GROUP BY fournisseur_id
       ) avoirs_fournisseur ON avoirs_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
+
+      LEFT JOIN (
+        SELECT fournisseur_id, SUM(montant_total) AS total_avoirs
+        FROM avoirs_client
+        WHERE fournisseur_id IS NOT NULL
+          AND COALESCE(vendre_au_fournisseur, 0) = 1
+          AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
+        GROUP BY fournisseur_id
+      ) avoirs_vendre_fournisseur ON avoirs_vendre_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
       ${whereSql}
     `;
 
@@ -1492,6 +1502,8 @@ router.get('/:id/history', async (req, res) => {
     const legacyNameWhere = legacyNames.length
       ? ` OR (cr.contact_id IS NULL AND cr.type = 'client_abonne' AND LOWER(TRIM(cr.nom)) IN (${legacyNames.map(() => '?').join(',')}))`
       : '';
+    // On inclut aussi les client_remises dont des item_remises sont liées à un bon (Sortie/Comptant) de ce contact,
+    // afin que les remises envoyées vers un autre client-remise apparaissent sur la ligne du bon du client émetteur.
     const [remisesRows] = await pool.query(`
       SELECT
         cr.*,
@@ -1517,9 +1529,19 @@ router.get('/:id/history', async (req, res) => {
       LEFT JOIN item_remises ir ON ir.client_remise_id = cr.id
       LEFT JOIN products p ON p.id = ir.product_id
       WHERE cr.contact_id = ?${legacyNameWhere}
+         OR cr.id IN (
+           SELECT DISTINCT ir2.client_remise_id
+           FROM item_remises ir2
+           WHERE ir2.bon_id IS NOT NULL
+             AND (
+               (ir2.bon_type = 'Sortie'   AND ir2.bon_id IN (SELECT id FROM bons_sortie   WHERE client_id = ?))
+               OR
+               (ir2.bon_type = 'Comptant' AND ir2.bon_id IN (SELECT id FROM bons_comptant WHERE client_id = ?))
+             )
+         )
       GROUP BY cr.id
       ORDER BY cr.id DESC
-    `, [contactId, ...legacyNames.map((value) => value.toLowerCase())]);
+    `, [contactId, ...legacyNames.map((value) => value.toLowerCase()), contactId, contactId]);
 
     const normalizeItems = (rows, type, prefix) => rows.map((row) => {
       let parsedItems = [];
@@ -1671,12 +1693,18 @@ router.get('/:id/history', async (req, res) => {
     const isClientContact = contact.type === 'Client';
     const getHistoryAmountSigned = (row, amount) => {
       if (row.type === 'charge_produit') return -amount; // bons_charge = debit, adds to balance owed
-      if (row.type === 'produit') return isClientContact ? -amount : amount;
+      if (row.type === 'produit') {
+        if (isClientContact) return -amount;
+        return row.bon_type === 'SortieVendreFournisseur' ? -amount : amount;
+      }
       if (row.type === 'paiement') {
         if (isClientContact) return amount;
         return Number(row.payment || 0) === 1 ? amount : -amount;
       }
-      if (row.type === 'avoir') return isClientContact ? amount : -amount;
+      if (row.type === 'avoir') {
+        if (isClientContact) return amount;
+        return row.bon_type === 'AvoirClientVendreFournisseur' ? amount : -amount;
+      }
       return 0;
     };
 

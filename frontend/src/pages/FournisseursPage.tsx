@@ -4,11 +4,11 @@ import {
   Search, Users, Phone, Mail, MapPin, Building2,
   ChevronLeft, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown,
   FileText, CreditCard, RotateCcw, Calendar, Hash, ArrowLeft, Plus,
-  Package, Printer, ShoppingCart, GripVertical, ChevronDown, ChevronUp,
+  Package, Printer, ShoppingCart, GripVertical, ChevronDown, ChevronUp, Edit, Trash2,
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { useGetFournisseursQuery, useGetContactHistoryQuery, useGetContactQuery } from '../store/api/contactsApi';
+import { useGetFournisseursQuery, useGetContactHistoryQuery, useGetContactQuery, useDeleteContactMutation } from '../store/api/contactsApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
@@ -17,6 +17,9 @@ import ContactFormModal from '../components/ContactFormModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
 import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
 import { getUiBadgeStyle, getUiLineConfig, getUiRowStyle } from '../utils/uiSettings';
+import { showConfirmation, showError, showSuccess } from '../utils/notifications';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../store';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
 
@@ -415,6 +418,10 @@ function isReverseSupplierPayment(payment: any): boolean {
   return Number(payment?.payment ?? 0) === 1;
 }
 
+function getSupplierDocSign(kind: Exclude<CompletRow['kind'], 'paiement'>): 1 | -1 {
+  return kind === 'commande' || kind === 'avoirClientVendreFournisseur' ? 1 : -1;
+}
+
 function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string, number> {
   const result = new Map<string, number>();
   let running = isNaN(soldeInitial) ? 0 : soldeInitial;
@@ -425,7 +432,7 @@ function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string,
     } else if (row.kind === 'paiement') {
       running += isReverseSupplierPayment(row.data) ? montant : -montant;
     } else {
-      running -= montant;
+      running += getSupplierDocSign(row.kind) * montant;
     }
     result.set(`${row.kind}-${row.data.id}`, running);
   }
@@ -444,8 +451,7 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
       const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
       if (items.length === 0) {
         const montant = safeNum(row.data.montant_total ?? row.data.montant ?? 0);
-        if (row.kind === 'commande' || row.kind === 'sortieVendreFournisseur') running += montant;
-        else running -= montant;
+        running += getSupplierDocSign(row.kind) * montant;
         result.set(`${row.kind}-${row.data.id}-item-0`, running);
       } else {
         const bonMontant = safeNum(row.data.montant_total ?? row.data.montant ?? 0);
@@ -457,8 +463,7 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
           const total = itemsSum === 0
             ? (iIdx === items.length - 1 ? bonMontant : 0)
             : rawTotal;
-          if (row.kind === 'commande' || row.kind === 'sortieVendreFournisseur') running += total;
-          else running -= total;
+          running += getSupplierDocSign(row.kind) * total;
           result.set(`${row.kind}-${row.data.id}-item-${iIdx}`, running);
         });
       }
@@ -1830,6 +1835,9 @@ const readSavedFournisseursState = (): FournisseursListSavedState => {
 const FournisseursListPage: React.FC = () => {
   const navigate = useNavigate();
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [deleteContact] = useDeleteContactMutation();
+  const currentUser = useSelector((state: RootState) => state.auth.user);
   const savedState = React.useRef<FournisseursListSavedState>(readSavedFournisseursState()).current;
   const [currentPage, setCurrentPage] = useState(savedState.currentPage ?? 1);
   const [itemsPerPage, setItemsPerPage] = useState(savedState.itemsPerPage ?? 0);
@@ -1879,6 +1887,33 @@ const FournisseursListPage: React.FC = () => {
     navigate(`/fournisseurs/${id}`);
   };
 
+  const handleCreate = () => {
+    setEditingContact(null);
+    setIsContactModalOpen(true);
+  };
+
+  const handleEdit = (contact: Contact) => {
+    setEditingContact(contact);
+    setIsContactModalOpen(true);
+  };
+
+  const handleDelete = async (contact: Contact) => {
+    const result = await showConfirmation(
+      'Cette action est irréversible.',
+      `Voulez-vous vraiment supprimer le fournisseur "${contact.nom_complet || contact.societe || `#${contact.id}`}" ?`,
+      'Supprimer',
+      'Annuler'
+    );
+    if (!result.isConfirmed) return;
+
+    try {
+      await deleteContact({ id: contact.id, updated_by: currentUser?.id ?? 0 }).unwrap();
+      showSuccess('Fournisseur supprimé avec succès');
+    } catch (error: any) {
+      showError(error?.data?.error || error?.message || 'Erreur lors de la suppression du fournisseur');
+    }
+  };
+
   const totalCumuleFournisseurs = fournisseurs.reduce(
     (acc: number, f: any) => acc + (Number(f?.total_cumule) || 0),
     0
@@ -1918,7 +1953,7 @@ const FournisseursListPage: React.FC = () => {
         </div>
         <button
           type="button"
-          onClick={() => setIsContactModalOpen(true)}
+          onClick={handleCreate}
           className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -1970,19 +2005,20 @@ const FournisseursListPage: React.FC = () => {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 cursor-pointer select-none hover:text-violet-600" onClick={() => handleSort('total_cumule')}>
                   Total cumule <SortIcon col="total_cumule" />
                 </th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 w-28">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {isLoading || isFetching
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 8 }).map((_, j) => (
+                      {Array.from({ length: 9 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-3/4" /></td>
                       ))}
                     </tr>
                   ))
                 : fournisseurs.length === 0
-                  ? <tr><td colSpan={8} className="px-4 py-14 text-center text-gray-400">
+                  ? <tr><td colSpan={9} className="px-4 py-14 text-center text-gray-400">
                       <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" /><p>Aucun fournisseur trouve</p>
                     </td></tr>
                   : fournisseurs.map((f: Contact, idx: number) => (
@@ -2032,6 +2068,34 @@ const FournisseursListPage: React.FC = () => {
                               </span>
                             : <span className="text-gray-300 text-xs">-</span>}
                         </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEdit(f);
+                              }}
+                              className="p-2 rounded-md text-violet-600 hover:bg-violet-100 hover:text-violet-700 transition-colors"
+                              title="Modifier"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            {currentUser?.role === 'PDG' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(f);
+                                }}
+                                className="p-2 rounded-md text-red-600 hover:bg-red-100 hover:text-red-700 transition-colors"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))
               }
@@ -2068,10 +2132,17 @@ const FournisseursListPage: React.FC = () => {
 
       <ContactFormModal
         isOpen={isContactModalOpen}
-        onClose={() => setIsContactModalOpen(false)}
+        onClose={() => {
+          setIsContactModalOpen(false);
+          setEditingContact(null);
+        }}
         contactType="Fournisseur"
+        initialValues={editingContact || undefined}
         defaultIsCharge={false}
-        onContactAdded={() => setIsContactModalOpen(false)}
+        onContactAdded={() => {
+          setIsContactModalOpen(false);
+          setEditingContact(null);
+        }}
       />
     </div>
   );

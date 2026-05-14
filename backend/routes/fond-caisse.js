@@ -22,6 +22,8 @@ async function ensureFondCaisseEntriesTable(db = pool) {
     CREATE TABLE IF NOT EXISTS fond_caisse_entries (
       id INT NOT NULL AUTO_INCREMENT,
       montant DECIMAL(12,2) NOT NULL DEFAULT 0,
+      entry_type VARCHAR(50) NOT NULL DEFAULT 'caisse_initial',
+      note VARCHAR(255) NULL,
       opened_at DATETIME NOT NULL,
       jour DATE NOT NULL,
       created_by INT NULL,
@@ -33,6 +35,24 @@ async function ensureFondCaisseEntriesTable(db = pool) {
       KEY idx_fond_caisse_entries_created_by (created_by)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  try {
+    const [typeCols] = await db.query("SHOW COLUMNS FROM fond_caisse_entries LIKE 'entry_type'");
+    if (!Array.isArray(typeCols) || typeCols.length === 0) {
+      await db.query("ALTER TABLE fond_caisse_entries ADD COLUMN entry_type VARCHAR(50) NOT NULL DEFAULT 'caisse_initial' AFTER montant");
+    }
+  } catch (error) {
+    console.error('ensureFondCaisseEntriesTable entry_type:', error);
+  }
+
+  try {
+    const [noteCols] = await db.query("SHOW COLUMNS FROM fond_caisse_entries LIKE 'note'");
+    if (!Array.isArray(noteCols) || noteCols.length === 0) {
+      await db.query("ALTER TABLE fond_caisse_entries ADD COLUMN note VARCHAR(255) NULL AFTER entry_type");
+    }
+  } catch (error) {
+    console.error('ensureFondCaisseEntriesTable note:', error);
+  }
 }
 
 ensureFondCaisseEntriesTable().catch((error) => {
@@ -84,12 +104,16 @@ const formatDateTimeValue = (value) => {
 const mapEntry = (row) => ({
   id: Number(row.id),
   montant: toNumber(row.montant),
+  entryType: String(row.entry_type || 'caisse_initial'),
+  note: row.note || '',
   openedAt: formatDateTimeValue(row.opened_at),
   jour: formatDateValue(row.jour),
   createdByUserId: row.created_by == null ? null : Number(row.created_by),
   createdByName: row.created_by_name || 'Inconnu',
   createdAt: formatDateTimeValue(row.created_at),
 });
+
+const ALLOWED_ENTRY_TYPES = new Set(['caisse_initial', 'coffre_initial', 'transfer_to_coffre']);
 
 async function getEmployeeName(userId) {
   if (!userId) return null;
@@ -128,7 +152,8 @@ function mergeMovement(target, jour, values) {
     paiementClientCaisse: 0,
     bonChargeInclusCaisse: 0,
     bonVehicule: 0,
-    avoirClient: 0,
+    avoirComptant: 0,
+    transfertVersCoffre: 0,
   };
   for (const [field, value] of Object.entries(values)) {
     current[field] = toNumber(current[field]) + toNumber(value);
@@ -159,9 +184,14 @@ router.post('/entries', async (req, res) => {
     await ensureFondCaisseEntriesTable();
 
     const montant = Number(req.body?.montant);
+    const entryType = String(req.body?.entryType || 'caisse_initial').trim();
+    const note = req.body?.note != null ? String(req.body.note).trim() : null;
     const openedAt = normalizeSqlDateTime(req.body?.openedAt);
     if (!Number.isFinite(montant) || montant < 0) {
       return res.status(400).json({ message: 'Montant invalide' });
+    }
+    if (!ALLOWED_ENTRY_TYPES.has(entryType)) {
+      return res.status(400).json({ message: "Type d'entree invalide" });
     }
     if (!openedAt) {
       return res.status(400).json({ message: 'Date ouverture invalide' });
@@ -172,9 +202,9 @@ router.post('/entries', async (req, res) => {
     const createdByName = await getEmployeeName(createdBy) || req.user?.cin || 'Caissier';
 
     const [result] = await pool.query(
-      `INSERT INTO fond_caisse_entries (montant, opened_at, jour, created_by, created_by_name)
-       VALUES (?, ?, ?, ?, ?)`,
-      [montant, openedAt, jour, createdBy, createdByName]
+      `INSERT INTO fond_caisse_entries (montant, entry_type, note, opened_at, jour, created_by, created_by_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [montant, entryType, note, openedAt, jour, createdBy, createdByName]
     );
 
     const [rows] = await pool.query('SELECT * FROM fond_caisse_entries WHERE id = ? LIMIT 1', [result.insertId]);
@@ -234,15 +264,34 @@ router.get('/days/:date', async (req, res) => {
           SELECT
             id,
             opened_at AS action_date,
-            'Fond initial' AS type,
-            'ENTREE' AS direction,
+            CASE
+              WHEN entry_type = 'caisse_initial' THEN 'Fond initial caisse'
+              WHEN entry_type = 'transfer_to_coffre' THEN 'Transfert vers coffre'
+              ELSE 'Fond initial'
+            END AS type,
+            CASE
+              WHEN entry_type = 'transfer_to_coffre' THEN 'SORTIE'
+              ELSE 'ENTREE'
+            END AS direction,
             montant AS amount,
-            CONCAT('FC-', id) AS reference,
+            CASE
+              WHEN entry_type = 'caisse_initial' THEN CONCAT('FC-', id)
+              WHEN entry_type = 'transfer_to_coffre' THEN CONCAT('TRC-', id)
+              ELSE CONCAT('FND-', id)
+            END AS reference,
             created_by_name AS actor,
             NULL AS statut,
-            'Fond de caisse saisi' AS description
+            COALESCE(
+              note,
+              CASE
+                WHEN entry_type = 'caisse_initial' THEN 'Fond de caisse saisi'
+                WHEN entry_type = 'transfer_to_coffre' THEN 'Montant retire de la caisse et place dans le coffre'
+                ELSE 'Ecriture de caisse'
+              END
+            ) AS description
           FROM fond_caisse_entries
           WHERE jour = ?
+            AND entry_type IN ('caisse_initial', 'transfer_to_coffre')
         `,
       },
       {
@@ -289,20 +338,40 @@ router.get('/days/:date', async (req, res) => {
           SELECT
             p.id,
             p.date_paiement AS action_date,
-            'Paiement client caisse' AS type,
+            'Paiement caisse' AS type,
             'ENTREE' AS direction,
             p.montant_total AS amount,
             COALESCE(p.numero, CONCAT('PAY', p.id)) AS reference,
             COALESCE(c.nom_complet, p.remise_account_name, '') AS actor,
             p.statut,
-            COALESCE(p.designation, 'Paiement client') AS description
+            COALESCE(p.designation, 'Paiement caisse') AS description
           FROM payments p
           LEFT JOIN contacts c ON c.id = p.contact_id
           WHERE DATE(p.date_paiement) = ?
-            AND p.type_paiement = 'Client'
             AND COALESCE(p.bon_type, '') <> 'Comptant'
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
+            AND (
+              p.type_paiement = 'Client'
+              OR (
+                p.type_paiement = 'Fournisseur'
+                AND (
+                  (COALESCE(p.bon_type, '') = 'Sortie' AND EXISTS (
+                    SELECT 1
+                    FROM bons_sortie bs
+                    WHERE bs.id = p.bon_id
+                      AND COALESCE(bs.vendre_au_fournisseur, 0) = 1
+                  ))
+                  OR
+                  (COALESCE(p.bon_type, '') = 'Avoir' AND EXISTS (
+                    SELECT 1
+                    FROM avoirs_client ac
+                    WHERE ac.id = p.bon_id
+                      AND COALESCE(ac.vendre_au_fournisseur, 0) = 1
+                  ))
+                )
+              )
+            )
         `,
       },
       {
@@ -345,22 +414,21 @@ router.get('/days/:date', async (req, res) => {
         `,
       },
       {
-        label: 'avoirs_client',
+        label: 'avoirs_comptant',
         sql: `
           SELECT
-            ac.id,
-            ac.date_creation AS action_date,
-            'Avoir client' AS type,
+            acp.id,
+            acp.date_creation AS action_date,
+            'Avoir comptant' AS type,
             'SORTIE' AS direction,
-            ac.montant_total AS amount,
-            CONCAT('AVC', LPAD(ac.id, 2, '0')) AS reference,
-            COALESCE(c.nom_complet, '') AS actor,
-            ac.statut,
-            COALESCE(ac.lieu_chargement, 'Avoir client') AS description
-          FROM avoirs_client ac
-          LEFT JOIN contacts c ON c.id = ac.client_id
-          WHERE DATE(ac.date_creation) = ?
-            AND LOWER(COALESCE(ac.statut, '')) NOT LIKE 'annul%'
+            acp.montant_total AS amount,
+            CONCAT('AVCC', LPAD(acp.id, 2, '0')) AS reference,
+            COALESCE(acp.client_nom, '') AS actor,
+            acp.statut,
+            COALESCE(acp.lieu_chargement, 'Avoir comptant') AS description
+          FROM avoirs_comptant acp
+          WHERE DATE(acp.date_creation) = ?
+            AND LOWER(COALESCE(acp.statut, '')) NOT LIKE 'annul%'
         `,
       },
     ];
@@ -460,11 +528,42 @@ router.get('/mouvements', async (req, res) => {
           SELECT DATE(date_paiement) AS jour, COALESCE(SUM(montant_total), 0) AS total
             FROM payments
            WHERE DATE(date_paiement) BETWEEN ? AND ?
-             AND type_paiement = 'Client'
              AND COALESCE(bon_type, '') <> 'Comptant'
              AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(statut, '')) NOT LIKE 'refus%'
+             AND (
+               type_paiement = 'Client'
+               OR (
+                 type_paiement = 'Fournisseur'
+                 AND (
+                   (COALESCE(bon_type, '') = 'Sortie' AND EXISTS (
+                     SELECT 1
+                     FROM bons_sortie bs
+                     WHERE bs.id = payments.bon_id
+                       AND COALESCE(bs.vendre_au_fournisseur, 0) = 1
+                   ))
+                   OR
+                   (COALESCE(bon_type, '') = 'Avoir' AND EXISTS (
+                     SELECT 1
+                     FROM avoirs_client ac
+                     WHERE ac.id = payments.bon_id
+                       AND COALESCE(ac.vendre_au_fournisseur, 0) = 1
+                   ))
+                 )
+               )
+             )
            GROUP BY DATE(date_paiement)
+        `,
+      },
+      {
+        label: 'transfert_vers_coffre',
+        field: 'transfertVersCoffre',
+        sql: `
+          SELECT DATE(opened_at) AS jour, COALESCE(SUM(montant), 0) AS total
+            FROM fond_caisse_entries
+           WHERE DATE(opened_at) BETWEEN ? AND ?
+             AND entry_type = 'transfer_to_coffre'
+           GROUP BY DATE(opened_at)
         `,
       },
       {
@@ -497,11 +596,11 @@ router.get('/mouvements', async (req, res) => {
         `,
       },
       {
-        label: 'avoirs_client',
-        field: 'avoirClient',
+        label: 'avoirs_comptant',
+        field: 'avoirComptant',
         sql: `
           SELECT DATE(date_creation) AS jour, COALESCE(SUM(montant_total), 0) AS total
-            FROM avoirs_client
+            FROM avoirs_comptant
            WHERE DATE(date_creation) BETWEEN ? AND ?
              AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
            GROUP BY DATE(date_creation)
@@ -523,22 +622,27 @@ router.get('/mouvements', async (req, res) => {
         const bonComptantPaye = toNumber(row.bonComptantPaye);
         const paiementBonComptantNonPaye = toNumber(row.paiementBonComptantNonPaye);
         const paiementClientCaisse = toNumber(row.paiementClientCaisse);
+        const transfertVersCoffre = toNumber(row.transfertVersCoffre);
         const bonChargeInclusCaisse = toNumber(row.bonChargeInclusCaisse);
         const bonVehicule = toNumber(row.bonVehicule);
-        const avoirClient = toNumber(row.avoirClient);
+        const avoirComptant = toNumber(row.avoirComptant);
         const entrees = bonComptantPaye + paiementBonComptantNonPaye + paiementClientCaisse;
-        const sorties = bonChargeInclusCaisse + bonVehicule + avoirClient;
+        const sorties = bonChargeInclusCaisse + bonVehicule + avoirComptant + transfertVersCoffre;
 
         return {
           jour: row.jour,
           bonComptantPaye,
           paiementBonComptantNonPaye,
           paiementClientCaisse,
+          transfertVersCoffre,
           bonChargeInclusCaisse,
           bonVehicule,
-          avoirClient,
+          avoirComptant,
           entrees,
           sorties,
+          coffreEntrees: transfertVersCoffre,
+          coffreSorties: 0,
+          mouvementNetCoffre: transfertVersCoffre,
           mouvementNet: entrees - sorties,
         };
       }),

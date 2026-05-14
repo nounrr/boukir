@@ -14,6 +14,7 @@ type PagedBonsArgs = {
   sortBy?: 'numero' | 'date' | 'contact' | 'montant';
   sortDir?: 'asc' | 'desc';
   paymentState?: 'paid' | 'unpaid' | 'vendre_fournisseur' | 'normal_sortie' | 'normal_avoir_client';
+  vehiculeId?: number;
 };
 
 type PagedBonsResponse = {
@@ -390,6 +391,34 @@ export const bonsApi = api.injectEndpoints({
       },
     }),
 
+    getAllVehiculesBonsStats: builder.query<{
+      data: Array<{
+        vehicule_id: number;
+        bons_vehicule: { count: number; montant: number };
+        autres_bons: { count: number; montant: number };
+      }>;
+    }, void>({
+      query: () => '/bons/vehicules-stats',
+      providesTags: [{ type: 'Bon', id: 'LIST' }],
+    }),
+
+    getVehiculeBonsStats: builder.query<{
+      vehicule_id: number;
+      bons_vehicule: { count: number; montant: number };
+      autres_bons: {
+        count: number;
+        montant: number;
+        par_type: {
+          Sortie: { count: number; montant: number };
+          Comptant: { count: number; montant: number };
+          Commande: { count: number; montant: number };
+        };
+      };
+    }, number>({
+      query: (vehiculeId) => `/bons/vehicule-stats/${vehiculeId}`,
+      providesTags: [{ type: 'Bon', id: 'LIST' }],
+    }),
+
     getCaisseBonsContext: builder.query<BonsContextResponse, void>({
       query: () => '/bons/context/caisse',
       providesTags: [{ type: 'Bon', id: 'LIST' }],
@@ -663,6 +692,8 @@ export const {
   useGetBonsQuery,
   useGetBonsByTypeQuery,
   useGetBonsByTypePagedQuery,
+  useGetVehiculeBonsStatsQuery,
+  useGetAllVehiculesBonsStatsQuery,
   useGetCaisseBonsContextQuery,
   useGetRemisesBonsContextQuery,
   useGetRemisesForClientQuery,

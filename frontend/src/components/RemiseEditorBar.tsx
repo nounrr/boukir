@@ -31,25 +31,25 @@ export const RemiseEditorBar: React.FC<RemiseEditorBarProps> = ({ editor, classN
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => (showRemiseMode ? cancelMode() : enterMode())}
+          onClick={() => (showRemiseMode ? cancelMode() : enterMode('abonne'))}
           disabled={!showRemiseMode && eligibleItems.length === 0}
           className={`flex items-center gap-2 px-3 py-1 rounded-md transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
             showRemiseMode
               ? 'bg-red-600 text-white hover:bg-red-700'
-              : 'bg-orange-600 text-white hover:bg-orange-700'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
           }`}
         >
           <Receipt size={14} />
-          {showRemiseMode ? 'Annuler' : `Appliquer Remise (${eligibleItems.length})`}
+          {showRemiseMode ? 'Annuler' : `Modifier Remise Abonné (${eligibleItems.length})`}
         </button>
       </div>
 
       {showRemiseMode && selectedItemsForRemise.size > 0 && (
-        <div className="mt-3 bg-orange-50 rounded-lg p-4 border border-orange-200">
+        <div className="mt-3 rounded-lg p-4 border bg-blue-50 border-blue-200">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h4 className="font-bold text-orange-800 mb-1">Remises à enregistrer</h4>
-              <p className="text-sm text-orange-700">
+              <h4 className="font-bold mb-1 text-blue-800">Remises Abonné à enregistrer</h4>
+              <p className="text-sm text-blue-700">
                 {selectedItemsForRemise.size} article{selectedItemsForRemise.size > 1 ? 's' : ''} • Total : {totalRemise.toFixed(3)} DH
               </p>
             </div>
@@ -64,7 +64,7 @@ export const RemiseEditorBar: React.FC<RemiseEditorBarProps> = ({ editor, classN
               <button
                 type="button"
                 onClick={handleValidate}
-                className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+                className="px-4 py-2 text-white rounded-md transition-colors bg-blue-600 hover:bg-blue-700"
               >
                 Valider
               </button>
