@@ -61,6 +61,7 @@ import talonsRouter from './routes/talons.js';
 import documentsRouter from './routes/documents.js';
 import employeSalairesRouter from './routes/employe_salaires.js';
 import oldTalonsCaisseRouter from './routes/old-talons-caisse.js';
+import fondCaisseRouter from './routes/fond-caisse.js';
 
 import auditRouter from './routes/audit.js';
 import bonLinksRouter from './routes/bon_links.js';
@@ -74,6 +75,7 @@ import aiRouter from './routes/ai.js';
 import inventoryRouter from './routes/inventory.js';
 import statsRouter from './routes/stats.js';
 import calcRouter from './routes/calc.js';
+import uiSettingsRouter from './routes/uiSettings.js';
 
 import {
   ensureContactsRemiseBalance,
@@ -84,6 +86,8 @@ import {
 } from './utils/ensureRemiseSchema.js';
 import { ensureCategoryColumns } from './utils/ensureCategorySchema.js';
 import { ensurePricePrecisionColumns } from './utils/ensurePricePrecisionSchema.js';
+import { ensureUiSettingsTable } from './utils/uiSettings.js';
+import { ensureAccessScheduleTables } from './middleware/accessSchedule.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -98,6 +102,8 @@ dotenv.config({ path: path.join(__dirname, '.env') });
     await ensureEcommerceOrdersRemiseColumns();
     await ensureEcommerceOrderItemsRemiseColumns();
     await ensurePricePrecisionColumns();
+    await ensureUiSettingsTable();
+    await ensureAccessScheduleTables();
   } catch (e) {
     console.error('ensureRemiseSchema@boot:', e);
   }
@@ -329,6 +335,7 @@ app.use('/api/import/contacts-excel', importContactsRouter);
 app.use('/api/remises', remisesRouter);
 app.use('/api/talons', talonsRouter);
 app.use('/api/old-talons-caisse', oldTalonsCaisseRouter);
+app.use('/api/fond-caisse', fondCaisseRouter);
 
 app.use('/api/documents', documentsRouter);
 app.use('/api', employeSalairesRouter);
@@ -344,6 +351,7 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api/inventory', inventoryRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/calc', calcRouter);
+app.use('/api/ui-settings', uiSettingsRouter);
 
 // 404
 app.use((req, res) => {

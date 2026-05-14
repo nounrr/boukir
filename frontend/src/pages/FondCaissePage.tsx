@@ -1,342 +1,400 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Clock3, DollarSign, Trash2, Wallet } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CalendarDays, DollarSign, Eye, Trash2, Wallet } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
-import { formatDateSimple, formatDateTimeWithHour, getCurrentDateISO } from '../utils/dateUtils';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 
 type FondCaisseEntry = {
-  id: string;
+  id: number;
   montant: number;
   openedAt: string;
   jour: string;
-  createdByUserId?: number | null;
-  createdByName: string;
+  createdByName?: string;
 };
 
-const STORAGE_KEY = 'bpukir_fond_caisse_entries';
-
-const readEntries = (): FondCaisseEntry[] => {
-  if (typeof window === 'undefined') return [];
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item: any) => ({
-        id: String(item.id || ''),
-        montant: Number(item.montant || 0),
-        openedAt: String(item.openedAt || ''),
-        jour: String(item.jour || ''),
-        createdByUserId: item.createdByUserId != null ? Number(item.createdByUserId) : null,
-        createdByName: String(item.createdByName || 'Inconnu'),
-      }))
-      .filter((item) => item.id && item.openedAt && item.jour);
-  } catch {
-    return [];
-  }
+type FondCaisseMouvement = {
+  jour: string;
+  bonComptantPaye?: number;
+  paiementBonComptantNonPaye?: number;
+  paiementClientCaisse?: number;
+  bonChargeInclusCaisse?: number;
+  bonVehicule?: number;
+  avoirClient?: number;
+  entrees?: number;
+  sorties?: number;
 };
 
-const writeEntries = (entries: FondCaisseEntry[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+type Row = {
+  jour: string;
+  entry: FondCaisseEntry | null;
+  debut: number;
+  entrees: number;
+  sorties: number;
+  total: number;
+  bonComptantPaye: number;
+  paiementBonComptantNonPaye: number;
+  paiementClientCaisse: number;
+  bonChargeInclusCaisse: number;
+  bonVehicule: number;
+  avoirClient: number;
+};
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+const nowLocalInput = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const num = (v: any) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 };
 
 const FondCaissePage = () => {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const auth = useAuth() as any;
+  const token: string | undefined = auth?.token;
+
+  const [dateFrom, setDateFrom] = useState<string>(todayISO);
+  const [dateTo, setDateTo] = useState<string>(todayISO);
   const [entries, setEntries] = useState<FondCaisseEntry[]>([]);
+  const [mouvements, setMouvements] = useState<FondCaisseMouvement[]>([]);
   const [montant, setMontant] = useState('');
-  const [openedAt, setOpenedAt] = useState(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  });
-  const [dateFrom, setDateFrom] = useState(() => getCurrentDateISO());
-  const [dateTo, setDateTo] = useState(() => getCurrentDateISO());
+  const [openedAt, setOpenedAt] = useState<string>(nowLocalInput);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    setEntries(readEntries());
-  }, []);
+    if (!token) return;
+    let cancelled = false;
+    const qs = `dateFrom=${dateFrom}&dateTo=${dateTo}`;
+    setIsLoading(true);
+    setErrorMsg('');
 
-  const sortedEntries = useMemo(() => {
-    return [...entries].sort(
-      (a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime()
-    );
-  }, [entries]);
-
-  const filteredEntries = useMemo(() => {
-    return sortedEntries.filter((entry) => {
-      if (dateFrom && entry.jour < dateFrom) return false;
-      if (dateTo && entry.jour > dateTo) return false;
-      return true;
-    });
-  }, [dateFrom, dateTo, sortedEntries]);
-
-  const todayEntry = useMemo(() => {
-    const today = getCurrentDateISO();
-    return sortedEntries.find((entry) => entry.jour === today) || null;
-  }, [sortedEntries]);
-
-  const periodTotal = filteredEntries.reduce((sum, entry) => sum + Number(entry.montant || 0), 0);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const parsedMontant = Number(montant);
-    if (!Number.isFinite(parsedMontant) || parsedMontant < 0) {
-      showError('Veuillez saisir un montant valide.');
-      return;
-    }
-
-    if (!openedAt) {
-      showError("Veuillez saisir la date et l'heure d'ouverture.");
-      return;
-    }
-
-    const openedDate = new Date(openedAt);
-    if (Number.isNaN(openedDate.getTime())) {
-      showError("La date ou l'heure d'ouverture est invalide.");
-      return;
-    }
-
-    const jour = openedAt.slice(0, 10);
-    const newEntry: FondCaisseEntry = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      montant: parsedMontant,
-      openedAt: openedDate.toISOString(),
-      jour,
-      createdByUserId: user?.id ?? null,
-      createdByName: user?.nom_complet || user?.cin || 'Caissier',
+    const safeFetch = async (url: string) => {
+      try {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error((data && data.message) || `HTTP ${res.status}`);
+        return data;
+      } catch (err) {
+        console.error('[FondCaisse] fetch', url, err);
+        throw err;
+      }
     };
 
-    const nextEntries = [newEntry, ...entries];
-    writeEntries(nextEntries);
-    setEntries(nextEntries);
-    setMontant('');
-    showSuccess('Fond de caisse enregistré.');
+    Promise.all([
+      safeFetch(`/api/fond-caisse/entries?${qs}`),
+      safeFetch(`/api/fond-caisse/mouvements?${qs}`),
+    ])
+      .then(([entriesRes, mouvRes]) => {
+        if (cancelled) return;
+        setEntries(Array.isArray(entriesRes?.data) ? entriesRes.data : []);
+        setMouvements(Array.isArray(mouvRes?.data) ? mouvRes.data : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEntries([]);
+        setMouvements([]);
+        setErrorMsg('Impossible de charger les donnees.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, dateFrom, dateTo, tick]);
+
+  const rows = useMemo<Row[]>(() => {
+    try {
+      const entryByDay = new Map<string, FondCaisseEntry>();
+      const sortedEntries = [...(entries || [])].filter((e) => e && e.jour);
+      sortedEntries.sort((a, b) => String(b?.openedAt || '').localeCompare(String(a?.openedAt || '')));
+      for (const e of sortedEntries) {
+        if (!entryByDay.has(e.jour)) entryByDay.set(e.jour, e);
+      }
+
+      const movByDay = new Map<string, FondCaisseMouvement>();
+      for (const m of mouvements || []) {
+        if (m && m.jour) movByDay.set(m.jour, m);
+      }
+
+      const allDays = new Set<string>();
+      if (dateFrom && dateTo) {
+        const a = new Date(`${dateFrom}T00:00:00`);
+        const b = new Date(`${dateTo}T00:00:00`);
+        if (!isNaN(a.getTime()) && !isNaN(b.getTime())) {
+          const lo = a <= b ? a : b;
+          const hi = a <= b ? b : a;
+          for (let d = new Date(lo); d <= hi; d.setDate(d.getDate() + 1)) {
+            allDays.add(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+          }
+        }
+      }
+      entryByDay.forEach((_v, k) => allDays.add(k));
+      movByDay.forEach((_v, k) => allDays.add(k));
+
+      const sorted = Array.from(allDays).sort();
+      let prev = 0;
+      const out: Row[] = sorted.map((jour) => {
+        const entry = entryByDay.get(jour) || null;
+        const mv = movByDay.get(jour) || ({} as FondCaisseMouvement);
+        const debut = entry ? num(entry.montant) : prev;
+        const entrees = num(mv.entrees);
+        const sorties = num(mv.sorties);
+        const total = debut + entrees - sorties;
+        prev = total;
+        return {
+          jour,
+          entry,
+          debut,
+          entrees,
+          sorties,
+          total,
+          bonComptantPaye: num(mv.bonComptantPaye),
+          paiementBonComptantNonPaye: num(mv.paiementBonComptantNonPaye),
+          paiementClientCaisse: num(mv.paiementClientCaisse),
+          bonChargeInclusCaisse: num(mv.bonChargeInclusCaisse),
+          bonVehicule: num(mv.bonVehicule),
+          avoirClient: num(mv.avoirClient),
+        };
+      });
+      return out;
+    } catch (err) {
+      console.error('[FondCaisse] rows compute error', err);
+      return [];
+    }
+  }, [entries, mouvements, dateFrom, dateTo]);
+
+  const today = todayISO();
+  const todayTotal = rows.find((r) => r.jour === today)?.total || 0;
+  const periodTotal = rows.reduce((s, r) => s + r.total, 0);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    const m = Number(montant);
+    if (!Number.isFinite(m) || m < 0) {
+      showError('Montant invalide.');
+      return;
+    }
+    if (!openedAt) {
+      showError("Date d'ouverture requise.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/fond-caisse/entries', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ montant: m, openedAt }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && data.message) || 'Erreur sauvegarde');
+      setMontant('');
+      setOpenedAt(nowLocalInput());
+      setTick((t) => t + 1);
+      showSuccess('Fond de caisse enregistre.');
+    } catch (err: any) {
+      showError(err?.message || 'Erreur lors de la sauvegarde.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async (entry: FondCaisseEntry) => {
+    if (!token || !entry) return;
     const result = await showConfirmation(
-      'Cette ligne sera supprimée.',
-      `Supprimer le fond de caisse du ${formatDateSimple(entry.jour)} ?`,
+      'Cette ligne sera supprimee.',
+      `Supprimer le fond du ${entry.jour} ?`,
       'Supprimer',
       'Annuler'
     );
-
     if (!result.isConfirmed) return;
-
-    const nextEntries = entries.filter((item) => item.id !== entry.id);
-    writeEntries(nextEntries);
-    setEntries(nextEntries);
-    showSuccess('Fond de caisse supprimé.');
+    try {
+      const res = await fetch(`/api/fond-caisse/entries/${entry.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error((data && data.message) || 'Erreur suppression');
+      }
+      setTick((t) => t + 1);
+      showSuccess('Fond de caisse supprime.');
+    } catch (err: any) {
+      showError(err?.message || 'Erreur lors de la suppression.');
+    }
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Fond de caisse</h1>
-          <p className="mt-1 text-gray-600">
-            Saisie du montant d&apos;ouverture du caissier avec date et heure.
-          </p>
+          <p className="mt-1 text-gray-600">Calcul journalier: debut + entrees - sorties.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium uppercase text-gray-500">Du</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium uppercase text-gray-500">Au</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </div>
         </div>
       </div>
 
+      {errorMsg && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {errorMsg}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="xl:col-span-1">
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-lg bg-emerald-100 p-2">
-                <Wallet className="h-5 w-5 text-emerald-700" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Début de traitement</h2>
-                <p className="text-sm text-gray-500">Enregistrer le fond de caisse initial</p>
-              </div>
+        <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm xl:col-span-1">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-lg bg-emerald-100 p-2">
+              <Wallet className="h-5 w-5 text-emerald-700" />
             </div>
-
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Montant du fond de caisse
-                </label>
-                <div className="relative">
-                  <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={montant}
-                    onChange={(e) => setMontant(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Date et heure d&apos;entrée
-                </label>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Debut de traitement</h2>
+              <p className="text-sm text-gray-500">Fond initial sauvegarde en base</p>
+            </div>
+          </div>
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Montant</label>
+              <div className="relative">
+                <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <input
-                  type="datetime-local"
-                  value={openedAt}
-                  onChange={(e) => setOpenedAt(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={montant}
+                  onChange={(e) => setMontant(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3"
                 />
               </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Date et heure</label>
+              <input
+                type="datetime-local"
+                value={openedAt}
+                onChange={(e) => setOpenedAt(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {isSaving ? 'Enregistrement...' : 'Enregistrer'}
+            </button>
+          </form>
+        </section>
 
-              <button
-                type="submit"
-                className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700"
-              >
-                Enregistrer le fond de caisse
-              </button>
-            </form>
-          </div>
-        </div>
-
-        <div className="xl:col-span-2 space-y-6">
+        <div className="space-y-6 xl:col-span-2">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-blue-100 p-2">
-                  <DollarSign className="h-5 w-5 text-blue-700" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Fond du jour</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {todayEntry ? `${todayEntry.montant.toFixed(2)} DH` : 'Aucun'}
-                  </p>
-                </div>
-              </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm text-gray-500">Total caisse du jour</p>
+              <p className="text-2xl font-bold text-gray-900">{todayTotal.toFixed(2)} DH</p>
             </div>
-
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-orange-100 p-2">
-                  <CalendarDays className="h-5 w-5 text-orange-700" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Enregistrements période</p>
-                  <p className="text-2xl font-bold text-gray-900">{filteredEntries.length}</p>
-                </div>
-              </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm text-gray-500">Jours periode</p>
+              <p className="text-2xl font-bold text-gray-900">{rows.length}</p>
             </div>
-
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-emerald-100 p-2">
-                  <Wallet className="h-5 w-5 text-emerald-700" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Total période</p>
-                  <p className="text-2xl font-bold text-gray-900">{periodTotal.toFixed(2)} DH</p>
-                </div>
-              </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm text-gray-500">Somme totaux periode</p>
+              <p className="text-2xl font-bold text-gray-900">{periodTotal.toFixed(2)} DH</p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Historique</h2>
-                <p className="text-sm text-gray-500">Filtrer par jour ou par période</p>
+          <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Calcul journalier</h2>
+            {isLoading && (
+              <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                Chargement...
               </div>
-
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Du
-                  </label>
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Au
-                  </label>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {filteredEntries.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
-                <p className="text-lg font-medium text-gray-700">Aucun fond de caisse trouvé</p>
-                <p className="mt-1 text-sm text-gray-500">
-                  Enregistrez un montant ou changez la période.
-                </p>
+            )}
+            {rows.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                <p className="text-lg font-medium text-gray-700">Aucun mouvement</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Montant
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Jour
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Heure d&apos;entrée
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Caissier
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Action
-                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Jour</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Debut</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Entrees</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Sorties</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Total</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 bg-white">
-                    {filteredEntries.map((entry) => (
-                      <tr key={entry.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-4 text-sm font-semibold text-gray-900">
-                          {entry.montant.toFixed(2)} DH
-                        </td>
-                        <td className="px-4 py-4 text-sm text-gray-700">
+                    {rows.map((row) => (
+                      <tr key={row.jour} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-700">
                           <span className="inline-flex items-center gap-2">
                             <CalendarDays className="h-4 w-4 text-gray-400" />
-                            {formatDateSimple(entry.jour)}
+                            {row.jour}
                           </span>
                         </td>
-                        <td className="px-4 py-4 text-sm text-gray-700">
-                          <span className="inline-flex items-center gap-2">
-                            <Clock3 className="h-4 w-4 text-gray-400" />
-                            {formatDateTimeWithHour(entry.openedAt)}
-                          </span>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                          {row.debut.toFixed(2)} DH
+                          {!row.entry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
                         </td>
-                        <td className="px-4 py-4 text-sm text-gray-700">{entry.createdByName}</td>
-                        <td className="px-4 py-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleDelete(entry).catch(() => {
-                                showError('Erreur lors de la suppression.');
-                              });
-                            }}
-                            className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Supprimer
-                          </button>
+                        <td className="px-4 py-3 text-sm font-semibold text-emerald-700">+{row.entrees.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-red-700">-{row.sorties.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm font-bold text-gray-900">{row.total.toFixed(2)} DH</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/fond-caisse/${row.jour}`)}
+                              title="Voir le detail"
+                              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2.5 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            {row.entry && (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(row.entry as FondCaisseEntry)}
+                                title="Supprimer"
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -344,9 +402,10 @@ const FondCaissePage = () => {
                 </table>
               </div>
             )}
-          </div>
+          </section>
         </div>
       </div>
+
     </div>
   );
 };

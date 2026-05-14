@@ -19,7 +19,8 @@ import { api } from '../store/api/apiSlice';
     useUpdateBonStatusMutation,
     useUpdateEcommerceOrderStatusMutation,
     useUpdateEcommerceOrderRemisesMutation,
-    useCreateBonMutation
+    useCreateBonMutation,
+    useUpdateChargeInclusEnCaisseMutation
   } from '../store/api/bonsApi';
   import { 
     useGetAllClientsQuery, 
@@ -31,6 +32,7 @@ import {
   useCreateComptantPaymentMutation,
   useDeleteComptantPaymentMutation
 } from '../store/api/comptantApi';
+import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
   import { showError, showSuccess, showConfirmation } from '../utils/notifications';
   import BonPrintTemplate from '../components/BonPrintTemplate';
   import { generatePDFBlobFromElement } from '../utils/pdf';
@@ -157,9 +159,11 @@ const BonsPage = () => {
 
   // Auth context
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const { data: uiSettings } = useGetUiSettingsQuery();
   const isPdg = currentUser?.role === 'PDG';
   const isEmployee = currentUser?.role === 'Employé';
   const isChefChauffeur = currentUser?.role === 'ChefChauffeur';
+  const canSeeEcommerce = (uiSettings?.toggles?.showEcommerceBons ?? true) && (isPdg || isChefChauffeur);
   // Manager full access only for Commande & AvoirFournisseur
   const isFullAccessManager = currentUser?.role === 'Manager' && (currentTab === 'Commande' || currentTab === 'AvoirFournisseur');
   const isManager = currentUser?.role === 'Manager';
@@ -189,7 +193,6 @@ const BonsPage = () => {
   // - Ecommerce + AvoirEcommerce: allowed for PDG and ChefChauffeur
   // - Devis: not allowed for ChefChauffeur
   useEffect(() => {
-    const canSeeEcommerce = isPdg || isChefChauffeur;
     if (!canSeeEcommerce && (currentTab === 'Ecommerce' || currentTab === 'AvoirEcommerce')) {
       setCurrentTab('Commande');
       return;
@@ -202,7 +205,7 @@ const BonsPage = () => {
     if (isChefChauffeur && currentTab === 'Devis') {
       setCurrentTab('Sortie');
     }
-  }, [isPdg, isChefChauffeur, currentTab]);
+  }, [canSeeEcommerce, isChefChauffeur, currentTab]);
 
   // Helper to build the per-type storage key for auto-send checkbox
   const getAutoSendKey = (type: string) => `autoSendWhatsAppOnValidation_${type}`;
@@ -301,6 +304,7 @@ const BonsPage = () => {
   const [updateEcommerceOrderStatus] = useUpdateEcommerceOrderStatusMutation();
   const [updateEcommerceOrderRemises, { isLoading: isSavingEcommerceRemises }] = useUpdateEcommerceOrderRemisesMutation();
   const [createBon] = useCreateBonMutation();
+  const [updateChargeInclusEnCaisse] = useUpdateChargeInclusEnCaisseMutation();
   const [createComptantPayment, { isLoading: isCreatingComptantPayment }] = useCreateComptantPaymentMutation();
   const [deleteComptantPayment] = useDeleteComptantPaymentMutation();
   // Bon links API: record duplications
@@ -1304,18 +1308,25 @@ const BonsPage = () => {
   }, [currentPage, refetchBons, safeRefetchProducts]);
 
   // Fetch linked info for the visible bons
+  const paginatedBonsIdsKey = useMemo(
+    () => paginatedBons
+      .map((bon: any) => Number(bon?.id))
+      .filter((id: number) => Number.isFinite(id) && id > 0)
+      .join(','),
+    [paginatedBons]
+  );
+
   useEffect(() => {
     let cancelled = false;
-    const ids = paginatedBons
-      .map((bon: any) => Number(bon?.id))
-      .filter((id: number) => Number.isFinite(id) && id > 0);
+    const ids = paginatedBonsIdsKey
+      ? paginatedBonsIdsKey.split(',').map((s) => Number(s)).filter((n) => Number.isFinite(n) && n > 0)
+      : [];
 
     if (ids.length === 0) {
-      setBonLinksMap({});
+      setBonLinksMap((prev) => (Object.keys(prev).length === 0 ? prev : {}));
       return;
     }
 
-    setBonLinksMap({});
     getBonLinksBatch({ type: effectiveCurrentTab, ids })
       .unwrap()
       .then((data) => {
@@ -1329,7 +1340,7 @@ const BonsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [effectiveCurrentTab, getBonLinksBatch, paginatedBons]);
+  }, [effectiveCurrentTab, getBonLinksBatch, paginatedBonsIdsKey]);
 
   // showAuditCols already declared earlier; reuse it
 
@@ -1674,13 +1685,13 @@ const BonsPage = () => {
       return base.filter((t) => t.key !== 'Devis' && t.key !== 'Commande');
     }
 
-    // Non-PDG: hide ecommerce tabs
-    if (!isPdg) {
+    // Non-PDG or hidden setting: hide ecommerce tabs
+    if (!canSeeEcommerce) {
       return base.filter((t) => t.key !== 'Ecommerce' && t.key !== 'AvoirEcommerce');
     }
 
     return base;
-  }, [isPdg, isChefChauffeur]);
+  }, [canSeeEcommerce, isChefChauffeur]);
 
   const toMySQLDateTime = (d: Date = new Date()) => d.toISOString().slice(0, 19).replace('T', ' ');
 
@@ -2513,6 +2524,11 @@ const BonsPage = () => {
                       title="Glisser pour redimensionner"
                     />
                   </th>
+                  {effectiveCurrentTab === 'Charge' && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
+                      Inclus en caisse
+                    </th>
+                  )}
                   {effectiveCurrentTab !== 'Charge' && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                       Mouvement
@@ -2709,6 +2725,29 @@ const BonsPage = () => {
                         })()}
                       </td>
                       <td className="px-4 py-2 text-sm">{formatNumber4(computeTotalPoids(bon))}</td>
+                      {effectiveCurrentTab === 'Charge' && (
+                        <td className="px-4 py-2 text-sm">
+                          {(() => {
+                            const bAny = bon as any;
+                            const checked = Number(bAny?.inclus_en_caisse) === 1;
+                            return (
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 cursor-pointer"
+                                checked={checked}
+                                onChange={async (e) => {
+                                  try {
+                                    await updateChargeInclusEnCaisse({ id: Number(bon.id), inclus_en_caisse: e.target.checked ? 1 : 0 }).unwrap();
+                                  } catch (err: any) {
+                                    showError(err?.data?.message || 'Erreur lors de la mise à jour');
+                                  }
+                                }}
+                                title="Inclus en caisse"
+                              />
+                            );
+                          })()}
+                        </td>
+                      )}
                       {effectiveCurrentTab !== 'Charge' && (
                       <td className="px-4 py-2 text-sm">
                         {(() => {

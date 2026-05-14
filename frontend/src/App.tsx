@@ -31,6 +31,7 @@ import BonsPage from './pages/BonsPage';
 import VehiculesPage from './pages/VehiculesPage';
 import CaissePage from './pages/CaissePage';
 import FondCaissePage from './pages/FondCaissePage';
+import FondCaisseDetailPage from './pages/FondCaisseDetailPage';
 import ReportsPage from './pages/ReportsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import CategoryManagementPage from './pages/CategoryManagementPage';
@@ -56,6 +57,7 @@ import WhatsAppTestPage from './pages/WhatsAppTestPage';
 import InventoryPage from './pages/InventoryPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProductsTranslatePage from './pages/ProductsTranslatePage';
+import UiSettingsPage from './pages/UiSettingsPage';
 
 // Composant Layout avec accès aux fonctions de monitoring
 const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -409,6 +411,17 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/settings/ui"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <UiSettingsPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/fond-caisse"
           element={
             <ProtectedRoute>
@@ -418,6 +431,18 @@ const AppContent: React.FC = () => {
             </ProtectedRoute>
           }
         />
+
+        <Route
+          path="/fond-caisse/:date"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <FondCaisseDetailPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
 
         <Route
           path="/reports"

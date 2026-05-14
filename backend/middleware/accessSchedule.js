@@ -1,6 +1,59 @@
 import pool from '../db/pool.js';
 import { getCurrentMoroccoTimeString, getCurrentMoroccoDayOfWeek, checkAccessWithMoroccoTime } from '../utils/timeUtils.js';
 
+const ensureState = { done: false, inFlight: null };
+
+export async function ensureAccessScheduleTables(db = pool) {
+  if (ensureState.done) return;
+  if (ensureState.inFlight) {
+    await ensureState.inFlight;
+    return;
+  }
+
+  ensureState.inFlight = (async () => {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS access_schedules (
+        id INT NOT NULL AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        user_name VARCHAR(255) NOT NULL,
+        user_role VARCHAR(50) NOT NULL DEFAULT 'employee',
+        start_time TIME NOT NULL DEFAULT '08:00:00',
+        end_time TIME NOT NULL DEFAULT '19:00:00',
+        days_of_week JSON NOT NULL,
+        detailed_schedules JSON NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        warning_minutes_before INT NOT NULL DEFAULT 15,
+        auto_logout_enabled TINYINT(1) NOT NULL DEFAULT 1,
+        popup_warning_enabled TINYINT(1) NOT NULL DEFAULT 1,
+        grace_period_minutes INT NOT NULL DEFAULT 5,
+        last_login_time TIMESTAMP NULL,
+        last_activity_time TIMESTAMP NULL,
+        session_warning_sent TINYINT(1) NOT NULL DEFAULT 0,
+        session_id VARCHAR(255) NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_access_schedules_user_id (user_id),
+        KEY idx_access_schedules_active (is_active),
+        KEY idx_access_schedules_session_id (session_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    const [cols] = await db.query("SHOW COLUMNS FROM access_schedules LIKE 'detailed_schedules'");
+    if (!Array.isArray(cols) || cols.length === 0) {
+      await db.query('ALTER TABLE access_schedules ADD COLUMN detailed_schedules JSON NULL AFTER days_of_week');
+    }
+
+    ensureState.done = true;
+  })();
+
+  try {
+    await ensureState.inFlight;
+  } finally {
+    ensureState.inFlight = null;
+  }
+}
+
 /**
  * Middleware pour vérifier les horaires d'accès d'un utilisateur
  * Vérifie si l'utilisateur peut accéder à l'application selon ses horaires configurés
@@ -19,6 +72,8 @@ export const checkAccessSchedule = async (req, res, next) => {
     }
 
     // Récupérer l'horaire d'accès de l'utilisateur
+    await ensureAccessScheduleTables();
+
     const [scheduleRows] = await pool.execute(`
       SELECT start_time, end_time, days_of_week, detailed_schedules, is_active
       FROM access_schedules
@@ -118,6 +173,8 @@ export const checkAccessScheduleStrict = async (req, res, next) => {
       });
     }
 
+    await ensureAccessScheduleTables();
+
     const [scheduleRows] = await pool.execute(`
       SELECT start_time, end_time, days_of_week, detailed_schedules, is_active
       FROM access_schedules
@@ -202,6 +259,8 @@ export const checkAccessScheduleStrict = async (req, res, next) => {
  */
 export const checkUserAccess = async (userId) => {
   try {
+    await ensureAccessScheduleTables();
+
     const [scheduleRows] = await pool.execute(`
       SELECT start_time, end_time, days_of_week, detailed_schedules, is_active
       FROM access_schedules

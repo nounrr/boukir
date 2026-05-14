@@ -22,6 +22,7 @@ import {
   CalendarClock,
   Award,
   Image,
+  Settings,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -76,6 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { name: 'Employés', href: '/employees', icon: Users, show: !isChefChauffeur && canManageEmployees(user) },
         { name: 'Mes Informations', href: '/employee/self', icon: Users, show: !isChefChauffeur && user?.role === 'Employé' },
         { name: "Horaires d'Accès", href: '/access-schedules', icon: CalendarClock, show: !isChefChauffeur && user?.role === 'PDG' },
+        { name: 'Paramètres UI', href: '/settings/ui', icon: Settings, show: !isChefChauffeur && user?.role === 'PDG' },
       ],
     },
     {

@@ -642,6 +642,20 @@ export const bonsApi = api.injectEndpoints({
         return tags;
       },
     }),
+
+    updateChargeInclusEnCaisse: builder.mutation<Bon, { id: number; inclus_en_caisse: boolean | number }>({
+      query: ({ id, inclus_en_caisse }) => ({
+        url: `/charges/${id}/inclus-en-caisse`,
+        method: 'PATCH',
+        body: { inclus_en_caisse: inclus_en_caisse ? 1 : 0 },
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Bon', id },
+        { type: 'Bon', id: 'LIST' },
+        { type: 'Charge', id },
+        { type: 'Charge', id: 'LIST' },
+      ],
+    }),
   }),
 });
 
@@ -661,6 +675,7 @@ export const {
   useUpdateBonStatusMutation,
   useTransformDevisMutation,
   useMarkBonAsAvoirMutation,
+  useUpdateChargeInclusEnCaisseMutation,
 } = bonsApi;
 
 // Explicit re-export (avoids occasional TS server cache issues)

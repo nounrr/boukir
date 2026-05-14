@@ -271,19 +271,18 @@ async function ensureProductsColumns() {
   );
   if (!colsFiche.length) {
     await pool.query(`ALTER TABLE products ADD COLUMN fiche_technique LONGTEXT DEFAULT NULL`);
-  } else {
-    // Ensure it is LONGTEXT to avoid "Data too long"
+  } else if (String(colsFiche[0].DATA_TYPE).toLowerCase() !== 'longtext') {
     await pool.query(`ALTER TABLE products MODIFY COLUMN fiche_technique LONGTEXT DEFAULT NULL`);
   }
 
   // Check fiche_technique multilingual columns
   const [colsFicheAr] = await pool.query(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    `SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'fiche_technique_ar'`
   );
   if (!colsFicheAr.length) {
     await pool.query(`ALTER TABLE products ADD COLUMN fiche_technique_ar LONGTEXT DEFAULT NULL`);
-  } else {
+  } else if (String(colsFicheAr[0].DATA_TYPE).toLowerCase() !== 'longtext') {
     await pool.query(`ALTER TABLE products MODIFY COLUMN fiche_technique_ar LONGTEXT DEFAULT NULL`);
   }
   const [colsFicheEn] = await pool.query(
@@ -303,12 +302,12 @@ async function ensureProductsColumns() {
 
   // Check description
   const [colsDesc] = await pool.query(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    `SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'description'`
   );
   if (!colsDesc.length) {
     await pool.query(`ALTER TABLE products ADD COLUMN description LONGTEXT DEFAULT NULL`);
-  } else {
+  } else if (String(colsDesc[0].DATA_TYPE).toLowerCase() !== 'longtext') {
     await pool.query(`ALTER TABLE products MODIFY COLUMN description LONGTEXT DEFAULT NULL`);
   }
 

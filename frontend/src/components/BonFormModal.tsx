@@ -1743,6 +1743,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         reste: initialValues.reste || 0,
         montant_paye_saisi: '',
         statut: initialValues.statut || 'En attente',
+        inclus_en_caisse: Number((initialValues as any)?.inclus_en_caisse) === 1,
       };
     }
 
@@ -1794,6 +1795,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         },
       ],
       is_transformed: false,
+      inclus_en_caisse: false,
       created_by: 1,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -2176,9 +2178,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       const q =
         parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
       
-      // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
+      // Pour bon Commande, utiliser prix_achat; pour autres types (y compris Charge), prix_unitaire
       // Lire depuis unitPriceRaw en priorité (valeur saisie) pour éviter le décalage avec onBlur async
-      const priceField = values.type === 'Commande' || values.type === 'Charge' ? 'prix_achat' : 'prix_unitaire';
+      const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
       const u = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
         ? parseFloat(normalizeDecimal(unitPriceRaw[idx])) || 0
         : (typeof item[priceField] === 'string'
@@ -2307,6 +2309,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
   non_paye: requestType === 'Comptant' ? !!values.payer_partiellement : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
+      inclus_en_caisse: requestType === 'Charge' ? (values.inclus_en_caisse ? 1 : 0) : undefined,
       ...(requestType === 'AvoirEcommerce'
         ? {
             ecommerce_order_id: values.ecommerce_order_id ? Number(values.ecommerce_order_id) : undefined,
@@ -2353,7 +2356,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
               cout_revient: coutRevient,
               prix_gros: prixGros,
               prix_unitaire: prixVente,
-              total: q * prixAchat,
+              total: q * prixVente,
             }];
           })
         : values.items.flatMap((item: any, idx: number) => {
@@ -3139,7 +3142,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     // Calculer le montant du bon actuel en utilisant les valeurs passées en paramètre
     const montantBon = values.items.reduce((sum: number, item: any) => {
       const q = Number(item.quantite || 0);
-      const priceField = values.type === 'Commande' || values.type === 'Charge' ? 'prix_achat' : 'prix_unitaire';
+      const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
       const u = Number(item[priceField] || 0);
       return sum + q * u;
     }, 0);
@@ -3367,6 +3370,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </label>
                   <span className="text-xs text-gray-500">(Cocher si ce bon ne doit pas être pris en compte dans les calculs)</span>
                 </div>
+                {values.type === 'Charge' && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="inclus_en_caisse"
+                      checked={!!values.inclus_en_caisse}
+                      onChange={(e) => setFieldValue('inclus_en_caisse', e.target.checked)}
+                      className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor="inclus_en_caisse" className="text-sm font-medium text-gray-700">
+                      Inclus en caisse
+                    </label>
+                  </div>
+                )}
               </div>
 
               {/* Multi-livraisons (véhicules + chauffeurs) */}
@@ -4081,7 +4098,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 <tbody className="bg-white divide-y divide-gray-200">
                                   {values.items.map((row: any, index: number) => {
                                     const isDetailedLine = row.line_mode === 'detail';
-                                    const chargeTotal = (Number(row.prix_achat) || 0) * (parseFloat(normalizeDecimal(qtyRaw[index] ?? String(row.quantite ?? ''))) || 0);
+                                    const chargeTotal = (Number(row.prix_unitaire) || 0) * (parseFloat(normalizeDecimal(qtyRaw[index] ?? String(row.quantite ?? ''))) || 0);
                                     return (
                                       <tr key={row._rowId || `charge-item-${index}`}>
                                         <td className="px-1 py-2">
@@ -4155,7 +4172,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               setQtyRaw((prev) => ({ ...prev, [index]: raw }));
                                               const q = parseFloat(normalizeDecimal(raw)) || 0;
                                               setFieldValue(`items.${index}.quantite`, q);
-                                              setFieldValue(`items.${index}.total`, q * (Number(values.items[index].prix_achat) || 0));
+                                              setFieldValue(`items.${index}.total`, q * (Number(values.items[index].prix_unitaire) || 0));
                                             }}
                                             disabled={isQtyOnlyEdit}
                                           />
@@ -4172,7 +4189,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 if (!isDecimalLike(raw)) return;
                                                 const nextValue = parseFloat(normalizeDecimal(raw)) || 0;
                                                 setFieldValue(`items.${index}.${field}`, nextValue);
-                                                if (field === 'prix_achat') {
+                                                if (field === 'prix_unitaire') {
                                                   const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
                                                   setFieldValue(`items.${index}.total`, q * nextValue);
                                                 }
@@ -5491,9 +5508,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                           ) : (
                             <div className="space-y-3">
                               {detailedChargeEntries.map(({ row, index }: any) => {
+                                const chargeTotal = (Number(values.items[index]?.prix_unitaire) || 0) * (parseFloat(normalizeDecimal(qtyRaw[index] ?? String(row.quantite ?? ''))) || 0);
                                 return (
                                   <div key={row._rowId || `charge-detail-${index}`} className="grid grid-cols-1 gap-3 rounded border border-amber-200 bg-white p-3">
-                                    <div className="hidden">
+                                    <div>
                                       <label className="mb-1 block text-xs font-medium text-gray-700">Désignation</label>
                                       <textarea
                                         className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
@@ -5520,13 +5538,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           setQtyRaw((prev) => ({ ...prev, [index]: raw }));
                                           const q = parseFloat(normalizeDecimal(raw)) || 0;
                                           setFieldValue(`items.${index}.quantite`, q);
-                                          setFieldValue(`items.${index}.total`, q * (Number(values.items[index].prix_achat) || 0));
+                                          setFieldValue(`items.${index}.total`, q * (Number(values.items[index].prix_unitaire) || 0));
                                         }}
                                         disabled={isQtyOnlyEdit}
                                       />
                                     </div>
                                     {(['prix_achat', 'cout_revient', 'prix_gros', 'prix_unitaire'] as const).map((field) => (
-                                      <div key={field} className="hidden">
+                                      <div key={field} className={field === 'prix_unitaire' ? '' : 'hidden'}>
                                         <label className="mb-1 block text-xs font-medium text-gray-700">
                                           {field === 'prix_achat' ? 'Prix achat' : field === 'cout_revient' ? 'Cout revient' : field === 'prix_gros' ? 'Prix gros' : 'Prix vente'}
                                         </label>
@@ -5540,7 +5558,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             if (!isDecimalLike(raw)) return;
                                             const nextValue = parseFloat(normalizeDecimal(raw)) || 0;
                                             setFieldValue(`items.${index}.${field}`, nextValue);
-                                            if (field === 'prix_achat') {
+                                            if (field === 'prix_unitaire') {
                                               const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
                                               setFieldValue(`items.${index}.total`, q * nextValue);
                                             }
@@ -5703,9 +5721,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
             parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
           const u =
             values.type === 'Charge'
-              ? (typeof item.prix_achat === 'string'
-                ? parseFloat(String(item.prix_achat).replace(',', '.')) || 0
-                : Number(item.prix_achat) || 0)
+              ? (typeof item.prix_unitaire === 'string'
+                ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
+                : Number(item.prix_unitaire) || 0)
               : (parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0);
           return sum + q * u;
         }, 0)
