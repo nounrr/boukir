@@ -481,6 +481,111 @@ router.get('/remises/client/:clientId', async (req, res) => {
   }
 });
 
+// GET /bons/vehicules-stats - Statistiques agrégées pour tous les véhicules
+router.get('/vehicules-stats', async (req, res) => {
+  try {
+    const aggregateByVehicule = async (table, livraisonType) => {
+      const sql = `
+        SELECT v.id AS vehicule_id,
+               COUNT(b.id) AS count,
+               COALESCE(SUM(b.montant_total), 0) AS montant
+        FROM vehicules v
+        LEFT JOIN ${table} b
+          ON b.vehicule_id = v.id
+          OR EXISTS (
+            SELECT 1 FROM livraisons lv
+            WHERE lv.bon_type = ? AND lv.bon_id = b.id AND lv.vehicule_id = v.id
+          )
+        GROUP BY v.id
+      `;
+      const [rows] = await pool.query(sql, [livraisonType]);
+      const map = new Map();
+      for (const r of rows) map.set(Number(r.vehicule_id), { count: Number(r.count || 0), montant: Number(r.montant || 0) });
+      return map;
+    };
+
+    const [vehMap, sortieMap, comptantMap, commandeMap] = await Promise.all([
+      aggregateByVehicule('bons_vehicule', 'Vehicule'),
+      aggregateByVehicule('bons_sortie', 'Sortie'),
+      aggregateByVehicule('bons_comptant', 'Comptant'),
+      aggregateByVehicule('bons_commande', 'Commande'),
+    ]);
+
+    const [vehs] = await pool.query(`SELECT id FROM vehicules`);
+    const data = vehs.map((v) => {
+      const id = Number(v.id);
+      const veh = vehMap.get(id) || { count: 0, montant: 0 };
+      const s = sortieMap.get(id) || { count: 0, montant: 0 };
+      const c = comptantMap.get(id) || { count: 0, montant: 0 };
+      const k = commandeMap.get(id) || { count: 0, montant: 0 };
+      return {
+        vehicule_id: id,
+        bons_vehicule: veh,
+        autres_bons: {
+          count: s.count + c.count + k.count,
+          montant: s.montant + c.montant + k.montant,
+        },
+      };
+    });
+
+    res.json({ data });
+  } catch (error) {
+    console.error('GET /bons/vehicules-stats error:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message, code: error?.code });
+  }
+});
+
+// GET /bons/vehicule-stats/:vehiculeId - Statistiques agrégées pour un véhicule
+router.get('/vehicule-stats/:vehiculeId', async (req, res) => {
+  try {
+    const vehiculeId = Number(req.params.vehiculeId);
+    if (!Number.isFinite(vehiculeId) || vehiculeId <= 0) {
+      return res.status(400).json({ message: 'vehiculeId invalide' });
+    }
+
+    const aggregate = async (table, livraisonType) => {
+      const sql = `
+        SELECT
+          COUNT(*) AS count,
+          COALESCE(SUM(b.montant_total), 0) AS montant
+        FROM ${table} b
+        WHERE b.vehicule_id = ?
+           OR EXISTS (
+             SELECT 1 FROM livraisons lv
+             WHERE lv.bon_type = ? AND lv.bon_id = b.id AND lv.vehicule_id = ?
+           )
+      `;
+      const [rows] = await pool.query(sql, [vehiculeId, livraisonType, vehiculeId]);
+      return {
+        count: Number(rows?.[0]?.count || 0),
+        montant: Number(rows?.[0]?.montant || 0),
+      };
+    };
+
+    const [vehicule, sorties, comptants, commandes] = await Promise.all([
+      aggregate('bons_vehicule', 'Vehicule'),
+      aggregate('bons_sortie', 'Sortie'),
+      aggregate('bons_comptant', 'Comptant'),
+      aggregate('bons_commande', 'Commande'),
+    ]);
+
+    const autres = {
+      count: sorties.count + comptants.count + commandes.count,
+      montant: sorties.montant + comptants.montant + commandes.montant,
+      par_type: { Sortie: sorties, Comptant: comptants, Commande: commandes },
+    };
+
+    res.json({
+      vehicule_id: vehiculeId,
+      bons_vehicule: vehicule,
+      autres_bons: autres,
+    });
+  } catch (error) {
+    console.error('GET /bons/vehicule-stats error:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message, code: error?.code });
+  }
+});
+
 router.get('/paged/:type', async (req, res) => {
   try {
     const { type } = req.params;
@@ -509,6 +614,7 @@ router.get('/paged/:type', async (req, res) => {
       const like = `%${search}%`;
       whereParts.push(`(
         CAST(b.id AS CHAR) LIKE ?
+        OR CONCAT(?, CAST(b.id AS CHAR)) LIKE ?
         OR CAST(${cfg.contactIdExpr || 'NULL'} AS CHAR) LIKE ?
         OR ${cfg.contactExpr} LIKE ?
         OR ${cfg.phoneExpr} LIKE ?
@@ -521,7 +627,7 @@ router.get('/paged/:type', async (req, res) => {
             AND (COALESCE(${cfg.itemSearchExpr || 'psearch.designation'}, '') LIKE ? OR CAST(isearch.product_id AS CHAR) LIKE ?)
         )
       )`);
-      params.push(like, like, like, like, like, like, like, like);
+      params.push(like, cfg.prefix, like, like, like, like, like, like, like, like);
     }
 
     if (statuses.length) {
@@ -545,6 +651,21 @@ router.get('/paged/:type', async (req, res) => {
       whereParts.push(`COALESCE(b.vendre_au_fournisseur, 0) = 1`);
     } else if (type === 'Avoir' && paymentState === 'normal_avoir_client') {
       whereParts.push(`COALESCE(b.vendre_au_fournisseur, 0) <> 1`);
+    }
+
+    // Filtre par véhicule (vehicule_id direct ou via livraisons)
+    const vehiculeIdParam = clampInt(req.query.vehiculeId, 0, 0, 2147483647);
+    if (vehiculeIdParam > 0) {
+      if (cfg.livraisonType) {
+        whereParts.push(`(b.vehicule_id = ? OR EXISTS (
+          SELECT 1 FROM livraisons lvf
+          WHERE lvf.bon_type = ? AND lvf.bon_id = b.id AND lvf.vehicule_id = ?
+        ))`);
+        params.push(vehiculeIdParam, cfg.livraisonType, vehiculeIdParam);
+      } else {
+        whereParts.push(`b.vehicule_id = ?`);
+        params.push(vehiculeIdParam);
+      }
     }
 
     const whereSql = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';

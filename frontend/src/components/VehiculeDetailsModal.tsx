@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { 
-  Printer, Truck, Car, Wrench, CheckCircle, AlertTriangle, 
-  TrendingUp, FileText, Search, DollarSign, MapPin, Info, Eye, X
+import {
+  Printer, Truck, Car, Wrench, CheckCircle, AlertTriangle,
+  TrendingUp, FileText, Search, DollarSign, MapPin, Info, Eye, X,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
-import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
+import { useGetBonsByTypeQuery, useGetBonsByTypePagedQuery, useGetVehiculeBonsStatsQuery } from '../store/api/bonsApi';
 import type { Vehicule, Bon } from '../types';
 import ThermalPrintModal from './ThermalPrintModal';
 import VehiculePrintModal from './VehiculePrintModal';
@@ -34,6 +35,76 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [openBonsVehicule, setOpenBonsVehicule] = useState(true);
+  const [openAutresBons, setOpenAutresBons] = useState(false);
+
+  // Pagination
+  const [pageVeh, setPageVeh] = useState(1);
+  const [pageAutres, setPageAutres] = useState(1);
+  const PAGE_SIZE = 10;
+  const vehId = Number(vehicule?.id || 0);
+
+  // Reset page courante quand les filtres changent
+  React.useEffect(() => { setPageVeh(1); setPageAutres(1); }, [search, statusFilter, dateFrom, dateTo, vehId]);
+
+  // Stats agrégées (backend)
+  const { data: vehStats } = useGetVehiculeBonsStatsQuery(vehId, { skip: !isOpen || !vehId });
+
+  // Bons de type Vehicule paginés côté backend
+  const { data: pagedVehBons } = useGetBonsByTypePagedQuery(
+    {
+      type: 'Vehicule',
+      page: pageVeh,
+      limit: PAGE_SIZE,
+      search: search || undefined,
+      status: statusFilter || undefined,
+      sortBy: 'date',
+      sortDir: 'desc',
+      vehiculeId: vehId || undefined,
+    },
+    { skip: !isOpen || !vehId }
+  );
+
+  // Autres bons (Sortie / Comptant / Commande) paginés côté backend — on fait 3 requêtes
+  const { data: pagedSorties } = useGetBonsByTypePagedQuery(
+    {
+      type: 'Sortie',
+      page: pageAutres,
+      limit: PAGE_SIZE,
+      search: search || undefined,
+      status: statusFilter || undefined,
+      sortBy: 'date',
+      sortDir: 'desc',
+      vehiculeId: vehId || undefined,
+    },
+    { skip: !isOpen || !vehId || !openAutresBons }
+  );
+  const { data: pagedComptants } = useGetBonsByTypePagedQuery(
+    {
+      type: 'Comptant',
+      page: pageAutres,
+      limit: PAGE_SIZE,
+      search: search || undefined,
+      status: statusFilter || undefined,
+      sortBy: 'date',
+      sortDir: 'desc',
+      vehiculeId: vehId || undefined,
+    },
+    { skip: !isOpen || !vehId || !openAutresBons }
+  );
+  const { data: pagedCommandes } = useGetBonsByTypePagedQuery(
+    {
+      type: 'Commande',
+      page: pageAutres,
+      limit: PAGE_SIZE,
+      search: search || undefined,
+      status: statusFilter || undefined,
+      sortBy: 'date',
+      sortDir: 'desc',
+      vehiculeId: vehId || undefined,
+    },
+    { skip: !isOpen || !vehId || !openAutresBons }
+  );
 
   // Fonction pour filtrer les bons par date
   const isWithinDateRange = (isoDate?: string | null) => {
@@ -47,42 +118,46 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
     return true;
   };
 
+  // Bons paginés affichés (filtre date appliqué côté client par dessus la page reçue)
   const bons = useMemo(() => {
-    let base = allVehiculeBons.filter((b: any) => String(b.vehicule_id || '') === String(vehicule?.id || ''));
-    
-    // Filtre par date
-    base = base.filter((b: any) => isWithinDateRange(b.date_creation));
-    
-    // Filtre par statut
-    if (statusFilter) {
-      base = base.filter((b: any) => String(b.statut || '').toLowerCase() === statusFilter.toLowerCase());
-    }
-    
-    // Filtre par recherche
-    const term = search.trim().toLowerCase();
-    if (term) {
-      base = base.filter((b: any) => {
-        const inNumero = (b.numero || '').toLowerCase().includes(term);
-        const inStatut = (b.statut || '').toLowerCase().includes(term);
-        const inLieu = (b.lieu_chargement || '').toLowerCase().includes(term);
-        return inNumero || inStatut || inLieu;
-      });
-    }
-    
-    return base.sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
-  }, [allVehiculeBons, vehicule, search, dateFrom, dateTo, statusFilter]);
+    const list = (pagedVehBons?.data || []) as any[];
+    return list.filter((b: any) => isWithinDateRange(b.date_creation));
+  }, [pagedVehBons, dateFrom, dateTo]);
+  const bonsTotal = pagedVehBons?.pagination?.total || 0;
+  const bonsTotalPages = pagedVehBons?.pagination?.totalPages || 0;
 
-  // Statistiques
+  // Autres bons paginés (fusion des 3 types, filtre date côté client)
+  const autresBons = useMemo(() => {
+    const merged = [
+      ...((pagedSorties?.data || []) as any[]).map((b: any) => ({ ...b, _type: 'Sortie' })),
+      ...((pagedComptants?.data || []) as any[]).map((b: any) => ({ ...b, _type: 'Comptant' })),
+      ...((pagedCommandes?.data || []) as any[]).map((b: any) => ({ ...b, _type: 'Commande' })),
+    ];
+    return merged
+      .filter((b: any) => isWithinDateRange(b.date_creation))
+      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime());
+  }, [pagedSorties, pagedComptants, pagedCommandes, dateFrom, dateTo]);
+  const autresTotal =
+    (pagedSorties?.pagination?.total || 0) +
+    (pagedComptants?.pagination?.total || 0) +
+    (pagedCommandes?.pagination?.total || 0);
+  const autresTotalPages = Math.max(
+    pagedSorties?.pagination?.totalPages || 0,
+    pagedComptants?.pagination?.totalPages || 0,
+    pagedCommandes?.pagination?.totalPages || 0
+  );
+
+  // Statistiques (depuis backend pour totaux, depuis page courante pour répartition statuts)
   const stats = useMemo(() => {
-    const totalBons = bons.length;
-    const totalMontant = bons.reduce((s: number, b: any) => s + (Number(b.montant_total) || 0), 0);
+    const totalBons = vehStats?.bons_vehicule?.count ?? bonsTotal;
+    const totalMontant = vehStats?.bons_vehicule?.montant ?? 0;
     const statuts = new Map<string, number>();
     bons.forEach((b: any) => {
       const statut = b.statut || 'Non défini';
       statuts.set(statut, (statuts.get(statut) || 0) + 1);
     });
     return { totalBons, totalMontant, statuts };
-  }, [bons]);
+  }, [bons, vehStats, bonsTotal]);
 
   // Types de véhicule avec icônes
   const getVehiculeIcon = (type: string) => {
@@ -201,7 +276,7 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
                 <DollarSign size={16} />
                 Statut et Activité
               </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div className="bg-white rounded-lg p-4 border">
                   <p className="font-semibold text-gray-600 text-sm mb-2">Statut Actuel:</p>
                   <div className="flex items-center gap-2">
@@ -212,13 +287,26 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
                   </div>
                 </div>
                 <div className="bg-white rounded-lg p-4 border">
-                  <p className="font-semibold text-gray-600 text-sm">Total Bons:</p>
+                  <p className="font-semibold text-gray-600 text-sm">Total Bons Véhicule:</p>
                   <p className="font-bold text-2xl text-orange-600">{stats.totalBons}</p>
                 </div>
                 <div className="bg-white rounded-lg p-4 border">
-                  <p className="font-semibold text-gray-600 text-sm">Montant Total:</p>
+                  <p className="font-semibold text-gray-600 text-sm">Montant Bons Véhicule:</p>
                   <p className="font-bold text-2xl text-green-600">
-                    {stats.totalMontant.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} DH
+                    {Number(stats.totalMontant).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} DH
+                  </p>
+                </div>
+                <div className="bg-white rounded-lg p-4 border">
+                  <p className="font-semibold text-gray-600 text-sm">Total Autres Bons:</p>
+                  <p className="font-bold text-2xl text-blue-600">{vehStats?.autres_bons?.count ?? 0}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    S:{vehStats?.autres_bons?.par_type?.Sortie?.count ?? 0} · Cp:{vehStats?.autres_bons?.par_type?.Comptant?.count ?? 0} · Cm:{vehStats?.autres_bons?.par_type?.Commande?.count ?? 0}
+                  </p>
+                </div>
+                <div className="bg-white rounded-lg p-4 border">
+                  <p className="font-semibold text-gray-600 text-sm">Montant Autres Bons:</p>
+                  <p className="font-bold text-2xl text-purple-600">
+                    {Number(vehStats?.autres_bons?.montant ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} DH
                   </p>
                 </div>
               </div>
@@ -329,9 +417,13 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
             </div>
           )}
 
-          {/* Tableau des bons */}
-          <div className="bg-white border rounded-xl overflow-hidden">
-            <div className="px-6 py-4 bg-gray-50 border-b">
+          {/* Accordéon: Bons du Véhicule */}
+          <div className="bg-white border rounded-xl overflow-hidden mb-4">
+            <button
+              type="button"
+              onClick={() => setOpenBonsVehicule(o => !o)}
+              className="w-full px-6 py-4 bg-gray-50 border-b flex justify-between items-center hover:bg-gray-100 transition-colors"
+            >
               <h3 className="font-bold text-lg flex items-center gap-2">
                 <FileText size={20} className="text-orange-600" />
                 Bons du Véhicule
@@ -339,8 +431,10 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
                   {stats.totalBons} bons
                 </span>
               </h3>
-            </div>
-            
+              {openBonsVehicule ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+
+            {openBonsVehicule && (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -419,7 +513,140 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
                   )}
                 </tbody>
               </table>
+              {/* Pagination Bons Véhicule */}
+              {bonsTotalPages > 1 && (
+                <div className="flex items-center justify-between px-6 py-3 border-t bg-gray-50">
+                  <div className="text-sm text-gray-600">
+                    Page {pageVeh} / {bonsTotalPages} — {bonsTotal} bons
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPageVeh(p => Math.max(1, p - 1))}
+                      disabled={pageVeh <= 1}
+                      className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+                    >
+                      Précédent
+                    </button>
+                    <button
+                      onClick={() => setPageVeh(p => Math.min(bonsTotalPages, p + 1))}
+                      disabled={pageVeh >= bonsTotalPages}
+                      className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+                    >
+                      Suivant
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
+            )}
+          </div>
+
+          {/* Accordéon: Autres bons liés à ce véhicule */}
+          <div className="bg-white border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOpenAutresBons(o => !o)}
+              className="w-full px-6 py-4 bg-gray-50 border-b flex justify-between items-center hover:bg-gray-100 transition-colors"
+            >
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <FileText size={20} className="text-blue-600" />
+                Autres bons liés à ce véhicule
+                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
+                  {autresBons.length} bons
+                </span>
+              </h3>
+              {openAutresBons ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+
+            {openAutresBons && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">N° Bon</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Lieu chargement</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Montant</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {autresBons.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center">
+                          <div className="flex flex-col items-center">
+                            <FileText className="w-12 h-12 text-gray-400 mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun bon trouvé</h3>
+                            <p className="text-gray-500 max-w-sm">
+                              Aucun bon (Sortie, Comptant, Commande) n'est lié à ce véhicule.
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      autresBons.map((bon: any) => (
+                        <tr key={`${bon._type}-${bon.id}`} className="hover:bg-blue-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                              {bon._type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-semibold text-gray-900">
+                              {bon.numero || `${(bon._type || '').toUpperCase()}${String(bon.id).padStart(3, '0')}`}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-700">{formatDate(bon.date_creation)}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center text-sm text-gray-700">
+                              <MapPin className="w-4 h-4 mr-1 text-gray-400" />
+                              {bon.lieu_chargement || 'Non spécifié'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-semibold text-gray-900">
+                              {Number(bon.montant_total || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} DH
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
+                              {bon.statut || 'Non défini'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+                {/* Pagination Autres bons */}
+                {autresTotalPages > 1 && (
+                  <div className="flex items-center justify-between px-6 py-3 border-t bg-gray-50">
+                    <div className="text-sm text-gray-600">
+                      Page {pageAutres} / {autresTotalPages} — {autresTotal} bons
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPageAutres(p => Math.max(1, p - 1))}
+                        disabled={pageAutres <= 1}
+                        className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+                      >
+                        Précédent
+                      </button>
+                      <button
+                        onClick={() => setPageAutres(p => Math.min(autresTotalPages, p + 1))}
+                        disabled={pageAutres >= autresTotalPages}
+                        className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+                      >
+                        Suivant
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

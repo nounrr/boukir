@@ -3,6 +3,7 @@ import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { resolveRemiseTarget } from '../utils/remiseTarget.js';
+import { syncBonItemRemises } from '../utils/syncBonItemRemises.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
 
@@ -338,18 +339,26 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       }
     }
 
+    // Si la remise est destinée à un autre client-remise (remise_is_client = 0 + remise_id),
+    // on ne persiste PAS la remise sur sortie_items: elle sera stockée uniquement dans item_remises.
+    const remiseExterne = Number(resolved.remise_is_client) === 0
+      && Number.isFinite(Number(resolved.remise_id))
+      && Number(resolved.remise_id) > 0;
+
     // Items (avec validation)
     for (const it of items) {
       const {
         product_id,
         quantite,
         prix_unitaire,
-        remise_pourcentage = 0,
-        remise_montant = 0,
-        total,
         variant_id,
         unit_id
       } = it;
+      const remise_pourcentage = remiseExterne ? 0 : (it.remise_pourcentage ?? 0);
+      const remise_montant = remiseExterne ? 0 : (it.remise_montant ?? 0);
+      const total = remiseExterne
+        ? Number(quantite || 0) * Number(prix_unitaire || 0)
+        : it.total;
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
@@ -378,6 +387,25 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [sortieId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
+
+    if (remiseExterne) {
+      const recomputed = (Array.isArray(items) ? items : []).reduce(
+        (s, r) => s + (Number(r?.quantite || 0) * Number(r?.prix_unitaire || 0)),
+        0
+      );
+      await connection.execute('UPDATE bons_sortie SET montant_total = ? WHERE id = ?', [recomputed, sortieId]);
+    }
+
+    // Si la remise est destinée à un autre client (remise_id renseigné), refléter dans item_remises
+    // en utilisant les VALEURS ORIGINALES (avant neutralisation) de remise_montant/remise_pourcentage.
+    await syncBonItemRemises({
+      db: connection,
+      bonId: sortieId,
+      bonType: 'Sortie',
+      remiseIsClient: resolved.remise_is_client,
+      remiseId: resolved.remise_id,
+      items,
+    });
 
     // Stock: Sortie => retire du stock dès la création (même "En attente")
     // Sauf si statut = "Annulé".
@@ -584,17 +612,23 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    const remiseExterneUpd = Number(resolved.remise_is_client) === 0
+      && Number.isFinite(Number(resolved.remise_id))
+      && Number(resolved.remise_id) > 0;
+
     for (const it of items) {
       const {
         product_id,
         quantite,
         prix_unitaire,
-        remise_pourcentage = 0,
-        remise_montant = 0,
-        total,
         variant_id,
         unit_id
       } = it;
+      const remise_pourcentage = remiseExterneUpd ? 0 : (it.remise_pourcentage ?? 0);
+      const remise_montant = remiseExterneUpd ? 0 : (it.remise_montant ?? 0);
+      const total = remiseExterneUpd
+        ? Number(quantite || 0) * Number(prix_unitaire || 0)
+        : it.total;
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
         await connection.rollback();
@@ -623,6 +657,24 @@ router.put('/:id', async (req, res) => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null, it.product_snapshot_id || null, it.is_indisponible ? 1 : 0]);
     }
+
+    if (remiseExterneUpd) {
+      const recomputed = (Array.isArray(items) ? items : []).reduce(
+        (s, r) => s + (Number(r?.quantite || 0) * Number(r?.prix_unitaire || 0)),
+        0
+      );
+      await connection.execute('UPDATE bons_sortie SET montant_total = ? WHERE id = ?', [recomputed, id]);
+    }
+
+    // Resync item_remises avec la nouvelle cible de remise + les nouvelles lignes.
+    await syncBonItemRemises({
+      db: connection,
+      bonId: id,
+      bonType: 'Sortie',
+      remiseIsClient: resolved.remise_is_client,
+      remiseId: resolved.remise_id,
+      items,
+    });
 
     // Stock: Sortie => effet = -quantite au stock
     // On annule l'effet des anciens items (si pas Annulé), puis on applique les nouveaux (si pas Annulé)

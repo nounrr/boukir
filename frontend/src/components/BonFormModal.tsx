@@ -1004,8 +1004,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [createContact] = useCreateContactMutation();
   const submitInProgressRef = useRef(false);
   const [isSavingBon, setIsSavingBon] = useState(false);
-  const [isDuplicating, setIsDuplicating] = useState(false);
   const [isSendingWhatsAppPdf, setIsSendingWhatsAppPdf] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
   const apiBaseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
   const allClients = useMemo(() => {
     const merged = [...clients, ...chargeClients];
@@ -2255,20 +2255,22 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       }
 
       // Sortie
+      // Si l'utilisateur a explicitement décoché "Même client du bon" et choisi un client-remise,
+      // sa sélection l'emporte (même si le client du bon est abonné).
+      if (!remiseTargetIsBonClient) {
+        return {
+          remise_is_client: 0,
+          remise_id: typeof selectedRemiseId === 'number' ? selectedRemiseId : null,
+          remise_client_nom: undefined,
+        };
+      }
+
       if (bonClientIsAbonne) {
         return { remise_is_client: 1, remise_id: null, remise_client_nom: undefined };
       }
 
-      if (remiseTargetIsBonClient) {
-        // Backend will resolve remise_id from client_id
-        return { remise_is_client: 1, remise_id: null, remise_client_nom: undefined };
-      }
-
-      return {
-        remise_is_client: 0,
-        remise_id: typeof selectedRemiseId === 'number' ? selectedRemiseId : null,
-        remise_client_nom: undefined,
-      };
+      // remiseTargetIsBonClient = true: backend résout remise_id depuis client_id
+      return { remise_is_client: 1, remise_id: null, remise_client_nom: undefined };
     };
 
     const effectiveRemiseTarget = !shouldSendRemiseTarget
@@ -3999,10 +4001,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       <label className="flex items-center gap-2 text-sm text-gray-700">
                         <input
                           type="checkbox"
-                          checked={remiseTargetIsBonClient || Boolean(values.client_id && clientAbonneContactIds.has(Number(values.client_id)))}
-                          disabled={Boolean(values.client_id && clientAbonneContactIds.has(Number(values.client_id)))}
+                          checked={remiseTargetIsBonClient}
                           onChange={(e) => {
-                            if (values.client_id && clientAbonneContactIds.has(Number(values.client_id))) return;
                             const checked = e.target.checked;
                             setRemiseTargetIsBonClient(checked);
                             if (checked) {
@@ -4013,7 +4013,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         Même client du bon
                       </label>
 
-                      {!remiseTargetIsBonClient && !(values.client_id && clientAbonneContactIds.has(Number(values.client_id))) && (
+                      {!remiseTargetIsBonClient && (
                         <div className="min-w-[280px]">
                           <SearchableSelect
                             options={(clientRemiseOptions || []).map((c: any) => ({
@@ -5831,7 +5831,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   )}
                   <button
                     type="button"
-                    disabled={isDuplicating || (values.items?.length || 0) === 0 || user?.role === 'ChefChauffeur'}
+                    hidden
                     onClick={async () => {
                       try {
                         setIsDuplicating(true);

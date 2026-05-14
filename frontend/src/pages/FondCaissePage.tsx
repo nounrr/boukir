@@ -7,6 +7,8 @@ import { showConfirmation, showError, showSuccess } from '../utils/notifications
 type FondCaisseEntry = {
   id: number;
   montant: number;
+  entryType: 'caisse_initial' | 'coffre_initial' | 'transfer_to_coffre';
+  note?: string;
   openedAt: string;
   jour: string;
   createdByName?: string;
@@ -17,26 +19,36 @@ type FondCaisseMouvement = {
   bonComptantPaye?: number;
   paiementBonComptantNonPaye?: number;
   paiementClientCaisse?: number;
+  transfertVersCoffre?: number;
   bonChargeInclusCaisse?: number;
   bonVehicule?: number;
-  avoirClient?: number;
+  avoirComptant?: number;
   entrees?: number;
   sorties?: number;
+  coffreEntrees?: number;
+  coffreSorties?: number;
 };
 
 type Row = {
   jour: string;
-  entry: FondCaisseEntry | null;
+  caisseEntry: FondCaisseEntry | null;
+  coffreEntry: FondCaisseEntry | null;
+  transferEntries: FondCaisseEntry[];
   debut: number;
   entrees: number;
   sorties: number;
   total: number;
+  debutCoffre: number;
+  entreesCoffre: number;
+  sortiesCoffre: number;
+  totalCoffre: number;
   bonComptantPaye: number;
   paiementBonComptantNonPaye: number;
   paiementClientCaisse: number;
+  transfertVersCoffre: number;
   bonChargeInclusCaisse: number;
   bonVehicule: number;
-  avoirClient: number;
+  avoirComptant: number;
 };
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -65,8 +77,12 @@ const FondCaissePage = () => {
   const [dateTo, setDateTo] = useState<string>(todayISO);
   const [entries, setEntries] = useState<FondCaisseEntry[]>([]);
   const [mouvements, setMouvements] = useState<FondCaisseMouvement[]>([]);
-  const [montant, setMontant] = useState('');
-  const [openedAt, setOpenedAt] = useState<string>(nowLocalInput);
+  const [montantCaisse, setMontantCaisse] = useState('');
+  const [openedAtCaisse, setOpenedAtCaisse] = useState<string>(nowLocalInput);
+  const [montantCoffre, setMontantCoffre] = useState('');
+  const [openedAtCoffre, setOpenedAtCoffre] = useState<string>(nowLocalInput);
+  const [montantTransfert, setMontantTransfert] = useState('');
+  const [openedAtTransfert, setOpenedAtTransfert] = useState<string>(nowLocalInput);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -117,11 +133,19 @@ const FondCaissePage = () => {
 
   const rows = useMemo<Row[]>(() => {
     try {
-      const entryByDay = new Map<string, FondCaisseEntry>();
+      const caisseEntryByDay = new Map<string, FondCaisseEntry>();
+      const coffreEntryByDay = new Map<string, FondCaisseEntry>();
+      const transferEntriesByDay = new Map<string, FondCaisseEntry[]>();
       const sortedEntries = [...(entries || [])].filter((e) => e && e.jour);
       sortedEntries.sort((a, b) => String(b?.openedAt || '').localeCompare(String(a?.openedAt || '')));
       for (const e of sortedEntries) {
-        if (!entryByDay.has(e.jour)) entryByDay.set(e.jour, e);
+        if (e.entryType === 'caisse_initial' && !caisseEntryByDay.has(e.jour)) caisseEntryByDay.set(e.jour, e);
+        if (e.entryType === 'coffre_initial' && !coffreEntryByDay.has(e.jour)) coffreEntryByDay.set(e.jour, e);
+        if (e.entryType === 'transfer_to_coffre') {
+          const list = transferEntriesByDay.get(e.jour) || [];
+          list.push(e);
+          transferEntriesByDay.set(e.jour, list);
+        }
       }
 
       const movByDay = new Map<string, FondCaisseMouvement>();
@@ -141,32 +165,49 @@ const FondCaissePage = () => {
           }
         }
       }
-      entryByDay.forEach((_v, k) => allDays.add(k));
+      caisseEntryByDay.forEach((_v, k) => allDays.add(k));
+      coffreEntryByDay.forEach((_v, k) => allDays.add(k));
+      transferEntriesByDay.forEach((_v, k) => allDays.add(k));
       movByDay.forEach((_v, k) => allDays.add(k));
 
       const sorted = Array.from(allDays).sort();
       let prev = 0;
+      let prevCoffre = 0;
       const out: Row[] = sorted.map((jour) => {
-        const entry = entryByDay.get(jour) || null;
+        const caisseEntry = caisseEntryByDay.get(jour) || null;
+        const coffreEntry = coffreEntryByDay.get(jour) || null;
+        const transferEntries = transferEntriesByDay.get(jour) || [];
         const mv = movByDay.get(jour) || ({} as FondCaisseMouvement);
-        const debut = entry ? num(entry.montant) : prev;
+        const debut = caisseEntry ? num(caisseEntry.montant) : prev;
         const entrees = num(mv.entrees);
         const sorties = num(mv.sorties);
         const total = debut + entrees - sorties;
+        const debutCoffre = coffreEntry ? num(coffreEntry.montant) : prevCoffre;
+        const entreesCoffre = num(mv.coffreEntrees);
+        const sortiesCoffre = num(mv.coffreSorties);
+        const totalCoffre = debutCoffre + entreesCoffre - sortiesCoffre;
         prev = total;
+        prevCoffre = totalCoffre;
         return {
           jour,
-          entry,
+          caisseEntry,
+          coffreEntry,
+          transferEntries,
           debut,
           entrees,
           sorties,
           total,
+          debutCoffre,
+          entreesCoffre,
+          sortiesCoffre,
+          totalCoffre,
           bonComptantPaye: num(mv.bonComptantPaye),
           paiementBonComptantNonPaye: num(mv.paiementBonComptantNonPaye),
           paiementClientCaisse: num(mv.paiementClientCaisse),
+          transfertVersCoffre: num(mv.transfertVersCoffre),
           bonChargeInclusCaisse: num(mv.bonChargeInclusCaisse),
           bonVehicule: num(mv.bonVehicule),
-          avoirClient: num(mv.avoirClient),
+          avoirComptant: num(mv.avoirComptant),
         };
       });
       return out;
@@ -178,10 +219,21 @@ const FondCaissePage = () => {
 
   const today = todayISO();
   const todayTotal = rows.find((r) => r.jour === today)?.total || 0;
+  const todayCoffreTotal = rows.find((r) => r.jour === today)?.totalCoffre || 0;
   const periodTotal = rows.reduce((s, r) => s + r.total, 0);
+  const periodCoffreTotal = rows.reduce((s, r) => s + r.totalCoffre, 0);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitEntry = async ({
+    montant,
+    openedAt,
+    entryType,
+    successMessage,
+  }: {
+    montant: string;
+    openedAt: string;
+    entryType: FondCaisseEntry['entryType'];
+    successMessage: string;
+  }) => {
     if (!token) return;
     const m = Number(montant);
     if (!Number.isFinite(m) || m < 0) {
@@ -197,19 +249,53 @@ const FondCaissePage = () => {
       const res = await fetch('/api/fond-caisse/entries', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ montant: m, openedAt }),
+        body: JSON.stringify({ montant: m, openedAt, entryType }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && data.message) || 'Erreur sauvegarde');
-      setMontant('');
-      setOpenedAt(nowLocalInput());
       setTick((t) => t + 1);
-      showSuccess('Fond de caisse enregistre.');
+      showSuccess(successMessage);
     } catch (err: any) {
       showError(err?.message || 'Erreur lors de la sauvegarde.');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSubmitCaisse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitEntry({
+      montant: montantCaisse,
+      openedAt: openedAtCaisse,
+      entryType: 'caisse_initial',
+      successMessage: 'Fond de caisse enregistre.',
+    });
+    setMontantCaisse('');
+    setOpenedAtCaisse(nowLocalInput());
+  };
+
+  const handleSubmitCoffre = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitEntry({
+      montant: montantCoffre,
+      openedAt: openedAtCoffre,
+      entryType: 'coffre_initial',
+      successMessage: 'Fond de coffre enregistre.',
+    });
+    setMontantCoffre('');
+    setOpenedAtCoffre(nowLocalInput());
+  };
+
+  const handleSubmitTransfert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitEntry({
+      montant: montantTransfert,
+      openedAt: openedAtTransfert,
+      entryType: 'transfer_to_coffre',
+      successMessage: 'Transfert vers coffre enregistre.',
+    });
+    setMontantTransfert('');
+    setOpenedAtTransfert(nowLocalInput());
   };
 
   const handleDelete = async (entry: FondCaisseEntry) => {
@@ -273,17 +359,18 @@ const FondCaissePage = () => {
       )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm xl:col-span-1">
+        <div className="space-y-6 xl:col-span-1">
+        <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-3">
             <div className="rounded-lg bg-emerald-100 p-2">
               <Wallet className="h-5 w-5 text-emerald-700" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Debut de traitement</h2>
-              <p className="text-sm text-gray-500">Fond initial sauvegarde en base</p>
+              <h2 className="text-lg font-semibold text-gray-900">Debut caisse</h2>
+              <p className="text-sm text-gray-500">Fond initial de la caisse</p>
             </div>
           </div>
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmitCaisse}>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Montant</label>
               <div className="relative">
@@ -292,8 +379,8 @@ const FondCaissePage = () => {
                   type="number"
                   min="0"
                   step="0.01"
-                  value={montant}
-                  onChange={(e) => setMontant(e.target.value)}
+                  value={montantCaisse}
+                  onChange={(e) => setMontantCaisse(e.target.value)}
                   placeholder="0.00"
                   className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3"
                 />
@@ -303,8 +390,8 @@ const FondCaissePage = () => {
               <label className="mb-1 block text-sm font-medium text-gray-700">Date et heure</label>
               <input
                 type="datetime-local"
-                value={openedAt}
-                onChange={(e) => setOpenedAt(e.target.value)}
+                value={openedAtCaisse}
+                onChange={(e) => setOpenedAtCaisse(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
             </div>
@@ -318,19 +405,104 @@ const FondCaissePage = () => {
           </form>
         </section>
 
+        <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Debut coffre</h2>
+            <p className="text-sm text-gray-500">Montant initial du coffre</p>
+          </div>
+          <form className="space-y-4" onSubmit={handleSubmitCoffre}>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Montant</label>
+              <div className="relative">
+                <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={montantCoffre}
+                  onChange={(e) => setMontantCoffre(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Date et heure</label>
+              <input
+                type="datetime-local"
+                value={openedAtCoffre}
+                onChange={(e) => setOpenedAtCoffre(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="w-full rounded-lg bg-amber-600 px-4 py-2 font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+            >
+              {isSaving ? 'Enregistrement...' : 'Enregistrer'}
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Transferer vers coffre</h2>
+            <p className="text-sm text-gray-500">Montant retire de la caisse et ajoute au coffre</p>
+          </div>
+          <form className="space-y-4" onSubmit={handleSubmitTransfert}>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Montant</label>
+              <div className="relative">
+                <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={montantTransfert}
+                  onChange={(e) => setMontantTransfert(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Date et heure</label>
+              <input
+                type="datetime-local"
+                value={openedAtTransfert}
+                onChange={(e) => setOpenedAtTransfert(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="w-full rounded-lg bg-slate-700 px-4 py-2 font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+            >
+              {isSaving ? 'Enregistrement...' : 'Transferer'}
+            </button>
+          </form>
+        </section>
+        </div>
+
         <div className="space-y-6 xl:col-span-2">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
               <p className="text-sm text-gray-500">Total caisse du jour</p>
               <p className="text-2xl font-bold text-gray-900">{todayTotal.toFixed(2)} DH</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm text-gray-500">Total coffre du jour</p>
+              <p className="text-2xl font-bold text-gray-900">{todayCoffreTotal.toFixed(2)} DH</p>
             </div>
             <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
               <p className="text-sm text-gray-500">Jours periode</p>
               <p className="text-2xl font-bold text-gray-900">{rows.length}</p>
             </div>
             <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-              <p className="text-sm text-gray-500">Somme totaux periode</p>
-              <p className="text-2xl font-bold text-gray-900">{periodTotal.toFixed(2)} DH</p>
+              <p className="text-sm text-gray-500">Somme caisse / coffre</p>
+              <p className="text-2xl font-bold text-gray-900">{periodTotal.toFixed(2)} / {periodCoffreTotal.toFixed(2)} DH</p>
             </div>
           </div>
 
@@ -351,10 +523,13 @@ const FondCaissePage = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Jour</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Debut</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Entrees</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Sorties</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Total</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Debut caisse</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Entrees caisse</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Sorties caisse</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Total caisse</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Debut coffre</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Entrees coffre</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Total coffre</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</th>
                     </tr>
                   </thead>
@@ -369,13 +544,19 @@ const FondCaissePage = () => {
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">
                           {row.debut.toFixed(2)} DH
-                          {!row.entry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
+                          {!row.caisseEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-emerald-700">+{row.entrees.toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-red-700">-{row.sorties.toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm font-bold text-gray-900">{row.total.toFixed(2)} DH</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                          {row.debutCoffre.toFixed(2)} DH
+                          {!row.coffreEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-amber-700">+{row.entreesCoffre.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm font-bold text-gray-900">{row.totalCoffre.toFixed(2)} DH</td>
                         <td className="px-4 py-3 text-right">
-                          <div className="inline-flex items-center justify-end gap-2">
+                          <div className="inline-flex flex-wrap items-center justify-end gap-2">
                             <button
                               type="button"
                               onClick={() => navigate(`/fond-caisse/${row.jour}`)}
@@ -384,16 +565,37 @@ const FondCaissePage = () => {
                             >
                               <Eye className="h-4 w-4" />
                             </button>
-                            {row.entry && (
+                            {row.caisseEntry && (
                               <button
                                 type="button"
-                                onClick={() => handleDelete(row.entry as FondCaisseEntry)}
-                                title="Supprimer"
+                                onClick={() => handleDelete(row.caisseEntry as FondCaisseEntry)}
+                                title="Supprimer debut caisse"
                                 className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             )}
+                            {row.coffreEntry && (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(row.coffreEntry as FondCaisseEntry)}
+                                title="Supprimer debut coffre"
+                                className="inline-flex items-center gap-1 rounded-lg border border-orange-200 px-2.5 py-1.5 text-sm font-medium text-orange-600 hover:bg-orange-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                            {row.transferEntries.map((entry) => (
+                              <button
+                                type="button"
+                                key={entry.id}
+                                onClick={() => handleDelete(entry)}
+                                title="Supprimer transfert"
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            ))}
                           </div>
                         </td>
                       </tr>

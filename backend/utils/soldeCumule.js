@@ -22,8 +22,10 @@ const BALANCE_EXPR = `
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
+      - COALESCE(sorties_vendre_fournisseur.total_sorties, 0)
       - COALESCE(paiements_fournisseur.total_paiements, 0)
       - COALESCE(avoirs_fournisseur.total_avoirs, 0)
+      + COALESCE(avoirs_vendre_fournisseur.total_avoirs, 0)
     ELSE COALESCE(c.solde, 0)
   END
 `;
@@ -76,6 +78,15 @@ export async function getContactSoldeCumule(db, contactId) {
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) achats_fournisseur ON c.type = 'Fournisseur'
 
+    -- Sorties vendre fournisseur: deduites du cumul fournisseur
+    LEFT JOIN (
+      SELECT SUM(montant_total) AS total_sorties
+      FROM bons_sortie
+      WHERE fournisseur_id = ?
+        AND COALESCE(vendre_au_fournisseur, 0) = 1
+        AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
+    ) sorties_vendre_fournisseur ON c.type = 'Fournisseur'
+
     -- Paiements client
     LEFT JOIN (
       SELECT SUM(montant_total) AS total_paiements
@@ -114,6 +125,15 @@ export async function getContactSoldeCumule(db, contactId) {
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) avoirs_fournisseur ON c.type = 'Fournisseur'
 
+    -- Avoir vendre fournisseur: ajoute au cumul fournisseur
+    LEFT JOIN (
+      SELECT SUM(montant_total) AS total_avoirs
+      FROM avoirs_client
+      WHERE fournisseur_id = ?
+        AND COALESCE(vendre_au_fournisseur, 0) = 1
+        AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
+    ) avoirs_vendre_fournisseur ON c.type = 'Fournisseur'
+
     WHERE c.id = ?
     LIMIT 1
   `;
@@ -122,10 +142,12 @@ export async function getContactSoldeCumule(db, contactId) {
     id, // ventes_client
     id, // ventes_ecommerce
     id, // achats_fournisseur
+    id, // sorties_vendre_fournisseur
     id, // paiements_client
     id, // paiements_fournisseur
     id, // avoirs_client
     id, // avoirs_fournisseur
+    id, // avoirs_vendre_fournisseur
     id, // where c.id
   ];
 

@@ -75,23 +75,23 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
   if (!isOpen) return null;
 
   const defaultValues = {
-    ...initialValues,
-    societe: '',
-    nom_complet: '',
-    prenom: '',
-    nom: '',
-    type_compte: '',
-    group_id: '',
+    societe: initialValues?.societe ?? '',
+    nom_complet: initialValues?.nom_complet ?? '',
+    prenom: initialValues?.prenom ?? '',
+    nom: initialValues?.nom ?? '',
+    type_compte: initialValues?.type_compte ?? '',
+    group_id: (initialValues as any)?.group_id ?? '',
     password: '',
-    telephone: '',
-    email: '',
-    adresse: '',
-    ice: '',
-    rib: '',
-    solde: 0,
-    plafond: contactType === 'Client' ? 0 : null,
+    telephone: initialValues?.telephone ?? '',
+    email: initialValues?.email ?? '',
+    adresse: initialValues?.adresse ?? '',
+    ice: initialValues?.ice ?? '',
+    rib: initialValues?.rib ?? '',
+    solde: initialValues?.solde ?? 0,
+    plafond: initialValues?.plafond ?? (contactType === 'Client' ? 0 : null),
     isSolde: Boolean((initialValues as any)?.isSolde ?? (initialValues as any)?.is_solde ?? false),
     is_charge: Boolean((initialValues as any)?.is_charge ?? defaultIsCharge),
+    ...initialValues,
   };
 
   const title = initialValues?.id 

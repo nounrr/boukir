@@ -4,11 +4,11 @@ import {
   Search, Users, Phone, Mail, MapPin, Building2,
   ChevronLeft, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown,
   FileText, CreditCard, RotateCcw, Calendar, Hash, ArrowLeft, Plus,
-  Package, Printer, GripVertical, ChevronDown, ChevronUp,
+  Package, Printer, GripVertical, ChevronDown, ChevronUp, Edit, Trash2,
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { useGetClientsQuery, useGetContactHistoryQuery, useGetContactQuery } from '../store/api/contactsApi';
+import { useGetClientsQuery, useGetContactHistoryQuery, useGetContactQuery, useDeleteContactMutation } from '../store/api/contactsApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
@@ -19,6 +19,9 @@ import { useRemiseEditor, type RemiseEligibleItem } from '../hooks/useRemiseEdit
 import RemiseEditorBar from '../components/RemiseEditorBar';
 import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
 import { getUiBadgeStyle, getUiLineConfig, getUiRowStyle } from '../utils/uiSettings';
+import { showConfirmation, showError, showSuccess } from '../utils/notifications';
+import { useSelector } from 'react-redux';
+import type { RootState } from '../store';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
 
@@ -366,9 +369,26 @@ function getDirectRemiseTotal(item: any): number {
   return Number(total.toFixed(3));
 }
 
-function getHistoryRowBonRemise(kind: CompletRow['kind'], item: any): number {
+// Remise Abonné (affichage) = remise directe du bon (sortie_items.remise_montant / remise_pourcentage)
+// MOINS la part déjà tracée dans item_remises (qui s'affiche en col Remise Client).
+function getDisplayRemiseAbonneTotal(kind: CompletRow['kind'], item: any, remises: any[] = [], bonId?: number | string): number {
   if (kind !== 'sortie' && kind !== 'comptant') return 0;
-  return getDirectRemiseTotal(item);
+  const direct = getDirectRemiseTotal(item);
+  if (direct <= 0) return 0;
+  if (!Array.isArray(remises) || remises.length === 0) return direct;
+  const itemWithBon = bonId != null ? { ...item, bon_id: item.bon_id ?? bonId } : item;
+  const split = getItemRemises(itemWithBon, remises);
+  const tracked = split.abonne + split.client;
+  const remaining = direct - tracked;
+  return remaining > 0 ? Number(remaining.toFixed(3)) : 0;
+}
+
+// Remise Client (affichage) = entrées item_remises (table client_remises), tous types confondus.
+function getDisplayRemiseClientTotal(item: any, remises: any[], bonId?: number | string): number {
+  if (!item || !Array.isArray(remises) || remises.length === 0) return 0;
+  const itemWithBon = bonId != null ? { ...item, bon_id: item.bon_id ?? bonId } : item;
+  const split = getItemRemises(itemWithBon, remises);
+  return Number((split.abonne + split.client).toFixed(3));
 }
 
 function resolveHistoryItemCost(item: any, products: any[]): number {
@@ -600,8 +620,8 @@ function buildRemiseCumuleDetail(rows: CompletRow[], remises: any[] = []): Map<s
     }
 
     items.forEach((item: any, iIdx: number) => {
-      const remiseAbonne = getHistoryRowBonRemise(row.kind, item);
-      const remiseClient = getItemClientRemiseTotal({ ...item, bon_id: row.data.id }, remises);
+      const remiseAbonne = getDisplayRemiseAbonneTotal(row.kind, item, remises, row.data.id);
+      const remiseClient = getDisplayRemiseClientTotal(item, remises, row.data.id);
       const totalRowRemise = remiseAbonne + remiseClient;
       if (totalRowRemise > 0) {
         running += totalRowRemise;
@@ -961,10 +981,10 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 const lastItemSoldeKey = sourceKeys[sourceKeys.length - 1];
                 const itemSelected = sourceKeys.every((key) => selectedItemIds?.has(key));
                 const remiseAbonne = sourceItems.reduce((sum, src) => {
-                  return sum + getHistoryRowBonRemise(row.kind, src);
+                  return sum + getDisplayRemiseAbonneTotal(row.kind, src, remises, b.id);
                 }, 0);
                 const remiseClient = sourceItems.reduce((sum, src) => {
-                  return sum + getItemClientRemiseTotal({ ...src, bon_id: b.id }, remises);
+                  return sum + getDisplayRemiseClientTotal(src, remises, b.id);
                 }, 0);
                 const soldeRemise = remiseCumuleMap.get(lastItemSoldeKey);
                 const rowIndex = dragIndex++;
@@ -2006,6 +2026,9 @@ const readSavedClientsState = (): ClientsListSavedState => {
 const ClientsListPage: React.FC = () => {
   const navigate = useNavigate();
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [deleteContact] = useDeleteContactMutation();
+  const currentUser = useSelector((state: RootState) => state.auth.user);
   const savedState = React.useRef<ClientsListSavedState>(readSavedClientsState()).current;
   const [currentPage, setCurrentPage] = useState(savedState.currentPage ?? 1);
   const [itemsPerPage, setItemsPerPage] = useState(savedState.itemsPerPage ?? 0);
@@ -2059,6 +2082,33 @@ const ClientsListPage: React.FC = () => {
     };
     sessionStorage.setItem(CLIENTS_STATE_KEY, JSON.stringify(stateToSave));
     navigate(`/clients/${id}`);
+  };
+
+  const handleCreate = () => {
+    setEditingContact(null);
+    setIsContactModalOpen(true);
+  };
+
+  const handleEdit = (contact: Contact) => {
+    setEditingContact(contact);
+    setIsContactModalOpen(true);
+  };
+
+  const handleDelete = async (contact: Contact) => {
+    const result = await showConfirmation(
+      'Cette action est irréversible.',
+      `Voulez-vous vraiment supprimer le client "${contact.nom_complet || contact.societe || `#${contact.id}`}" ?`,
+      'Supprimer',
+      'Annuler'
+    );
+    if (!result.isConfirmed) return;
+
+    try {
+      await deleteContact({ id: contact.id, updated_by: currentUser?.id ?? 0 }).unwrap();
+      showSuccess('Client supprimé avec succès');
+    } catch (error: any) {
+      showError(error?.data?.error || error?.message || 'Erreur lors de la suppression du client');
+    }
   };
 
   const totalCumuleClients = clients.reduce(
@@ -2206,6 +2256,34 @@ const ClientsListPage: React.FC = () => {
             </span>
           : <span className="text-gray-300 text-xs">â€”</span>}
       </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEdit(client);
+            }}
+            className="p-2 rounded-md text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+            title="Modifier"
+          >
+            <Edit className="w-4 h-4" />
+          </button>
+          {currentUser?.role === 'PDG' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(client);
+              }}
+              className="p-2 rounded-md text-red-600 hover:bg-red-100 hover:text-red-700 transition-colors"
+              title="Supprimer"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </td>
     </tr>
   );
 
@@ -2251,6 +2329,7 @@ const ClientsListPage: React.FC = () => {
               {fmt(groupTotalCumule)}
             </span>
           </td>
+          <td className="px-4 py-3" />
         </tr>
         {isOpen && row.members.map((client) => renderClientDataRow(client, 'â€¢', `group-${row.groupId}-client-${client.id}`))}
       </React.Fragment>
@@ -2269,7 +2348,7 @@ const ClientsListPage: React.FC = () => {
         </div>
         <button
           type="button"
-          onClick={() => setIsContactModalOpen(true)}
+          onClick={handleCreate}
           className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -2336,19 +2415,20 @@ const ClientsListPage: React.FC = () => {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort('total_cumule')}>
                   Total cumulé <SortIcon col="total_cumule" />
                 </th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600 w-28">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {isLoading || isFetching
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 8 }).map((_, j) => (
+                      {Array.from({ length: 9 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-3/4" /></td>
                       ))}
                     </tr>
                   ))
                 : visibleAccordionRows.length === 0
-                  ? <tr><td colSpan={8} className="px-4 py-14 text-center text-gray-400">
+                  ? <tr><td colSpan={9} className="px-4 py-14 text-center text-gray-400">
                       <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" /><p>Aucun client trouvé</p>
                     </td></tr>
                   : (visibleAccordionRows.map((row, idx: number) => renderAccordionRow(row, idx)) || clients.map((client: Contact, idx: number) => (
@@ -2434,10 +2514,17 @@ const ClientsListPage: React.FC = () => {
 
       <ContactFormModal
         isOpen={isContactModalOpen}
-        onClose={() => setIsContactModalOpen(false)}
+        onClose={() => {
+          setIsContactModalOpen(false);
+          setEditingContact(null);
+        }}
         contactType="Client"
+        initialValues={editingContact || undefined}
         defaultIsCharge={false}
-        onContactAdded={() => setIsContactModalOpen(false)}
+        onContactAdded={() => {
+          setIsContactModalOpen(false);
+          setEditingContact(null);
+        }}
       />
     </div>
   );
