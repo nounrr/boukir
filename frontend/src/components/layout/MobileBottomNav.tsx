@@ -56,7 +56,7 @@ const MobileBottomNav: React.FC = () => {
       key: 'caisse', label: 'Caisse', icon: DollarSign,
       items: [
         { name: 'Caisse', to: '/caisse', show: true },
-        { name: 'Fond de caisse', to: '/fond-caisse', show: true },
+        { name: 'Fond de caisse', to: '/fond-caisse', show: user?.role === 'PDG' },
   { name: 'Talons', to: '/talons', show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
   { name: 'Talon Caisse', to: '/talon-caisse', show: user?.role === 'PDG' || user?.role === 'Manager' || user?.role === 'ManagerPlus' },
       ],

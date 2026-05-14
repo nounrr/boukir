@@ -140,11 +140,11 @@ export const useAccessScheduleMonitor = () => {
     // Vérifier immédiatement
     verifyAccess();
 
-    // Puis vérifier toutes les 3 secondes pour une déconnexion immédiate
-    intervalRef.current = window.setInterval(verifyAccess, 3000);
+    // Puis vérifier toutes les 5 minutes
+    intervalRef.current = window.setInterval(verifyAccess, 5 * 60 * 1000);
 
-    // Vérification temps réel toutes les 5 secondes pour déconnexion immédiate si hors horaires
-    timeCheckRef.current = window.setInterval(checkTimeBasedAccess, 5000);
+    // Vérification horaires toutes les 5 minutes
+    timeCheckRef.current = window.setInterval(checkTimeBasedAccess, 5 * 60 * 1000);
 
     return () => {
       if (intervalRef.current) {
