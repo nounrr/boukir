@@ -15,6 +15,7 @@ async function ensureChargeTables() {
       montant_total DECIMAL(12,2) NOT NULL DEFAULT 0,
       statut VARCHAR(50) NOT NULL DEFAULT 'En attente',
       observations TEXT NULL,
+      inclus_en_caisse TINYINT(1) NOT NULL DEFAULT 0,
       created_by INT NULL,
       updated_by INT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -25,6 +26,19 @@ async function ensureChargeTables() {
       CONSTRAINT fk_bons_charge_client FOREIGN KEY (client_id) REFERENCES contacts(id) ON DELETE RESTRICT
     )
   `);
+
+  try {
+    const [cols] = await pool.query(
+      "SHOW COLUMNS FROM bons_charge LIKE 'inclus_en_caisse'"
+    );
+    if (!Array.isArray(cols) || cols.length === 0) {
+      await pool.query(
+        "ALTER TABLE bons_charge ADD COLUMN inclus_en_caisse TINYINT(1) NOT NULL DEFAULT 0 AFTER observations"
+      );
+    }
+  } catch (e) {
+    console.error('ensureChargeTables alter inclus_en_caisse:', e);
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS charge_items (
@@ -93,7 +107,7 @@ const parseItems = (items) => {
       const coutRevient = parseNumeric(it?.cout_revient, 0);
       const prixGros = parseNumeric(it?.prix_gros, 0);
       const prixVente = parseNumeric(it?.prix_unitaire, 0);
-      const total = parseNumeric(it?.total, quantite * prixAchat);
+      const total = parseNumeric(it?.total, quantite * prixVente);
       const productId = it?.product_id == null || it?.product_id === '' ? null : Number(it.product_id);
       const variantId = it?.variant_id == null || it?.variant_id === '' ? null : Number(it.variant_id);
       const unitId = it?.unit_id == null || it?.unit_id === '' ? null : Number(it.unit_id);
@@ -226,6 +240,7 @@ router.post('/', async (req, res) => {
     const statut = String(req.body?.statut || 'En attente').trim() || 'En attente';
     const createdBy = req.body?.created_by ?? null;
     const observations = req.body?.observations ?? null;
+    const inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
     const items = parseItems(req.body?.items);
 
     if (!dateCreation || !Number.isFinite(clientId) || clientId <= 0 || !items.length) {
@@ -256,10 +271,10 @@ router.post('/', async (req, res) => {
     const [result] = await connection.execute(
       `
         INSERT INTO bons_charge (
-          date_creation, client_id, phone, adresse_livraison, montant_total, statut, observations, created_by, updated_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          date_creation, client_id, phone, adresse_livraison, montant_total, statut, observations, inclus_en_caisse, created_by, updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [dateCreation, clientId, phone, adresse, montantTotal, statut, observations, createdBy, createdBy]
+      [dateCreation, clientId, phone, adresse, montantTotal, statut, observations, inclusEnCaisse, createdBy, createdBy]
     );
 
     for (const item of items) {
@@ -318,6 +333,7 @@ router.put('/:id', async (req, res) => {
     const statut = String(req.body?.statut || 'En attente').trim() || 'En attente';
     const updatedBy = req.body?.updated_by ?? req.body?.created_by ?? null;
     const observations = req.body?.observations ?? null;
+    const inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
     const items = parseItems(req.body?.items);
 
     if (!Number.isFinite(id) || id <= 0 || !dateCreation || !Number.isFinite(clientId) || clientId <= 0 || !items.length) {
@@ -362,10 +378,10 @@ router.put('/:id', async (req, res) => {
     await connection.execute(
       `
         UPDATE bons_charge
-        SET date_creation = ?, client_id = ?, phone = ?, adresse_livraison = ?, montant_total = ?, statut = ?, observations = ?, updated_by = ?, updated_at = NOW()
+        SET date_creation = ?, client_id = ?, phone = ?, adresse_livraison = ?, montant_total = ?, statut = ?, observations = ?, inclus_en_caisse = ?, updated_by = ?, updated_at = NOW()
         WHERE id = ?
       `,
-      [dateCreation, clientId, phone, adresse, montantTotal, statut, observations, updatedBy, id]
+      [dateCreation, clientId, phone, adresse, montantTotal, statut, observations, inclusEnCaisse, updatedBy, id]
     );
 
     await connection.execute('DELETE FROM charge_items WHERE bon_charge_id = ?', [id]);
@@ -423,6 +439,35 @@ router.put('/:id', async (req, res) => {
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
   } finally {
     connection.release();
+  }
+});
+
+router.patch('/:id/inclus-en-caisse', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: 'ID invalide' });
+    }
+    const value = req.body?.inclus_en_caisse ? 1 : 0;
+    const [result] = await pool.execute(
+      'UPDATE bons_charge SET inclus_en_caisse = ?, updated_at = NOW() WHERE id = ?',
+      [value, id]
+    );
+    if (!result || result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Bon charge non trouvé' });
+    }
+    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [id]);
+    if (!rows.length) return res.status(404).json({ message: 'Bon charge non trouvé' });
+    const row = rows[0];
+    res.json({
+      ...row,
+      type: 'Charge',
+      numero: `CHG${String(row.id).padStart(2, '0')}`,
+      items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
+    });
+  } catch (error) {
+    console.error('PATCH /charges/:id/inclus-en-caisse error:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
   }
 });
 

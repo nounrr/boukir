@@ -19,7 +19,8 @@ import { api } from '../store/api/apiSlice';
     useUpdateBonStatusMutation,
     useUpdateEcommerceOrderStatusMutation,
     useUpdateEcommerceOrderRemisesMutation,
-    useCreateBonMutation
+    useCreateBonMutation,
+    useUpdateChargeInclusEnCaisseMutation
   } from '../store/api/bonsApi';
   import { 
     useGetAllClientsQuery, 
@@ -303,6 +304,7 @@ const BonsPage = () => {
   const [updateEcommerceOrderStatus] = useUpdateEcommerceOrderStatusMutation();
   const [updateEcommerceOrderRemises, { isLoading: isSavingEcommerceRemises }] = useUpdateEcommerceOrderRemisesMutation();
   const [createBon] = useCreateBonMutation();
+  const [updateChargeInclusEnCaisse] = useUpdateChargeInclusEnCaisseMutation();
   const [createComptantPayment, { isLoading: isCreatingComptantPayment }] = useCreateComptantPaymentMutation();
   const [deleteComptantPayment] = useDeleteComptantPaymentMutation();
   // Bon links API: record duplications
@@ -1306,18 +1308,25 @@ const BonsPage = () => {
   }, [currentPage, refetchBons, safeRefetchProducts]);
 
   // Fetch linked info for the visible bons
+  const paginatedBonsIdsKey = useMemo(
+    () => paginatedBons
+      .map((bon: any) => Number(bon?.id))
+      .filter((id: number) => Number.isFinite(id) && id > 0)
+      .join(','),
+    [paginatedBons]
+  );
+
   useEffect(() => {
     let cancelled = false;
-    const ids = paginatedBons
-      .map((bon: any) => Number(bon?.id))
-      .filter((id: number) => Number.isFinite(id) && id > 0);
+    const ids = paginatedBonsIdsKey
+      ? paginatedBonsIdsKey.split(',').map((s) => Number(s)).filter((n) => Number.isFinite(n) && n > 0)
+      : [];
 
     if (ids.length === 0) {
-      setBonLinksMap({});
+      setBonLinksMap((prev) => (Object.keys(prev).length === 0 ? prev : {}));
       return;
     }
 
-    setBonLinksMap({});
     getBonLinksBatch({ type: effectiveCurrentTab, ids })
       .unwrap()
       .then((data) => {
@@ -1331,7 +1340,7 @@ const BonsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [effectiveCurrentTab, getBonLinksBatch, paginatedBons]);
+  }, [effectiveCurrentTab, getBonLinksBatch, paginatedBonsIdsKey]);
 
   // showAuditCols already declared earlier; reuse it
 
@@ -2515,6 +2524,11 @@ const BonsPage = () => {
                       title="Glisser pour redimensionner"
                     />
                   </th>
+                  {effectiveCurrentTab === 'Charge' && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
+                      Inclus en caisse
+                    </th>
+                  )}
                   {effectiveCurrentTab !== 'Charge' && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                       Mouvement
@@ -2711,6 +2725,29 @@ const BonsPage = () => {
                         })()}
                       </td>
                       <td className="px-4 py-2 text-sm">{formatNumber4(computeTotalPoids(bon))}</td>
+                      {effectiveCurrentTab === 'Charge' && (
+                        <td className="px-4 py-2 text-sm">
+                          {(() => {
+                            const bAny = bon as any;
+                            const checked = Number(bAny?.inclus_en_caisse) === 1;
+                            return (
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 cursor-pointer"
+                                checked={checked}
+                                onChange={async (e) => {
+                                  try {
+                                    await updateChargeInclusEnCaisse({ id: Number(bon.id), inclus_en_caisse: e.target.checked ? 1 : 0 }).unwrap();
+                                  } catch (err: any) {
+                                    showError(err?.data?.message || 'Erreur lors de la mise à jour');
+                                  }
+                                }}
+                                title="Inclus en caisse"
+                              />
+                            );
+                          })()}
+                        </td>
+                      )}
                       {effectiveCurrentTab !== 'Charge' && (
                       <td className="px-4 py-2 text-sm">
                         {(() => {
