@@ -281,7 +281,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/charges"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRoles={['PDG']}>
               <LayoutWithAccessCheck>
                 <ChargesPage />
               </LayoutWithAccessCheck>
@@ -292,7 +292,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/charges/:id"
           element={
-            <ProtectedRoute forbiddenRoles={['Employé']}>
+            <ProtectedRoute requiredRoles={['PDG']}>
               <LayoutWithAccessCheck>
                 <ChargeDetailPage />
               </LayoutWithAccessCheck>
@@ -424,7 +424,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/fond-caisse"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRoles={['PDG']}>
               <LayoutWithAccessCheck>
                 <FondCaissePage />
               </LayoutWithAccessCheck>
@@ -435,7 +435,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/fond-caisse/:date"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRoles={['PDG']}>
               <LayoutWithAccessCheck>
                 <FondCaisseDetailPage />
               </LayoutWithAccessCheck>
