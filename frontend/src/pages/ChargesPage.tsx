@@ -293,7 +293,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
 //   paiement      ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ crÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©dit (-)  on rÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨gle notre dette
 
 type CompletRow =
-  | { kind: 'charge' | 'sortie' | 'comptant' | 'avoirClient'; date: number; data: any }
+  | { kind: 'charge' | 'avoirCharge' | 'sortie' | 'comptant' | 'avoirClient'; date: number; data: any }
   | { kind: 'paiement'; date: number; data: any };
 
 function buildCompletRows(history: any): CompletRow[] {
@@ -301,6 +301,9 @@ function buildCompletRows(history: any): CompletRow[] {
     ...(history?.charges ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut))
       .map((d: any) => ({ kind: 'charge' as const, date: new Date(d.date_creation).getTime(), data: d })),
+    ...(history?.avoirsCharge ?? [])
+      .filter((b: any) => !isExcludedStatus(b.statut))
+      .map((d: any) => ({ kind: 'avoirCharge' as const, date: new Date(d.date_creation).getTime(), data: d })),
     ...(history?.sorties ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut))
       .map((d: any) => ({ kind: 'sortie' as const, date: new Date(d.date_creation).getTime(), data: d })),
@@ -538,6 +541,7 @@ interface CompletTableProps {
 
 const BON_META: Record<string, { label: string; badgeClass: string; accentClass: string; hoverClass: string; itemBorderClass: string; prefix: string; bgClass?: string; styleKey: string }> = {
   charge:           { label: 'Bon Charge',      badgeClass: 'bg-teal-100 text-teal-700',   accentClass: 'text-teal-700',  hoverClass: 'hover:bg-teal-100', itemBorderClass: 'border-teal-300', prefix: 'CHG', bgClass: 'colored-row bg-teal-100', styleKey: 'bon_charge' },
+  avoirCharge:      { label: 'Avoir Charge',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-orange-700', hoverClass: 'hover:bg-orange-100', itemBorderClass: 'border-orange-300', prefix: 'ACH', bgClass: 'colored-row bg-orange-100', styleKey: 'bon_avoir_client' },
   sortie:           { label: 'Sortie',          badgeClass: 'bg-violet-100 text-violet-700', accentClass: 'text-violet-700', hoverClass: 'hover:bg-violet-100', itemBorderClass: 'border-violet-200', prefix: 'SOR', bgClass: 'colored-row bg-violet-100', styleKey: 'bon_sortie' },
   comptant:         { label: 'Comptant',        badgeClass: 'bg-red-100 text-red-700', accentClass: 'text-black', hoverClass: 'hover:bg-red-100', itemBorderClass: 'border-red-700', prefix: 'CPT', bgClass: 'colored-row bg-red-100', styleKey: 'bon_comptant' },
   avoirClient:      { label: 'Avoir Client',    badgeClass: 'bg-orange-100 text-orange-700', accentClass: 'text-black', hoverClass: 'hover:bg-orange-100', itemBorderClass: 'border-orange-700', prefix: 'AVC', bgClass: 'colored-row bg-orange-100', styleKey: 'bon_avoir_client' },
@@ -1190,7 +1194,7 @@ const ChargeDetailPage: React.FC = () => {
     [history, filterFrom, filterTo]);
 
   const avoirs = useMemo(() =>
-    (history?.avoirsClient ?? [])
+    [...(history?.avoirsCharge ?? []), ...(history?.avoirsClient ?? [])]
       .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
       .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
     [history, filterFrom, filterTo]);

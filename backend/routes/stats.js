@@ -101,12 +101,14 @@ function clampInt(value, fallback, min, max) {
 function getStatsDetailSign(type) {
   switch (type) {
     case 'Commande':
+    case 'Charge':
       return -1;
     case 'Avoir':
     case 'AvoirComptant':
     case 'AvoirEcommerce':
       return -1;
     case 'AvoirFournisseur':
+    case 'AvoirCharge':
       return 1;
     default:
       return 1;
@@ -284,7 +286,9 @@ function formatStatsDetailNumero(type, id, numero) {
     Comptant: 'COM',
     Ecommerce: 'ORD',
     Commande: 'CMD',
+    Charge: 'CHG',
     Avoir: 'AVC',
+    AvoirCharge: 'ACH',
     AvoirFournisseur: 'AVF',
     AvoirComptant: 'AVCC',
     AvoirEcommerce: 'AVE',
@@ -345,7 +349,7 @@ function resolveStatsClientName(clientId, row, contactsById) {
   return contactsById.get(String(clientId))?.nom_complet || row?.contact_nom || `Client ${clientId}`;
 }
 
-function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeCommandes, includeAvoirs }) {
+function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeCommandes, includeAvoirs, includeCharges }) {
   const parts = [];
   const params = [];
 
@@ -455,6 +459,47 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
     });
   }
 
+  if (includeCharges) {
+    const pch = [];
+    parts.push({
+      sql: `
+      SELECT
+        ${unionText("'Charge'")} AS bonType,
+        bch.id AS bonId,
+        ${unionText("CONCAT('CHG', LPAD(bch.id, GREATEST(LENGTH(bch.id), 2), '0'))")} AS bonNumero,
+        bch.date_creation AS date_creation,
+        ${unionText('bch.statut')} AS statut,
+        0 AS isNotCalculated,
+        ${unionText('bch.client_id')} AS client_id,
+        ${unionText('bch.client_id')} AS fournisseur_id,
+        ${unionText('ct.nom_complet')} AS contact_nom,
+        ${unionNullText()} AS phone,
+        ${unionNullText()} AS customer_email,
+        COALESCE(CAST(chi.product_id AS CHAR), CONCAT('charge_custom_', chi.id)) AS product_id,
+        COALESCE(${unionText('CAST(p.id AS CHAR)')}, CONCAT('CHG-', chi.id)) AS product_reference,
+        ${unionCoalesce('p.designation', 'chi.designation_custom')} AS designation,
+        COALESCE(chi.variant_id, ps.variant_id) AS variant_id,
+        ${unionText('pv.variant_name')} AS variant_name,
+        chi.unit_id AS unit_id,
+        ${unionText('pu.unit_name')} AS unit_name,
+        COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+        chi.quantite AS quantite,
+        chi.prix_achat AS prix_unitaire,
+        COALESCE(chi.total, chi.prix_achat * chi.quantite) AS total,
+        COALESCE(chi.remise_montant, 0) AS remise_montant,
+        0 AS cout_revient
+        FROM bons_charge bch
+        JOIN charge_items chi ON chi.bon_charge_id = bch.id
+        LEFT JOIN contacts ct ON ct.id = bch.client_id
+        LEFT JOIN products p ON p.id = chi.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = chi.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(chi.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = chi.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('bch', 'date_creation', pch, dateFrom, dateTo)}`,
+      params: pch,
+    });
+  }
+
   if (includeAvoirs) {
     const pa = [];
     parts.push({
@@ -515,6 +560,45 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         WHERE 1=1 ${buildStatsDateCondition('ae', 'date_creation', pae, dateFrom, dateTo)}`,
       params: pae,
     });
+
+    const pach = [];
+    parts.push({
+      sql: `
+      SELECT
+        ${unionText("'AvoirCharge'")} AS bonType,
+        ach.id AS bonId,
+        ${unionText("CONCAT('ACH', LPAD(ach.id, GREATEST(LENGTH(ach.id), 2), '0'))")} AS bonNumero,
+        ach.date_creation AS date_creation,
+        ${unionText('ach.statut')} AS statut,
+        0 AS isNotCalculated,
+        ${unionText('ach.client_id')} AS client_id,
+        ${unionText('ach.client_id')} AS fournisseur_id,
+        ${unionText('ct.nom_complet')} AS contact_nom,
+        ${unionNullText()} AS phone,
+        ${unionNullText()} AS customer_email,
+        COALESCE(CAST(achi.product_id AS CHAR), CONCAT('avoir_charge_custom_', achi.id)) AS product_id,
+        COALESCE(${unionText('CAST(p.id AS CHAR)')}, CONCAT('ACH-', achi.id)) AS product_reference,
+        ${unionCoalesce('p.designation', 'achi.designation_custom')} AS designation,
+        COALESCE(achi.variant_id, ps.variant_id) AS variant_id,
+        ${unionText('pv.variant_name')} AS variant_name,
+        achi.unit_id AS unit_id,
+        ${unionText('pu.unit_name')} AS unit_name,
+        COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+        achi.quantite AS quantite,
+        achi.prix_achat AS prix_unitaire,
+        COALESCE(achi.total, achi.prix_achat * achi.quantite) AS total,
+        COALESCE(achi.remise_montant, 0) AS remise_montant,
+        0 AS cout_revient
+        FROM avoirs_charge ach
+        JOIN items_avoir_charge achi ON achi.avoir_charge_id = ach.id
+        LEFT JOIN contacts ct ON ct.id = ach.client_id
+        LEFT JOIN products p ON p.id = achi.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = achi.product_snapshot_id
+        LEFT JOIN product_variants pv ON pv.id = COALESCE(achi.variant_id, ps.variant_id)
+        LEFT JOIN product_units pu ON pu.id = achi.unit_id
+        WHERE 1=1 ${buildStatsDateCondition('ach', 'date_creation', pach, dateFrom, dateTo)}`,
+      params: pach,
+    });
   }
 
   for (const p of parts) params.push(...p.params);
@@ -556,6 +640,7 @@ router.get('/details', async (req, res) => {
     const includeVentes = parseBoolQuery(req.query?.includeVentes, true);
     const includeCommandes = parseBoolQuery(req.query?.includeCommandes, true);
     const includeAvoirs = parseBoolQuery(req.query?.includeAvoirs, true);
+    const includeCharges = parseBoolQuery(req.query?.includeCharges, true);
     const useClientCondition = parseBoolQuery(req.query?.useClientCondition, false);
     const selectedProductId = req.query?.selectedProductId ? String(req.query.selectedProductId) : '';
     const selectedClientId = req.query?.selectedClientId ? String(req.query.selectedClientId) : '';
@@ -565,12 +650,12 @@ router.get('/details', async (req, res) => {
       pagination: { page, pageSize, total: 0, totalPages: 0 },
       totals: { totalVentes: 0, totalQuantite: 0, totalMontant: 0, totalRemise: 0, totalProfit: 0 },
       options: { products: [{ value: '', label: 'Tous' }], clients: [{ value: '', label: 'Tous' }] },
-      counts: { ventes: { total: 0, filtered: 0 }, commandes: { total: 0, filtered: 0 }, avoirs: { total: 0, filtered: 0 } },
+      counts: { ventes: { total: 0, filtered: 0 }, commandes: { total: 0, filtered: 0 }, avoirs: { total: 0, filtered: 0 }, charges: { total: 0, filtered: 0 } },
     });
 
-    if (!includeVentes && !includeCommandes && !includeAvoirs) return res.json(emptyResponse());
+    if (!includeVentes && !includeCommandes && !includeAvoirs && !includeCharges) return res.json(emptyResponse());
 
-    const { sql, params } = buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeCommandes, includeAvoirs });
+    const { sql, params } = buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeCommandes, includeAvoirs, includeCharges });
     if (!sql.trim()) return res.json(emptyResponse());
 
     const [[contactsRows], [lineRows]] = await Promise.all([
@@ -587,8 +672,9 @@ router.get('/details', async (req, res) => {
       ventes: { total: 0, filtered: 0 },
       commandes: { total: 0, filtered: 0 },
       avoirs: { total: 0, filtered: 0 },
+      charges: { total: 0, filtered: 0 },
     };
-    const bucketFor = (type) => (['Sortie', 'Comptant', 'Ecommerce'].includes(type) ? 'ventes' : type === 'Commande' ? 'commandes' : 'avoirs');
+    const bucketFor = (type) => (['Sortie', 'Comptant', 'Ecommerce'].includes(type) ? 'ventes' : type === 'Commande' ? 'commandes' : ['Charge', 'AvoirCharge'].includes(type) ? 'charges' : 'avoirs');
 
     for (const raw of lineRows || []) {
       const bonType = String(raw.bonType || '');
@@ -612,7 +698,9 @@ router.get('/details', async (req, res) => {
       const signedQty = qty * sign;
       const signedTotal = total * sign;
       const signedRemise = remiseUnit * qty * sign;
-      const profit = ((unit - costUnit) * qty - remiseUnit * qty) * sign;
+      const profit = ['Charge', 'AvoirCharge'].includes(bonType)
+        ? signedTotal
+        : ((unit - costUnit) * qty - remiseUnit * qty) * sign;
       const productLabel = [raw.product_reference, raw.designation].filter(Boolean).join(' - ') || `Produit ${productId}`;
       const productName = raw.designation || productLabel;
       const productClientId = useClientCondition ? realClientId : '__all__';
@@ -714,7 +802,7 @@ router.get('/details', async (req, res) => {
         clients: [{ value: '', label: 'Tous' }, ...Array.from(clientOptions.values()).sort((a, b) => a.label.localeCompare(b.label))],
       },
       counts,
-      filters: { mode, dateFrom, dateTo, includeVentes, includeCommandes, includeAvoirs, useClientCondition, selectedProductId, selectedClientId },
+      filters: { mode, dateFrom, dateTo, includeVentes, includeCommandes, includeAvoirs, includeCharges, useClientCondition, selectedProductId, selectedClientId },
     });
   } catch (error) {
     console.error('GET /stats/details error:', error);
@@ -738,6 +826,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const avoirClientFilter = buildDateFilter(filterArgs, 'ac');
     const avoirComptantFilter = buildDateFilter(filterArgs, 'ac2');
     const chargeFilter = buildDateFilter(filterArgs, 'bch');
+    const avoirChargeFilter = buildDateFilter(filterArgs, 'ach');
     const vehiculeFilter = buildDateFilter(filterArgs, 'bv');
     const commandeFilter = buildDateFilter(filterArgs, 'bcmd');
 
@@ -931,6 +1020,16 @@ router.get('/chiffre-affaires', async (req, res) => {
       ORDER BY day DESC
     `;
 
+    const avoirsChargeSql = `
+      SELECT DATE_FORMAT(ach.date_creation, '%Y-%m-%d') AS day,
+             COALESCE(SUM(ach.montant_total), 0) AS total
+      FROM avoirs_charge ach
+      WHERE LOWER(TRIM(COALESCE(ach.statut, ''))) IN ${VALID_STATUSES_SQL}
+        ${avoirChargeFilter.sql}
+      GROUP BY day
+      ORDER BY day DESC
+    `;
+
     const vehiculeSql = `
       SELECT DATE_FORMAT(bv.date_creation, '%Y-%m-%d') AS day,
              COALESCE(SUM(bv.montant_total), 0) AS total
@@ -961,6 +1060,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const avoirsComptantParams = [...avoirComptantFilter.params];
     const avoirsEcommerceParams = [...buildDateFilter(filterArgs, 'ae').params];
     const chargesParams = [...chargeFilter.params];
+    const avoirsChargeParams = [...avoirChargeFilter.params];
     const vehiculeParams = [...vehiculeFilter.params];
     const commandesParams = [...commandeFilter.params];
 
@@ -970,6 +1070,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const [avoirsComptantRows] = await pool.query(avoirsComptantSql, avoirsComptantParams);
     const [avoirsEcommerceRows] = await pool.query(avoirsEcommerceSql, avoirsEcommerceParams);
     const [chargesRows] = await pool.query(chargesSql, chargesParams);
+    const [avoirsChargeRows] = await pool.query(avoirsChargeSql, avoirsChargeParams);
     const [vehiculeRows] = await pool.query(vehiculeSql, vehiculeParams);
     const [commandesRows] = await pool.query(commandesSql, commandesParams);
 
@@ -979,6 +1080,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const avoirsComptantMap = rowsToMap(avoirsComptantRows, 'day');
     const avoirsEcommerceMap = rowsToMap(avoirsEcommerceRows, 'day');
     const chargesMap = rowsToMap(chargesRows, 'day');
+    const avoirsChargeMap = rowsToMap(avoirsChargeRows, 'day');
     const vehiculeMap = rowsToMap(vehiculeRows, 'day');
     const commandesMap = rowsToMap(commandesRows, 'day');
 
@@ -989,6 +1091,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       ...Array.from(avoirsComptantMap.keys()),
       ...Array.from(avoirsEcommerceMap.keys()),
       ...Array.from(chargesMap.keys()),
+      ...Array.from(avoirsChargeMap.keys()),
       ...Array.from(vehiculeMap.keys()),
       ...Array.from(commandesMap.keys()),
     ]);
@@ -1006,6 +1109,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         const aComptant = avoirsComptantMap.get(day) || {};
         const aEcom = avoirsEcommerceMap.get(day) || {};
         const charge = chargesMap.get(day) || {};
+        const avoirCharge = avoirsChargeMap.get(day) || {};
         const veh = vehiculeMap.get(day) || {};
         const cmd = commandesMap.get(day) || {};
 
@@ -1019,14 +1123,16 @@ router.get('/chiffre-affaires', async (req, res) => {
         const avoirsRemises = roundSafe(aClient.remises) + roundSafe(aComptant.remises) + roundSafe(aEcom.remises);
 
         const chargesTotal = roundSafe(charge.total);
+        const avoirsChargeTotal = roundSafe(avoirCharge.total);
+        const chargesNet = chargesTotal - avoirsChargeTotal;
         const vehiculeTotal = roundSafe(veh.total);
         const achatsTotal = roundSafe(cmd.total);
 
         const profitSansCharges = ventesProfitNet - avoirsProfitNet;
-        const profitNetApresCharges = profitSansCharges - chargesTotal;
-        const chiffreAffaires = ventesCA - avoirsCA - chargesTotal;
-        const chiffreAffairesAchat = ventesProfitNet - avoirsProfitNet - chargesTotal - vehiculeTotal;
-        const chiffreAffairesAchatBrut = ventesProfitBrut - avoirsProfitBrut - chargesTotal - vehiculeTotal;
+        const profitNetApresCharges = profitSansCharges - chargesNet;
+        const chiffreAffaires = ventesCA - avoirsCA - chargesNet;
+        const chiffreAffairesAchat = ventesProfitNet - avoirsProfitNet - chargesNet - vehiculeTotal;
+        const chiffreAffairesAchatBrut = ventesProfitBrut - avoirsProfitBrut - chargesNet - vehiculeTotal;
         const totalRemises = ventesRemises - avoirsRemises;
 
         return {
@@ -1040,7 +1146,9 @@ router.get('/chiffre-affaires', async (req, res) => {
           totalVentesFournisseur: roundSafe(vf.ca),
           profitVentesFournisseur: roundSafe(vf.profitNet),
           totalRemises,
-          totalCharges: chargesTotal,
+          totalCharges: chargesNet,
+          totalChargesBrut: chargesTotal,
+          totalAvoirsCharge: avoirsChargeTotal,
           totalBonsVehicule: vehiculeTotal,
         };
       })
@@ -1058,7 +1166,9 @@ router.get('/chiffre-affaires', async (req, res) => {
     const totalChiffreAchats = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAchats), 0);
     const totalVentesFournisseur = Array.from(ventesFournisseurMap.values()).reduce((s, r) => s + roundSafe(r.ca), 0);
     const totalProfitVentesFournisseur = Array.from(ventesFournisseurMap.values()).reduce((s, r) => s + roundSafe(r.profitNet), 0);
-    const totalCharges = Array.from(chargesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
+    const totalChargesBrut = Array.from(chargesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
+    const totalAvoirsCharge = Array.from(avoirsChargeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
+    const totalCharges = totalChargesBrut - totalAvoirsCharge;
     const totalBonsVehicule = Array.from(vehiculeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
 
     const totalRemisesVente = Array.from(ventesMap.values()).reduce((s, r) => s + roundSafe(r.remises), 0);
@@ -1083,6 +1193,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         { name: 'avoirs_comptant', alias: 't', dateCol: 'date_creation', statutCol: 'statut', totalCol: 'montant_total' },
         { name: 'bons_commande', alias: 't', dateCol: 'date_creation', statutCol: 'statut', totalCol: 'montant_total' },
         { name: 'bons_charge', alias: 't', dateCol: 'date_creation', statutCol: 'statut', totalCol: 'montant_total' },
+        { name: 'avoirs_charge', alias: 't', dateCol: 'date_creation', statutCol: 'statut', totalCol: 'montant_total' },
         { name: 'bons_vehicule', alias: 't', dateCol: 'date_creation', statutCol: 'statut', totalCol: 'montant_total' },
         { name: 'ecommerce_orders', alias: 't', dateCol: 'created_at', statutCol: 'status', totalCol: 'total_amount' },
         { name: 'avoirs_ecommerce', alias: 't', dateCol: 'date_creation', statutCol: 'statut', totalCol: 'montant_total' },
@@ -1141,6 +1252,8 @@ router.get('/chiffre-affaires', async (req, res) => {
       totalVentesFournisseur,
       totalProfitVentesFournisseur,
       totalCharges,
+      totalChargesBrut,
+      totalAvoirsCharge,
       totalBonsVehicule,
       totalBons,
       dailyData,
@@ -1434,6 +1547,39 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
         AND DATE(bch.date_creation) = ?
     `;
 
+    const avoirsChargeLinesSql = `
+      SELECT ('Avoir Charge' COLLATE ${UNION_COLLATION}) AS bonType,
+        ach.id AS bonId,
+        (CONCAT('ACH', LPAD(ach.id, GREATEST(LENGTH(ach.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
+        ach.montant_total AS totalBon,
+        (COALESCE(ct_ach.nom_complet, '') COLLATE ${UNION_COLLATION}) AS contact_nom,
+        (COALESCE(NULLIF(achi.designation_custom, ''), p.designation) COLLATE ${UNION_COLLATION}) AS designation,
+        achi.product_id AS product_id,
+        ${buildVariantIdExpr('achi', 'ps')} AS variant_id,
+        achi.unit_id AS unit_id,
+        (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
+        pu.unit_name AS unit_name,
+        achi.quantite AS quantite,
+        achi.prix_achat AS prix_unitaire,
+        ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
+        achi.prix_achat AS prix_achat,
+        COALESCE(achi.total, (achi.prix_achat * achi.quantite)) AS montant_ligne,
+        COALESCE(pu.conversion_factor, 1) AS conversion_factor,
+        COALESCE(achi.total, (achi.prix_achat * achi.quantite)) AS profitBrut,
+        COALESCE(achi.remise_montant, 0) AS remise_unitaire,
+        (COALESCE(achi.remise_montant, 0) * achi.quantite) AS remise_total,
+        COALESCE(achi.total, (achi.prix_achat * achi.quantite)) AS profit
+      FROM avoirs_charge ach
+      LEFT JOIN contacts ct_ach ON ct_ach.id = ach.client_id
+      LEFT JOIN items_avoir_charge achi ON achi.avoir_charge_id = ach.id
+      LEFT JOIN products p ON p.id = achi.product_id
+      LEFT JOIN product_snapshot ps ON ps.id = achi.product_snapshot_id
+      LEFT JOIN product_units pu ON pu.id = achi.unit_id
+      LEFT JOIN product_variants pv ON pv.id = ${buildVariantIdExpr('achi', 'ps')}
+      WHERE LOWER(TRIM(COALESCE(ach.statut, ''))) IN ${VALID_STATUSES_SQL}
+        AND DATE(ach.date_creation) = ?
+    `;
+
     const vehiculeSql = `
       SELECT bv.id AS bonId,
              (CONCAT('VEH', LPAD(bv.id, GREATEST(LENGTH(bv.id), 2), '0')) COLLATE ${UNION_COLLATION}) AS bonNumero,
@@ -1448,6 +1594,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const [avoirsLines] = await pool.query(avoirsLinesSql, [selectedDate, selectedDate, selectedDate]);
     const [commandesLines] = await pool.query(commandesLinesSql, [selectedDate]);
     const [chargesLines] = await pool.query(chargesLinesSql, [selectedDate]);
+    const [avoirsChargeLines] = await pool.query(avoirsChargeLinesSql, [selectedDate]);
     const [vehicules] = await pool.query(vehiculeSql, commonParams);
 
     const buildCalculs = (lines) => {
@@ -1514,6 +1661,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const avoirsCalculs = buildCalculs(avoirsLines);
     const commandesCalculs = buildCalculs(commandesLines);
     const chargesDisplayCalculs = buildCalculs(chargesLines);
+    const avoirsChargeDisplayCalculs = buildCalculs(avoirsChargeLines);
     const chargesCalculs = chargesDisplayCalculs.map((c) => ({
       ...c,
       totalBon: -roundSafe(c.totalBon),
@@ -1526,11 +1674,24 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
         profit: -roundSafe(item.montant_ligne),
       })),
     }));
+    const avoirsChargeCalculs = avoirsChargeDisplayCalculs.map((c) => ({
+      ...c,
+      totalBon: roundSafe(c.totalBon),
+      profitBon: roundSafe(Math.abs(c.totalBon)),
+      netTotalBon: roundSafe(Math.abs(c.totalBon)),
+      totalRemiseBon: roundSafe(c.totalRemiseBon),
+      items: (c.items || []).map((item) => ({
+        ...item,
+        profitBrut: roundSafe(item.montant_ligne),
+        profit: roundSafe(item.montant_ligne),
+      })),
+    }));
 
     const caNetCalculs = [
       ...ventesCalculs,
       ...avoirsCalculs.map((c) => ({ ...c, totalBon: -roundSafe(c.totalBon) })),
       ...chargesCalculs,
+      ...avoirsChargeCalculs,
     ];
     const caNetTotal = caNetCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
 
@@ -1538,6 +1699,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       ...ventesCalculs,
       ...avoirsCalculs.map((c) => ({ ...c, profitBon: -roundSafe(c.profitBon) })),
       ...chargesCalculs,
+      ...avoirsChargeCalculs,
       ...(vehicules || []).map((v) => ({
         bonId: Number(v.bonId),
         bonNumero: v.bonNumero,
@@ -1550,7 +1712,17 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const beneficiaireTotal = beneficiaireCalculs.reduce((s, c) => s + roundSafe(c.profitBon), 0);
 
     const achatsTotal = commandesCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
-    const chargesTotal = chargesDisplayCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
+    const avoirsChargeNetDisplayCalculs = avoirsChargeDisplayCalculs.map((c) => ({
+      ...c,
+      totalBon: -roundSafe(c.totalBon),
+      profitBon: -roundSafe(Math.abs(c.totalBon)),
+      netTotalBon: -roundSafe(Math.abs(c.totalBon)),
+    }));
+    const chargesSectionCalculs = [
+      ...chargesDisplayCalculs,
+      ...avoirsChargeNetDisplayCalculs,
+    ];
+    const chargesTotal = chargesSectionCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
 
     const chiffresDetail = [
       {
@@ -1576,10 +1748,10 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       },
       {
         type: 'CHARGES',
-        title: 'Charges (Bons Charge)',
+        title: 'Charges nettes (Bons Charge - Avoirs Charge)',
         total: chargesTotal,
-        bons: chargesDisplayCalculs.map((c) => ({ id: c.bonId })),
-        calculs: chargesDisplayCalculs,
+        bons: chargesSectionCalculs.map((c) => ({ id: c.bonId })),
+        calculs: chargesSectionCalculs,
       },
     ];
 

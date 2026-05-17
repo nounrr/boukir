@@ -21,10 +21,14 @@ const getBonRowBg = (bonType: string): string => {
       return 'bg-green-50';
     case 'Commande':
       return 'bg-amber-50';
+    case 'Charge':
+      return 'bg-rose-50';
     case 'Avoir':
     case 'AvoirComptant':
     case 'AvoirEcommerce':
       return 'bg-red-50';
+    case 'AvoirCharge':
+      return 'bg-emerald-50';
     case 'AvoirFournisseur':
       return 'bg-blue-50';
     default:
@@ -48,6 +52,7 @@ const StatsDetailPage: React.FC = () => {
   const [includeVentes, setIncludeVentes] = useState(true);
   const [includeCommandes, setIncludeCommandes] = useState(true);
   const [includeAvoirs, setIncludeAvoirs] = useState(true);
+  const [includeCharges, setIncludeCharges] = useState(true);
   const [useClientCondition, setUseClientCondition] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -56,7 +61,7 @@ const StatsDetailPage: React.FC = () => {
   useEffect(() => {
     setPage(1);
     setExpanded({});
-  }, [dateFrom, dateTo, mode, selectedProductId, selectedClientId, includeVentes, includeCommandes, includeAvoirs, useClientCondition, pageSize]);
+  }, [dateFrom, dateTo, mode, selectedProductId, selectedClientId, includeVentes, includeCommandes, includeAvoirs, includeCharges, useClientCondition, pageSize]);
 
   useEffect(() => {
     setSelectedProductId('');
@@ -73,6 +78,7 @@ const StatsDetailPage: React.FC = () => {
       includeVentes,
       includeCommandes,
       includeAvoirs,
+      includeCharges,
       useClientCondition,
       selectedProductId,
       selectedClientId,
@@ -109,7 +115,7 @@ const StatsDetailPage: React.FC = () => {
 
   const toggleType = (setter: React.Dispatch<React.SetStateAction<boolean>>, current: boolean) => {
     const next = !current;
-    if (!next && [includeVentes, includeCommandes, includeAvoirs].filter(Boolean).length <= 1) return;
+    if (!next && [includeVentes, includeCommandes, includeAvoirs, includeCharges].filter(Boolean).length <= 1) return;
     setter(next);
   };
 
@@ -169,6 +175,8 @@ const StatsDetailPage: React.FC = () => {
         <span className="text-gray-600 font-medium mr-1">Clés de couleur :</span>
         <span className="inline-flex items-center px-2 py-1 rounded border border-green-200 bg-green-50 text-green-800">Sortie / Comptant / Ecommerce</span>
         <span className="inline-flex items-center px-2 py-1 rounded border border-amber-200 bg-amber-50 text-amber-800">Commande</span>
+        <span className="inline-flex items-center px-2 py-1 rounded border border-rose-200 bg-rose-50 text-rose-800">Bon charge</span>
+        <span className="inline-flex items-center px-2 py-1 rounded border border-emerald-200 bg-emerald-50 text-emerald-800">Avoir charge</span>
         <span className="inline-flex items-center px-2 py-1 rounded border border-red-200 bg-red-50 text-red-800">Avoir</span>
         <span className="inline-flex items-center px-2 py-1 rounded border border-blue-200 bg-blue-50 text-blue-800">Avoir fournisseur</span>
       </div>
@@ -182,7 +190,7 @@ const StatsDetailPage: React.FC = () => {
         {counts && (
           <div className="mb-4 inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200">
             <Filter className="w-3 h-3 mr-2" />
-            Ventes {counts.ventes.filtered}/{counts.ventes.total} - Commandes {counts.commandes.filtered}/{counts.commandes.total} - Avoirs {counts.avoirs.filtered}/{counts.avoirs.total}
+            Ventes {counts.ventes.filtered}/{counts.ventes.total} - Commandes {counts.commandes.filtered}/{counts.commandes.total} - Avoirs {counts.avoirs.filtered}/{counts.avoirs.total} - Charges {counts.charges?.filtered || 0}/{counts.charges?.total || 0}
           </div>
         )}
 
@@ -230,6 +238,7 @@ const StatsDetailPage: React.FC = () => {
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={includeVentes} onChange={() => toggleType(setIncludeVentes, includeVentes)} /> Inclure Ventes</label>
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={includeCommandes} onChange={() => toggleType(setIncludeCommandes, includeCommandes)} /> Inclure Commandes</label>
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={includeAvoirs} onChange={() => toggleType(setIncludeAvoirs, includeAvoirs)} /> Inclure Avoirs</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={includeCharges} onChange={() => toggleType(setIncludeCharges, includeCharges)} /> Inclure Charges</label>
           <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={useClientCondition} onChange={() => setUseClientCondition((v) => !v)} /> Condition client</label>
         </div>
       </div>

@@ -2,7 +2,7 @@ import { api } from './apiSlice';
 import type { Bon } from '../../types';
 
 // Shared union for bon-like types
-type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'AvoirEcommerce' | 'Vehicule' | 'Ecommerce';
+type AnyBonType = 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'AvoirCharge' | 'Devis' | 'Avoir' | 'AvoirFournisseur' | 'AvoirComptant' | 'AvoirEcommerce' | 'Vehicule' | 'Ecommerce';
 type PagedBonType = AnyBonType | 'ComptantNonPaye' | 'VendreFournisseur' | 'AvoirVendreFournisseur';
 
 type PagedBonsArgs = {
@@ -60,6 +60,8 @@ export const bonsApi = api.injectEndpoints({
             return '/comptant?includeCalc=1';
           case 'Charge':
             return '/charges';
+          case 'AvoirCharge':
+            return '/charges?type=avoir';
           case 'Devis':
             return '/devis';
           case 'Avoir':
@@ -171,6 +173,9 @@ export const bonsApi = api.injectEndpoints({
           case 'Charge':
             endpoint = '/charges';
             break;
+          case 'AvoirCharge':
+            endpoint = '/charges?type=avoir';
+            break;
           case 'Devis':
             endpoint = '/devis';
             break;
@@ -229,6 +234,9 @@ export const bonsApi = api.injectEndpoints({
             break;
           case 'Charge':
             endpoint = `/charges/${id}`;
+            break;
+          case 'AvoirCharge':
+            endpoint = `/charges/${id}?type=avoir`;
             break;
           case 'Devis':
             endpoint = `/devis/${id}`;
@@ -462,6 +470,9 @@ export const bonsApi = api.injectEndpoints({
           case 'Charge':
             endpoint = `/charges/${id}`;
             break;
+          case 'AvoirCharge':
+            endpoint = `/charges/${id}?type=avoir`;
+            break;
           case 'Devis':
             endpoint = `/devis/${id}`;
             break;
@@ -520,6 +531,9 @@ export const bonsApi = api.injectEndpoints({
             break;
           case 'Charge':
             endpoint = `/charges/${id}/statut`;
+            break;
+          case 'AvoirCharge':
+            endpoint = `/charges/${id}/statut?type=avoir`;
             break;
           case 'Devis':
             endpoint = `/devis/${id}/statut`;

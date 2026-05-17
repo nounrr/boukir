@@ -14,6 +14,8 @@ export interface ChiffreAffairesDayRow {
   profitVentesFournisseur?: number;
   totalRemises: number;
   totalCharges?: number;
+  totalChargesBrut?: number;
+  totalAvoirsCharge?: number;
   totalBonsVehicule?: number;
 }
 
@@ -24,6 +26,8 @@ export interface ChiffreAffairesStatsResponse {
   totalVentesFournisseur?: number;
   totalProfitVentesFournisseur?: number;
   totalCharges?: number;
+  totalChargesBrut?: number;
+  totalAvoirsCharge?: number;
   totalBonsVehicule?: number;
   totalBons: number;
   dailyData: ChiffreAffairesDayRow[];
@@ -81,6 +85,7 @@ export interface StatsDetailsQuery {
   includeVentes: boolean;
   includeCommandes: boolean;
   includeAvoirs: boolean;
+  includeCharges?: boolean;
   useClientCondition: boolean;
   selectedProductId?: string;
   selectedClientId?: string;
@@ -98,6 +103,7 @@ export interface StatsDetailsResponse {
     ventes: { total: number; filtered: number };
     commandes: { total: number; filtered: number };
     avoirs: { total: number; filtered: number };
+    charges?: { total: number; filtered: number };
   };
 }
 
@@ -156,6 +162,7 @@ export const statsApi = apiSlice.injectEndpoints({
         params.set('includeVentes', String(args.includeVentes));
         params.set('includeCommandes', String(args.includeCommandes));
         params.set('includeAvoirs', String(args.includeAvoirs));
+        if (args.includeCharges !== undefined) params.set('includeCharges', String(args.includeCharges));
         params.set('useClientCondition', String(args.useClientCondition));
         if (args.selectedProductId) params.set('selectedProductId', args.selectedProductId);
         if (args.selectedClientId) params.set('selectedClientId', args.selectedClientId);

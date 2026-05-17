@@ -85,6 +85,26 @@ const bonPagedConfigs = {
     itemExtraJsonFields: `'designation_custom', i.designation_custom, 'prix_achat', i.prix_achat, 'cout_revient', i.cout_revient, 'prix_gros', i.prix_gros,`,
     itemSearchExpr: 'COALESCE(NULLIF(isearch.designation_custom, \'\'), psearch.designation)',
   },
+  AvoirCharge: {
+    type: 'AvoirCharge',
+    table: 'avoirs_charge',
+    alias: 'b',
+    prefix: 'ACH',
+    contactExpr: 'c.nom_complet',
+    contactIdExpr: 'b.client_id',
+    phoneExpr: 'COALESCE(c.telephone, \'\')',
+    amountExpr: 'b.montant_total',
+    joins: `LEFT JOIN contacts c ON c.id = b.client_id`,
+    selectExtra: `c.nom_complet AS client_nom`,
+    itemTable: 'items_avoir_charge',
+    itemFk: 'avoir_charge_id',
+    itemAlias: 'i',
+    itemHasVariantUnit: true,
+    itemSnapshot: true,
+    itemDesignationExpr: 'COALESCE(NULLIF(i.designation_custom, \'\'), p.designation)',
+    itemExtraJsonFields: `'designation_custom', i.designation_custom, 'prix_achat', i.prix_achat, 'cout_revient', i.cout_revient, 'prix_gros', i.prix_gros,`,
+    itemSearchExpr: 'COALESCE(NULLIF(isearch.designation_custom, \'\'), psearch.designation)',
+  },
   Devis: {
     type: 'Devis',
     table: 'devis',
@@ -610,11 +630,18 @@ router.get('/paged/:type', async (req, res) => {
     const whereParts = [];
     const params = [];
 
+    if (cfg.baseWhere) {
+      whereParts.push(cfg.baseWhere);
+    }
+
     if (search) {
       const like = `%${search}%`;
       whereParts.push(`(
         CAST(b.id AS CHAR) LIKE ?
-        OR CONCAT(?, CAST(b.id AS CHAR)) LIKE ?
+        OR LOWER(CONCAT(?, CAST(b.id AS CHAR))) LIKE LOWER(?)
+        OR LOWER(CONCAT(?, LPAD(CAST(b.id AS CHAR), 2, '0'))) LIKE LOWER(?)
+        OR LOWER(CONCAT(?, LPAD(CAST(b.id AS CHAR), 3, '0'))) LIKE LOWER(?)
+        OR LOWER(CONCAT(?, LPAD(CAST(b.id AS CHAR), 4, '0'))) LIKE LOWER(?)
         OR CAST(${cfg.contactIdExpr || 'NULL'} AS CHAR) LIKE ?
         OR ${cfg.contactExpr} LIKE ?
         OR ${cfg.phoneExpr} LIKE ?
@@ -627,7 +654,20 @@ router.get('/paged/:type', async (req, res) => {
             AND (COALESCE(${cfg.itemSearchExpr || 'psearch.designation'}, '') LIKE ? OR CAST(isearch.product_id AS CHAR) LIKE ?)
         )
       )`);
-      params.push(like, cfg.prefix, like, like, like, like, like, like, like, like);
+      params.push(
+        like,
+        cfg.prefix, like,
+        cfg.prefix, like,
+        cfg.prefix, like,
+        cfg.prefix, like,
+        like,
+        like,
+        like,
+        like,
+        like,
+        like,
+        like
+      );
     }
 
     if (statuses.length) {

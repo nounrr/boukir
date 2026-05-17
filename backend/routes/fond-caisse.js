@@ -55,8 +55,34 @@ async function ensureFondCaisseEntriesTable(db = pool) {
   }
 }
 
+async function ensureCoffreTable(db = pool) {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS coffre (
+      id INT NOT NULL AUTO_INCREMENT,
+      montant DECIMAL(12,2) NOT NULL DEFAULT 0,
+      entry_type VARCHAR(50) NOT NULL DEFAULT 'coffre_initial',
+      note VARCHAR(255) NULL,
+      opened_at DATETIME NOT NULL,
+      jour DATE NOT NULL,
+      fond_caisse_entry_id INT NULL,
+      created_by INT NULL,
+      created_by_name VARCHAR(255) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_coffre_fond_caisse_entry_id (fond_caisse_entry_id),
+      KEY idx_coffre_jour (jour),
+      KEY idx_coffre_entry_type_jour (entry_type, jour),
+      KEY idx_coffre_created_by (created_by)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+}
+
 ensureFondCaisseEntriesTable().catch((error) => {
   console.error('ensureFondCaisseEntriesTable:', error);
+});
+ensureCoffreTable().catch((error) => {
+  console.error('ensureCoffreTable:', error);
 });
 
 const normalizeSqlDateTime = (value) => {
@@ -113,6 +139,18 @@ const mapEntry = (row) => ({
   createdAt: formatDateTimeValue(row.created_at),
 });
 
+const mapCoffreEntry = (row) => ({
+  id: -Number(row.id),
+  montant: toNumber(row.montant),
+  entryType: String(row.entry_type || 'coffre_initial'),
+  note: row.note || '',
+  openedAt: formatDateTimeValue(row.opened_at),
+  jour: formatDateValue(row.jour),
+  createdByUserId: row.created_by == null ? null : Number(row.created_by),
+  createdByName: row.created_by_name || 'Inconnu',
+  createdAt: formatDateTimeValue(row.created_at),
+});
+
 const ALLOWED_ENTRY_TYPES = new Set(['caisse_initial', 'coffre_initial', 'transfer_to_coffre']);
 
 async function getEmployeeName(userId) {
@@ -150,6 +188,7 @@ function mergeMovement(target, jour, values) {
     bonComptantPaye: 0,
     paiementBonComptantNonPaye: 0,
     paiementClientCaisse: 0,
+    avoirChargeInclusCaisse: 0,
     bonChargeInclusCaisse: 0,
     bonVehicule: 0,
     avoirComptant: 0,
@@ -164,15 +203,33 @@ function mergeMovement(target, jour, values) {
 router.get('/entries', async (req, res) => {
   try {
     await ensureFondCaisseEntriesTable();
+    await ensureCoffreTable();
     const { dateFrom, dateTo } = parseDateRange(req);
-    const [rows] = await pool.query(
+    const [caisseRows] = await pool.query(
       `SELECT *
          FROM fond_caisse_entries
         WHERE jour BETWEEN ? AND ?
+          AND entry_type IN ('caisse_initial', 'transfer_to_coffre')
         ORDER BY opened_at DESC, id DESC`,
       [dateFrom, dateTo]
     );
-    res.json({ dateFrom, dateTo, data: rows.map(mapEntry) });
+    const [coffreRows] = await pool.query(
+      `SELECT *
+         FROM coffre
+        WHERE jour BETWEEN ? AND ?
+          AND entry_type = 'coffre_initial'
+        ORDER BY opened_at DESC, id DESC`,
+      [dateFrom, dateTo]
+    );
+    const data = [
+      ...caisseRows.map(mapEntry),
+      ...coffreRows.map(mapCoffreEntry),
+    ].sort((a, b) => {
+      const byDate = String(b.openedAt || '').localeCompare(String(a.openedAt || ''));
+      if (byDate !== 0) return byDate;
+      return Number(b.id) - Number(a.id);
+    });
+    res.json({ dateFrom, dateTo, data });
   } catch (error) {
     console.error('GET /fond-caisse/entries error:', error);
     res.status(500).json({ message: 'Erreur chargement fonds de caisse', error: error?.sqlMessage || error?.message });
@@ -182,6 +239,7 @@ router.get('/entries', async (req, res) => {
 router.post('/entries', async (req, res) => {
   try {
     await ensureFondCaisseEntriesTable();
+    await ensureCoffreTable();
 
     const montant = Number(req.body?.montant);
     const entryType = String(req.body?.entryType || 'caisse_initial').trim();
@@ -201,14 +259,40 @@ router.post('/entries', async (req, res) => {
     const createdBy = req.user?.id ?? null;
     const createdByName = await getEmployeeName(createdBy) || req.user?.cin || 'Caissier';
 
-    const [result] = await pool.query(
-      `INSERT INTO fond_caisse_entries (montant, entry_type, note, opened_at, jour, created_by, created_by_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [montant, entryType, note, openedAt, jour, createdBy, createdByName]
-    );
+    if (entryType === 'coffre_initial') {
+      const [result] = await pool.query(
+        `INSERT INTO coffre (montant, entry_type, note, opened_at, jour, created_by, created_by_name)
+         VALUES (?, 'coffre_initial', ?, ?, ?, ?, ?)`,
+        [montant, note, openedAt, jour, createdBy, createdByName]
+      );
+      const [rows] = await pool.query('SELECT * FROM coffre WHERE id = ? LIMIT 1', [result.insertId]);
+      return res.status(201).json(mapCoffreEntry(rows[0]));
+    }
 
-    const [rows] = await pool.query('SELECT * FROM fond_caisse_entries WHERE id = ? LIMIT 1', [result.insertId]);
-    res.status(201).json(mapEntry(rows[0]));
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [result] = await connection.query(
+        `INSERT INTO fond_caisse_entries (montant, entry_type, note, opened_at, jour, created_by, created_by_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [montant, entryType, note, openedAt, jour, createdBy, createdByName]
+      );
+      if (entryType === 'transfer_to_coffre') {
+        await connection.query(
+          `INSERT INTO coffre (montant, entry_type, note, opened_at, jour, fond_caisse_entry_id, created_by, created_by_name)
+           VALUES (?, 'transfer_from_caisse', ?, ?, ?, ?, ?, ?)`,
+          [montant, note || 'Transfert vers coffre', openedAt, jour, result.insertId, createdBy, createdByName]
+        );
+      }
+      await connection.commit();
+      const [rows] = await pool.query('SELECT * FROM fond_caisse_entries WHERE id = ? LIMIT 1', [result.insertId]);
+      return res.status(201).json(mapEntry(rows[0]));
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error('POST /fond-caisse/entries error:', error);
     res.status(500).json({ message: 'Erreur sauvegarde fond de caisse', error: error?.sqlMessage || error?.message });
@@ -218,15 +302,46 @@ router.post('/entries', async (req, res) => {
 router.delete('/entries/:id', async (req, res) => {
   try {
     await ensureFondCaisseEntriesTable();
+    await ensureCoffreTable();
     const id = Number(req.params.id);
-    if (!Number.isFinite(id) || id <= 0) {
+    if (!Number.isFinite(id) || id === 0) {
       return res.status(400).json({ message: 'ID invalide' });
     }
 
-    const [result] = await pool.query('DELETE FROM fond_caisse_entries WHERE id = ?', [id]);
-    if (!result || result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Fond de caisse introuvable' });
+    if (id < 0) {
+      const [result] = await pool.query('DELETE FROM coffre WHERE id = ?', [Math.abs(id)]);
+      if (!result || result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Fond de coffre introuvable' });
+      }
+      return res.json({ success: true, id });
     }
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query(
+        'SELECT entry_type FROM fond_caisse_entries WHERE id = ? LIMIT 1',
+        [id]
+      );
+      if (!Array.isArray(rows) || rows.length === 0) {
+        await connection.rollback();
+        return res.status(404).json({ message: 'Fond de caisse introuvable' });
+      }
+      if (rows[0].entry_type === 'transfer_to_coffre') {
+        await connection.query('DELETE FROM coffre WHERE fond_caisse_entry_id = ?', [id]);
+      }
+      const [result] = await connection.query('DELETE FROM fond_caisse_entries WHERE id = ?', [id]);
+      await connection.commit();
+      if (!result || result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Fond de caisse introuvable' });
+      }
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+
     res.json({ success: true, id });
   } catch (error) {
     console.error('DELETE /fond-caisse/entries/:id error:', error);
@@ -395,6 +510,26 @@ router.get('/days/:date', async (req, res) => {
         `,
       },
       {
+        label: 'avoirs_charge',
+        sql: `
+          SELECT
+            bc.id,
+            bc.date_creation AS action_date,
+            'Avoir charge' AS type,
+            'ENTREE' AS direction,
+            COALESCE((SELECT SUM(ci.total) FROM items_avoir_charge ci WHERE ci.avoir_charge_id = bc.id), bc.montant_total, 0) AS amount,
+            CONCAT('ACH', LPAD(CAST(bc.id AS CHAR), 2, '0')) AS reference,
+            COALESCE(c.nom_complet, '') AS actor,
+            bc.statut,
+            COALESCE(bc.observations, 'Avoir charge entree en caisse') AS description
+          FROM avoirs_charge bc
+          LEFT JOIN contacts c ON c.id = bc.client_id
+          WHERE DATE(bc.date_creation) = ?
+            AND COALESCE(bc.inclus_en_caisse, 0) = 1
+            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+        `,
+      },
+      {
         label: 'bons_vehicule',
         sql: `
           SELECT
@@ -492,6 +627,7 @@ router.get('/days/:date', async (req, res) => {
 // GET /api/fond-caisse/mouvements?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
 router.get('/mouvements', async (req, res) => {
   try {
+    await ensureCoffreTable();
     const { dateFrom, dateTo } = parseDateRange(req);
     const params = [dateFrom, dateTo];
 
@@ -560,9 +696,9 @@ router.get('/mouvements', async (req, res) => {
         field: 'transfertVersCoffre',
         sql: `
           SELECT DATE(opened_at) AS jour, COALESCE(SUM(montant), 0) AS total
-            FROM fond_caisse_entries
+            FROM coffre
            WHERE DATE(opened_at) BETWEEN ? AND ?
-             AND entry_type = 'transfer_to_coffre'
+             AND entry_type = 'transfer_from_caisse'
            GROUP BY DATE(opened_at)
         `,
       },
@@ -578,6 +714,24 @@ router.get('/mouvements', async (req, res) => {
                 FROM charge_items
                GROUP BY bon_charge_id
             ) ci_sum ON ci_sum.bon_charge_id = bc.id
+           WHERE DATE(bc.date_creation) BETWEEN ? AND ?
+             AND COALESCE(bc.inclus_en_caisse, 0) = 1
+             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+           GROUP BY DATE(bc.date_creation)
+        `,
+      },
+      {
+        label: 'avoirs_charge',
+        field: 'avoirChargeInclusCaisse',
+        sql: `
+          SELECT DATE(bc.date_creation) AS jour,
+                 COALESCE(SUM(COALESCE(ci_sum.total_items, bc.montant_total, 0)), 0) AS total
+            FROM avoirs_charge bc
+            LEFT JOIN (
+              SELECT avoir_charge_id, SUM(total) AS total_items
+                FROM items_avoir_charge
+               GROUP BY avoir_charge_id
+            ) ci_sum ON ci_sum.avoir_charge_id = bc.id
            WHERE DATE(bc.date_creation) BETWEEN ? AND ?
              AND COALESCE(bc.inclus_en_caisse, 0) = 1
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
@@ -622,11 +776,12 @@ router.get('/mouvements', async (req, res) => {
         const bonComptantPaye = toNumber(row.bonComptantPaye);
         const paiementBonComptantNonPaye = toNumber(row.paiementBonComptantNonPaye);
         const paiementClientCaisse = toNumber(row.paiementClientCaisse);
+        const avoirChargeInclusCaisse = toNumber(row.avoirChargeInclusCaisse);
         const transfertVersCoffre = toNumber(row.transfertVersCoffre);
         const bonChargeInclusCaisse = toNumber(row.bonChargeInclusCaisse);
         const bonVehicule = toNumber(row.bonVehicule);
         const avoirComptant = toNumber(row.avoirComptant);
-        const entrees = bonComptantPaye + paiementBonComptantNonPaye + paiementClientCaisse;
+        const entrees = bonComptantPaye + paiementBonComptantNonPaye + paiementClientCaisse + avoirChargeInclusCaisse;
         const sorties = bonChargeInclusCaisse + bonVehicule + avoirComptant + transfertVersCoffre;
 
         return {
@@ -634,6 +789,7 @@ router.get('/mouvements', async (req, res) => {
           bonComptantPaye,
           paiementBonComptantNonPaye,
           paiementClientCaisse,
+          avoirChargeInclusCaisse,
           transfertVersCoffre,
           bonChargeInclusCaisse,
           bonVehicule,

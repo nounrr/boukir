@@ -337,7 +337,7 @@ const bonValidationSchema = Yup.object({
   vendre_au_fournisseur: Yup.boolean(),
   client_id: Yup.number().when(['type', 'vendre_au_fournisseur'], ([type, vendreAuFournisseur], schema) => {
     if (type === 'Sortie' && !vendreAuFournisseur) return schema.required('Client requis');
-    if (type === 'Charge') return schema.required('Client requis');
+    if (type === 'Charge' || type === 'AvoirCharge') return schema.required('Client requis');
     if (type === 'Avoir' && !vendreAuFournisseur) return schema.required('Client requis');
     // Pour Devis : client_id OU client_nom requis (pas les deux obligatoires)
     if (type === 'Devis') return schema.nullable();
@@ -680,11 +680,21 @@ const computeComptantMontantTotal = (
     : Number(values.montant_total || 0);
 };
 
+const getContactTotalCumule = (contact: any) => {
+  if (contact?.total_cumule !== null && contact?.total_cumule !== undefined) {
+    const totalCumule = Number(contact.total_cumule);
+    if (Number.isFinite(totalCumule)) return totalCumule;
+  }
+
+  const soldeCumule = Number(contact?.solde_cumule);
+  return Number.isFinite(soldeCumule) ? soldeCumule : 0;
+};
+
 /* --------------------------------- Composant -------------------------------- */
 interface BonFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
+  currentTab: 'Commande' | 'Sortie' | 'Comptant' | 'Charge' | 'AvoirCharge' | 'Avoir' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
   initialValues?: any;
   onBonAdded?: (bon: any) => void;
   comptantPartialPaymentMode?: 'hidden' | 'required';
@@ -770,7 +780,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   );
   const { data: products = [] } = useGetProductsQuery();
   // Snapshot-expanded products for Sortie/Comptant/Avoir/Charge types
-  const useSnapshotSelection = ['Sortie', 'Comptant', 'Charge', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
+  const useSnapshotSelection = ['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
   const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection });
 
   // Smart filtering for snapshot products:
@@ -1016,7 +1026,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     return Array.from(byId.values());
   }, [clients, chargeClients]);
   const selectableClients = useMemo(
-    () => (String(currentTab || (initialValues as any)?.type || '') === 'Charge' ? chargeClients : clients),
+    () => (['Charge', 'AvoirCharge'].includes(String(currentTab || (initialValues as any)?.type || '')) ? chargeClients : clients),
     [chargeClients, clients, currentTab, initialValues]
   );
   const productMap = useMemo(() => {
@@ -1448,7 +1458,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
     // Only meaningful for these types (same as BonsPage column)
     const type = String((formikRef.current?.values as any)?.type || currentTab || '');
-    if (!['Sortie', 'Comptant', 'Charge', 'Avoir', 'AvoirComptant'].includes(type)) return;
+    if (!['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant'].includes(type)) return;
 
     const handle = setTimeout(() => {
       try {
@@ -2126,7 +2136,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       return;
     }
 
-    if (values.type === 'Charge') {
+    if (values.type === 'Charge' || values.type === 'AvoirCharge') {
       const invalidDesignationRows = Array.isArray(values?.items)
         ? values.items
             .map((item: any, idx: number) => {
@@ -2191,7 +2201,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     const requestType = values.type;
     let vehiculeId: number | undefined = undefined;
-    if (!['Avoir', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce'].includes(requestType) && values.vehicule_id) {
+    if (!['Avoir', 'AvoirCharge', 'AvoirFournisseur', 'AvoirComptant', 'AvoirEcommerce'].includes(requestType) && values.vehicule_id) {
       vehiculeId = parseInt(values.vehicule_id);
     }
 
@@ -2329,7 +2339,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       created_by: user?.id || 1,
       // N'envoyer livraisons que si au moins un véhicule est défini
       livraisons: livraisonsClean.length ? livraisonsClean : undefined,
-      items: requestType === 'Charge'
+      items: (requestType === 'Charge' || requestType === 'AvoirCharge')
         ? values.items.flatMap((item: any, idx: number) => {
             const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
             const prixAchat = typeof item.prix_achat === 'string'
@@ -2665,9 +2675,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(requestType) && cleanBonData.client_id) {
         const client = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
         if (client && client.plafond && Number(client.plafond) > 0) {
-          // Utiliser le solde cumulé fourni par le backend
+          // Utiliser total_cumule comme sur la page clients, puis ajouter le total du bon courant.
           const backendClientSolde = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
-          const soldeCumule = Number(backendClientSolde?.solde_cumule ?? 0) || 0;
+          const soldeCumule = getContactTotalCumule(backendClientSolde);
           const plafond = Number(client.plafond);
           const nouveauSolde = soldeCumule + montantTotal;
           
@@ -3150,7 +3160,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     }, 0);
 
   const backendClient = clients.find((c: any) => c.id.toString() === values.client_id.toString());
-  const soldeCumule = Number(backendClient?.solde_cumule) || 0;
+  const soldeCumule = getContactTotalCumule(backendClient);
     const plafond = Number(client.plafond);
     const nouveauSolde = soldeCumule + montantBon;
 
@@ -3476,11 +3486,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               )}
 
               {/* Client */}
-              {((values.type === 'Sortie' && !values.vendre_au_fournisseur) || values.type === 'Charge' || values.type === 'Devis' || (values.type === 'Avoir' && !values.vendre_au_fournisseur)) && (
+              {((values.type === 'Sortie' && !values.vendre_au_fournisseur) || values.type === 'Charge' || values.type === 'AvoirCharge' || values.type === 'Devis' || (values.type === 'Avoir' && !values.vendre_au_fournisseur)) && (
                 <div>
                   <div className="flex items-center gap-2">
                     <label htmlFor="client_id" className="block text-sm font-medium text-gray-700 mb-1">
-                      Client {(values.type === 'Sortie' || values.type === 'Avoir' || values.type === 'Charge') ? '*' : '(optionnel)'}
+                      Client {(values.type === 'Sortie' || values.type === 'Avoir' || values.type === 'Charge' || values.type === 'AvoirCharge') ? '*' : '(optionnel)'}
                     </label>
                     <button
                       type="button"
@@ -3496,7 +3506,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </div>
                   <SearchableSelect
                     options={selectableClients.map((c: Contact) => {
-                      const soldeCumule = Number(c.solde_cumule ?? 0) || 0;
+                      const soldeCumule = getContactTotalCumule(c);
                       const plafond = Number(c.plafond || 0);
                       const isOverLimit = plafond > 0 && soldeCumule > plafond;
                       const depassement = isOverLimit ? soldeCumule - plafond : 0;
@@ -3523,7 +3533,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         return;
                       }
                       
-                      const soldeCumule = Number(client.solde_cumule ?? 0) || 0;
+                      const soldeCumule = getContactTotalCumule(client);
                       const plafond = Number(client.plafond || 0);
                       const isOverLimit = plafond > 0 && soldeCumule > plafond;
                       
@@ -3938,7 +3948,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     >
                       <Plus size={16} className="mr-1" /> Ajouter ligne
                     </button>
-                    {values.type === 'Charge' && (
+                    {(values.type === 'Charge' || values.type === 'AvoirCharge') && (
                       <button
                         type="button"
                         disabled={isQtyOnlyEdit}
@@ -4242,10 +4252,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                   const showProfitColumn = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type);
                   const showRemiseColumn = showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant');
-                  const visibleEntries = (values.type === 'Charge'
+                  const visibleEntries = ((values.type === 'Charge' || values.type === 'AvoirCharge')
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode !== 'detail')
                     : values.items.map((row: any, index: number) => ({ row, index })));
-                  const detailedChargeEntries = values.type === 'Charge'
+                  const detailedChargeEntries = (values.type === 'Charge' || values.type === 'AvoirCharge')
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode === 'detail')
                     : [];
                   const emptyColSpan = 8 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0);
@@ -5490,7 +5500,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         </FieldArray>
                       </div>
 
-                      {values.type === 'Charge' && (
+                      {(values.type === 'Charge' || values.type === 'AvoirCharge') && (
                         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
                           <div className="mb-3 flex items-center justify-between gap-3">
                             <h4 className="text-sm font-semibold text-amber-900">Lignes détaillées</h4>
@@ -5720,7 +5730,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           const q =
             parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
           const u =
-            values.type === 'Charge'
+            (values.type === 'Charge' || values.type === 'AvoirCharge')
               ? (typeof item.prix_unitaire === 'string'
                 ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
                 : Number(item.prix_unitaire) || 0)
@@ -5948,7 +5958,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         isOpen={!!isContactModalOpen}
         onClose={() => setIsContactModalOpen(null)}
         contactType={isContactModalOpen || 'Client'}
-        defaultIsCharge={isContactModalOpen === 'Client' && String(currentTab || (initialValues as any)?.type || '') === 'Charge'}
+        defaultIsCharge={isContactModalOpen === 'Client' && ['Charge', 'AvoirCharge'].includes(String(currentTab || (initialValues as any)?.type || ''))}
         onContactAdded={(newContact) => {
           // Sélection AUTO du contact nouvellement créé
           showSuccess(`${newContact.type} ajouté avec succès!`);

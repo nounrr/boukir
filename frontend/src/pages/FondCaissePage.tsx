@@ -19,6 +19,7 @@ type FondCaisseMouvement = {
   bonComptantPaye?: number;
   paiementBonComptantNonPaye?: number;
   paiementClientCaisse?: number;
+  avoirChargeInclusCaisse?: number;
   transfertVersCoffre?: number;
   bonChargeInclusCaisse?: number;
   bonVehicule?: number;
@@ -45,6 +46,7 @@ type Row = {
   bonComptantPaye: number;
   paiementBonComptantNonPaye: number;
   paiementClientCaisse: number;
+  avoirChargeInclusCaisse: number;
   transfertVersCoffre: number;
   bonChargeInclusCaisse: number;
   bonVehicule: number;
@@ -204,6 +206,7 @@ const FondCaissePage = () => {
           bonComptantPaye: num(mv.bonComptantPaye),
           paiementBonComptantNonPaye: num(mv.paiementBonComptantNonPaye),
           paiementClientCaisse: num(mv.paiementClientCaisse),
+          avoirChargeInclusCaisse: num(mv.avoirChargeInclusCaisse),
           transfertVersCoffre: num(mv.transfertVersCoffre),
           bonChargeInclusCaisse: num(mv.bonChargeInclusCaisse),
           bonVehicule: num(mv.bonVehicule),

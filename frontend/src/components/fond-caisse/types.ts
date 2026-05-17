@@ -13,6 +13,7 @@ export type FondCaisseMouvement = {
   bonComptantPaye?: number;
   paiementBonComptantNonPaye?: number;
   paiementClientCaisse?: number;
+  avoirChargeInclusCaisse?: number;
   bonChargeInclusCaisse?: number;
   bonVehicule?: number;
   avoirClient?: number;
@@ -30,6 +31,7 @@ export type DailyCaisseRow = {
   bonComptantPaye: number;
   paiementBonComptantNonPaye: number;
   paiementClientCaisse: number;
+  avoirChargeInclusCaisse: number;
   bonChargeInclusCaisse: number;
   bonVehicule: number;
   avoirClient: number;
