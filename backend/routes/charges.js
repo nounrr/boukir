@@ -72,6 +72,61 @@ async function ensureChargeTables() {
       CONSTRAINT fk_charge_items_snapshot FOREIGN KEY (product_snapshot_id) REFERENCES product_snapshot(id) ON DELETE SET NULL
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS avoirs_charge (
+      id INT NOT NULL AUTO_INCREMENT,
+      date_creation DATETIME NOT NULL,
+      client_id INT NOT NULL,
+      phone VARCHAR(50) NULL,
+      adresse_livraison VARCHAR(255) NULL,
+      montant_total DECIMAL(12,2) NOT NULL DEFAULT 0,
+      statut VARCHAR(50) NOT NULL DEFAULT 'En attente',
+      observations TEXT NULL,
+      inclus_en_caisse TINYINT(1) NOT NULL DEFAULT 0,
+      created_by INT NULL,
+      updated_by INT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_avoirs_charge_client_id (client_id),
+      KEY idx_avoirs_charge_date_creation (date_creation),
+      CONSTRAINT fk_avoirs_charge_client FOREIGN KEY (client_id) REFERENCES contacts(id) ON DELETE RESTRICT
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS items_avoir_charge (
+      id INT NOT NULL AUTO_INCREMENT,
+      avoir_charge_id INT NOT NULL,
+      product_id INT NULL,
+      variant_id INT NULL,
+      unit_id INT NULL,
+      product_snapshot_id INT NULL,
+      designation_custom VARCHAR(255) NOT NULL,
+      quantite DECIMAL(12,4) NOT NULL DEFAULT 0,
+      prix_achat DECIMAL(12,4) NOT NULL DEFAULT 0,
+      cout_revient DECIMAL(12,4) NOT NULL DEFAULT 0,
+      prix_gros DECIMAL(12,4) NOT NULL DEFAULT 0,
+      prix_unitaire DECIMAL(12,4) NOT NULL DEFAULT 0,
+      remise_pourcentage DECIMAL(12,4) NOT NULL DEFAULT 0,
+      remise_montant DECIMAL(12,4) NOT NULL DEFAULT 0,
+      total DECIMAL(12,4) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_items_avoir_charge_avoir_charge_id (avoir_charge_id),
+      KEY idx_items_avoir_charge_product_id (product_id),
+      KEY idx_items_avoir_charge_variant_id (variant_id),
+      KEY idx_items_avoir_charge_unit_id (unit_id),
+      KEY idx_items_avoir_charge_product_snapshot_id (product_snapshot_id),
+      CONSTRAINT fk_items_avoir_charge_bon FOREIGN KEY (avoir_charge_id) REFERENCES avoirs_charge(id) ON DELETE CASCADE,
+      CONSTRAINT fk_items_avoir_charge_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      CONSTRAINT fk_items_avoir_charge_variant FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE SET NULL,
+      CONSTRAINT fk_items_avoir_charge_unit FOREIGN KEY (unit_id) REFERENCES product_units(id) ON DELETE SET NULL,
+      CONSTRAINT fk_items_avoir_charge_snapshot FOREIGN KEY (product_snapshot_id) REFERENCES product_snapshot(id) ON DELETE SET NULL
+    )
+  `);
 }
 
 ensureChargeTables().catch((error) => {
@@ -160,8 +215,47 @@ const normalizeItemsForStock = async (connection, items = []) => {
   });
 };
 
-const buildChargeSelect = (whereSql = '', params = []) => pool.query(
-  `
+const normalizeOperationType = (value, fallback = 'charge') => (
+  String(value || fallback).toLowerCase() === 'avoir' ? 'avoir' : 'charge'
+);
+
+const chargeStockSign = (operationType) => (operationType === 'avoir' ? +1 : -1);
+const chargeTypeName = (operationType) => (operationType === 'avoir' ? 'AvoirCharge' : 'Charge');
+const chargeNumeroPrefix = (operationType) => (operationType === 'avoir' ? 'ACH' : 'CHG');
+const getChargeConfig = (operationType = 'charge') => {
+  const op = normalizeOperationType(operationType);
+  return op === 'avoir'
+    ? {
+        operationType: 'avoir',
+        table: 'avoirs_charge',
+        itemTable: 'items_avoir_charge',
+        itemFk: 'avoir_charge_id',
+      }
+    : {
+        operationType: 'charge',
+        table: 'bons_charge',
+        itemTable: 'charge_items',
+        itemFk: 'bon_charge_id',
+      };
+};
+
+const formatChargeRow = (row, operationType = 'charge') => {
+  const op = normalizeOperationType(operationType);
+  return {
+    ...row,
+    type: chargeTypeName(op),
+    numero: `${chargeNumeroPrefix(op)}${String(row.id).padStart(2, '0')}`,
+    items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
+  };
+};
+
+const buildChargeSelect = (whereSql = '', params = [], operationType = 'charge') => {
+  const cfg = getChargeConfig(operationType);
+  const extraWhere = String(whereSql || '').trim().replace(/^WHERE\s+/i, '');
+  const finalWhere = extraWhere ? `WHERE ${extraWhere}` : '';
+
+  return pool.query(
+    `
     SELECT
       bc.*,
       c.nom_complet AS client_nom,
@@ -184,27 +278,24 @@ const buildChargeSelect = (whereSql = '', params = []) => pool.query(
           'total', ci.total,
           'montant_ligne', ci.total
         ))
-        FROM charge_items ci
+        FROM ${cfg.itemTable} ci
         LEFT JOIN products p ON p.id = ci.product_id
-        WHERE ci.bon_charge_id = bc.id
+        WHERE ci.${cfg.itemFk} = bc.id
       ), JSON_ARRAY()) AS items
-    FROM bons_charge bc
+    FROM ${cfg.table} bc
     LEFT JOIN contacts c ON c.id = bc.client_id
-    ${whereSql}
+    ${finalWhere}
     ORDER BY COALESCE(bc.date_creation, bc.created_at) DESC, bc.id DESC
   `,
-  params
-);
+    params
+  );
+};
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const [rows] = await buildChargeSelect();
-    res.json(rows.map((row) => ({
-      ...row,
-      type: 'Charge',
-      numero: `CHG${String(row.id).padStart(2, '0')}`,
-      items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
-    })));
+    const operationType = normalizeOperationType(req.query?.type ?? req.query?.operation_type);
+    const [rows] = await buildChargeSelect('', [], operationType);
+    res.json(rows.map((row) => formatChargeRow(row, operationType)));
   } catch (error) {
     console.error('GET /charges error:', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
@@ -213,15 +304,11 @@ router.get('/', async (_req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [req.params.id]);
+    const operationType = normalizeOperationType(req.query?.type ?? req.query?.operation_type);
+    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [req.params.id], operationType);
     if (!rows.length) return res.status(404).json({ message: 'Bon charge non trouvé' });
     const row = rows[0];
-    res.json({
-      ...row,
-      type: 'Charge',
-      numero: `CHG${String(row.id).padStart(2, '0')}`,
-      items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
-    });
+    res.json(formatChargeRow(row, operationType));
   } catch (error) {
     console.error('GET /charges/:id error:', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
@@ -240,7 +327,9 @@ router.post('/', async (req, res) => {
     const statut = String(req.body?.statut || 'En attente').trim() || 'En attente';
     const createdBy = req.body?.created_by ?? null;
     const observations = req.body?.observations ?? null;
-    const inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
+    const operationType = normalizeOperationType(req.query?.type ?? req.body?.operation_type);
+    const cfg = getChargeConfig(operationType);
+    const inclusEnCaisse = operationType === 'charge' && req.body?.inclus_en_caisse ? 1 : 0;
     const items = parseItems(req.body?.items);
 
     if (!dateCreation || !Number.isFinite(clientId) || clientId <= 0 || !items.length) {
@@ -270,7 +359,7 @@ router.post('/', async (req, res) => {
 
     const [result] = await connection.execute(
       `
-        INSERT INTO bons_charge (
+        INSERT INTO ${cfg.table} (
           date_creation, client_id, phone, adresse_livraison, montant_total, statut, observations, inclus_en_caisse, created_by, updated_by
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
@@ -280,8 +369,8 @@ router.post('/', async (req, res) => {
     for (const item of items) {
       await connection.execute(
         `
-          INSERT INTO charge_items (
-            bon_charge_id, product_id, variant_id, unit_id, product_snapshot_id, designation_custom, quantite, prix_achat, cout_revient, prix_gros, prix_unitaire, total
+          INSERT INTO ${cfg.itemTable} (
+            ${cfg.itemFk}, product_id, variant_id, unit_id, product_snapshot_id, designation_custom, quantite, prix_achat, cout_revient, prix_gros, prix_unitaire, total
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [result.insertId, item.product_id, item.variant_id, item.unit_id, item.product_snapshot_id, item.designation_custom, item.quantite, item.prix_achat, item.cout_revient, item.prix_gros, item.prix_unitaire, item.total]
@@ -290,12 +379,14 @@ router.post('/', async (req, res) => {
 
     if (statut !== 'Annulé') {
       const stockItems = await normalizeItemsForStock(connection, items.filter((item) => item.product_id));
-      const deltas = buildStockDeltaMaps(stockItems, -1);
+      const deltas = buildStockDeltaMaps(stockItems, chargeStockSign(operationType));
       await applyStockDeltas(connection, deltas, createdBy);
       for (const item of stockItems) {
         if (item.product_snapshot_id) {
           await connection.execute(
-            'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
+            operationType === 'avoir'
+              ? 'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?'
+              : 'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
             [Number(item.quantite) || 0, item.product_snapshot_id]
           );
         }
@@ -303,14 +394,9 @@ router.post('/', async (req, res) => {
     }
 
     await connection.commit();
-    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [result.insertId]);
+    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [result.insertId], operationType);
     const row = rows[0];
-    res.status(201).json({
-      ...row,
-      type: 'Charge',
-      numero: `CHG${String(row.id).padStart(2, '0')}`,
-      items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
-    });
+    res.status(201).json(formatChargeRow(row, operationType));
   } catch (error) {
     await connection.rollback();
     console.error('POST /charges error:', error);
@@ -333,7 +419,9 @@ router.put('/:id', async (req, res) => {
     const statut = String(req.body?.statut || 'En attente').trim() || 'En attente';
     const updatedBy = req.body?.updated_by ?? req.body?.created_by ?? null;
     const observations = req.body?.observations ?? null;
-    const inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
+    const operationType = normalizeOperationType(req.query?.type ?? req.body?.operation_type ?? req.query?.operation_type);
+    const cfg = getChargeConfig(operationType);
+    const inclusEnCaisse = operationType === 'charge' && req.body?.inclus_en_caisse ? 1 : 0;
     const items = parseItems(req.body?.items);
 
     if (!Number.isFinite(id) || id <= 0 || !dateCreation || !Number.isFinite(clientId) || clientId <= 0 || !items.length) {
@@ -342,7 +430,7 @@ router.put('/:id', async (req, res) => {
     }
 
     const [existingRows] = await connection.execute(
-      'SELECT statut FROM bons_charge WHERE id = ? FOR UPDATE',
+      `SELECT statut FROM ${cfg.table} WHERE id = ? FOR UPDATE`,
       [id]
     );
     if (!Array.isArray(existingRows) || existingRows.length === 0) {
@@ -350,8 +438,9 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Bon charge non trouvé' });
     }
     const oldStatut = existingRows[0].statut;
+    const oldOperationType = operationType;
     const [oldItemsStock] = await connection.execute(
-      'SELECT product_id, variant_id, unit_id, quantite, product_snapshot_id FROM charge_items WHERE bon_charge_id = ? ORDER BY id ASC',
+      `SELECT product_id, variant_id, unit_id, quantite, product_snapshot_id FROM ${cfg.itemTable} WHERE ${cfg.itemFk} = ? ORDER BY id ASC`,
       [id]
     );
 
@@ -377,20 +466,20 @@ router.put('/:id', async (req, res) => {
 
     await connection.execute(
       `
-        UPDATE bons_charge
+        UPDATE ${cfg.table}
         SET date_creation = ?, client_id = ?, phone = ?, adresse_livraison = ?, montant_total = ?, statut = ?, observations = ?, inclus_en_caisse = ?, updated_by = ?, updated_at = NOW()
         WHERE id = ?
       `,
       [dateCreation, clientId, phone, adresse, montantTotal, statut, observations, inclusEnCaisse, updatedBy, id]
     );
 
-    await connection.execute('DELETE FROM charge_items WHERE bon_charge_id = ?', [id]);
+    await connection.execute(`DELETE FROM ${cfg.itemTable} WHERE ${cfg.itemFk} = ?`, [id]);
 
     for (const item of items) {
       await connection.execute(
         `
-          INSERT INTO charge_items (
-            bon_charge_id, product_id, variant_id, unit_id, product_snapshot_id, designation_custom, quantite, prix_achat, cout_revient, prix_gros, prix_unitaire, total
+          INSERT INTO ${cfg.itemTable} (
+            ${cfg.itemFk}, product_id, variant_id, unit_id, product_snapshot_id, designation_custom, quantite, prix_achat, cout_revient, prix_gros, prix_unitaire, total
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [id, item.product_id, item.variant_id, item.unit_id, item.product_snapshot_id, item.designation_custom, item.quantite, item.prix_achat, item.cout_revient, item.prix_gros, item.prix_unitaire, item.total]
@@ -400,11 +489,13 @@ router.put('/:id', async (req, res) => {
     const deltas = buildStockDeltaMaps([], 1);
     if (oldStatut !== 'Annulé') {
       const oldStockItems = await normalizeItemsForStock(connection, oldItemsStock);
-      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(oldStockItems, +1));
+      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(oldStockItems, -chargeStockSign(oldOperationType)));
       for (const item of oldStockItems) {
         if (item.product_snapshot_id) {
           await connection.execute(
-            'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?',
+            oldOperationType === 'avoir'
+              ? 'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?'
+              : 'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?',
             [Number(item.quantite) || 0, item.product_snapshot_id]
           );
         }
@@ -412,11 +503,13 @@ router.put('/:id', async (req, res) => {
     }
     if (statut !== 'Annulé') {
       const newStockItems = await normalizeItemsForStock(connection, items.filter((item) => item.product_id));
-      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(newStockItems, -1));
+      mergeStockDeltaMaps(deltas, buildStockDeltaMaps(newStockItems, chargeStockSign(operationType)));
       for (const item of newStockItems) {
         if (item.product_snapshot_id) {
           await connection.execute(
-            'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
+            operationType === 'avoir'
+              ? 'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?'
+              : 'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
             [Number(item.quantite) || 0, item.product_snapshot_id]
           );
         }
@@ -425,14 +518,9 @@ router.put('/:id', async (req, res) => {
     await applyStockDeltas(connection, deltas, updatedBy);
 
     await connection.commit();
-    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [id]);
+    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [id], operationType);
     const row = rows[0];
-    res.json({
-      ...row,
-      type: 'Charge',
-      numero: `CHG${String(row.id).padStart(2, '0')}`,
-      items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
-    });
+    res.json(formatChargeRow(row, operationType));
   } catch (error) {
     await connection.rollback();
     console.error('PUT /charges/:id error:', error);
@@ -459,12 +547,7 @@ router.patch('/:id/inclus-en-caisse', async (req, res) => {
     const [rows] = await buildChargeSelect('WHERE bc.id = ?', [id]);
     if (!rows.length) return res.status(404).json({ message: 'Bon charge non trouvé' });
     const row = rows[0];
-    res.json({
-      ...row,
-      type: 'Charge',
-      numero: `CHG${String(row.id).padStart(2, '0')}`,
-      items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
-    });
+    res.json(formatChargeRow(row, 'charge'));
   } catch (error) {
     console.error('PATCH /charges/:id/inclus-en-caisse error:', error);
     res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
@@ -476,12 +559,14 @@ router.patch('/:id/statut', async (req, res) => {
   try {
     const id = Number(req.params.id);
     const statut = String(req.body?.statut || '').trim();
+    const operationType = normalizeOperationType(req.query?.type ?? req.body?.operation_type ?? req.query?.operation_type);
+    const cfg = getChargeConfig(operationType);
     if (!Number.isFinite(id) || id <= 0 || !statut) {
       return res.status(400).json({ message: 'Paramètres invalides' });
     }
     await connection.beginTransaction();
     const [oldRows] = await connection.execute(
-      'SELECT statut FROM bons_charge WHERE id = ? FOR UPDATE',
+      `SELECT statut FROM ${cfg.table} WHERE id = ? FOR UPDATE`,
       [id]
     );
     if (!Array.isArray(oldRows) || oldRows.length === 0) {
@@ -490,37 +575,39 @@ router.patch('/:id/statut', async (req, res) => {
     }
     const oldStatut = oldRows[0].statut;
     const [itemsStock] = await connection.execute(
-      'SELECT product_id, variant_id, unit_id, quantite, product_snapshot_id FROM charge_items WHERE bon_charge_id = ?',
+      `SELECT product_id, variant_id, unit_id, quantite, product_snapshot_id FROM ${cfg.itemTable} WHERE ${cfg.itemFk} = ?`,
       [id]
     );
     const enteringCancelled = oldStatut !== 'Annulé' && statut === 'Annulé';
     const leavingCancelled = oldStatut === 'Annulé' && statut !== 'Annulé';
     if (enteringCancelled || leavingCancelled) {
       const stockItems = await normalizeItemsForStock(connection, itemsStock);
-      const deltas = buildStockDeltaMaps(stockItems, enteringCancelled ? +1 : -1);
+      const deltas = buildStockDeltaMaps(
+        stockItems,
+        enteringCancelled ? -chargeStockSign(operationType) : chargeStockSign(operationType)
+      );
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
       for (const item of stockItems) {
         if (item.product_snapshot_id) {
           await connection.execute(
-            enteringCancelled
-              ? 'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?'
-              : 'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?',
+            operationType === 'avoir'
+              ? (enteringCancelled
+                ? 'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?'
+                : 'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?')
+              : (enteringCancelled
+                ? 'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?'
+                : 'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?'),
             [Number(item.quantite) || 0, item.product_snapshot_id]
           );
         }
       }
     }
-    await connection.execute('UPDATE bons_charge SET statut = ?, updated_at = NOW() WHERE id = ?', [statut, id]);
+    await connection.execute(`UPDATE ${cfg.table} SET statut = ?, updated_at = NOW() WHERE id = ?`, [statut, id]);
     await connection.commit();
-    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [id]);
+    const [rows] = await buildChargeSelect('WHERE bc.id = ?', [id], operationType);
     if (!rows.length) return res.status(404).json({ message: 'Bon charge non trouvé' });
     const row = rows[0];
-    res.json({
-      ...row,
-      type: 'Charge',
-      numero: `CHG${String(row.id).padStart(2, '0')}`,
-      items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
-    });
+    res.json(formatChargeRow(row, operationType));
   } catch (error) {
     await connection.rollback();
     console.error('PATCH /charges/:id/statut error:', error);
@@ -534,12 +621,14 @@ router.delete('/:id', async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const id = Number(req.params.id);
+    const operationType = normalizeOperationType(req.query?.type ?? req.query?.operation_type);
+    const cfg = getChargeConfig(operationType);
     if (!Number.isFinite(id) || id <= 0) {
       return res.status(400).json({ message: 'ID invalide' });
     }
     await connection.beginTransaction();
     const [rows] = await connection.execute(
-      'SELECT statut FROM bons_charge WHERE id = ? FOR UPDATE',
+      `SELECT statut FROM ${cfg.table} WHERE id = ? FOR UPDATE`,
       [id]
     );
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -548,22 +637,24 @@ router.delete('/:id', async (req, res) => {
     }
     if (rows[0].statut !== 'Annulé') {
       const [itemsStock] = await connection.execute(
-        'SELECT product_id, variant_id, unit_id, quantite, product_snapshot_id FROM charge_items WHERE bon_charge_id = ?',
+        `SELECT product_id, variant_id, unit_id, quantite, product_snapshot_id FROM ${cfg.itemTable} WHERE ${cfg.itemFk} = ?`,
         [id]
       );
       const stockItems = await normalizeItemsForStock(connection, itemsStock);
-      const deltas = buildStockDeltaMaps(stockItems, +1);
+      const deltas = buildStockDeltaMaps(stockItems, -chargeStockSign(operationType));
       await applyStockDeltas(connection, deltas, null);
       for (const item of stockItems) {
         if (item.product_snapshot_id) {
           await connection.execute(
-            'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?',
+            operationType === 'avoir'
+              ? 'UPDATE product_snapshot SET quantite = GREATEST(quantite - ?, 0) WHERE id = ?'
+              : 'UPDATE product_snapshot SET quantite = quantite + ? WHERE id = ?',
             [Number(item.quantite) || 0, item.product_snapshot_id]
           );
         }
       }
     }
-    await connection.execute('DELETE FROM bons_charge WHERE id = ?', [id]);
+    await connection.execute(`DELETE FROM ${cfg.table} WHERE id = ?`, [id]);
     await connection.commit();
     res.json({ success: true, id });
   } catch (error) {

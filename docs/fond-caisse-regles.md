@@ -29,7 +29,7 @@ Les entrees du fond de caisse sont:
 2. `Paiement bon comptant non paye`
    - source: `paiement_boncomptant_nonpaye`
    - inclus selon `date_paiement`
-
+  
 3. `Paiement caisse`
    - source: `payments`
    - exclus si:
@@ -46,9 +46,19 @@ Les entrees du fond de caisse sont:
      - `type_paiement = 'Fournisseur'`
      - et `vendre_au_fournisseur = 0`
 
+4. `Avoir charge incluse caisse`
+   - source: `bons_charge`
+   - inclus si:
+     - `inclus_en_caisse = 1`
+     - `operation_type = 'avoir'`
+     - `statut` n'est pas annule
+   - montant retenu:
+     - somme des `charge_items.total` si disponible
+     - sinon `bons_charge.montant_total`
+
 ### Formule des entrees
 
-`Entrees = Bon comptant paye + Paiement bon comptant non paye + Paiement caisse`
+`Entrees = Bon comptant paye + Paiement bon comptant non paye + Paiement caisse + Avoir charge incluse caisse`
 
 ## Sorties
 
@@ -58,6 +68,7 @@ Les sorties du fond de caisse sont:
    - source: `bons_charge`
    - inclus si:
      - `inclus_en_caisse = 1`
+     - `operation_type = 'charge'`
      - `statut` n'est pas annule
    - montant retenu:
      - somme des `charge_items.total` si disponible
@@ -86,7 +97,7 @@ Les sorties du fond de caisse sont:
 
 ## Formule finale
 
-`Total du jour = Debut + (Bon comptant paye + Paiement bon comptant non paye + Paiement caisse) - (Charge incluse caisse + Bon vehicule + Avoir comptant + Transfert vers coffre)`
+`Total du jour = Debut + (Bon comptant paye + Paiement bon comptant non paye + Paiement caisse + Avoir charge incluse caisse) - (Charge incluse caisse + Bon vehicule + Avoir comptant + Transfert vers coffre)`
 
 ## Regles Coffre
 
@@ -128,6 +139,7 @@ L'ecran detail journalier affiche les actions par ordre chronologique:
 - bons comptant payes
 - paiements bon comptant non paye
 - paiements caisse
+- avoirs charge inclus caisse
 - charges incluses caisse
 - bons vehicule
 - avoirs comptant

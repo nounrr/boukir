@@ -428,7 +428,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
               <div className="mt-3 pt-3 border-t border-gray-200">
                 <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Taux profit jour</div>
                 <div className="text-2xl font-bold text-gray-900 mt-0.5">{formatProfitPercentage(dayProfitPct)}</div>
-                <div className="text-xs text-gray-500 mt-1">Apres deduction des bons charge (montant total) et bons vehicule</div>
+                <div className="text-xs text-gray-500 mt-1">Apres deduction des charges nettes et bons vehicule</div>
               </div>
             )}
             <div className="text-sm text-gray-500">
@@ -451,7 +451,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
           groups[key].calculs.push(c);
           groups[key].total += amount;
         }
-        const order = ['Comptant', 'Sortie', 'Vente Fournisseur', 'Commande', 'Avoir', 'Avoir Vente Fournisseur', 'Charge', 'Bon Véhicule'];
+        const order = ['Comptant', 'Sortie', 'Vente Fournisseur', 'Commande', 'Avoir', 'Avoir Vente Fournisseur', 'Charge', 'Avoir Charge', 'Bon Véhicule'];
         const groupKeys = Object.keys(groups).sort((a, b) => {
           const ia = order.indexOf(a);
           const ib = order.indexOf(b);
@@ -549,19 +549,19 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                           {formatAmount(chiffre.total)} DH
                         </div>
                       </div>
-                      {chiffre.type === 'CA_NET' && chiffre.calculs.some((c: CalculDetail) => c.bonType === 'Avoir' || c.bonType === 'Charge') && (
+                      {chiffre.type === 'CA_NET' && chiffre.calculs.some((c: CalculDetail) => c.bonType === 'Avoir' || c.bonType === 'Charge' || c.bonType === 'Avoir Charge') && (
                         <div className="text-sm text-gray-500 mt-2">
-                          * Les avoirs client et les bons charge sont soustraits du total
+                          * Les avoirs client et les charges nettes sont inclus dans le total
                         </div>
                       )}
                       {chiffre.type === 'CHARGES' && (
                         <div className="text-sm text-gray-500 mt-2">
-                          * Total des bons charge du jour avec le dÃ©tail des lignes
+                          * Total net des bons charge moins les avoirs charge du jour avec le detail des lignes
                         </div>
                       )}
                       {chiffre.type === 'BENEFICIAIRE' && (
                         <div className="text-sm text-gray-500 mt-2">
-                          * Calcul: Profits (Ventes) - Profits (Avoirs Client) - Profits (Avoirs Comptant) - Montant Total (Bons Charge) - Montant Total (Bons Véhicule)
+                          * Calcul: Profits (Ventes) - Profits (Avoirs Client) - Profits (Avoirs Comptant) - Charges nettes - Montant Total (Bons Véhicule)
                           <br />
                           * Profit ligne = ((PV - Coût) × Qté)
                           <br />
@@ -569,7 +569,7 @@ const ChiffreAffairesDetailPage: React.FC = () => {
                           <br />
                           * Les remises sont déduites du profit : Profit ligne = (PV - Coût) × Qté - Remise × Qté
                           <br />
-                          * Les bons charge et les bons véhicule sont déduits en montant total
+                          * Les bons charge sont deduits, les avoirs charge sont ajoutes, et les bons vehicule sont deduits en montant total
                         </div>
                       )}
                     </div>

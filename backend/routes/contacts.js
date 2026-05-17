@@ -92,6 +92,7 @@ const BALANCE_EXPR = `
       + COALESCE(paiements_client.total_paiements, 0)
       + COALESCE(avoirs_client.total_avoirs, 0)
       - COALESCE(charges_client.total_charges, 0)
+      + COALESCE(avoirs_charge.total_avoirs_charge, 0)
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
@@ -115,6 +116,7 @@ const TOTAL_CUMULE_EXPR = `
       - COALESCE(paiements_client.total_paiements, 0)
       - COALESCE(avoirs_client.total_avoirs, 0)
       + COALESCE(charges_client.total_charges, 0)
+      - COALESCE(avoirs_charge.total_avoirs_charge, 0)
     WHEN c.type = 'Fournisseur' THEN
       COALESCE(c.solde, 0)
       + COALESCE(achats_fournisseur.total_achats, 0)
@@ -149,6 +151,7 @@ const SINGLE_CONTACT_QUERY = `
             + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM avoirs_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
         WHEN c.type = 'Fournisseur' THEN
           COALESCE((
             SELECT SUM(bc.montant_total)
@@ -245,6 +248,12 @@ const SINGLE_CONTACT_QUERY = `
           - COALESCE((
             SELECT SUM(bch.montant_total)
             FROM bons_charge bch
+            WHERE bch.client_id = c.id
+              AND LOWER(TRIM(bch.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
+          ), 0)
+          + COALESCE((
+            SELECT SUM(bch.montant_total)
+            FROM avoirs_charge bch
             WHERE bch.client_id = c.id
               AND LOWER(TRIM(bch.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
@@ -348,6 +357,7 @@ router.get('/', async (req, res) => {
           + COALESCE(ventes_comptant.total_ventes, 0)
           + COALESCE(ventes_ecommerce.total_ventes, 0)
           + COALESCE(charges_client.total_charges, 0)
+          - COALESCE(avoirs_charge.total_avoirs_charge, 0)
           + COALESCE(achats_fournisseur.total_achats, 0)
           - COALESCE(sorties_vendre_fournisseur.total_sorties, 0)
         ) AS total_ventes,
@@ -405,6 +415,15 @@ router.get('/', async (req, res) => {
           AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
         GROUP BY client_id
       ) charges_client ON charges_client.client_id = c.id AND c.type = 'Client'
+
+      -- Avoir charges client
+      LEFT JOIN (
+        SELECT client_id, SUM(montant_total) AS total_avoirs_charge
+        FROM avoirs_charge
+        WHERE client_id IS NOT NULL
+          AND LOWER(TRIM(statut)) NOT IN ('annulÃƒÂ©','annule','supprimÃƒÂ©','supprime','brouillon','refusÃƒÂ©','refuse','expirÃƒÂ©','expire')
+        GROUP BY client_id
+      ) avoirs_charge ON avoirs_charge.client_id = c.id AND c.type = 'Client'
 
       -- Achats fournisseur = bons_commande
       LEFT JOIN (
@@ -542,6 +561,7 @@ router.get('/', async (req, res) => {
             + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
+            - COALESCE((SELECT SUM(montant_total) FROM avoirs_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE client_id = c.id AND statut IN ('En attente','ValidÃ©','AppliquÃ©') AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
@@ -1236,7 +1256,7 @@ router.get('/:id/history', async (req, res) => {
     const requestedPageRaw = String(req.query.page || '1').toLowerCase();
     const limit = Math.max(1, Math.min(30000, Number(req.query.limit || 30000) || 30000));
 
-    const [[contactRows], [sorties], [comptants], [charges], [commandes], [sortiesVendreFournisseur], [avoirsClient], [avoirsFournisseur], [avoirsClientVendreFournisseur], [payments], [ecommerceOrders], [avoirsEcommerce]] = await Promise.all([
+    const [[contactRows], [sorties], [comptants], [charges], [avoirsCharge], [commandes], [sortiesVendreFournisseur], [avoirsClient], [avoirsFournisseur], [avoirsClientVendreFournisseur], [payments], [ecommerceOrders], [avoirsEcommerce]] = await Promise.all([
       pool.query('SELECT id, type, nom_complet, societe, solde, created_at FROM contacts WHERE id = ? LIMIT 1', [contactId]),
       pool.query(`
         SELECT bs.*,
@@ -1322,6 +1342,36 @@ router.get('/:id/history', async (req, res) => {
           ), JSON_ARRAY()) AS items
         FROM bons_charge bch
         LEFT JOIN charge_items chi ON chi.bon_charge_id = bch.id
+        LEFT JOIN products p ON p.id = chi.product_id
+        LEFT JOIN product_snapshot ps ON ps.id = chi.product_snapshot_id
+        WHERE bch.client_id = ?
+        GROUP BY bch.id
+        ORDER BY bch.date_creation ASC, bch.id ASC
+      `, [contactId]),
+      pool.query(`
+        SELECT bch.*,
+          COALESCE(JSON_ARRAYAGG(
+            CASE WHEN chi.id IS NULL THEN NULL ELSE JSON_OBJECT(
+              'id', chi.id,
+              'product_id', chi.product_id,
+              'produit_id', chi.product_id,
+              'variant_id', chi.variant_id,
+              'unit_id', chi.unit_id,
+              'reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
+              'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
+              'designation', COALESCE(NULLIF(chi.designation_custom, ''), p.designation),
+              'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
+              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'quantite', chi.quantite,
+              'prix_unitaire', chi.prix_unitaire,
+              'remise_pourcentage', chi.remise_pourcentage,
+              'remise_montant', chi.remise_montant,
+              'total', chi.total,
+              'product_snapshot_id', chi.product_snapshot_id
+            ) END
+          ), JSON_ARRAY()) AS items
+        FROM avoirs_charge bch
+        LEFT JOIN items_avoir_charge chi ON chi.avoir_charge_id = bch.id
         LEFT JOIN products p ON p.id = chi.product_id
         LEFT JOIN product_snapshot ps ON ps.id = chi.product_snapshot_id
         WHERE bch.client_id = ?
@@ -1610,6 +1660,7 @@ router.get('/:id/history', async (req, res) => {
           ...normalizeItems(sorties, 'Sortie', 'SOR').filter((b) => isAllowedHistoryStatus(b.statut)),
           ...normalizeItems(comptants, 'Comptant', 'COM').filter((b) => isAllowedHistoryStatus(b.statut)),
           ...normalizeItems(charges, 'Charge', 'CHG').filter((b) => isAllowedHistoryStatus(b.statut)),
+          ...normalizeItems(avoirsCharge, 'AvoirCharge', 'ACH').filter((b) => isAllowedHistoryStatus(b.statut)),
           ...normalizeItems(avoirsClient, 'Avoir', 'AVC').filter((b) => isAllowedHistoryStatus(b.statut)),
         ]
       : [
@@ -1621,7 +1672,7 @@ router.get('/:id/history', async (req, res) => {
 
     const historyRows = [];
     for (const b of docs) {
-      const itemType = (b.type === 'Avoir' || b.type === 'AvoirFournisseur' || b.type === 'AvoirClientVendreFournisseur') ? 'avoir'
+      const itemType = (b.type === 'Avoir' || b.type === 'AvoirCharge' || b.type === 'AvoirFournisseur' || b.type === 'AvoirClientVendreFournisseur') ? 'avoir'
         : b.type === 'Charge' ? 'charge_produit'
         : 'produit';
       const bonItems = Array.isArray(b.items) ? b.items : [];
@@ -1759,6 +1810,7 @@ router.get('/:id/history', async (req, res) => {
       sorties: keepDocs(normalizeItems(sorties, 'Sortie', 'SOR')),
       comptants: keepDocs(normalizeItems(comptants, 'Comptant', 'COM')),
       charges: keepDocs(normalizeItems(charges, 'Charge', 'CHG')),
+      avoirsCharge: keepDocs(normalizeItems(avoirsCharge, 'AvoirCharge', 'ACH')),
       commandes: keepDocs(normalizeItems(commandes, 'Commande', 'CMD')),
       sortiesVendreFournisseur: keepDocs(normalizeItems(sortiesVendreFournisseur, 'SortieVendreFournisseur', 'SVF')),
       avoirsClient: keepDocs(normalizeItems(avoirsClient, 'Avoir', 'AVC')),

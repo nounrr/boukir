@@ -51,7 +51,7 @@ import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
 // Centralize action/status icon size for easier adjustment
 const ACTION_ICON_SIZE = 24; // increased from 20 per user request
 
-type BonTabKey = 'Commande' | 'Sortie' | 'VendreFournisseur' | 'Comptant' | 'ComptantNonPaye' | 'Charge' | 'Avoir' | 'AvoirVendreFournisseur' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
+type BonTabKey = 'Commande' | 'Sortie' | 'VendreFournisseur' | 'Comptant' | 'ComptantNonPaye' | 'Charge' | 'AvoirCharge' | 'Avoir' | 'AvoirVendreFournisseur' | 'AvoirComptant' | 'AvoirFournisseur' | 'AvoirEcommerce' | 'Devis' | 'Vehicule' | 'Ecommerce';
 
 const BON_TAB_LABELS: Record<BonTabKey, string> = {
   Commande: 'Bon de Commande',
@@ -60,6 +60,7 @@ const BON_TAB_LABELS: Record<BonTabKey, string> = {
   Comptant: 'Bon Comptant',
   ComptantNonPaye: 'Bon Comptant non payé',
   Charge: 'Bon Charge',
+  AvoirCharge: 'Avoir Charge',
   Vehicule: 'Bon Véhicule',
   Avoir: 'Avoir Client',
   AvoirVendreFournisseur: 'Avoir vendre fournisseur',
@@ -319,6 +320,7 @@ const BonsPage = () => {
       'Sortie': 'SOR',
       'Comptant': 'COM',
       'Charge': 'CHG',
+      'AvoirCharge': 'ACH',
       'Devis': 'DEV',
       'Avoir': 'AVC',
       'AvoirFournisseur': 'AVF',
@@ -748,7 +750,7 @@ const BonsPage = () => {
       }
     }
     if (
-      (type === 'Sortie' || type === 'Comptant' || type === 'Charge' || type === 'Avoir' || type === 'AvoirComptant' ||
+      (type === 'Sortie' || type === 'Comptant' || type === 'Charge' || type === 'AvoirCharge' || type === 'Avoir' || type === 'AvoirComptant' ||
        type === 'Devis' || type === 'Ecommerce' || type === 'AvoirEcommerce') &&
       freeClientName
     ) {
@@ -1351,6 +1353,7 @@ const BonsPage = () => {
       case 'Sortie': return 'bons_sortie';
       case 'Comptant': return 'bons_comptant';
       case 'Charge': return 'bons_charge';
+      case 'AvoirCharge': return 'avoirs_charge';
       case 'Devis': return 'devis';
       case 'Avoir': return 'avoirs_client';
       case 'AvoirFournisseur': return 'avoirs_fournisseur';
@@ -1374,7 +1377,7 @@ const BonsPage = () => {
     // Client selon type
     const type = bon?.type || currentTab;
     const clientId = bon?.client_id ?? bon?.contact_id;
-    if (['Sortie','Comptant','Charge','Avoir','AvoirComptant','Devis'].includes(type)) {
+    if (['Sortie','Comptant','Charge','AvoirCharge','Avoir','AvoirComptant','Devis'].includes(type)) {
       if (clientId && clients.length > 0) {
         const client = clients.find((c: any) => String(c.id) === String(clientId));
         if (client?.telephone) return String(client.telephone);
@@ -1490,7 +1493,7 @@ const BonsPage = () => {
       const type = bon?.type || currentTab;
       let resolvedClient: any;
       let resolvedSupplier: any;
-      if (['Sortie', 'Comptant', 'Charge', 'Avoir', 'AvoirComptant', 'Devis'].includes(type)) {
+      if (['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant', 'Devis'].includes(type)) {
         const clientId = bon?.client_id ?? bon?.contact_id;
         if (clientId && clients.length > 0) {
           resolvedClient = clients.find((c: any) => String(c.id) === String(clientId));
@@ -1670,6 +1673,7 @@ const BonsPage = () => {
       { key: 'Comptant', label: 'Bon Comptant' },
       { key: 'ComptantNonPaye', label: 'Bon Comptant non payé' },
       { key: 'Charge', label: 'Bon Charge' },
+      { key: 'AvoirCharge', label: 'Avoir Charge' },
       { key: 'Vehicule', label: 'Bon Véhicule' },
       { key: 'Avoir', label: 'Avoir Client' },
       { key: 'AvoirVendreFournisseur', label: 'Avoir vendre fournisseur' },
@@ -3006,9 +3010,9 @@ const BonsPage = () => {
                             if (!canValidate) return null;
                             
                             // Show validation for different tab types
-                            const showForCommande = (effectiveCurrentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant' || effectiveCurrentTab === 'Charge'));
+                            const showForCommande = (effectiveCurrentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant' || effectiveCurrentTab === 'Charge' || effectiveCurrentTab === 'AvoirCharge'));
                             const showForAvoir = ((effectiveCurrentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) || 
-                              ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant')));
+                              ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirCharge' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant')));
                             const showForDevis = effectiveCurrentTab === 'Devis' && (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus');
                             
                             if (!showForCommande && !showForAvoir && !showForDevis) return null;
@@ -3179,7 +3183,7 @@ const BonsPage = () => {
                                           )}
                                           {(
                                             (effectiveCurrentTab === 'AvoirFournisseur' && (isFullAccessManager || currentUser?.role === 'Manager')) ||
-                                            ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant')) ||
+                                            ((currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirCharge' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant')) ||
                                             (currentUser?.role === 'PDG' && effectiveCurrentTab === 'AvoirEcommerce')
                                           ) && (
                                             <div className="flex gap-1">
@@ -3253,7 +3257,7 @@ const BonsPage = () => {
                                               </button>
                                             </div>
                                           )}
-                                          {(effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant' || effectiveCurrentTab === 'AvoirEcommerce') && bon.statut !== 'Validé' && (
+                                          {(effectiveCurrentTab === 'Avoir' || effectiveCurrentTab === 'AvoirCharge' || effectiveCurrentTab === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirComptant' || effectiveCurrentTab === 'AvoirEcommerce') && bon.statut !== 'Validé' && (
                                             <div className="flex gap-1">
                                               <button 
                                                 onClick={() => { handleChangeStatus(bon, 'En attente'); setOpenMenuBonId(null); }}
@@ -3283,6 +3287,7 @@ const BonsPage = () => {
                                         effectiveCurrentTab === 'Comptant' ||
                                         effectiveCurrentTab === 'Devis' ||
                                         effectiveCurrentTab === 'Avoir' ||
+                                        effectiveCurrentTab === 'AvoirCharge' ||
                                         effectiveCurrentTab === 'AvoirFournisseur' ||
                                         effectiveCurrentTab === 'AvoirComptant' ||
                                         effectiveCurrentTab === 'AvoirEcommerce' ||
