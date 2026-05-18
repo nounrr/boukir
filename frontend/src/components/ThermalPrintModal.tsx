@@ -152,18 +152,30 @@ const getPrintCss = () => `
   .thermal-row { font-weight: bold; display: flex; justify-content: center; gap: 8px; margin-bottom: 4mm; }
   .thermal-footer { font-weight: bold; text-align: center; font-size: 8px; margin-top: 3mm; border-top: 1px dashed #000; padding-top: 2mm; }
   .thermal-table { font-weight: bold; width: 100%; border-collapse: collapse; text-align: center; table-layout: fixed; border: 1px solid #000; }
-  .thermal-table th, .thermal-table td { font-weight: bold; padding: 1mm 0; text-align: center; border: 1px solid #000; }
+  .thermal-table th, .thermal-table td { font-weight: bold; padding: 1mm 0.4mm; text-align: center; border: 1px solid #000; box-sizing: border-box; }
   .thermal-table thead tr { font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; }
   .thermal-table tbody tr {font-size:14px; font-weight: bold; border-bottom: 1px solid #000; left; height:8mm }
   /* Ajustement des largeurs pour s'assurer que les nombres sont toujours visibles */
-  .col-code { font-weight: bold; width: 14%; min-width: 14%; white-space: nowrap; font-size: 12px; }
-  .col-designation { font-weight: bold; width: auto; max-width: 26%; white-space: normal; word-break: break-word; text-align: left; overflow: hidden; }
-  .col-qte { font-weight: bold; width: 10%; min-width: 10%; white-space: nowrap; text-align: right; overflow: visible; font-size: 11px; padding-right: 2px; }
-  .col-promo { font-weight: bold; width: 10%; min-width: 10%; white-space: nowrap; text-align: center; overflow: visible; font-size: 12px; border-left: 1px solid #000; }
-  .col-unit { font-weight: bold; width: 20%; min-width: 20%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px solid #000; font-size: 14px; padding-right: 2px; }
-  .col-total { font-weight: bold; width: 20%; min-width: 20%; white-space: nowrap; text-align: right; overflow: visible; border-left: 1px solid #000; font-size: 14px; padding-right: 2px; }
+  .col-code { font-weight: bold; width: 12%; min-width: 12%; white-space: nowrap; font-size: 12px; }
+  .col-designation { font-weight: bold; width: 27%; min-width: 27%; max-width: 27%; white-space: normal; word-break: break-word; text-align: center; overflow: hidden; }
+  .col-unite { font-weight: bold; width: 10%; min-width: 10%; white-space: nowrap; text-align: center; overflow: hidden; border-left: 1px solid #000; font-size: 11px; }
+  .col-qte,
+  .col-unit,
+  .col-total { font-weight: bold; white-space: nowrap; text-align: right; overflow: hidden; border-left: 1px solid #000; padding-left: 0.7mm !important; padding-right: 0.7mm !important; }
+  .col-qte { width: 17%; min-width: 17%; font-size: 11px; }
+  .col-promo { font-weight: bold; width: 9%; min-width: 9%; white-space: nowrap; text-align: center; overflow: visible; font-size: 12px; border-left: 1px solid #000; padding-left: 0.6mm !important; padding-right: 0.6mm !important; }
+  .col-unit { width: 13%; min-width: 13%; font-size: 12px; }
+  .col-total { width: 21%; min-width: 21%; font-size: 12px; }
+  .thermal-table.with-promo .col-code { width: 11%; min-width: 11%; }
+  .thermal-table.with-promo .col-designation { width: 23%; min-width: 23%; max-width: 23%; }
+  .thermal-table.with-promo .col-unite { width: 9%; min-width: 9%; }
+  .thermal-table.with-promo .col-qte { width: 14%; min-width: 14%; }
+  .thermal-table.with-promo .col-promo { width: 8%; min-width: 8%; }
+  .thermal-table.with-promo .col-unit { width: 15%; min-width: 15%; }
+  .thermal-table.with-promo .col-total { width: 20%; min-width: 20%; }
   .thermal-table.no-prices .col-code { font-weight: bold; width: 20%; min-width: 20%; }
   .thermal-table.no-prices .col-designation { font-weight: bold; width: auto; max-width: 60%; white-space: normal; word-break: break-word; text-align: left; }
+  .thermal-table.no-prices .col-unite { font-weight: bold; width: 20%; min-width: 20%; }
   .thermal-table.no-prices .col-qte { font-weight: bold; width: 20%; min-width: 20%; }
   .span-total{font-weight: bold; font-size: 16px; margin-top:4mm }
 
@@ -526,12 +538,12 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
               </span>
             </div>
 
-            <table className={`thermal-table w-full ${priceMode === 'WITHOUT_PRICES' ? 'no-prices' : ''}`}>
+            <table className={`thermal-table w-full ${priceMode === 'WITHOUT_PRICES' ? 'no-prices' : ''} ${priceMode === 'WITH_PRICES' && usePromo && type !== 'Commande' ? 'with-promo' : ''}`}>
               <thead>
                 <tr>
                   <th className="col-code">Code</th>
                   <th className="col-designation">Désignation</th>
-                  <th className="col-unite" style={{width:'auto', whiteSpace:'nowrap', textAlign:'center', borderLeft:'1px solid #000', fontSize:'12px'}}>Unité</th>
+                  <th className="col-unite">Unité</th>
                   <th className="col-qte">Qté</th>
                   {priceMode === 'WITH_PRICES' ? (
                     <>
@@ -559,7 +571,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                     <tr key={getItemKey(it)}>
                       <td className="col-code">{it.product_id}</td>
                       <td className="col-designation">{it.designation || it.libelle || it.name || '-'}</td>
-                      <td className="col-unite" style={{textAlign:'center', whiteSpace:'nowrap', borderLeft:'1px solid #000', fontSize:'12px'}}>{(() => {
+                      <td className="col-unite">{(() => {
                         const uid = it?.unit_id ?? it?.unite_id ?? it?.uniteId;
                         const prod = findProductById(it?.product_id ?? it?.produit_id);
                         if (uid && Array.isArray(prod?.units)) {
@@ -568,7 +580,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                         }
                         return prod?.base_unit || '';
                       })()}</td>
-                      <td className="col-qte">{q}</td>
+                      <td className="col-qte">{formatNumber(q)}</td>
                       {priceMode === 'WITH_PRICES' ? (
                         <>
                           {usePromo && type !== 'Commande' && (
