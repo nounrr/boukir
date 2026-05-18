@@ -17,6 +17,18 @@ export const getUiRowStyle = (config?: {
   };
 };
 
+export const getUiDraggableRowStyle = (
+  config: Parameters<typeof getUiRowStyle>[0],
+  dragStyle?: CSSProperties
+): CSSProperties | undefined => {
+  const rowStyle = getUiRowStyle(config);
+  if (!rowStyle && !dragStyle) return undefined;
+  return {
+    ...rowStyle,
+    ...dragStyle,
+  };
+};
+
 export const getUiBadgeStyle = (config?: {
   badgeBgColor?: string;
   badgeTextColor?: string;

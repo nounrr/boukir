@@ -16,7 +16,7 @@ import ContactPrintModal from '../components/ContactPrintModal';
 import ContactFormModal from '../components/ContactFormModal';
 import { useReorderPaymentsMutation } from '../store/api/paymentsApi';
 import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
-import { getUiBadgeStyle, getUiLineConfig, getUiRowStyle } from '../utils/uiSettings';
+import { getUiBadgeStyle, getUiDraggableRowStyle, getUiLineConfig, getUiRowStyle } from '../utils/uiSettings';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
@@ -685,7 +685,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 ref={dragProvided.innerRef}
                 {...dragProvided.draggableProps}
                 className={`transition-colors colored-row ${snapshot.isDragging ? 'shadow-lg bg-violet-100' : `${rowBg || 'bg-green-100'} hover:bg-green-100`}`}
-                style={getUiRowStyle(paymentStyleConfig)}
+                style={getUiDraggableRowStyle(paymentStyleConfig, dragProvided.draggableProps.style)}
               >
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
@@ -757,7 +757,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
             return (
               <Draggable key={`${bonKey}-${idx}`} draggableId={`${bonKey}-row`} index={rowIndex} isDragDisabled>
                 {(dragProvided) => (
-              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${rowBg || meta.bgClass || ''}`} style={getUiRowStyle(metaStyleConfig)}>
+              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${rowBg || meta.bgClass || ''}`} style={getUiDraggableRowStyle(metaStyleConfig, dragProvided.draggableProps.style)}>
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
@@ -792,7 +792,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
             return (
               <Draggable key={`${bonKey}-${idx}`} draggableId={`${itemKey0}-empty`} index={rowIndex} isDragDisabled>
                 {(dragProvided) => (
-              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${isSelected ? '!bg-violet-50' : itemSelected0 ? '!bg-purple-50' : (meta.bgClass || '')}`} style={getUiRowStyle(metaStyleConfig)}>
+              <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.hoverClass} transition-colors ${isSelected ? '!bg-violet-50' : itemSelected0 ? '!bg-purple-50' : (meta.bgClass || '')}`} style={getUiDraggableRowStyle(metaStyleConfig, dragProvided.draggableProps.style)}>
                 {selectionMode && (
                   <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect?.(rowId)}
@@ -847,7 +847,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 return (
                   <Draggable key={lastItemSoldeKey} draggableId={lastItemSoldeKey} index={rowIndex} isDragDisabled>
                     {(dragProvided) => (
-                  <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.bgClass ? meta.bgClass : 'bg-gray-50/60'} border-l-4 ${meta.itemBorderClass} transition-colors ${isSelected ? '!bg-violet-50/60' : itemSelected ? '!bg-purple-50/60' : ''}`} style={getUiRowStyle(metaStyleConfig)}>
+                  <tr ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`${meta.bgClass ? meta.bgClass : 'bg-gray-50/60'} border-l-4 ${meta.itemBorderClass} transition-colors ${isSelected ? '!bg-violet-50/60' : itemSelected ? '!bg-purple-50/60' : ''}`} style={getUiDraggableRowStyle(metaStyleConfig, dragProvided.draggableProps.style)}>
                     {selectionMode && (
                       <td className="px-2 py-2 text-center">
                         {groupIdx === 0 && (
