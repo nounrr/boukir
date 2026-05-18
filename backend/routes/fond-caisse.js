@@ -24,6 +24,7 @@ async function ensureFondCaisseEntriesTable(db = pool) {
       montant DECIMAL(12,2) NOT NULL DEFAULT 0,
       entry_type VARCHAR(50) NOT NULL DEFAULT 'caisse_initial',
       note VARCHAR(255) NULL,
+      mode_paiement VARCHAR(30) NOT NULL DEFAULT 'Espece',
       opened_at DATETIME NOT NULL,
       jour DATE NOT NULL,
       created_by INT NULL,
@@ -53,6 +54,15 @@ async function ensureFondCaisseEntriesTable(db = pool) {
   } catch (error) {
     console.error('ensureFondCaisseEntriesTable note:', error);
   }
+
+  try {
+    const [modeCols] = await db.query("SHOW COLUMNS FROM fond_caisse_entries LIKE 'mode_paiement'");
+    if (!Array.isArray(modeCols) || modeCols.length === 0) {
+      await db.query("ALTER TABLE fond_caisse_entries ADD COLUMN mode_paiement VARCHAR(30) NOT NULL DEFAULT 'Espece' AFTER note");
+    }
+  } catch (error) {
+    console.error('ensureFondCaisseEntriesTable mode_paiement:', error);
+  }
 }
 
 async function ensureCoffreTable(db = pool) {
@@ -62,6 +72,7 @@ async function ensureCoffreTable(db = pool) {
       montant DECIMAL(12,2) NOT NULL DEFAULT 0,
       entry_type VARCHAR(50) NOT NULL DEFAULT 'coffre_initial',
       note VARCHAR(255) NULL,
+      mode_paiement VARCHAR(30) NOT NULL DEFAULT 'Espece',
       opened_at DATETIME NOT NULL,
       jour DATE NOT NULL,
       fond_caisse_entry_id INT NULL,
@@ -76,6 +87,15 @@ async function ensureCoffreTable(db = pool) {
       KEY idx_coffre_created_by (created_by)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  try {
+    const [modeCols] = await db.query("SHOW COLUMNS FROM coffre LIKE 'mode_paiement'");
+    if (!Array.isArray(modeCols) || modeCols.length === 0) {
+      await db.query("ALTER TABLE coffre ADD COLUMN mode_paiement VARCHAR(30) NOT NULL DEFAULT 'Espece' AFTER note");
+    }
+  } catch (error) {
+    console.error('ensureCoffreTable mode_paiement:', error);
+  }
 }
 
 ensureFondCaisseEntriesTable().catch((error) => {
@@ -137,6 +157,7 @@ const mapEntry = (row) => ({
   createdByUserId: row.created_by == null ? null : Number(row.created_by),
   createdByName: row.created_by_name || 'Inconnu',
   createdAt: formatDateTimeValue(row.created_at),
+  modePaiement: row.mode_paiement || 'Espece',
 });
 
 const mapCoffreEntry = (row) => ({
@@ -149,9 +170,19 @@ const mapCoffreEntry = (row) => ({
   createdByUserId: row.created_by == null ? null : Number(row.created_by),
   createdByName: row.created_by_name || 'Inconnu',
   createdAt: formatDateTimeValue(row.created_at),
+  modePaiement: row.mode_paiement || 'Espece',
 });
 
 const ALLOWED_ENTRY_TYPES = new Set(['caisse_initial', 'coffre_initial', 'transfer_to_coffre']);
+const ALLOWED_PAYMENT_MODES = new Set(['Espece', 'Virement', 'Cheque']);
+
+const normalizePaymentMode = (value) => {
+  const raw = String(value || 'Espece').trim();
+  if (raw === 'Espèces' || raw === 'Espèce' || raw.toLowerCase() === 'espece') return 'Espece';
+  if (raw.toLowerCase() === 'virement') return 'Virement';
+  if (raw === 'Chèque' || raw.toLowerCase() === 'cheque') return 'Cheque';
+  return raw;
+};
 
 async function getEmployeeName(userId) {
   if (!userId) return null;
@@ -244,12 +275,16 @@ router.post('/entries', async (req, res) => {
     const montant = Number(req.body?.montant);
     const entryType = String(req.body?.entryType || 'caisse_initial').trim();
     const note = req.body?.note != null ? String(req.body.note).trim() : null;
+    const modePaiement = normalizePaymentMode(req.body?.modePaiement);
     const openedAt = normalizeSqlDateTime(req.body?.openedAt);
     if (!Number.isFinite(montant) || montant < 0) {
       return res.status(400).json({ message: 'Montant invalide' });
     }
     if (!ALLOWED_ENTRY_TYPES.has(entryType)) {
       return res.status(400).json({ message: "Type d'entree invalide" });
+    }
+    if (!ALLOWED_PAYMENT_MODES.has(modePaiement)) {
+      return res.status(400).json({ message: 'Mode de paiement invalide' });
     }
     if (!openedAt) {
       return res.status(400).json({ message: 'Date ouverture invalide' });
@@ -261,9 +296,9 @@ router.post('/entries', async (req, res) => {
 
     if (entryType === 'coffre_initial') {
       const [result] = await pool.query(
-        `INSERT INTO coffre (montant, entry_type, note, opened_at, jour, created_by, created_by_name)
-         VALUES (?, 'coffre_initial', ?, ?, ?, ?, ?)`,
-        [montant, note, openedAt, jour, createdBy, createdByName]
+        `INSERT INTO coffre (montant, entry_type, note, mode_paiement, opened_at, jour, created_by, created_by_name)
+         VALUES (?, 'coffre_initial', ?, ?, ?, ?, ?, ?)`,
+        [montant, note, modePaiement, openedAt, jour, createdBy, createdByName]
       );
       const [rows] = await pool.query('SELECT * FROM coffre WHERE id = ? LIMIT 1', [result.insertId]);
       return res.status(201).json(mapCoffreEntry(rows[0]));
@@ -273,15 +308,15 @@ router.post('/entries', async (req, res) => {
     try {
       await connection.beginTransaction();
       const [result] = await connection.query(
-        `INSERT INTO fond_caisse_entries (montant, entry_type, note, opened_at, jour, created_by, created_by_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [montant, entryType, note, openedAt, jour, createdBy, createdByName]
+        `INSERT INTO fond_caisse_entries (montant, entry_type, note, mode_paiement, opened_at, jour, created_by, created_by_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [montant, entryType, note, modePaiement, openedAt, jour, createdBy, createdByName]
       );
       if (entryType === 'transfer_to_coffre') {
         await connection.query(
-          `INSERT INTO coffre (montant, entry_type, note, opened_at, jour, fond_caisse_entry_id, created_by, created_by_name)
-           VALUES (?, 'transfer_from_caisse', ?, ?, ?, ?, ?, ?)`,
-          [montant, note || 'Transfert vers coffre', openedAt, jour, result.insertId, createdBy, createdByName]
+          `INSERT INTO coffre (montant, entry_type, note, mode_paiement, opened_at, jour, fond_caisse_entry_id, created_by, created_by_name)
+           VALUES (?, 'transfer_from_caisse', ?, ?, ?, ?, ?, ?, ?)`,
+          [montant, note || 'Transfert vers coffre', modePaiement, openedAt, jour, result.insertId, createdBy, createdByName]
         );
       }
       await connection.commit();
@@ -396,6 +431,7 @@ router.get('/days/:date', async (req, res) => {
             END AS reference,
             created_by_name AS actor,
             NULL AS statut,
+            mode_paiement AS mode_paiement,
             COALESCE(
               note,
               CASE
@@ -583,6 +619,7 @@ router.get('/days/:date', async (req, res) => {
           reference: row.reference || '',
           actor: row.actor || '',
           statut: row.statut || '',
+          modePaiement: row.mode_paiement || '',
           description: row.description || '',
         });
       }

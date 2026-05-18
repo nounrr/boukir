@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { useAppSelector, useAuth } from '../hooks/redux';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
@@ -24,7 +25,8 @@ import {
   Printer,
   ChevronUp,
   ChevronDown,
-  MoreVertical
+  MoreVertical,
+  Wallet
 } from 'lucide-react';
 import type { Payment, Bon, Contact } from '../types';
 import { displayBonNumero } from '../utils/numero';
@@ -1324,6 +1326,13 @@ const paymentValidationSchema = Yup.object({
           )}
         </div>
   <div className="flex flex-wrap gap-2">
+          <Link
+            to="/fond-caisse"
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-md transition-colors text-sm"
+          >
+            <Wallet size={18} className="shrink-0" />
+            <span className="whitespace-nowrap">Fond caisse / coffre</span>
+          </Link>
           <button
             onClick={() => {
               setSelectedPayment(null);

@@ -8,6 +8,7 @@ type FondCaisseEntry = {
   id: number;
   montant: number;
   entryType: 'caisse_initial' | 'coffre_initial' | 'transfer_to_coffre';
+  modePaiement?: 'Espece' | 'Virement' | 'Cheque';
   note?: string;
   openedAt: string;
   jour: string;
@@ -53,6 +54,10 @@ type Row = {
   avoirComptant: number;
 };
 
+type PaymentMode = 'Espece' | 'Virement' | 'Cheque';
+
+const paymentModes: PaymentMode[] = ['Espece', 'Virement', 'Cheque'];
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 const todayISO = () => {
@@ -80,10 +85,13 @@ const FondCaissePage = () => {
   const [entries, setEntries] = useState<FondCaisseEntry[]>([]);
   const [mouvements, setMouvements] = useState<FondCaisseMouvement[]>([]);
   const [montantCaisse, setMontantCaisse] = useState('');
+  const [modeCaisse, setModeCaisse] = useState<PaymentMode>('Espece');
   const [openedAtCaisse, setOpenedAtCaisse] = useState<string>(nowLocalInput);
   const [montantCoffre, setMontantCoffre] = useState('');
+  const [modeCoffre, setModeCoffre] = useState<PaymentMode>('Espece');
   const [openedAtCoffre, setOpenedAtCoffre] = useState<string>(nowLocalInput);
   const [montantTransfert, setMontantTransfert] = useState('');
+  const [modeTransfert, setModeTransfert] = useState<PaymentMode>('Espece');
   const [openedAtTransfert, setOpenedAtTransfert] = useState<string>(nowLocalInput);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -230,11 +238,13 @@ const FondCaissePage = () => {
     montant,
     openedAt,
     entryType,
+    modePaiement,
     successMessage,
   }: {
     montant: string;
     openedAt: string;
     entryType: FondCaisseEntry['entryType'];
+    modePaiement: PaymentMode;
     successMessage: string;
   }) => {
     if (!token) return;
@@ -252,7 +262,7 @@ const FondCaissePage = () => {
       const res = await fetch('/api/fond-caisse/entries', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ montant: m, openedAt, entryType }),
+        body: JSON.stringify({ montant: m, openedAt, entryType, modePaiement }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && data.message) || 'Erreur sauvegarde');
@@ -271,6 +281,7 @@ const FondCaissePage = () => {
       montant: montantCaisse,
       openedAt: openedAtCaisse,
       entryType: 'caisse_initial',
+      modePaiement: modeCaisse,
       successMessage: 'Fond de caisse enregistre.',
     });
     setMontantCaisse('');
@@ -283,6 +294,7 @@ const FondCaissePage = () => {
       montant: montantCoffre,
       openedAt: openedAtCoffre,
       entryType: 'coffre_initial',
+      modePaiement: modeCoffre,
       successMessage: 'Fond de coffre enregistre.',
     });
     setMontantCoffre('');
@@ -295,11 +307,29 @@ const FondCaissePage = () => {
       montant: montantTransfert,
       openedAt: openedAtTransfert,
       entryType: 'transfer_to_coffre',
+      modePaiement: modeTransfert,
       successMessage: 'Transfert vers coffre enregistre.',
     });
     setMontantTransfert('');
     setOpenedAtTransfert(nowLocalInput());
   };
+
+  const renderModeSelect = (value: PaymentMode, onChange: (mode: PaymentMode) => void) => (
+    <div>
+      <label className="mb-1 block text-sm font-medium text-gray-700">Mode</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as PaymentMode)}
+        className="w-full rounded-lg border border-gray-300 px-3 py-2"
+      >
+        {paymentModes.map((mode) => (
+          <option key={mode} value={mode}>
+            {mode}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 
   const handleDelete = async (entry: FondCaisseEntry) => {
     if (!token || !entry) return;
@@ -398,6 +428,7 @@ const FondCaissePage = () => {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
             </div>
+            {renderModeSelect(modeCaisse, setModeCaisse)}
             <button
               type="submit"
               disabled={isSaving}
@@ -438,6 +469,7 @@ const FondCaissePage = () => {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
             </div>
+            {renderModeSelect(modeCoffre, setModeCoffre)}
             <button
               type="submit"
               disabled={isSaving}
@@ -478,6 +510,7 @@ const FondCaissePage = () => {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
               />
             </div>
+            {renderModeSelect(modeTransfert, setModeTransfert)}
             <button
               type="submit"
               disabled={isSaving}
@@ -547,6 +580,7 @@ const FondCaissePage = () => {
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">
                           {row.debut.toFixed(2)} DH
+                          {row.caisseEntry?.modePaiement && <div className="text-xs font-normal text-gray-500">{row.caisseEntry.modePaiement}</div>}
                           {!row.caisseEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-emerald-700">+{row.entrees.toFixed(2)}</td>
@@ -554,6 +588,7 @@ const FondCaissePage = () => {
                         <td className="px-4 py-3 text-sm font-bold text-gray-900">{row.total.toFixed(2)} DH</td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">
                           {row.debutCoffre.toFixed(2)} DH
+                          {row.coffreEntry?.modePaiement && <div className="text-xs font-normal text-gray-500">{row.coffreEntry.modePaiement}</div>}
                           {!row.coffreEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-amber-700">+{row.entreesCoffre.toFixed(2)}</td>
