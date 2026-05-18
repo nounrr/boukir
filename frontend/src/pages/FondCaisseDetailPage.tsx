@@ -23,6 +23,7 @@ type Action = {
   reference: string;
   actor: string;
   statut: string;
+  modePaiement?: string;
   description: string;
 };
 
@@ -231,6 +232,7 @@ const FondCaisseDetailPage = () => {
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Action</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Reference</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Client / Source</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">Mode</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Statut</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-600">Montant</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-600">Total cumule</th>
@@ -263,6 +265,7 @@ const FondCaisseDetailPage = () => {
                         {action.reference || '-'}
                       </td>
                       <td className="px-4 py-3 text-gray-700">{action.actor || '-'}</td>
+                      <td className="px-4 py-3 text-gray-700">{action.modePaiement || '-'}</td>
                       <td className="px-4 py-3">
                         {action.statut ? (
                           <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
@@ -289,7 +292,7 @@ const FondCaisseDetailPage = () => {
               </tbody>
               <tfoot className="bg-gray-50">
                 <tr>
-                  <td colSpan={5} className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
+                  <td colSpan={6} className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
                     Total cumule final
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-semibold text-gray-700">
