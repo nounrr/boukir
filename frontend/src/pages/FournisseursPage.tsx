@@ -988,6 +988,7 @@ const FournisseurDetailPage: React.FC = () => {
   const [detail, setDetail] = useState(true);
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
+  const [filterStartLine, setFilterStartLine] = useState(1);
   const [productSearch, setProductSearch] = useState('');
   const { data: products = [] } = useGetProductsQuery();
   const { data: contact, isLoading: loadingContact } = useGetContactQuery(fournisseurId);
@@ -1175,6 +1176,14 @@ const FournisseurDetailPage: React.FC = () => {
     return true;
   };
 
+  const getRowDate = (row: CompletRow): string | undefined | null =>
+    row.kind === 'paiement'
+      ? (row.data.date_paiement || row.data.created_at)
+      : row.data.date_creation;
+
+  const filterStartIndex = Math.max(0, filterStartLine - 1);
+  const hasDateFilter = !!filterFrom || !!filterTo;
+
   const [paySort, setPaySort] = useState<{ col: 'date' | 'montant' | 'rib'; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'asc' });
   const togglePaySort = (col: typeof paySort.col) =>
     setPaySort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
@@ -1182,26 +1191,30 @@ const FournisseurDetailPage: React.FC = () => {
   const commandes = useMemo(() =>
     (history?.commandes ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
-      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
-    [history, filterFrom, filterTo]);
+      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime())
+      .slice(hasDateFilter ? filterStartIndex : 0),
+    [history, filterFrom, filterTo, hasDateFilter, filterStartIndex]);
 
   const sortiesVendreFournisseur = useMemo(() =>
     (history?.sortiesVendreFournisseur ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
-      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
-    [history, filterFrom, filterTo]);
+      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime())
+      .slice(hasDateFilter ? filterStartIndex : 0),
+    [history, filterFrom, filterTo, hasDateFilter, filterStartIndex]);
 
   const avoirs = useMemo(() =>
     (history?.avoirsFournisseur ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
-      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
-    [history, filterFrom, filterTo]);
+      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime())
+      .slice(hasDateFilter ? filterStartIndex : 0),
+    [history, filterFrom, filterTo, hasDateFilter, filterStartIndex]);
 
   const avoirsVendreFournisseur = useMemo(() =>
     (history?.avoirsClientVendreFournisseur ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
-      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
-    [history, filterFrom, filterTo]);
+      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime())
+      .slice(hasDateFilter ? filterStartIndex : 0),
+    [history, filterFrom, filterTo, hasDateFilter, filterStartIndex]);
 
   const paiements = useMemo(() => {
     const raw = (history?.payments ?? []).filter((p: any) => !isExcludedStatus(p.statut) && inDateRange(p.date_paiement || p.created_at));
@@ -1218,8 +1231,8 @@ const FournisseurDetailPage: React.FC = () => {
         vb = (b.code_reglement || b.reference_virement || '').toLowerCase();
       }
       return paySort.dir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
-    });
-  }, [history, paySort, filterFrom, filterTo]);
+    }).slice(hasDateFilter ? filterStartIndex : 0);
+  }, [history, paySort, filterFrom, filterTo, hasDateFilter, filterStartIndex]);
 
   const normalizedProductSearch = useMemo(() => productSearch.trim().toLowerCase(), [productSearch]);
   const hasProductSearch = normalizedProductSearch.length > 0;
@@ -1288,15 +1301,14 @@ const FournisseurDetailPage: React.FC = () => {
   const visibleIds = useMemo<Set<string> | undefined>(() => {
     if (!filterFrom && !filterTo) return undefined;
     const s = new Set<string>();
-    for (const row of completRows) {
-      const rowKey = `${row.kind}-${row.data.id}`;
-      const dateStr = row.kind === 'paiement'
-        ? (row.data.date_paiement || row.data.created_at)
-        : row.data.date_creation;
-      if (inDateRange(dateStr)) s.add(`${row.kind}-${row.data.id}`);
+    const visibleRows = completRows
+      .filter(row => inDateRange(getRowDate(row)))
+      .slice(filterStartIndex);
+    for (const row of visibleRows) {
+      s.add(`${row.kind}-${row.data.id}`);
     }
     return s;
-  }, [completRows, filterFrom, filterTo]);
+  }, [completRows, filterFrom, filterTo, filterStartIndex]);
 
   const PaySortIcon = ({ col }: { col: typeof paySort.col }) =>
     paySort.col !== col
@@ -1326,7 +1338,6 @@ const FournisseurDetailPage: React.FC = () => {
 
   const [printOpen, setPrintOpen] = useState(false);
 
-  const hasDateFilter = !!filterFrom || !!filterTo;
   const hasSelectionScopedPrint = selectedIds.size > 0 || selectedItemIds.size > 0;
   const hasScopedPrint = hasDateFilter || hasSelectionScopedPrint;
 
@@ -1334,14 +1345,11 @@ const FournisseurDetailPage: React.FC = () => {
     if (!history || !contact) return [];
     const allRows = buildCompletRows(history);
     const soldeCumuleMap = buildSoldeCumuleDetail(allRows, contact.solde ?? 0);
-    const rows = allRows.filter(row => {
+    const dateFilteredRows = allRows
+      .filter(row => !hasDateFilter || inDateRange(getRowDate(row)))
+      .slice(hasDateFilter ? filterStartIndex : 0);
+    const rows = dateFilteredRows.filter(row => {
       const rowKey = `${row.kind}-${row.data.id}`;
-      const dateStr = row.kind === 'paiement'
-        ? (row.data.date_paiement || row.data.created_at)
-        : row.data.date_creation;
-      if (filterFrom || filterTo) {
-        if (!inDateRange(dateStr)) return false;
-      }
       if (selectedItemIds.size > 0) {
         if (row.kind === 'paiement') {
           return selectedIds.has(rowKey);
@@ -1449,7 +1457,7 @@ const FournisseurDetailPage: React.FC = () => {
       else if (type === 'avoir') scopedSolde -= amount;
       return { ...row, soldeCumulatif: scopedSolde };
     });
-  }, [history, contact, filterFrom, filterTo, selectedIds, selectedItemIds, hasSelectionScopedPrint]);
+  }, [history, contact, hasDateFilter, filterStartIndex, selectedIds, selectedItemIds, hasSelectionScopedPrint]);
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
@@ -1599,9 +1607,18 @@ const FournisseurDetailPage: React.FC = () => {
               onChange={e => setFilterTo(e.target.value)}
               className="border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 w-[120px]"
             />
+            <span className="text-gray-400 text-xs ml-1">Ligne</span>
+            <input
+              type="number"
+              min={1}
+              value={filterStartLine}
+              onChange={e => setFilterStartLine(Math.max(1, Number(e.target.value) || 1))}
+              className="border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 w-[58px]"
+              title="Commencer l'affichage a partir de cette ligne dans le resultat filtre"
+            />
             {(filterFrom || filterTo) && (
               <button
-                onClick={() => { setFilterFrom(''); setFilterTo(''); }}
+                onClick={() => { setFilterFrom(''); setFilterTo(''); setFilterStartLine(1); }}
                 className="text-xs text-gray-400 hover:text-red-500 transition-colors px-0.5"
               >x</button>
             )}
