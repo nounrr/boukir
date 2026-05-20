@@ -422,6 +422,11 @@ function getSupplierDocSign(kind: Exclude<CompletRow['kind'], 'paiement'>): 1 | 
   return kind === 'commande' || kind === 'avoirClientVendreFournisseur' ? 1 : -1;
 }
 
+function getSupplierPrintSign(kind: CompletRow['kind'], data?: any): 1 | -1 {
+  if (kind === 'paiement') return isReverseSupplierPayment(data) ? 1 : -1;
+  return getSupplierDocSign(kind);
+}
+
 function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string, number> {
   const result = new Map<string, number>();
   let running = isNaN(soldeInitial) ? 0 : soldeInitial;
@@ -1370,6 +1375,7 @@ const FournisseurDetailPage: React.FC = () => {
       const typeLabel = kind === 'paiement'
         ? 'paiement'
         : (kind === 'avoirFournisseur' || kind === 'avoirClientVendreFournisseur' ? 'avoir' : 'produit');
+      const balanceSign = getSupplierPrintSign(kind, data);
       const bonPrefix = kind === 'commande'
         ? 'CMD'
         : kind === 'sortieVendreFournisseur'
@@ -1395,6 +1401,8 @@ const FournisseurDetailPage: React.FC = () => {
           prix_unitaire: 0,
           total: Number(data.montant_total ?? data.montant ?? 0),
           payment: Number(data.payment ?? 0),
+          balanceSign,
+          docKind: kind,
           bon_statut: data.statut ?? '',
           soldeCumulatif: soldeCumuleMap.get(`paiement-${data.id}`) ?? 0,
           type: 'paiement',
@@ -1414,6 +1422,8 @@ const FournisseurDetailPage: React.FC = () => {
           quantite: 0,
           prix_unitaire: 0,
           total: Number(data.montant_total ?? 0),
+          balanceSign,
+          docKind: kind,
           bon_statut: data.statut ?? '',
           soldeCumulatif: soldeCumuleMap.get(`${kind}-${data.id}-item-0`) ?? 0,
           type: typeLabel,
@@ -1437,6 +1447,8 @@ const FournisseurDetailPage: React.FC = () => {
           quantite: qte,
           prix_unitaire: pu,
           total,
+          balanceSign,
+          docKind: kind,
           bon_statut: data.statut ?? '',
           soldeCumulatif: soldeCumuleMap.get(itemKey) ?? 0,
           type: typeLabel,
@@ -1450,40 +1462,49 @@ const FournisseurDetailPage: React.FC = () => {
 
     let scopedSolde = 0;
     return result.map((row: any) => {
-      const type = String(row.type || '').toLowerCase();
       const amount = Number(row.total ?? 0);
-      if (type === 'produit') scopedSolde += amount;
-      else if (type === 'paiement') scopedSolde += row.payment === 1 ? amount : -amount;
-      else if (type === 'avoir') scopedSolde -= amount;
+      scopedSolde += (Number(row.balanceSign) || 1) * amount;
       return { ...row, soldeCumulatif: scopedSolde };
     });
   }, [history, contact, hasDateFilter, filterStartIndex, selectedIds, selectedItemIds, hasSelectionScopedPrint]);
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
-    const includeInitialInDebit = !hasSelectionScopedPrint;
-    const initialSoldeForDebit = Math.abs(Number(contact.solde ?? 0) || 0);
+    const includeInitial = !hasSelectionScopedPrint;
+    const initialSolde = Number(contact.solde ?? 0) || 0;
     const totalQty = printProductHistory
       .filter((r: any) => r.type === 'produit' && Number(r.quantite) > 0)
-      .reduce((s: number, r: any) => s + Number(r.quantite ?? 0), 0);
-    const totalAchats = printProductHistory
-      .filter((r: any) => r.type === 'produit')
+      .reduce((s: number, r: any) => s + (Number(r.balanceSign) || 1) * Number(r.quantite ?? 0), 0);
+    const totalCommandes = printProductHistory
+      .filter((r: any) => r.docKind === 'commande')
+      .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
+    const totalSortiesVendreFournisseur = printProductHistory
+      .filter((r: any) => r.docKind === 'sortieVendreFournisseur')
+      .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
+    const totalAvoirsFournisseur = printProductHistory
+      .filter((r: any) => r.docKind === 'avoirFournisseur')
+      .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
+    const totalAvoirsVendreFournisseur = printProductHistory
+      .filter((r: any) => r.docKind === 'avoirClientVendreFournisseur')
       .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
     const totalPaiements = printProductHistory
-      .filter((r: any) => r.type === 'paiement')
+      .filter((r: any) => r.type === 'paiement' && (Number(r.balanceSign) || -1) < 0)
       .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
-    const totalAvoirs = printProductHistory
-      .filter((r: any) => r.type === 'avoir')
+    const totalReversePaiements = printProductHistory
+      .filter((r: any) => r.type === 'paiement' && (Number(r.balanceSign) || -1) > 0)
       .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
+    const totalAmount = printProductHistory
+      .filter((r: any) => r.type !== 'paiement')
+      .reduce((s: number, r: any) => s + (Number(r.balanceSign) || 1) * Number(r.total ?? 0), 0);
     const finalSolde = hasScopedPrint
       ? Number(printProductHistory[printProductHistory.length - 1]?.soldeCumulatif ?? 0)
       : computeFinalSoldeCumule(history, contact.solde ?? 0);
     return {
       totalQty,
-      totalAmount: totalAchats,
+      totalAmount,
       finalSolde,
-      totalDebit: totalAchats + (includeInitialInDebit ? initialSoldeForDebit : 0),
-      totalCredit: totalPaiements + totalAvoirs,
+      totalDebit: totalPaiements + totalAvoirsFournisseur + totalSortiesVendreFournisseur + (includeInitial && initialSolde < 0 ? Math.abs(initialSolde) : 0),
+      totalCredit: totalCommandes + totalAvoirsVendreFournisseur + totalReversePaiements + (includeInitial && initialSolde > 0 ? initialSolde : 0),
     };
   }, [history, contact, filterFrom, filterTo, printProductHistory, selectedIds, selectedItemIds, hasScopedPrint, hasSelectionScopedPrint]);
 
@@ -1802,7 +1823,7 @@ const FournisseurDetailPage: React.FC = () => {
           finalSolde={printTotals.finalSolde}
           totalDebit={hasDateFilter ? undefined : printTotals.totalDebit}
           totalCredit={hasDateFilter ? undefined : printTotals.totalCredit}
-          totalDebitSubtitle={hasSelectionScopedPrint ? '(Achats)' : '(Achats + Solde initial)'}
+          totalDebitSubtitle="(Paiements + Avoirs + Vendre fournisseur)"
         />
       )}
 

@@ -232,13 +232,19 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
   const totalQtyProducts: number = totalQty !== undefined ? totalQty : prDataRows.reduce((sum: number, r: any) => {
     const t = String(r.type || '').toLowerCase();
     const q = Number(r.quantite) || 0;
-    if (t === 'produit') return sum + q;
-    if (t === 'avoir') return sum - q;
+    const sign = Number(r.balanceSign);
+    const rowSign = sign === 1 || sign === -1 ? sign : (t === 'avoir' ? -1 : 1);
+    if (t === 'produit' || t === 'avoir') return sum + rowSign * q;
     return sum;
   }, 0);
   const totalAmountProducts: number = totalAmount !== undefined ? totalAmount : prDataRows
-    .filter((r: any) => String(r.type || '').toLowerCase() === 'produit')
-    .reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0);
+    .filter((r: any) => String(r.type || '').toLowerCase() !== 'paiement')
+    .reduce((sum: number, r: any) => {
+      const t = String(r.type || '').toLowerCase();
+      const sign = Number(r.balanceSign);
+      const rowSign = sign === 1 || sign === -1 ? sign : (t === 'avoir' ? -1 : 1);
+      return sum + rowSign * (Number(r.total) || 0);
+    }, 0);
   
   // Solde final: si sélection (skipInitialRow + totalAmount fourni), utiliser totalAmount uniquement
   // Sinon, utiliser finalSolde fourni ou le dernier soldeCumulatif
@@ -445,9 +451,11 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
                 prList.map((it) => {
                   const type = String(it.type || '').toLowerCase();
                   const isPaymentOrAvoir = type === 'paiement' || type === 'avoir';
+                  const sign = Number(it.balanceSign);
+                  const rowSign = sign === 1 || sign === -1 ? sign : (isPaymentOrAvoir ? -1 : 1);
                   const totalVal = Number(it.total) || 0;
-                  const reduceBalance = isPaymentOrAvoir;
-                  const displayTotal = it.syntheticInitial ? '' : reduceBalance ? -totalVal : totalVal;
+                  const reduceBalance = rowSign < 0;
+                  const displayTotal = it.syntheticInitial ? '' : rowSign * totalVal;
                   const dateCandidate = it.bon_date_iso || it.date || it.bon_date;
 
                   // Get color class based on transaction type
@@ -556,7 +564,9 @@ const ContactPrintTemplate: React.FC<ContactPrintTemplateProps> = ({
             {totalCredit !== undefined && (
               <div className="border-2 border-green-400 bg-green-50 px-3 py-2 rounded-lg text-center min-w-[140px]">
                 <div className="text-xs font-semibold text-green-800">Total Crédit</div>
-                <div className="text-[10px] text-gray-500">(Paiements + Avoirs)</div>
+                <div className="text-[10px] text-gray-500">
+                  {isFournisseur ? '(Achats + Avoir vendre + Solde initial)' : '(Paiements + Avoirs)'}
+                </div>
                 <div className="text-base font-bold text-green-900">{fmt(totalCredit)} DH</div>
               </div>
             )}
