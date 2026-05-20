@@ -22,6 +22,7 @@ import { getUiBadgeStyle, getUiDraggableRowStyle, getUiLineConfig, getUiRowStyle
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
+import { printContactList } from '../utils/contactListPrint';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
 
@@ -1662,9 +1663,9 @@ const ClientDetailPage: React.FC = () => {
     const totalAvoirs = printProductHistory
       .filter((r: any) => r.type === 'avoir')
       .reduce((s: number, r: any) => s + Number(r.total ?? 0), 0);
-    const finalSolde = hasScopedPrint
+    const finalSolde = printProductHistory.length > 0
       ? Number(printProductHistory[printProductHistory.length - 1]?.soldeCumulatif ?? 0)
-      : computeFinalSoldeCumule(history, contact.solde ?? 0);
+      : -computeFinalSoldeCumule(history, contact.solde ?? 0);
     return {
       totalQty,
       totalAmount: totalVentes,
@@ -2055,6 +2056,7 @@ const ClientsListPage: React.FC = () => {
   const [dateFrom, setDateFrom] = useState(savedState.dateFrom ?? '');
   const [dateTo, setDateTo] = useState(savedState.dateTo ?? '');
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(new Set());
+  const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -2073,8 +2075,19 @@ const ClientsListPage: React.FC = () => {
     dateTo: dateTo || undefined,
     exclude_charge: true,
   });
+  const { data: printData, isFetching: isPrintFetching } = useGetClientsQuery({
+    page: 1,
+    limit: 999999,
+    search: debouncedSearch || undefined,
+    sortBy,
+    sortDir,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    exclude_charge: true,
+  });
 
   const clients = data?.data ?? [];
+  const printSourceRows = printData?.data ?? clients;
   const totalPages = data?.pagination?.totalPages ?? 0;
   const total = data?.pagination?.total ?? 0;
 
@@ -2131,6 +2144,45 @@ const ClientsListPage: React.FC = () => {
     (acc: number, c: any) => acc + (Number(c?.total_cumule) || 0),
     0
   );
+
+  const selectedListRows = useMemo(
+    () => clients.filter((client: Contact) => selectedListIds.has(Number(client.id))),
+    [clients, selectedListIds]
+  );
+  const rowsToPrint = selectedListRows.length > 0 ? selectedListRows : printSourceRows;
+  const totalCumulePrint = rowsToPrint.reduce((acc: number, c: any) => acc + (Number(c?.total_cumule) || 0), 0);
+
+  const toggleListRowSelection = (id: number) => {
+    setSelectedListIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllListSelection = () => {
+    setSelectedListIds(prev => {
+      if (clients.length > 0 && clients.every((client: Contact) => prev.has(Number(client.id)))) return new Set();
+      return new Set(clients.map((client: Contact) => Number(client.id)));
+    });
+  };
+
+  const handlePrintList = () => {
+    printContactList({
+      title: 'Liste des clients',
+      rows: rowsToPrint,
+      totalRows: selectedListRows.length > 0 ? selectedListRows.length : (printData?.pagination?.total ?? total),
+      totalCumule: totalCumulePrint,
+      fmt,
+      filters: [
+        debouncedSearch ? `Recherche: ${debouncedSearch}` : '',
+        dateFrom ? `Du: ${dateFrom}` : '',
+        dateTo ? `Au: ${dateTo}` : '',
+        selectedListRows.length > 0 ? `${selectedListRows.length} ligne(s) selectionnee(s)` : 'Toutes les lignes filtrees',
+      ],
+    });
+  };
 
   const accordionRows: ClientsAccordionRow[] = useMemo(() => {
     const rows: ClientsAccordionRow[] = [];
@@ -2228,6 +2280,15 @@ const ClientsListPage: React.FC = () => {
 
   const renderClientDataRow = (client: Contact, rowLabel: string | number, rowKey?: string) => (
     <tr key={rowKey ?? client.id} className="hover:bg-blue-50 transition-colors cursor-pointer" onClick={() => handleRowClick(client.id)}>
+      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selectedListIds.has(Number(client.id))}
+          onChange={() => toggleListRowSelection(Number(client.id))}
+          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          title="Selectionner pour impression"
+        />
+      </td>
       <td className="px-4 py-3 text-gray-400 text-xs">{rowLabel}</td>
       <td className="px-4 py-3 font-mono text-xs text-gray-500">{client.id}</td>
       <td className="px-4 py-3">
@@ -2319,6 +2380,26 @@ const ClientsListPage: React.FC = () => {
     return (
       <React.Fragment key={`group-${row.groupId}`}>
         <tr className="bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer" onClick={() => toggleGroupExpanded(row.groupId)}>
+          <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={row.members.length > 0 && row.members.every(member => selectedListIds.has(Number(member.id)))}
+              onChange={() => {
+                setSelectedListIds(prev => {
+                  const next = new Set(prev);
+                  const allSelected = row.members.every(member => next.has(Number(member.id)));
+                  row.members.forEach(member => {
+                    const id = Number(member.id);
+                    if (allSelected) next.delete(id);
+                    else next.add(id);
+                  });
+                  return next;
+                });
+              }}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              title="Selectionner le groupe pour impression"
+            />
+          </td>
           <td className="px-4 py-3 text-gray-400 text-xs">{rowLabel}</td>
           <td className="px-4 py-3 font-mono text-xs text-gray-500">G{row.groupId}</td>
           <td className="px-4 py-3">
@@ -2407,6 +2488,16 @@ const ClientsListPage: React.FC = () => {
               {ITEMS_PER_PAGE_OPTIONS.map(n => <option key={n} value={n}>{n === 0 ? 'Afficher tous' : n}</option>)}
             </select>
           </div>
+          <button
+            type="button"
+            onClick={handlePrintList}
+            disabled={isLoading || isFetching || isPrintFetching}
+            className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm transition-colors"
+            title={selectedListRows.length > 0 ? 'Imprimer les lignes selectionnees' : 'Imprimer toute la liste filtree'}
+          >
+            <Printer className="w-4 h-4" />
+            Imprimer
+          </button>
         </div>
       </div>
 
@@ -2415,6 +2506,15 @@ const ClientsListPage: React.FC = () => {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 w-10">
+                  <input
+                    type="checkbox"
+                    checked={clients.length > 0 && clients.every((client: Contact) => selectedListIds.has(Number(client.id)))}
+                    onChange={toggleAllListSelection}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    title="Selectionner toutes les lignes affichees"
+                  />
+                </th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 w-12">#</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 w-16">ID</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort('nom')}>
@@ -2438,13 +2538,13 @@ const ClientsListPage: React.FC = () => {
               {isLoading || isFetching
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 9 }).map((_, j) => (
+                      {Array.from({ length: 10 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-3/4" /></td>
                       ))}
                     </tr>
                   ))
                 : visibleAccordionRows.length === 0
-                  ? <tr><td colSpan={9} className="px-4 py-14 text-center text-gray-400">
+                  ? <tr><td colSpan={10} className="px-4 py-14 text-center text-gray-400">
                       <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" /><p>Aucun client trouvé</p>
                     </td></tr>
                   : (visibleAccordionRows.map((row, idx: number) => renderAccordionRow(row, idx)) || clients.map((client: Contact, idx: number) => (

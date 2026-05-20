@@ -20,6 +20,7 @@ import { getUiBadgeStyle, getUiDraggableRowStyle, getUiLineConfig, getUiRowStyle
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
+import { printContactList } from '../utils/contactListPrint';
 
 const ITEMS_PER_PAGE_OPTIONS = [20, 50, 100, 0];
 
@@ -1883,6 +1884,7 @@ const FournisseursListPage: React.FC = () => {
   const [debouncedSearch, setDebouncedSearch] = useState(savedState.search ?? '');
   const [sortBy, setSortBy] = useState<ContactsSortBy>(savedState.sortBy ?? 'total_cumule');
   const [sortDir, setSortDir] = useState<SortDirection>(savedState.sortDir ?? 'desc');
+  const [selectedListIds, setSelectedListIds] = useState<Set<number>>(new Set());
 
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -1898,8 +1900,16 @@ const FournisseursListPage: React.FC = () => {
     search: debouncedSearch || undefined,
     sortBy, sortDir,
   });
+  const { data: printData, isFetching: isPrintFetching } = useGetFournisseursQuery({
+    page: 1,
+    limit: 999999,
+    search: debouncedSearch || undefined,
+    sortBy,
+    sortDir,
+  });
 
   const fournisseurs = data?.data ?? [];
+  const printSourceRows = printData?.data ?? fournisseurs;
   const totalPages = data?.pagination?.totalPages ?? 0;
   const total = data?.pagination?.total ?? 0;
 
@@ -1956,6 +1966,43 @@ const FournisseursListPage: React.FC = () => {
     (acc: number, f: any) => acc + (Number(f?.total_cumule) || 0),
     0
   );
+
+  const selectedListRows = useMemo(
+    () => fournisseurs.filter((f: Contact) => selectedListIds.has(Number(f.id))),
+    [fournisseurs, selectedListIds]
+  );
+  const rowsToPrint = selectedListRows.length > 0 ? selectedListRows : printSourceRows;
+  const totalCumulePrint = rowsToPrint.reduce((acc: number, f: any) => acc + (Number(f?.total_cumule) || 0), 0);
+
+  const toggleListRowSelection = (id: number) => {
+    setSelectedListIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllListSelection = () => {
+    setSelectedListIds(prev => {
+      if (fournisseurs.length > 0 && fournisseurs.every((f: Contact) => prev.has(Number(f.id)))) return new Set();
+      return new Set(fournisseurs.map((f: Contact) => Number(f.id)));
+    });
+  };
+
+  const handlePrintList = () => {
+    printContactList({
+      title: 'Liste des fournisseurs',
+      rows: rowsToPrint,
+      totalRows: selectedListRows.length > 0 ? selectedListRows.length : (printData?.pagination?.total ?? total),
+      totalCumule: totalCumulePrint,
+      fmt,
+      filters: [
+        debouncedSearch ? `Recherche: ${debouncedSearch}` : '',
+        selectedListRows.length > 0 ? `${selectedListRows.length} ligne(s) selectionnee(s)` : 'Toutes les lignes filtrees',
+      ],
+    });
+  };
 
   const handleSort = (col: ContactsSortBy) => {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -2020,6 +2067,16 @@ const FournisseursListPage: React.FC = () => {
             {ITEMS_PER_PAGE_OPTIONS.map(n => <option key={n} value={n}>{n === 0 ? 'Tous' : n}</option>)}
           </select>
         </div>
+        <button
+          type="button"
+          onClick={handlePrintList}
+          disabled={isLoading || isFetching || isPrintFetching}
+          className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-sm transition-colors"
+          title={selectedListRows.length > 0 ? 'Imprimer les lignes selectionnees' : 'Imprimer toute la liste filtree'}
+        >
+          <Printer className="w-4 h-4" />
+          Imprimer
+        </button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -2027,6 +2084,15 @@ const FournisseursListPage: React.FC = () => {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 w-10">
+                  <input
+                    type="checkbox"
+                    checked={fournisseurs.length > 0 && fournisseurs.every((f: Contact) => selectedListIds.has(Number(f.id)))}
+                    onChange={toggleAllListSelection}
+                    className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                    title="Selectionner toutes les lignes affichees"
+                  />
+                </th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 w-12">#</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 w-16">ID</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-violet-600" onClick={() => handleSort('nom')}>
@@ -2050,18 +2116,27 @@ const FournisseursListPage: React.FC = () => {
               {isLoading || isFetching
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 9 }).map((_, j) => (
+                      {Array.from({ length: 10 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-3/4" /></td>
                       ))}
                     </tr>
                   ))
                 : fournisseurs.length === 0
-                  ? <tr><td colSpan={9} className="px-4 py-14 text-center text-gray-400">
+                  ? <tr><td colSpan={10} className="px-4 py-14 text-center text-gray-400">
                       <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" /><p>Aucun fournisseur trouve</p>
                     </td></tr>
                   : fournisseurs.map((f: Contact, idx: number) => (
                       <tr key={f.id} className="hover:bg-violet-50 transition-colors cursor-pointer"
                         onClick={() => handleRowClick(f.id)}>
+                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedListIds.has(Number(f.id))}
+                            onChange={() => toggleListRowSelection(Number(f.id))}
+                            className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                            title="Selectionner pour impression"
+                          />
+                        </td>
                         <td className="px-4 py-3 text-gray-400 text-xs">{(currentPage - 1) * itemsPerPage + idx + 1}</td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-500">{f.id}</td>
                         <td className="px-4 py-3">
