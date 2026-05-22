@@ -11,6 +11,8 @@ const clampInt = (value, fallback, min, max) => {
 };
 
 const parseCsv = (value) => String(value || '').split(',').map((v) => v.trim()).filter(Boolean);
+const SEARCH_COLLATION = 'utf8mb4_unicode_ci';
+const searchText = (expr) => `CONVERT((${expr}) USING utf8mb4) COLLATE ${SEARCH_COLLATION}`;
 
 const bonPagedConfigs = {
   Commande: {
@@ -637,21 +639,21 @@ router.get('/paged/:type', async (req, res) => {
     if (search) {
       const like = `%${search}%`;
       whereParts.push(`(
-        CAST(b.id AS CHAR) LIKE ?
-        OR LOWER(CONCAT(?, CAST(b.id AS CHAR))) LIKE LOWER(?)
-        OR LOWER(CONCAT(?, LPAD(CAST(b.id AS CHAR), 2, '0'))) LIKE LOWER(?)
-        OR LOWER(CONCAT(?, LPAD(CAST(b.id AS CHAR), 3, '0'))) LIKE LOWER(?)
-        OR LOWER(CONCAT(?, LPAD(CAST(b.id AS CHAR), 4, '0'))) LIKE LOWER(?)
-        OR CAST(${cfg.contactIdExpr || 'NULL'} AS CHAR) LIKE ?
-        OR ${cfg.contactExpr} LIKE ?
-        OR ${cfg.phoneExpr} LIKE ?
-        OR b.statut LIKE ?
-        OR CAST(${cfg.amountExpr} AS CHAR) LIKE ?
+        ${searchText('CAST(b.id AS CHAR)')} LIKE ${searchText('?')}
+        OR LOWER(${searchText('CONCAT(?, CAST(b.id AS CHAR))')}) LIKE LOWER(${searchText('?')})
+        OR LOWER(${searchText("CONCAT(?, LPAD(CAST(b.id AS CHAR), 2, '0'))")}) LIKE LOWER(${searchText('?')})
+        OR LOWER(${searchText("CONCAT(?, LPAD(CAST(b.id AS CHAR), 3, '0'))")}) LIKE LOWER(${searchText('?')})
+        OR LOWER(${searchText("CONCAT(?, LPAD(CAST(b.id AS CHAR), 4, '0'))")}) LIKE LOWER(${searchText('?')})
+        OR ${searchText(`CAST(${cfg.contactIdExpr || 'NULL'} AS CHAR)`)} LIKE ${searchText('?')}
+        OR ${searchText(cfg.contactExpr)} LIKE ${searchText('?')}
+        OR ${searchText(cfg.phoneExpr)} LIKE ${searchText('?')}
+        OR ${searchText('b.statut')} LIKE ${searchText('?')}
+        OR ${searchText(`CAST(${cfg.amountExpr} AS CHAR)`)} LIKE ${searchText('?')}
         OR EXISTS (
           SELECT 1 FROM ${cfg.itemTable} isearch
           LEFT JOIN products psearch ON psearch.id = isearch.product_id
           WHERE isearch.${cfg.itemFk} = b.id
-            AND (COALESCE(${cfg.itemSearchExpr || 'psearch.designation'}, '') LIKE ? OR CAST(isearch.product_id AS CHAR) LIKE ?)
+            AND (${searchText(`COALESCE(${cfg.itemSearchExpr || 'psearch.designation'}, '')`)} LIKE ${searchText('?')} OR ${searchText('CAST(isearch.product_id AS CHAR)')} LIKE ${searchText('?')})
         )
       )`);
       params.push(
