@@ -21,15 +21,26 @@ interface PaymentPrintTemplateProps {
 // Petit composant réutilisable pour le pied de page
 const CompanyFooter: React.FC<{
   data: { address: string; phones: string; email: string; extra?: string };
-}> = ({ data }) => (
-  <div style={{ position: 'absolute', left: 0, right: 0, bottom: '12mm', padding: '0 16px' }} className="mt-8 pt-4  space-y-1 ">
+  compact?: boolean;
+}> = ({ data, compact = false }) => (
+  <div
+    style={{
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: compact ? '4mm' : '12mm',
+      padding: compact ? '0 8px' : '0 16px',
+    }}
+    className={`${compact ? 'mt-4 pt-2' : 'mt-8 pt-4'} space-y-1`}
+    data-payment-footer="true"
+  >
     {/* Cachet client rectangle */}
-    <div className="w-full mb-4 " style={{ textAlign: 'center' }}>
-      <div className='text-center'  style={{border: '2px solid #000',  width: '40mm', height: '20mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span className="text-sm font-bold">CACHET CLIENT</span>
+    <div className={compact ? 'w-full mb-2' : 'w-full mb-4'} style={{ textAlign: 'center' }}>
+      <div className='text-center'  style={{border: '2px solid #000',  width: compact ? '38mm' : '40mm', height: compact ? '18mm' : '20mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span className={`${compact ? 'text-[10px]' : 'text-sm'} font-bold`}>CACHET CLIENT</span>
       </div>
     </div>
-    <div className="border-t border-gray-300 text-center text-xs text-gray-600 space-y-1">
+    <div className={`border-t border-gray-300 text-center ${compact ? 'text-[8.5px]' : 'text-xs'} text-gray-600 ${compact ? 'space-y-0' : 'space-y-1'}`}>
       <p>{data.address}</p>
       <p>{data.phones} | {data.email}</p>
     </div>
@@ -227,12 +238,30 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       ? contact.societe
       : (contact?.nom_complet || '-')
   );
+  const isA5 = size === 'A5';
 
   return (
     <div 
-      className={`bg-white ${size === 'A5' ? 'w-[148mm] h-[210mm]' : 'w-[210mm] h-[297mm]'} mx-auto p-4 font-sans text-sm print:shadow-none`}
+      className={`payment-print-page bg-white ${isA5 ? 'w-[148mm] h-[198mm] p-2 text-[10.5px] overflow-hidden' : 'w-[210mm] min-h-[297mm] p-4 text-sm'} mx-auto font-sans print:shadow-none`}
       style={{ fontFamily: 'sans-serif', position: 'relative' }}
     >
+      {isA5 && (
+        <style>{`
+          .payment-print-page th,
+          .payment-print-page td { padding: 4px 6px !important; line-height: 1.2; }
+          .payment-print-page .logo-large { max-height: 42px !important; }
+          .payment-print-page .titles h1 { font-size: 15px !important; margin-bottom: 1px !important; }
+          .payment-print-page .titles h2 { font-size: 12px !important; margin-bottom: 1px !important; }
+          .payment-print-page .titles p { font-size: 10px !important; line-height: 1.15 !important; }
+          .payment-print-page > .flex.justify-center.items-center { margin-bottom: 6px !important; padding-bottom: 6px !important; }
+          .payment-print-page [data-payment-footer="true"] {
+            position: absolute !important;
+            left: 8px !important;
+            right: 8px !important;
+            bottom: 4mm !important;
+          }
+        `}</style>
+      )}
       {/* Options */}
       <div className="flex justify-end items-center gap-4 mb-2 print-hidden">
         <div className="flex items-center">
@@ -253,13 +282,13 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       <CompanyHeader companyType={selectedCompany} />
 
       {/* Infos document */}
-      <div className="flex justify-between items-start mb-6 mt-6">
+      <div className={`flex justify-between items-start ${isA5 ? 'mb-2 mt-2 gap-2' : 'mb-6 mt-6'}`}>
         {/* Contact */}
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-gray-800 mb-3">{contactLabel} :</h3>
+          <h3 className={`${isA5 ? 'text-sm mb-1' : 'text-lg mb-3'} font-semibold text-gray-800`}>{contactLabel} :</h3>
           {contact && (
-            <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
-              <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className={`bg-gray-50 ${isA5 ? 'p-2' : 'p-3'} rounded border-l-4 border-orange-500`}>
+              <div className={`grid grid-cols-2 ${isA5 ? 'gap-1 text-[10px]' : 'gap-2 text-sm'}`}>
                 <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
                 <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
               </div>
@@ -268,12 +297,12 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
         </div>
 
         {/* Cartouche */}
-        <div className="ml-6 text-right">
-          <div className="p-4 rounded border border-orange-200">
-            <h2 className="text-lg font-bold text-orange-700 mb-3">
+        <div className={`${isA5 ? 'ml-2' : 'ml-6'} text-right`}>
+          <div className={`${isA5 ? 'p-2' : 'p-4'} rounded border border-orange-200`}>
+            <h2 className={`${isA5 ? 'text-sm mb-1' : 'text-lg mb-3'} font-bold text-orange-700`}>
               REÇU DE PAIEMENT N° {payment.numero || `PAY${String(payment.id).padStart(2, '0')}`}
             </h2>
-            <div className="space-y-2 text-sm">
+            <div className={`${isA5 ? 'space-y-1 text-[10px]' : 'space-y-2 text-sm'}`}>
               <div><span className="font-medium">Date:</span> {formatHeure(payment.date_paiement)}</div>
               <div><span className="font-medium">Mode:</span> {payment.mode_paiement}</div>
               <div><span className="font-medium">Statut:</span> {payment.statut}</div>
@@ -286,13 +315,13 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       </div>
 
       {/* Table paiements */}
-      <div className="mb-6">
+      <div className={isA5 ? 'mb-3' : 'mb-6'}>
         <table className="w-full border-collapse border border-gray-300">
           <thead>
             <tr className="bg-orange-500 text-white">
-              <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Description</th>
-              <th className="border border-gray-300 px-3 py-2 text-center font-semibold w-40">Date / Heure</th>
-              <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-28">Montant (DH)</th>
+              <th className={`${isA5 ? 'px-1.5 py-1' : 'px-3 py-2'} border border-gray-300 text-left font-semibold`}>Description</th>
+              <th className={`${isA5 ? 'px-1.5 py-1 w-24' : 'px-3 py-2 w-40'} border border-gray-300 text-center font-semibold`}>Date / Heure</th>
+              <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>Montant (DH)</th>
               <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-28">{isClient ? 'Solde à recevoir (DH)' : 'Solde à payer (DH)'}</th>
             </tr>
           </thead>
@@ -352,14 +381,14 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       </div>
 
       {/* Totaux */}
-      <div className="flex justify-end mb-6">
-        <div className="w-80">
-          <div className="p-4 rounded">
-            <div className="flex justify-between items-center text-lg font-bold">
+      <div className={`flex justify-end ${isA5 ? 'mb-3' : 'mb-6'}`}>
+        <div className={isA5 ? 'w-64' : 'w-80'}>
+          <div className={`${isA5 ? 'p-2' : 'p-4'} rounded`}>
+            <div className={`flex justify-between items-center ${isA5 ? 'text-sm' : 'text-lg'} font-bold`}>
               <span>MONTANT PAYÉ:</span>
               <span>{montantPaiement.toFixed(2)} DH</span>
             </div>
-            <div className="flex justify-between items-center text-lg font-bold text-orange-700 border-t pt-2 mt-2">
+            <div className={`flex justify-between items-center ${isA5 ? 'text-sm pt-1 mt-1' : 'text-lg pt-2 mt-2'} font-bold text-orange-700 border-t`}>
               <span>{nouveauSoldeLabel}:</span>
               <span>{soldoApres.toFixed(2)} DH</span>
             </div>
@@ -369,16 +398,16 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
 
       {/* Observations */}
       {payment.notes && (
-        <div className="mb-4">
+        <div className={isA5 ? 'mb-2' : 'mb-4'}>
           <h4 className="font-semibold text-gray-800 mb-2">Observations:</h4>
-          <div className="bg-gray-50 p-3 rounded border-l-4 border-orange-500">
-            <p className="text-sm text-gray-700">{payment.notes}</p>
+          <div className={`bg-gray-50 ${isA5 ? 'p-2' : 'p-3'} rounded border-l-4 border-orange-500`}>
+            <p className={`${isA5 ? 'text-[10px]' : 'text-sm'} text-gray-700`}>{payment.notes}</p>
           </div>
         </div>
       )}
 
       {/* Pied de page (dépend de selectedCompany) */}
-      <CompanyFooter data={companyFooters[selectedCompany]} />
+      <CompanyFooter data={companyFooters[selectedCompany]} compact={isA5} />
     </div>
   );
 };

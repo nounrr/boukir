@@ -22,7 +22,7 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
   fournisseur,
   allPayments = [],
 }) => {
-  const [size, setSize] = useState<'A4' | 'A5'>('A4');
+  const [size, setSize] = useState<'A4' | 'A5'>('A5');
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -94,9 +94,32 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
         <head>
           <title>Impression Paiement ${payment.id}</title>
           <style>
-            body { margin: 0; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            @page { size: ${size}; margin: 0.5cm; }
-            @media print { body { margin: 0; } .print-hidden { display: none !important; } }
+            html, body { margin: 0; padding: 0; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { width: ${size === 'A5' ? '148mm' : '210mm'}; min-height: ${size === 'A5' ? '210mm' : '297mm'}; }
+            @page { size: ${size}; margin: 0; }
+            @media print {
+              html, body { margin: 0; padding: 0; }
+              .print-hidden { display: none !important; }
+              .payment-print-page {
+                width: ${size === 'A5' ? '148mm' : '210mm'} !important;
+                height: ${size === 'A5' ? '198mm' : '297mm'} !important;
+                min-height: ${size === 'A5' ? '198mm' : '297mm'} !important;
+                max-height: ${size === 'A5' ? '198mm' : '297mm'} !important;
+                overflow: hidden !important;
+                box-shadow: none !important;
+                margin: 0 auto !important;
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+              }
+              [data-payment-footer="true"] {
+                position: absolute !important;
+                left: 8px !important;
+                right: 8px !important;
+                bottom: 4mm !important;
+              }
+            }
             ${Array.from(document.styleSheets).map(styleSheet => {
               try {
                 return Array.from(styleSheet.cssRules).map(rule => rule.cssText).join('');
