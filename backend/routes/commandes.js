@@ -477,10 +477,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
              SET
                ps.en_validation = 1,
                ps.prix_achat = ci.prix_unitaire,
-               ps.quantite = ci.quantite,
-               ps.unite_special = ci.unite_special,
-               ps.nbr_barre = ci.nbr_barre,
-               ps.facteur_barre = ci.facteur_barre
+               ps.quantite = ci.quantite
              WHERE ps.bon_commande_id = ?`,
             [id]
           );
@@ -505,7 +502,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 prix_gros, prix_gros_pourcentage,
                 prix_vente_pourcentage,
                 quantite, bon_commande_id, en_validation,
-                unite_special, nbr_barre, facteur_barre, created_at
+                created_at
               )
               SELECT
                 ci.product_id,
@@ -520,9 +517,6 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ci.quantite,
                 ci.bon_commande_id,
                 1 AS en_validation,
-                ci.unite_special,
-                ci.nbr_barre,
-                ci.facteur_barre,
                 NOW() AS created_at
               FROM commande_items ci
               JOIN products p ON p.id = ci.product_id
@@ -544,7 +538,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 prix_gros, prix_gros_pourcentage,
                 prix_vente_pourcentage,
                 quantite, bon_commande_id, en_validation,
-                unite_special, nbr_barre, facteur_barre, created_at
+                created_at
               )
               SELECT
                 ci.product_id,
@@ -559,9 +553,6 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ci.quantite,
                 ci.bon_commande_id,
                 1 AS en_validation,
-                ci.unite_special,
-                ci.nbr_barre,
-                ci.facteur_barre,
                 NOW() AS created_at
               FROM commande_items ci
               JOIN products p ON p.id = ci.product_id
@@ -581,7 +572,7 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               prix_gros, prix_gros_pourcentage,
               prix_vente_pourcentage,
               quantite, bon_commande_id,
-              unite_special, nbr_barre, facteur_barre, created_at
+              created_at
             )
             SELECT
               ci.product_id,
@@ -595,9 +586,6 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
               ci.quantite,
               ci.bon_commande_id,
-              ci.unite_special,
-              ci.nbr_barre,
-              ci.facteur_barre,
               NOW() AS created_at
             FROM commande_items ci
             JOIN products p ON p.id = ci.product_id
@@ -974,7 +962,7 @@ router.put('/:id', verifyToken, async (req, res) => {
             prix_gros, prix_gros_pourcentage,
             prix_vente_pourcentage,
             quantite, bon_commande_id, en_validation,
-            unite_special, nbr_barre, facteur_barre, created_at
+            created_at
           )
           SELECT
             ci.product_id,
@@ -989,9 +977,6 @@ router.put('/:id', verifyToken, async (req, res) => {
             ci.quantite,
             ci.bon_commande_id,
             ? AS en_validation,
-            ci.unite_special,
-            ci.nbr_barre,
-            ci.facteur_barre,
             NOW() AS created_at
           FROM commande_items ci
           JOIN products p ON p.id = ci.product_id
@@ -1023,9 +1008,6 @@ router.put('/:id', verifyToken, async (req, res) => {
             ps.prix_achat = ci.prix_unitaire,
             ps.quantite = ci.quantite,
             ps.en_validation = ?,
-            ps.unite_special = ci.unite_special,
-            ps.nbr_barre = ci.nbr_barre,
-            ps.facteur_barre = ci.facteur_barre,
             ps.cout_revient = CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient
               ELSE ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100))
