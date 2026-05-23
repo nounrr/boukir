@@ -51,6 +51,9 @@ router.get('/', verifyToken, forbidRoles('ChefChauffeur'), async (_req, res) => 
         remise_pourcentage: it.remise_pourcentage,
         remise_montant: it.remise_montant,
         total: it.total,
+        unite_special: Number(it.unite_special || 0),
+        nbr_barre: it.nbr_barre,
+        facteur_barre: it.facteur_barre,
         kg: it.product_kg, // pour calcul poids côté frontend
       });
       byCommande.set(it.bon_commande_id, arr);
@@ -131,12 +134,17 @@ router.get('/:id', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) =
       items: items.map((it) => ({
         id: it.id,
         product_id: it.product_id,
+        variant_id: it.variant_id,
+        unit_id: it.unit_id,
         designation: it.designation,
         quantite: it.quantite,
         prix_unitaire: it.prix_unitaire,
         remise_pourcentage: it.remise_pourcentage,
         remise_montant: it.remise_montant,
         total: it.total,
+        unite_special: Number(it.unite_special || 0),
+        nbr_barre: it.nbr_barre,
+        facteur_barre: it.facteur_barre,
         kg: it.product_kg,
       })),
       livraisons: livs
@@ -226,7 +234,10 @@ router.post('/', verifyToken, async (req, res) => {
         remise_montant = 0,
         total,
         variant_id,
-        unit_id
+        unit_id,
+        unite_special = 0,
+        nbr_barre = null,
+        facteur_barre = null
       } = item || {};
 
       // Validation item
@@ -253,9 +264,16 @@ router.post('/', verifyToken, async (req, res) => {
       await connection.execute(`
         INSERT INTO commande_items (
           bon_commande_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [commandeId, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id,
+          unite_special, nbr_barre, facteur_barre
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        commandeId, product_id, quantite, prix_unitaire, remise_pourcentage,
+        remise_montant, total, variant_id || null, unit_id || null,
+        Number(unite_special) ? 1 : 0,
+        Number(unite_special) ? (nbr_barre ?? null) : null,
+        Number(unite_special) ? (facteur_barre ?? null) : null
+      ]);
 
   // (Suppression de la collecte des nouveaux prix d'achat)
     }
@@ -459,7 +477,10 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
              SET
                ps.en_validation = 1,
                ps.prix_achat = ci.prix_unitaire,
-               ps.quantite = ci.quantite
+               ps.quantite = ci.quantite,
+               ps.unite_special = ci.unite_special,
+               ps.nbr_barre = ci.nbr_barre,
+               ps.facteur_barre = ci.facteur_barre
              WHERE ps.bon_commande_id = ?`,
             [id]
           );
@@ -483,7 +504,8 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 cout_revient, cout_revient_pourcentage,
                 prix_gros, prix_gros_pourcentage,
                 prix_vente_pourcentage,
-                quantite, bon_commande_id, en_validation, created_at
+                quantite, bon_commande_id, en_validation,
+                unite_special, nbr_barre, facteur_barre, created_at
               )
               SELECT
                 ci.product_id,
@@ -498,6 +520,9 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ci.quantite,
                 ci.bon_commande_id,
                 1 AS en_validation,
+                ci.unite_special,
+                ci.nbr_barre,
+                ci.facteur_barre,
                 NOW() AS created_at
               FROM commande_items ci
               JOIN products p ON p.id = ci.product_id
@@ -518,7 +543,8 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 cout_revient, cout_revient_pourcentage,
                 prix_gros, prix_gros_pourcentage,
                 prix_vente_pourcentage,
-                quantite, bon_commande_id, en_validation, created_at
+                quantite, bon_commande_id, en_validation,
+                unite_special, nbr_barre, facteur_barre, created_at
               )
               SELECT
                 ci.product_id,
@@ -533,6 +559,9 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ci.quantite,
                 ci.bon_commande_id,
                 1 AS en_validation,
+                ci.unite_special,
+                ci.nbr_barre,
+                ci.facteur_barre,
                 NOW() AS created_at
               FROM commande_items ci
               JOIN products p ON p.id = ci.product_id
@@ -551,7 +580,8 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               cout_revient, cout_revient_pourcentage,
               prix_gros, prix_gros_pourcentage,
               prix_vente_pourcentage,
-              quantite, bon_commande_id, created_at
+              quantite, bon_commande_id,
+              unite_special, nbr_barre, facteur_barre, created_at
             )
             SELECT
               ci.product_id,
@@ -565,6 +595,9 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
               ci.quantite,
               ci.bon_commande_id,
+              ci.unite_special,
+              ci.nbr_barre,
+              ci.facteur_barre,
               NOW() AS created_at
             FROM commande_items ci
             JOIN products p ON p.id = ci.product_id
@@ -740,7 +773,7 @@ router.put('/:id', verifyToken, async (req, res) => {
 
     // Capturer les anciens items (pour ajuster le stock en cas de modification)
     const [oldItemsStock] = await connection.execute(
-      'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant FROM commande_items WHERE bon_commande_id = ? ORDER BY id ASC',
+      'SELECT product_id, variant_id, unit_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, unite_special, nbr_barre, facteur_barre FROM commande_items WHERE bon_commande_id = ? ORDER BY id ASC',
       [id]
     );
 
@@ -777,6 +810,9 @@ router.put('/:id', verifyToken, async (req, res) => {
           prix_unitaire: pu,
           remise_pourcentage: oldIt.remise_pourcentage ?? 0,
           remise_montant: oldIt.remise_montant ?? 0,
+          unite_special: oldIt.unite_special ?? 0,
+          nbr_barre: oldIt.nbr_barre ?? null,
+          facteur_barre: oldIt.facteur_barre ?? null,
           total: q * pu,
         };
       });
@@ -846,7 +882,10 @@ router.put('/:id', verifyToken, async (req, res) => {
         remise_montant = 0,
         total,
         variant_id,
-        unit_id
+        unit_id,
+        unite_special = 0,
+        nbr_barre = null,
+        facteur_barre = null
       } = item || {};
 
       if (!product_id || quantite == null || prix_unitaire == null || total == null) {
@@ -872,9 +911,16 @@ router.put('/:id', verifyToken, async (req, res) => {
       await connection.execute(`
         INSERT INTO commande_items (
           bon_commande_id, product_id, quantite, prix_unitaire,
-          remise_pourcentage, remise_montant, total, variant_id, unit_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [id, product_id, quantite, prix_unitaire, remise_pourcentage, remise_montant, total, variant_id || null, unit_id || null]);
+          remise_pourcentage, remise_montant, total, variant_id, unit_id,
+          unite_special, nbr_barre, facteur_barre
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        id, product_id, quantite, prix_unitaire, remise_pourcentage,
+        remise_montant, total, variant_id || null, unit_id || null,
+        Number(unite_special) ? 1 : 0,
+        Number(unite_special) ? (nbr_barre ?? null) : null,
+        Number(unite_special) ? (facteur_barre ?? null) : null
+      ]);
     }
 
     // Stock: on annule l'effet des anciens items (si pas Annulé), puis on applique les nouveaux (si pas Annulé)
@@ -927,7 +973,8 @@ router.put('/:id', verifyToken, async (req, res) => {
             cout_revient, cout_revient_pourcentage,
             prix_gros, prix_gros_pourcentage,
             prix_vente_pourcentage,
-            quantite, bon_commande_id, en_validation, created_at
+            quantite, bon_commande_id, en_validation,
+            unite_special, nbr_barre, facteur_barre, created_at
           )
           SELECT
             ci.product_id,
@@ -942,6 +989,9 @@ router.put('/:id', verifyToken, async (req, res) => {
             ci.quantite,
             ci.bon_commande_id,
             ? AS en_validation,
+            ci.unite_special,
+            ci.nbr_barre,
+            ci.facteur_barre,
             NOW() AS created_at
           FROM commande_items ci
           JOIN products p ON p.id = ci.product_id
@@ -973,6 +1023,9 @@ router.put('/:id', verifyToken, async (req, res) => {
             ps.prix_achat = ci.prix_unitaire,
             ps.quantite = ci.quantite,
             ps.en_validation = ?,
+            ps.unite_special = ci.unite_special,
+            ps.nbr_barre = ci.nbr_barre,
+            ps.facteur_barre = ci.facteur_barre,
             ps.cout_revient = CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient
               ELSE ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100))
