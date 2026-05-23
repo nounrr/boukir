@@ -450,7 +450,12 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
         <div className={`ml-6 text-right ${isA5 ? 'ml-3' : 'ml-6'}`}>
           <div className={`${spacing.padding} rounded border border-orange-200`}>
             <h2 className={`${textSizes.header} font-bold text-orange-700 ${spacing.margin}`}>
-              BON DEVIS {getBonNumeroDisplay(bon)}
+              {(() => {
+                const t = bon?.type;
+                if (t === 'AvoirCharge') return 'AVOIR CHARGE';
+                if (t === 'Charge') return 'BON CHARGE';
+                return 'BON DEVIS';
+              })()} {getBonNumeroDisplay(bon)}
             </h2>
             <div className={`space-y-2 ${textSizes.normal}`}>
               <div><span className="font-medium">Date:</span> {formatHeure(bon.date_creation)}</div>

@@ -431,6 +431,9 @@ export interface BonItem {
   quantite: number;
   prix_unitaire: number;
   montant_ligne: number;
+  unite_special?: 0 | 1 | boolean;
+  nbr_barre?: number | null;
+  facteur_barre?: number | null;
   designation_custom?: string; // Désignation personnalisée modifiable
   produit?: Product;
 }

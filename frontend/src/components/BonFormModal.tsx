@@ -849,7 +849,10 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     for (const snap of result) {
       // Group by product_id + variant_id + prix_vente so different prices stay separate
       const pv = Number(snap.prix_vente ?? 0);
-      const key = `${snap.id}:${snap.variant_id || 0}:${pv}`;
+      const specialKey = Number(snap.snapshot_unite_special || 0)
+        ? `special:${Number(snap.snapshot_facteur_barre || 0)}`
+        : 'normal';
+      const key = `${snap.id}:${snap.variant_id || 0}:${pv}:${specialKey}`;
       if (!grouped2.has(key)) grouped2.set(key, []);
       grouped2.get(key)!.push(snap);
     }
@@ -876,6 +879,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
           _isMerged: true,
           _mergedSnapshots: sortedSnaps,
           snapshot_quantite: totalQty,
+          snapshot_unite_special: Number(oldest.snapshot_unite_special || 0),
+          snapshot_nbr_barre: oldest.snapshot_nbr_barre ?? null,
+          snapshot_facteur_barre: oldest.snapshot_facteur_barre ?? null,
           prix_achat: latest?.prix_achat ?? oldest?.prix_achat,
           prix_vente: oldest.prix_vente,
           cout_revient: latest?.cout_revient ?? latest?.prix_achat ?? oldest?.cout_revient,
@@ -1126,6 +1132,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
           cout_revient: Number(it?.cout_revient ?? it?.cr ?? 0) || 0,
           prix_unitaire: prixUnitaire,
           kg,
+          unite_special: it.unite_special ? 1 : 0,
+          nbr_barre: it.nbr_barre ?? '',
+          facteur_barre: it.facteur_barre ?? null,
           total,
           unite: it?.unite ?? 'pièce',
         };
@@ -1187,6 +1196,9 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     total: 0,
     unite: 'pièce',
     product_snapshot_id: null,
+    unite_special: 0,
+    nbr_barre: '',
+    facteur_barre: null,
   });
 
   const createDetailedItem = () => ({
@@ -1452,6 +1464,22 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 // 🆕 Saisie brute par ligne pour "quantite"
 const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
+  const getCommandeSpecialFields = (item: any, quantite: number) => {
+    const isSpecial = !!item?.unite_special;
+    const nbrBarre = isSpecial ? parseFloat(normalizeDecimal(String(item?.nbr_barre ?? '0'))) || 0 : 0;
+    return {
+      unite_special: isSpecial ? 1 : 0,
+      nbr_barre: isSpecial ? nbrBarre : null,
+      facteur_barre: isSpecial && nbrBarre > 0 ? quantite / nbrBarre : null,
+    };
+  };
+
+  const getSnapshotBarreFactor = (item: any) => {
+    if (!item?.unite_special) return 0;
+    const factor = parseFloat(normalizeDecimal(String(item?.facteur_barre ?? '0'))) || 0;
+    return factor > 0 ? factor : 0;
+  };
+
   // Backend mouvement preview (debounced) to keep displayed mouvement aligned with server during edits
   useEffect(() => {
     if (!isOpen) return;
@@ -1685,6 +1713,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           cout_revient,
           prix_unitaire,
           kg,
+          unite_special: it.unite_special ? 1 : 0,
+          nbr_barre: it.nbr_barre ?? '',
+          facteur_barre: it.facteur_barre ?? null,
           total,
         };
       });
@@ -1802,6 +1833,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           total: 0,
           unite: 'pièce',
           product_snapshot_id: null,
+          unite_special: 0,
+          nbr_barre: '',
+          facteur_barre: null,
         },
       ],
       is_transformed: false,
@@ -1990,6 +2024,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       }
       if (resolvedCR > 0 && currentCR !== resolvedCR) {
         formikRef.current!.setFieldValue(`items.${idx}.cout_revient`, resolvedCR);
+        anyPatched = true;
+      }
+      if (snap && item.unite_special == null && Number(snap.snapshot_unite_special || 0) === 1) {
+        formikRef.current!.setFieldValue(`items.${idx}.unite_special`, 1);
+        formikRef.current!.setFieldValue(`items.${idx}.facteur_barre`, Number(snap.snapshot_facteur_barre || 0) || null);
         anyPatched = true;
       }
     });
@@ -2183,7 +2222,43 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       return;
     }
     // Suppression du blocage lié au stock: permettre la soumission même si la quantité dépasse le stock
-    
+
+    // Validation prix de vente vs cout de revient pour bons/avoirs de vente
+    const saleTypes = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirEcommerce'];
+    if (saleTypes.includes(values.type)) {
+      const invalidPriceRows: Array<{ idx: number; reason: 'zero' | 'below_cost'; pv: number; cr: number }> = [];
+      (values.items || []).forEach((item: any, idx: number) => {
+        if (item?.line_mode === 'detail') return;
+        if (!item?.product_id && !item?.designation_custom && !item?.designation) return;
+        const pv = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
+          ? parseFloat(normalizeDecimal(unitPriceRaw[idx])) || 0
+          : (typeof item.prix_unitaire === 'string'
+            ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
+            : Number(item.prix_unitaire) || 0);
+        const cr = typeof item.cout_revient === 'string'
+          ? parseFloat(String(item.cout_revient).replace(',', '.')) || 0
+          : Number(item.cout_revient) || 0;
+        if (!Number.isFinite(pv) || pv <= 0) {
+          invalidPriceRows.push({ idx, reason: 'zero', pv, cr });
+        } else if (pv < cr) {
+          invalidPriceRows.push({ idx, reason: 'below_cost', pv, cr });
+        }
+      });
+      if (invalidPriceRows.length > 0) {
+        const zeroRows = invalidPriceRows.filter((r) => r.reason === 'zero').map((r) => r.idx + 1);
+        const belowRows = invalidPriceRows.filter((r) => r.reason === 'below_cost').map((r) => r.idx + 1);
+        const parts: string[] = [];
+        if (zeroRows.length) parts.push(`prix de vente doit être > 0 (lignes ${zeroRows.join(', ')})`);
+        if (belowRows.length) parts.push(`prix de vente doit être ≥ coût de revient (lignes ${belowRows.join(', ')})`);
+        const msg = parts.join(' ; ') + '.';
+        setFieldError?.('items', msg);
+        showError(msg);
+        try { setTimeout(() => focusCell(invalidPriceRows[0].idx, 'unit'), 0); } catch {}
+        setSubmitting(false);
+        return;
+      }
+    }
+
     const montantTotal = values.items.reduce((sum: number, item: any, idx: number) => {
       const q =
         parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
@@ -2441,6 +2516,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
                 remise_pourcentage: rp,
                 remise_montant: rm,
                 is_indisponible: false,
+                ...(values.type === 'Commande' ? getCommandeSpecialFields(item, take) : {}),
                 total: take * priceForTotal,
               });
               remaining -= take;
@@ -2459,6 +2535,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
                 remise_pourcentage: rp,
                 remise_montant: rm,
                 is_indisponible: true,
+                ...(values.type === 'Commande' ? getCommandeSpecialFields(item, remaining) : {}),
                 total: remaining * priceForTotal,
               });
             }
@@ -2497,6 +2574,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
             remise_pourcentage: rp,
             remise_montant: rm,
             is_indisponible: true,
+            ...(values.type === 'Commande' ? getCommandeSpecialFields(item, q) : {}),
             total: q * priceForTotal,
           }];
         }
@@ -2518,6 +2596,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
               remise_pourcentage: rp,
               remise_montant: rm,
               is_indisponible: false,
+              ...(values.type === 'Commande' ? getCommandeSpecialFields(item, qtyDispo) : {}),
               total: qtyDispo * priceForTotal,
             },
             // Item indisponible (quantité restante non couverte)
@@ -2532,6 +2611,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
               remise_pourcentage: rp,
               remise_montant: rm,
               is_indisponible: true,
+              ...(values.type === 'Commande' ? getCommandeSpecialFields(item, qtyIndispo) : {}),
               total: qtyIndispo * priceForTotal,
             },
           ];
@@ -2549,6 +2629,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           remise_pourcentage: rp,
           remise_montant: rm,
           is_indisponible: false,
+          ...(values.type === 'Commande' ? getCommandeSpecialFields(item, q) : {}),
           total: q * priceForTotal,
         }];
       }),
@@ -2611,6 +2692,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           prix_unitaire: exPrix,
           remise_pourcentage: exRp,
           remise_montant: exRm,
+          unite_special: ex?.unite_special ?? it?.unite_special ?? 0,
+          nbr_barre: ex?.nbr_barre ?? it?.nbr_barre ?? null,
+          facteur_barre: ex?.facteur_barre ?? it?.facteur_barre ?? null,
           total: q * exPrix,
         };
       });
@@ -4251,14 +4335,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   }
 
                   const showProfitColumn = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type);
+                  const showCommandeSpecialColumns = values.type === 'Commande';
                   const showRemiseColumn = showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant');
                   const visibleEntries = ((values.type === 'Charge' || values.type === 'AvoirCharge')
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode !== 'detail')
                     : values.items.map((row: any, index: number) => ({ row, index })));
+                  const showSnapshotBarreColumn = values.type !== 'Commande' && visibleEntries.some(({ row }: any) => !!row?.unite_special);
                   const detailedChargeEntries = (values.type === 'Charge' || values.type === 'AvoirCharge')
                     ? values.items.map((row: any, index: number) => ({ row, index })).filter(({ row }) => row?.line_mode === 'detail')
                     : [];
-                  const emptyColSpan = 8 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0);
+                  const emptyColSpan = 8 + (showRemiseColumn ? 1 : 0) + (showProfitColumn ? 1 : 0) + (showCommandeSpecialColumns ? 3 : 0) + (showSnapshotBarreColumn ? 1 : 0);
 
                   return (
                     <>
@@ -4288,6 +4374,24 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">
                               Qté
                             </th>
+                            {showCommandeSpecialColumns && (
+                              <>
+                                <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[70px]">
+                                  Unit sp.
+                                </th>
+                                <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[85px]">
+                                  Nbr barre
+                                </th>
+                                <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[85px]">
+                                  Facteur
+                                </th>
+                              </>
+                            )}
+                            {showSnapshotBarreColumn && (
+                              <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
+                                Nbr barre
+                              </th>
+                            )}
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               SERIE
                             </th>
@@ -4578,6 +4682,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           resolvedSnapshotId = bestMergedSnap?.snapshot_id ?? null;
                                         }
                                         setFieldValue(`items.${index}.product_snapshot_id`, resolvedSnapshotId);
+                                        if (values.type !== 'Commande') {
+                                          const isSpecialSnapshot = Number(product.snapshot_unite_special || 0) === 1;
+                                          setFieldValue(`items.${index}.unite_special`, isSpecialSnapshot ? 1 : 0);
+                                          setFieldValue(`items.${index}.nbr_barre`, '');
+                                          setFieldValue(
+                                            `items.${index}.facteur_barre`,
+                                            isSpecialSnapshot ? (Number(product.snapshot_facteur_barre || 0) || null) : null
+                                          );
+                                        }
                                         
                                         // Handle variant: from flat Commande selection or from snapshot
                                         if (selectedVariant) {
@@ -5004,6 +5117,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       const q = parseFloat(normalizeDecimal(raw)) || 0;
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       setFieldValue(`items.${index}.total`, q * u);
+      if (values.type === 'Commande' && values.items[index].unite_special) {
+        const n = parseFloat(normalizeDecimal(String(values.items[index].nbr_barre ?? '0'))) || 0;
+        setFieldValue(`items.${index}.facteur_barre`, n > 0 ? q / n : null);
+      } else if (values.type !== 'Commande' && values.items[index].unite_special) {
+        const factor = getSnapshotBarreFactor(values.items[index]);
+        if (factor > 0) setFieldValue(`items.${index}.nbr_barre`, q / factor);
+      }
       
       // Ne plus restreindre la quantité par le stock disponible (demande utilisateur)
     }}
@@ -5087,6 +5207,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       setQtyRaw((prev) => ({ ...prev, [index]: formatNumber(q) }));
       const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
       setFieldValue(`items.${index}.total`, q * u);
+      if (values.type === 'Commande' && values.items[index].unite_special) {
+        const n = parseFloat(normalizeDecimal(String(values.items[index].nbr_barre ?? '0'))) || 0;
+        setFieldValue(`items.${index}.facteur_barre`, n > 0 ? q / n : null);
+      } else if (values.type !== 'Commande' && values.items[index].unite_special) {
+        const factor = getSnapshotBarreFactor(values.items[index]);
+        if (factor > 0) setFieldValue(`items.${index}.nbr_barre`, q / factor);
+      }
     }}
   data-row={index}
   data-col="qty"
@@ -5149,6 +5276,84 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   })()}
 </td>
 
+                                {showCommandeSpecialColumns && (
+                                  <>
+                                    <td className="px-1 py-2 text-center w-[70px]">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        checked={!!values.items[index].unite_special}
+                                        disabled={isQtyOnlyEdit}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setFieldValue(`items.${index}.unite_special`, checked ? 1 : 0);
+                                          if (!checked) {
+                                            setFieldValue(`items.${index}.nbr_barre`, '');
+                                            setFieldValue(`items.${index}.facteur_barre`, null);
+                                            return;
+                                          }
+                                          const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                          const n = parseFloat(normalizeDecimal(String(values.items[index].nbr_barre ?? '0'))) || 0;
+                                          setFieldValue(`items.${index}.facteur_barre`, n > 0 ? q / n : null);
+                                        }}
+                                      />
+                                    </td>
+                                    <td className="px-1 py-2 w-[85px]">
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        pattern="[0-9]*[.,]?[0-9]*"
+                                        className="w-full px-2 py-1 border rounded-md text-sm border-gray-300 disabled:bg-gray-100"
+                                        value={values.items[index].nbr_barre ?? ''}
+                                        disabled={isQtyOnlyEdit || !values.items[index].unite_special}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          if (!isDecimalLike(raw)) return;
+                                          setFieldValue(`items.${index}.nbr_barre`, raw);
+                                          const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
+                                          const n = parseFloat(normalizeDecimal(raw)) || 0;
+                                          setFieldValue(`items.${index}.facteur_barre`, n > 0 ? q / n : null);
+                                        }}
+                                      />
+                                    </td>
+                                    <td className="px-1 py-2 w-[85px]">
+                                      <input
+                                        type="text"
+                                        className="w-full px-2 py-1 border rounded-md text-sm border-gray-200 bg-gray-100 text-gray-700"
+                                        value={values.items[index].unite_special ? formatFull(Number(values.items[index].facteur_barre ?? 0)) : ''}
+                                        disabled
+                                      />
+                                    </td>
+                                  </>
+                                )}
+                                {showSnapshotBarreColumn && (
+                                  <td className="px-1 py-2 w-[90px]">
+                                    {values.items[index].unite_special ? (
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        pattern="[0-9]*[.,]?[0-9]*"
+                                        className="w-full px-2 py-1 border rounded-md text-sm border-gray-300 disabled:bg-gray-100"
+                                        value={values.items[index].nbr_barre ?? ''}
+                                        disabled={isQtyOnlyEdit}
+                                        onChange={(e) => {
+                                          const raw = e.target.value;
+                                          if (!isDecimalLike(raw)) return;
+                                          setFieldValue(`items.${index}.nbr_barre`, raw);
+                                          const factor = getSnapshotBarreFactor(values.items[index]);
+                                          const bars = parseFloat(normalizeDecimal(raw)) || 0;
+                                          const q = factor > 0 ? bars * factor : 0;
+                                          setFieldValue(`items.${index}.quantite`, q);
+                                          setQtyRaw((prev) => ({ ...prev, [index]: q > 0 ? formatNumber(q) : '' }));
+                                          const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+                                          setFieldValue(`items.${index}.total`, q * u);
+                                        }}
+                                      />
+                                    ) : (
+                                      <span className="text-xs text-gray-400">-</span>
+                                    )}
+                                  </td>
+                                )}
 
                                 {/* SERIE / Info rapide + debug snapshot */}
                                 <td className="px-1 py-2 text-sm text-gray-700">

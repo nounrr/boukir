@@ -47,6 +47,10 @@ const getTypeLabel = (t: string, bon?: any) => {
     AvoirClient: 'AVOIR CLIENT',
     Avoir: 'AVOIR CLIENT',
     AvoirFournisseur: 'AVOIR FOURNISSEUR',
+    AvoirComptant: 'AVOIR COMPTANT',
+    AvoirEcommerce: 'AVOIR E-COMMERCE',
+    Charge: 'CHARGE',
+    AvoirCharge: 'AVOIR CHARGE',
     Vehicule: 'BON VÉHICULE',
   };
   return map[t] ?? 'BON';
