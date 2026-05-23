@@ -1337,7 +1337,7 @@ const ContactsPage: React.FC = () => {
     });
   }, [dateFilteredProductHistory, productSearch]);
 
-  // Historique complet des produits (SANS filtre de date) - utilisé pour les calculs de solde final et bénéfice
+  // Historique complet des produits (SANS filtre de date) - utilisé pour les calculs de solde final et mouvement
   const soldeCumule2ByRowId = useMemo(() => {
     const rowsWithSolde2 = recalculateHistoryRowsSoldeCumule2(
       filteredProductHistory.filter((item: any) => !item?.syntheticInitial),
@@ -1391,7 +1391,7 @@ const ContactsPage: React.FC = () => {
     } as any;
 
     // Construire l'historique COMPLET (toutes les transactions, sans filtre de date)
-    // pour que finalSoldeNet et bénéfice total soient toujours corrects
+    // pour que finalSoldeNet et mouvement total soient toujours corrects
     const isClient = selectedContact.type === 'Client';
     const id = selectedContact.id;
     const allBons: any[] = [];
@@ -5408,7 +5408,7 @@ const ContactsPage: React.FC = () => {
                           }, 0);
                         return (
                           <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100">
-                            <p className="font-semibold text-emerald-800 text-sm">Bénéfice (- Remise)</p>
+                            <p className="font-semibold text-emerald-800 text-sm">Mouvement (- Remise)</p>
                             <p className={`font-bold text-lg ${sum >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{sum.toFixed(3)} DH</p>
                           </div>
                         );
@@ -5438,19 +5438,19 @@ const ContactsPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Carte Bénéfice des Produits Sélectionnés */}
+                {/* Carte Mouvement des Produits Sélectionnés */}
                 {selectedProductIds.size > 0 && (
                   <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 mb-6">
                     <h3 className="font-bold text-lg mb-3 flex items-center gap-2 text-green-800">
                       <DollarSign size={20} className="text-green-600" />
-                      Bénéfice des Produits Sélectionnés
+                      Mouvement des Produits Sélectionnés
                       <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
                         {selectedProductIds.size} produit{selectedProductIds.size > 1 ? 's' : ''}
                       </span>
                     </h3>
                     <div className="flex justify-center">
                       <div className="bg-white rounded-lg p-4 border border-green-200 text-center">
-                        <p className="font-semibold text-gray-600 text-sm mb-2">Bénéfice Total des Produits Sélectionnés:</p>
+                        <p className="font-semibold text-gray-600 text-sm mb-2">Mouvement Total des Produits Sélectionnés:</p>
                         {(() => {
                           const selectedBenefit = allProductHistory
                             .filter((item: any) => selectedProductIds.has(String(item.id)) && !item.syntheticInitial)
@@ -5926,7 +5926,7 @@ const ContactsPage: React.FC = () => {
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Quantité</th>
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{selectedContact?.type === 'Fournisseur' ? 'Prix Achat' : 'Pr U'}</th>
                             <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Total</th>
-                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Bénéfice</th>
+                            <th className="px-1  text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Mouvement</th>
                             <th className="px-1  text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Statut</th>
                           </tr>
                         </thead>

@@ -172,7 +172,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           {detail && <th className="text-center px-3 py-3 font-semibold text-gray-600">Qté</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600">Prix unit.</th>}
           <th className="text-right px-4 py-3 font-semibold text-gray-600">{detail ? 'Total ligne' : 'Montant'}</th>
-          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Bénéfice</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Mouvement</th>}
           <th className="text-left px-4 py-3 font-semibold text-gray-600">Statut</th>
         </tr>
       </thead>
@@ -745,7 +745,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise cumulée</th>}
           {!detail && <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">RIB / Réf</th>}
           <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">{detail ? 'Total ligne' : 'Montant'}</th>
-          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Bénéfice</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Mouvement</th>}
           <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 whitespace-nowrap">Solde cumulé</th>
           <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Statut / Mode</th>
         </tr>
@@ -1101,7 +1101,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     </td>
                     {/* Total ligne */}
                     <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
-                    {/* Bénéfice */}
+                    {/* Mouvement */}
                     <td className="px-3 py-2 text-right text-xs">
                       {benefice != null
                         ? <span className={`font-semibold ${benefice > 0 ? 'text-green-600' : benefice < 0 ? 'text-red-600' : 'text-gray-400'}`}>{fmt(benefice)}</span>
@@ -1571,6 +1571,7 @@ const ClientDetailPage: React.FC = () => {
       const typeLabel = kind === 'sortie' ? 'produit' : kind === 'comptant' ? 'produit' : kind === 'avoir' ? 'avoir' : 'paiement';
       const bonNum = data.numero ?? `${kind.substring(0,3).toUpperCase()}${String(data.id).padStart(2,'0')}`;
       const dateIso = data.date_creation ?? data.date_paiement ?? '';
+      const adresseLivraison = data.adresse_livraison ?? '';
 
       if (kind === 'paiement') {
         result.push({
@@ -1603,6 +1604,7 @@ const ClientDetailPage: React.FC = () => {
           quantite: 0,
           prix_unitaire: 0,
           total: Number(data.montant_total ?? 0),
+          adresse_livraison: adresseLivraison,
           bon_statut: data.statut ?? '',
           soldeCumulatif: -(soldeCumuleMap.get(`${kind}-${data.id}-item-0`) ?? 0),
           type: typeLabel,
@@ -1626,6 +1628,7 @@ const ClientDetailPage: React.FC = () => {
           quantite: qte,
           prix_unitaire: pu,
           total,
+          adresse_livraison: adresseLivraison,
           bon_statut: data.statut ?? '',
           soldeCumulatif: -(soldeCumuleMap.get(itemKey) ?? 0),
           type: typeLabel,
@@ -1721,7 +1724,7 @@ const ClientDetailPage: React.FC = () => {
           </p>
         </div>
         <div className="text-right px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200">
-          <p className="text-xs text-gray-400">BÃ©nÃ©fice total</p>
+          <p className="text-xs text-gray-400">Mouvement total</p>
           <p className={`font-bold text-base ${totalBenefice > 0 ? 'text-green-600' : totalBenefice < 0 ? 'text-red-600' : 'text-gray-500'}`}>
             {fmt(totalBenefice)}
           </p>
