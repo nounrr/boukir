@@ -86,6 +86,7 @@ import {
 } from './utils/ensureRemiseSchema.js';
 import { ensureCategoryColumns } from './utils/ensureCategorySchema.js';
 import { ensurePricePrecisionColumns } from './utils/ensurePricePrecisionSchema.js';
+import { ensureUniteSpecialColumns } from './utils/ensureUniteSpecialSchema.js';
 import { ensureUiSettingsTable } from './utils/uiSettings.js';
 import { ensureAccessScheduleTables } from './middleware/accessSchedule.js';
 
@@ -101,6 +102,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
     await ensureBonsRemiseTargetColumns();
     await ensureEcommerceOrdersRemiseColumns();
     await ensureEcommerceOrderItemsRemiseColumns();
+    await ensureUniteSpecialColumns();
     await ensurePricePrecisionColumns();
     await ensureUiSettingsTable();
     await ensureAccessScheduleTables();
