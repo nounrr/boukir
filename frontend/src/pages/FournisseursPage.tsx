@@ -170,7 +170,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           {detail && <th className="text-center px-3 py-3 font-semibold text-gray-600">Qte</th>}
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600">Prix unit.</th>}
           <th className="text-right px-4 py-3 font-semibold text-gray-600">{detail ? 'Total ligne' : 'Montant'}</th>
-          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Benefice</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Mouvement</th>}
           <th className="text-left px-4 py-3 font-semibold text-gray-600">Statut</th>
         </tr>
       </thead>
@@ -638,7 +638,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise cumulee</th>}
           <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">RIB / Ref</th>
           <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">{detail ? 'Total ligne' : 'Montant'}</th>
-          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Benefice</th>}
+          {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Mouvement</th>}
           <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 whitespace-nowrap">Solde cumule</th>
           <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Statut / Mode</th>
         </tr>
@@ -1388,6 +1388,7 @@ const FournisseurDetailPage: React.FC = () => {
               : 'PAY';
       const bonNum = data.numero ?? `${bonPrefix}${String(data.id).padStart(2, '0')}`;
       const dateIso = data.date_creation ?? data.date_paiement ?? '';
+      const adresseLivraison = data.adresse_livraison ?? '';
 
       if (kind === 'paiement') {
         result.push({
@@ -1423,6 +1424,7 @@ const FournisseurDetailPage: React.FC = () => {
           quantite: 0,
           prix_unitaire: 0,
           total: Number(data.montant_total ?? 0),
+          adresse_livraison: adresseLivraison,
           balanceSign,
           docKind: kind,
           bon_statut: data.statut ?? '',
@@ -1448,6 +1450,7 @@ const FournisseurDetailPage: React.FC = () => {
           quantite: qte,
           prix_unitaire: pu,
           total,
+          adresse_livraison: adresseLivraison,
           balanceSign,
           docKind: kind,
           bon_statut: data.statut ?? '',

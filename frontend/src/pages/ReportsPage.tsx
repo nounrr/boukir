@@ -407,7 +407,7 @@ const ReportsPage: React.FC = () => {
   }, [bonsVehicules]);
 
   /** ---------- Agrégations globales ---------- */
-  // Pour calcul du bénéfice net: 
+  // Pour calcul du mouvement net: 
   // REVENUS = Bons Clients (Sortie + Comptant) - Avoirs Clients
   // COÛTS = Commandes + Bons Véhicules + Paiements - Avoirs Fournisseurs
   const totalRevenus = useMemo(() => {
@@ -593,7 +593,7 @@ const ReportsPage: React.FC = () => {
       // Ancien calcul (pour compatibilité)
       totalBons,
       totalPayments,
-      // Nouveau calcul de bénéfice net
+      // Nouveau calcul de mouvement net
       totalRevenus,
       totalCouts,
       beneficeNet,
@@ -1523,7 +1523,7 @@ const ReportsPage: React.FC = () => {
                 <BarChart3 className="text-purple-600" size={24} />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Bénéfice Net</p>
+                <p className="text-sm font-medium text-gray-600">Mouvement Net</p>
                 <p className={`text-2xl font-bold ${beneficeNet >= 0 ? "text-green-600" : "text-red-600"}`}>
                   {beneficeNet.toFixed(2)} DH
                 </p>
@@ -1713,7 +1713,7 @@ const ReportsPage: React.FC = () => {
             <div className="bg-purple-600 px-6 py-4 rounded-t-lg flex justify-between items-center">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <TrendingUp size={24} />
-                Analyse du Bénéfice Net
+                Analyse du Mouvement Net
               </h2>
               <button onClick={() => setSelectedDetailModal(null)} className="text-white hover:text-gray-200">
                 <X size={24} />
@@ -1756,7 +1756,7 @@ const ReportsPage: React.FC = () => {
                 </div>
 
                 <div className="bg-gray-50 rounded-lg p-6 text-center">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Bénéfice Net</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Mouvement Net</h3>
                   <p className={`text-4xl font-bold mb-2 ${beneficeNet > 0 ? "text-green-600" : "text-red-600"}`}>
                     {beneficeNet.toFixed(2)} DH
                   </p>
@@ -1766,7 +1766,7 @@ const ReportsPage: React.FC = () => {
                   <div className="mt-4">
                     {beneficeNet > 0 ? (
                       <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                        ✓ Bénéfice Positif
+                        ✓ Mouvement Positif
                       </span>
                     ) : (
                       <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-red-100 text-red-800">
