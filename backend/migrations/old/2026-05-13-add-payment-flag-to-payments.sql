@@ -1,0 +1,2 @@
+ALTER TABLE payments
+ADD COLUMN payment TINYINT(1) NOT NULL DEFAULT 0 AFTER image_url;
