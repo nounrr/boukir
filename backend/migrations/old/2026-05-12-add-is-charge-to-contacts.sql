@@ -1,0 +1,2 @@
+ALTER TABLE contacts
+ADD COLUMN is_charge TINYINT(1) DEFAULT 0;
