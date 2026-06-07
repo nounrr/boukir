@@ -65,6 +65,85 @@ export interface EmployeeSalaireSummaryRow {
   total: number;
 }
 
+// Vue globale des salaires (PDG) — salaire dû proraté + payé par employé
+export interface SalairesGlobalRow {
+  id: number;
+  nom_complet: string | null;
+  cin: string | null;
+  role: string | null;
+  salaire: number;
+  date_embauche: string | null;
+  created_at: string | null;
+  deleted_at: string | null;
+  present: boolean;
+  total_working_days: number;
+  worked_days: number;
+  daily_rate: number;
+  salaire_du: number;
+  paid_this_month: number;
+  reste_a_payer: number;
+  total_paid: number;
+}
+
+export interface SalairesGlobalResponse {
+  month: string; // YYYY-MM
+  employees: SalairesGlobalRow[];
+}
+
+export interface SalairesGlobalMonthRow {
+  month: string; // YYYY-MM
+  present: boolean;
+  total_working_days: number;
+  worked_days: number;
+  daily_rate: number;
+  salaire_du: number;
+  paid: number;
+  reste_a_payer: number;
+}
+
+export interface SalairesGlobalMonthsResponse {
+  employe: {
+    id: number;
+    nom_complet: string | null;
+    cin: string | null;
+    role: string | null;
+    salaire: number;
+    date_embauche: string | null;
+    created_at: string | null;
+    deleted_at: string | null;
+  };
+  months: SalairesGlobalMonthRow[];
+}
+
+// Vue par mois (tous employés) — détail par employé pour chaque mois
+export interface SalairesByMonthEmployeeRow {
+  id: number;
+  nom_complet: string | null;
+  cin: string | null;
+  role: string | null;
+  salaire: number;
+  present: boolean;
+  total_working_days: number;
+  worked_days: number;
+  daily_rate: number;
+  salaire_du: number;
+  paid: number;
+  reste_a_payer: number;
+}
+
+export interface SalairesByMonthRow {
+  month: string; // YYYY-MM
+  employes_count: number;
+  total_du: number;
+  total_paid: number;
+  reste_a_payer: number;
+  details: SalairesByMonthEmployeeRow[];
+}
+
+export interface SalairesByMonthResponse {
+  months: SalairesByMonthRow[];
+}
+
 // Types pour les catégories
 export interface Category {
   id: number;
@@ -278,6 +357,8 @@ export interface Contact {
   remise_utilisee?: number;
   remise_disponible?: number;
   plafond?: number | null; // Plafond de crédit (clients)
+  montant_garantie?: number | null;
+  numero_garantie?: string | null;
   demande_artisan?: boolean;
   artisan_approuve?: boolean;
   artisan_approuve_par?: number | null;
@@ -319,6 +400,8 @@ export interface CreateContactData {
   ice?: string | null;
   solde?: number;
   plafond?: number | null;
+  montant_garantie?: number | null;
+  numero_garantie?: string | null;
   isSolde?: boolean;
   demande_artisan?: boolean;
   artisan_approuve?: boolean;

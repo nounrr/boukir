@@ -7,6 +7,7 @@ import {
 } from '../store/api/brandsApi';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import BrandFormModal from '../components/BrandFormModal';
+import { toBackendUrl } from '../utils/url';
 
 const BrandsPage: React.FC = () => {
   const { data: brands = [], isLoading } = useGetBrandsQuery();
@@ -105,7 +106,7 @@ const BrandsPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     {brand.image_url ? (
                       <img 
-                        src={`http://localhost:3001${brand.image_url}`} 
+                        src={toBackendUrl(brand.image_url)}
                         alt={brand.nom} 
                         className="h-10 w-10 object-contain rounded-full border"
                       />

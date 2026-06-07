@@ -58,6 +58,31 @@ function buildDateFilter({ filterType, date, startDate, endDate, month }, tableA
   return { sql, params };
 }
 
+// Salaries are posted on the LAST DAY of their month. The matching filter must
+// therefore reason on LAST_DAY(created_at) rather than the raw payment date.
+function buildSalaireDateFilter({ filterType, date, startDate, endDate, month }, tableAlias, dateColumn = 'created_at') {
+  const params = [];
+  let sql = '';
+  const lastDayExpr = `DATE(LAST_DAY(${tableAlias}.${dateColumn}))`;
+
+  if (filterType === 'day') {
+    if (!date) throw new Error('Missing "date" for day filter');
+    // Only show the salary charge if the requested day is the last day of a month.
+    sql += ` AND ${lastDayExpr} = ?`;
+    params.push(date);
+  } else if (filterType === 'period') {
+    if (!startDate || !endDate) throw new Error('Missing "startDate" or "endDate" for period filter');
+    sql += ` AND ${lastDayExpr} BETWEEN ? AND ?`;
+    params.push(startDate, endDate);
+  } else if (filterType === 'month') {
+    if (!month) throw new Error('Missing "month" for month filter');
+    sql += ` AND DATE_FORMAT(${tableAlias}.${dateColumn}, '%Y-%m') = ?`;
+    params.push(month);
+  }
+
+  return { sql, params };
+}
+
 function rowsToMap(rows, keyField) {
   const map = new Map();
   for (const r of rows || []) {
@@ -85,6 +110,157 @@ function formatDayKey(v) {
 function roundSafe(n) {
   const v = Number(n || 0);
   return Number.isFinite(v) ? v : 0;
+}
+
+function toDateOnly(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function isWorkingDay(date) {
+  return date.getDay() !== 0;
+}
+
+function countWorkingDays(start, end) {
+  if (end < start) return 0;
+  let count = 0;
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cursor <= last) {
+    if (isWorkingDay(cursor)) count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
+function computeEmployeeMonthlySalaryDue(emp, year, monthIndex) {
+  const salaire = roundSafe(emp.salaire);
+  if (salaire <= 0) return 0;
+
+  const monthStart = new Date(year, monthIndex, 1);
+  const monthEnd = new Date(year, monthIndex + 1, 0);
+  const entry = toDateOnly(emp.date_embauche) || toDateOnly(emp.created_at);
+  const exit = toDateOnly(emp.deleted_at);
+  const effectiveStart = entry && entry > monthStart ? entry : monthStart;
+  const effectiveEnd = exit && exit < monthEnd ? exit : monthEnd;
+  const present = (!entry || entry <= monthEnd) && (!exit || exit >= monthStart);
+  if (!present) return 0;
+
+  const totalWorkingDays = countWorkingDays(monthStart, monthEnd);
+  const workedDays = countWorkingDays(effectiveStart, effectiveEnd);
+  if (totalWorkingDays <= 0 || workedDays <= 0) return 0;
+
+  return Math.round((salaire / totalWorkingDays) * workedDays * 100) / 100;
+}
+
+function parseMonthKey(monthKey) {
+  if (typeof monthKey !== 'string' || !/^\d{4}-\d{2}$/.test(monthKey)) return null;
+  const [year, month] = monthKey.split('-').map(Number);
+  return { year, monthIndex: month - 1 };
+}
+
+function monthKeyFromDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function lastDayKeyForMonth(year, monthIndex) {
+  const d = new Date(year, monthIndex + 1, 0);
+  return formatDayKey(d);
+}
+
+function isLastDayKey(dayKey) {
+  const d = toDateOnly(`${dayKey}T00:00:00`);
+  if (!d) return false;
+  return d.getDate() === new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+
+function addMonth(cursor) {
+  cursor.setMonth(cursor.getMonth() + 1);
+}
+
+async function fetchEmployeesForSalaryStats() {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, salaire, date_embauche, created_at, deleted_at FROM employees'
+    );
+    return rows || [];
+  } catch (_err) {
+    const [rows] = await pool.query(
+      'SELECT id, salaire, date_embauche, created_at FROM employees'
+    );
+    return (rows || []).map((row) => ({ ...row, deleted_at: null }));
+  }
+}
+
+function getSalaryMonthsForFilter(filterArgs, employees) {
+  const { filterType, date, startDate, endDate, month } = filterArgs;
+  const months = [];
+
+  if (filterType === 'day') {
+    const day = formatDayKey(date);
+    if (isLastDayKey(day)) {
+      const parsed = toDateOnly(`${day}T00:00:00`);
+      months.push(monthKeyFromDate(parsed));
+    }
+    return months;
+  }
+
+  if (filterType === 'month') {
+    if (parseMonthKey(month)) months.push(month);
+    return months;
+  }
+
+  let start;
+  let end;
+  if (filterType === 'period') {
+    start = toDateOnly(`${startDate}T00:00:00`);
+    end = toDateOnly(`${endDate}T00:00:00`);
+  } else {
+    const now = new Date();
+    end = new Date(now.getFullYear(), now.getMonth(), 1);
+    start = employees.reduce((earliest, emp) => {
+      const entry = toDateOnly(emp.date_embauche) || toDateOnly(emp.created_at);
+      if (!entry) return earliest;
+      const monthStart = new Date(entry.getFullYear(), entry.getMonth(), 1);
+      return !earliest || monthStart < earliest ? monthStart : earliest;
+    }, null) || end;
+  }
+
+  if (!start || !end) return months;
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+  let guard = 0;
+  while (cursor <= endMonth && guard < 600) {
+    const lastDayKey = lastDayKeyForMonth(cursor.getFullYear(), cursor.getMonth());
+    if (filterType !== 'period' || (lastDayKey >= formatDayKey(start) && lastDayKey <= formatDayKey(end))) {
+      months.push(monthKeyFromDate(cursor));
+    }
+    addMonth(cursor);
+    guard += 1;
+  }
+
+  return months;
+}
+
+async function getMonthlySalaryDueRows(filterArgs) {
+  const employees = await fetchEmployeesForSalaryStats();
+  const months = getSalaryMonthsForFilter(filterArgs, employees);
+  return months
+    .map((monthKey) => {
+      const parsed = parseMonthKey(monthKey);
+      if (!parsed) return null;
+      const total = employees.reduce(
+        (sum, emp) => sum + computeEmployeeMonthlySalaryDue(emp, parsed.year, parsed.monthIndex),
+        0
+      );
+      return {
+        day: lastDayKeyForMonth(parsed.year, parsed.monthIndex),
+        total: Math.round(total * 100) / 100,
+      };
+    })
+    .filter((row) => row && roundSafe(row.total) > 0);
 }
 
 function parseBoolQuery(value, defaultValue = true) {
@@ -1030,6 +1206,8 @@ router.get('/chiffre-affaires', async (req, res) => {
       ORDER BY day DESC
     `;
 
+    // Salaires mensuels dus, rattaches au dernier jour du mois.
+    // Comptes comme une charge supplementaire dans le chiffre d'affaires.
     const vehiculeSql = `
       SELECT DATE_FORMAT(bv.date_creation, '%Y-%m-%d') AS day,
              COALESCE(SUM(bv.montant_total), 0) AS total
@@ -1071,6 +1249,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const [avoirsEcommerceRows] = await pool.query(avoirsEcommerceSql, avoirsEcommerceParams);
     const [chargesRows] = await pool.query(chargesSql, chargesParams);
     const [avoirsChargeRows] = await pool.query(avoirsChargeSql, avoirsChargeParams);
+    const salairesRows = await getMonthlySalaryDueRows(filterArgs);
     const [vehiculeRows] = await pool.query(vehiculeSql, vehiculeParams);
     const [commandesRows] = await pool.query(commandesSql, commandesParams);
 
@@ -1081,6 +1260,7 @@ router.get('/chiffre-affaires', async (req, res) => {
     const avoirsEcommerceMap = rowsToMap(avoirsEcommerceRows, 'day');
     const chargesMap = rowsToMap(chargesRows, 'day');
     const avoirsChargeMap = rowsToMap(avoirsChargeRows, 'day');
+    const salairesMap = rowsToMap(salairesRows, 'day');
     const vehiculeMap = rowsToMap(vehiculeRows, 'day');
     const commandesMap = rowsToMap(commandesRows, 'day');
 
@@ -1092,6 +1272,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       ...Array.from(avoirsEcommerceMap.keys()),
       ...Array.from(chargesMap.keys()),
       ...Array.from(avoirsChargeMap.keys()),
+      ...Array.from(salairesMap.keys()),
       ...Array.from(vehiculeMap.keys()),
       ...Array.from(commandesMap.keys()),
     ]);
@@ -1110,6 +1291,7 @@ router.get('/chiffre-affaires', async (req, res) => {
         const aEcom = avoirsEcommerceMap.get(day) || {};
         const charge = chargesMap.get(day) || {};
         const avoirCharge = avoirsChargeMap.get(day) || {};
+        const salaire = salairesMap.get(day) || {};
         const veh = vehiculeMap.get(day) || {};
         const cmd = commandesMap.get(day) || {};
 
@@ -1122,17 +1304,19 @@ router.get('/chiffre-affaires', async (req, res) => {
         const ventesRemises = roundSafe(v.remises);
         const avoirsRemises = roundSafe(aClient.remises) + roundSafe(aComptant.remises) + roundSafe(aEcom.remises);
 
-        const chargesTotal = roundSafe(charge.total);
+        const vehiculeTotal = roundSafe(veh.total);
+        const salaireTotal = roundSafe(salaire.total);
+        // Salaries and vehicle vouchers count as charges.
+        const chargesTotal = roundSafe(charge.total) + salaireTotal + vehiculeTotal;
         const avoirsChargeTotal = roundSafe(avoirCharge.total);
         const chargesNet = chargesTotal - avoirsChargeTotal;
-        const vehiculeTotal = roundSafe(veh.total);
         const achatsTotal = roundSafe(cmd.total);
 
         const profitSansCharges = ventesProfitNet - avoirsProfitNet;
         const profitNetApresCharges = profitSansCharges - chargesNet;
         const chiffreAffaires = ventesCA - avoirsCA - chargesNet;
-        const chiffreAffairesAchat = ventesProfitNet - avoirsProfitNet - chargesNet - vehiculeTotal;
-        const chiffreAffairesAchatBrut = ventesProfitBrut - avoirsProfitBrut - chargesNet - vehiculeTotal;
+        const chiffreAffairesAchat = ventesProfitNet - avoirsProfitNet - chargesNet;
+        const chiffreAffairesAchatBrut = ventesProfitBrut - avoirsProfitBrut - chargesNet;
         const totalRemises = ventesRemises - avoirsRemises;
 
         return {
@@ -1149,6 +1333,7 @@ router.get('/chiffre-affaires', async (req, res) => {
           totalCharges: chargesNet,
           totalChargesBrut: chargesTotal,
           totalAvoirsCharge: avoirsChargeTotal,
+          totalSalaires: salaireTotal,
           totalBonsVehicule: vehiculeTotal,
         };
       })
@@ -1158,7 +1343,14 @@ router.get('/chiffre-affaires', async (req, res) => {
       filterType === 'day'
         ? dailyDataRaw
         : dailyDataRaw.filter(
-            (d) => Math.abs(d.chiffreAffaires) > 0.01 || Math.abs(d.chiffreAffairesAchat) > 0.01 || Math.abs(d.chiffreAchats) > 0.01
+            (d) =>
+              Math.abs(d.chiffreAffaires) > 0.01 ||
+              Math.abs(d.chiffreAffairesAchat) > 0.01 ||
+              Math.abs(d.chiffreAchats) > 0.01 ||
+              Math.abs(d.totalCharges || 0) > 0.01 ||
+              Math.abs(d.totalSalaires || 0) > 0.01 ||
+              Math.abs(d.totalAvoirsCharge || 0) > 0.01 ||
+              Math.abs(d.totalBonsVehicule || 0) > 0.01
           );
 
     const totalChiffreAffaires = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAffaires), 0);
@@ -1166,10 +1358,11 @@ router.get('/chiffre-affaires', async (req, res) => {
     const totalChiffreAchats = dailyData.reduce((s, d) => s + roundSafe(d.chiffreAchats), 0);
     const totalVentesFournisseur = Array.from(ventesFournisseurMap.values()).reduce((s, r) => s + roundSafe(r.ca), 0);
     const totalProfitVentesFournisseur = Array.from(ventesFournisseurMap.values()).reduce((s, r) => s + roundSafe(r.profitNet), 0);
-    const totalChargesBrut = Array.from(chargesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
+    const totalSalaires = Array.from(salairesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
+    const totalBonsVehicule = Array.from(vehiculeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
+    const totalChargesBrut = Array.from(chargesMap.values()).reduce((s, r) => s + roundSafe(r.total), 0) + totalSalaires + totalBonsVehicule;
     const totalAvoirsCharge = Array.from(avoirsChargeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
     const totalCharges = totalChargesBrut - totalAvoirsCharge;
-    const totalBonsVehicule = Array.from(vehiculeMap.values()).reduce((s, r) => s + roundSafe(r.total), 0);
 
     const totalRemisesVente = Array.from(ventesMap.values()).reduce((s, r) => s + roundSafe(r.remises), 0);
     const totalRemisesAvoirClient = Array.from(avoirsClientMap.values()).reduce((s, r) => s + roundSafe(r.remises), 0);
@@ -1254,6 +1447,7 @@ router.get('/chiffre-affaires', async (req, res) => {
       totalCharges,
       totalChargesBrut,
       totalAvoirsCharge,
+      totalSalaires,
       totalBonsVehicule,
       totalBons,
       dailyData,
@@ -1597,6 +1791,26 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const [avoirsChargeLines] = await pool.query(avoirsChargeLinesSql, [selectedDate]);
     const [vehicules] = await pool.query(vehiculeSql, commonParams);
 
+    // Salaires: only posted on the LAST DAY of the month. If the selected date is the
+    // last day of its month, calculate the monthly salary due for that month.
+    let salaireMonthTotal = 0;
+    let salaireIsLastDay = false;
+    try {
+      const sel = new Date(`${selectedDate}T00:00:00`);
+      if (!Number.isNaN(sel.getTime())) {
+        const lastDayOfMonth = new Date(sel.getFullYear(), sel.getMonth() + 1, 0).getDate();
+        salaireIsLastDay = sel.getDate() === lastDayOfMonth;
+        if (salaireIsLastDay) {
+          const monthKey = `${sel.getFullYear()}-${String(sel.getMonth() + 1).padStart(2, '0')}`;
+          const salRows = await getMonthlySalaryDueRows({ filterType: 'month', month: monthKey });
+          salaireMonthTotal = roundSafe(salRows?.[0]?.total);
+        }
+      }
+    } catch (e) {
+      console.error('detail salaires query:', e?.sqlMessage || e?.message);
+      salaireMonthTotal = 0;
+    }
+
     const buildCalculs = (lines) => {
       // NOTE: ids can collide across different tables (Comptant/Sortie/Ecommerce/Avoir/etc.).
       // Use a composite key so each document keeps its own header (bonType/bonNumero).
@@ -1687,11 +1901,49 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       })),
     }));
 
+    // Virtual "Salaires" charge document, only when the date is the last day of the month
+    // and salaries are due that month. Counted as a charge (negative for CA/profit).
+    const salaireCalculs = (salaireIsLastDay && salaireMonthTotal > 0)
+      ? [{
+          bonId: 0,
+          bonNumero: 'SAL',
+          bonType: 'Salaires',
+          contact_nom: null,
+          items: [{
+            designation: 'Salaires du mois',
+            quantite: 1,
+            prix_unitaire: roundSafe(salaireMonthTotal),
+            montant_ligne: roundSafe(salaireMonthTotal),
+            profit: -roundSafe(salaireMonthTotal),
+            profitBrut: -roundSafe(salaireMonthTotal),
+            remise_unitaire: 0,
+            remise_total: 0,
+          }],
+          totalBon: -roundSafe(salaireMonthTotal),
+          profitBon: -roundSafe(salaireMonthTotal),
+          netTotalBon: -roundSafe(salaireMonthTotal),
+          totalRemiseBon: 0,
+        }]
+      : [];
+    const vehiculeCalculs = (vehicules || []).map((v) => ({
+      bonId: Number(v.bonId),
+      bonNumero: v.bonNumero,
+      bonType: 'Bon Vehicule',
+      contact_nom: null,
+      items: [],
+      totalBon: -roundSafe(v.totalBon),
+      profitBon: -roundSafe(v.totalBon),
+      netTotalBon: -roundSafe(v.totalBon),
+      totalRemiseBon: 0,
+    }));
+
     const caNetCalculs = [
       ...ventesCalculs,
       ...avoirsCalculs.map((c) => ({ ...c, totalBon: -roundSafe(c.totalBon) })),
       ...chargesCalculs,
       ...avoirsChargeCalculs,
+      ...salaireCalculs,
+      ...vehiculeCalculs,
     ];
     const caNetTotal = caNetCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
 
@@ -1708,6 +1960,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
         totalBon: -roundSafe(v.totalBon),
         profitBon: -roundSafe(v.totalBon),
       })),
+      ...salaireCalculs,
     ];
     const beneficiaireTotal = beneficiaireCalculs.reduce((s, c) => s + roundSafe(c.profitBon), 0);
 
@@ -1721,6 +1974,8 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
     const chargesSectionCalculs = [
       ...chargesDisplayCalculs,
       ...avoirsChargeNetDisplayCalculs,
+      ...salaireCalculs,
+      ...vehiculeCalculs,
     ];
     const chargesTotal = chargesSectionCalculs.reduce((s, c) => s + roundSafe(c.totalBon), 0);
 
@@ -1748,7 +2003,7 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
       },
       {
         type: 'CHARGES',
-        title: 'Charges nettes (Bons Charge - Avoirs Charge)',
+        title: 'Charges nettes (Bons Charge + Salaires + Bons Vehicule - Avoirs Charge)',
         total: chargesTotal,
         bons: chargesSectionCalculs.map((c) => ({ id: c.bonId })),
         calculs: chargesSectionCalculs,

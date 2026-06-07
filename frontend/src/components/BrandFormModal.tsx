@@ -7,6 +7,7 @@ import {
   useUpdateBrandMutation,
 } from '../store/api/brandsApi';
 import { showError, showSuccess } from '../utils/notifications';
+import { toBackendUrl } from '../utils/url';
 
 const schema = Yup.object({
   nom: Yup.string().required('Nom requis'),
@@ -110,7 +111,7 @@ const BrandFormModal: React.FC<Props> = ({ isOpen, onClose, initialValues, onSav
                   <div className="mt-2">
                     <p className="text-xs text-gray-500 mb-1">Image actuelle:</p>
                     <img 
-                      src={`http://localhost:3001${initialValues.image_url}`} 
+                      src={toBackendUrl(initialValues.image_url)}
                       alt="Brand" 
                       className="h-16 object-contain border rounded p-1"
                     />

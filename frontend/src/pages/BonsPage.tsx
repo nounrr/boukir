@@ -2529,9 +2529,14 @@ const BonsPage = () => {
                     />
                   </th>
                   {effectiveCurrentTab === 'Charge' && (
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
-                      Inclus en caisse
-                    </th>
+                    <>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
+                        Inclus en caisse
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-green-600 uppercase tracking-wider relative">
+                        Profit
+                      </th>
+                    </>
                   )}
                   {effectiveCurrentTab !== 'Charge' && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
@@ -2749,6 +2754,20 @@ const BonsPage = () => {
                                 title="Inclus en caisse"
                               />
                             );
+                          })()}
+                        </td>
+                      )}
+                      {effectiveCurrentTab === 'Charge' && (
+                        <td className="px-4 py-2 text-sm">
+                          {(() => {
+                            const productItems = parseItemsSafe(bon?.items).filter((item: any) => item?.product_id);
+                            const profit = productItems.reduce((sum: number, item: any) => {
+                              const q = Number(item?.quantite ?? item?.qty ?? 0) || 0;
+                              const pv = Number(item?.prix_unitaire ?? 0) || 0;
+                              return sum + (pv - resolveCostWithVariantUnit(item)) * q;
+                            }, 0);
+                            const cls = profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-500';
+                            return <span className={`font-semibold ${cls}`}>{formatNumber4(profit)} DH</span>;
                           })()}
                         </td>
                       )}

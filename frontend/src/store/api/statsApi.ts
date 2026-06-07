@@ -16,6 +16,7 @@ export interface ChiffreAffairesDayRow {
   totalCharges?: number;
   totalChargesBrut?: number;
   totalAvoirsCharge?: number;
+  totalSalaires?: number;
   totalBonsVehicule?: number;
 }
 
@@ -28,6 +29,7 @@ export interface ChiffreAffairesStatsResponse {
   totalCharges?: number;
   totalChargesBrut?: number;
   totalAvoirsCharge?: number;
+  totalSalaires?: number;
   totalBonsVehicule?: number;
   totalBons: number;
   dailyData: ChiffreAffairesDayRow[];

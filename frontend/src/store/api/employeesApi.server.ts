@@ -1,6 +1,11 @@
 import { api } from './apiSlice';
 import type { Employee, CreateEmployeeData } from '../../types';
 import type { EmployeeSalaireEntry, EmployeeSalaireSummaryRow } from '../../types';
+import type {
+  SalairesGlobalResponse,
+  SalairesGlobalMonthsResponse,
+  SalairesByMonthResponse,
+} from '../../types';
 
 export const employeesServerApi = api.injectEndpoints({
   endpoints: (builder) => ({
@@ -49,6 +54,21 @@ export const employeesServerApi = api.injectEndpoints({
       query: ({ month }) => ({ url: `/salaires/summary?month=${month}`, method: 'GET' }),
       providesTags: ['Employee'],
     }),
+    // Global salary overview (PDG): prorated due + paid per employee for a month
+    getSalairesGlobal: builder.query<SalairesGlobalResponse, { month?: string }>({
+      query: ({ month } = {}) => ({ url: `/salaires-global${month ? `?month=${month}` : ''}`, method: 'GET' }),
+      providesTags: ['Employee'],
+    }),
+    // Global salary: month-by-month breakdown for one employee
+    getSalairesGlobalMonths: builder.query<SalairesGlobalMonthsResponse, { id: number }>({
+      query: ({ id }) => ({ url: `/salaires-global/${id}/months`, method: 'GET' }),
+      providesTags: (_r, _e, { id }) => [{ type: 'Employee', id }],
+    }),
+    // Global salary: one row per month (all employees) with per-employee breakdown
+    getSalairesByMonth: builder.query<SalairesByMonthResponse, void>({
+      query: () => ({ url: `/salaires-global/by-month`, method: 'GET' }),
+      providesTags: ['Employee'],
+    }),
   }),
 });
 
@@ -63,4 +83,7 @@ export const {
   useUpdateEmployeeSalaireEntryMutation: useUpdateEmployeeSalaireEntryMutationServer,
   useDeleteEmployeeSalaireEntryMutation: useDeleteEmployeeSalaireEntryMutationServer,
   useGetSalaireMonthlySummaryQuery: useGetSalaireMonthlySummaryQueryServer,
+  useGetSalairesGlobalQuery: useGetSalairesGlobalQueryServer,
+  useGetSalairesGlobalMonthsQuery: useGetSalairesGlobalMonthsQueryServer,
+  useGetSalairesByMonthQuery: useGetSalairesByMonthQueryServer,
 } = employeesServerApi;

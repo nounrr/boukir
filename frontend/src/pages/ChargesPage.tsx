@@ -2083,6 +2083,12 @@ const ChargesListPage: React.FC = () => {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-violet-600" onClick={() => handleSort('solde')}>
                   Solde <SortIcon col="solde" />
                 </th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600">
+                  Plafond
+                </th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600">
+                  Garantie
+                </th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 cursor-pointer select-none hover:text-violet-600" onClick={() => handleSort('total_cumule')}>
                   Total cumule <SortIcon col="total_cumule" />
                 </th>
@@ -2093,13 +2099,13 @@ const ChargesListPage: React.FC = () => {
               {isLoading || isFetching
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 10 }).map((_, j) => (
+                      {Array.from({ length: 12 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-3/4" /></td>
                       ))}
                     </tr>
                   ))
                 : charges.length === 0
-                  ? <tr><td colSpan={10} className="px-4 py-14 text-center text-gray-400">
+                  ? <tr><td colSpan={12} className="px-4 py-14 text-center text-gray-400">
                       <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" /><p>Aucun charge trouve</p>
                     </td></tr>
                   : charges.map((f: Contact, idx: number) => (
@@ -2150,6 +2156,16 @@ const ChargesListPage: React.FC = () => {
                           <span className={`font-semibold text-sm ${f.solde < 0 ? 'text-red-600' : f.solde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
                             {fmt(f.solde)}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {f.plafond !== null && f.plafond !== undefined
+                            ? <span className="font-semibold text-sm text-gray-700">{fmt(f.plafond)}</span>
+                            : <span className="text-gray-300 text-xs">-</span>}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {f.montant_garantie !== null && f.montant_garantie !== undefined
+                            ? <span className="font-semibold text-sm text-emerald-700">{fmt(f.montant_garantie)}</span>
+                            : <span className="text-gray-300 text-xs">-</span>}
                         </td>
                         <td className="px-4 py-3 text-right bg-yellow-50/60 border-l border-yellow-100">
                           {(f as any).total_cumule !== null && (f as any).total_cumule !== undefined

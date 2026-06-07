@@ -401,6 +401,15 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE product_variants ADD COLUMN image_url VARCHAR(255) NULL`);
   }
 
+  // Check soft-delete flag in product_variants
+  const [colsVariantDeleted] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'is_deleted'`
+  );
+  if (!colsVariantDeleted.length) {
+    await pool.query(`ALTER TABLE product_variants ADD COLUMN is_deleted TINYINT(1) NOT NULL DEFAULT 0`);
+  }
+
   // Check pricing fields in product_variants
   const [colsVarCout] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
@@ -548,26 +557,31 @@ router.get('/search', async (req, res, next) => {
     const offset = (page - 1) * limit;
     const useSnapshot = await hasProductSnapshotTable();
 
-    const { q, category_id, brand_id, missing_lang, type } = req.query;
+    const { category_id, brand_id, missing_lang, type } = req.query;
+    const qRaw = String(req.query.q ?? '').trim();
+    const q = qRaw.length > 100 ? qRaw.slice(0, 100) : qRaw;
+    const qLower = q.toLowerCase();
+    const qTerms = qLower.split(/\s+/).filter(Boolean);
 
     const conditions = ['COALESCE(p.is_deleted, 0) = 0'];
     const params = [];
 
-    if (q) {
-      conditions.push(`(
-        p.designation LIKE ?
-        OR CAST(p.id AS CHAR) LIKE ?
+    if (qTerms.length > 0) {
+      const termConditions = qTerms.map(() => `(
+        LOWER(CONCAT_WS(' ', p.id, p.designation, p.designation_ar, p.designation_en, p.designation_zh)) LIKE ?
         OR EXISTS (
           SELECT 1 FROM product_variants pv_search
           WHERE pv_search.product_id = p.id
-            AND (
-              pv_search.variant_name LIKE ?
-              OR pv_search.reference LIKE ?
-            )
+            AND COALESCE(pv_search.is_deleted, 0) = 0
+            AND LOWER(CONCAT_WS(' ', pv_search.variant_name, pv_search.reference)) LIKE ?
         )
       )`);
-      const wild = `%${q}%`;
-      params.push(wild, wild, wild, wild);
+
+      conditions.push(`(${termConditions.join(' AND ')})`);
+      for (const term of qTerms) {
+        const termWild = `%${term}%`;
+        params.push(termWild, termWild);
+      }
     }
 
     if (category_id) {
@@ -616,6 +630,49 @@ router.get('/search', async (req, res, next) => {
     }
 
     const whereSql = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const orderParams = [];
+    let orderBySql = 'ORDER BY p.id DESC';
+
+    if (qTerms.length > 0) {
+      const qPrefix = `${qLower}%`;
+      const qWild = `%${qLower}%`;
+      const qNum = Number(q);
+      const hasNumericQ = q !== '' && Number.isFinite(qNum);
+      const exactIdSql = hasNumericQ ? 'WHEN p.id = ? THEN 0' : '';
+      if (hasNumericQ) orderParams.push(qNum);
+
+      orderBySql = `
+        ORDER BY
+          CASE
+            ${exactIdSql}
+            WHEN LOWER(p.designation) = ? THEN 1
+            WHEN LOWER(p.designation) LIKE ?
+              OR EXISTS (
+                SELECT 1 FROM product_variants pv_order
+                WHERE pv_order.product_id = p.id
+                  AND COALESCE(pv_order.is_deleted, 0) = 0
+                  AND (
+                    LOWER(pv_order.variant_name) LIKE ?
+                    OR LOWER(pv_order.reference) LIKE ?
+                  )
+              ) THEN 2
+            WHEN LOWER(p.designation) LIKE ?
+              OR CAST(p.id AS CHAR) LIKE ?
+              OR EXISTS (
+                SELECT 1 FROM product_variants pv_order
+                WHERE pv_order.product_id = p.id
+                  AND COALESCE(pv_order.is_deleted, 0) = 0
+                  AND (
+                    LOWER(pv_order.variant_name) LIKE ?
+                    OR LOWER(pv_order.reference) LIKE ?
+                  )
+              ) THEN 3
+            ELSE 4
+          END,
+          p.id DESC
+      `;
+      orderParams.push(qLower, qPrefix, qPrefix, qPrefix, qWild, qWild, qWild, qWild);
+    }
 
     const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM products p ${whereSql}`, params);
     const total = countRows[0]?.total || 0;
@@ -677,7 +734,7 @@ router.get('/search', async (req, res, next) => {
             AND COALESCE(ps3.prix_vente, 0) > 0
           ORDER BY ps3.created_at ASC, ps3.id ASC
           LIMIT 1)
-      )) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
+      )) FROM product_variants pv WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0) as variants,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pu.id,
         'unit_name', pu.unit_name,
@@ -691,7 +748,7 @@ router.get('/search', async (req, res, next) => {
       LEFT JOIN brands b ON p.brand_id = b.id
       LEFT JOIN categories c ON p.categorie_id = c.id
       ${whereSql}
-      ORDER BY p.id DESC
+      ${orderBySql}
       LIMIT ? OFFSET ?
     ` : `
       SELECT p.*, b.id as b_id, b.nom as b_nom, b.image_url as b_image_url,
@@ -716,7 +773,7 @@ router.get('/search', async (req, res, next) => {
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
         'stock_quantity', pv.stock_quantity
-      )) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
+      )) FROM product_variants pv WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0) as variants,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pu.id,
         'unit_name', pu.unit_name,
@@ -730,11 +787,11 @@ router.get('/search', async (req, res, next) => {
       LEFT JOIN brands b ON p.brand_id = b.id
       LEFT JOIN categories c ON p.categorie_id = c.id
       ${whereSql}
-      ORDER BY p.id DESC
+      ${orderBySql}
       LIMIT ? OFFSET ?
     `;
 
-    const [rows] = await pool.query(querySql, [...params, limit, offset]);
+    const [rows] = await pool.query(querySql, [...params, ...orderParams, limit, offset]);
 
     const products = rows.map((r) => {
       const gallery = typeof r.gallery === 'string' ? JSON.parse(r.gallery) : (r.gallery || []);
@@ -959,7 +1016,7 @@ router.get('/with-snapshots', async (req, res, next) => {
                'id', pv2.id, 'variant_name', pv2.variant_name,
                'prix_achat', pv2.prix_achat, 'prix_vente', pv2.prix_vente,
                'stock_quantity', pv2.stock_quantity
-             )) FROM product_variants pv2 WHERE pv2.product_id = p.id) AS variants,
+             )) FROM product_variants pv2 WHERE pv2.product_id = p.id AND COALESCE(pv2.is_deleted, 0) = 0) AS variants,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT(
                'id', pu.id, 'unit_name', pu.unit_name,
                'conversion_factor', pu.conversion_factor,
@@ -1145,7 +1202,7 @@ router.get('/', async (req, res, next) => {
             AND COALESCE(ps3.prix_vente, 0) > 0
           ORDER BY ps3.created_at ASC, ps3.id ASC
           LIMIT 1)
-      )) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
+      )) FROM product_variants pv WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0) as variants,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pu.id,
         'unit_name', pu.unit_name,
@@ -1183,7 +1240,7 @@ router.get('/', async (req, res, next) => {
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
         'stock_quantity', pv.stock_quantity
-      )) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
+      )) FROM product_variants pv WHERE pv.product_id = p.id AND COALESCE(pv.is_deleted, 0) = 0) as variants,
       (SELECT JSON_ARRAYAGG(JSON_OBJECT(
         'id', pu.id,
         'unit_name', pu.unit_name,
@@ -1538,7 +1595,7 @@ router.get('/:id', async (req, res, next) => {
     const useSnapshot = await hasProductSnapshotTable();
 
     // Fetch variants and units
-    const [variants] = await pool.query('SELECT * FROM product_variants WHERE product_id = ?', [id]);
+    const [variants] = await pool.query('SELECT * FROM product_variants WHERE product_id = ? AND COALESCE(is_deleted, 0) = 0', [id]);
     const variantIds = variants.map(v => v.id);
     let variantGalleriesById = {};
     if (variantIds.length > 0) {
@@ -2069,7 +2126,7 @@ router.post('/', upload.fields([
     );
     const r = row[0];
     const [gallery] = await pool.query('SELECT * FROM product_images WHERE product_id = ? ORDER BY position ASC', [id]);
-    const [vars] = await pool.query('SELECT * FROM product_variants WHERE product_id = ?', [id]);
+    const [vars] = await pool.query('SELECT * FROM product_variants WHERE product_id = ? AND COALESCE(is_deleted, 0) = 0', [id]);
     const [unts] = await pool.query('SELECT * FROM product_units WHERE product_id = ?', [id]);
 
     return res.json({
@@ -2365,16 +2422,22 @@ router.put('/:id', upload.fields([
           .filter(n => Number.isFinite(n) && n > 0);
 
         if (parsed.length === 0) {
-          await pool.query('DELETE FROM product_variants WHERE product_id = ?', [id]);
+          await pool.query(
+            'UPDATE product_variants SET is_deleted = 1, updated_at = ? WHERE product_id = ?',
+            [now, id]
+          );
         } else {
           if (desiredIds.length > 0) {
             await pool.query(
-              'DELETE FROM product_variants WHERE product_id = ? AND id NOT IN (?)',
-              [id, desiredIds]
+              'UPDATE product_variants SET is_deleted = 1, updated_at = ? WHERE product_id = ? AND id NOT IN (?)',
+              [now, id, desiredIds]
             );
           } else {
-            // All variants are new (no IDs) => replace any existing variants.
-            await pool.query('DELETE FROM product_variants WHERE product_id = ?', [id]);
+            // All variants are new (no IDs) => soft-delete any existing variants.
+            await pool.query(
+              'UPDATE product_variants SET is_deleted = 1, updated_at = ? WHERE product_id = ?',
+              [now, id]
+            );
           }
 
           for (const v of parsed) {
@@ -2411,6 +2474,7 @@ router.put('/:id', upload.fields([
                      prix_gros = ?, prix_gros_pourcentage = ?,
                      prix_vente_pourcentage = ?, prix_vente = ?,
                      remise_client = ?, remise_artisan = ?, stock_quantity = ?,
+                     is_deleted = 0,
                      updated_at = ?
                  WHERE id = ? AND product_id = ?`,
                 [...payloadVals, now, variantId, id]
@@ -2427,8 +2491,8 @@ router.put('/:id', upload.fields([
                     prix_gros, prix_gros_pourcentage,
                     prix_vente_pourcentage, prix_vente,
                     remise_client, remise_artisan, stock_quantity,
-                    created_at, updated_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+                    is_deleted, created_at, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
                   [id, ...payloadVals, now, now]
                 );
               }
@@ -2442,8 +2506,8 @@ router.put('/:id', upload.fields([
                   prix_gros, prix_gros_pourcentage,
                   prix_vente_pourcentage, prix_vente,
                   remise_client, remise_artisan, stock_quantity,
-                  created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+                  is_deleted, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
                 [id, ...payloadVals, now, now]
               );
             }
@@ -2539,7 +2603,7 @@ router.put('/:id', upload.fields([
     const r = rows[0];
     if (!r) return res.status(404).json({ message: 'Produit introuvable' });
 
-    const [variants] = await pool.query('SELECT * FROM product_variants WHERE product_id = ?', [id]);
+    const [variants] = await pool.query('SELECT * FROM product_variants WHERE product_id = ? AND COALESCE(is_deleted, 0) = 0', [id]);
     const variantIds = variants.map(v => v.id);
     let variantGalleriesById = {};
     if (variantIds.length > 0) {
