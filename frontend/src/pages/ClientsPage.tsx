@@ -2329,6 +2329,16 @@ const ClientsListPage: React.FC = () => {
           {fmt(client.solde)}
         </span>
       </td>
+      <td className="px-4 py-3 text-right">
+        {client.plafond !== null && client.plafond !== undefined
+          ? <span className="font-semibold text-sm text-gray-700">{fmt(client.plafond)}</span>
+          : <span className="text-gray-300 text-xs">-</span>}
+      </td>
+      <td className="px-4 py-3 text-right">
+        {client.montant_garantie !== null && client.montant_garantie !== undefined
+          ? <span className="font-semibold text-sm text-emerald-700">{fmt(client.montant_garantie)}</span>
+          : <span className="text-gray-300 text-xs">-</span>}
+      </td>
       <td className="px-4 py-3 text-right bg-yellow-50/60 border-l border-yellow-100">
         {client.total_cumule !== null && client.total_cumule !== undefined
           ? <span className={`font-bold text-sm ${client.total_cumule > 0 ? 'text-red-600' : client.total_cumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
@@ -2378,6 +2388,8 @@ const ClientsListPage: React.FC = () => {
     const isOpen = expandedGroupKeys.has(key);
     const groupName = row.groupName.trim() || `Groupe #${row.groupId}`;
     const groupSolde = row.members.reduce((sum, member) => sum + Number(member.solde || 0), 0);
+    const groupPlafond = row.members.reduce((sum, member) => sum + Number(member.plafond || 0), 0);
+    const groupGarantie = row.members.reduce((sum, member) => sum + Number(member.montant_garantie || 0), 0);
     const groupTotalCumule = row.members.reduce((sum, member) => sum + Number(member.total_cumule || 0), 0);
 
     return (
@@ -2423,6 +2435,12 @@ const ClientsListPage: React.FC = () => {
             <span className={`font-semibold text-sm ${groupSolde < 0 ? 'text-red-600' : groupSolde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
               {fmt(groupSolde)}
             </span>
+          </td>
+          <td className="px-4 py-3 text-right">
+            <span className="font-semibold text-sm text-gray-700">{fmt(groupPlafond)}</span>
+          </td>
+          <td className="px-4 py-3 text-right">
+            <span className="font-semibold text-sm text-emerald-700">{fmt(groupGarantie)}</span>
           </td>
           <td className="px-4 py-3 text-right bg-yellow-50/60 border-l border-yellow-100">
             <span className={`font-bold text-sm ${groupTotalCumule > 0 ? 'text-red-600' : groupTotalCumule < 0 ? 'text-green-600' : 'text-gray-500'}`}>
@@ -2531,6 +2549,12 @@ const ClientsListPage: React.FC = () => {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort('solde')}>
                   Solde <SortIcon col="solde" />
                 </th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600">
+                  Plafond
+                </th>
+                <th className="text-right px-4 py-3 font-semibold text-gray-600">
+                  Garantie
+                </th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort('total_cumule')}>
                   Total cumulé <SortIcon col="total_cumule" />
                 </th>
@@ -2541,13 +2565,13 @@ const ClientsListPage: React.FC = () => {
               {isLoading || isFetching
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 10 }).map((_, j) => (
+                      {Array.from({ length: 12 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-3/4" /></td>
                       ))}
                     </tr>
                   ))
                 : visibleAccordionRows.length === 0
-                  ? <tr><td colSpan={10} className="px-4 py-14 text-center text-gray-400">
+                  ? <tr><td colSpan={12} className="px-4 py-14 text-center text-gray-400">
                       <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" /><p>Aucun client trouvé</p>
                     </td></tr>
                   : (visibleAccordionRows.map((row, idx: number) => renderAccordionRow(row, idx)) || clients.map((client: Contact, idx: number) => (
@@ -2589,6 +2613,16 @@ const ClientsListPage: React.FC = () => {
                           <span className={`font-semibold text-sm ${client.solde < 0 ? 'text-red-600' : client.solde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
                             {fmt(client.solde)}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {client.plafond !== null && client.plafond !== undefined
+                            ? <span className="font-semibold text-sm text-gray-700">{fmt(client.plafond)}</span>
+                            : <span className="text-gray-300 text-xs">-</span>}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {client.montant_garantie !== null && client.montant_garantie !== undefined
+                            ? <span className="font-semibold text-sm text-emerald-700">{fmt(client.montant_garantie)}</span>
+                            : <span className="text-gray-300 text-xs">-</span>}
                         </td>
                         <td className="px-4 py-3 text-right bg-yellow-50/60 border-l border-yellow-100">
                           {client.total_cumule !== null && client.total_cumule !== undefined

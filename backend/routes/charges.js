@@ -185,6 +185,78 @@ const parseItems = (items) => {
     .filter((it) => it.designation_custom && it.quantite > 0);
 };
 
+const toPositiveIds = (items, field) => Array.from(new Set(
+  items
+    .map((item) => Number(item?.[field]))
+    .filter((id) => Number.isFinite(id) && id > 0)
+));
+
+const indexRowsById = (rows = []) => new Map(
+  rows.map((row) => [Number(row.id), row])
+);
+
+// A product line in a charge is valued at cost so it never creates a sale profit.
+// Free-form charge lines keep their manually entered amount.
+const priceChargeProductItemsAtCost = async (connection, items = []) => {
+  const productItems = items.filter((item) => item.product_id);
+  if (productItems.length === 0) return items;
+
+  const productIds = toPositiveIds(productItems, 'product_id');
+  const variantIds = toPositiveIds(productItems, 'variant_id');
+  const snapshotIds = toPositiveIds(productItems, 'product_snapshot_id');
+  const unitIds = toPositiveIds(productItems, 'unit_id');
+
+  const [productRows] = productIds.length
+    ? await connection.query('SELECT id, prix_achat, cout_revient FROM products WHERE id IN (?)', [productIds])
+    : [[]];
+  const [variantRows] = variantIds.length
+    ? await connection.query('SELECT id, prix_achat, cout_revient FROM product_variants WHERE id IN (?)', [variantIds])
+    : [[]];
+  const [snapshotRows] = snapshotIds.length
+    ? await connection.query('SELECT id, prix_achat, cout_revient FROM product_snapshot WHERE id IN (?)', [snapshotIds])
+    : [[]];
+  const [unitRows] = unitIds.length
+    ? await connection.query(
+        'SELECT id, conversion_factor, is_default, facteur_isNormal FROM product_units WHERE id IN (?)',
+        [unitIds]
+      )
+    : [[]];
+
+  const productsById = indexRowsById(productRows);
+  const variantsById = indexRowsById(variantRows);
+  const snapshotsById = indexRowsById(snapshotRows);
+  const unitsById = indexRowsById(unitRows);
+
+  return items.map((item) => {
+    if (!item.product_id) return item;
+
+    const product = productsById.get(Number(item.product_id));
+    const variant = variantsById.get(Number(item.variant_id));
+    const snapshot = snapshotsById.get(Number(item.product_snapshot_id));
+    const unit = unitsById.get(Number(item.unit_id));
+
+    const baseCost = parseNumeric(snapshot?.cout_revient, 0)
+      || parseNumeric(snapshot?.prix_achat, 0)
+      || parseNumeric(variant?.cout_revient, 0)
+      || parseNumeric(variant?.prix_achat, 0)
+      || parseNumeric(product?.cout_revient, 0)
+      || parseNumeric(product?.prix_achat, 0)
+      || parseNumeric(item.cout_revient, 0)
+      || parseNumeric(item.prix_achat, 0);
+    const useConversion = unit && Number(unit.is_default) !== 1 && Number(unit.facteur_isNormal) === 0;
+    const parsedFactor = parseNumeric(unit?.conversion_factor, 1);
+    const conversionFactor = useConversion && parsedFactor > 0 ? parsedFactor : 1;
+    const cost = Number((baseCost * conversionFactor).toFixed(4));
+
+    return {
+      ...item,
+      cout_revient: cost,
+      prix_unitaire: cost,
+      total: Number((parseNumeric(item.quantite, 0) * cost).toFixed(4)),
+    };
+  });
+};
+
 const normalizeItemsForStock = async (connection, items = []) => {
   const normalized = Array.isArray(items) ? items.map((item) => ({ ...item })) : [];
   const unitIds = Array.from(
@@ -330,7 +402,11 @@ router.post('/', async (req, res) => {
     const operationType = normalizeOperationType(req.query?.type ?? req.body?.operation_type);
     const cfg = getChargeConfig(operationType);
     const inclusEnCaisse = operationType === 'charge' && req.body?.inclus_en_caisse ? 1 : 0;
-    const items = parseItems(req.body?.items);
+    let items = parseItems(req.body?.items);
+
+    if (operationType === 'charge') {
+      items = await priceChargeProductItemsAtCost(connection, items);
+    }
 
     if (!dateCreation || !Number.isFinite(clientId) || clientId <= 0 || !items.length) {
       await connection.rollback();
@@ -422,7 +498,11 @@ router.put('/:id', async (req, res) => {
     const operationType = normalizeOperationType(req.query?.type ?? req.body?.operation_type ?? req.query?.operation_type);
     const cfg = getChargeConfig(operationType);
     const inclusEnCaisse = operationType === 'charge' && req.body?.inclus_en_caisse ? 1 : 0;
-    const items = parseItems(req.body?.items);
+    let items = parseItems(req.body?.items);
+
+    if (operationType === 'charge') {
+      items = await priceChargeProductItemsAtCost(connection, items);
+    }
 
     if (!Number.isFinite(id) || id <= 0 || !dateCreation || !Number.isFinite(clientId) || clientId <= 0 || !items.length) {
       await connection.rollback();

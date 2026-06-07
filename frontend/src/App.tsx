@@ -26,6 +26,7 @@ import ContactsPage from './pages/ContactsPage';
 import ClientsPage, { ClientDetailPage } from './pages/ClientsPage';
 import FournisseursPage, { FournisseurDetailPage } from './pages/FournisseursPage';
 import ChargesPage, { ChargeDetailPage } from './pages/ChargesPage';
+import GarantiesPage from './pages/GarantiesPage';
 import ContactArchiverPage from './pages/ContactArchiverPage';
 import BonsPage from './pages/BonsPage';
 import VehiculesPage from './pages/VehiculesPage';
@@ -48,6 +49,7 @@ import TalonCaissePage from './pages/TalonCaissePage';
 import ArchivedProductsPage from './pages/ArchivedProductsPage';
 import ProfilePage from './pages/ProfilePage';
 import EmployeeSalariesPage from './pages/EmployeeSalariesPage';
+import SalairesPage from './pages/SalairesPage';
 import AuditPage from './pages/AuditPage';
 import AccessSchedulePage from './pages/AccessSchedulePage';
 import MultiDayAccessSchedulePage from './pages/MultiDayAccessSchedulePage';
@@ -191,6 +193,17 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/salaires"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <SalairesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/access-schedules"
           element={
             <ProtectedRoute requiredRoles={['PDG']}>
@@ -284,6 +297,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute requiredRoles={['PDG']}>
               <LayoutWithAccessCheck>
                 <ChargesPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/garanties"
+          element={
+            <ProtectedRoute requiredRoles={['PDG']}>
+              <LayoutWithAccessCheck>
+                <GarantiesPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

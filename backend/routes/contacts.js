@@ -1921,6 +1921,8 @@ router.post('/', async (req, res) => {
       ice,
       solde = 0,
       plafond,
+      montant_garantie,
+      numero_garantie,
       is_solde,
       isSolde,
       demande_artisan,
@@ -1968,6 +1970,21 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'type must be either Client or Fournisseur' });
     }
 
+    const normalizedMontantGarantie =
+      montant_garantie === undefined || montant_garantie === null || montant_garantie === ''
+        ? null
+        : Number(montant_garantie);
+    if (
+      normalizedMontantGarantie !== null
+      && (!Number.isFinite(normalizedMontantGarantie) || normalizedMontantGarantie < 0)
+    ) {
+      return res.status(400).json({ error: 'montant_garantie must be a non-negative number' });
+    }
+    const normalizedNumeroGarantie =
+      numero_garantie === undefined || numero_garantie === null || String(numero_garantie).trim() === ''
+        ? null
+        : String(numero_garantie).trim();
+
     // Auto-approve if type_compte is Artisan/Promoteur (backoffice creation)
     const isArtisan = type_compte === 'Artisan/Promoteur';
     const effectiveDemandeArtisan = isArtisan ? 0 : (demande_artisan ?? 0);
@@ -1977,9 +1994,9 @@ router.post('/', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO contacts 
-       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, is_charge, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond || null, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null), (is_charge ? 1 : 0)]
+       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, montant_garantie, numero_garantie, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, is_charge, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond ?? null, normalizedMontantGarantie, normalizedNumeroGarantie, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null), (is_charge ? 1 : 0)]
     );
 
     // Optional: persist solde eligibility if column exists.
@@ -2027,6 +2044,8 @@ router.put('/:id', async (req, res) => {
       ice,
       solde,
       plafond,
+      montant_garantie,
+      numero_garantie,
       is_solde,
       isSolde,
       demande_artisan,
@@ -2131,6 +2150,22 @@ router.put('/:id', async (req, res) => {
       }
       updates.push('plafond = ?');
       params.push(plafondNumber === undefined ? null : plafondNumber);
+    }
+    if (montant_garantie !== undefined) {
+      const montantGarantieNumber = toNullableNumber(montant_garantie);
+      if (
+        montantGarantieNumber !== null
+        && montantGarantieNumber !== undefined
+        && (!Number.isFinite(montantGarantieNumber) || montantGarantieNumber < 0)
+      ) {
+        return res.status(400).json({ error: 'montant_garantie must be a non-negative number' });
+      }
+      updates.push('montant_garantie = ?');
+      params.push(montantGarantieNumber === undefined ? null : montantGarantieNumber);
+    }
+    if (numero_garantie !== undefined) {
+      updates.push('numero_garantie = ?');
+      params.push(normalizeEmptyToNull(numero_garantie));
     }
 
     if (is_solde !== undefined || isSolde !== undefined) {

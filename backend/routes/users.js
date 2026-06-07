@@ -960,7 +960,7 @@ router.get('/me', async (req, res, next) => {
               nom_complet, adresse,
               shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_postal_code, shipping_country,
               societe, ice, is_company, is_solde,
-              plafond,
+              plafond, montant_garantie, numero_garantie,
               demande_artisan, artisan_approuve,
               COALESCE(remise_balance, 0) AS remise_balance
        FROM contacts WHERE id = ? AND deleted_at IS NULL AND auth_provider != 'none'`,
@@ -978,12 +978,16 @@ router.get('/me', async (req, res, next) => {
       return res.status(403).json({ message: 'Compte désactivé' });
     }
 
-    // Useful for checkout: current cumulative solde & remaining capacity (when plafond is set).
+    // Useful for checkout: use the smallest active value between plafond and garantie.
     const plafond = user.plafond == null ? null : Number(user.plafond);
+    const montant_garantie = user.montant_garantie == null ? null : Number(user.montant_garantie);
+    const creditLimits = [plafond, montant_garantie]
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const limite_solde = creditLimits.length > 0 ? Math.min(...creditLimits) : null;
     const solde_cumule = await getContactSoldeCumule(pool, user.id);
     const solde_available =
-      plafond != null && Number.isFinite(plafond) && plafond > 0
-        ? Math.max(0, Math.round((plafond - solde_cumule) * 100) / 100)
+      limite_solde != null
+        ? Math.max(0, Math.round((limite_solde - solde_cumule) * 100) / 100)
         : null;
 
     if (debug) {
@@ -1009,6 +1013,9 @@ router.get('/me', async (req, res, next) => {
         is_company: !!user.is_company,
         is_solde: !!user.is_solde,
         plafond: plafond,
+        montant_garantie,
+        numero_garantie: user.numero_garantie,
+        limite_solde,
         solde_cumule,
         solde_available,
         shipping_address_line1: user.shipping_address_line1,

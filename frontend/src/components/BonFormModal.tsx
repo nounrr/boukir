@@ -690,6 +690,26 @@ const getContactTotalCumule = (contact: any) => {
   return Number.isFinite(soldeCumule) ? soldeCumule : 0;
 };
 
+const getContactCreditLimit = (contact: any) => {
+  const plafond = Number(contact?.plafond);
+  const garantie = Number(contact?.montant_garantie);
+  const hasPlafond = Number.isFinite(plafond) && plafond > 0;
+  const hasGarantie = Number.isFinite(garantie) && garantie > 0;
+
+  if (!hasPlafond && !hasGarantie) return null;
+  if (hasPlafond && hasGarantie) {
+    return {
+      amount: Math.min(plafond, garantie),
+      label: plafond <= garantie ? 'plafond' : 'garantie',
+      details: `Plafond: ${plafond.toFixed(2)} DH | Garantie: ${garantie.toFixed(2)} DH`,
+    };
+  }
+
+  return hasPlafond
+    ? { amount: plafond, label: 'plafond', details: `Plafond: ${plafond.toFixed(2)} DH` }
+    : { amount: garantie, label: 'garantie', details: `Garantie: ${garantie.toFixed(2)} DH` };
+};
+
 /* --------------------------------- Composant -------------------------------- */
 interface BonFormModalProps {
   isOpen: boolean;
@@ -722,7 +742,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Container ref to detect when Enter is pressed within the products area
   const itemsContainerRef = useRef<HTMLDivElement>(null);
   
-  // État pour mémoriser si le PDG a accepté un client déjà au-dessus du plafond
+  // État pour mémoriser si le PDG a accepté un client déjà au-dessus de sa limite
   const [pdgApprovedOverLimit, setPdgApprovedOverLimit] = useState<{ clientId: string; timestamp: number } | null>(null);
   
   // Remises UI state
@@ -1494,10 +1514,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         const items = Array.isArray(values.items) ? values.items : [];
         const payloadItems = items.map((item: any, idx: number) => {
           const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-          const pu = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+          const enteredPrice = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
           const rm = parseFloat(normalizeDecimal(remiseRaw[idx] ?? String(item.remise_montant ?? ''))) || 0;
           const cr = parseFloat(normalizeDecimal(String(item.cout_revient ?? item.cout_rev ?? item.cout ?? ''))) || 0;
           const pa = parseFloat(normalizeDecimal(String(item.prix_achat ?? item.pa ?? item.prixA ?? ''))) || 0;
+          const pu = type === 'Charge' && item?.product_id ? (cr || pa) : enteredPrice;
           return {
             ...item,
             quantite: q,
@@ -2266,11 +2287,14 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       // Pour bon Commande, utiliser prix_achat; pour autres types (y compris Charge), prix_unitaire
       // Lire depuis unitPriceRaw en priorité (valeur saisie) pour éviter le décalage avec onBlur async
       const priceField = values.type === 'Commande' ? 'prix_achat' : 'prix_unitaire';
-      const u = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
+      const enteredPrice = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
         ? parseFloat(normalizeDecimal(unitPriceRaw[idx])) || 0
         : (typeof item[priceField] === 'string'
           ? parseFloat(String(item[priceField]).replace(',', '.')) || 0
           : Number(item[priceField]) || 0);
+      const u = values.type === 'Charge' && item?.product_id
+        ? (Number(item.cout_revient) || Number(item.prix_achat) || 0)
+        : enteredPrice;
       return sum + q * u;
     }, 0);
 
@@ -2426,9 +2450,12 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
             const prixGros = typeof item.prix_gros === 'string'
               ? parseFloat(String(item.prix_gros).replace(',', '.')) || 0
               : Number(item.prix_gros) || 0;
-            const prixVente = typeof item.prix_unitaire === 'string'
+            const enteredPrice = typeof item.prix_unitaire === 'string'
               ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
               : Number(item.prix_unitaire) || 0;
+            const prixVente = requestType === 'Charge' && item?.product_id
+              ? (coutRevient || prixAchat)
+              : enteredPrice;
             const designation = String(item.line_mode === 'detail' ? (item.designation_custom || item.designation || '') : (item.designation || item.designation_custom || '')).trim();
             if ((!designation && !item.product_id) || q <= 0) return [];
             return [{
@@ -2755,19 +2782,20 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       // est maintenant gérée par le backend lors du changement de statut vers "Validé"
       // (voir backend/routes/commandes.js PATCH /:id/statut)
     } else {
-      // Vérification du plafond pour les bons clients (Sortie, Comptant, Avoir)
+      // Vérification de la limite plafond/garantie pour les bons clients.
       if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(requestType) && cleanBonData.client_id) {
         const client = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
-        if (client && client.plafond && Number(client.plafond) > 0) {
+        const creditLimit = getContactCreditLimit(client);
+        if (client && creditLimit) {
           // Utiliser total_cumule comme sur la page clients, puis ajouter le total du bon courant.
           const backendClientSolde = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
           const soldeCumule = getContactTotalCumule(backendClientSolde);
-          const plafond = Number(client.plafond);
+          const limite = creditLimit.amount;
           const nouveauSolde = soldeCumule + montantTotal;
           
-          // Cas 1: Client déjà au-dessus du plafond AVANT ce bon
-          if (soldeCumule > plafond) {
-            const depassementActuel = soldeCumule - plafond;
+          // Cas 1: Client déjà au-dessus de la limite AVANT ce bon
+          if (soldeCumule > limite) {
+            const depassementActuel = soldeCumule - limite;
             
             if (user?.role === 'PDG') {
               // Vérifier si le PDG a déjà approuvé ce client récemment (dans les 30 dernières minutes)
@@ -2778,16 +2806,17 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
               if (!hasRecentApproval) {
                 // PDG : Alerte informative mais peut continuer
                 const result = await showConfirmation(
-                  `⚠️ ATTENTION - CLIENT DÉJÀ AU-DESSUS DU PLAFOND ⚠️\n\n` +
+                  `⚠️ ATTENTION - CLIENT DÉJÀ AU-DESSUS DE LA LIMITE ⚠️\n\n` +
                   `Client: ${client.nom_complet}\n` +
                   `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
-                  `Plafond autorisé: ${plafond.toFixed(2)} DH\n` +
+                  `${creditLimit.details}\n` +
+                  `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n` +
                   `Dépassement actuel: ${depassementActuel.toFixed(2)} DH\n\n` +
                   `Montant du nouveau bon: ${montantTotal.toFixed(2)} DH\n` +
                   `Solde après ce bon: ${nouveauSolde.toFixed(2)} DH\n\n` +
-                  `Ce client a déjà dépassé son plafond de crédit.\n` +
+                  `Ce client a déjà dépassé sa limite de crédit.\n` +
                   `Voulez-vous tout de même créer ce bon ?`,
-                  'Client au-dessus du plafond',
+                  'Client au-dessus de la limite',
                   'Continuer',
                   'Annuler'
                 );
@@ -2801,12 +2830,13 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
             } else {
               // Autres rôles : Interdiction complète
               showError(
-                `🚫 CRÉATION INTERDITE - CLIENT AU-DESSUS DU PLAFOND 🚫\n\n` +
+                `🚫 CRÉATION INTERDITE - CLIENT AU-DESSUS DE LA LIMITE 🚫\n\n` +
                 `Client: ${client.nom_complet}\n` +
                 `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
-                `Plafond autorisé: ${plafond.toFixed(2)} DH\n` +
+                `${creditLimit.details}\n` +
+                `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n` +
                 `Dépassement actuel: ${depassementActuel.toFixed(2)} DH\n\n` +
-                `❌ Ce client a déjà dépassé son plafond de crédit.\n` +
+                `❌ Ce client a déjà dépassé sa limite de crédit.\n` +
                 `Vous n'êtes pas autorisé à créer de nouveaux bons pour ce client.\n` +
                 `Contactez votre responsable.`
               );
@@ -2815,21 +2845,22 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
             }
           }
           // Cas 2: Client dans les limites mais ce bon le ferait dépasser
-          else if (nouveauSolde > plafond) {
-            const depassement = nouveauSolde - plafond;
+          else if (nouveauSolde > limite) {
+            const depassement = nouveauSolde - limite;
             
             if (user?.role === 'PDG') {
               // PDG : Popup personnalisé avec boutons Continuer/Annuler
               const result = await showConfirmation(
-                `⚠️ ATTENTION - CE BON DÉPASSERA LE PLAFOND ⚠️\n\n` +
+                `⚠️ ATTENTION - CE BON DÉPASSERA LA LIMITE ⚠️\n\n` +
                 `Client: ${client.nom_complet}\n` +
                 `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
                 `Montant du bon: ${montantTotal.toFixed(2)} DH\n` +
                 `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
-                `Plafond autorisé: ${plafond.toFixed(2)} DH\n\n` +
-                `Ce bon ferait dépasser le plafond de ${depassement.toFixed(2)} DH.\n\n` +
+                `${creditLimit.details}\n` +
+                `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n\n` +
+                `Ce bon ferait dépasser la limite de ${depassement.toFixed(2)} DH.\n\n` +
                 `Voulez-vous autoriser la création malgré le dépassement ?`,
-                'Dépassement de plafond détecté',
+                'Dépassement de limite détecté',
                 'Continuer',
                 'Annuler'
               );
@@ -2841,13 +2872,14 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
             } else {
               // Autres rôles : Annulation automatique
               showError(
-                `🚫 CRÉATION INTERDITE - DÉPASSEMENT DE PLAFOND 🚫\n\n` +
+                `🚫 CRÉATION INTERDITE - DÉPASSEMENT DE LIMITE 🚫\n\n` +
                 `Client: ${client.nom_complet}\n` +
                 `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
                 `Montant du bon: ${montantTotal.toFixed(2)} DH\n` +
                 `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
-                `Plafond autorisé: ${plafond.toFixed(2)} DH\n\n` +
-                `Ce bon dépasserait le plafond de ${depassement.toFixed(2)} DH.\n\n` +
+                `${creditLimit.details}\n` +
+                `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n\n` +
+                `Ce bon dépasserait la limite de ${depassement.toFixed(2)} DH.\n\n` +
                 `❌ Vous n'êtes pas autorisé à créer ce bon.\n` +
                 `Veuillez réduire le montant ou contacter votre responsable.`
               );
@@ -3223,15 +3255,16 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     // (Removed local cumulative balance calculations; using backend provided solde_cumule)
 
-  // Fonction utilitaire pour vérifier le plafond en temps réel
+  // Fonction utilitaire pour vérifier la limite de crédit en temps réel
   const checkClientCreditLimitRealTime = async (values: any) => {
-    // Vérifier seulement pour les bons clients avec plafond
+    // Vérifier seulement pour les bons clients avec plafond ou garantie
     if (!['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(values.type) || !values.client_id) {
       return true;
     }
 
     const client = clients.find((c: any) => Number(c.id) === Number(values.client_id));
-    if (!client || !client.plafond || Number(client.plafond) <= 0) {
+    const creditLimit = getContactCreditLimit(client);
+    if (!client || !creditLimit) {
       return true;
     }
 
@@ -3245,44 +3278,46 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
   const backendClient = clients.find((c: any) => c.id.toString() === values.client_id.toString());
   const soldeCumule = getContactTotalCumule(backendClient);
-    const plafond = Number(client.plafond);
+    const limite = creditLimit.amount;
     const nouveauSolde = soldeCumule + montantBon;
 
-    // Si client déjà au-dessus du plafond
-    if (soldeCumule > plafond) {
+    // Si client déjà au-dessus de la limite
+    if (soldeCumule > limite) {
       if (user?.role === 'PDG') {
         // PDG : juste un rappel discret (pas de popup répétitive)
-        console.warn(`⚠️ Client ${client.nom_complet} déjà au-dessus du plafond (${soldeCumule.toFixed(2)} DH / ${plafond.toFixed(2)} DH)`);
+        console.warn(`⚠️ Client ${client.nom_complet} déjà au-dessus de la limite (${soldeCumule.toFixed(2)} DH / ${limite.toFixed(2)} DH)`);
         return true;
       } else {
         // Autres rôles : bloquant
         showError(
           `🚫 MODIFICATION BLOQUÉE 🚫\n\n` +
-          `Client ${client.nom_complet} a déjà dépassé son plafond.\n` +
+          `Client ${client.nom_complet} a déjà dépassé sa limite.\n` +
           `Solde actuel: ${soldeCumule.toFixed(2)} DH\n` +
-          `Plafond: ${plafond.toFixed(2)} DH\n\n` +
+          `${creditLimit.details}\n` +
+          `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n\n` +
           `Vous ne pouvez pas modifier ce bon.`
         );
         return false;
       }
     }
-    // Si ce bon ferait dépasser le plafond
-    else if (nouveauSolde > plafond) {
-      const depassement = nouveauSolde - plafond;
+    // Si ce bon ferait dépasser la limite
+    else if (nouveauSolde > limite) {
+      const depassement = nouveauSolde - limite;
       
       if (user?.role === 'PDG') {
         // PDG : avertissement mais peut continuer
-        console.warn(`⚠️ Ce bon ferait dépasser le plafond de ${depassement.toFixed(2)} DH pour ${client.nom_complet}`);
+        console.warn(`⚠️ Ce bon ferait dépasser la limite de ${depassement.toFixed(2)} DH pour ${client.nom_complet}`);
         return true;
       } else {
         // Autres rôles : bloquant
         showError(
           `🚫 MODIFICATION BLOQUÉE 🚫\n\n` +
-          `Cette modification ferait dépasser le plafond de crédit.\n` +
+          `Cette modification ferait dépasser la limite de crédit.\n` +
           `Client: ${client.nom_complet}\n` +
           `Solde actuel: ${soldeCumule.toFixed(2)} DH\n` +
           `Nouveau solde: ${nouveauSolde.toFixed(2)} DH\n` +
-          `Plafond: ${plafond.toFixed(2)} DH\n` +
+          `${creditLimit.details}\n` +
+          `Limite appliquée (${creditLimit.label}): ${limite.toFixed(2)} DH\n` +
           `Dépassement: ${depassement.toFixed(2)} DH`
         );
         return false;
@@ -3308,7 +3343,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   const q = Number(values.items?.[rowIndex]?.quantite || 0);
 
   // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
-  const priceForDisplay = values.type === 'Commande' ? pa : unit;
+  const chargePrice = cr || pa || 0;
+  const priceForDisplay = values.type === 'Commande' ? pa : values.type === 'Charge' ? chargePrice : unit;
   const totalPrice = q * priceForDisplay;
 
   // Créer une version temporaire des valeurs avec le nouveau produit
@@ -3319,7 +3355,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         ...item,
         product_id: product.id,
         prix_achat: pa,
-        prix_unitaire: unit,
+        prix_unitaire: values.type === 'Charge' ? chargePrice : unit,
         total: totalPrice
       } : item
     )
@@ -3336,7 +3372,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   setFieldValue(`items.${rowIndex}.designation`, product.designation || '');
   setFieldValue(`items.${rowIndex}.prix_achat`, pa);
   setFieldValue(`items.${rowIndex}.cout_revient`, cr);
-  setFieldValue(`items.${rowIndex}.prix_unitaire`, unit);
+  setFieldValue(`items.${rowIndex}.prix_unitaire`, values.type === 'Charge' ? chargePrice : unit);
   setFieldValue(`items.${rowIndex}.kg`, kg);
   setFieldValue(`items.${rowIndex}.total`, totalPrice);
 
@@ -3591,11 +3627,12 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   <SearchableSelect
                     options={selectableClients.map((c: Contact) => {
                       const soldeCumule = getContactTotalCumule(c);
-                      const plafond = Number(c.plafond || 0);
-                      const isOverLimit = plafond > 0 && soldeCumule > plafond;
-                      const depassement = isOverLimit ? soldeCumule - plafond : 0;
+                      const creditLimit = getContactCreditLimit(c);
+                      const limite = creditLimit?.amount ?? 0;
+                      const isOverLimit = Boolean(creditLimit && soldeCumule > limite);
+                      const depassement = isOverLimit ? soldeCumule - limite : 0;
                       
-                      // Pour les rôles non-PDG, désactiver les clients déjà au-dessus du plafond
+                      // Pour les rôles non-PDG, désactiver les clients déjà au-dessus de la limite
                       const isDisabled = isOverLimit && user?.role !== 'PDG';
                       
                       return {
@@ -3618,23 +3655,25 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       }
                       
                       const soldeCumule = getContactTotalCumule(client);
-                      const plafond = Number(client.plafond || 0);
-                      const isOverLimit = plafond > 0 && soldeCumule > plafond;
+                      const creditLimit = getContactCreditLimit(client);
+                      const limite = creditLimit?.amount ?? 0;
+                      const isOverLimit = Boolean(creditLimit && soldeCumule > limite);
                       
                       if (isOverLimit) {
-                        const depassement = soldeCumule - plafond;
+                        const depassement = soldeCumule - limite;
                         
                         if (user?.role === 'PDG') {
                           // PDG : Alerte mais peut continuer
                           const result = await showConfirmation(
-                            `⚠️ ATTENTION - CLIENT DÉJÀ AU-DESSUS DU PLAFOND ⚠️\n\n` +
+                            `⚠️ ATTENTION - CLIENT DÉJÀ AU-DESSUS DE LA LIMITE ⚠️\n\n` +
                             `Client: ${client.nom_complet}\n` +
                             `Solde cumulé actuel: ${soldeCumule.toFixed(2)} DH\n` +
-                            `Plafond autorisé: ${plafond.toFixed(2)} DH\n` +
+                            `${creditLimit?.details}\n` +
+                            `Limite appliquée (${creditLimit?.label}): ${limite.toFixed(2)} DH\n` +
                             `Dépassement actuel: ${depassement.toFixed(2)} DH\n\n` +
-                            `Ce client a déjà dépassé son plafond de crédit.\n` +
+                            `Ce client a déjà dépassé sa limite de crédit.\n` +
                             `Voulez-vous tout de même continuer avec ce client ?`,
-                            'Client au-dessus du plafond',
+                            'Client au-dessus de la limite',
                             'Continuer',
                             'Choisir un autre client'
                           );
@@ -3659,9 +3698,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             `🚫 CLIENT NON SÉLECTIONNABLE 🚫\n\n` +
                             `Client: ${client.nom_complet}\n` +
                             `Solde cumulé: ${soldeCumule.toFixed(2)} DH\n` +
-                            `Plafond autorisé: ${plafond.toFixed(2)} DH\n` +
+                            `${creditLimit?.details}\n` +
+                            `Limite appliquée (${creditLimit?.label}): ${limite.toFixed(2)} DH\n` +
                             `Dépassement: ${depassement.toFixed(2)} DH\n\n` +
-                            `❌ Ce client a déjà dépassé son plafond de crédit.\n` +
+                            `❌ Ce client a déjà dépassé sa limite de crédit.\n` +
                             `Veuillez choisir un autre client ou contactez votre responsable.`
                           );
                           // Ne pas sélectionner le client
@@ -4334,7 +4374,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     );
                   }
 
-                  const showProfitColumn = ['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type);
+                  const showProfitColumn = ['Sortie','Comptant','Charge','Avoir','AvoirComptant'].includes(values.type);
                   const showCommandeSpecialColumns = values.type === 'Commande';
                   const showRemiseColumn = showRemisePanel && (values.type === 'Sortie' || values.type === 'Comptant');
                   const visibleEntries = ((values.type === 'Charge' || values.type === 'AvoirCharge')
@@ -4406,7 +4446,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                             <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[90px]">
                               Total
                             </th>
-                            {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
+                            {showProfitColumn && (
                               <th className="px-2 py-2 text-left text-xs font-medium text-green-600 uppercase tracking-wider w-[80px]">
                                 Profit
                               </th>
@@ -4740,8 +4780,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           `items.${index}.prix_vente_pourcentage`,
                                           catalogVariant?.prix_vente_pourcentage ?? product.prix_vente_pourcentage ?? 0
                                         );
-                                        setFieldValue(`items.${index}.prix_unitaire`, effectivePV);
-                                        const priceForDisplay = values.type === 'Commande' ? effectivePA : effectivePV;
+                                        const effectiveChargePrice = effectiveCR || effectivePA || 0;
+                                        const effectiveUnitPrice = values.type === 'Charge' ? effectiveChargePrice : effectivePV;
+                                        setFieldValue(`items.${index}.prix_unitaire`, effectiveUnitPrice);
+                                        const priceForDisplay = values.type === 'Commande' ? effectivePA : effectiveUnitPrice;
                                         setUnitPriceRaw((prev) => ({ ...prev, [index]: String(priceForDisplay) }));
                                         setFieldValue(`items.${index}.kg`, product.kg ?? 0);
                                         const q =
@@ -4866,7 +4908,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               // Update price based on variant
                                               const variantBasePrice = values.type === 'Commande'
                                                 ? Number(variant.prix_achat || snapshotProd?.prix_achat || product?.prix_achat || 0)
-                                                : getCatalogPrixVente(product, vId);
+                                                : values.type === 'Charge'
+                                                  ? baseCoutRevient
+                                                  : getCatalogPrixVente(product, vId);
 
                                               // If a unit is already selected, apply its conversion factor to the variant price
                                               let effectivePrice = variantBasePrice;
@@ -4905,7 +4949,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const basePriceVente = getCatalogPrixVente(product);
                                           const baseCoutRevient = Number(snapshotProd2?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
 
-                                          let effectivePrice = values.type === 'Commande' ? basePriceAchat : basePriceVente;
+                                          let effectivePrice = values.type === 'Commande'
+                                            ? basePriceAchat
+                                            : values.type === 'Charge'
+                                              ? baseCoutRevient
+                                              : basePriceVente;
                                           if (unitIdSel) {
                                             const unitSel = unitsForProduct.find((u: any) => String(u.id) === String(unitIdSel));
                                             const factorSel = Number(unitSel?.conversion_factor || 1) || 1;
@@ -4919,11 +4967,15 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                             if (values.type === 'Commande') {
                                               effectivePrice = scaleDecimal(basePriceAchat, factorSel);
+                                            } else if (values.type === 'Charge') {
+                                              effectivePrice = scaleDecimal(baseCoutRevient, factorSel);
                                             } else {
                                               const unitPv = unitSel?.prix_vente;
                                               const pvNum = unitPv === null || unitPv === undefined ? null : Number(unitPv);
                                               if (pvNum !== null && Number.isFinite(pvNum)) {
                                                 effectivePrice = pvNum;
+                                              } else if (values.type === 'Charge') {
+                                                newPrice = scaleDecimal(baseCR, factor);
                                               } else {
                                                 effectivePrice = scaleDecimal(basePriceVente, factorSel);
                                               }
@@ -5080,7 +5132,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               newPrice = baseA;
                                               setFieldValue(`items.${index}.prix_achat`, newPrice);
                                             } else {
-                                              newPrice = baseV;
+                                              newPrice = values.type === 'Charge' ? baseCR : baseV;
                                               setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                             }
                                             setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
@@ -5436,8 +5488,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     pattern="[0-9]*[.,]?[0-9]*"
     name={values.type === 'Commande' ? `items.${index}.prix_achat` : `items.${index}.prix_unitaire`}
     className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
-    disabled={isQtyOnlyEdit}
-    value={unitPriceRaw[index] ?? ''}
+    disabled={isQtyOnlyEdit || (values.type === 'Charge' && !!values.items[index]?.product_id)}
+    value={values.type === 'Charge' && values.items[index]?.product_id
+      ? String(resolveItemCostContext(values.items[index], products as any[], snapshotProducts as any[]).cout_revient || 0)
+      : (unitPriceRaw[index] ?? '')}
     onChange={(e) => {
       if (isQtyOnlyEdit) return;
       const raw = e.target.value;
@@ -5587,7 +5641,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     {(() => {
       const q =
         parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
-      const u = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+      const u = values.type === 'Charge' && values.items[index]?.product_id
+        ? resolveItemCostContext(values.items[index], products as any[], snapshotProducts as any[]).cout_revient
+        : (parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0);
   return formatFull(q * u);
     })()}{' '}
     DH
@@ -5595,11 +5651,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 </td>
 
                                 {/* Profit par ligne */}
-                                {['Sortie','Comptant','Avoir','AvoirComptant'].includes(values.type) && (
+                                {showProfitColumn && (
 <td className="px-1 py-2 w-[80px]">
   {(() => {
     const q = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(values.items[index].quantite ?? ''))) || 0;
-    const pv = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
+    const enteredPrice = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
     const remise = Number(values.items[index].remise_montant || 0);
 
     // Compute CR with unit conversion factor applied (safety net for edit mode initial load)
@@ -5624,6 +5680,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     }
     const cr = baseCR > 0 ? scaleDecimal(baseCR, profitConvFactor) : (Number(itemRow.cout_revient) || Number(itemRow.prix_achat) || 0);
 
+    const pv = values.type === 'Charge' && itemRow?.product_id ? cr : enteredPrice;
     const profit = (pv - cr) * q - remise * q;
     const cls = profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-400';
     return (
@@ -5981,11 +6038,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       // Fallback local calc if preview not available (with unit conversion)
       const local = (values.items || []).reduce((sum: number, item: any, idx: number) => {
         const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-        const prixVente = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
+        const enteredPrice = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
         const itemCR =
           parseFloat(normalizeDecimal(String(item.cout_revient ?? item.cout_rev ?? item.cout ?? ''))) || 0;
         const itemPA =
           parseFloat(normalizeDecimal(String(item.prix_achat ?? item.pa ?? item.prixA ?? ''))) || 0;
+        const prixVente = values.type === 'Charge' && item?.product_id
+          ? (itemCR || itemPA)
+          : enteredPrice;
         const remise =
           parseFloat(normalizeDecimal(remiseRaw[idx] ?? String(item.remise_montant ?? item.remise_valeur ?? ''))) || 0;
 

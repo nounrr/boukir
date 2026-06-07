@@ -31,6 +31,11 @@ const clientSchema = Yup.object({
       return isNaN(numValue) ? null : numValue;
     })
     .min(0, 'Le plafond ne peut pas être négatif'),
+  montant_garantie: Yup.number()
+    .nullable()
+    .transform((value, originalValue) => (originalValue === '' ? null : value))
+    .min(0, 'Le montant de garantie ne peut pas être négatif'),
+  numero_garantie: Yup.string().nullable(),
 });
 
 const fournisseurSchema = Yup.object({
@@ -44,6 +49,11 @@ const fournisseurSchema = Yup.object({
     .nullable()
     .transform((value, originalValue) => (originalValue === '' ? null : value)), // négatif autorisé
   plafond: Yup.mixed().notRequired().nullable(),
+  montant_garantie: Yup.number()
+    .nullable()
+    .transform((value, originalValue) => (originalValue === '' ? null : value))
+    .min(0, 'Le montant de garantie ne peut pas être négatif'),
+  numero_garantie: Yup.string().nullable(),
 });
 
 interface ContactFormModalProps {
@@ -89,6 +99,8 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
     rib: initialValues?.rib ?? '',
     solde: initialValues?.solde ?? 0,
     plafond: initialValues?.plafond ?? (contactType === 'Client' ? 0 : null),
+    montant_garantie: initialValues?.montant_garantie ?? null,
+    numero_garantie: initialValues?.numero_garantie ?? '',
     isSolde: Boolean((initialValues as any)?.isSolde ?? (initialValues as any)?.is_solde ?? false),
     is_charge: Boolean((initialValues as any)?.is_charge ?? defaultIsCharge),
     ...initialValues,
@@ -133,6 +145,10 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                 rib: values.rib || '',
                 type: contactType,
                 solde: typeof values.solde === 'number' ? values.solde : (values.solde ? Number(values.solde) : 0),
+                montant_garantie: values.montant_garantie === '' || values.montant_garantie == null
+                  ? null
+                  : Number(values.montant_garantie),
+                numero_garantie: values.numero_garantie?.trim() || null,
                 is_solde: Boolean((values as any).isSolde),
                 is_charge: Boolean((values as any).is_charge),
                 group_id: (values as any).group_id === '' || (values as any).group_id == null ? null : Number((values as any).group_id),
@@ -437,6 +453,42 @@ const ContactFormModal: React.FC<ContactFormModalProps> = ({
                   />
                   {errors.rib && touched.rib && (
                     <p className="text-red-500 text-xs mt-1">{errors.rib}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="montant_garantie" className="block text-sm font-medium text-gray-700 mb-1">
+                    Montant de garantie
+                  </label>
+                  <Field
+                    id="montant_garantie"
+                    name="montant_garantie"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                  {errors.montant_garantie && touched.montant_garantie && (
+                    <p className="text-red-500 text-xs mt-1">{errors.montant_garantie}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="numero_garantie" className="block text-sm font-medium text-gray-700 mb-1">
+                    Numéro / référence de garantie
+                  </label>
+                  <Field
+                    id="numero_garantie"
+                    name="numero_garantie"
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Chèque, virement, etc."
+                  />
+                  {errors.numero_garantie && touched.numero_garantie && (
+                    <p className="text-red-500 text-xs mt-1">{errors.numero_garantie}</p>
                   )}
                 </div>
               </div>

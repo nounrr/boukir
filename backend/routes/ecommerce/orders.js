@@ -1352,9 +1352,9 @@ router.post('/', async (req, res, next) => {
         });
       }
 
-      // Lock the contact row to prevent concurrent checkouts from bypassing plafond.
+      // Lock the contact row to prevent concurrent checkouts from bypassing the credit limit.
       const [soldeRows] = await connection.query(
-        'SELECT is_solde, plafond FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
+        'SELECT is_solde, plafond, montant_garantie FROM contacts WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE',
         [userId]
       );
       const isSoldeEnabled = Number(soldeRows?.[0]?.is_solde || 0) === 1;
@@ -1367,16 +1367,20 @@ router.post('/', async (req, res, next) => {
       }
 
       const plafond = soldeRows?.[0]?.plafond == null ? null : Number(soldeRows?.[0]?.plafond);
-      if (plafond != null && Number.isFinite(plafond) && plafond > 0) {
+      const garantie = soldeRows?.[0]?.montant_garantie == null ? null : Number(soldeRows?.[0]?.montant_garantie);
+      const limits = [plafond, garantie].filter((value) => Number.isFinite(value) && value > 0);
+      if (limits.length > 0) {
         const soldeCumule = await getContactSoldeCumule(connection, userId);
         const projected = Math.round((soldeCumule + soldeAmount) * 100) / 100;
-        const limit = Math.round(plafond * 100) / 100;
+        const limit = Math.round(Math.min(...limits) * 100) / 100;
         if (projected - limit > 0.000001) {
           await connection.rollback();
           return res.status(403).json({
-            message: 'Plafond solde dépassé',
+            message: 'Limite de solde dépassée',
             error_type: 'SOLDE_PLAFOND_EXCEEDED',
-            plafond: limit,
+            plafond,
+            montant_garantie: garantie,
+            limite_solde: limit,
             solde_cumule: soldeCumule,
             solde_amount: soldeAmount,
             solde_projected: projected,

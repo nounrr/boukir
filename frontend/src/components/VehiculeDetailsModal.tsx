@@ -27,6 +27,27 @@ const formatDateTime = (date?: string) => {
   return d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 };
 
+const firstText = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return '';
+};
+
+const getBonLocation = (bon: any) => {
+  const firstLivraison = Array.isArray(bon?.livraisons) ? bon.livraisons[0] : null;
+  return firstText(
+    bon?.lieu_chargement,
+    bon?.lieu_charge,
+    bon?.lieuChargement,
+    bon?.adresse_livraison,
+    bon?.adresseLivraison,
+    firstLivraison?.lieu_chargement,
+    firstLivraison?.adresse_livraison
+  );
+};
+
 const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onClose, vehicule }) => {
   const { data: allVehiculeBons = [], isLoading } = useGetBonsByTypeQuery('Vehicule');
   const [search, setSearch] = useState('');
@@ -478,7 +499,7 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center text-sm text-gray-700">
                             <MapPin className="w-4 h-4 mr-1 text-gray-400" />
-                            {bon.lieu_chargement || 'Non spécifié'}
+                            {getBonLocation(bon) || 'Non spécifié'}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -603,7 +624,7 @@ const VehiculeDetailsModal: React.FC<VehiculeDetailsModalProps> = ({ isOpen, onC
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center text-sm text-gray-700">
                               <MapPin className="w-4 h-4 mr-1 text-gray-400" />
-                              {bon.lieu_chargement || 'Non spécifié'}
+                              {getBonLocation(bon) || 'Non spécifié'}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">

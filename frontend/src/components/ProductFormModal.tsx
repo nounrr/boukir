@@ -738,7 +738,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('has_variants', String(productData.variants && productData.variants.length > 0));
           formData.append('base_unit', productData.base_unit || 'u');
 
-          if (productData.variants && productData.variants.length > 0) {
+          if (Array.isArray(productData.variants)) {
             formData.append('variants', JSON.stringify(productData.variants));
           }
           if (productData.units && productData.units.length > 0) {
@@ -827,7 +827,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('base_unit', productData.base_unit || 'u');
           formData.append('categorie_base', String((productData as any).categorie_base || 'Maison'));
           
-          if (productData.variants && productData.variants.length > 0) {
+          if (Array.isArray(productData.variants)) {
             formData.append('variants', JSON.stringify(productData.variants));
           }
           if (productData.units && productData.units.length > 0) {
