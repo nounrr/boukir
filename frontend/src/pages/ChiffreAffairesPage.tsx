@@ -92,6 +92,7 @@ const ChiffreAffairesPage: React.FC = () => {
         totalChargesBrut: 0,
         totalAvoirsCharge: 0,
         totalSalaires: 0,
+        totalBonsVehicule: 0,
         totalBons: 0,
         dailyData: [] as ChiffreAffairesData[],
         totalRemisesNet: 0,
@@ -266,7 +267,7 @@ const ChiffreAffairesPage: React.FC = () => {
                   <p className="text-xl font-bold text-emerald-900">
                     {formatAmount(chiffreAffairesData.totalChiffreAffairesAchat)} DH
                   </p>
-                  <p className="text-xs text-emerald-700 mt-1">Apres deduction des charges nettes et bons vehicule</p>
+                  <p className="text-xs text-emerald-700 mt-1">Apres deduction des charges nettes</p>
                   <div className="mt-3 pt-3 border-t border-emerald-200">
                     <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Taux profit</p>
                     <p className="text-xl font-bold text-gray-900 mt-0.5">{formatProfitPercentage(totalProfitPct)}</p>
@@ -299,10 +300,13 @@ const ChiffreAffairesPage: React.FC = () => {
                     {formatAmount(chiffreAffairesData.totalCharges || 0)} DH
                   </p>
                   <p className="text-xs text-rose-600 mt-1">
-                    Bons: {formatAmount(chiffreAffairesData.totalChargesBrut || 0)} DH - Avoirs: {formatAmount(chiffreAffairesData.totalAvoirsCharge || 0)} DH
+                    Charges brutes: {formatAmount(chiffreAffairesData.totalChargesBrut || 0)} DH - Avoirs: {formatAmount(chiffreAffairesData.totalAvoirsCharge || 0)} DH
                   </p>
                   <p className="text-xs text-rose-600 mt-0.5">
                     Dont salaires: {formatAmount(chiffreAffairesData.totalSalaires || 0)} DH
+                  </p>
+                  <p className="text-xs text-rose-600 mt-0.5">
+                    Dont bons vehicule: {formatAmount(chiffreAffairesData.totalBonsVehicule || 0)} DH
                   </p>
                 </div>
               </div>
@@ -352,6 +356,9 @@ const ChiffreAffairesPage: React.FC = () => {
                   Salaires (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Bons vehicule (DH)
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Avoirs charge (DH)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -370,7 +377,7 @@ const ChiffreAffairesPage: React.FC = () => {
                 const charges = day.totalCharges || 0;
                 const avoirsCharge = day.totalAvoirsCharge || 0;
                 const profitSansCharges =
-                  day.profitSansCharges ?? day.chiffreAffairesAchat + charges + ((day as any).totalBonsVehicule || 0);
+                  day.profitSansCharges ?? day.chiffreAffairesAchat + charges;
                 const profitNetApresCharges = day.profitNetApresCharges ?? profitSansCharges - charges;
                 return (
                 <tr key={day.date} className="hover:bg-gray-50">
@@ -406,6 +413,11 @@ const ChiffreAffairesPage: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-rose-700">
+                      {formatAmount((day as any).totalBonsVehicule || 0)} DH
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-emerald-700">
                       {formatAmount(avoirsCharge)} DH
                     </div>
@@ -430,7 +442,7 @@ const ChiffreAffairesPage: React.FC = () => {
               })}
               {chiffreAffairesData.dailyData.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={10} className="px-6 py-4 text-center text-gray-500">
                     Aucune donnée disponible pour cette période
                   </td>
                 </tr>
