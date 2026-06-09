@@ -1147,7 +1147,6 @@ const ClientDetailPage: React.FC = () => {
   const [detail, setDetail] = useState(true);
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
-  const [filterStartLine, setFilterStartLine] = useState(1);
   const [productSearch, setProductSearch] = useState('');
   const { data: contact, isLoading: loadingContact } = useGetContactQuery(clientId);
   const { data: history, isLoading: loadingHistory, refetch: refetchHistory } = useGetContactHistoryQuery({ id: clientId, limit: 30000 });
@@ -1341,8 +1340,6 @@ const ClientDetailPage: React.FC = () => {
     row.kind === 'paiement'
       ? (row.data.date_paiement || row.data.created_at)
       : row.data.date_creation;
-
-  const filterStartIndex = Math.max(0, filterStartLine - 1);
   const hasDateFilter = !!filterFrom || !!filterTo;
 
   // ── sort for paiements ──
@@ -1353,23 +1350,20 @@ const ClientDetailPage: React.FC = () => {
   const sorties = useMemo(() =>
     (history?.sorties ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
-      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime())
-      .slice(hasDateFilter ? filterStartIndex : 0),
-    [history, filterFrom, filterTo, hasDateFilter, filterStartIndex]);
+      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
+    [history, filterFrom, filterTo]);
 
   const bons = useMemo(() =>
     (history?.comptants ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
-      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime())
-      .slice(hasDateFilter ? filterStartIndex : 0),
-    [history, filterFrom, filterTo, hasDateFilter, filterStartIndex]);
+      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
+    [history, filterFrom, filterTo]);
 
   const avoirs = useMemo(() =>
     (history?.avoirsClient ?? [])
       .filter((b: any) => !isExcludedStatus(b.statut) && inDateRange(b.date_creation))
-      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime())
-      .slice(hasDateFilter ? filterStartIndex : 0),
-    [history, filterFrom, filterTo, hasDateFilter, filterStartIndex]);
+      .sort((a: any, b: any) => new Date(b.date_creation).getTime() - new Date(a.date_creation).getTime()),
+    [history, filterFrom, filterTo]);
 
   const paiements = useMemo(() => {
     const raw = (history?.payments ?? []).filter((p: any) => !isExcludedStatus(p.statut) && inDateRange(p.date_paiement || p.created_at));
@@ -1386,8 +1380,8 @@ const ClientDetailPage: React.FC = () => {
         vb = (b.code_reglement || b.reference_virement || '').toLowerCase();
       }
       return paySort.dir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
-    }).slice(hasDateFilter ? filterStartIndex : 0);
-  }, [history, paySort, filterFrom, filterTo, hasDateFilter, filterStartIndex]);
+    });
+  }, [history, paySort, filterFrom, filterTo]);
 
   // completRows = TOUTES les rows (jamais filtrées) — le solde cumulé reste exact
   const normalizedProductSearch = useMemo(() => productSearch.trim().toLowerCase(), [productSearch]);
@@ -1423,13 +1417,12 @@ const ClientDetailPage: React.FC = () => {
     if (!filterFrom && !filterTo) return undefined;
     const s = new Set<string>();
     const visibleRows = completRows
-      .filter(row => inDateRange(getRowDate(row)))
-      .slice(filterStartIndex);
+      .filter(row => inDateRange(getRowDate(row)));
     for (const row of visibleRows) {
       s.add(`${row.kind}-${row.data.id}`);
     }
     return s;
-  }, [completRows, filterFrom, filterTo, filterStartIndex]);
+  }, [completRows, filterFrom, filterTo]);
 
   // ── Remise editor (Appliquer Remise — patch directement sortie_items.remise_montant) ──
   const remiseVisibleItems = useMemo<RemiseEligibleItem[]>(() => {
@@ -1545,8 +1538,7 @@ const ClientDetailPage: React.FC = () => {
     const allRows = buildCompletRows(history);
     const soldeCumuleMap = buildSoldeCumuleDetail(allRows, contact.solde ?? 0);
     const dateFilteredRows = allRows
-      .filter(row => !hasDateFilter || inDateRange(getRowDate(row)))
-      .slice(hasDateFilter ? filterStartIndex : 0);
+      .filter(row => !hasDateFilter || inDateRange(getRowDate(row)));
     // rows affichés = filtrés par date ET par sélection (si sélection active)
     const rows = dateFilteredRows.filter(row => {
       const rowKey = `${row.kind}-${row.data.id}`;
@@ -1648,7 +1640,7 @@ const ClientDetailPage: React.FC = () => {
       else if (type === 'paiement' || type === 'avoir') scopedSolde += amount;
       return { ...row, soldeCumulatif: scopedSolde };
     });
-  }, [history, contact, hasDateFilter, filterStartIndex, selectedIds, selectedItemIds, hasSelectionScopedPrint]);
+  }, [history, contact, filterFrom, filterTo, hasDateFilter, selectedIds, selectedItemIds, hasSelectionScopedPrint]);
 
   const printTotals = useMemo(() => {
     if (!history || !contact) return { totalQty: 0, totalAmount: 0, finalSolde: 0, totalDebit: 0, totalCredit: 0 };
@@ -1806,18 +1798,9 @@ const ClientDetailPage: React.FC = () => {
               onChange={e => setFilterTo(e.target.value)}
               className="border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-[120px]"
             />
-            <span className="text-gray-400 text-xs ml-1">Ligne</span>
-            <input
-              type="number"
-              min={1}
-              value={filterStartLine}
-              onChange={e => setFilterStartLine(Math.max(1, Number(e.target.value) || 1))}
-              className="border border-gray-300 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 w-[58px]"
-              title="Commencer l'affichage a partir de cette ligne dans le resultat filtre"
-            />
             {(filterFrom || filterTo) && (
               <button
-                  onClick={() => { setFilterFrom(''); setFilterTo(''); setFilterStartLine(1); }}
+                  onClick={() => { setFilterFrom(''); setFilterTo(''); }}
                 className="text-xs text-gray-400 hover:text-red-500 transition-colors px-0.5"
               >✕</button>
             )}
@@ -2691,6 +2674,7 @@ const ClientsListPage: React.FC = () => {
 
 export { ClientDetailPage };
 export default ClientsListPage;
+
 
 
 
