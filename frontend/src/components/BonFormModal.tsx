@@ -2244,37 +2244,27 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     }
     // Suppression du blocage lié au stock: permettre la soumission même si la quantité dépasse le stock
 
-    // Validation prix de vente vs cout de revient pour bons/avoirs de vente
+    // Validation cout de revient pour bons/avoirs de vente.
+    // Le prix de vente peut etre inferieur au cout de revient; seul le cout doit etre positif.
     const saleTypes = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirEcommerce'];
     if (saleTypes.includes(values.type)) {
-      const invalidPriceRows: Array<{ idx: number; reason: 'zero' | 'below_cost'; pv: number; cr: number }> = [];
+      const invalidCostRows: Array<{ idx: number; cr: number }> = [];
       (values.items || []).forEach((item: any, idx: number) => {
         if (item?.line_mode === 'detail') return;
         if (!item?.product_id && !item?.designation_custom && !item?.designation) return;
-        const pv = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
-          ? parseFloat(normalizeDecimal(unitPriceRaw[idx])) || 0
-          : (typeof item.prix_unitaire === 'string'
-            ? parseFloat(String(item.prix_unitaire).replace(',', '.')) || 0
-            : Number(item.prix_unitaire) || 0);
         const cr = typeof item.cout_revient === 'string'
           ? parseFloat(String(item.cout_revient).replace(',', '.')) || 0
           : Number(item.cout_revient) || 0;
-        if (!Number.isFinite(pv) || pv <= 0) {
-          invalidPriceRows.push({ idx, reason: 'zero', pv, cr });
-        } else if (pv < cr) {
-          invalidPriceRows.push({ idx, reason: 'below_cost', pv, cr });
+        if (!Number.isFinite(cr) || cr <= 0) {
+          invalidCostRows.push({ idx, cr });
         }
       });
-      if (invalidPriceRows.length > 0) {
-        const zeroRows = invalidPriceRows.filter((r) => r.reason === 'zero').map((r) => r.idx + 1);
-        const belowRows = invalidPriceRows.filter((r) => r.reason === 'below_cost').map((r) => r.idx + 1);
-        const parts: string[] = [];
-        if (zeroRows.length) parts.push(`prix de vente doit être > 0 (lignes ${zeroRows.join(', ')})`);
-        if (belowRows.length) parts.push(`prix de vente doit être ≥ coût de revient (lignes ${belowRows.join(', ')})`);
-        const msg = parts.join(' ; ') + '.';
+      if (invalidCostRows.length > 0) {
+        const rows = invalidCostRows.map((r) => r.idx + 1).join(', ');
+        const msg = `cout de revient doit etre > 0 (lignes ${rows}).`;
         setFieldError?.('items', msg);
         showError(msg);
-        try { setTimeout(() => focusCell(invalidPriceRows[0].idx, 'unit'), 0); } catch {}
+        try { setTimeout(() => focusCell(invalidCostRows[0].idx, 'unit'), 0); } catch {}
         setSubmitting(false);
         return;
       }
