@@ -2244,27 +2244,30 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     }
     // Suppression du blocage lié au stock: permettre la soumission même si la quantité dépasse le stock
 
-    // Validation cout de revient pour bons/avoirs de vente.
-    // Le prix de vente peut etre inferieur au cout de revient; seul le cout doit etre positif.
+    // Validation prix de vente pour bons/avoirs de vente.
+    // Le cout de revient peut etre nul; seul le prix de vente doit etre strictement positif.
     const saleTypes = ['Sortie', 'Comptant', 'Avoir', 'AvoirComptant', 'AvoirEcommerce'];
     if (saleTypes.includes(values.type)) {
-      const invalidCostRows: Array<{ idx: number; cr: number }> = [];
+      const invalidSalePriceRows: number[] = [];
       (values.items || []).forEach((item: any, idx: number) => {
         if (item?.line_mode === 'detail') return;
         if (!item?.product_id && !item?.designation_custom && !item?.designation) return;
-        const cr = typeof item.cout_revient === 'string'
-          ? parseFloat(String(item.cout_revient).replace(',', '.')) || 0
-          : Number(item.cout_revient) || 0;
-        if (!Number.isFinite(cr) || cr <= 0) {
-          invalidCostRows.push({ idx, cr });
+        const rawPrice = unitPriceRaw[idx] !== undefined && unitPriceRaw[idx] !== ''
+          ? unitPriceRaw[idx]
+          : item.prix_unitaire;
+        const prixVente = typeof rawPrice === 'string'
+          ? parseFloat(normalizeDecimal(rawPrice)) || 0
+          : Number(rawPrice) || 0;
+        if (!Number.isFinite(prixVente) || prixVente <= 0) {
+          invalidSalePriceRows.push(idx);
         }
       });
-      if (invalidCostRows.length > 0) {
-        const rows = invalidCostRows.map((r) => r.idx + 1).join(', ');
-        const msg = `cout de revient doit etre > 0 (lignes ${rows}).`;
+      if (invalidSalePriceRows.length > 0) {
+        const rows = invalidSalePriceRows.map((idx) => idx + 1).join(', ');
+        const msg = `prix de vente doit etre > 0 (lignes ${rows}).`;
         setFieldError?.('items', msg);
         showError(msg);
-        try { setTimeout(() => focusCell(invalidCostRows[0].idx, 'unit'), 0); } catch {}
+        try { setTimeout(() => focusCell(invalidSalePriceRows[0], 'unit'), 0); } catch {}
         setSubmitting(false);
         return;
       }
