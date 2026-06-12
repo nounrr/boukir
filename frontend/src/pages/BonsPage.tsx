@@ -20,7 +20,8 @@ import { api } from '../store/api/apiSlice';
     useUpdateEcommerceOrderStatusMutation,
     useUpdateEcommerceOrderRemisesMutation,
     useCreateBonMutation,
-    useUpdateChargeInclusEnCaisseMutation
+    useUpdateChargeInclusEnCaisseMutation,
+    useUpdateCommandeInclusEnCaisseMutation
   } from '../store/api/bonsApi';
   import { 
     useGetAllClientsQuery, 
@@ -306,6 +307,7 @@ const BonsPage = () => {
   const [updateEcommerceOrderRemises, { isLoading: isSavingEcommerceRemises }] = useUpdateEcommerceOrderRemisesMutation();
   const [createBon] = useCreateBonMutation();
   const [updateChargeInclusEnCaisse] = useUpdateChargeInclusEnCaisseMutation();
+  const [updateCommandeInclusEnCaisse] = useUpdateCommandeInclusEnCaisseMutation();
   const [createComptantPayment, { isLoading: isCreatingComptantPayment }] = useCreateComptantPaymentMutation();
   const [deleteComptantPayment] = useDeleteComptantPaymentMutation();
   // Bon links API: record duplications
@@ -2538,6 +2540,11 @@ const BonsPage = () => {
                       </th>
                     </>
                   )}
+                  {effectiveCurrentTab === 'Commande' && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
+                      Inclus en caisse
+                    </th>
+                  )}
                   {effectiveCurrentTab !== 'Charge' && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider relative">
                       Mouvement
@@ -2747,6 +2754,29 @@ const BonsPage = () => {
                                 onChange={async (e) => {
                                   try {
                                     await updateChargeInclusEnCaisse({ id: Number(bon.id), inclus_en_caisse: e.target.checked ? 1 : 0 }).unwrap();
+                                  } catch (err: any) {
+                                    showError(err?.data?.message || 'Erreur lors de la mise à jour');
+                                  }
+                                }}
+                                title="Inclus en caisse"
+                              />
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {effectiveCurrentTab === 'Commande' && (
+                        <td className="px-4 py-2 text-sm">
+                          {(() => {
+                            const bAny = bon as any;
+                            const checked = Number(bAny?.inclus_en_caisse) === 1;
+                            return (
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 cursor-pointer"
+                                checked={checked}
+                                onChange={async (e) => {
+                                  try {
+                                    await updateCommandeInclusEnCaisse({ id: Number(bon.id), inclus_en_caisse: e.target.checked ? 1 : 0 }).unwrap();
                                   } catch (err: any) {
                                     showError(err?.data?.message || 'Erreur lors de la mise à jour');
                                   }

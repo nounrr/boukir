@@ -6,6 +6,23 @@ import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../u
 
 const router = express.Router();
 
+// S'assure que la colonne inclus_en_caisse existe sur bons_commande
+async function ensureInclusEnCaisseColumn() {
+  try {
+    const [cols] = await pool.query(
+      "SHOW COLUMNS FROM bons_commande LIKE 'inclus_en_caisse'"
+    );
+    if (!Array.isArray(cols) || cols.length === 0) {
+      await pool.query(
+        "ALTER TABLE bons_commande ADD COLUMN inclus_en_caisse TINYINT(1) NOT NULL DEFAULT 0 AFTER statut"
+      );
+    }
+  } catch (e) {
+    console.error('ensureInclusEnCaisseColumn:', e?.sqlMessage || e?.message || e);
+  }
+}
+ensureInclusEnCaisseColumn();
+
 const clampPercentage = (value) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -185,6 +202,7 @@ router.post('/', verifyToken, async (req, res) => {
     } = req.body || {}; // 👈 évite le crash si req.body est undefined
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+    const inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
 
     // Validation des champs requis (détaillée)
     const missing = [];
@@ -205,9 +223,9 @@ router.post('/', verifyToken, async (req, res) => {
     const [commandeResult] = await connection.execute(`
       INSERT INTO bons_commande (
         date_creation, fournisseur_id, phone, vehicule_id,
-        lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by, isNotCalculated]);
+        lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated, inclus_en_caisse
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by, isNotCalculated, inclusEnCaisse]);
 
     const commandeId = commandeResult.insertId;
 
@@ -627,6 +645,24 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
         [id, id]
       );
 
+      // ── Lier chaque commande_item à SON snapshot (product_snapshot_id) ──
+      // Le snapshot porte déjà bon_commande_id; on relie en retour via product_id + variant_id.
+      try {
+        await connection.execute(
+          `UPDATE commande_items ci
+             JOIN product_snapshot ps
+               ON ps.bon_commande_id = ci.bon_commande_id
+              AND ps.product_id = ci.product_id
+              AND ((NULLIF(ci.variant_id, 0) IS NULL AND ps.variant_id IS NULL)
+                   OR ps.variant_id = NULLIF(ci.variant_id, 0))
+             SET ci.product_snapshot_id = ps.id
+           WHERE ci.bon_commande_id = ?`,
+          [id]
+        );
+      } catch {
+        // Colonne product_snapshot_id absente (migration non appliquée) : ignorer.
+      }
+
       // ── Resolve is_indisponible items across all tables ──
       // Fetch the newly created snapshots for this bon commande
       const [newSnapshots] = await connection.execute(
@@ -741,10 +777,11 @@ router.put('/:id', verifyToken, async (req, res) => {
     } = req.body || {};
     let phone = req.body?.phone ?? null;
     let isNotCalculated = req.body?.isNotCalculated === true ? true : null;
+    let inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
 
     // Verrouiller la commande et récupérer l'ancien statut (pour stock) + champs nécessaires
     const [oldBonRows] = await connection.execute(
-      'SELECT date_creation, fournisseur_id, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated FROM bons_commande WHERE id = ? FOR UPDATE',
+      'SELECT date_creation, fournisseur_id, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated, inclus_en_caisse FROM bons_commande WHERE id = ? FOR UPDATE',
       [id]
     );
     if (!Array.isArray(oldBonRows) || oldBonRows.length === 0) {
@@ -817,6 +854,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       // lock booleans/phone
       phone = oldBon.phone;
       isNotCalculated = oldBon.isNotCalculated;
+      inclusEnCaisse = oldBon.inclus_en_caisse ? 1 : 0;
       // ignore livraisons changes
       livraisons = undefined;
     }
@@ -842,9 +880,9 @@ router.put('/:id', verifyToken, async (req, res) => {
     await connection.execute(`
       UPDATE bons_commande
      SET date_creation = ?, fournisseur_id = ?, phone = ?, vehicule_id = ?,
-       lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?, updated_at = NOW()
+       lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, statut = ?, isNotCalculated = ?, inclus_en_caisse = ?, updated_at = NOW()
        WHERE id = ?
-  `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, isNotCalculated, id]);
+  `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, isNotCalculated, inclusEnCaisse, id]);
 
     // On remplace tous les items
     await connection.execute('DELETE FROM commande_items WHERE bon_commande_id = ?', [id]);
@@ -1023,6 +1061,23 @@ router.put('/:id', verifyToken, async (req, res) => {
           WHERE ps.bon_commande_id = ?`,
         [id, snapshotEnValidationValue, id]
       );
+
+      // Relier chaque commande_item à son snapshot (product_snapshot_id)
+      try {
+        await connection.execute(
+          `UPDATE commande_items ci
+             JOIN product_snapshot ps
+               ON ps.bon_commande_id = ci.bon_commande_id
+              AND ps.product_id = ci.product_id
+              AND ((NULLIF(ci.variant_id, 0) IS NULL AND ps.variant_id IS NULL)
+                   OR ps.variant_id = NULLIF(ci.variant_id, 0))
+             SET ci.product_snapshot_id = ps.id
+           WHERE ci.bon_commande_id = ?`,
+          [id]
+        );
+      } catch {
+        // Colonne product_snapshot_id absente : ignorer.
+      }
     }
 
     await connection.commit();
@@ -1038,6 +1093,31 @@ router.put('/:id', verifyToken, async (req, res) => {
   }
 });
 
+
+// PATCH /commandes/:id/inclus-en-caisse - Basculer l'inclusion en caisse
+router.patch('/:id/inclus-en-caisse', verifyToken, async (req, res) => {
+  try {
+    if (!canManageBon('Commande', req.user?.role)) {
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: 'ID invalide' });
+    }
+    const value = req.body?.inclus_en_caisse ? 1 : 0;
+    const [result] = await pool.execute(
+      'UPDATE bons_commande SET inclus_en_caisse = ?, updated_at = NOW() WHERE id = ?',
+      [value, id]
+    );
+    if (!result || result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Commande non trouvée' });
+    }
+    res.json({ success: true, id, inclus_en_caisse: value });
+  } catch (error) {
+    console.error('PATCH /commandes/:id/inclus-en-caisse error:', error);
+    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message });
+  }
+});
 
 // DELETE /commandes/:id - Supprimer un bon de commande
 router.delete('/:id', verifyToken, async (req, res) => {

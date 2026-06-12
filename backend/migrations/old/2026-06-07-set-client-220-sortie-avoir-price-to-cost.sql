@@ -1,5 +1,5 @@
 -- Product lines in Bons Sortie and Avoirs Client for client 220 must have zero sale profit.
--- Cost priority: snapshot, variant, product, then zero.
+-- Purchase price priority: snapshot, variant, product, then zero.
 
 UPDATE sortie_items si
 JOIN bons_sortie bs ON bs.id = si.bon_sortie_id
@@ -10,9 +10,9 @@ JOIN (
       source.id,
       ROUND(
         COALESCE(
-          NULLIF(ps.cout_revient, 0), NULLIF(ps.prix_achat, 0),
-          NULLIF(pv.cout_revient, 0), NULLIF(pv.prix_achat, 0),
-          NULLIF(p.cout_revient, 0), NULLIF(p.prix_achat, 0),
+          NULLIF(ps.prix_achat, 0),
+          NULLIF(pv.prix_achat, 0),
+          NULLIF(p.prix_achat, 0),
           0
         ) * CASE
           WHEN pu.id IS NOT NULL
@@ -60,9 +60,9 @@ JOIN (
       source.id,
       ROUND(
         COALESCE(
-          NULLIF(ps.cout_revient, 0), NULLIF(ps.prix_achat, 0),
-          NULLIF(pv.cout_revient, 0), NULLIF(pv.prix_achat, 0),
-          NULLIF(p.cout_revient, 0), NULLIF(p.prix_achat, 0),
+          NULLIF(ps.prix_achat, 0),
+          NULLIF(pv.prix_achat, 0),
+          NULLIF(p.prix_achat, 0),
           0
         ) * CASE
           WHEN pu.id IS NOT NULL

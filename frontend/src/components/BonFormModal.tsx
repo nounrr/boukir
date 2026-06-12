@@ -427,6 +427,23 @@ const findSnapshotForProductVariant = (
   })[0] || null;
 };
 
+const findLatestSnapshotForProductVariant = (
+  snapshotProducts: any[] = [],
+  productId: any,
+  variantId: any
+) => {
+  if (!productId || !Array.isArray(snapshotProducts) || snapshotProducts.length === 0) return null;
+  const variantKey = String(variantId || '');
+  const candidates = snapshotProducts.filter((snap: any) => {
+    if (!snap?.snapshot_id) return false;
+    if (String(snap.id) !== String(productId)) return false;
+    if (String(snap.variant_id || '') !== variantKey) return false;
+    const flag = snap.snapshot_en_validation;
+    return flag == null ? true : Number(flag) !== 0;
+  });
+  return getLatestSnapshotEntry(candidates);
+};
+
 const resolveItemCostContext = (
   item: any,
   products: any[] = [],
@@ -2012,8 +2029,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         : null;
 
       // Base PA/CR from best source: snapshot → variant → product catalog
-      const bestPA = Number(snap?.prix_achat) || Number(variant?.prix_achat) || Number(prod?.prix_achat) || 0;
-      const bestCR = Number(snap?.cout_revient) || Number(variant?.cout_revient) || Number(prod?.cout_revient) || bestPA || 0;
+      const latestSnap = findLatestSnapshotForProductVariant(snapshotProducts as any[], item.product_id, item.variant_id);
+      const bestPA = Number(latestSnap?.prix_achat) || Number(variant?.prix_achat) || Number(prod?.prix_achat) || Number(snap?.prix_achat) || 0;
+      const bestCR = Number(latestSnap?.cout_revient) || Number(latestSnap?.prix_achat) || Number(variant?.cout_revient) || Number(prod?.cout_revient) || Number(snap?.cout_revient) || bestPA || 0;
 
       if (!bestPA && !bestCR) return;
 
@@ -2036,9 +2054,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       const currentCR = Number(item.cout_revient) || 0;
       const finalPA = scaleDecimal(bestPA, convFactor);
       const finalCR = scaleDecimal(bestCR, convFactor);
-      const resolvedCostContext = resolveItemCostContext(item, products as any[], snapshotProducts as any[]);
-      const resolvedPA = Number(resolvedCostContext.prix_achat) || finalPA;
-      const resolvedCR = Number(resolvedCostContext.cout_revient) || finalCR;
+      const resolvedPA = finalPA;
+      const resolvedCR = finalCR;
       if (resolvedPA > 0 && currentPA !== resolvedPA) {
         formikRef.current!.setFieldValue(`items.${idx}.prix_achat`, resolvedPA);
         anyPatched = true;
@@ -2413,7 +2430,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
   non_paye: requestType === 'Comptant' ? !!values.payer_partiellement : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
-      inclus_en_caisse: requestType === 'Charge' ? (values.inclus_en_caisse ? 1 : 0) : undefined,
+      inclus_en_caisse: (requestType === 'Charge' || requestType === 'Commande') ? (values.inclus_en_caisse ? 1 : 0) : undefined,
       ...(requestType === 'AvoirEcommerce'
         ? {
             ecommerce_order_id: values.ecommerce_order_id ? Number(values.ecommerce_order_id) : undefined,
@@ -2496,7 +2513,6 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
         // Déterminer si le produit est indisponible et gérer le split de quantité
         const snapId = item.product_snapshot_id ? parseInt(item.product_snapshot_id) : null;
-
         // ── FIFO allocation for merged items (no specific snapshot_id) ──
         // Applies to all roles when snapshots were merged (same prix_vente)
         if (!snapId && useSnapshotSelection && snapshotProducts?.length && item.product_id) {
@@ -2544,11 +2560,12 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
             // Remaining qty after all snapshots exhausted → is_indisponible
             if (remaining > 0) {
+              const lastSnap = allSnaps[allSnaps.length - 1] || null;
               fifoItems.push({
                 product_id: parseInt(item.product_id),
                 variant_id: item.variant_id ? parseInt(item.variant_id) : null,
                 unit_id: item.unit_id ? parseInt(item.unit_id) : null,
-                product_snapshot_id: allSnaps[allSnaps.length - 1]?.snapshot_id || null,
+                product_snapshot_id: lastSnap?.snapshot_id || null,
                 quantite: remaining,
                 prix_achat: pa,
                 prix_unitaire: prixUnitairePourDB,
@@ -3495,7 +3512,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </label>
                   <span className="text-xs text-gray-500">(Cocher si ce bon ne doit pas être pris en compte dans les calculs)</span>
                 </div>
-                {values.type === 'Charge' && (
+                {(values.type === 'Charge' || values.type === 'Commande') && (
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -4747,17 +4764,25 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             : null
                                         );
 
-                                        // Use catalog variant selling price when a variant is selected.
-                                        // Snapshot prices remain only for purchase/cost history.
-                                        const effectivePA = selectedVariant
-                                          ? Number(selectedVariant.prix_achat ?? product.prix_achat ?? 0)
-                                          : Number(product.prix_achat || 0);
+                                        const latestSnapshotForCost = findLatestSnapshotForProductVariant(
+                                          snapshotProducts as any[],
+                                          product.id,
+                                          productVariantId
+                                        );
+
+                                        const effectivePA = latestSnapshotForCost
+                                          ? Number(latestSnapshotForCost.prix_achat ?? product.prix_achat ?? 0)
+                                          : selectedVariant
+                                            ? Number(selectedVariant.prix_achat ?? product.prix_achat ?? 0)
+                                            : Number(product.prix_achat || 0);
                                         const effectivePV = catalogVariant
                                           ? Number(catalogVariant.prix_vente ?? catalogProduct?.prix_vente ?? product.prix_vente ?? 0)
                                           : Number((catalogProduct?.prix_vente ?? product.prix_vente) || 0);
-                                        const effectiveCR = selectedVariant
-                                          ? Number(selectedVariant.cout_revient ?? product.cout_revient ?? 0)
-                                          : Number(product.cout_revient || 0);
+                                        const effectiveCR = latestSnapshotForCost
+                                          ? Number(latestSnapshotForCost.cout_revient ?? latestSnapshotForCost.prix_achat ?? product.cout_revient ?? 0)
+                                          : selectedVariant
+                                            ? Number(selectedVariant.cout_revient ?? product.cout_revient ?? 0)
+                                            : Number(product.cout_revient || 0);
 
                                         setFieldValue(`items.${index}.prix_achat`, effectivePA);
                                         setFieldValue(`items.${index}.cout_revient`, effectiveCR);
