@@ -823,6 +823,30 @@ const paymentValidationSchema = Yup.object({
   bon_id: Yup.string().transform(toNull).nullable(),
   bon_type: Yup.string().transform(toNull).nullable(),
   talon_id: Yup.number().transform((v, orig) => (orig === '' ? null : v)).nullable(),
+  payment_lines: Yup.array().of(
+    Yup.object({
+      montant: Yup.number()
+        .typeError('Le montant doit être un nombre')
+        .required('Montant est requis')
+        .positive('Le montant doit être positif'),
+      mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'|'Remise'>()
+        .oneOf(['Espèces','Chèque','Virement','Traite','Remise'], 'Mode invalide')
+        .required('Mode de paiement est requis'),
+      date_paiement: Yup.string().transform(toNull).nullable(),
+      bon_id: Yup.string().transform(toNull).nullable(),
+      talon_id: Yup.number().transform((v, orig) => (orig === '' ? null : v)).nullable(),
+      code_reglement: Yup.string().transform(toNull).nullable(),
+      banque: Yup.string().transform(toNull).nullable(),
+      date_echeance: Yup.string()
+        .transform((v, orig) => (orig === '' ? null : v))
+        .nullable()
+        .test('ymd-format', 'Date d\'échéance invalide (format attendu YYYY-MM-DD)', (val) => {
+          if (val == null || val === '') return true;
+          return ymdRegex.test(val);
+        }),
+      notes: Yup.string().transform(toNull).nullable(),
+    })
+  ),
 });
 
   // Function to display payment numbers with PAY prefix
@@ -976,6 +1000,7 @@ const paymentValidationSchema = Yup.object({
         date_echeance: selectedPayment.date_echeance || '',
         code_reglement: selectedPayment.code_reglement || '',
         talon_id: selectedPayment.talon_id || '',
+        payment_lines: [],
       };
     }
     return {
@@ -998,6 +1023,7 @@ const paymentValidationSchema = Yup.object({
       date_echeance: '',
       code_reglement: '',
       talon_id: '',
+      payment_lines: [],
     };
   };
 
@@ -1015,7 +1041,6 @@ const paymentValidationSchema = Yup.object({
         return { bonId: Number.isFinite(bonId) ? bonId : null, bonType: null };
       };
 
-      const parsedBon = parseBonValue(values.bon_id);
       const selectedRemiseId = Number(values.remise_account_id || 0);
       const isDirectContact = selectedRemiseId >= DIRECT_CONTACT_OFFSET;
       const directContactId = isDirectContact ? selectedRemiseId - DIRECT_CONTACT_OFFSET : null;
@@ -1025,8 +1050,30 @@ const paymentValidationSchema = Yup.object({
       const selectedDirectBalance = isDirectContact
         ? directContactBalances.find((b: any) => Number(b.contact_id) === directContactId)
         : null;
+      const mainLine = {
+        montant: values.montant,
+        mode_paiement: values.mode_paiement,
+        date_paiement: values.date_paiement,
+        bon_id: values.bon_id,
+        talon_id: values.talon_id,
+        code_reglement: values.code_reglement,
+        banque: values.banque,
+        personnel: values.personnel,
+        date_echeance: values.date_echeance,
+        notes: values.notes,
+      };
+      const paymentLines = selectedPayment
+        ? [mainLine]
+        : [
+            mainLine,
+            ...((Array.isArray(values.payment_lines) ? values.payment_lines : [])
+              .filter((line: any) => String(line?.montant ?? '').trim() !== '')),
+          ];
+      const remiseAmount = paymentLines
+        .filter((line: any) => line.mode_paiement === 'Remise')
+        .reduce((sum: number, line: any) => sum + Number(line.montant || 0), 0);
 
-      if (values.mode_paiement === 'Remise') {
+      if (remiseAmount > 0) {
         if (!selectedRemiseAccount && !selectedDirectBalance) {
           showError('Sélectionnez un bénéficiaire remise');
           return;
@@ -1040,7 +1087,7 @@ const paymentValidationSchema = Yup.object({
         if (selectedDirectBalance && selectedPayment?.mode_paiement === 'Remise' && !selectedPayment.remise_account_id && Number(selectedPayment.contact_id) === directContactId && ['En attente', 'Validé'].includes(String(selectedPayment.statut || ''))) {
           allowedAmount += Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0);
         }
-        if (Number(values.montant) > allowedAmount + 0.000001) {
+        if (remiseAmount > allowedAmount + 0.000001) {
           showError(`Le montant dépasse la remise disponible (${allowedAmount.toFixed(2)} DH)`);
           return;
         }
@@ -1048,46 +1095,51 @@ const paymentValidationSchema = Yup.object({
 
       // Upload de l'image si présente
       let imageUrl: string | null = selectedPayment?.image_url || '';
-      if (selectedImage && (values.mode_paiement === 'Chèque' || values.mode_paiement === 'Traite')) {
+      const hasImagePaymentMode = paymentLines.some((line: any) => line.mode_paiement === 'Chèque' || line.mode_paiement === 'Traite');
+      if (selectedImage && hasImagePaymentMode) {
         imageUrl = await uploadImageToServer(selectedImage);
       } else if (selectedPayment && !selectedImage && !imagePreview && selectedPayment.image_url) {
         // L'utilisateur a supprimé l'image existante
         imageUrl = null;
       }
 
-      // Normaliser les champs optionnels (éviter '' pour les colonnes DATE/NULLABLE)
-      // Utiliser les nouvelles fonctions pour gérer les DATETIME
-      const cleanedDatePaiement = formatDateInputToMySQL(values.date_paiement); // Datetime-local inclut déjà l'heure
-      const cleanedBanque = values.banque?.trim() ? values.banque : null;
-      const cleanedPersonnel = values.personnel?.trim() ? values.personnel : null;
-      // date_echeance reste en format DATE (YYYY-MM-DD)
-      const cleanedDateEcheance = values.date_echeance?.trim() ? values.date_echeance : null;
-      const cleanedCodeReglement = values.code_reglement?.trim() ? values.code_reglement : null;
-      const cleanedTalonId = values.talon_id ? Number(values.talon_id) : null;
-
-  const paymentData: any = {
+  const buildPaymentData = (line: any): any => {
+    const lineModePaiement = line.mode_paiement;
+    const isLineRemise = lineModePaiement === 'Remise';
+    // Normaliser les champs optionnels par ligne (éviter '' pour les colonnes DATE/NULLABLE)
+    const lineBon = parseBonValue(line.bon_id);
+    const cleanedDatePaiement = formatDateInputToMySQL(line.date_paiement || values.date_paiement); // Datetime-local inclut déjà l'heure
+    const cleanedBanque = line.banque?.trim() ? line.banque : null;
+    // Le nom de la personne est lié au payeur: les lignes supplémentaires héritent du paiement principal
+    const linePersonnel = line.personnel ?? values.personnel;
+    const cleanedPersonnel = linePersonnel?.trim() ? linePersonnel : null;
+    // date_echeance reste en format DATE (YYYY-MM-DD)
+    const cleanedDateEcheance = line.date_echeance?.trim() ? line.date_echeance : null;
+    const cleanedCodeReglement = line.code_reglement?.trim() ? line.code_reglement : null;
+    const cleanedTalonId = line.talon_id ? Number(line.talon_id) : null;
+    return {
         id: selectedPayment ? selectedPayment.id : Date.now(),
-      type_paiement: values.mode_paiement === 'Remise' ? 'Client' : (values.type_paiement || 'Client'),
-      contact_id: values.mode_paiement === 'Remise'
+      type_paiement: isLineRemise ? 'Client' : (values.type_paiement || 'Client'),
+      contact_id: isLineRemise
         ? (isDirectContact ? directContactId : (selectedRemiseAccount?.contact_id ? Number(selectedRemiseAccount.contact_id) : null))
         : (values.contact_id ? Number(values.contact_id) : null),
       payment: values.type_paiement === 'Fournisseur' && values.payment_fournisseur ? 1 : 0,
-      remise_account_id: values.mode_paiement === 'Remise' && !isDirectContact && selectedRemiseAccount ? Number(selectedRemiseAccount.id) : null,
-      remise_account_type: values.mode_paiement === 'Remise'
+      remise_account_id: isLineRemise && !isDirectContact && selectedRemiseAccount ? Number(selectedRemiseAccount.id) : null,
+      remise_account_type: isLineRemise
         ? (isDirectContact ? 'direct-client' : (selectedRemiseAccount ? selectedRemiseAccount.type : null))
         : null,
-      remise_account_name: values.mode_paiement === 'Remise'
+      remise_account_name: isLineRemise
         ? (isDirectContact ? (selectedDirectBalance?.nom_complet || null) : (selectedRemiseAccount ? selectedRemiseAccount.nom : null))
         : null,
-  bon_id: parsedBon.bonId,
-  bon_type: parsedBon.bonId ? parsedBon.bonType : null,
-        montant_total: Number(values.montant),
-        montant: Number(values.montant), // Alias
-        mode_paiement: values.mode_paiement,
+  bon_id: lineBon.bonId,
+  bon_type: lineBon.bonId ? lineBon.bonType : null,
+        montant_total: Number(line.montant),
+        montant: Number(line.montant), // Alias
+        mode_paiement: lineModePaiement,
   statut: values.statut,
         date_paiement: cleanedDatePaiement,
-        designation: values.notes || '',
-        notes: values.notes || '', // Alias
+        designation: line.notes || '',
+        notes: line.notes || '', // Alias
         // champs optionnels normalisés
         banque: cleanedBanque,
         personnel: cleanedPersonnel,
@@ -1099,6 +1151,9 @@ const paymentValidationSchema = Yup.object({
         updated_by: selectedPayment ? user?.id || 1 : undefined,
         updated_at: new Date().toISOString(),
       };
+  };
+
+  const paymentData: any = buildPaymentData(paymentLines[0]);
 
       if (selectedPayment) {
   const { id: _id, created_at: _ca, updated_at: _ua, ...rest } = paymentData;
@@ -1110,7 +1165,10 @@ const paymentValidationSchema = Yup.object({
         setSelectedImage(null);
         setImagePreview('');
       } else {
-        const body: any = {
+        const createdPayments: Payment[] = [];
+        for (const line of paymentLines) {
+          const paymentData = buildPaymentData(line);
+          const body: any = {
           type_paiement: paymentData.type_paiement,
           bon_id: paymentData.bon_id,
           bon_type: paymentData.bon_type,
@@ -1180,6 +1238,9 @@ const paymentValidationSchema = Yup.object({
             await createOldTalonCaisse(oldPayload as any).unwrap().catch(() => {});
           }
         } catch {}
+          createdPayments.push(created);
+          void createdPayments.length;
+        }
   showSuccess('Paiement enregistré avec succès !');
   // Fermer le modal et réinitialiser les champs et l'image
   setIsCreateModalOpen(false);
@@ -2229,8 +2290,8 @@ const paymentValidationSchema = Yup.object({
                     }
                   }}
                 >
-                  {/* Responsive grid: 2 cols on small screens, 3 on md+ */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {/* Payeur: type de paiement + client/fournisseur seulement */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div>
                       <label htmlFor="type_paiement" className="block text-sm font-medium text-gray-700 mb-1">
                         Type de paiement
@@ -2375,8 +2436,13 @@ const paymentValidationSchema = Yup.object({
                         </>
                       )}
                     </div>
-                    {/* Numéro supprimé: il sera égal à l'ID automatiquement */}
+                  </div>
+                  {/* Numéro supprimé: il sera égal à l'ID automatiquement */}
 
+                  {/* Premier paiement: section séparée comme les paiements supplémentaires */}
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-4">
+                    <h3 className="mb-3 text-sm font-semibold text-gray-900">Paiement 1</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     <div>
                       <label htmlFor="date_paiement" className="block text-sm font-medium text-gray-700 mb-1">
                         Date et heure de paiement *
@@ -2445,7 +2511,7 @@ const paymentValidationSchema = Yup.object({
                       </p>
                     </div>
 
-                          {/* statut removed from creation modal: default kept as 'En attente' server-side */}
+                    {/* statut removed from creation modal: default kept as 'En attente' server-side */}
 
                     <div>
                       <label htmlFor="bon_id" className="block text-sm font-medium text-gray-700 mb-1">
@@ -2533,30 +2599,6 @@ const paymentValidationSchema = Yup.object({
                     </div>
 
                     <div>
-                      <label htmlFor="personnel" className="block text-sm font-medium text-gray-700 mb-1">
-                        Nom de la personne (optionnel)
-                      </label>
-                      <div>
-                        <Field
-                          id="personnel"
-                          name="personnel"
-                          list="personnel_list"
-                          placeholder="Rechercher ou saisir un nom"
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <datalist id="personnel_list">
-                          {personnelNames.map((n) => (
-                            <option key={n} value={n} />
-                          ))}
-                        </datalist>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">
-                        💡 Tapez pour rechercher dans la liste ou ajoutez un nouveau nom
-                      </p>
-                      <ErrorMessage name="personnel" component="div" className="text-red-500 text-sm mt-1" />
-                    </div>
-
-                    <div>
                       <label htmlFor="date_echeance" className="block text-sm font-medium text-gray-700 mb-1">
                         Date d'échéance (optionnel)
                       </label>
@@ -2571,7 +2613,7 @@ const paymentValidationSchema = Yup.object({
 
                     {/* Upload d'image seulement pour Chèque et Traite */}
                     {(values.mode_paiement === 'Chèque' || values.mode_paiement === 'Traite') && (
-                      <div className="col-span-2">
+                      <div className="col-span-2 md:col-span-3">
                         <label htmlFor="file_input" className="block text-sm font-medium text-gray-700 mb-1">
                           📷 Image du {values.mode_paiement === 'Chèque' ? 'chèque' : 'traite'} (optionnel)
                         </label>
@@ -2622,7 +2664,7 @@ const paymentValidationSchema = Yup.object({
                     )}
                   </div>
 
-                  <div>
+                  <div className="mt-2">
                     <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
                       Notes
                     </label>
@@ -2635,6 +2677,202 @@ const paymentValidationSchema = Yup.object({
                       placeholder="Informations complémentaires..."
                     />
                   </div>
+                  </div>
+
+                  {!selectedPayment && (
+                    <div className="rounded-md border border-gray-200 bg-gray-50 p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-900">Paiements supplementaires</h3>
+                          <p className="text-xs text-gray-500">Chaque paiement ajoute possede ses propres champs (montant, mode, date, bon, talon, banque...).</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setFieldValue('payment_lines', [
+                            ...(Array.isArray(values.payment_lines) ? values.payment_lines : []),
+                            {
+                              montant: '',
+                              mode_paiement: values.mode_paiement || 'Espèces',
+                              date_paiement: values.date_paiement || getCurrentDateTimeInput(),
+                              bon_id: '',
+                              talon_id: '',
+                              code_reglement: '',
+                              banque: '',
+                              date_echeance: '',
+                              notes: '',
+                            },
+                          ])}
+                          className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                        >
+                          <Plus size={16} />
+                          Ajouter un paiement
+                        </button>
+                      </div>
+
+                      {Array.isArray(values.payment_lines) && values.payment_lines.length > 0 && (
+                        <div className="space-y-3">
+                          {values.payment_lines.map((line: any, index: number) => (
+                            <div key={index} className="rounded-md border border-gray-200 bg-white p-4">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <h4 className="text-sm font-semibold text-gray-800">Paiement {index + 2}</h4>
+                                <button
+                                  type="button"
+                                  onClick={() => setFieldValue(
+                                    'payment_lines',
+                                    (Array.isArray(values.payment_lines) ? values.payment_lines : []).filter((_: any, i: number) => i !== index)
+                                  )}
+                                  className="inline-flex h-9 items-center justify-center rounded-md border border-red-200 px-3 text-red-600 hover:bg-red-50"
+                                  title="Supprimer ce paiement"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                                <div>
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Date et heure de paiement
+                                  </label>
+                                  <Field
+                                    name={`payment_lines.${index}.date_paiement`}
+                                    type="datetime-local"
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  <ErrorMessage name={`payment_lines.${index}.date_paiement`} component="div" className="mt-1 text-sm text-red-500" />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Montant *
+                                  </label>
+                                  <Field
+                                    name={`payment_lines.${index}.montant`}
+                                    type="number"
+                                    step="0.01"
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  <ErrorMessage name={`payment_lines.${index}.montant`} component="div" className="mt-1 text-sm text-red-500" />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Mode de paiement *
+                                  </label>
+                                  <Field
+                                    as="select"
+                                    name={`payment_lines.${index}.mode_paiement`}
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  >
+                                    <option value="Espèces">Espèces</option>
+                                    <option value="Chèque">Chèque</option>
+                                    <option value="Virement">Virement</option>
+                                    <option value="Traite">Traite</option>
+                                    <option value="Remise">Remise</option>
+                                  </Field>
+                                  <ErrorMessage name={`payment_lines.${index}.mode_paiement`} component="div" className="mt-1 text-sm text-red-500" />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Bon associé (optionnel)
+                                  </label>
+                                  <Field
+                                    as="select"
+                                    name={`payment_lines.${index}.bon_id`}
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  >
+                                    <option value="">Paiement libre (sans bon associé)</option>
+                                    {(!values.contact_id && !isRemisePayment) || (isRemisePayment && !selectedRemiseAccount?.contact_id) || bonsLoading
+                                      ? <option disabled>{bonsLoading ? 'Chargement...' : (isRemisePayment ? 'Aucun bon disponible pour ce bénéficiaire' : 'Sélectionnez un contact d\'abord')}</option>
+                                      : bons
+                                          .filter((b: any) => {
+                                            const cid = isRemisePayment ? selectedRemiseAccount?.contact_id : values.contact_id;
+                                            if (!cid) return false;
+                                            const clientMatch = !isFournisseurPayment && (String(b.client_id) === String(cid) || String(b.fournisseur_id) === String(cid));
+                                            const fournisseurMatch = isFournisseurPayment && String(b.fournisseur_id) === String(cid);
+                                            return clientMatch || fournisseurMatch;
+                                          })
+                                          .map((b: any) => {
+                                            const dateStr = b.date_creation ? new Date(b.date_creation).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+                                            const montantBon = Number(b.montant_total ?? 0).toFixed(2);
+                                            const numBon = b.numero ?? `#${b.id}`;
+                                            return (
+                                              <option key={`${b.type}:${b.id}`} value={`${b.type}:${b.id}`}>
+                                                {dateStr} | {numBon} | {montantBon} DH
+                                              </option>
+                                            );
+                                          })
+                                    }
+                                  </Field>
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Talon associé (optionnel)
+                                  </label>
+                                  <Field
+                                    as="select"
+                                    name={`payment_lines.${index}.talon_id`}
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  >
+                                    <option value="">Aucun talon</option>
+                                    {talons.map((talon: any) => (
+                                      <option key={talon.id} value={talon.id}>
+                                        {talon.nom} {talon.phone ? `- ${talon.phone}` : ''}
+                                      </option>
+                                    ))}
+                                  </Field>
+                                  <ErrorMessage name={`payment_lines.${index}.talon_id`} component="div" className="mt-1 text-sm text-red-500" />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Code règlement (optionnel)
+                                  </label>
+                                  <Field
+                                    name={`payment_lines.${index}.code_reglement`}
+                                    type="text"
+                                    placeholder={getReferencePlaceholder(line.mode_paiement)}
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  <ErrorMessage name={`payment_lines.${index}.code_reglement`} component="div" className="mt-1 text-sm text-red-500" />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Banque (optionnel)
+                                  </label>
+                                  <Field
+                                    name={`payment_lines.${index}.banque`}
+                                    type="text"
+                                    placeholder="Ex: BMCE Bank"
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  <ErrorMessage name={`payment_lines.${index}.banque`} component="div" className="mt-1 text-sm text-red-500" />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Date d'échéance (optionnel)
+                                  </label>
+                                  <Field
+                                    name={`payment_lines.${index}.date_echeance`}
+                                    type="date"
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  <ErrorMessage name={`payment_lines.${index}.date_echeance`} component="div" className="mt-1 text-sm text-red-500" />
+                                </div>
+                                <div className="col-span-2 md:col-span-3">
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Notes
+                                  </label>
+                                  <Field
+                                    as="textarea"
+                                    name={`payment_lines.${index}.notes`}
+                                    rows="2"
+                                    placeholder="Informations complémentaires..."
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex justify-end space-x-3 pt-4">
                     <button

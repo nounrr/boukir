@@ -173,7 +173,13 @@ const mapCoffreEntry = (row) => ({
   modePaiement: row.mode_paiement || 'Espece',
 });
 
-const ALLOWED_ENTRY_TYPES = new Set(['caisse_initial', 'coffre_initial', 'transfer_to_coffre']);
+const ALLOWED_ENTRY_TYPES = new Set([
+  'caisse_initial',
+  'coffre_initial',
+  'transfer_to_coffre',
+  'transfer_to_poche',
+  'coffre_transfer_to_poche',
+]);
 const ALLOWED_PAYMENT_MODES = new Set(['Espece', 'Virement', 'Cheque']);
 
 const normalizePaymentMode = (value) => {
@@ -221,6 +227,7 @@ function mergeMovement(target, jour, values) {
     paiementClientCaisse: 0,
     avoirChargeInclusCaisse: 0,
     bonChargeInclusCaisse: 0,
+    bonCommandeInclusCaisse: 0,
     bonVehicule: 0,
     avoirComptant: 0,
     transfertVersCoffre: 0,
@@ -240,7 +247,7 @@ router.get('/entries', async (req, res) => {
       `SELECT *
          FROM fond_caisse_entries
         WHERE jour BETWEEN ? AND ?
-          AND entry_type IN ('caisse_initial', 'transfer_to_coffre')
+          AND entry_type IN ('caisse_initial', 'transfer_to_coffre', 'transfer_to_poche')
         ORDER BY opened_at DESC, id DESC`,
       [dateFrom, dateTo]
     );
@@ -248,7 +255,7 @@ router.get('/entries', async (req, res) => {
       `SELECT *
          FROM coffre
         WHERE jour BETWEEN ? AND ?
-          AND entry_type = 'coffre_initial'
+          AND entry_type IN ('coffre_initial', 'coffre_transfer_to_poche')
         ORDER BY opened_at DESC, id DESC`,
       [dateFrom, dateTo]
     );
@@ -294,11 +301,20 @@ router.post('/entries', async (req, res) => {
     const createdBy = req.user?.id ?? null;
     const createdByName = await getEmployeeName(createdBy) || req.user?.cin || 'Caissier';
 
-    if (entryType === 'coffre_initial') {
+    if (entryType === 'coffre_initial' || entryType === 'coffre_transfer_to_poche') {
       const [result] = await pool.query(
         `INSERT INTO coffre (montant, entry_type, note, mode_paiement, opened_at, jour, created_by, created_by_name)
-         VALUES (?, 'coffre_initial', ?, ?, ?, ?, ?, ?)`,
-        [montant, note, modePaiement, openedAt, jour, createdBy, createdByName]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          montant,
+          entryType,
+          note || (entryType === 'coffre_transfer_to_poche' ? 'Transfert coffre vers poche' : null),
+          modePaiement,
+          openedAt,
+          jour,
+          createdBy,
+          createdByName,
+        ]
       );
       const [rows] = await pool.query('SELECT * FROM coffre WHERE id = ? LIMIT 1', [result.insertId]);
       return res.status(201).json(mapCoffreEntry(rows[0]));
@@ -402,6 +418,7 @@ const mapActionDateTime = (value) => formatDateTimeValue(value);
 router.get('/days/:date', async (req, res) => {
   try {
     await ensureFondCaisseEntriesTable();
+    await ensureCoffreTable();
     const jour = isIsoDate(req.params.date) ? String(req.params.date) : '';
     if (!jour) {
       return res.status(400).json({ message: 'Date invalide' });
@@ -417,16 +434,18 @@ router.get('/days/:date', async (req, res) => {
             CASE
               WHEN entry_type = 'caisse_initial' THEN 'Fond initial caisse'
               WHEN entry_type = 'transfer_to_coffre' THEN 'Transfert vers coffre'
+              WHEN entry_type = 'transfer_to_poche' THEN 'Transfert vers poche'
               ELSE 'Fond initial'
             END AS type,
             CASE
-              WHEN entry_type = 'transfer_to_coffre' THEN 'SORTIE'
+              WHEN entry_type IN ('transfer_to_coffre', 'transfer_to_poche') THEN 'SORTIE'
               ELSE 'ENTREE'
             END AS direction,
             montant AS amount,
             CASE
               WHEN entry_type = 'caisse_initial' THEN CONCAT('FC-', id)
               WHEN entry_type = 'transfer_to_coffre' THEN CONCAT('TRC-', id)
+              WHEN entry_type = 'transfer_to_poche' THEN CONCAT('TRP-', id)
               ELSE CONCAT('FND-', id)
             END AS reference,
             created_by_name AS actor,
@@ -437,12 +456,32 @@ router.get('/days/:date', async (req, res) => {
               CASE
                 WHEN entry_type = 'caisse_initial' THEN 'Fond de caisse saisi'
                 WHEN entry_type = 'transfer_to_coffre' THEN 'Montant retire de la caisse et place dans le coffre'
+                WHEN entry_type = 'transfer_to_poche' THEN 'Montant retire de la caisse et transfere vers poche'
                 ELSE 'Ecriture de caisse'
               END
             ) AS description
           FROM fond_caisse_entries
           WHERE jour = ?
-            AND entry_type IN ('caisse_initial', 'transfer_to_coffre')
+            AND entry_type IN ('caisse_initial', 'transfer_to_coffre', 'transfer_to_poche')
+        `,
+      },
+      {
+        label: 'coffre',
+        sql: `
+          SELECT
+            id,
+            opened_at AS action_date,
+            'Transfert coffre vers poche' AS type,
+            'SORTIE' AS direction,
+            montant AS amount,
+            CONCAT('TCP-', id) AS reference,
+            created_by_name AS actor,
+            NULL AS statut,
+            mode_paiement AS mode_paiement,
+            COALESCE(note, 'Montant retire du coffre et transfere vers poche') AS description
+          FROM coffre
+          WHERE jour = ?
+            AND entry_type = 'coffre_transfer_to_poche'
         `,
       },
       {
@@ -560,6 +599,26 @@ router.get('/days/:date', async (req, res) => {
             COALESCE(bc.observations, 'Avoir charge entree en caisse') AS description
           FROM avoirs_charge bc
           LEFT JOIN contacts c ON c.id = bc.client_id
+          WHERE DATE(bc.date_creation) = ?
+            AND COALESCE(bc.inclus_en_caisse, 0) = 1
+            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+        `,
+      },
+      {
+        label: 'bons_commande',
+        sql: `
+          SELECT
+            bc.id,
+            bc.date_creation AS action_date,
+            'Commande incluse caisse' AS type,
+            'SORTIE' AS direction,
+            bc.montant_total AS amount,
+            CONCAT('CMD', LPAD(bc.id, 2, '0')) AS reference,
+            COALESCE(f.nom_complet, '') AS actor,
+            bc.statut,
+            COALESCE(bc.lieu_chargement, 'Commande sortie de caisse') AS description
+          FROM bons_commande bc
+          LEFT JOIN contacts f ON f.id = bc.fournisseur_id
           WHERE DATE(bc.date_creation) = ?
             AND COALESCE(bc.inclus_en_caisse, 0) = 1
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
@@ -740,6 +799,28 @@ router.get('/mouvements', async (req, res) => {
         `,
       },
       {
+        label: 'transfert_vers_poche',
+        field: 'transfertVersPoche',
+        sql: `
+          SELECT DATE(opened_at) AS jour, COALESCE(SUM(montant), 0) AS total
+            FROM fond_caisse_entries
+           WHERE DATE(opened_at) BETWEEN ? AND ?
+             AND entry_type = 'transfer_to_poche'
+           GROUP BY DATE(opened_at)
+        `,
+      },
+      {
+        label: 'transfert_coffre_vers_poche',
+        field: 'transfertCoffreVersPoche',
+        sql: `
+          SELECT DATE(opened_at) AS jour, COALESCE(SUM(montant), 0) AS total
+            FROM coffre
+           WHERE DATE(opened_at) BETWEEN ? AND ?
+             AND entry_type = 'coffre_transfer_to_poche'
+           GROUP BY DATE(opened_at)
+        `,
+      },
+      {
         label: 'bons_charge',
         field: 'bonChargeInclusCaisse',
         sql: `
@@ -773,6 +854,18 @@ router.get('/mouvements', async (req, res) => {
              AND COALESCE(bc.inclus_en_caisse, 0) = 1
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
            GROUP BY DATE(bc.date_creation)
+        `,
+      },
+      {
+        label: 'bons_commande',
+        field: 'bonCommandeInclusCaisse',
+        sql: `
+          SELECT DATE(date_creation) AS jour, COALESCE(SUM(montant_total), 0) AS total
+            FROM bons_commande
+           WHERE DATE(date_creation) BETWEEN ? AND ?
+             AND COALESCE(inclus_en_caisse, 0) = 1
+             AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
+           GROUP BY DATE(date_creation)
         `,
       },
       {
@@ -815,11 +908,14 @@ router.get('/mouvements', async (req, res) => {
         const paiementClientCaisse = toNumber(row.paiementClientCaisse);
         const avoirChargeInclusCaisse = toNumber(row.avoirChargeInclusCaisse);
         const transfertVersCoffre = toNumber(row.transfertVersCoffre);
+        const transfertVersPoche = toNumber(row.transfertVersPoche);
+        const transfertCoffreVersPoche = toNumber(row.transfertCoffreVersPoche);
         const bonChargeInclusCaisse = toNumber(row.bonChargeInclusCaisse);
+        const bonCommandeInclusCaisse = toNumber(row.bonCommandeInclusCaisse);
         const bonVehicule = toNumber(row.bonVehicule);
         const avoirComptant = toNumber(row.avoirComptant);
         const entrees = bonComptantPaye + paiementBonComptantNonPaye + paiementClientCaisse + avoirChargeInclusCaisse;
-        const sorties = bonChargeInclusCaisse + bonVehicule + avoirComptant + transfertVersCoffre;
+        const sorties = bonChargeInclusCaisse + bonCommandeInclusCaisse + bonVehicule + avoirComptant + transfertVersCoffre + transfertVersPoche;
 
         return {
           jour: row.jour,
@@ -828,14 +924,17 @@ router.get('/mouvements', async (req, res) => {
           paiementClientCaisse,
           avoirChargeInclusCaisse,
           transfertVersCoffre,
+          transfertVersPoche,
+          transfertCoffreVersPoche,
           bonChargeInclusCaisse,
+          bonCommandeInclusCaisse,
           bonVehicule,
           avoirComptant,
           entrees,
           sorties,
           coffreEntrees: transfertVersCoffre,
-          coffreSorties: 0,
-          mouvementNetCoffre: transfertVersCoffre,
+          coffreSorties: transfertCoffreVersPoche,
+          mouvementNetCoffre: transfertVersCoffre - transfertCoffreVersPoche,
           mouvementNet: entrees - sorties,
         };
       }),

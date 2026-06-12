@@ -5,7 +5,7 @@ UPDATE charge_items ci
 JOIN (
   SELECT *
   FROM (
-    SELECT
+    SELECT 
       source.id,
       ROUND(
         COALESCE(

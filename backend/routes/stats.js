@@ -276,15 +276,17 @@ function clampInt(value, fallback, min, max) {
 
 function getStatsDetailSign(type) {
   switch (type) {
-    case 'Commande':
+    case 'Sortie':
+    case 'Comptant':
+    case 'Ecommerce':
     case 'Charge':
       return -1;
     case 'Avoir':
     case 'AvoirComptant':
     case 'AvoirEcommerce':
-      return -1;
     case 'AvoirFournisseur':
     case 'AvoirCharge':
+    case 'Commande':
       return 1;
     default:
       return 1;
