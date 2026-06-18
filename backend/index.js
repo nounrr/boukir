@@ -78,6 +78,7 @@ import calcRouter from './routes/calc.js';
 import uiSettingsRouter from './routes/uiSettings.js';
 
 import {
+  ensureContactsBloqueColumn,
   ensureContactsRemiseBalance,
   ensureBonsRemiseTargetColumns,
   ensureEcommerceOrderItemsRemiseColumns,
@@ -99,6 +100,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
     await ensureCategoryColumns();
     await ensureProductRemiseColumns();
     await ensureContactsRemiseBalance();
+    await ensureContactsBloqueColumn();
     await ensureBonsRemiseTargetColumns();
     await ensureEcommerceOrdersRemiseColumns();
     await ensureEcommerceOrderItemsRemiseColumns();

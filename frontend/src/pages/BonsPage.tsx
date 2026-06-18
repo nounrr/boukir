@@ -91,6 +91,14 @@ const isKhezinAwatifName = (name: unknown) => {
   return ['khezin', 'awatif'].every((t) => n.includes(t));
 };
 
+const isContactBlocked = (contact: any) => {
+  const value = contact?.bloque;
+  if (value === true) return true;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') return value === '1' || value.toLowerCase() === 'true';
+  return false;
+};
+
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
   const navigate = useNavigate();
@@ -2036,6 +2044,14 @@ const BonsPage = () => {
           }
           return false;
         })();
+
+        if (duplicateType === 'client' || duplicateType === 'avoirClient') {
+          const selectedClient = (clients as any[]).find((c: any) => String(c?.id) === String(selectedContactForDuplicate));
+          if (selectedClient && isContactBlocked(selectedClient)) {
+            showError(`Client bloque: ${selectedClient.nom_complet || selectedContactForDuplicate}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
+            return;
+          }
+        }
 
         // Traiter les articles selon le type de duplication
         const sourceItems = parseItemsSafe(selectedBonForDuplicate.items);
@@ -4754,14 +4770,23 @@ const BonsPage = () => {
                       id="client-select"
                       options={clients.map((client: any) => {
                         const reference = client.reference ? `(${client.reference})` : '';
+                        const blocked = isContactBlocked(client);
                         return {
                           value: client.id.toString(),
-                          label: `${client.nom_complet} ${reference}`,
-                          data: client,
+                          label: `${client.nom_complet} ${reference}${blocked ? ' - Client bloque' : ''}`,
+                          data: { ...client, disabledReason: blocked ? 'Client bloque' : undefined },
+                          disabled: blocked,
                         };
                       })}
                       value={selectedContactForDuplicate}
-                      onChange={(value) => setSelectedContactForDuplicate(value)}
+                      onChange={(value) => {
+                        const selectedClient = (clients as any[]).find((client: any) => String(client?.id) === String(value));
+                        if (selectedClient && isContactBlocked(selectedClient)) {
+                          showError(`Client bloque: ${selectedClient.nom_complet || value}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
+                          return;
+                        }
+                        setSelectedContactForDuplicate(value);
+                      }}
                       placeholder="Rechercher un client..."
                       className="w-full"
                     />

@@ -25,6 +25,7 @@ export const printContactList = ({ title, rows, totalRows, totalCumule, fmt, fil
   const filterText = filters.filter(Boolean).join(' | ');
   const bodyRows = rows.map((row, idx) => {
     const total = Number((row as any).total_cumule ?? 0) || 0;
+    const garantie = Number(row.montant_garantie ?? 0) || 0;
     return `
       <tr>
         <td>${idx + 1}</td>
@@ -34,6 +35,7 @@ export const printContactList = ({ title, rows, totalRows, totalCumule, fmt, fil
         <td>${escapeHtml(row.telephone || '')}</td>
         <td>${escapeHtml(row.adresse || '')}</td>
         <td class="num">${escapeHtml(fmt(Number(row.solde || 0)))}</td>
+        <td class="num">${escapeHtml(fmt(garantie))}</td>
         <td class="num total">${escapeHtml(fmt(total))}</td>
       </tr>`;
   }).join('');
@@ -83,11 +85,12 @@ export const printContactList = ({ title, rows, totalRows, totalCumule, fmt, fil
               <th style="width: 90px;">Telephone</th>
               <th>Adresse</th>
               <th style="width: 90px;" class="num">Solde</th>
+              <th style="width: 90px;" class="num">Garantie</th>
               <th style="width: 100px;" class="num">Total cumule</th>
             </tr>
           </thead>
           <tbody>
-            ${bodyRows || '<tr><td colspan="8" style="text-align:center;color:#6b7280;">Aucune ligne a imprimer</td></tr>'}
+            ${bodyRows || '<tr><td colspan="9" style="text-align:center;color:#6b7280;">Aucune ligne a imprimer</td></tr>'}
           </tbody>
         </table>
       </body>

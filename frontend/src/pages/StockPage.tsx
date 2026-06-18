@@ -15,6 +15,7 @@ import Swal from 'sweetalert2';
 
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
+  const authToken = useSelector((state: any) => state.auth?.token);
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -82,6 +83,7 @@ const StockPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isTranslating, setIsTranslating] = useState(false);
   const [isGeneratingSpecs, setIsGeneratingSpecs] = useState(false);
+  const [isGeneratingStockPdf, setIsGeneratingStockPdf] = useState(false);
   // translation mutation
   const [translateProducts] = useTranslateProductsMutation();
   const [generateSpecs] = useGenerateSpecsMutation();
@@ -320,6 +322,7 @@ const StockPage: React.FC = () => {
             parent_reference: parentReference,
             prix_achat: variant.prix_achat,
             prix_vente: variant.prix_vente,
+            prix_vente_2: variant.prix_vente_2 ?? product.prix_vente_2,
             quantite: variant.stock_quantity,
             snapshot_quantite_total: variant.snapshot_quantite_total ?? null,
             snapshot_prix_achat_old: variant.snapshot_prix_achat_old ?? null,
@@ -396,6 +399,43 @@ const StockPage: React.FC = () => {
     } catch (e) {
       console.error(e);
       showError('Erreur lors de la génération du fichier Excel');
+    }
+  };
+
+  const handlePrintStockPdf = async () => {
+    // PDF is generated server-side (snapshot-aware, full Arabic support) and
+    // streamed back as a download. Exports ALL products matching current filters.
+    setIsGeneratingStockPdf(true);
+    try {
+      const categoryLabel = filterCategory
+        ? (organizedCategories.find((c) => String(c.id) === String(filterCategory))?.nom || '')
+        : '';
+      const params = new URLSearchParams();
+      params.set('type', productType);
+      if (searchTerm) params.set('q', searchTerm);
+      if (filterCategory) params.set('category_id', String(filterCategory));
+      if (categoryLabel) params.set('category_label', categoryLabel);
+
+      const resp = await fetch(`/api/products/stock-pdf?${params.toString()}`, {
+        headers: authToken ? { authorization: `Bearer ${authToken}` } : undefined,
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const suffix = activeTab === 'Services' ? 'services' : activeTab === 'Produits non stockables' ? 'produits-non-stockables' : 'produits';
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `stock-${suffix}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showSuccess('PDF stock généré');
+    } catch (e) {
+      console.error(e);
+      showError('Erreur lors de la génération du PDF stock');
+    } finally {
+      setIsGeneratingStockPdf(false);
     }
   };
 
@@ -746,6 +786,13 @@ const StockPage: React.FC = () => {
             Exporter Excel
           </button>
           <button
+            onClick={handlePrintStockPdf}
+            disabled={isGeneratingStockPdf}
+            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+          >
+            {isGeneratingStockPdf ? 'PDF...' : 'Imprimer PDF'}
+          </button>
+          <button
             onClick={() => {
               setEditingProduct(null);
               setIsModalOpen(true);
@@ -904,6 +951,7 @@ const StockPage: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coût de revient</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix gros</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix vente</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prix vente 2</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -1099,6 +1147,9 @@ const StockPage: React.FC = () => {
                         </>
                       );
                     })()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatNum(Number(product.prix_vente_2 || 0))} DH
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${product.est_service

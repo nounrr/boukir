@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
+import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
 
 const router = express.Router();
 
@@ -412,6 +413,11 @@ router.post('/', async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Champs requis manquants ou lignes invalides' });
     }
+    const blockedClient = await findBlockedClient(connection, clientId);
+    if (blockedClient) {
+      await connection.rollback();
+      return res.status(400).json(blockedClientPayload(blockedClient));
+    }
 
     for (const item of items) {
       if (!item.product_id) continue;
@@ -507,6 +513,12 @@ router.put('/:id', async (req, res) => {
     if (!Number.isFinite(id) || id <= 0 || !dateCreation || !Number.isFinite(clientId) || clientId <= 0 || !items.length) {
       await connection.rollback();
       return res.status(400).json({ message: 'Données invalides' });
+    }
+
+    const blockedClient = await findBlockedClient(connection, clientId);
+    if (blockedClient) {
+      await connection.rollback();
+      return res.status(400).json(blockedClientPayload(blockedClient));
     }
 
     const [existingRows] = await connection.execute(

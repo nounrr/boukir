@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
+import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
 
 const router = express.Router();
 
@@ -141,6 +142,11 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const cId = client_id ?? null;
     const cNom = client_nom ? client_nom.trim() : null;
     const st  = statut ?? 'Brouillon';
+    const blockedClient = await findBlockedClient(connection, cId);
+    if (blockedClient) {
+      await connection.rollback();
+      return res.status(400).json(blockedClientPayload(blockedClient));
+    }
 
     const tmpNumero = `tmp-${Date.now()}-${Math.floor(Math.random()*1e6)}`;
 
@@ -216,6 +222,11 @@ router.put('/:id', async (req, res) => {
     const cId = client_id ?? null;
     const cNom = client_nom ? client_nom.trim() : null;
     const st  = statut ?? null;
+    const blockedClient = await findBlockedClient(connection, cId);
+    if (blockedClient) {
+      await connection.rollback();
+      return res.status(400).json(blockedClientPayload(blockedClient));
+    }
 
     console.log('🛠️ PUT devis payload:', { id, date_creation, client_id: cId, client_nom: cNom, montant_total, st, lieu });
 
@@ -377,6 +388,11 @@ router.post('/:id/transform', async (req, res) => {
         await connection.rollback();
         return res.status(400).json({ message: 'client_id requis pour une transformation en bon de sortie' });
       }
+      const blockedClient = await findBlockedClient(connection, clientId);
+      if (blockedClient) {
+        await connection.rollback();
+        return res.status(400).json(blockedClientPayload(blockedClient));
+      }
 
       // Insert en "En attente"
       const [ins] = await connection.execute(`
@@ -464,6 +480,11 @@ router.post('/:id/transform', async (req, res) => {
 
     // Nouveau: transformation en bon comptant (client optionnel)
     if (target === 'comptant') {
+      const blockedClient = await findBlockedClient(connection, client_id);
+      if (blockedClient) {
+        await connection.rollback();
+        return res.status(400).json(blockedClientPayload(blockedClient));
+      }
       const [ins] = await connection.execute(`
         INSERT INTO bons_comptant (
           date_creation, client_id, vehicule_id, lieu_chargement,

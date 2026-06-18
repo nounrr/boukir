@@ -4,6 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { createStockPdfStream } from '../utils/stockPdf.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -202,6 +203,13 @@ async function ensureProductsColumns() {
   );
   if (!colsVentePct.length) {
     await pool.query(`ALTER TABLE products ADD COLUMN prix_vente_pourcentage DECIMAL(5,2) DEFAULT 0`);
+  }
+  const [colsVente2] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'prix_vente_2'`
+  );
+  if (!colsVente2.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN prix_vente_2 DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER prix_vente`);
   }
 
   // Check remises in products
@@ -446,6 +454,13 @@ async function ensureProductsColumns() {
   if (!colsVarVentePct.length) {
     await pool.query(`ALTER TABLE product_variants ADD COLUMN prix_vente_pourcentage DECIMAL(5,2) DEFAULT 0`);
   }
+  const [colsVarVente2] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'product_variants' AND COLUMN_NAME = 'prix_vente_2'`
+  );
+  if (!colsVarVente2.length) {
+    await pool.query(`ALTER TABLE product_variants ADD COLUMN prix_vente_2 DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER prix_vente`);
+  }
 
   // Check remises in product_variants
   const [colsRemiseClientVar] = await pool.query(
@@ -547,18 +562,18 @@ async function ensureProductsColumns() {
   }
 };
 
-// Search / Filter / Paginate endpoint
-router.get('/search', async (req, res, next) => {
-  try {
+// Core product search/filter/paginate logic. Shared by the GET /search endpoint
+// and the GET /stock-pdf export so both return identical (snapshot-aware) data.
+async function runProductSearch(query) {
     await ensureProductsColumns();
 
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200);
+    const page = Math.max(parseInt(query.page) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(query.limit) || 50, 1), 200);
     const offset = (page - 1) * limit;
     const useSnapshot = await hasProductSnapshotTable();
 
-    const { category_id, brand_id, missing_lang, type } = req.query;
-    const qRaw = String(req.query.q ?? '').trim();
+    const { category_id, brand_id, missing_lang, type } = query;
+    const qRaw = String(query.q ?? '').trim();
     const q = qRaw.length > 100 ? qRaw.slice(0, 100) : qRaw;
     const qLower = q.toLowerCase();
     const qTerms = qLower.split(/\s+/).filter(Boolean);
@@ -713,6 +728,7 @@ router.get('/search', async (req, res, next) => {
         'prix_gros_pourcentage', pv.prix_gros_pourcentage,
         'prix_vente_pourcentage', pv.prix_vente_pourcentage,
         'prix_vente', pv.prix_vente,
+        'prix_vente_2', pv.prix_vente_2,
         'image_url', pv.image_url,
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
@@ -769,6 +785,7 @@ router.get('/search', async (req, res, next) => {
         'prix_gros_pourcentage', pv.prix_gros_pourcentage,
         'prix_vente_pourcentage', pv.prix_vente_pourcentage,
         'prix_vente', pv.prix_vente,
+        'prix_vente_2', pv.prix_vente_2,
         'image_url', pv.image_url,
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
@@ -798,6 +815,7 @@ router.get('/search', async (req, res, next) => {
       const variants = typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []);
       const variantsWithSnapshot = Array.isArray(variants) ? variants.map((v) => ({
         ...v,
+        prix_vente_2: Number(v?.prix_vente_2 ?? 0),
         snapshot_quantite_total: v?.snapshot_quantite_total !== null && v?.snapshot_quantite_total !== undefined ? Number(v.snapshot_quantite_total) : null,
         snapshot_prix_achat_old: v?.snapshot_prix_achat_old !== null && v?.snapshot_prix_achat_old !== undefined ? Number(v.snapshot_prix_achat_old) : null,
         snapshot_prix_vente_old: v?.snapshot_prix_vente_old !== null && v?.snapshot_prix_vente_old !== undefined ? Number(v.snapshot_prix_vente_old) : null,
@@ -825,6 +843,7 @@ router.get('/search', async (req, res, next) => {
         prix_gros: Number(r.prix_gros),
         prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
         prix_vente: Number(r.prix_vente),
+        prix_vente_2: Number(r.prix_vente_2 ?? 0),
         snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
         est_service: !!r.est_service,
         non_stockable: !!r.non_stockable,
@@ -919,7 +938,7 @@ router.get('/search', async (req, res, next) => {
       }
     }
 
-    res.json({
+    return {
       data: products,
       meta: {
         page,
@@ -927,8 +946,67 @@ router.get('/search', async (req, res, next) => {
         total,
         totalPages: Math.ceil(total / limit)
       }
+    };
+}
+
+// Search / Filter / Paginate endpoint
+router.get('/search', async (req, res, next) => {
+  try {
+    const result = await runProductSearch(req.query);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /products/stock-pdf — server-generated stock listing PDF (snapshot-aware,
+// Arabic-capable). Exports ALL products matching the current filters (q,
+// category_id, type), not just one page. Accepts the same query params as /search.
+router.get('/stock-pdf', async (req, res, next) => {
+  try {
+    const baseQuery = { ...req.query };
+    const PAGE_SIZE = 200;
+    let page = 1;
+    let allProducts = [];
+    let totalPages = 1;
+
+    // Fetch every page through the shared search logic so the PDF matches the table.
+    do {
+      const { data, meta } = await runProductSearch({ ...baseQuery, page, limit: PAGE_SIZE });
+      allProducts = allProducts.concat(data || []);
+      totalPages = meta?.totalPages || 1;
+      page += 1;
+    } while (page <= totalPages && page <= 200); // hard cap: 40k products
+
+    const type = String(req.query.type || 'stockable');
+    const tabLabel = type === 'service'
+      ? 'Services'
+      : type === 'non_stockable'
+        ? 'Produits non stockables'
+        : 'Produits';
+
+    const filterParts = [];
+    if (req.query.q) filterParts.push(`Recherche: ${req.query.q}`);
+    if (req.query.category_label) filterParts.push(`Categorie: ${req.query.category_label}`);
+    filterParts.push(`Elements: ${allProducts.length}`);
+
+    const pdfStream = createStockPdfStream(allProducts, {
+      tabLabel,
+      filtersText: filterParts.join(' | '),
     });
 
+    const fileSuffix = type === 'service'
+      ? 'services'
+      : type === 'non_stockable'
+        ? 'produits-non-stockables'
+        : 'produits';
+    const fileName = `stock-${fileSuffix}-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    pdfStream.on('error', (err) => next(err));
+    pdfStream.pipe(res);
+    pdfStream.end();
   } catch (err) {
     next(err);
   }
@@ -993,10 +1071,12 @@ router.get('/with-snapshots', async (req, res, next) => {
         p.remise_client,
         p.remise_artisan,
         p.prix_vente AS product_prix_vente,
+        p.prix_vente_2 AS product_prix_vente_2,
         p.prix_vente_pourcentage AS product_prix_vente_pourcentage,
         pv.variant_name,
         pv.prix_achat AS variant_prix_achat,
         pv.prix_vente AS variant_prix_vente,
+        pv.prix_vente_2 AS variant_prix_vente_2,
         pv.prix_vente_pourcentage AS variant_prix_vente_pourcentage
       FROM product_snapshot ps
       JOIN products p ON p.id = ps.product_id
@@ -1014,7 +1094,7 @@ router.get('/with-snapshots', async (req, res, next) => {
              p.remise_client, p.remise_artisan,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT(
                'id', pv2.id, 'variant_name', pv2.variant_name,
-               'prix_achat', pv2.prix_achat, 'prix_vente', pv2.prix_vente,
+               'prix_achat', pv2.prix_achat, 'prix_vente', pv2.prix_vente, 'prix_vente_2', pv2.prix_vente_2,
                'stock_quantity', pv2.stock_quantity
              )) FROM product_variants pv2 WHERE pv2.product_id = p.id AND COALESCE(pv2.is_deleted, 0) = 0) AS variants,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT(
@@ -1045,6 +1125,9 @@ router.get('/with-snapshots', async (req, res, next) => {
       const originalPrixVente = snap.variant_id
         ? Number(snap.variant_prix_vente ?? snap.product_prix_vente ?? 0)
         : Number(snap.product_prix_vente ?? 0);
+      const originalPrixVente2 = snap.variant_id
+        ? Number(snap.variant_prix_vente_2 ?? snap.product_prix_vente_2 ?? 0)
+        : Number(snap.product_prix_vente_2 ?? 0);
       const originalPrixVentePourcentage = snap.variant_id
         ? Number(snap.variant_prix_vente_pourcentage ?? snap.product_prix_vente_pourcentage ?? 0)
         : Number(snap.product_prix_vente_pourcentage ?? 0);
@@ -1075,6 +1158,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         bon_commande_id: snap.bon_commande_id,
         prix_achat: snap.snapshot_prix_achat !== null ? Number(snap.snapshot_prix_achat) : Number(snap.variant_prix_achat || 0),
         prix_vente: originalPrixVente,
+        prix_vente_2: originalPrixVente2,
         cout_revient: snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : 0,
         cout_revient_pourcentage: snap.snapshot_cout_revient_pourcentage !== null ? Number(snap.snapshot_cout_revient_pourcentage) : 0,
         prix_gros: snap.snapshot_prix_gros !== null ? Number(snap.snapshot_prix_gros) : 0,
@@ -1181,6 +1265,7 @@ router.get('/', async (req, res, next) => {
         'prix_gros_pourcentage', pv.prix_gros_pourcentage,
         'prix_vente_pourcentage', pv.prix_vente_pourcentage,
         'prix_vente', pv.prix_vente,
+        'prix_vente_2', pv.prix_vente_2,
         'image_url', pv.image_url,
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
@@ -1236,6 +1321,7 @@ router.get('/', async (req, res, next) => {
         'prix_gros_pourcentage', pv.prix_gros_pourcentage,
         'prix_vente_pourcentage', pv.prix_vente_pourcentage,
         'prix_vente', pv.prix_vente,
+        'prix_vente_2', pv.prix_vente_2,
         'image_url', pv.image_url,
         'remise_client', pv.remise_client,
         'remise_artisan', pv.remise_artisan,
@@ -1263,6 +1349,7 @@ router.get('/', async (req, res, next) => {
       const variants = typeof r.variants === 'string' ? JSON.parse(r.variants) : (r.variants || []);
       const variantsWithSnapshot = Array.isArray(variants) ? variants.map((v) => ({
         ...v,
+        prix_vente_2: Number(v?.prix_vente_2 ?? 0),
         snapshot_quantite_total: v?.snapshot_quantite_total !== null && v?.snapshot_quantite_total !== undefined ? Number(v.snapshot_quantite_total) : null,
         snapshot_prix_achat_old: v?.snapshot_prix_achat_old !== null && v?.snapshot_prix_achat_old !== undefined ? Number(v.snapshot_prix_achat_old) : null,
         snapshot_prix_vente_old: v?.snapshot_prix_vente_old !== null && v?.snapshot_prix_vente_old !== undefined ? Number(v.snapshot_prix_vente_old) : null,
@@ -1287,6 +1374,7 @@ router.get('/', async (req, res, next) => {
         prix_gros: Number(r.prix_gros),
         prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
         prix_vente: Number(r.prix_vente),
+        prix_vente_2: Number(r.prix_vente_2 ?? 0),
         snapshot_prix_vente_old: useSnapshot && r.snapshot_prix_vente_old !== null && r.snapshot_prix_vente_old !== undefined ? Number(r.snapshot_prix_vente_old) : null,
         est_service: !!r.est_service,
         non_stockable: !!r.non_stockable,
@@ -1811,6 +1899,7 @@ router.get('/:id', async (req, res, next) => {
       prix_gros: Number(r.prix_gros),
       prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
       prix_vente: Number(r.prix_vente),
+      prix_vente_2: Number(r.prix_vente_2 ?? 0),
       est_service: !!r.est_service,
       non_stockable: !!r.non_stockable,
       image_url: r.image_url,
@@ -1843,6 +1932,7 @@ router.get('/:id', async (req, res, next) => {
         prix_gros_pourcentage: Number(v.prix_gros_pourcentage),
         prix_vente_pourcentage: Number(v.prix_vente_pourcentage),
         prix_vente: Number(v.prix_vente),
+        prix_vente_2: Number(v.prix_vente_2 ?? 0),
         stock_quantity: Number(v.stock_quantity),
         image_url: v.image_url,
         remise_client: Number(v.remise_client ?? 0),
@@ -1883,6 +1973,7 @@ router.post('/', upload.fields([
       prix_gros_pourcentage,
       prix_vente_pourcentage,
       prix_vente,
+      prix_vente_2,
       remise_client,
       remise_artisan,
       est_service,
@@ -1933,6 +2024,7 @@ router.post('/', upload.fields([
     const pg = pa * (1 + pgp / 100);
     const pvExplicit = prix_vente !== undefined && prix_vente !== null && prix_vente !== '' ? Number(prix_vente) : null;
     const pv = pvExplicit !== null && Number.isFinite(pvExplicit) ? pvExplicit : pa * (1 + pvp / 100);
+    const pv2 = prix_vente_2 !== undefined && prix_vente_2 !== null && prix_vente_2 !== '' ? Number(prix_vente_2) : 0;
 
     // Variant pricing rule:
     // If product has exactly one unit and that unit is manual (facteur_isNormal=0),
@@ -1976,8 +2068,8 @@ router.post('/', upload.fields([
 
     const [result] = await pool.query(
       `INSERT INTO products
-      (designation, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, remise_client, remise_artisan, est_service, non_stockable, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, is_obligatoire_variant, base_unit, categorie_base, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (designation, designation_ar, designation_en, designation_zh, categorie_id, brand_id, quantite, kg, prix_achat, cout_revient_pourcentage, cout_revient, prix_gros_pourcentage, prix_gros, prix_vente_pourcentage, prix_vente, prix_vente_2, remise_client, remise_artisan, est_service, non_stockable, image_url, fiche_technique, fiche_technique_ar, fiche_technique_en, fiche_technique_zh, description, description_ar, description_en, description_zh, pourcentage_promo, ecom_published, stock_partage_ecom, stock_partage_ecom_qty, has_variants, is_obligatoire_variant, base_unit, categorie_base, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         (designation && String(designation).trim()) || 'Sans désignation',
         designation_ar || null,
@@ -1994,6 +2086,7 @@ router.post('/', upload.fields([
         pg,
         pvp,
         pv,
+        Number.isFinite(pv2) ? pv2 : 0,
         Number(remise_client ?? 0),
         Number(remise_artisan ?? 0),
         isService ? 1 : 0,
@@ -2061,6 +2154,7 @@ router.post('/', upload.fields([
           const variantPrixVente = lockVariantPrixVente
             ? Number(lockedVariantPrixVente ?? 0)
             : Number(v.prix_vente ?? 0);
+          const variantPrixVente2 = Number(v.prix_vente_2 ?? 0);
           await pool.query(
             `INSERT INTO product_variants (
                   product_id,
@@ -2068,11 +2162,11 @@ router.post('/', upload.fields([
                   variant_type, reference,
                   prix_achat, cout_revient, cout_revient_pourcentage,
                   prix_gros, prix_gros_pourcentage,
-                  prix_vente_pourcentage, prix_vente,
+                  prix_vente_pourcentage, prix_vente, prix_vente_2,
                   remise_client, remise_artisan, stock_quantity,
                   created_at, updated_at
                 )
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
             [
               id,
               v.variant_name,
@@ -2088,6 +2182,7 @@ router.post('/', upload.fields([
               Number(v.prix_gros_pourcentage ?? 0),
               variantPrixVentePourcentage,
               variantPrixVente,
+              variantPrixVente2,
               Number(v.remise_client ?? 0),
               Number(v.remise_artisan ?? 0),
               Number(v.stock_quantity ?? 0),
@@ -2145,6 +2240,7 @@ router.post('/', upload.fields([
       prix_gros: Number(r.prix_gros),
       prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
       prix_vente: Number(r.prix_vente),
+      prix_vente_2: Number(r.prix_vente_2 ?? 0),
       est_service: !!r.est_service,
       non_stockable: !!r.non_stockable,
       image_url: r.image_url,
@@ -2176,6 +2272,7 @@ router.post('/', upload.fields([
         prix_gros_pourcentage: Number(v.prix_gros_pourcentage),
         prix_vente_pourcentage: Number(v.prix_vente_pourcentage),
         prix_vente: Number(v.prix_vente),
+        prix_vente_2: Number(v.prix_vente_2 ?? 0),
         stock_quantity: Number(v.stock_quantity),
         remise_client: Number(v.remise_client ?? 0),
         remise_artisan: Number(v.remise_artisan ?? 0),
@@ -2221,6 +2318,7 @@ router.put('/:id', upload.fields([
       prix_gros_pourcentage,
       prix_vente_pourcentage,
       prix_vente,
+      prix_vente_2,
       remise_client,
       remise_artisan,
       est_service,
@@ -2290,6 +2388,7 @@ router.put('/:id', upload.fields([
     const pg = pa * (1 + pgp / 100);
     const pvExplicit = (prix_vente !== undefined && prix_vente !== null && prix_vente !== '') ? Number(prix_vente) : null;
     const pv = (pvExplicit !== null && Number.isFinite(pvExplicit)) ? pvExplicit : pa * (1 + pvp / 100);
+    const pv2 = (prix_vente_2 !== undefined && prix_vente_2 !== null && prix_vente_2 !== '') ? Number(prix_vente_2) : Number(existing.prix_vente_2 ?? 0);
 
     // Variant pricing rule:
     // If (desired OR current) units are exactly 1 and it's manual (facteur_isNormal=0),
@@ -2364,6 +2463,7 @@ router.put('/:id', upload.fields([
       prix_gros: pg,
       prix_vente_pourcentage: pvp,
       prix_vente: pv,
+      prix_vente_2: Number.isFinite(pv2) ? pv2 : 0,
       remise_client: (remise_client !== undefined && remise_client !== null && remise_client !== '') ? Number(remise_client) : Number(existing.remise_client ?? 0),
       remise_artisan: (remise_artisan !== undefined && remise_artisan !== null && remise_artisan !== '') ? Number(remise_artisan) : Number(existing.remise_artisan ?? 0),
       est_service: isService ? 1 : 0,
@@ -2446,6 +2546,7 @@ router.put('/:id', upload.fields([
             const variantPrixVente = lockVariantPrixVente
               ? Number(lockedVariantPrixVente ?? 0)
               : Number(v?.prix_vente ?? 0);
+            const variantPrixVente2 = Number(v?.prix_vente_2 ?? 0);
             const payloadVals = [
               v?.variant_name,
               v?.variant_name_ar || null,
@@ -2460,6 +2561,7 @@ router.put('/:id', upload.fields([
               Number(v?.prix_gros_pourcentage ?? 0),
               variantPrixVentePourcentage,
               variantPrixVente,
+              variantPrixVente2,
               Number(v?.remise_client ?? 0),
               Number(v?.remise_artisan ?? 0),
               Number(v?.stock_quantity ?? 0),
@@ -2472,7 +2574,7 @@ router.put('/:id', upload.fields([
                      variant_type = ?, reference = ?,
                      prix_achat = ?, cout_revient = ?, cout_revient_pourcentage = ?,
                      prix_gros = ?, prix_gros_pourcentage = ?,
-                     prix_vente_pourcentage = ?, prix_vente = ?,
+                     prix_vente_pourcentage = ?, prix_vente = ?, prix_vente_2 = ?,
                      remise_client = ?, remise_artisan = ?, stock_quantity = ?,
                      is_deleted = 0,
                      updated_at = ?
@@ -2489,10 +2591,10 @@ router.put('/:id', upload.fields([
                     variant_type, reference,
                     prix_achat, cout_revient, cout_revient_pourcentage,
                     prix_gros, prix_gros_pourcentage,
-                    prix_vente_pourcentage, prix_vente,
+                    prix_vente_pourcentage, prix_vente, prix_vente_2,
                     remise_client, remise_artisan, stock_quantity,
                     is_deleted, created_at, updated_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
                   [id, ...payloadVals, now, now]
                 );
               }
@@ -2504,10 +2606,10 @@ router.put('/:id', upload.fields([
                   variant_type, reference,
                   prix_achat, cout_revient, cout_revient_pourcentage,
                   prix_gros, prix_gros_pourcentage,
-                  prix_vente_pourcentage, prix_vente,
+                  prix_vente_pourcentage, prix_vente, prix_vente_2,
                   remise_client, remise_artisan, stock_quantity,
                   is_deleted, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)` ,
                 [id, ...payloadVals, now, now]
               );
             }
@@ -2631,6 +2733,7 @@ router.put('/:id', upload.fields([
       prix_gros: Number(r.prix_gros),
       prix_vente_pourcentage: Number(r.prix_vente_pourcentage),
       prix_vente: Number(r.prix_vente),
+      prix_vente_2: Number(r.prix_vente_2 ?? 0),
       est_service: !!r.est_service,
       image_url: r.image_url,
       gallery: gallery,

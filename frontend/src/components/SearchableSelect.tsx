@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-interface Option { value: string; label: string; data?: any }
+interface Option { value: string; label: string; data?: any; disabled?: boolean }
 
 interface SearchableSelectProps {
   options: Option[];
@@ -161,10 +161,12 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 } else if (e.key === 'Enter') {
                   if (highlightIndex >= 0 && filteredOptions[highlightIndex]) {
                     const opt = filteredOptions[highlightIndex];
-                    onChange(opt.value);
-                    setIsOpen(false);
-                    setSearchTerm('');
-                    setHighlightIndex(-1);
+                    if (!opt.disabled) {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                      setSearchTerm('');
+                      setHighlightIndex(-1);
+                    }
                     // Prevent the form-level Enter handler from firing
                     e.preventDefault();
                     e.stopPropagation();
@@ -213,9 +215,17 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                   <button
                     key={option.value}
                     type="button"
-                    className={`w-full px-3 py-2 text-left hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0 overflow-hidden ${idx === highlightIndex ? 'bg-blue-50' : ''}`}
+                    disabled={option.disabled}
+                    className={`w-full px-3 py-2 text-left text-sm border-b border-gray-100 last:border-b-0 overflow-hidden ${
+                      option.disabled
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : idx === highlightIndex
+                          ? 'bg-blue-50 hover:bg-gray-100'
+                          : 'hover:bg-gray-100'
+                    }`}
                     onClick={(ev) => { 
                       ev.stopPropagation(); 
+                      if (option.disabled) return;
                       onChange(option.value); 
                       setIsOpen(false); 
                       setSearchTerm(''); 
@@ -225,13 +235,14 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                       if (ev.key === 'Enter' || ev.key === ' ') {
                         ev.preventDefault();
                         ev.stopPropagation();
+                        if (option.disabled) return;
                         onChange(option.value);
                         setIsOpen(false);
                         setSearchTerm('');
                         setHighlightIndex(-1);
                       }
                     }}
-                    title={option.label}
+                    title={option.disabled ? (option.data?.disabledReason || 'Option non selectionnable') : option.label}
                   >
                     <span className="block truncate">{option.label}</span>
                   </button>
