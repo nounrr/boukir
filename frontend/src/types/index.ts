@@ -182,11 +182,12 @@ export interface ProductVariant {
   prix_achat: number;
   cout_revient?: number;
   cout_revient_pourcentage?: number;
-  prix_gros?: number;
-  prix_gros_pourcentage?: number;
-  prix_vente_pourcentage?: number;
-  prix_vente: number;
-  stock_quantity: number;
+    prix_gros?: number;
+    prix_gros_pourcentage?: number;
+    prix_vente_pourcentage?: number;
+    prix_vente: number;
+    prix_vente_2?: number;
+    stock_quantity: number;
   image_url?: string | null;
   gallery?: Array<{
     id: number;
@@ -248,6 +249,7 @@ export interface Product {
   prix_gros: number;
   prix_vente_pourcentage: number;
   prix_vente: number;
+  prix_vente_2?: number;
   est_service: boolean;
   non_stockable?: boolean;
   image_url?: string | null;
@@ -303,6 +305,7 @@ export interface CreateProductData {
   cout_revient_pourcentage?: number;
   prix_gros_pourcentage?: number;
   prix_vente_pourcentage?: number;
+  prix_vente_2?: number;
   est_service?: boolean;
   non_stockable?: boolean;
   remise_client?: number;

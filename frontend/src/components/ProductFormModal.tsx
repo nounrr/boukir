@@ -138,6 +138,7 @@ const validationSchema = Yup.object({
       prix_gros_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
       prix_vente_pourcentage: Yup.number().transform(numberTransform()).min(0).optional(),
       prix_vente: Yup.number().transform(numberTransform()).typeError('Prix vente requis').min(0).required('Prix vente requis'),
+      prix_vente_2: Yup.number().transform(numberTransform()).min(0).optional(),
       stock_quantity: Yup.number().transform(numberTransform()).typeError('Quantité requise').min(0, 'Quantité >= 0').required('Quantité requise'),
       remise_client: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
       remise_artisan: Yup.number().transform(numberTransform()).min(0, 'La remise ne peut pas être négative').optional(),
@@ -486,6 +487,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     cout_revient_pourcentage: 2,
     prix_gros_pourcentage: 10,
     prix_vente_pourcentage: 25,
+    prix_vente_2: 0,
     est_service: false,
     non_stockable: defaultNonStockable,
     remise_client: 0,
@@ -541,6 +543,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           prix_gros_pourcentage: derivePct(variant?.prix_gros, prixAchat, toNonNegativeNum(variant?.prix_gros_pourcentage)),
           prix_vente: toNonNegativeNum(variant?.prix_vente),
           prix_vente_pourcentage: derivePct(variant?.prix_vente, prixAchat, toNonNegativeNum(variant?.prix_vente_pourcentage)),
+          prix_vente_2: toNonNegativeNum(variant?.prix_vente_2 ?? 0),
           stock_quantity: toNonNegativeNum(variant?.stock_quantity),
           remise_client: toNonNegativeNum(variant?.remise_client ?? 0),
           remise_artisan: toNonNegativeNum(variant?.remise_artisan ?? 0),
@@ -577,6 +580,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           cout_revient_pourcentage: derivePct((baseEdit as any).cout_revient, (baseEdit as any).prix_achat, toNonNegativeNum((baseEdit as any).cout_revient_pourcentage ?? 2)),
           prix_gros_pourcentage: derivePct((baseEdit as any).prix_gros, (baseEdit as any).prix_achat, toNonNegativeNum((baseEdit as any).prix_gros_pourcentage ?? 10)),
           prix_vente_pourcentage: derivePct((baseEdit as any).prix_vente, (baseEdit as any).prix_achat, toNonNegativeNum((baseEdit as any).prix_vente_pourcentage ?? 25)),
+          prix_vente_2: toNonNegativeNum((baseEdit as any).prix_vente_2 ?? 0),
           est_service: (baseEdit as any).est_service ?? false,
           non_stockable: (baseEdit as any).non_stockable ?? false,
           remise_client: toNonNegativeNum((baseEdit as any).remise_client ?? 0),
@@ -625,6 +629,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       const productPrixVenteNum = priceRaw.prix_vente !== ''
         ? toNonNegativeNum(priceRaw.prix_vente)
         : (Number(dynamicPrices.prix_vente) || computed.prix_vente);
+      const prixVente2Num = toNonNegativeNum((values as any).prix_vente_2 ?? 0);
 
       const unit0 = Array.isArray(values.units) ? values.units[0] : undefined;
       const lockVariantPrixVente =
@@ -669,6 +674,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             prix_gros_pourcentage: toNonNegativeNum(v.prix_gros_pourcentage),
             prix_vente_pourcentage: toNonNegativeNum(v.prix_vente_pourcentage),
             prix_vente: toNonNegativeNum(v.prix_vente),
+            prix_vente_2: toNonNegativeNum(v.prix_vente_2 ?? 0),
             stock_quantity: toNonNegativeNum(v.stock_quantity),
             remise_client: toNonNegativeNum(v.remise_client ?? 0),
             remise_artisan: toNonNegativeNum(v.remise_artisan ?? 0),
@@ -682,6 +688,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         cout_revient: computed.cout_revient,
         prix_gros: computed.prix_gros,
         prix_vente: productPrixVenteNum,
+        prix_vente_2: prixVente2Num,
         cout_revient_pourcentage: crPctNum,
         prix_gros_pourcentage: pgPctNum,
         prix_vente_pourcentage: pvPctNum,
@@ -720,6 +727,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('prix_gros_pourcentage', String(pgPctNum));
           formData.append('prix_vente_pourcentage', String(pvPctNum));
           formData.append('prix_vente', String(productPrixVenteNum));
+          formData.append('prix_vente_2', String(prixVente2Num));
           formData.append('est_service', productData.est_service ? '1' : '0');
           formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
@@ -809,6 +817,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('prix_gros_pourcentage', String(pgPctNum));
           formData.append('prix_vente_pourcentage', String(pvPctNum));
           formData.append('prix_vente', String(productPrixVenteNum));
+          formData.append('prix_vente_2', String(prixVente2Num));
           formData.append('est_service', productData.est_service ? '1' : '0');
           formData.append('non_stockable', (productData as any).non_stockable ? '1' : '0');
           formData.append('remise_client', String((productData as any).remise_client ?? 0));
@@ -868,6 +877,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
               cout_revient: res?.cout_revient ?? computed.cout_revient ?? 0,
               prix_gros: res?.prix_gros ?? computed.prix_gros ?? 0,
               prix_vente: res?.prix_vente ?? computed.prix_vente ?? 0,
+              prix_vente_2: res?.prix_vente_2 ?? prixVente2Num ?? 0,
               reference: res?.reference ?? String(res?.id ?? ''),
               description: res?.description ?? productData.description ?? '',
               pourcentage_promo: res?.pourcentage_promo ?? promoPctNum ?? 0,
@@ -1717,7 +1727,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           <div className="mt-6 p-5 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 shadow-sm">
             <h3 className="text-base font-bold text-gray-900 mb-4">Calculs automatiques des prix</h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Coût de revient */}
               <div className="space-y-2">
                 <label htmlFor="cout_revient_pourcentage" className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -1879,6 +1889,32 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       priceEditingRef.current = null;
                       const val = Math.max(0, parseFloat(normalizeDecimal(priceRaw.prix_vente)) || 0);
                       setPriceRaw((prev) => ({ ...prev, prix_vente: formatNumber(val) }));
+                    }}
+                    className="w-full text-right bg-transparent border-0 focus:outline-none"
+                  />
+                  <div className="text-xs text-gray-500">DH</div>
+                </div>
+              </div>
+
+              {/* Prix de vente 2 */}
+              <div className="space-y-2">
+                <label htmlFor="prix_vente_2" className="block text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Prix vente 2
+                </label>
+                <div className="flex items-center space-x-2 min-h-[34px]">
+                  <span className="text-xs text-gray-500">Manuel</span>
+                </div>
+                <div className="text-lg font-semibold text-gray-900 bg-white px-3 py-2 rounded-xl border-2 border-gray-200 shadow-sm">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    name="prix_vente_2"
+                    value={String((formik.values as any).prix_vente_2 ?? '')}
+                    onChange={(e) => {
+                      void setNonNegativeFieldValue('prix_vente_2', e.target.value);
+                    }}
+                    onBlur={() => {
+                      void commitNonNegativeFieldValue('prix_vente_2', (formik.values as any).prix_vente_2, 0);
                     }}
                     className="w-full text-right bg-transparent border-0 focus:outline-none"
                   />
@@ -2339,7 +2375,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                           </button>
 
                           {/* Ligne 1: Infos de base */}
-                          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pr-8">
+                          <div className="grid grid-cols-1 md:grid-cols-6 gap-4 pr-8">
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
                               <select
@@ -2431,6 +2467,26 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                               />
                               {asStringError((formik.errors.variants?.[index] as any)?.prix_vente) && (
                                 <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente)}</p>
+                              )}
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Prix Vente 2</label>
+                              <input
+                                type="number"
+                                name={`variants.${index}.prix_vente_2`}
+                                value={(variant as any).prix_vente_2 ?? 0}
+                                onChange={(e) => {
+                                  if (!setNonNegativeFieldValue(`variants.${index}.prix_vente_2`, e.target.value)) return;
+                                }}
+                                onBlur={() => {
+                                  void commitNonNegativeFieldValue(`variants.${index}.prix_vente_2`, (formik.values.variants?.[index] as any)?.prix_vente_2, 0);
+                                }}
+                                className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                placeholder="0.00"
+                                min={0}
+                              />
+                              {asStringError((formik.errors.variants?.[index] as any)?.prix_vente_2) && (
+                                <p className="mt-1 text-xs text-red-600">{asStringError((formik.errors.variants?.[index] as any)?.prix_vente_2)}</p>
                               )}
                             </div>
                           </div>
@@ -2577,6 +2633,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                         formik.setFieldValue(
                                           `variants.${index}.prix_vente`,
                                           dynamicPrices.prix_vente
+                                        );
+                                        formik.setFieldValue(
+                                          `variants.${index}.prix_vente_2`,
+                                          (formik.values as any).prix_vente_2 ?? 0
                                         );
                                       }
                                     }}
@@ -2867,6 +2927,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                         prix_gros_pourcentage: 0,
                         prix_vente_pourcentage: 0,
                         prix_vente: 0,
+                        prix_vente_2: 0,
                         stock_quantity: 0
                       })}
                       className="flex items-center gap-2 text-sm text-white bg-blue-600 hover:bg-blue-700 font-semibold mt-3 px-4 py-2 rounded-lg shadow-sm transition-colors"

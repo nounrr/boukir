@@ -48,6 +48,39 @@ interface SearchableSelectProps {
   createText?: string;
 }
 
+const renderSearchableOptionLabel = (label: string) => {
+  const parts = String(label || '').split(
+    /(\|\s*(?:PA|PV|PV2):\s*[-+]?\d+(?:[.,]\d+)?\s*DH|\(\s*[-+]?\d+(?:[.,]\d+)?\s*\)|\|\s*(?:Bon|Snap)\s*#\d+|\|\s*Ref produit:\s*[^|]+|\[Lots fusionn[^\]]+\])/g
+  ).filter(Boolean);
+
+  return parts.map((part, index) => {
+    const clean = part.trim();
+    const key = `${clean}-${index}`;
+    if (/^\|\s*PA:/i.test(clean)) {
+      return <span key={key} className="mx-1 inline-flex rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">{clean.replace(/^\|\s*/, '')}</span>;
+    }
+    if (/^\|\s*PV:/i.test(clean)) {
+      return <span key={key} className="mx-1 inline-flex rounded bg-indigo-50 px-1.5 py-0.5 font-semibold text-indigo-700">{clean.replace(/^\|\s*/, '')}</span>;
+    }
+    if (/^\|\s*PV2:/i.test(clean)) {
+      return <span key={key} className="mx-1 inline-flex rounded bg-cyan-50 px-1.5 py-0.5 font-semibold text-cyan-700">{clean.replace(/^\|\s*/, '')}</span>;
+    }
+    if (/^\(\s*[-+]?\d+(?:[.,]\d+)?\s*\)$/.test(clean)) {
+      return <span key={key} className="mx-1 inline-flex rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">Qte {clean}</span>;
+    }
+    if (/^\|\s*(?:Bon|Snap)\s*#/i.test(clean)) {
+      return <span key={key} className="mx-1 inline-flex rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">{clean.replace(/^\|\s*/, '')}</span>;
+    }
+    if (/^\|\s*Ref produit:/i.test(clean)) {
+      return <span key={key} className="mx-1 inline-flex rounded bg-violet-50 px-1.5 py-0.5 font-medium text-violet-700">{clean.replace(/^\|\s*/, '')}</span>;
+    }
+    if (/^\[Lots fusionn/i.test(clean)) {
+      return <span key={key} className="mr-1 inline-flex rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">{clean}</span>;
+    }
+    return <span key={key} className="text-gray-800">{part}</span>;
+  });
+};
+
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
   options,
   value,
@@ -252,7 +285,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                       }}
                       title={option.disabled ? "Client non sélectionnable - Plafond dépassé" : option.label}
                     >
-                      <span className="block truncate">{option.label}</span>
+                      <span className="block truncate">{renderSearchableOptionLabel(option.label)}</span>
                     </button>
                   ))}
                   {hasMoreItems && (
@@ -442,6 +475,69 @@ const findLatestSnapshotForProductVariant = (
     return flag == null ? true : Number(flag) !== 0;
   });
   return getLatestSnapshotEntry(candidates);
+};
+
+const formatPrixAchatOption = (value: any) => {
+  const price = Number(value) || 0;
+  const formatted = Number.isInteger(price)
+    ? String(price)
+    : price.toFixed(2).replace(/\.?0+$/, '');
+  return price > 0 ? `PA: ${formatted} DH` : '';
+};
+
+const formatPrixVenteOption = (value: any) => {
+  const price = Number(value) || 0;
+  const formatted = Number.isInteger(price)
+    ? String(price)
+    : price.toFixed(2).replace(/\.?0+$/, '');
+  return price > 0 ? `PV: ${formatted} DH` : '';
+};
+
+const formatPrixVente2Option = (value: any) => {
+  const price = Number(value) || 0;
+  const formatted = Number.isInteger(price)
+    ? String(price)
+    : price.toFixed(2).replace(/\.?0+$/, '');
+  return price > 0 ? `PV2: ${formatted} DH` : '';
+};
+
+const resolveOptionPrixAchat = (
+  product: any,
+  variant: any = null,
+  snapshotProducts: any[] = []
+) => {
+  const snapshot = findLatestSnapshotForProductVariant(
+    snapshotProducts,
+    product?.id,
+    variant?.id ?? null
+  );
+  return Number(snapshot?.prix_achat) || Number(variant?.prix_achat) || Number(product?.prix_achat) || 0;
+};
+
+const resolveOptionPrixVente = (
+  product: any,
+  variant: any = null,
+  snapshotProducts: any[] = []
+) => {
+  const snapshot = findLatestSnapshotForProductVariant(
+    snapshotProducts,
+    product?.id,
+    variant?.id ?? product?.variant_id ?? null
+  );
+  return Number(snapshot?.prix_vente) || Number(variant?.prix_vente) || Number(product?.prix_vente) || 0;
+};
+
+const resolveOptionPrixVente2 = (
+  product: any,
+  variant: any = null,
+  snapshotProducts: any[] = []
+) => {
+  const snapshot = findLatestSnapshotForProductVariant(
+    snapshotProducts,
+    product?.id,
+    variant?.id ?? product?.variant_id ?? null
+  );
+  return Number(snapshot?.prix_vente_2) || Number(variant?.prix_vente_2) || Number(product?.prix_vente_2) || 0;
 };
 
 const resolveItemCostContext = (
@@ -943,15 +1039,14 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       const nom = p.designation ?? '';
       const pa = Number(p.prix_achat || 0);
       const pv = Number(p.prix_vente || 0);
+      const pv2Label = formatPrixVente2Option(p.prix_vente_2);
       const variants: any[] = p.variants ?? [];
 
       // Base product option
-      const priceLabel = pa === pv
-        ? (pa ? `${pa} DH` : '')
-        : `PA: ${pa} | PV: ${pv}`;
+      const priceLabel = `${formatPrixAchatOption(pa) ? ` | ${formatPrixAchatOption(pa)}` : ''}${formatPrixVenteOption(pv) ? ` | ${formatPrixVenteOption(pv)}` : ''}`;
       options.push({
         value: String(p.id),
-        label: `${ref} - ${nom}${priceLabel ? ` | ${priceLabel}` : ''}`.trim(),
+        label: `${ref} - ${nom}${priceLabel}${pv2Label ? ` | ${pv2Label}` : ''}`.trim(),
         data: p,
       });
 
@@ -959,14 +1054,13 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       for (const v of variants) {
         const vpa = Number(v.prix_achat ?? pa);
         const vpv = Number(v.prix_vente ?? pv);
+        const variantPv2Label = formatPrixVente2Option(v.prix_vente_2 ?? p.prix_vente_2);
         // If single variant with same pricing as parent, skip duplicate
         if (variants.length === 1 && vpa === pa && vpv === pv) continue;
-        const varPriceLabel = vpa === vpv
-          ? (vpa ? `${vpa} DH` : '')
-          : `PA: ${vpa} | PV: ${vpv}`;
+        const varPriceLabel = `${formatPrixAchatOption(vpa) ? ` | ${formatPrixAchatOption(vpa)}` : ''}${formatPrixVenteOption(vpv) ? ` | ${formatPrixVenteOption(vpv)}` : ''}`;
         options.push({
           value: `var:${v.id}:${p.id}`,
-          label: `${ref} - ${nom} - ${v.variant_name}${varPriceLabel ? ` | ${varPriceLabel}` : ''}`.trim(),
+          label: `${ref} - ${nom} - ${v.variant_name}${varPriceLabel}${variantPv2Label ? ` | ${variantPv2Label}` : ''}`.trim(),
           data: { ...p, _selectedVariant: v },
         });
       }
@@ -1002,9 +1096,12 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     for (const p of products as any[]) {
       const productReference = String(p?.reference ?? p?.id ?? '').trim();
       const productDesignation = String(p?.designation ?? '').trim();
+      const productPrixAchatLabel = formatPrixAchatOption(resolveOptionPrixAchat(p, null, snapshotProducts as any[]));
+      const productPrixVenteLabel = formatPrixVenteOption(resolveOptionPrixVente(p, null, snapshotProducts as any[]));
+      const productPrixVente2Label = formatPrixVente2Option(resolveOptionPrixVente2(p, null, snapshotProducts as any[]));
       options.push({
         value: String(p.id),
-        label: `${productReference} - ${productDesignation}`.trim(),
+        label: `${productReference} - ${productDesignation}${productPrixAchatLabel ? ` | ${productPrixAchatLabel}` : ''}${productPrixVenteLabel ? ` | ${productPrixVenteLabel}` : ''}${productPrixVente2Label ? ` | ${productPrixVente2Label}` : ''}`.trim(),
         data: p,
       });
 
@@ -1012,20 +1109,23 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         const variantReference = String(v?.reference ?? '').trim();
         const variantName = String(v?.variant_name ?? '').trim();
         const displayReference = variantReference || productReference;
+        const variantPrixAchatLabel = formatPrixAchatOption(resolveOptionPrixAchat(p, v, snapshotProducts as any[]));
+        const variantPrixVenteLabel = formatPrixVenteOption(resolveOptionPrixVente(p, v, snapshotProducts as any[]));
+        const variantPrixVente2Label = formatPrixVente2Option(resolveOptionPrixVente2(p, v, snapshotProducts as any[]));
         const extraParentRef =
           variantReference && productReference && variantReference !== productReference
             ? ` | Ref produit: ${productReference}`
             : '';
         options.push({
           value: `catalogvar:${v.id}:${p.id}`,
-          label: `${displayReference} - ${productDesignation}${variantName ? ` - ${variantName}` : ''}${extraParentRef}`.trim(),
+          label: `${displayReference} - ${productDesignation}${variantName ? ` - ${variantName}` : ''}${variantPrixAchatLabel ? ` | ${variantPrixAchatLabel}` : ''}${variantPrixVenteLabel ? ` | ${variantPrixVenteLabel}` : ''}${variantPrixVente2Label ? ` | ${variantPrixVente2Label}` : ''}${extraParentRef}`.trim(),
           data: { ...p, _selectedVariant: v },
         });
       }
     }
 
     return options;
-  }, [products]);
+  }, [products, snapshotProducts]);
   const { data: clients = [] } = useGetAllClientsQuery();
   const { data: chargeClients = [] } = useGetAllChargeClientsQuery();
   const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
@@ -4517,7 +4617,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           if (p._isMerged) {
                                             const nom = p.designation ?? '';
                                             const variant = variantLabel ? ` - ${variantLabel}` : '';
-                                            const qte = p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : '';
+                                            const catalogProduct = productMap.get(String(p.id));
+                                            const prixVenteLabel = formatPrixVenteOption(p.prix_vente ?? variantMeta?.variant?.prix_vente ?? catalogProduct?.prix_vente);
+                                            const prixVente2Label = formatPrixVente2Option(p.prix_vente_2 ?? variantMeta?.variant?.prix_vente_2 ?? catalogProduct?.prix_vente_2);
+                                            const qte = `${formatPrixAchatOption(p.prix_achat) ? ` | ${formatPrixAchatOption(p.prix_achat)}` : ''}${prixVenteLabel ? ` | ${prixVenteLabel}` : ''}${prixVente2Label ? ` | ${prixVente2Label}` : ''}${p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : ''}`;
                                             const pv = Number(p.prix_vente ?? 0);
                                             return {
                                               value: `merged:${p.id}:${p.variant_id || 0}:${pv}`,
@@ -4530,7 +4633,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           const priorityTag = fifo === 1 ? '⭐' : fifo ? `#${fifo}` : '';
                                           const nom = p.designation ?? '';
                                           const variant = variantLabel ? ` - ${variantLabel}` : '';
-                                          const qte = p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : '';
+                                          const catalogProduct = productMap.get(String(p.id));
+                                          const prixVenteLabel = formatPrixVenteOption(p.prix_vente ?? variantMeta?.variant?.prix_vente ?? catalogProduct?.prix_vente);
+                                          const prixVente2Label = formatPrixVente2Option(p.prix_vente_2 ?? variantMeta?.variant?.prix_vente_2 ?? catalogProduct?.prix_vente_2);
+                                          const qte = `${formatPrixAchatOption(p.prix_achat || resolveOptionPrixAchat(p, variantMeta?.variant ?? null, snapshotProducts as any[])) ? ` | ${formatPrixAchatOption(p.prix_achat || resolveOptionPrixAchat(p, variantMeta?.variant ?? null, snapshotProducts as any[]))}` : ''}${prixVenteLabel ? ` | ${prixVenteLabel}` : ''}${prixVente2Label ? ` | ${prixVente2Label}` : ''}${p.snapshot_quantite != null ? ` (${Number(p.snapshot_quantite)})` : ''}`;
                                           const bonInfo = p.bon_commande_id ? `Bon #${p.bon_commande_id}` : p.snapshot_id ? `Snap #${p.snapshot_id}` : '';
                                           return {
                                             value: p.snapshot_id ? `snap:${p.snapshot_id}:${p.id}` : String(p.id),
@@ -5472,6 +5578,18 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       Number(product?.cout_revient) ||
                                       basePA ||
                                       0;
+                                    const basePV =
+                                      Number(latestActiveSnapshot?.prix_vente) ||
+                                      Number(snapshotProd?.prix_vente) ||
+                                      Number((variant as any)?.prix_vente) ||
+                                      Number(product?.prix_vente) ||
+                                      0;
+                                    const basePV2 =
+                                      Number(latestActiveSnapshot?.prix_vente_2) ||
+                                      Number(snapshotProd?.prix_vente_2) ||
+                                      Number((variant as any)?.prix_vente_2) ||
+                                      Number(product?.prix_vente_2) ||
+                                      0;
 
                                     // Apply factor to base values; fall back to formik if base is 0
                                     const displayPA = basePA
@@ -5480,8 +5598,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     const displayCR = baseCR
                                       ? scaleDecimal(baseCR, factor)
                                       : Number(item.cout_revient) || 0;
+                                    const displayPV = basePV ? scaleDecimal(basePV, factor) : Number(item.prix_unitaire) || 0;
+                                    const displayPV2 = basePV2 ? scaleDecimal(basePV2, factor) : 0;
 
-                                    return <div>{`PA${displayPA} CR${displayCR}`}</div>;
+                                    return <div>{`PA${displayPA} CR${displayCR} PV${displayPV} PV2${displayPV2}`}</div>;
                                   })()}
                                   <div className="text-[9px] text-orange-600">
                                     {(() => {
