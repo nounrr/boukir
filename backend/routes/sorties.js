@@ -6,6 +6,7 @@ import { resolveRemiseTarget } from '../utils/remiseTarget.js';
 import { syncBonItemRemises } from '../utils/syncBonItemRemises.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
+import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
 
 const router = express.Router();
 
@@ -285,6 +286,11 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Client requis' });
     }
+    const blockedClient = await findBlockedClient(connection, cId);
+    if (blockedClient) {
+      await connection.rollback();
+      return res.status(400).json(blockedClientPayload(blockedClient));
+    }
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? 'Brouillon';
@@ -559,6 +565,11 @@ router.put('/:id', async (req, res) => {
     if (!vendreAuFournisseur && !cId) {
       await connection.rollback();
       return res.status(400).json({ message: 'Client requis' });
+    }
+    const blockedClient = await findBlockedClient(connection, cId);
+    if (blockedClient) {
+      await connection.rollback();
+      return res.status(400).json(blockedClientPayload(blockedClient));
     }
 
     const resolved = isChefChauffeur

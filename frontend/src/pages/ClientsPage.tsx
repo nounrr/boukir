@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { useGetClientsQuery, useGetContactHistoryQuery, useGetContactQuery, useDeleteContactMutation } from '../store/api/contactsApi';
+import { useGetClientsQuery, useGetContactHistoryQuery, useGetContactQuery, useDeleteContactMutation, useUpdateContactMutation } from '../store/api/contactsApi';
 import { useGetProductsQuery } from '../store/api/productsApi';
 import type { ContactsSortBy, SortDirection } from '../store/api/contactsApi';
 import type { Contact } from '../types';
@@ -2031,6 +2031,7 @@ const ClientsListPage: React.FC = () => {
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [deleteContact] = useDeleteContactMutation();
+  const [updateContact] = useUpdateContactMutation();
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const savedState = React.useRef<ClientsListSavedState>(readSavedClientsState()).current;
   const [currentPage, setCurrentPage] = useState(savedState.currentPage ?? 1);
@@ -2123,6 +2124,19 @@ const ClientsListPage: React.FC = () => {
       showSuccess('Client supprimé avec succès');
     } catch (error: any) {
       showError(error?.data?.error || error?.message || 'Erreur lors de la suppression du client');
+    }
+  };
+
+  const handleToggleClientBloque = async (client: Contact) => {
+    const nextBloque = !Boolean(Number(client.bloque ?? 0));
+    try {
+      await updateContact({
+        id: client.id,
+        bloque: nextBloque,
+        updated_by: currentUser?.id ?? 0,
+      }).unwrap();
+    } catch (error: any) {
+      showError(error?.data?.error || error?.message || 'Erreur lors de la mise a jour du blocage');
     }
   };
 
@@ -2264,8 +2278,10 @@ const ClientsListPage: React.FC = () => {
     return pages;
   };
 
-  const renderClientDataRow = (client: Contact, rowLabel: string | number, rowKey?: string) => (
-    <tr key={rowKey ?? client.id} className="hover:bg-blue-50 transition-colors cursor-pointer" onClick={() => handleRowClick(client.id)}>
+  const renderClientDataRow = (client: Contact, rowLabel: string | number, rowKey?: string) => {
+    const isBloque = Boolean(Number(client.bloque ?? 0));
+    return (
+    <tr key={rowKey ?? client.id} className={`${isBloque ? 'bg-red-100 hover:bg-red-200' : 'hover:bg-blue-50'} transition-colors cursor-pointer`} onClick={() => handleRowClick(client.id)}>
       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
         <input
           type="checkbox"
@@ -2306,6 +2322,15 @@ const ClientsListPage: React.FC = () => {
         {client.adresse
           ? <div className="flex items-center gap-1.5 text-gray-600 text-xs"><MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" /><span className="truncate max-w-[180px]">{client.adresse}</span></div>
           : <span className="text-gray-300 text-xs">â€”</span>}
+      </td>
+      <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={isBloque}
+          onChange={() => handleToggleClientBloque(client)}
+          className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+          title={isBloque ? 'Debloquer client' : 'Bloquer client'}
+        />
       </td>
       <td className="px-4 py-3 text-right">
         <span className={`font-semibold text-sm ${client.solde < 0 ? 'text-red-600' : client.solde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
@@ -2358,7 +2383,8 @@ const ClientsListPage: React.FC = () => {
         </div>
       </td>
     </tr>
-  );
+    );
+  };
 
   const renderAccordionRow = (row: ClientsAccordionRow, idx: number) => {
     const rowLabel = (itemsPerPage === 0 ? 0 : (currentPage - 1) * itemsPerPage) + idx + 1;
@@ -2414,6 +2440,7 @@ const ClientsListPage: React.FC = () => {
           </td>
           <td className="px-4 py-3 text-gray-400 text-xs">â€”</td>
           <td className="px-4 py-3 text-gray-400 text-xs">â€”</td>
+          <td className="px-4 py-3 text-gray-400 text-xs text-center">-</td>
           <td className="px-4 py-3 text-right">
             <span className={`font-semibold text-sm ${groupSolde < 0 ? 'text-red-600' : groupSolde > 0 ? 'text-green-600' : 'text-gray-500'}`}>
               {fmt(groupSolde)}
@@ -2529,6 +2556,7 @@ const ClientsListPage: React.FC = () => {
                 </th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Contact</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Adresse</th>
+                <th className="text-center px-4 py-3 font-semibold text-gray-600">Bloque</th>
                 <th className="text-right px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort('solde')}>
                   Solde <SortIcon col="solde" />
                 </th>
@@ -2548,13 +2576,13 @@ const ClientsListPage: React.FC = () => {
               {isLoading || isFetching
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      {Array.from({ length: 12 }).map((_, j) => (
+                      {Array.from({ length: 13 }).map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-3/4" /></td>
                       ))}
                     </tr>
                   ))
                 : visibleAccordionRows.length === 0
-                  ? <tr><td colSpan={12} className="px-4 py-14 text-center text-gray-400">
+                  ? <tr><td colSpan={13} className="px-4 py-14 text-center text-gray-400">
                       <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" /><p>Aucun client trouvé</p>
                     </td></tr>
                   : (visibleAccordionRows.map((row, idx: number) => renderAccordionRow(row, idx)) || clients.map((client: Contact, idx: number) => (

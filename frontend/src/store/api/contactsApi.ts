@@ -114,7 +114,7 @@ const contactsApi = api.injectEndpoints({
       invalidatesTags: ['Contact'],
     }),
 
-    updateContact: builder.mutation<Contact, Partial<Contact> & { id: number; updated_by: number }>({
+    updateContact: builder.mutation<Contact, Partial<Contact> & { id: number; updated_by?: number }>({
       query: ({ id, ...patch }) => ({
         url: `/contacts/${id}`,
         method: 'PUT',

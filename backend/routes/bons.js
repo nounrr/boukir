@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db/pool.js';
 import { forbidRoles } from '../middleware/auth.js';
+import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
 
 const router = express.Router();
 
@@ -997,6 +998,11 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     // Créer le bon (numero supprimé du schéma/insert)
     // reste: pour Bon Comptant payé partiellement
     const resteVal = (type === 'Comptant' && payer_partiellement) ? (Number(reste) || 0) : 0;
+    const blockedClient = await findBlockedClient(connection, client_id);
+    if (blockedClient) {
+      await connection.rollback();
+      return res.status(400).json(blockedClientPayload(blockedClient));
+    }
 
     const [bonResult] = await connection.execute(`
       INSERT INTO bons (
@@ -1126,6 +1132,13 @@ router.patch('/:id', async (req, res) => {
     if (existingBon.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon non trouvé' });
+    }
+
+    const effectiveClientId = client_id !== undefined ? client_id : existingBon[0].client_id;
+    const blockedClient = await findBlockedClient(connection, effectiveClientId);
+    if (blockedClient) {
+      await connection.rollback();
+      return res.status(400).json(blockedClientPayload(blockedClient));
     }
 
     // Replace livraisons if provided

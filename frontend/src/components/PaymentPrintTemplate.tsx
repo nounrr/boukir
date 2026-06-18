@@ -238,6 +238,13 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       ? contact.societe
       : (contact?.nom_complet || '-')
   );
+  const contactRef = (() => {
+    const directRef = (contact as any)?.reference ?? payment?.contact_reference;
+    if (directRef != null && String(directRef).trim()) return String(directRef).trim();
+    if (contactIdRaw != null && Number(contactIdRaw) > 0) return String(contactIdRaw);
+    return '';
+  })();
+  const contactRefLabel = isClient ? 'Ref client' : 'Ref fournisseur';
   const isA5 = size === 'A5';
 
   return (
@@ -290,6 +297,9 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
             <div className={`bg-gray-50 ${isA5 ? 'p-2' : 'p-3'} rounded border-l-4 border-orange-500`}>
               <div className={`grid grid-cols-2 ${isA5 ? 'gap-1 text-[10px]' : 'gap-2 text-sm'}`}>
                 <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
+                {contactRef && (
+                  <div><span className="font-medium">{contactRefLabel}:</span> {contactRef}</div>
+                )}
                 <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
               </div>
             </div>

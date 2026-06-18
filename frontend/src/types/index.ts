@@ -380,6 +380,7 @@ export interface Contact {
   group_name?: string | null;
   isSolde?: boolean; // Indique si le client peut commander en solde (crédit)
   is_charge?: boolean;
+  bloque?: boolean | number;
   created_by?: number;
   updated_by?: number;
   created_at: string;
@@ -422,6 +423,7 @@ export interface CreateContactData {
   source?: 'backoffice' | 'ecommerce';
   group_id?: number | null;
   is_charge?: boolean;
+  bloque?: boolean | number;
 }
 
 // Types pour les véhicules

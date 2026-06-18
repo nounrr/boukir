@@ -81,6 +81,10 @@ const renderSearchableOptionLabel = (label: string) => {
   });
 };
 
+const getDisabledOptionTitle = (option: { label: string; data?: any; disabled?: boolean }) => (
+  option.disabled ? (option.data?.disabledReason || 'Client non selectionnable') : option.label
+);
+
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
   options,
   value,
@@ -195,9 +199,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 } else if (e.key === 'Enter') {
                   if (highlightIndex >= 0 && filteredOptions[highlightIndex]) {
                     const opt = filteredOptions[highlightIndex];
-                    onChange(opt.value);
-                    setIsOpen(false);
-                    setSearchTerm('');
+                    if (!opt.disabled) {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }
                     // Prevent the form-level Enter handler (which adds a row)
                     // from firing when selecting an option from the dropdown
                     e.preventDefault();
@@ -283,7 +289,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                           }
                         }
                       }}
-                      title={option.disabled ? "Client non sélectionnable - Plafond dépassé" : option.label}
+                      title={getDisabledOptionTitle(option)}
                     >
                       <span className="block truncate">{renderSearchableOptionLabel(option.label)}</span>
                     </button>
@@ -823,6 +829,14 @@ const getContactCreditLimit = (contact: any) => {
     : { amount: garantie, label: 'garantie', details: `Garantie: ${garantie.toFixed(2)} DH` };
 };
 
+const isContactBlocked = (contact: any) => {
+  const value = contact?.bloque;
+  if (value === true) return true;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') return value === '1' || value.toLowerCase() === 'true';
+  return false;
+};
+
 /* --------------------------------- Composant -------------------------------- */
 interface BonFormModalProps {
   isOpen: boolean;
@@ -1172,6 +1186,29 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     () => (['Charge', 'AvoirCharge'].includes(String(currentTab || (initialValues as any)?.type || '')) ? chargeClients : clients),
     [chargeClients, clients, currentTab, initialValues]
   );
+  const buildClientOption = (c: Contact) => {
+    const soldeCumule = getContactTotalCumule(c);
+    const creditLimit = getContactCreditLimit(c);
+    const limite = creditLimit?.amount ?? 0;
+    const isOverLimit = Boolean(creditLimit && soldeCumule > limite);
+    const depassement = isOverLimit ? soldeCumule - limite : 0;
+    const isBlocked = isContactBlocked(c);
+    const isDisabled = isBlocked || (isOverLimit && user?.role !== 'PDG');
+    const blockedLabel = isBlocked ? ' - Client bloque' : '';
+    const disabledReason = isBlocked
+      ? 'Client bloque'
+      : isOverLimit && user?.role !== 'PDG'
+        ? 'Client non selectionnable - Plafond depasse'
+        : undefined;
+    const baseLabel = `${c.nom_complet} ${c.reference ? `(${c.reference})` : ''}${blockedLabel}`;
+
+    return {
+      value: c.id.toString(),
+      label: isOverLimit ? `${baseLabel} - DEPASSE de ${depassement.toFixed(2)} DH` : baseLabel,
+      data: { ...c, disabledReason },
+      disabled: isDisabled,
+    };
+  };
   const productMap = useMemo(() => {
     const map = new Map<string, any>();
     (products || []).forEach((prod: any) => {
@@ -1215,11 +1252,14 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       const name = String(c?.nom_complet || '').trim();
       const ref = String(c?.reference || '').trim();
       const phone = String(c?.telephone || c?.phone || '').trim();
+      const blocked = isContactBlocked(c);
       const labelParts = [name, ref ? `(${ref})` : '', phone ? `• ${phone}` : ''].filter(Boolean);
+      if (blocked) labelParts.push('- Client bloque');
       return {
         value: name,
         label: labelParts.join(' ').replace(/\s+/g, ' ').trim(),
-        data: c,
+        data: { ...c, disabledReason: blocked ? 'Client bloque' : undefined },
+        disabled: blocked,
       };
     });
   }, [clients]);
@@ -2287,6 +2327,16 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   submitInProgressRef.current = true;
   setIsSavingBon(true);
   try {
+
+    const selectedClientId = values.client_id ? Number(values.client_id) : null;
+    const selectedClient = selectedClientId
+      ? allClients.find((c: any) => Number(c?.id) === selectedClientId)
+      : null;
+    if (selectedClient && isContactBlocked(selectedClient)) {
+      showError(`Client bloque: ${selectedClient.nom_complet || selectedClientId}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
+      setSubmitting(false);
+      return;
+    }
     if (isChefChauffeur && !isEditMode) {
       showError('Permission refusée: Chef Chauffeur ne peut pas créer des bons/avoirs.');
       setSubmitting(false);
@@ -3735,25 +3785,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     </button>
                   </div>
                   <SearchableSelect
-                    options={selectableClients.map((c: Contact) => {
-                      const soldeCumule = getContactTotalCumule(c);
-                      const creditLimit = getContactCreditLimit(c);
-                      const limite = creditLimit?.amount ?? 0;
-                      const isOverLimit = Boolean(creditLimit && soldeCumule > limite);
-                      const depassement = isOverLimit ? soldeCumule - limite : 0;
-                      
-                      // Pour les rôles non-PDG, désactiver les clients déjà au-dessus de la limite
-                      const isDisabled = isOverLimit && user?.role !== 'PDG';
-                      
-                      return {
-                        value: c.id.toString(),
-                        label: isOverLimit 
-                          ? `${c.nom_complet} ${c.reference ? `(${c.reference})` : ''} ⚠️ DÉPASSÉ de ${depassement.toFixed(2)} DH`
-                          : `${c.nom_complet} ${c.reference ? `(${c.reference})` : ''}`,
-                        data: c,
-                        disabled: isDisabled
-                      };
-                    })}
+                    options={selectableClients.map(buildClientOption)}
                     value={values.client_id}
                     disabled={isQtyOnlyEdit}
                     onChange={async (clientId) => {
@@ -3761,6 +3793,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       const client = selectableClients.find((c: Contact) => c.id.toString() === clientId);
                       if (!client) {
                         setFieldValue('client_id', clientId);
+                        return;
+                      }
+                      if (isContactBlocked(client)) {
+                        showError(`Client bloque: ${client.nom_complet || clientId}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
                         return;
                       }
                       
@@ -3893,10 +3929,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       options={ecommerceClientOptions}
                       value={values.client_nom || ''}
                       onChange={(v) => {
-                        setFieldValue('client_nom', v);
                         if (!v) return;
                         const opt = (ecommerceClientOptions || []).find((x) => x.value === v);
                         const c = opt?.data;
+                        if (c && isContactBlocked(c)) {
+                          showError(`Client bloque: ${c.nom_complet || v}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
+                          return;
+                        }
+                        setFieldValue('client_nom', v);
                         if (c) {
                           setFieldValue('customer_email', c.email || values.customer_email || '');
                           setFieldValue('phone', c.telephone || c.phone || values.phone || '');
@@ -3958,6 +3998,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                   return normalizeHumanName(cName) === normalizeHumanName(orderName);
                                 });
                                 if (matched) {
+                                  if (isContactBlocked(matched)) {
+                                    showError(`Client bloque: ${matched.nom_complet || orderName}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
+                                    setFieldValue('client_nom', '');
+                                    return;
+                                  }
                                   setFieldValue('client_nom', String(matched.nom_complet || ''));
                                   setFieldValue('customer_email', matched.email || values.customer_email || '');
                                   setFieldValue('phone', (matched as any).telephone || (matched as any).phone || (values as any).phone || '');

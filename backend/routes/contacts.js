@@ -1941,7 +1941,8 @@ router.post('/', async (req, res) => {
       source,
       group_id,
       created_by,
-      is_charge
+      is_charge,
+      bloque
     } = req.body;
 
     const columnExists = async (tableName, columnName) => {
@@ -1994,9 +1995,9 @@ router.post('/', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO contacts 
-       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, montant_garantie, numero_garantie, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, is_charge, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond ?? null, normalizedMontantGarantie, normalizedNumeroGarantie, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null), (is_charge ? 1 : 0)]
+       (nom_complet, prenom, nom, societe, type, type_compte, telephone, email, password, adresse, rib, ice, solde, plafond, montant_garantie, numero_garantie, demande_artisan, artisan_approuve, artisan_approuve_par, artisan_approuve_le, artisan_note_admin, auth_provider, google_id, facebook_id, provider_access_token, provider_refresh_token, provider_token_expires_at, avatar_url, email_verified, created_by, source, group_id, is_charge, bloque, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [(nom_complet ?? ''), (prenom ?? null), (nom ?? null), (societe ?? null), type, (type_compte ?? null), telephone || null, email || null, (password ?? null), adresse || null, rib || null, ice || null, solde ?? 0, plafond ?? null, normalizedMontantGarantie, normalizedNumeroGarantie, effectiveDemandeArtisan, effectiveArtisanApprouve, effectiveArtisanApprouvePar, effectiveArtisanApprouveLe, (artisan_note_admin ?? null), (auth_provider ?? 'none'), (google_id ?? null), (facebook_id ?? null), (provider_access_token ?? null), (provider_refresh_token ?? null), (provider_token_expires_at ?? null), (avatar_url ?? null), (email_verified ?? 0), created_by || null, (source ?? 'backoffice'), (group_id != null && group_id !== '' ? Number(group_id) : null), (is_charge ? 1 : 0), (bloque ? 1 : 0)]
     );
 
     // Optional: persist solde eligibility if column exists.
@@ -2064,7 +2065,8 @@ router.put('/:id', async (req, res) => {
       source,
       group_id,
       updated_by,
-      is_charge
+      is_charge,
+      bloque
     } = req.body;
 
     const normalizeEmptyToNull = (value) => {
@@ -2179,6 +2181,10 @@ router.put('/:id', async (req, res) => {
     if (is_charge !== undefined) {
       updates.push('is_charge = ?');
       params.push(is_charge ? 1 : 0);
+    }
+    if (bloque !== undefined) {
+      updates.push('bloque = ?');
+      params.push(bloque ? 1 : 0);
     }
     if (demande_artisan !== undefined) { updates.push('demande_artisan = ?'); params.push(demande_artisan); }
     if (artisan_approuve !== undefined) { updates.push('artisan_approuve = ?'); params.push(artisan_approuve); }

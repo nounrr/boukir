@@ -3,6 +3,7 @@ import pool from '../db/pool.js';
 const ensureState = {
   contactsRemiseBalance: { done: false, inFlight: null },
   contactsCheckoutColumns: { done: false, inFlight: null },
+  contactsBloqueColumn: { done: false, inFlight: null },
 };
 
 async function columnExists(db, table, column) {
@@ -91,6 +92,29 @@ export async function ensureContactsRemiseBalance(db = pool) {
     await ensureState.contactsRemiseBalance.inFlight;
   } finally {
     ensureState.contactsRemiseBalance.inFlight = null;
+  }
+}
+
+export async function ensureContactsBloqueColumn(db = pool) {
+  if (ensureState.contactsBloqueColumn.done) return;
+  if (ensureState.contactsBloqueColumn.inFlight) {
+    await ensureState.contactsBloqueColumn.inFlight;
+    return;
+  }
+
+  ensureState.contactsBloqueColumn.inFlight = (async () => {
+    await withSchemaLock(db, async () => {
+      if (!(await columnExists(db, 'contacts', 'bloque'))) {
+        await execDdlWithRetry(db, `ALTER TABLE contacts ADD COLUMN bloque TINYINT(1) NOT NULL DEFAULT 0`);
+      }
+    });
+    ensureState.contactsBloqueColumn.done = true;
+  })();
+
+  try {
+    await ensureState.contactsBloqueColumn.inFlight;
+  } finally {
+    ensureState.contactsBloqueColumn.inFlight = null;
   }
 }
 
