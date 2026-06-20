@@ -50,6 +50,7 @@ const buildProductMaps = (snapshotProducts: any[]) => {
 const normalizeChargeItem = (item: any, maps: ReturnType<typeof buildProductMaps>) => {
   const productId = itemProductId(item);
   const variantId = itemVariantId(item);
+  const isFreeDesignationLine = !productId;
   const snapshotId = item?.product_snapshot_id ?? item?.snapshot_id ?? null;
   const snapshot = snapshotId != null ? maps.bySnapshot.get(String(snapshotId)) : null;
   const product = (productId ? maps.byProduct.get(String(productId)) : null) || snapshot || null;
@@ -78,6 +79,9 @@ const normalizeChargeItem = (item: any, maps: ReturnType<typeof buildProductMaps
     variantSnapshot?.designation ??
     product?.designation ??
     '';
+  const customDesignation = String(
+    item?.designation_custom ?? (isFreeDesignationLine ? designation : '') ?? ''
+  ).trim();
 
   const variantName =
     item?.variant_name ??
@@ -94,6 +98,7 @@ const normalizeChargeItem = (item: any, maps: ReturnType<typeof buildProductMaps
 
   return {
     ...item,
+    line_mode: isFreeDesignationLine ? 'detail' : (item?.line_mode || 'normal'),
     product_id: productId ? String(productId) : '',
     variant_id: variantId ? String(variantId) : '',
     unit_id: item?.unit_id ?? item?.unitId ?? item?.unit?.id ?? '',
@@ -101,7 +106,7 @@ const normalizeChargeItem = (item: any, maps: ReturnType<typeof buildProductMaps
     product_reference: reference ? String(reference) : '',
     variant_reference: item?.variant_reference ?? variant?.reference ?? '',
     designation: designation ? String(designation) : '',
-    designation_custom: item?.designation_custom ?? '',
+    designation_custom: customDesignation,
     variant_name: variantName ? String(variantName) : '',
     quantite: qty,
     prix_achat: prixAchat,

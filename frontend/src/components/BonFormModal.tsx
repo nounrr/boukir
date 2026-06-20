@@ -2056,11 +2056,15 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
 
         const quantite = Number(it.quantite ?? it.qty ?? 0) || 0;
         const total = quantite * prix_unitaire;
+        const normalizedProductId = it.product_id ?? it.produit_id ?? it.productId ?? it.product?.id ?? it.produit?.id;
+        const isFreeChargeLine = ['Charge', 'AvoirCharge'].includes(String(initialValues?.type || currentTab || '')) && !normalizedProductId;
+        const normalizedDesignation = it.designation ?? it.product_designation ?? it.product?.designation ?? it.produit?.designation ?? '';
 
         return {
           _rowId: it._rowId || makeRowId(), // id stable
           ...it,
-          product_id: it.product_id ?? it.produit_id ?? it.productId ?? it.product?.id ?? it.produit?.id,
+          line_mode: isFreeChargeLine ? 'detail' : (it.line_mode || 'normal'),
+          product_id: normalizedProductId,
           variant_id,
           unit_id,
           product_reference:
@@ -2069,7 +2073,8 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
             it.reference ??
             (it.product?.reference ?? it.produit?.reference) ??
             (it.product_id ? String(it.product_id) : ''),
-          designation: it.designation ?? it.product_designation ?? it.product?.designation ?? it.produit?.designation ?? '',
+          designation: normalizedDesignation,
+          designation_custom: it.designation_custom ?? (isFreeChargeLine ? normalizedDesignation : ''),
           variant_name: it.variant_name ?? it.variant?.variant_name ?? '',
           variant_reference: it.variant_reference ?? it.variant?.reference ?? '',
           quantite,
