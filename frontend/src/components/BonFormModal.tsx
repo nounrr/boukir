@@ -442,6 +442,38 @@ const findCatalogProductForItem = (item: any, products: any[] = []) => {
   }
 };
 
+const resolveCatalogMetaForItem = (item: any, product: any = null, snapshot: any = null, variant: any = null) => {
+  const productId = item?.product_id ?? item?.produit_id ?? item?.productId ?? item?.product?.id ?? item?.produit?.id ?? product?.id ?? snapshot?.id ?? '';
+  const reference = String(
+    item?.product_reference ??
+      item?.reference ??
+      item?.product?.reference ??
+      item?.produit?.reference ??
+      variant?.reference ??
+      snapshot?.reference ??
+      product?.reference ??
+      productId ??
+      ''
+  ).trim();
+  const designation = String(
+    item?.designation ??
+      item?.product_designation ??
+      item?.product?.designation ??
+      item?.produit?.designation ??
+      snapshot?.designation ??
+      product?.designation ??
+      ''
+  ).trim();
+  const variantName = String(item?.variant_name ?? item?.variant?.variant_name ?? variant?.variant_name ?? snapshot?.variant_name ?? '').trim();
+
+  return {
+    productId: productId ? String(productId) : '',
+    reference: reference || (productId ? String(productId) : ''),
+    designation,
+    variantName,
+  };
+};
+
 const scaleDecimal = (value: any, factor: any = 1) => {
   const n = Number(value) || 0;
   const f = Number(factor) || 1;
@@ -2033,10 +2065,13 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
           unit_id,
           product_reference:
             it.product_reference ??
+            it.variant_reference ??
             it.reference ??
             (it.product?.reference ?? it.produit?.reference) ??
             (it.product_id ? String(it.product_id) : ''),
           designation: it.designation ?? it.product_designation ?? it.product?.designation ?? it.produit?.designation ?? '',
+          variant_name: it.variant_name ?? it.variant?.variant_name ?? '',
+          variant_reference: it.variant_reference ?? it.variant?.reference ?? '',
           quantite,
           prix_achat,
           cout_revient,
@@ -2320,6 +2355,22 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         : null;
 
       // Base PA/CR from best source: snapshot → variant → product catalog
+      const meta = resolveCatalogMetaForItem(item, prod, snap, variant);
+      const currentRef = String(item.product_reference ?? item.reference ?? '').trim();
+      const currentDesignation = String(item.designation ?? item.product_designation ?? '').trim();
+      if (meta.reference && (!currentRef || currentRef === String(item.product_id))) {
+        formikRef.current!.setFieldValue(`items.${idx}.product_reference`, meta.reference);
+        anyPatched = true;
+      }
+      if (meta.designation && !currentDesignation) {
+        formikRef.current!.setFieldValue(`items.${idx}.designation`, meta.designation);
+        anyPatched = true;
+      }
+      if (meta.variantName && !String(item.variant_name ?? '').trim()) {
+        formikRef.current!.setFieldValue(`items.${idx}.variant_name`, meta.variantName);
+        anyPatched = true;
+      }
+
       const latestSnap = findLatestSnapshotForProductVariant(snapshotProducts as any[], item.product_id, item.variant_id);
       const bestPA = Number(latestSnap?.prix_achat) || Number(variant?.prix_achat) || Number(prod?.prix_achat) || Number(snap?.prix_achat) || 0;
       const bestCR = Number(latestSnap?.cout_revient) || Number(latestSnap?.prix_achat) || Number(variant?.cout_revient) || Number(prod?.cout_revient) || Number(snap?.cout_revient) || bestPA || 0;
@@ -4916,7 +4967,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       if (variantId) {
                                         const fromCatalog = products.find((p: any) => String(p.id) === String(prodId));
                                         const v = (fromCatalog?.variants ?? []).find((vv: any) => String(vv.id) === String(variantId));
-                                        if (v) variantSuffix = ` - ${v.variant_name}`;
+                                        const fromSnapshot = (snapshotProducts as any[]).find(
+                                          (s: any) => String(s.id) === String(prodId) && String(s.variant_id || '') === String(variantId)
+                                        );
+                                        const variantName = String(
+                                          values.items[index].variant_name ?? fromSnapshot?.variant_name ?? v?.variant_name ?? ''
+                                        ).trim();
+                                        if (variantName) variantSuffix = ` - ${variantName}`;
                                       }
                                       const isMerged = (() => {
                                         if (!useSnapshotSelection) return false;

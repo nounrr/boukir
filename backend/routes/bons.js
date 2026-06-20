@@ -213,12 +213,13 @@ const buildItemsSql = (cfg) => {
   const i = cfg.itemAlias;
   const snapshotJoin = cfg.itemSnapshot ? `LEFT JOIN product_snapshot ps ON ps.id = ${i}.product_snapshot_id` : '';
   const unitJoin = cfg.itemHasVariantUnit === false ? '' : `LEFT JOIN product_units pu ON pu.id = ${i}.unit_id`;
+  const variantJoin = cfg.itemHasVariantUnit === false ? '' : `LEFT JOIN product_variants pv ON pv.id = ${i}.variant_id`;
   const priceFields = cfg.itemPriceJsonFields
     ? cfg.itemPriceJsonFields.replaceAll("'i'.", `${i}.`)
     : cfg.itemSnapshot
     ? `'prix_achat', COALESCE(ps.prix_achat, p.prix_achat), 'cout_revient', COALESCE(ps.cout_revient, p.cout_revient), 'product_snapshot_id', ${i}.product_snapshot_id,`
     : '';
-  const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'unit_id', ${i}.unit_id, 'unite', pu.unit_name, 'conversion_factor', pu.conversion_factor,`;
+  const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'variant_name', pv.variant_name, 'variant_reference', pv.reference, 'unit_id', ${i}.unit_id, 'unite', pu.unit_name, 'conversion_factor', pu.conversion_factor,`;
   const designationExpr = cfg.itemDesignationExpr || 'p.designation';
   const extraJsonFields = cfg.itemExtraJsonFields || '';
   return `COALESCE((
@@ -238,6 +239,7 @@ const buildItemsSql = (cfg) => {
     ))
     FROM ${cfg.itemTable} ${i}
     LEFT JOIN products p ON p.id = ${i}.product_id
+    ${variantJoin}
     ${unitJoin}
     ${snapshotJoin}
     WHERE ${i}.${cfg.itemFk} = b.id
