@@ -1,5 +1,5 @@
 import { usePreviewMouvementMutation } from '../store/api/calcApi';
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
 import type { FormikProps } from 'formik';
 import * as Yup from 'yup';
@@ -16,7 +16,7 @@ import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantPaymentsQuery, useGetComptantQuery } from '../store/api/comptantApi';
-import { useGetAllClientsQuery, useGetAllChargeClientsQuery, useGetAllFournisseursQuery, useCreateContactMutation } from '../store/api/contactsApi';
+import { useGetAllClientsQuery, useGetAllChargeClientsQuery, useGetAllFournisseursQuery, useCreateContactMutation, useGetContactQuery } from '../store/api/contactsApi';
 // Removed unused: useGetPaymentsQuery
 import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
@@ -46,6 +46,7 @@ interface SearchableSelectProps {
   allowCreate?: boolean;
   onCreate?: (label: string) => void;
   createText?: string;
+  loading?: boolean; // données en cours de chargement (liste différée)
 }
 
 const renderSearchableOptionLabel = (label: string) => {
@@ -100,6 +101,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   allowCreate = false,
   onCreate,
   createText = 'Créer',
+  loading = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -227,7 +229,12 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
-            {searchTerm.trim().length >= minSearchChars ? (
+            {loading ? (
+              <div className="p-3 text-sm text-gray-500 text-center flex items-center justify-center gap-2">
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-blue-600" />
+                Chargement…
+              </div>
+            ) : searchTerm.trim().length >= minSearchChars ? (
               filteredOptions.length === 0 ? (
                 <div className="p-2 text-sm text-gray-500">
                   <div className="mb-2">Aucun résultat trouvé</div>
@@ -915,6 +922,45 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [targetRowIndex, setTargetRowIndex] = useState<number | null>(null);
 
+  // PERF: ne RIEN charger au montage en mode création (formulaire vide instantané).
+  // Les grosses listes (produits, snapshots, clients, fournisseurs, historiques) ne se
+  // chargent qu'à la PREMIÈRE interaction de l'utilisateur avec le formulaire
+  // (clic / focus / saisie), c.-à-d. quand il ouvre un select pour rechercher.
+  // En mode édition OU formulaire pré-rempli (ex: avoir e-commerce avec items/contact
+  // déjà choisis) on charge tout de suite : ces lignes ont besoin des données pour
+  // s'afficher correctement.
+  const isPrefilled = useMemo(() => {
+    const iv = initialValues as any;
+    if (!iv) return false;
+    if (Array.isArray(iv.items) && iv.items.length > 0) return true;
+    return Boolean(iv.client_id || iv.fournisseur_id || iv.client_nom || iv.ecommerce_order_id);
+  }, [initialValues]);
+  const loadImmediately = isEditMode || isPrefilled;
+  // Données des LIGNES (produits, snapshots, historiques) : chargées tout de suite en
+  // édition/préremplissage car les items existants en ont besoin pour s'afficher.
+  const [heavyDataReady, setHeavyDataReady] = useState<boolean>(() => loadImmediately);
+  // Listes de CONTACTS (clients/fournisseurs complets) : même en édition on NE charge
+  // PAS toute la liste — le contact déjà choisi est récupéré par son ID (GET /contacts/:id).
+  // La liste complète n'est chargée qu'à la première interaction (ouverture d'un select).
+  const [contactListsReady, setContactListsReady] = useState<boolean>(false);
+  useEffect(() => {
+    // Quand on rouvre le formulaire, repartir de l'état initial.
+    setHeavyDataReady(loadImmediately);
+    setContactListsReady(false);
+  }, [isOpen, loadImmediately]);
+  const markListsNeeded = useCallback(() => {
+    setHeavyDataReady((prev) => (prev ? prev : true));
+    setContactListsReady((prev) => (prev ? prev : true));
+  }, []);
+  // N'attacher les déclencheurs d'interaction que tant qu'au moins une liste reste à charger.
+  const interactionTriggers = heavyDataReady && contactListsReady
+    ? undefined
+    : {
+        onMouseDownCapture: markListsNeeded,
+        onTouchStartCapture: markListsNeeded,
+        onFocusCapture: markListsNeeded,
+      };
+
   // RTK Query hooks
   const { data: vehicules = [] } = useGetVehiculesQuery();
   const { data: employeesAll = [] } = useGetEmployeesQueryServer();
@@ -925,10 +971,10 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       ),
     [employeesAll]
   );
-  const { data: products = [] } = useGetProductsQuery();
+  const { data: products = [] } = useGetProductsQuery(undefined, { skip: !heavyDataReady });
   // Snapshot-expanded products for Sortie/Comptant/Avoir/Charge types
   const useSnapshotSelection = ['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
-  const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection });
+  const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection || !heavyDataReady });
 
   // Smart filtering for snapshot products:
   // - Add mode: If a product+variant has snapshots with qty > 0, only show those (hide qty <= 0 snapshots)
@@ -1140,11 +1186,57 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
     return options;
   }, [products, snapshotProducts]);
-  const { data: clients = [] } = useGetAllClientsQuery();
-  const { data: chargeClients = [] } = useGetAllChargeClientsQuery();
-  const { data: fournisseurs = [] } = useGetAllFournisseursQuery();
-  const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined);
-  const { data: comptantHistory = [] } = useGetComptantQuery(undefined);
+  // PERF: options produits "simples" (référence - désignation) pour les lignes détaillées
+  // (Charge). Mémoïsé pour NE PAS recalculer .map(products) à chaque frappe/render,
+  // ce qui rendait la saisie très lente en édition.
+  const simpleProductOptions = useMemo(
+    () =>
+      (products as any[]).map((p: any) => ({
+        value: String(p.id),
+        label: `${String(p.reference ?? p.id)} - ${p.designation}`,
+        data: p,
+      })),
+    [products]
+  );
+  const { data: clientsRaw = [] } = useGetAllClientsQuery(undefined, { skip: !contactListsReady });
+  const { data: chargeClientsRaw = [] } = useGetAllChargeClientsQuery(undefined, { skip: !contactListsReady });
+  const { data: fournisseursRaw = [] } = useGetAllFournisseursQuery(undefined, { skip: !contactListsReady });
+
+  // À l'ouverture en modification, on récupère le contact (client/fournisseur) DÉJÀ
+  // sélectionné directement par son ID (GET /contacts/:id), sans charger toute la liste.
+  // On le fusionne ensuite dans les listes pour qu'il s'affiche et que toute la logique
+  // (clients.find / fournisseurs.find) le retrouve même si la liste complète n'est pas chargée.
+  const selectedClientId = useMemo(() => {
+    const id = Number((initialValues as any)?.client_id ?? (initialValues as any)?.contact_id);
+    return Number.isFinite(id) && id > 0 ? id : undefined;
+  }, [initialValues]);
+  const selectedFournisseurId = useMemo(() => {
+    const id = Number((initialValues as any)?.fournisseur_id);
+    return Number.isFinite(id) && id > 0 ? id : undefined;
+  }, [initialValues]);
+  const { data: selectedClientById } = useGetContactQuery(selectedClientId as number, { skip: !selectedClientId });
+  const { data: selectedFournisseurById } = useGetContactQuery(selectedFournisseurId as number, { skip: !selectedFournisseurId });
+
+  // Fusionne un contact (récupéré par ID) dans une liste sans créer de doublon.
+  const mergeContactById = (list: Contact[], extra?: Contact): Contact[] => {
+    if (!extra?.id) return list;
+    if ((list || []).some((c: any) => String(c?.id) === String(extra.id))) return list;
+    return [extra, ...(list || [])];
+  };
+  const clients = useMemo(
+    () => mergeContactById(clientsRaw as Contact[], selectedClientById as Contact | undefined),
+    [clientsRaw, selectedClientById]
+  );
+  const chargeClients = useMemo(
+    () => mergeContactById(chargeClientsRaw as Contact[], selectedClientById as Contact | undefined),
+    [chargeClientsRaw, selectedClientById]
+  );
+  const fournisseurs = useMemo(
+    () => mergeContactById(fournisseursRaw as Contact[], selectedFournisseurById as Contact | undefined),
+    [fournisseursRaw, selectedFournisseurById]
+  );
+  const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined, { skip: !heavyDataReady });
+  const { data: comptantHistory = [] } = useGetComptantQuery(undefined, { skip: !heavyDataReady });
   const { data: comptantPaymentsHistory = [] } = useGetComptantPaymentsQuery((initialValues as any)?.id, {
     skip: !isEditMode || currentTab !== 'Comptant' || !((initialValues as any)?.id),
   });
@@ -1209,6 +1301,23 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       disabled: isDisabled,
     };
   };
+  // PERF: options client mémoïsées — évite de recalculer buildClientOption (qui lit le
+  // solde cumulé / plafond de chaque contact) à chaque frappe/render du formulaire.
+  const clientOptions = useMemo(
+    () => (selectableClients as Contact[]).map(buildClientOption),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectableClients, user?.role]
+  );
+  // PERF: options fournisseur mémoïsées (évite .map(fournisseurs) à chaque render).
+  const fournisseurOptions = useMemo(
+    () =>
+      (fournisseurs as Contact[]).map((f: Contact) => ({
+        value: f.id.toString(),
+        label: `${f.nom_complet} ${f.reference ? `(${f.reference})` : ''}`,
+        data: f,
+      })),
+    [fournisseurs]
+  );
   const productMap = useMemo(() => {
     const map = new Map<string, any>();
     (products || []).forEach((prod: any) => {
@@ -3558,7 +3667,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   if (!isOpen) return null;
 
   return (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-1 sm:p-2">
+  <div
+    className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-1 sm:p-2"
+    {...interactionTriggers}
+  >
     <div className="bg-white rounded-lg w-[90vw] max-h-[96vh] flex flex-col shadow-lg">
         {/* Header */}
         <div className="bg-blue-600 px-4 sm:px-6 py-3 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
@@ -3785,7 +3897,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     </button>
                   </div>
                   <SearchableSelect
-                    options={selectableClients.map(buildClientOption)}
+                    loading={!contactListsReady}
+                    options={clientOptions}
                     value={values.client_id}
                     disabled={isQtyOnlyEdit}
                     onChange={async (clientId) => {
@@ -3926,6 +4039,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </label>
                   {values.type === 'AvoirEcommerce' ? (
                     <SearchableSelect
+                      loading={!contactListsReady}
                       options={ecommerceClientOptions}
                       value={values.client_nom || ''}
                       onChange={(v) => {
@@ -4141,11 +4255,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     </button>
                   </div>
                   <SearchableSelect
-                    options={fournisseurs.map((f: Contact) => ({
-                      value: f.id.toString(),
-                      label: `${f.nom_complet} ${f.reference ? `(${f.reference})` : ''}`,
-                      data: f,
-                    }))}
+                    loading={!contactListsReady}
+                    options={fournisseurOptions}
                     value={values.fournisseur_id}
                     disabled={isQtyOnlyEdit}
                     onChange={(fournisseurId) => {
@@ -4420,11 +4531,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         </td>
                                         <td className="px-1 py-2">
                                           <SearchableSelect
-                                            options={products.map((p: any) => ({
-                                              value: String(p.id),
-                                              label: `${String(p.reference ?? p.id)} - ${p.designation}`,
-                                              data: p,
-                                            }))}
+                                            loading={!heavyDataReady}
+                                            options={simpleProductOptions}
                                             value={row.product_id ? String(row.product_id) : ''}
                                             valueLabelFallback=""
                                             onChange={(selectedValue) => {
@@ -4625,6 +4733,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 {/* Produit combiné (Réf - Désignation) */}
                                 <td className="px-1 py-2 w-[200px]">
                                   <SearchableSelect
+                                    loading={!heavyDataReady}
                                     options={(() => {
                                       if (useSnapshotSelection && filteredSnapshotProducts.length > 0) {
                                         // Smart filtered: qty>0 snapshots shown, or latest snapshot if all qty<=0

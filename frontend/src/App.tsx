@@ -29,6 +29,7 @@ import ChargesPage, { ChargeDetailPage } from './pages/ChargesPage';
 import GarantiesPage from './pages/GarantiesPage';
 import ContactArchiverPage from './pages/ContactArchiverPage';
 import BonsPage from './pages/BonsPage';
+import BonCreatePage from './pages/BonCreatePage';
 import VehiculesPage from './pages/VehiculesPage';
 import CaissePage from './pages/CaissePage';
 import FondCaissePage from './pages/FondCaissePage';
@@ -352,6 +353,18 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <BonsPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Page dédiée à la création d'un bon/avoir (sortie du modal pour éviter le lag) */}
+        <Route
+          path="/bons/create/:type"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <BonCreatePage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }
