@@ -1018,6 +1018,33 @@ router.get('/stock-pdf', async (req, res, next) => {
 router.get('/with-snapshots', async (req, res, next) => {
   try {
     await ensureProductsColumns();
+    const qRaw = String(req.query.q ?? '').trim();
+    const q = qRaw.length > 100 ? qRaw.slice(0, 100) : qRaw;
+    const qTerms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 80, 1), 200);
+    const limitSql = qTerms.length ? 'LIMIT ?' : '';
+    const limitParams = qTerms.length ? [limit] : [];
+    const buildProductSearchSql = (alias = 'p') => {
+      if (qTerms.length === 0) return { sql: '', params: [] };
+      const termSql = qTerms.map(() => {
+        return `(
+          LOWER(CONCAT_WS(' ', ${alias}.id, ${alias}.designation, ${alias}.designation_ar, ${alias}.designation_en, ${alias}.designation_zh)) LIKE ?
+          OR EXISTS (
+            SELECT 1 FROM product_variants pv_search
+            WHERE pv_search.product_id = ${alias}.id
+              AND COALESCE(pv_search.is_deleted, 0) = 0
+              AND LOWER(CONCAT_WS(' ', pv_search.variant_name, pv_search.reference)) LIKE ?
+          )
+        )`;
+      });
+      const likeParams = [];
+      for (const term of qTerms) {
+        const termWild = `%${term}%`;
+        likeParams.push(termWild, termWild);
+      }
+      return { sql: ` AND ${termSql.join(' AND ')}`, params: likeParams };
+    };
+    const productSearch = buildProductSearchSql('p');
     const useSnapshot = await hasProductSnapshotTable();
     if (!useSnapshot) {
       // Fallback: just return normal product list without snapshot expansion
@@ -1027,7 +1054,8 @@ router.get('/with-snapshots', async (req, res, next) => {
                 p.prix_vente_pourcentage, p.quantite, p.est_service, p.non_stockable, p.image_url,
                 p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
                 p.remise_client, p.remise_artisan
-         FROM products p WHERE COALESCE(p.is_deleted, 0) = 0 ORDER BY p.id DESC`
+         FROM products p WHERE COALESCE(p.is_deleted, 0) = 0${productSearch.sql} ORDER BY p.id DESC ${limitSql}`,
+        [...productSearch.params, ...limitParams]
       );
       return res.json(rows.map(r => ({
         ...r,
@@ -1082,8 +1110,10 @@ router.get('/with-snapshots', async (req, res, next) => {
       JOIN products p ON p.id = ps.product_id
       LEFT JOIN product_variants pv ON pv.id = ps.variant_id
       WHERE COALESCE(p.is_deleted, 0) = 0
+        ${productSearch.sql}
       ORDER BY p.id ASC, ps.created_at ASC, ps.id ASC
-    `);
+      ${limitSql}
+    `, [...productSearch.params, ...limitParams]);
 
     // Also get all products (for items that don't have snapshots, or services)
     const [allProducts] = await pool.query(`
@@ -1105,9 +1135,10 @@ router.get('/with-snapshots', async (req, res, next) => {
                'is_default', pu.is_default
              )) FROM product_units pu WHERE pu.product_id = p.id) AS units
       FROM products p
-      WHERE COALESCE(p.is_deleted, 0) = 0
+      WHERE COALESCE(p.is_deleted, 0) = 0${productSearch.sql}
       ORDER BY p.id DESC
-    `);
+      ${limitSql}
+    `, [...productSearch.params, ...limitParams]);
 
     // Build result: products that have snapshots get one entry per snapshot
     // Products without snapshots (e.g. services) get a single entry

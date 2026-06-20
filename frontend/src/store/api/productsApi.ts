@@ -17,6 +17,14 @@ const productsApi = api.injectEndpoints({
       providesTags: ['Product'],
     }),
 
+    searchBonProducts: builder.query<{ data: Product[]; meta: { total: number; page: number; limit: number; totalPages: number } }, { q: string; limit?: number }>({
+      query: ({ q, limit = 50 }) => ({
+        url: '/products/search',
+        params: { q, page: 1, limit },
+      }),
+      providesTags: ['Product'],
+    }),
+
     getProduct: builder.query<Product, number>({
       query: (id) => ({ url: `/products/${id}` }),
       providesTags: (_result, _error, id) => [{ type: 'Product', id }],
@@ -130,12 +138,21 @@ const productsApi = api.injectEndpoints({
       query: () => ({ url: '/products/with-snapshots' }),
       providesTags: ['Product'],
     }),
+
+    searchProductsWithSnapshots: builder.query<any[], { q: string; limit?: number }>({
+      query: ({ q, limit = 80 }) => ({
+        url: '/products/with-snapshots',
+        params: { q, limit },
+      }),
+      providesTags: ['Product'],
+    }),
   }),
 });
 
 export const {
   useGetProductsQuery,
   useGetProductsPaginatedQuery,
+  useSearchBonProductsQuery,
   useGetProductQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
@@ -148,4 +165,5 @@ export const {
   useToggleEcomStockMutation,
   useUpdateSnapshotsMutation,
   useGetProductsWithSnapshotsQuery,
+  useSearchProductsWithSnapshotsQuery,
 } = productsApi;
