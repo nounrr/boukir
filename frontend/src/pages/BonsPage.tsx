@@ -1782,7 +1782,7 @@ const BonsPage = () => {
       return;
     }
 
-    setSelectedBon({
+    const initialValues = {
       type: 'AvoirEcommerce',
       ecommerce_order_id: '',
       order_number: '',
@@ -1793,10 +1793,9 @@ const BonsPage = () => {
       date_creation: toMySQLDateTime(new Date()),
       statut: 'En attente',
       items: [],
-    });
-    setBonFormKey((k) => k + 1);
-    setIsCreateModalOpen(true);
-  }, [isPdg, toMySQLDateTime]);
+    };
+    navigate('/bons/create/AvoirEcommerce', { state: { initialValues } });
+  }, [isPdg, toMySQLDateTime, navigate]);
 
   const openAvoirEcommerceModalFromOrder = useCallback((bon: any) => {
     if (!bon?.id) {
@@ -1830,7 +1829,7 @@ const BonsPage = () => {
       };
     });
 
-    setSelectedBon({
+    const initialValues = {
       type: 'AvoirEcommerce',
       ecommerce_order_id: bon.id,
       order_number: bon.numero || bon.order_number || null,
@@ -1841,11 +1840,10 @@ const BonsPage = () => {
       date_creation: toMySQLDateTime(new Date()),
       statut: 'En attente',
       items: normalizedItems,
-    });
-    // Force remount to reset internal state when switching from edit/create
-    setBonFormKey((k) => k + 1);
-    setIsCreateModalOpen(true);
-  }, [toMySQLDateTime]);
+    };
+    // Création sur la page dédiée (hors du tableau) — on passe les valeurs pré-remplies via le state.
+    navigate('/bons/create/AvoirEcommerce', { state: { initialValues } });
+  }, [toMySQLDateTime, navigate]);
 
   const handleCreateEcommerceAvoir = async (bon: any) => {
     try {
@@ -1949,10 +1947,8 @@ const BonsPage = () => {
       showError("Permission refusée: Chef Chauffeur ne peut pas ajouter de bon/avoir/devis.");
       return;
     }
-    setSelectedBon(null);
-    // Forcer un remontage du modal pour repartir sur un état vierge
-    setBonFormKey((k) => k + 1);
-    setIsCreateModalOpen(true);
+    // La création se fait désormais sur une page dédiée (hors du tableau) pour éviter le lag.
+    navigate(`/bons/create/${currentTab}`);
   };
 
   const handleDelete = async (bonToDelete: any) => {
@@ -3142,6 +3138,8 @@ const BonsPage = () => {
                                     return;
                                   }
                                   setSelectedBon(bon);
+                                  // Forcer un remontage propre du modal d'édition
+                                  setBonFormKey((k) => k + 1);
                                   setIsCreateModalOpen(true);
                                 }}
                                 className="text-blue-600 hover:text-blue-800"
