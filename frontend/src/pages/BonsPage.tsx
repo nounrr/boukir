@@ -9,6 +9,7 @@ import { api } from '../store/api/apiSlice';
   import ContactFormModal from '../components/ContactFormModal';
   import DevisTransformModal from '../components/DevisTransformModal';
   import BonFormModal from '../components/BonFormModal';
+  import ChargeEditFormModal from '../components/ChargeEditFormModal';
   import AvoirFormModal from '../components/AvoirFormModal';
   import ThermalPrintModal from '../components/ThermalPrintModal';
   import BonPrintModal from '../components/BonPrintModal';
@@ -3673,7 +3674,21 @@ const BonsPage = () => {
         )}
 
         {/* Modal de création/édition */}
-        {isCreateModalOpen && (
+        {isCreateModalOpen && selectedBon && String(selectedBon?.type || effectiveCurrentTab) === 'Charge' ? (
+          <ChargeEditFormModal
+            key={`charge-${bonFormKey}`}
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            initialValues={selectedBon}
+            onBonAdded={(newBon) => {
+              const labelTab = String(newBon?.type || effectiveCurrentTab);
+              showSuccess(`${labelTab} ${getDisplayNumero(newBon)} mis Ã  jour avec succÃ¨s!`);
+              setIsCreateModalOpen(false);
+              setSelectedBon(null);
+              refreshFirstBonsPageAfterCreate();
+            }}
+          />
+        ) : isCreateModalOpen && (
           <BonFormModal
             key={bonFormKey}
             isOpen={isCreateModalOpen}
