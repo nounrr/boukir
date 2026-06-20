@@ -11,12 +11,12 @@ const SHOW_WHATSAPP_POPUP = false;
 import { formatDateInputToMySQL, formatMySQLToDateTimeInput, getCurrentDateTimeInput, formatDateTimeWithHour } from '../utils/dateUtils';
 import { useGetVehiculesQuery } from '../store/api/vehiculesApi';
 import { useGetEmployeesQueryServer as useGetEmployeesQueryServer } from '../store/api/employeesApi.server';
-import { useGetProductsQuery, useGetProductsWithSnapshotsQuery } from '../store/api/productsApi';
+import { useGetProductsQuery, useGetProductsWithSnapshotsQuery, useSearchBonProductsQuery, useSearchProductsWithSnapshotsQuery } from '../store/api/productsApi';
 import { useDispatch } from 'react-redux';
 import { api } from '../store/api/apiSlice';
 import { useGetSortiesQuery } from '../store/api/sortiesApi';
 import { useGetComptantPaymentsQuery, useGetComptantQuery } from '../store/api/comptantApi';
-import { useGetAllClientsQuery, useGetAllChargeClientsQuery, useGetAllFournisseursQuery, useCreateContactMutation, useGetContactQuery } from '../store/api/contactsApi';
+import { useGetClientsQuery, useGetFournisseursQuery, useGetChargesQuery, useCreateContactMutation, useGetContactQuery } from '../store/api/contactsApi';
 // Removed unused: useGetPaymentsQuery
 import { useGetBonsByTypeQuery, useCreateBonMutation, useUpdateBonMutation } from '../store/api/bonsApi';
 import { useGetClientRemisesQuery, useGetAncienRemisesAbonnesQuery, useCreateClientRemiseMutation } from '../store/api/remisesApi';
@@ -46,6 +46,7 @@ interface SearchableSelectProps {
   allowCreate?: boolean;
   onCreate?: (label: string) => void;
   createText?: string;
+  onSearchTermChange?: (term: string) => void;
   loading?: boolean; // données en cours de chargement (liste différée)
 }
 
@@ -86,6 +87,17 @@ const getDisabledOptionTitle = (option: { label: string; data?: any; disabled?: 
   option.disabled ? (option.data?.disabledReason || 'Client non selectionnable') : option.label
 );
 
+const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [delayMs, value]);
+
+  return debouncedValue;
+};
+
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
   options,
   value,
@@ -102,6 +114,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   onCreate,
   createText = 'Créer',
   loading = false,
+  onSearchTermChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -130,6 +143,10 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       searchTerm.trim().length >= 2 &&
       allMatches.length === 0
   );
+
+  useEffect(() => {
+    onSearchTermChange?.(searchTerm);
+  }, [onSearchTermChange, searchTerm]);
 
   // Focus search input when opening (preventScroll avoids page/modal jumping)
   useEffect(() => {
@@ -939,27 +956,20 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   // Données des LIGNES (produits, snapshots, historiques) : chargées tout de suite en
   // édition/préremplissage car les items existants en ont besoin pour s'afficher.
   const [heavyDataReady, setHeavyDataReady] = useState<boolean>(() => loadImmediately);
+  const [productSearchTerm, setProductSearchTerm] = useState('');
+  const debouncedProductSearchTerm = useDebouncedValue(productSearchTerm.trim(), 250);
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [fournisseurSearchTerm, setFournisseurSearchTerm] = useState('');
+  const debouncedClientSearchTerm = useDebouncedValue(clientSearchTerm.trim(), 250);
+  const debouncedFournisseurSearchTerm = useDebouncedValue(fournisseurSearchTerm.trim(), 250);
   // Listes de CONTACTS (clients/fournisseurs complets) : même en édition on NE charge
   // PAS toute la liste — le contact déjà choisi est récupéré par son ID (GET /contacts/:id).
   // La liste complète n'est chargée qu'à la première interaction (ouverture d'un select).
-  const [contactListsReady, setContactListsReady] = useState<boolean>(false);
   useEffect(() => {
     // Quand on rouvre le formulaire, repartir de l'état initial.
     setHeavyDataReady(loadImmediately);
-    setContactListsReady(false);
   }, [isOpen, loadImmediately]);
-  const markListsNeeded = useCallback(() => {
-    setHeavyDataReady((prev) => (prev ? prev : true));
-    setContactListsReady((prev) => (prev ? prev : true));
-  }, []);
   // N'attacher les déclencheurs d'interaction que tant qu'au moins une liste reste à charger.
-  const interactionTriggers = heavyDataReady && contactListsReady
-    ? undefined
-    : {
-        onMouseDownCapture: markListsNeeded,
-        onTouchStartCapture: markListsNeeded,
-        onFocusCapture: markListsNeeded,
-      };
 
   // RTK Query hooks
   const { data: vehicules = [] } = useGetVehiculesQuery();
@@ -971,10 +981,24 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       ),
     [employeesAll]
   );
-  const { data: products = [] } = useGetProductsQuery(undefined, { skip: !heavyDataReady });
+  const { data: allProducts = [] } = useGetProductsQuery(undefined, { skip: !heavyDataReady });
   // Snapshot-expanded products for Sortie/Comptant/Avoir/Charge types
   const useSnapshotSelection = ['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
-  const { data: snapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection || !heavyDataReady });
+  const { data: allSnapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection || !heavyDataReady });
+  const remoteProductSearchEnabled = !heavyDataReady && debouncedProductSearchTerm.length >= 2;
+  const { data: searchedProductsResponse, isFetching: isSearchingProducts } = useSearchBonProductsQuery(
+    { q: debouncedProductSearchTerm, limit: 80 },
+    { skip: !remoteProductSearchEnabled }
+  );
+  const { data: searchedSnapshotProducts = [], isFetching: isSearchingSnapshotProducts } = useSearchProductsWithSnapshotsQuery(
+    { q: debouncedProductSearchTerm, limit: 120 },
+    { skip: !remoteProductSearchEnabled || !useSnapshotSelection }
+  );
+  const products = heavyDataReady ? allProducts : (searchedProductsResponse?.data || []);
+  const snapshotProducts = heavyDataReady ? allSnapshotProducts : searchedSnapshotProducts;
+  const productSelectLoading = !heavyDataReady && remoteProductSearchEnabled && (
+    useSnapshotSelection ? isSearchingSnapshotProducts : isSearchingProducts
+  );
 
   // Smart filtering for snapshot products:
   // - Add mode: If a product+variant has snapshots with qty > 0, only show those (hide qty <= 0 snapshots)
@@ -1198,9 +1222,27 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       })),
     [products]
   );
-  const { data: clientsRaw = [] } = useGetAllClientsQuery(undefined, { skip: !contactListsReady });
-  const { data: chargeClientsRaw = [] } = useGetAllChargeClientsQuery(undefined, { skip: !contactListsReady });
-  const { data: fournisseursRaw = [] } = useGetAllFournisseursQuery(undefined, { skip: !contactListsReady });
+  const clientSearchEnabled = debouncedClientSearchTerm.length >= 2;
+  const fournisseurSearchEnabled = debouncedFournisseurSearchTerm.length >= 2;
+  const { data: clientsResponse, isFetching: isSearchingClients } = useGetClientsQuery(
+    { page: 1, limit: 80, search: debouncedClientSearchTerm },
+    { skip: !clientSearchEnabled }
+  );
+  const { data: chargeClientsResponse, isFetching: isSearchingChargeClients } = useGetChargesQuery(
+    { page: 1, limit: 80, search: debouncedClientSearchTerm },
+    { skip: !clientSearchEnabled }
+  );
+  const { data: fournisseursResponse, isFetching: isSearchingFournisseurs } = useGetFournisseursQuery(
+    { page: 1, limit: 80, search: debouncedFournisseurSearchTerm },
+    { skip: !fournisseurSearchEnabled }
+  );
+  const clientsRaw = clientsResponse?.data || [];
+  const chargeClientsRaw = chargeClientsResponse?.data || [];
+  const fournisseursRaw = fournisseursResponse?.data || [];
+  const currentContactTypeForSelect = String(currentTab || (initialValues as any)?.type || '');
+  const isChargeContactSelect = ['Charge', 'AvoirCharge'].includes(currentContactTypeForSelect);
+  const clientSelectLoading = clientSearchEnabled && (isChargeContactSelect ? isSearchingChargeClients : isSearchingClients);
+  const fournisseurSelectLoading = fournisseurSearchEnabled && isSearchingFournisseurs;
 
   // À l'ouverture en modification, on récupère le contact (client/fournisseur) DÉJÀ
   // sélectionné directement par son ID (GET /contacts/:id), sans charger toute la liste.
@@ -3669,7 +3711,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   return (
   <div
     className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-1 sm:p-2"
-    {...interactionTriggers}
   >
     <div className="bg-white rounded-lg w-[90vw] max-h-[96vh] flex flex-col shadow-lg">
         {/* Header */}
@@ -3897,9 +3938,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     </button>
                   </div>
                   <SearchableSelect
-                    loading={!contactListsReady}
+                    loading={clientSelectLoading}
+                    onSearchTermChange={setClientSearchTerm}
                     options={clientOptions}
                     value={values.client_id}
+                    valueLabelFallback={values.client_nom || ''}
                     disabled={isQtyOnlyEdit}
                     onChange={async (clientId) => {
                       if (isQtyOnlyEdit) return;
@@ -3980,6 +4023,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     placeholder="Sélectionnez un client"
                     className="w-full"
                     maxDisplayItems={200}
+                    minSearchChars={2}
                     autoOpenOnFocus
                   />
                   <ErrorMessage name="client_id" component="div" className="text-red-500 text-sm mt-1" />
@@ -4039,9 +4083,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                   </label>
                   {values.type === 'AvoirEcommerce' ? (
                     <SearchableSelect
-                      loading={!contactListsReady}
+                      loading={clientSelectLoading}
+                      onSearchTermChange={setClientSearchTerm}
                       options={ecommerceClientOptions}
                       value={values.client_nom || ''}
+                      valueLabelFallback={values.client_nom || ''}
                       onChange={(v) => {
                         if (!v) return;
                         const opt = (ecommerceClientOptions || []).find((x) => x.value === v);
@@ -4059,6 +4105,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                       placeholder="Rechercher un client e-commerce"
                       className="w-full"
                       maxDisplayItems={200}
+                      minSearchChars={2}
                       autoOpenOnFocus
                     />
                   ) : (
@@ -4255,9 +4302,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     </button>
                   </div>
                   <SearchableSelect
-                    loading={!contactListsReady}
+                    loading={fournisseurSelectLoading}
+                    onSearchTermChange={setFournisseurSearchTerm}
                     options={fournisseurOptions}
                     value={values.fournisseur_id}
+                    valueLabelFallback={values.fournisseur_nom || ''}
                     disabled={isQtyOnlyEdit}
                     onChange={(fournisseurId) => {
                       if (isQtyOnlyEdit) return;
@@ -4277,6 +4326,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     placeholder="Sélectionnez un fournisseur"
                     className="w-full"
                     maxDisplayItems={200}
+                    minSearchChars={2}
                     autoOpenOnFocus
                   />
                   <ErrorMessage name="fournisseur_id" component="div" className="text-red-500 text-sm mt-1" />
@@ -4733,7 +4783,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 {/* Produit combiné (Réf - Désignation) */}
                                 <td className="px-1 py-2 w-[200px]">
                                   <SearchableSelect
-                                    loading={!heavyDataReady}
+                                    loading={productSelectLoading}
+                                    onSearchTermChange={setProductSearchTerm}
                                     options={(() => {
                                       if (useSnapshotSelection && filteredSnapshotProducts.length > 0) {
                                         // Smart filtered: qty>0 snapshots shown, or latest snapshot if all qty<=0
@@ -5078,7 +5129,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                     className="w-full"
                                     disabled={isQtyOnlyEdit}
                                     maxDisplayItems={300}
-                                    minSearchChars={useSnapshotSelection ? 0 : 2}
+                                    minSearchChars={2}
                                     autoOpenOnFocus
                                     buttonProps={{
                                       'data-row': index as any,
