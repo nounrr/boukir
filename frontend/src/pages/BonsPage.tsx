@@ -3060,6 +3060,27 @@ const BonsPage = () => {
                               </>
                             );
                           })()}
+
+                          {/* Bon Charge: direct back-to-pending action for validated bons */}
+                          {(() => {
+                            const isCharge = effectiveCurrentTab === 'Charge' || bon?.type === 'Charge';
+                            const canChangeChargeStatus = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
+                            const isValidated = String(bon?.statut || '').toLowerCase().includes('valid');
+                            if (!isCharge || !canChangeChargeStatus || !isValidated) return null;
+
+                            const isUpdatingStatus = updatingStatusKeys.has(getStatusUpdateKey(bon));
+
+                            return (
+                              <button
+                                onClick={() => handleChangeStatus(bon, 'En attente')}
+                                disabled={isUpdatingStatus}
+                                className="text-yellow-600 hover:text-yellow-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Mettre en attente (Bon Charge)"
+                              >
+                                <Clock size={ACTION_ICON_SIZE} />
+                              </button>
+                            );
+                          })()}
                           
                           {/* Validation icon - visible for authorized users and non-validated bons */}
                           {(() => {
@@ -3222,7 +3243,7 @@ const BonsPage = () => {
                                     if (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus' || (currentUser?.role === 'Manager' && (bon.type === 'Commande' || effectiveCurrentTab === 'Commande' || bon.type === 'AvoirFournisseur' || effectiveCurrentTab === 'AvoirFournisseur'))) {
                                       return (
                                         <>
-                                          {(effectiveCurrentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant')) && (
+                                          {(effectiveCurrentTab === 'Commande' || (currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus') && (effectiveCurrentTab === 'Sortie' || effectiveCurrentTab === 'Comptant' || effectiveCurrentTab === 'Charge')) && (
                                             <div className="flex gap-1">
                                               {/* Show "En attente" only if not already "En attente" */}
                                               {bon.statut !== 'En attente' && (
