@@ -14,6 +14,8 @@ const parseDateRange = (req) => {
 };
 
 const toNumber = (value) => Number(value || 0);
+const netAmountSql = (amountExpr, ignoredAmountExpr) =>
+  `GREATEST(COALESCE(${amountExpr}, 0) - COALESCE(${ignoredAmountExpr}, 0), 0)`;
 
 const emptyMovementRows = [];
 
@@ -98,11 +100,38 @@ async function ensureCoffreTable(db = pool) {
   }
 }
 
+async function ensureMontantIgnorerColumns(db = pool) {
+  try {
+    const [paymentCols] = await db.query("SHOW COLUMNS FROM payments LIKE 'montant_ignorer'");
+    if (!Array.isArray(paymentCols) || paymentCols.length === 0) {
+      await db.query("ALTER TABLE payments ADD COLUMN montant_ignorer DECIMAL(15,2) NOT NULL DEFAULT 0.00 AFTER montant_total");
+    }
+  } catch (error) {
+    if (error?.code !== 'ER_NO_SUCH_TABLE') {
+      console.error('ensureMontantIgnorerColumns payments:', error);
+    }
+  }
+
+  try {
+    const [comptantCols] = await db.query("SHOW COLUMNS FROM bons_comptant LIKE 'montant_ignorer'");
+    if (!Array.isArray(comptantCols) || comptantCols.length === 0) {
+      await db.query("ALTER TABLE bons_comptant ADD COLUMN montant_ignorer DECIMAL(15,2) NOT NULL DEFAULT 0.00 AFTER montant_total");
+    }
+  } catch (error) {
+    if (error?.code !== 'ER_NO_SUCH_TABLE') {
+      console.error('ensureMontantIgnorerColumns bons_comptant:', error);
+    }
+  }
+}
+
 ensureFondCaisseEntriesTable().catch((error) => {
   console.error('ensureFondCaisseEntriesTable:', error);
 });
 ensureCoffreTable().catch((error) => {
   console.error('ensureCoffreTable:', error);
+});
+ensureMontantIgnorerColumns().catch((error) => {
+  console.error('ensureMontantIgnorerColumns:', error);
 });
 
 const normalizeSqlDateTime = (value) => {
@@ -419,6 +448,7 @@ router.get('/days/:date', async (req, res) => {
   try {
     await ensureFondCaisseEntriesTable();
     await ensureCoffreTable();
+    await ensureMontantIgnorerColumns();
     const jour = isIsoDate(req.params.date) ? String(req.params.date) : '';
     if (!jour) {
       return res.status(400).json({ message: 'Date invalide' });
@@ -492,16 +522,16 @@ router.get('/days/:date', async (req, res) => {
             date_creation AS action_date,
             'Bon comptant paye' AS type,
             'ENTREE' AS direction,
-            montant_total AS amount,
+            ${netAmountSql('montant_total', 'montant_ignorer')} AS amount,
             CONCAT('COM', LPAD(id, 2, '0')) AS reference,
             COALESCE(client_nom, '') AS actor,
             statut,
             'Bon comptant regle en caisse' AS description
           FROM bons_comptant
           WHERE DATE(date_creation) = ?
-            AND COALESCE(non_paye, 0) <> 1
             AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(statut, '')) <> 'avoir'
+            AND ${netAmountSql('montant_total', 'montant_ignorer')} > 0
         `,
       },
       {
@@ -530,7 +560,7 @@ router.get('/days/:date', async (req, res) => {
             p.date_paiement AS action_date,
             'Paiement caisse' AS type,
             'ENTREE' AS direction,
-            p.montant_total AS amount,
+            ${netAmountSql('p.montant_total', 'p.montant_ignorer')} AS amount,
             COALESCE(p.numero, CONCAT('PAY', p.id)) AS reference,
             COALESCE(c.nom_complet, p.remise_account_name, '') AS actor,
             p.statut,
@@ -541,6 +571,7 @@ router.get('/days/:date', async (req, res) => {
             AND COALESCE(p.bon_type, '') <> 'Comptant'
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
+            AND ${netAmountSql('p.montant_total', 'p.montant_ignorer')} > 0
             AND (
               p.type_paiement = 'Client'
               OR (
@@ -724,6 +755,7 @@ router.get('/days/:date', async (req, res) => {
 router.get('/mouvements', async (req, res) => {
   try {
     await ensureCoffreTable();
+    await ensureMontantIgnorerColumns();
     const { dateFrom, dateTo } = parseDateRange(req);
     const params = [dateFrom, dateTo];
 
@@ -734,12 +766,13 @@ router.get('/mouvements', async (req, res) => {
         label: 'bons_comptant',
         field: 'bonComptantPaye',
         sql: `
-          SELECT DATE(date_creation) AS jour, COALESCE(SUM(montant_total), 0) AS total
+          SELECT DATE(date_creation) AS jour,
+                 COALESCE(SUM(${netAmountSql('montant_total', 'montant_ignorer')}), 0) AS total
             FROM bons_comptant
            WHERE DATE(date_creation) BETWEEN ? AND ?
-             AND COALESCE(non_paye, 0) <> 1
              AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(statut, '')) <> 'avoir'
+             AND ${netAmountSql('montant_total', 'montant_ignorer')} > 0
            GROUP BY DATE(date_creation)
         `,
       },
@@ -757,12 +790,14 @@ router.get('/mouvements', async (req, res) => {
         label: 'payments',
         field: 'paiementClientCaisse',
         sql: `
-          SELECT DATE(date_paiement) AS jour, COALESCE(SUM(montant_total), 0) AS total
+          SELECT DATE(date_paiement) AS jour,
+                 COALESCE(SUM(${netAmountSql('montant_total', 'montant_ignorer')}), 0) AS total
             FROM payments
            WHERE DATE(date_paiement) BETWEEN ? AND ?
              AND COALESCE(bon_type, '') <> 'Comptant'
              AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(statut, '')) NOT LIKE 'refus%'
+             AND ${netAmountSql('montant_total', 'montant_ignorer')} > 0
              AND (
                type_paiement = 'Client'
                OR (

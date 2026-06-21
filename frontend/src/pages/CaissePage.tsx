@@ -92,7 +92,7 @@ const CaissePage = () => {
   const [createOpenedAt, setCreateOpenedAt] = useState<string | null>(null); // capture datetime à l'ouverture du modal création
 
   // Sorting
-  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | 'echeance' | null>('date');
+  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | 'montant_ignorer' | 'echeance' | null>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Pagination
@@ -307,7 +307,7 @@ const CaissePage = () => {
   const availableStatuses = ['En attente', 'Validé', 'Refusé', 'Annulé'];
 
   // Handle sorting
-  const handleSort = (field: 'numero' | 'date' | 'contact' | 'montant' | 'echeance') => {
+  const handleSort = (field: 'numero' | 'date' | 'contact' | 'montant' | 'montant_ignorer' | 'echeance') => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
@@ -353,6 +353,7 @@ const CaissePage = () => {
     push(payment.banque);
     push(payment.cheque_num || payment.numero_cheque || payment.chequeNumber);
     push(String(payment.montant || payment.montant_total || ''));
+    push(String(payment.montant_ignorer || ''));
 
     // Dates: payment date and echeance in multiple formats
     const pushDateTokens = (dateVal: any) => {
@@ -595,6 +596,10 @@ const CaissePage = () => {
           aValue = Number(a.montant || a.montant_total || 0);
           bValue = Number(b.montant || b.montant_total || 0);
           break;
+        case 'montant_ignorer':
+          aValue = Number((a as any).montant_ignorer || 0);
+          bValue = Number((b as any).montant_ignorer || 0);
+          break;
         case 'echeance':
           aValue = a.date_echeance ? new Date(a.date_echeance).getTime() : Number.POSITIVE_INFINITY;
           bValue = b.date_echeance ? new Date(b.date_echeance).getTime() : Number.POSITIVE_INFINITY;
@@ -767,6 +772,11 @@ const paymentValidationSchema = Yup.object({
     .required('Montant est requis')
     .positive('Le montant doit être positif'),
 
+  montant_ignorer: Yup.number()
+    .transform((v, orig) => (orig === '' ? 0 : v))
+    .typeError('Le montant ignoré doit être un nombre')
+    .min(0, 'Le montant ignoré doit être positif ou nul'),
+
   mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'|'Remise'>()
     .oneOf(['Espèces','Chèque','Virement','Traite','Remise'], 'Mode invalide')
     .required('Mode de paiement est requis'),
@@ -829,6 +839,10 @@ const paymentValidationSchema = Yup.object({
         .typeError('Le montant doit être un nombre')
         .required('Montant est requis')
         .positive('Le montant doit être positif'),
+      montant_ignorer: Yup.number()
+        .transform((v, orig) => (orig === '' ? 0 : v))
+        .typeError('Le montant ignoré doit être un nombre')
+        .min(0, 'Le montant ignoré doit être positif ou nul'),
       mode_paiement: Yup.mixed<'Espèces'|'Chèque'|'Virement'|'Traite'|'Remise'>()
         .oneOf(['Espèces','Chèque','Virement','Traite','Remise'], 'Mode invalide')
         .required('Mode de paiement est requis'),
@@ -991,6 +1005,7 @@ const paymentValidationSchema = Yup.object({
         bon_id: selectedPayment.bon_id ? (selectedPayment.bon_type ? `${selectedPayment.bon_type}:${selectedPayment.bon_id}` : String(selectedPayment.bon_id)) : '',
         bon_type: selectedPayment.bon_type || '',
         montant: selectedPayment.montant || selectedPayment.montant_total,
+        montant_ignorer: selectedPayment.montant_ignorer || 0,
         mode_paiement: selectedPayment.mode_paiement,
         statut: selectedPayment.statut || 'En attente',
         date_paiement: formatMySQLToDateTimeInput(selectedPayment.date_paiement) || getCurrentDateTimeInput(),
@@ -1014,6 +1029,7 @@ const paymentValidationSchema = Yup.object({
       bon_id: '',
       bon_type: '',
       montant: 0,
+      montant_ignorer: 0,
       mode_paiement: 'Espèces',
       statut: 'En attente',
       date_paiement: createOpenedAt || getCurrentDateTimeInput(),
@@ -1052,6 +1068,7 @@ const paymentValidationSchema = Yup.object({
         : null;
       const mainLine = {
         montant: values.montant,
+        montant_ignorer: values.montant_ignorer,
         mode_paiement: values.mode_paiement,
         date_paiement: values.date_paiement,
         bon_id: values.bon_id,
@@ -1135,6 +1152,7 @@ const paymentValidationSchema = Yup.object({
   bon_type: lineBon.bonId ? lineBon.bonType : null,
         montant_total: Number(line.montant),
         montant: Number(line.montant), // Alias
+        montant_ignorer: Number(line.montant_ignorer || 0),
         mode_paiement: lineModePaiement,
   statut: values.statut,
         date_paiement: cleanedDatePaiement,
@@ -1176,6 +1194,7 @@ const paymentValidationSchema = Yup.object({
           remise_account_type: paymentData.remise_account_type,
           remise_account_name: paymentData.remise_account_name,
           montant_total: paymentData.montant_total,
+          montant_ignorer: paymentData.montant_ignorer,
           mode_paiement: paymentData.mode_paiement,
           statut: paymentData.statut,
           date_paiement: paymentData.date_paiement,
@@ -1647,6 +1666,17 @@ const paymentValidationSchema = Yup.object({
                 </th>
                 <th 
                   className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('montant_ignorer')}
+                >
+                  <div className="flex items-center gap-1">
+                    Montant ignoré
+                    {sortField === 'montant_ignorer' && (
+                      sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-3 py-2 text-left text-[11px] font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('echeance')}
                 >
                   <div className="flex items-center gap-1">
@@ -1673,7 +1703,7 @@ const paymentValidationSchema = Yup.object({
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan={14} className="px-6 py-4 text-center text-sm text-gray-500">
                     Aucun paiement trouvé
                   </td>
                 </tr>
@@ -1728,6 +1758,9 @@ const paymentValidationSchema = Yup.object({
                     
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-semibold text-gray-900">{Number(payment.montant ?? payment.montant_total ?? 0)} DH</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-semibold text-orange-700">{Number(payment.montant_ignorer ?? 0)} DH</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
@@ -1951,7 +1984,7 @@ const paymentValidationSchema = Yup.object({
             <select
               value={sortField || ''}
               onChange={(e) => {
-                const field = e.target.value as 'numero' | 'date' | 'contact' | 'montant' | 'echeance';
+                const field = e.target.value as 'numero' | 'date' | 'contact' | 'montant' | 'montant_ignorer' | 'echeance';
                 if (field) {
                   handleSort(field);
                 }
@@ -1963,6 +1996,7 @@ const paymentValidationSchema = Yup.object({
               <option value="date">Date</option>
               <option value="contact">Contact</option>
               <option value="montant">Montant</option>
+              <option value="montant_ignorer">Montant ignoré</option>
               <option value="echeance">Échéance</option>
             </select>
           </div>
@@ -2014,6 +2048,7 @@ const paymentValidationSchema = Yup.object({
                   <p className="font-medium text-gray-800 truncate">{contactName}</p>
                   <p className="text-gray-500 text-xs truncate">{societe}</p>
                   <p className="mt-1 text-gray-700 font-semibold">{Number(payment.montant ?? payment.montant_total ?? 0)} DH</p>
+                  <p className="text-xs font-semibold text-orange-700">Montant ignoré: {Number(payment.montant_ignorer ?? 0)} DH</p>
                   {payment.date_echeance && (
                     <p className="text-xs text-gray-500">Échéance: {formatYMD(payment.date_echeance)}</p>
                   )}
@@ -2475,6 +2510,21 @@ const paymentValidationSchema = Yup.object({
                     </div>
 
                     <div>
+                      <label htmlFor="montant_ignorer" className="block text-sm font-medium text-gray-700 mb-1">
+                        Montant ignoré
+                      </label>
+                      <Field
+                        id="montant_ignorer"
+                        name="montant_ignorer"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <ErrorMessage name="montant_ignorer" component="div" className="text-red-500 text-sm mt-1" />
+                    </div>
+
+                    <div>
                       <label htmlFor="mode_paiement" className="block text-sm font-medium text-gray-700 mb-1">
                         Mode de paiement *
                       </label>
@@ -2692,6 +2742,7 @@ const paymentValidationSchema = Yup.object({
                             ...(Array.isArray(values.payment_lines) ? values.payment_lines : []),
                             {
                               montant: '',
+                              montant_ignorer: '',
                               mode_paiement: values.mode_paiement || 'Espèces',
                               date_paiement: values.date_paiement || getCurrentDateTimeInput(),
                               bon_id: '',
@@ -2750,6 +2801,19 @@ const paymentValidationSchema = Yup.object({
                                     className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                   />
                                   <ErrorMessage name={`payment_lines.${index}.montant`} component="div" className="mt-1 text-sm text-red-500" />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                                    Montant ignoré
+                                  </label>
+                                  <Field
+                                    name={`payment_lines.${index}.montant_ignorer`}
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  <ErrorMessage name={`payment_lines.${index}.montant_ignorer`} component="div" className="mt-1 text-sm text-red-500" />
                                 </div>
                                 <div>
                                   <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -2924,6 +2988,10 @@ const paymentValidationSchema = Yup.object({
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Montant:</p>
                   <p className="text-xl font-bold text-blue-600">{Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0)} DH</p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-600">Montant ignoré:</p>
+                  <p className="text-xl font-bold text-orange-700">{Number(selectedPayment.montant_ignorer ?? 0)} DH</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Mode de paiement:</p>

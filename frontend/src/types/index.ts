@@ -489,6 +489,7 @@ export interface Bon {
   phone?: string | null;
   adresse_livraison?: string;
   montant_total: number;
+  montant_ignorer?: number;
   statut: 'Brouillon' | 'Validé' | 'Annulé' | 'Livré' | 'Payé' | 'Avoir' | 'En attente' | 'Envoyé' | 'Accepté' | 'Refusé' | 'Expiré' | 'Facturé';
   // Ecommerce (optional)
   customer_email?: string;
@@ -569,6 +570,7 @@ export interface Payment {
   bon_type?: string | null; // Type du bon (pour éviter collisions d'IDs entre tables)
   talon_id?: number; // ID du talon associé
   montant_total: number;
+  montant_ignorer?: number;
   mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'Remise';
   date_paiement: string | null;
   designation: string;
@@ -603,6 +605,7 @@ export interface CreatePaymentData {
   bon_id?: number;
   bon_type?: string | null;
   montant_total: number;
+  montant_ignorer?: number;
   mode_paiement: 'Espèces' | 'Chèque' | 'Traite' | 'Virement' | 'Remise';
   date_paiement: string | null;
   designation: string;

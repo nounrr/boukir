@@ -8,7 +8,7 @@ type PaymentsPagedArgs = {
   date?: string;
   mode?: string;
   status?: string;
-  sortBy?: 'numero' | 'date' | 'contact' | 'montant' | 'echeance' | 'id';
+  sortBy?: 'numero' | 'date' | 'contact' | 'montant' | 'montant_ignorer' | 'echeance' | 'id';
   sortDir?: 'asc' | 'desc';
 };
 
