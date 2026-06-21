@@ -35,6 +35,22 @@ ensureComptantPaymentsTable().catch((error) => {
   console.error('ensureComptantPaymentsTable:', error);
 });
 
+async function ensureBonsComptantMontantIgnorerColumn() {
+  try {
+    const [rows] = await pool.query("SHOW COLUMNS FROM bons_comptant LIKE 'montant_ignorer'");
+    if (!Array.isArray(rows) || rows.length === 0) {
+      await pool.query("ALTER TABLE bons_comptant ADD COLUMN montant_ignorer DECIMAL(15,2) NOT NULL DEFAULT 0.00 AFTER montant_total");
+    }
+  } catch (error) {
+    console.error('ensureBonsComptantMontantIgnorerColumn:', error);
+    throw error;
+  }
+}
+
+ensureBonsComptantMontantIgnorerColumn().catch((error) => {
+  console.error('ensureBonsComptantMontantIgnorerColumn init:', error);
+});
+
 const normalizeSqlDateTime = (value) => {
   if (!value) return null;
   const s = String(value).trim();
@@ -449,6 +465,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+    await ensureBonsComptantMontantIgnorerColumn();
 
   const {
       date_creation,
@@ -458,6 +475,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       lieu_chargement,
       adresse_livraison,
       montant_total,
+      montant_ignorer = 0,
       statut = 'Brouillon',
     items = [],
     created_by,
@@ -493,6 +511,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? 'Brouillon';
+    const montantIgnorer = Number.isFinite(Number(montant_ignorer)) ? Number(montant_ignorer) : 0;
 
     const resolved = await resolveRemiseTarget({
       db: connection,
@@ -509,9 +528,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const [comptantResult] = await connection.execute(`
       INSERT INTO bons_comptant (
         date_creation, client_id, client_nom, phone, vehicule_id,
-        lieu_chargement, adresse_livraison, montant_total, reste, non_paye, statut, created_by, isNotCalculated,
+        lieu_chargement, adresse_livraison, montant_total, montant_ignorer, reste, non_paye, statut, created_by, isNotCalculated,
         remise_is_client, remise_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       normalizedDateCreation,
       cId,
@@ -521,6 +540,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       lieu,
       adresse_livraison ?? null,
       montant_total,
+      montantIgnorer,
       nonPayeRequested ? (req.body.reste || 0) : 0,
       nonPayeRequested ? 1 : 0,
       st,
@@ -670,6 +690,7 @@ router.put('/:id', async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+    await ensureBonsComptantMontantIgnorerColumn();
 
     const { id } = req.params;
     const userRole = req.user?.role;
@@ -683,6 +704,7 @@ router.put('/:id', async (req, res) => {
       lieu_chargement,
       adresse_livraison,
       montant_total,
+      montant_ignorer = 0,
       statut,
     items = [],
     livraisons,
@@ -695,7 +717,7 @@ router.put('/:id', async (req, res) => {
     const remise_id = req.body?.remise_id;
     const remise_client_nom = req.body?.remise_client_nom;
 
-    const [exists] = await connection.execute('SELECT date_creation, client_id, client_nom, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, statut, isNotCalculated, remise_is_client, remise_id FROM bons_comptant WHERE id = ? FOR UPDATE', [id]);
+    const [exists] = await connection.execute('SELECT date_creation, client_id, client_nom, phone, vehicule_id, lieu_chargement, adresse_livraison, montant_total, montant_ignorer, statut, isNotCalculated, remise_is_client, remise_id FROM bons_comptant WHERE id = ? FOR UPDATE', [id]);
     if (!Array.isArray(exists) || exists.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Bon comptant non trouvé' });
@@ -751,6 +773,7 @@ router.put('/:id', async (req, res) => {
 
       items = sanitizedItems;
       montant_total = sanitizedItems.reduce((s, r) => s + (Number(r.total) || 0), 0);
+      montant_ignorer = oldBon.montant_ignorer;
       date_creation = oldBon.date_creation;
       client_id = oldBon.client_id;
       client_nom = oldBon.client_nom;
@@ -774,6 +797,7 @@ router.put('/:id', async (req, res) => {
     const vId  = vehicule_id ?? null;
     const lieu = lieu_chargement ?? null;
     const st   = statut ?? null;
+    const montantIgnorer = Number.isFinite(Number(montant_ignorer)) ? Number(montant_ignorer) : 0;
     const nonPayeRequested = parseBooleanFlag(req.body?.non_paye);
 
     // Validation minimale (détaillée)
@@ -803,7 +827,7 @@ router.put('/:id', async (req, res) => {
     await connection.execute(`
       UPDATE bons_comptant SET
         date_creation = ?, client_id = ?, client_nom = ?, phone = ?,
-        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, reste = ?, non_paye = ?, statut = ?, isNotCalculated = ?,
+        vehicule_id = ?, lieu_chargement = ?, adresse_livraison = ?, montant_total = ?, montant_ignorer = ?, reste = ?, non_paye = ?, statut = ?, isNotCalculated = ?,
         remise_is_client = ?, remise_id = ?
       WHERE id = ?
     `, [
@@ -815,6 +839,7 @@ router.put('/:id', async (req, res) => {
       lieu,
       adresse_livraison ?? null,
       montant_total,
+      montantIgnorer,
       nonPayeRequested ? (req.body.reste || 0) : 0,
       nonPayeRequested ? 1 : 0,
       st,

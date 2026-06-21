@@ -2139,6 +2139,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         items: mergedItems,
         montant_ht: initialValues.montant_ht || 0,
         montant_total: initialValues.montant_total || 0,
+        montant_ignorer: Number((initialValues as any).montant_ignorer || 0),
         client_nom: initialValues.client_nom || '',
         client_adresse: initialValues.client_adresse || '',
         client_societe: initialValues.client_societe || initialValues.societe || '',
@@ -2182,6 +2183,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       adresse_livraison: '',
       montant_ht: 0,
       montant_total: 0,
+      montant_ignorer: 0,
       isNotCalculated: false,
       payer_partiellement: isRequiredUnpaidComptant,
       reste: 0,
@@ -2784,6 +2786,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   vendre_au_fournisseur: (requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur ? 1 : undefined,
   client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce' || ((requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur)) ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
+  montant_ignorer: requestType === 'Comptant' ? (Number(values.montant_ignorer || 0) || 0) : undefined,
   reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
   non_paye: requestType === 'Comptant' ? !!values.payer_partiellement : undefined,
       fournisseur_id: values.fournisseur_id ? parseInt(values.fournisseur_id) : undefined,
@@ -4270,6 +4273,22 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
               {/* Partial Payment Option for Comptant - Moved outside client block for visibility */}
               {values.type === 'Comptant' && (
                 <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 mb-4">
+                  <div className="mb-3 max-w-xs">
+                    <label htmlFor="montant_ignorer" className="block text-sm font-medium text-gray-700 mb-1">
+                      Montant ignoré fond caisse (DH)
+                    </label>
+                    <Field
+                      id="montant_ignorer"
+                      name="montant_ignorer"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
+                    />
+                    <div className="mt-1 text-xs text-gray-500">
+                      Fond caisse prendra: total - montant ignoré.
+                    </div>
+                  </div>
                   {comptantPartialPaymentMode === 'hidden' && (
                     <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
                       <input
