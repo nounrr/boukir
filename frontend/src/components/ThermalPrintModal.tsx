@@ -343,6 +343,24 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
       `${it.prix_unitaire ?? it.prix ?? it.price ?? ''}-${it.quantite ?? it.qty ?? ''}`
     );
 
+  const getItemDesignation = (it: any) => {
+    const base = String(it?.designation ?? it?.designation_custom ?? it?.libelle ?? it?.name ?? '').trim();
+    const productId = it?.product_id ?? it?.produit_id ?? it?.id;
+    const variantId = it?.variant_id ?? it?.variantId;
+    let variantName = String(it?.variant_name ?? it?.variant ?? it?.variantLabel ?? '').trim();
+
+    if (!variantName && variantId) {
+      const product = findProductById(productId);
+      const variant = Array.isArray(product?.variants)
+        ? product.variants.find((v: any) => String(v?.id) === String(variantId))
+        : null;
+      variantName = String(variant?.variant_name ?? variant?.name ?? '').trim();
+    }
+
+    if (base && variantName) return `${base} - ${variantName}`;
+    return base || variantName || '-';
+  };
+
   const handlePrint = async () => {
     if (!printRef.current) return;
 
@@ -574,7 +592,7 @@ const ThermalPrintModal: React.FC<ThermalPrintModalProps> = ({
                   return (
                     <tr key={getItemKey(it)}>
                       <td className="col-code">{it.product_id}</td>
-                      <td className="col-designation">{it.designation || it.libelle || it.name || '-'}</td>
+                      <td className="col-designation">{getItemDesignation(it)}</td>
                       <td className="col-unite">{(() => {
                         const uid = it?.unit_id ?? it?.unite_id ?? it?.uniteId;
                         const prod = findProductById(it?.product_id ?? it?.produit_id);

@@ -1309,12 +1309,17 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     () => mergeContactById(fournisseursRaw as Contact[], selectedFournisseurById as Contact | undefined),
     [fournisseursRaw, selectedFournisseurById]
   );
-  const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined, { skip: !heavyDataReady });
+  const currentModalType = String((initialValues as any)?.type || currentTab || '');
+  const shouldFetchSortiesHistory = heavyDataReady || (
+    isOpen &&
+    currentModalType === 'Avoir' &&
+    !defaultVendreAuFournisseur
+  );
+  const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined, { skip: !shouldFetchSortiesHistory });
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined, { skip: !heavyDataReady });
   const { data: comptantPaymentsHistory = [] } = useGetComptantPaymentsQuery((initialValues as any)?.id, {
     skip: !isEditMode || currentTab !== 'Comptant' || !((initialValues as any)?.id),
   });
-  const currentModalType = String((initialValues as any)?.type || currentTab || '');
   const shouldFetchCommandesHistory = isOpen && (
     currentModalType === 'Commande' ||
     currentModalType === 'AvoirFournisseur'
@@ -3449,6 +3454,109 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     return collectBestPrice(false);
   };
 
+  const getLastSortieUnitPriceForClientProduct = (
+    clientId: string | number | undefined,
+    productId: string | number | undefined,
+    variantId?: string | number | undefined,
+    unitId?: string | number | undefined
+  ): number | null => {
+    if (!clientId || !productId) return null;
+    const cid = String(clientId);
+    const pid = String(productId);
+    const wantedVariantId = variantId == null || variantId === '' ? null : String(variantId);
+    const wantedUnitId = unitId == null || unitId === '' ? null : String(unitId);
+
+    type HistItem = { prix_unitaire?: number; price?: number };
+    let bestPrice: number | null = null;
+    let bestTime = -1;
+    let bestBonId = -1;
+    const acceptedStatuses = new Set(['validÃ©', 'valide', 'validÃ©e', 'livrÃ©', 'livre', 'en attente']);
+
+    const scan = (bon: any, matchVariant: boolean, matchUnit: boolean) => {
+      const statut = String(bon.statut || '').toLowerCase();
+      if (!acceptedStatuses.has(statut)) return;
+
+      const bonClientId = String(bon.client_id ?? bon.contact_id ?? '');
+      if (bonClientId !== cid) return;
+
+      const bonTime = toTime(bon.date_creation || bon.date);
+      const bonId = Number(bon.id || 0);
+      const items = parseItems(bon.items);
+
+      for (const it of items as HistItem[]) {
+        const itPid = String((it as any).product_id ?? (it as any).id ?? '');
+        if (itPid !== pid) continue;
+
+        const itVariantId = (it as any).variant_id == null || (it as any).variant_id === '' ? null : String((it as any).variant_id);
+        const itUnitId = (it as any).unit_id == null || (it as any).unit_id === '' ? null : String((it as any).unit_id);
+        if (matchVariant && wantedVariantId !== null && itVariantId !== wantedVariantId) continue;
+        if (matchUnit && wantedUnitId !== null && itUnitId !== wantedUnitId) continue;
+
+        const price = Number((it as any).prix_unitaire ?? (it as any).price ?? 0);
+        if (!Number.isFinite(price) || price <= 0) continue;
+        if (bonTime > bestTime || (bonTime === bestTime && bonId > bestBonId)) {
+          bestTime = bonTime;
+          bestBonId = bonId;
+          bestPrice = price;
+        }
+      }
+    };
+
+    const collect = (matchVariant: boolean, matchUnit: boolean) => {
+      bestPrice = null;
+      bestTime = -1;
+      bestBonId = -1;
+      for (const b of sortiesHistory as any[]) scan(b, matchVariant, matchUnit);
+      return bestPrice;
+    };
+
+    if (wantedVariantId !== null && wantedUnitId !== null) {
+      const exactMatchPrice = collect(true, true);
+      if (exactMatchPrice != null) return exactMatchPrice;
+    }
+
+    if (wantedVariantId !== null) {
+      return collect(true, false);
+    }
+
+    if (wantedUnitId !== null) {
+      const exactUnitPrice = collect(false, true);
+      if (exactUnitPrice != null) return exactUnitPrice;
+    }
+
+    return collect(false, false);
+  };
+
+  useEffect(() => {
+    if (!isOpen || !Array.isArray(sortiesHistory) || sortiesHistory.length === 0) return;
+    const formik = formikRef.current;
+    const values = formik?.values as any;
+    if (!formik || values?.type !== 'Avoir' || values?.vendre_au_fournisseur || !values?.client_id) return;
+
+    (values.items || []).forEach((item: any, index: number) => {
+      if (!item?.product_id) return;
+      const lastPrice = getLastSortieUnitPriceForClientProduct(
+        values.client_id,
+        item.product_id,
+        item.variant_id,
+        item.unit_id
+      );
+      if (lastPrice == null || !Number.isFinite(lastPrice)) return;
+
+      const currentPrice = Number(item.prix_unitaire ?? 0);
+      if (Math.abs(currentPrice - lastPrice) < 0.0001) return;
+
+      void formik.setFieldValue(`items.${index}.prix_unitaire`, lastPrice);
+      setUnitPriceRaw((prev) => ({ ...prev, [index]: String(lastPrice) }));
+      const qty = parseFloat(normalizeDecimal(qtyRaw[index] ?? String(item.quantite ?? ''))) || 0;
+      void formik.setFieldValue(`items.${index}.total`, qty * lastPrice);
+    });
+  }, [
+    isOpen,
+    sortiesHistory,
+    qtyRaw,
+  ]);
+
   const getLastQuantityForClientProduct = (
     clientId: string | number | undefined,
     productId: string | number | undefined
@@ -3714,7 +3822,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
   // Pour bon Commande, utiliser prix_achat; pour autres types, prix_unitaire
   const chargePrice = cr || pa || 0;
-  const priceForDisplay = values.type === 'Commande' ? pa : values.type === 'Charge' ? chargePrice : unit;
+  const lastAvoirClientSortiePrice = values.type === 'Avoir' && !values.vendre_au_fournisseur && values.client_id
+    ? getLastSortieUnitPriceForClientProduct(
+        values.client_id,
+        product.id,
+        product.variant_id,
+        values.items?.[rowIndex]?.unit_id
+      )
+    : null;
+  const salePrice = lastAvoirClientSortiePrice ?? unit;
+  const priceForDisplay = values.type === 'Commande' ? pa : values.type === 'Charge' ? chargePrice : salePrice;
   const totalPrice = q * priceForDisplay;
 
   // Créer une version temporaire des valeurs avec le nouveau produit
@@ -3725,7 +3842,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         ...item,
         product_id: product.id,
         prix_achat: pa,
-        prix_unitaire: values.type === 'Charge' ? chargePrice : unit,
+        prix_unitaire: values.type === 'Charge' ? chargePrice : salePrice,
         total: totalPrice
       } : item
     )
@@ -3742,7 +3859,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   setFieldValue(`items.${rowIndex}.designation`, product.designation || '');
   setFieldValue(`items.${rowIndex}.prix_achat`, pa);
   setFieldValue(`items.${rowIndex}.cout_revient`, cr);
-  setFieldValue(`items.${rowIndex}.prix_unitaire`, values.type === 'Charge' ? chargePrice : unit);
+  setFieldValue(`items.${rowIndex}.prix_unitaire`, values.type === 'Charge' ? chargePrice : salePrice);
   setFieldValue(`items.${rowIndex}.kg`, kg);
   setFieldValue(`items.${rowIndex}.total`, totalPrice);
 
@@ -5191,7 +5308,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           catalogVariant?.prix_vente_pourcentage ?? product.prix_vente_pourcentage ?? 0
                                         );
                                         const effectiveChargePrice = effectiveCR || effectivePA || 0;
-                                        const effectiveUnitPrice = values.type === 'Charge' ? effectiveChargePrice : effectivePV;
+                                        const lastAvoirClientSortiePrice = values.type === 'Avoir' && !values.vendre_au_fournisseur && values.client_id
+                                          ? getLastSortieUnitPriceForClientProduct(
+                                              values.client_id,
+                                              product.id,
+                                              productVariantId,
+                                              values.items[index]?.unit_id
+                                            )
+                                          : null;
+                                        const effectiveUnitPrice = values.type === 'Charge'
+                                          ? effectiveChargePrice
+                                          : (lastAvoirClientSortiePrice ?? effectivePV);
                                         setFieldValue(`items.${index}.prix_unitaire`, effectiveUnitPrice);
                                         const priceForDisplay = values.type === 'Commande' ? effectivePA : effectiveUnitPrice;
                                         setUnitPriceRaw((prev) => ({ ...prev, [index]: String(priceForDisplay) }));
@@ -5327,6 +5454,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               if (unitIdSel) {
                                                 effectivePrice = scaleDecimal(variantBasePrice, factorSel);
                                               }
+                                              const lastAvoirClientSortiePrice = values.type === 'Avoir' && !values.vendre_au_fournisseur && values.client_id
+                                                ? getLastSortieUnitPriceForClientProduct(
+                                                    values.client_id,
+                                                    values.items[index].product_id,
+                                                    vId,
+                                                    unitIdSel
+                                                  )
+                                                : null;
+                                              if (lastAvoirClientSortiePrice != null && values.type !== 'Commande' && values.type !== 'Charge') {
+                                                effectivePrice = lastAvoirClientSortiePrice;
+                                              }
 
                                               if (values.type === 'Commande') {
                                                 setFieldValue(`items.${index}.prix_achat`, effectivePrice);
@@ -5394,6 +5532,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             // No unit selected => base purchase/cost
                                             setFieldValue(`items.${index}.prix_achat`, basePriceAchat);
                                             setFieldValue(`items.${index}.cout_revient`, baseCoutRevient);
+                                          }
+                                          const lastAvoirClientSortiePrice = values.type === 'Avoir' && !values.vendre_au_fournisseur && values.client_id
+                                            ? getLastSortieUnitPriceForClientProduct(
+                                                values.client_id,
+                                                values.items[index].product_id,
+                                                '',
+                                                unitIdSel
+                                              )
+                                            : null;
+                                          if (lastAvoirClientSortiePrice != null && values.type !== 'Commande' && values.type !== 'Charge') {
+                                            effectivePrice = lastAvoirClientSortiePrice;
                                           }
 
                                           if (values.type === 'Commande') {
@@ -5512,6 +5661,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 } else {
                                                   newPrice = scaleDecimal(baseV, factor);
                                                 }
+                                                const lastAvoirClientSortiePrice = values.type === 'Avoir' && !values.vendre_au_fournisseur && values.client_id
+                                                  ? getLastSortieUnitPriceForClientProduct(
+                                                      values.client_id,
+                                                      values.items[index].product_id,
+                                                      selectedVariantId,
+                                                      uId
+                                                    )
+                                                  : null;
+                                                if (lastAvoirClientSortiePrice != null) {
+                                                  newPrice = lastAvoirClientSortiePrice;
+                                                }
                                                 setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                               }
                                               setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
@@ -5543,6 +5703,17 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               setFieldValue(`items.${index}.prix_achat`, newPrice);
                                             } else {
                                               newPrice = values.type === 'Charge' ? baseCR : baseV;
+                                              const lastAvoirClientSortiePrice = values.type === 'Avoir' && !values.vendre_au_fournisseur && values.client_id
+                                                ? getLastSortieUnitPriceForClientProduct(
+                                                    values.client_id,
+                                                    values.items[index].product_id,
+                                                    selectedVariantId,
+                                                    ''
+                                                  )
+                                                : null;
+                                              if (lastAvoirClientSortiePrice != null && values.type !== 'Charge') {
+                                                newPrice = lastAvoirClientSortiePrice;
+                                              }
                                               setFieldValue(`items.${index}.prix_unitaire`, newPrice);
                                             }
                                             setUnitPriceRaw((prev) => ({ ...prev, [index]: String(newPrice) }));
@@ -5981,14 +6152,23 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   onKeyDown={onCellKeyDown(index, 'unit')}
   />
   {values.client_id && values.items[index].product_id && (() => {
-    const last = getLastUnitPriceForClientProduct(
-      values.client_id,
-      values.items[index].product_id,
-      values.items[index].variant_id,
-      values.items[index].unit_id
-    );
+    const last = values.type === 'Avoir' && !values.vendre_au_fournisseur
+      ? getLastSortieUnitPriceForClientProduct(
+          values.client_id,
+          values.items[index].product_id,
+          values.items[index].variant_id,
+          values.items[index].unit_id
+        )
+      : getLastUnitPriceForClientProduct(
+          values.client_id,
+          values.items[index].product_id,
+          values.items[index].variant_id,
+          values.items[index].unit_id
+        );
     return last && Number.isFinite(last) ? (
-      <div className="text-xs text-blue-600 font-medium mt-1">Dernier prix client: {formatFull(Number(last))} DH</div>
+      <div className="text-xs text-blue-600 font-medium mt-1">
+        {values.type === 'Avoir' && !values.vendre_au_fournisseur ? 'Dernier prix Bon Sortie' : 'Dernier prix client'}: {formatFull(Number(last))} DH
+      </div>
     ) : null;
   })()}
   {values.client_id && values.items[index].product_id && (() => {

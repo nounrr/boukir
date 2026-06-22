@@ -52,8 +52,9 @@ const BonCreatePage = () => {
   const [bonFormKey] = useState(() => Date.now());
 
   const goBackToList = useCallback(() => {
-    navigate('/bons', { replace: true });
-  }, [navigate]);
+    const returnTab = type || currentTab;
+    navigate(`/bons?tab=${encodeURIComponent(returnTab)}`, { replace: true });
+  }, [currentTab, navigate, type]);
 
   const handleBonAdded = useCallback(
     (newBon: any) => {
