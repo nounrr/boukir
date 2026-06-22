@@ -46,7 +46,7 @@ import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
   import { logout } from '../store/slices/authSlice';
   import { useAppDispatch, useAuth } from '../hooks/redux';
   import { canModifyBons } from '../utils/permissions';
-  import { useNavigate } from 'react-router-dom';
+  import { useNavigate, useSearchParams } from 'react-router-dom';
   
   
 
@@ -72,6 +72,10 @@ const BON_TAB_LABELS: Record<BonTabKey, string> = {
   Ecommerce: 'Bon Ecommerce',
   Devis: 'Devis'
 };
+
+const getBonTabFromParam = (value: string | null): BonTabKey | null => (
+  value && Object.prototype.hasOwnProperty.call(BON_TAB_LABELS, value) ? value as BonTabKey : null
+);
 
 const normalizeBonTab = (tab: BonTabKey): Exclude<BonTabKey, 'ComptantNonPaye' | 'VendreFournisseur' | 'AvoirVendreFournisseur'> => (
   tab === 'ComptantNonPaye' ? 'Comptant' : tab === 'VendreFournisseur' ? 'Sortie' : tab === 'AvoirVendreFournisseur' ? 'Avoir' : tab
@@ -103,7 +107,16 @@ const isContactBlocked = (contact: any) => {
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
   const navigate = useNavigate();
-  const [currentTab, setCurrentTab] = useState<BonTabKey>('Commande');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [currentTab, setCurrentTab] = useState<BonTabKey>(() => getBonTabFromParam(searchParams.get('tab')) || 'Commande');
+  const changeCurrentTab = useCallback((tab: BonTabKey) => {
+    setCurrentTab(tab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedBon, setSelectedBon] = useState<any>(null);
@@ -2287,7 +2300,7 @@ const BonsPage = () => {
             {tabs.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => setCurrentTab(tab.key as any)}
+                onClick={() => changeCurrentTab(tab.key as BonTabKey)}
                 className={`py-2 px-3 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 transition-colors ${
                   currentTab === tab.key
                     ? 'border-blue-500 text-blue-600'
