@@ -1394,27 +1394,36 @@ const BonsPage = () => {
   // Helper: envoyer WhatsApp pour un bon depuis la liste
   // (imports moved to top of file)
   const resolveBonPhone = (bon: any): string | null => {
-    // Priorité: customer_phone / phone si présent (e-commerce)
-    if ((bon as any)?.customer_phone) return String((bon as any).customer_phone);
-    // Priorité: bon.phone si présent
-    if (bon?.phone) return String(bon.phone);
-    // Client selon type
     const type = bon?.type || currentTab;
+
+    // E-commerce n'est pas toujours lie a un contact backoffice: garder son telephone commande.
+    if (type === 'Ecommerce' || type === 'AvoirEcommerce') {
+      if ((bon as any)?.customer_phone) return String((bon as any).customer_phone);
+      if (bon?.phone) return String(bon.phone);
+      return null;
+    }
+
+    // Pour les bons lies a contacts, le telephone doit venir du client/fournisseur.
     const clientId = bon?.client_id ?? bon?.contact_id;
-    if (['Sortie','Comptant','Charge','AvoirCharge','Avoir','AvoirComptant','Devis'].includes(type)) {
+    if (['Sortie','Comptant','Charge','AvoirCharge','Avoir','Devis'].includes(type)) {
       if (clientId && clients.length > 0) {
         const client = clients.find((c: any) => String(c.id) === String(clientId));
         if (client?.telephone) return String(client.telephone);
       }
+      return null;
     }
-    // Fournisseur pour Commande / AvoirFournisseur
+
     if (['Commande','AvoirFournisseur'].includes(type)) {
       const fournisseurId = bon?.fournisseur_id ?? bon?.contact_id;
       if (fournisseurId && suppliers.length > 0) {
         const supplier = suppliers.find((s: any) => String(s.id) === String(fournisseurId));
         if (supplier?.telephone) return String(supplier.telephone);
       }
+      return null;
     }
+
+    // Les bons sans contact backoffice gardent leur telephone propre.
+    if (bon?.phone) return String(bon.phone);
     return null;
   };
   const handleSendWhatsAppFromRow = async (bon: any, skipConfirmation = false) => {
