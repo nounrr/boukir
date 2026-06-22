@@ -1,9 +1,61 @@
 import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import pool from '../db/pool.js';
 import { emitToPDG } from '../socket/socketServer.js';
 import { getWhtspStatus, isWhtspServiceConfigured, sendWhtspMedia, sendWhtspText } from '../utils/whtspService.js';
 
 const router = express.Router();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const uploadsDir = path.resolve(__dirname, '..', 'uploads');
+
+const getMediaPayloadFromUrl = async (rawUrl) => {
+  if (!rawUrl) return null;
+  const mediaUrl = String(rawUrl);
+
+  let urlObj = null;
+  try {
+    urlObj = new URL(mediaUrl);
+  } catch {
+    try {
+      urlObj = new URL(mediaUrl, 'http://local.invalid');
+    } catch {
+      urlObj = null;
+    }
+  }
+
+  const pathname = urlObj?.pathname || '';
+  const filename = pathname ? path.basename(decodeURIComponent(pathname)) || 'document.pdf' : 'document.pdf';
+
+  if (pathname.startsWith('/uploads/')) {
+    const relativeUploadPath = decodeURIComponent(pathname.replace(/^\/uploads\//, ''));
+    const localPath = path.resolve(uploadsDir, relativeUploadPath);
+    if (localPath === uploadsDir || !localPath.startsWith(`${uploadsDir}${path.sep}`)) {
+      throw new Error('Chemin PDF invalide');
+    }
+
+    const buffer = await fs.readFile(localPath);
+    return {
+      base64: buffer.toString('base64'),
+      filename,
+      mimetype: 'application/pdf',
+    };
+  }
+
+  const resp = await fetch(mediaUrl);
+  if (!resp.ok) {
+    const err = new Error(`fetch_media_failed_backend_${resp.status}`);
+    err.status = 400;
+    throw err;
+  }
+  const buffer = Buffer.from(await resp.arrayBuffer());
+  return {
+    base64: buffer.toString('base64'),
+    filename,
+    mimetype: resp.headers.get('content-type') || 'application/pdf',
+  };
+};
 
 // GET /api/notifications/count - Get count of pending artisan requests (PDG only)
 router.get('/count', async (req, res, next) => {
@@ -223,10 +275,13 @@ router.post('/whatsapp/bon', async (req, res) => {
     let result;
     if (finalMediaUrls.length > 0) {
       // Prefer first URL (the frontend uploads exactly one PDF)
+      const mediaPayload = await getMediaPayloadFromUrl(finalMediaUrls[0]);
       result = await sendWhtspMedia({
         phone: to,
         caption,
-        mediaUrl: String(finalMediaUrls[0]),
+        base64: mediaPayload?.base64,
+        filename: mediaPayload?.filename,
+        mimetype: mediaPayload?.mimetype,
       });
     } else {
       result = await sendWhtspText({ phone: to, text: caption });
