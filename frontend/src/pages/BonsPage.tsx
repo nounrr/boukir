@@ -162,6 +162,7 @@ const BonsPage = () => {
   const [isDuplicationComplete, setIsDuplicationComplete] = useState(true);
   const [selectedArticlesForDuplicate, setSelectedArticlesForDuplicate] = useState<number[]>([]);
   // Clé pour forcer le remontage du formulaire (assure un état 100% vierge entre créations)
+
   const [bonFormKey, setBonFormKey] = useState(0);
 
   // Menu actions state
@@ -199,7 +200,7 @@ const BonsPage = () => {
   const SHOW_WHATSAPP_BUTTON = currentUser?.role === 'PDG' || currentUser?.role === 'ManagerPlus';
 
   // Lock body scroll when any modal is open so only modal content scrolls
-  const anyModalOpen = isCreateModalOpen || isViewModalOpen || isEcommerceRemiseModalOpen ||
+  const anyModalOpen = isViewModalOpen || isEcommerceRemiseModalOpen ||
     isNewClientModalOpen || isNewSupplierModalOpen || isNewVehicleModalOpen ||
     isCreateAvoirModalOpen || isCreateAvoirClientModalOpen || isProductModalOpen ||
     isDevisTransformModalOpen || isThermalPrintModalOpen || isPrintModalOpen || isDuplicateModalOpen ||
@@ -1697,14 +1698,6 @@ const BonsPage = () => {
     }
   }, [bons, selectedComptantForPayments?.id]);
 
-  useEffect(() => {
-    if (!selectedBon?.id || !isCreateModalOpen) return;
-    const refreshed = (bons as any[]).find((bon: any) => Number(bon.id) === Number(selectedBon.id));
-    if (refreshed) {
-      setSelectedBon(refreshed);
-    }
-  }, [bons, selectedBon?.id, isCreateModalOpen]);
-
   // Tabs configuration
   const tabs = useMemo(() => {
     const base = [
@@ -1980,6 +1973,15 @@ const BonsPage = () => {
     }
     // La création se fait désormais sur une page dédiée (hors du tableau) pour éviter le lag.
     navigate(`/bons/create/${currentTab}`);
+  };
+
+  const openEditPage = (bon: any) => {
+    navigate(`/bons/edit/${currentTab}/${bon.id}`, {
+      state: {
+        initialValues: bon,
+        returnTab: currentTab,
+      },
+    });
   };
 
   const handleDelete = async (bonToDelete: any) => {
@@ -3168,10 +3170,7 @@ const BonsPage = () => {
                                     openEcommerceRemiseEditor(bon);
                                     return;
                                   }
-                                  setSelectedBon(bon);
-                                  // Forcer un remontage propre du modal d'édition
-                                  setBonFormKey((k) => k + 1);
-                                  setIsCreateModalOpen(true);
+                                  openEditPage(bon);
                                 }}
                                 className="text-blue-600 hover:text-blue-800"
                                 title={isChefChauffeur ? 'Modifier (quantité seulement)' : 'Modifier'}
