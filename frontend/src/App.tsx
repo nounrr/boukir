@@ -371,6 +371,17 @@ const AppContent: React.FC = () => {
         />
 
         <Route
+          path="/bons/edit/:type/:id"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <BonCreatePage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/categories"
           element={
             <ProtectedRoute>

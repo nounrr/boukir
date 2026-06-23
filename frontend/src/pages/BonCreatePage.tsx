@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import BonFormModal from '../components/BonFormModal';
+import ChargeEditFormModal from '../components/ChargeEditFormModal';
+import { useGetBonsByTypeQuery } from '../store/api/bonsApi';
 import { showSuccess } from '../utils/notifications';
 import { getBonNumeroDisplay } from '../utils/numero';
 
-// Types acceptés par BonFormModal (création uniquement). Aligné sur la prop currentTab du modal.
 type CreateTab =
   | 'Commande'
   | 'Sortie'
@@ -19,7 +20,6 @@ type CreateTab =
   | 'Vehicule'
   | 'Ecommerce';
 
-// Onglets "virtuels" de la liste -> type réel utilisé par le formulaire (même mapping que BonsPage.normalizeBonTab)
 const normalizeTab = (tab: string): CreateTab => {
   if (tab === 'ComptantNonPaye') return 'Comptant';
   if (tab === 'VendreFournisseur') return 'Sortie';
@@ -27,45 +27,77 @@ const normalizeTab = (tab: string): CreateTab => {
   return tab as CreateTab;
 };
 
-/**
- * Page dédiée à la CRÉATION d'un bon / avoir.
- * Extraite de BonsPage pour éviter que le formulaire (lourd) soit monté
- * par-dessus le tableau des bons (lag / crash). La logique du formulaire
- * reste 100% celle de BonFormModal, qui s'affiche ici en plein écran.
- */
 const BonCreatePage = () => {
   const navigate = useNavigate();
-  const { type } = useParams<{ type: string }>();
   const location = useLocation();
+  const { type, id } = useParams<{ type: string; id?: string }>();
 
   const currentTab = useMemo(() => normalizeTab(type || 'Commande'), [type]);
-
-  // Pour les onglets "non payé" / "vendre fournisseur", on reproduit le comportement de BonsPage.
+  const isEditMode = Boolean(id);
   const isUnpaidComptantTab = type === 'ComptantNonPaye';
   const defaultVendreAuFournisseur =
     type === 'VendreFournisseur' || type === 'AvoirVendreFournisseur';
 
-  // Valeurs initiales optionnelles (ex: avoir e-commerce pré-rempli depuis une commande).
-  const initialValues = (location.state as any)?.initialValues || undefined;
+  const stateInitialValues = (location.state as any)?.initialValues || undefined;
+  const returnTab = (location.state as any)?.returnTab || type || currentTab;
+  const { data: fallbackBons = [], isLoading: isLoadingFallbackBon } = useGetBonsByTypeQuery(currentTab, {
+    skip: !isEditMode || Boolean(stateInitialValues),
+  });
 
-  // Force un montage propre du formulaire (état vierge).
+  const fallbackInitialValues = useMemo(() => {
+    if (!isEditMode || !id) return undefined;
+    return (fallbackBons as any[]).find((bon: any) => String(bon?.id) === String(id));
+  }, [fallbackBons, id, isEditMode]);
+
+  const initialValues = stateInitialValues || fallbackInitialValues;
   const [bonFormKey] = useState(() => Date.now());
 
   const goBackToList = useCallback(() => {
-    const returnTab = type || currentTab;
     navigate(`/bons?tab=${encodeURIComponent(returnTab)}`, { replace: true });
-  }, [currentTab, navigate, type]);
+  }, [navigate, returnTab]);
 
   const handleBonAdded = useCallback(
     (newBon: any) => {
       const labelTab = String(newBon?.type || currentTab);
-      showSuccess(`${labelTab} ${getBonNumeroDisplay(newBon)} créé avec succès!`);
-      // La mutation createBon (dans BonFormModal) invalide déjà le cache RTK Query 'Bon',
-      // la liste se rafraîchira automatiquement au retour.
+      showSuccess(`${labelTab} ${getBonNumeroDisplay(newBon)} ${isEditMode ? 'mis a jour' : 'cree'} avec succes!`);
       goBackToList();
     },
-    [currentTab, goBackToList]
+    [currentTab, goBackToList, isEditMode]
   );
+
+  if (isEditMode && !initialValues) {
+    return (
+      <div className="p-6">
+        <div className="mx-auto max-w-xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <h1 className="mb-2 text-lg font-semibold text-gray-900">Modification du bon</h1>
+          <p className="text-sm text-gray-600">
+            {isLoadingFallbackBon ? 'Chargement du bon...' : 'Bon introuvable.'}
+          </p>
+          {!isLoadingFallbackBon && (
+            <button
+              type="button"
+              onClick={goBackToList}
+              className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Retour aux bons
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (isEditMode && currentTab === 'Charge') {
+    return (
+      <ChargeEditFormModal
+        key={`charge-edit-${bonFormKey}`}
+        isOpen={true}
+        onClose={goBackToList}
+        initialValues={initialValues}
+        onBonAdded={handleBonAdded}
+      />
+    );
+  }
 
   return (
     <BonFormModal
