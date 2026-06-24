@@ -15,6 +15,18 @@ const parseCsv = (value) => String(value || '').split(',').map((v) => v.trim()).
 const SEARCH_COLLATION = 'utf8mb4_unicode_ci';
 const searchText = (expr) => `CONVERT((${expr}) USING utf8mb4) COLLATE ${SEARCH_COLLATION}`;
 
+const averageSnapshotCoutRevientExpr = (itemAlias, snapshotAlias = 'ps', productAlias = 'p', variantAlias = 'pv') => `COALESCE((
+  SELECT SUM(COALESCE(ps_avg.cout_revient, 0) * ci_avg.quantite) / NULLIF(SUM(ci_avg.quantite), 0)
+  FROM product_snapshot ps_avg
+  JOIN commande_items ci_avg ON ci_avg.product_snapshot_id = ps_avg.id
+  WHERE ps_avg.product_id = ${itemAlias}.product_id
+    AND ((COALESCE(${itemAlias}.variant_id, ${snapshotAlias}.variant_id) IS NULL AND ps_avg.variant_id IS NULL)
+      OR ps_avg.variant_id <=> COALESCE(${itemAlias}.variant_id, ${snapshotAlias}.variant_id))
+    AND ci_avg.quantite IS NOT NULL
+    AND ci_avg.quantite <> 0
+    AND ps_avg.cout_revient IS NOT NULL
+), ${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.cout_revient, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.prix_achat, 0)`;
+
 const bonPagedConfigs = {
   Commande: {
     type: 'Commande',
@@ -31,7 +43,7 @@ const bonPagedConfigs = {
     itemFk: 'bon_commande_id',
     itemAlias: 'i',
     itemSnapshot: true,
-    itemPriceJsonFields: `'prix_achat', ${'i'}.prix_unitaire, 'cout_revient', COALESCE(ps.cout_revient, p.cout_revient), 'product_snapshot_id', ${'i'}.product_snapshot_id,`,
+    itemPriceJsonFields: `'prix_achat', ${'i'}.prix_unitaire, 'cout_revient', ${averageSnapshotCoutRevientExpr('i')}, 'product_snapshot_id', ${'i'}.product_snapshot_id,`,
     livraisonType: 'Commande',
   },
   Sortie: {
@@ -217,7 +229,7 @@ const buildItemsSql = (cfg) => {
   const priceFields = cfg.itemPriceJsonFields
     ? cfg.itemPriceJsonFields.replaceAll("'i'.", `${i}.`)
     : cfg.itemSnapshot
-    ? `'prix_achat', COALESCE(ps.prix_achat, p.prix_achat), 'cout_revient', COALESCE(ps.cout_revient, p.cout_revient), 'product_snapshot_id', ${i}.product_snapshot_id,`
+    ? `'prix_achat', COALESCE(ps.prix_achat, p.prix_achat), 'cout_revient', ${averageSnapshotCoutRevientExpr(i)}, 'product_snapshot_id', ${i}.product_snapshot_id,`
     : '';
   const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'variant_name', pv.variant_name, 'variant_reference', pv.reference, 'unit_id', ${i}.unit_id, 'unite', pu.unit_name, 'conversion_factor', pu.conversion_factor,`;
   const designationExpr = cfg.itemDesignationExpr || 'p.designation';

@@ -44,6 +44,7 @@ import { useUploadPaymentImageMutation, useDeletePaymentImageMutation } from '..
 import SearchableSelect from '../components/SearchableSelect';
 import { logout } from '../store/slices/authSlice';
 import PaymentPrintModal from '../components/PaymentPrintModal';
+import PaymentGroupPrintModal from '../components/PaymentGroupPrintModal';
 import { useCreateOldTalonCaisseMutation } from '../store/slices/oldTalonsCaisseSlice';
 
 const DIRECT_CONTACT_OFFSET = 10_000_000;
@@ -89,6 +90,8 @@ const CaissePage = () => {
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState<boolean>(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [groupPrintId, setGroupPrintId] = useState<string | null>(null); // payment_group_id en cours d'impression groupée
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set()); // groupes dépliés dans le tableau
   const [createOpenedAt, setCreateOpenedAt] = useState<string | null>(null); // capture datetime à l'ouverture du modal création
 
   // Sorting
@@ -511,6 +514,11 @@ const CaissePage = () => {
     return parts.join(' ').toLowerCase();
   };
 
+  const getPaymentGrossAmount = (payment: Payment | any) => Number(payment?.montant ?? payment?.montant_total ?? 0) || 0;
+  const getPaymentIgnoredAmount = (payment: Payment | any) => Number(payment?.montant_ignorer ?? 0) || 0;
+  const getPaymentPaidAmount = (payment: Payment | any) =>
+    Math.max(getPaymentGrossAmount(payment) - getPaymentIgnoredAmount(payment), 0);
+
   const sortedPayments = useMemo(() => {
     return payments;
     // First filter
@@ -593,8 +601,8 @@ const CaissePage = () => {
           bValue = getContactName(b);
           break;
         case 'montant':
-          aValue = Number(a.montant || a.montant_total || 0);
-          bValue = Number(b.montant || b.montant_total || 0);
+          aValue = getPaymentPaidAmount(a);
+          bValue = getPaymentPaidAmount(b);
           break;
         case 'montant_ignorer':
           aValue = Number((a as any).montant_ignorer || 0);
@@ -634,13 +642,53 @@ const CaissePage = () => {
   const totalPages = paymentsPagedResponse?.pagination?.totalPages ?? Math.ceil(totalPayments / itemsPerPage);
   const paginatedPayments = sortedPayments;
 
+  // Regroupement des paiements par payment_group_id (paiements créés ensemble)
+  const paymentsByGroup = useMemo(() => {
+    const map = new Map<string, Payment[]>();
+    for (const p of paginatedPayments) {
+      const gid = (p as any).payment_group_id;
+      if (gid) {
+        if (!map.has(gid)) map.set(gid, []);
+        map.get(gid)!.push(p);
+      }
+    }
+    // Un groupe doit contenir au moins 2 paiements visibles pour être traité comme groupe
+    for (const [gid, arr] of Array.from(map.entries())) {
+      if (arr.length < 2) map.delete(gid);
+    }
+    return map;
+  }, [paginatedPayments]);
+
+  const getGroupOf = (payment: Payment): Payment[] | null => {
+    const gid = (payment as any).payment_group_id;
+    if (!gid) return null;
+    return paymentsByGroup.get(gid) || null;
+  };
+
+  const toggleGroup = (gid: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(gid)) next.delete(gid); else next.add(gid);
+      return next;
+    });
+  };
+
+  const handlePrintGroup = (gid: string) => {
+    setGroupPrintId(gid);
+  };
+
+  const groupPaymentsToPrint = useMemo(() => {
+    if (!groupPrintId) return [];
+    return (payments as Payment[]).filter((p: any) => p.payment_group_id === groupPrintId);
+  }, [groupPrintId, payments]);
+
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, dateFilter, statusFilter, modeFilter, sortField, sortDirection]);
 
   // Calculs statistiques
-  const amountOf = (p: Payment) => Number(p.montant ?? p.montant_total ?? 0);
+  const amountOf = (p: Payment) => getPaymentPaidAmount(p);
   const paymentTotals = paymentsPagedResponse?.totals;
   const totalEncaissements = paymentTotals?.totalEncaissements ?? sortedPayments.reduce((total: number, p: Payment) => total + amountOf(p), 0);
   const totalEspeces = paymentTotals?.totalEspeces ?? sortedPayments
@@ -1184,9 +1232,17 @@ const paymentValidationSchema = Yup.object({
         setImagePreview('');
       } else {
         const createdPayments: Payment[] = [];
+        // Si plusieurs paiements sont créés depuis le même formulaire,
+        // les regrouper avec un identifiant commun (payment_group_id).
+        const paymentGroupId = paymentLines.length > 1
+          ? (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+              ? crypto.randomUUID()
+              : `grp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`)
+          : null;
         for (const line of paymentLines) {
           const paymentData = buildPaymentData(line);
           const body: any = {
+          payment_group_id: paymentGroupId,
           type_paiement: paymentData.type_paiement,
           bon_id: paymentData.bon_id,
           bon_type: paymentData.bon_type,
@@ -1383,6 +1439,176 @@ const paymentValidationSchema = Yup.object({
     const total = (contact as any).total_cumule;
     return total !== null && total !== undefined ? Number(total) || 0 : null;
   };
+
+  // Rendu d'une ligne de paiement (utilisée pour les paiements simples et les items d'un groupe déplié)
+  const renderPaymentRow = (payment: Payment, isGroupChild: boolean) => (
+    <tr
+      key={payment.id}
+      className={`hover:bg-gray-50 transition-colors ${isGroupChild ? 'bg-blue-50/40 border-l-4 border-blue-200' : ''} ${payment.statut === 'Validé' ? (isSupplierFoPayment(payment) ? 'bg-purple-100 border-l-4 border-purple-500/70 shadow-[inset_0_0_0_9999px_rgba(168,85,247,0.06)]' : 'bg-green-100 border-l-4 border-green-500/70 shadow-[inset_0_0_0_9999px_rgba(34,197,94,0.06)]') : ''}`}
+    >
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className={`flex items-center gap-2 ${isGroupChild ? 'pl-8' : ''}`}>
+          {isGroupChild && <span className="text-[12px] text-blue-400">↳</span>}
+          <div className="text-sm font-medium text-gray-900">{getDisplayNumeroPayment(payment)}</div>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-700">{payment.date_paiement ? formatDateTimeWithHour(payment.date_paiement) : '-'}</div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-900">{getBonInfoDetailed(payment.bon_id, (payment as any).bon_type)}</div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center gap-2 text-sm text-gray-900">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getPaymentTypeBadgeClasses(payment)}`}>
+            {getPaymentTypeBadge(payment)}
+          </span>
+          <span className="truncate max-w-[220px]" title={getPaymentContactName(payment)}>
+            {getPaymentContactName(payment)}
+          </span>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-900 truncate max-w-[220px]" title={getPaymentSociete(payment)}>
+          {getPaymentSociete(payment)}
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center gap-2">
+          {getModeIcon(payment.mode_paiement)}
+          <span className="text-sm text-gray-900">{payment.mode_paiement}</span>
+          {payment.image_url && (payment.mode_paiement === 'Chèque' || payment.mode_paiement === 'Traite') && (
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 ml-2">📷 Image</span>
+          )}
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-xs text-gray-700 max-w-[140px] truncate" title={payment.code_reglement || ''}>
+          {payment.code_reglement || '-'}
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm font-semibold text-gray-900">{getPaymentPaidAmount(payment)} DH</div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm font-semibold text-orange-700">{Number(payment.montant_ignorer ?? 0)} DH</div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-900">{payment.date_echeance ? formatYMD(payment.date_echeance) : '-'}</div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div>
+          <span className={`inline-flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(displayStatut(payment.statut))}`}>
+            {getStatusIcon(displayStatut(payment.statut))}
+            {displayStatut(payment.statut)}
+          </span>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-900">{safeText((paymentsMeta as any)[payment.id]?.created_by_name)}</div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-900">{safeText((paymentsMeta as any)[payment.id]?.updated_by_name)}</div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 relative" ref={openMenuPaymentId === payment.id ? menuRef : null}>
+            {isPdgOrManagerPlus && (
+              <button
+                onClick={() => changePaymentStatus(payment.id, 'Validé')}
+                className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-500 hover:text-green-600'}`}
+                title="Valider"
+                disabled={payment.statut === 'Validé'}
+              >
+                <Check size={18} />
+              </button>
+            )}
+            {isPdgOrManagerPlus && (
+              <button
+                onClick={() => handleEditPayment(payment)}
+                className={`p-1 rounded ${normalizePaymentStatut(payment.statut) === 'Validé' ? 'text-gray-300 cursor-not-allowed' : 'text-green-600 hover:text-green-700'}`}
+                title={normalizePaymentStatut(payment.statut) === 'Validé' ? "Paiement validé: remettre en attente pour modifier" : 'Modifier'}
+                disabled={normalizePaymentStatut(payment.statut) === 'Validé'}
+              >
+                <Edit size={18} />
+              </button>
+            )}
+            <button
+              onClick={() => handlePrintPayment(payment)}
+              className="p-1 rounded text-purple-600 hover:text-purple-700"
+              title="Imprimer"
+            >
+              <Printer size={18} />
+            </button>
+            <button
+              onClick={() => setOpenMenuPaymentId(openMenuPaymentId === payment.id ? null : payment.id)}
+              className="p-1 rounded text-gray-500 hover:text-gray-700"
+              title="Plus"
+            >
+              <MoreVertical size={18} />
+            </button>
+            {openMenuPaymentId === payment.id && (
+              <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-20 animate-fade-in">
+                <ul className="text-xs py-1">
+                  <li>
+                    <button
+                      onClick={() => { handleViewPayment(payment); setOpenMenuPaymentId(null); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-blue-600"
+                    >
+                      <Eye size={16} /> Voir
+                    </button>
+                  </li>
+                  <li>
+                    {isPdgOrManagerPlus ? (
+                      <button
+                        onClick={() => { changePaymentStatus(payment.id, 'En attente'); setOpenMenuPaymentId(null); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-gray-600"
+                        disabled={payment.statut === 'En attente'}
+                      >
+                        <Clock size={16} /> Attente
+                      </button>
+                    ) : null}
+                  </li>
+                  {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
+                    <>
+                      <li>
+                        <button
+                          onClick={() => { changePaymentStatus(payment.id, 'Refusé'); setOpenMenuPaymentId(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-orange-600"
+                          disabled={payment.statut === 'Refusé'}
+                        >
+                          <X size={16} /> Refuser
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          onClick={() => { changePaymentStatus(payment.id, 'Annulé'); setOpenMenuPaymentId(null); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-red-600"
+                          disabled={payment.statut === 'Annulé'}
+                        >
+                          <XCircle size={16} /> Annuler
+                        </button>
+                      </li>
+                    </>
+                  )}
+                  {user?.role === 'PDG' && (
+                    <li>
+                      <button
+                        onClick={() => { handleDelete(payment.id); setOpenMenuPaymentId(null); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-red-600"
+                      >
+                        <Trash2 size={16} /> Supprimer
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
 
   return (
     <div className="p-2 sm:p-3">
@@ -1658,7 +1884,7 @@ const paymentValidationSchema = Yup.object({
                   onClick={() => handleSort('montant')}
                 >
                   <div className="flex items-center gap-1">
-                    Montant
+                    Payé
                     {sortField === 'montant' && (
                       sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
                     )}
@@ -1708,188 +1934,106 @@ const paymentValidationSchema = Yup.object({
                   </td>
                 </tr>
               ) : (
-                paginatedPayments.map((payment: Payment) => (
-                  <tr
-                    key={payment.id}
-                    className={`hover:bg-gray-50 transition-colors ${payment.statut === 'Validé' ? (isSupplierFoPayment(payment) ? 'bg-purple-100 border-l-4 border-purple-500/70 shadow-[inset_0_0_0_9999px_rgba(168,85,247,0.06)]' : 'bg-green-100 border-l-4 border-green-500/70 shadow-[inset_0_0_0_9999px_rgba(34,197,94,0.06)]') : ''}`}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{getDisplayNumeroPayment(payment)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">{payment.date_paiement ? formatDateTimeWithHour(payment.date_paiement) : '-'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{getBonInfoDetailed(payment.bon_id, (payment as any).bon_type)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2 text-sm text-gray-900">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getPaymentTypeBadgeClasses(payment)}`}
+                paginatedPayments.map((payment: Payment) => {
+                  const group = getGroupOf(payment);
+                  const gid = (payment as any).payment_group_id as string | undefined;
+                  const inGroup = !!group;
+                  // Première occurrence du groupe dans la liste => on émet la ligne d'en-tête
+                  const isGroupFirst = inGroup && group![0]?.id === payment.id;
+                  const isExpanded = !!gid && expandedGroups.has(gid);
+
+                  // Membres d'un groupe: rendus uniquement quand le groupe est déplié,
+                  // et émis tous ensemble (avec l'en-tête) au niveau de la première occurrence.
+                  // Les occurrences suivantes ne rendent rien (déjà rendues par l'en-tête).
+                  if (inGroup && !isGroupFirst) return null;
+
+                  if (inGroup && isGroupFirst) {
+                    const groupTotal = group!.reduce((s, p) => s + getPaymentPaidAmount(p), 0);
+                    const groupTotalIgnorer = group!.reduce((s, p) => s + Number(p.montant_ignorer ?? 0), 0);
+                    const premierNum = getDisplayNumeroPayment(group![0]);
+                    const dernierNum = getDisplayNumeroPayment(group![group!.length - 1]);
+                    const serieLabel = group!.length > 1 ? `${premierNum} → ${dernierNum}` : premierNum;
+                    return [
+                        /* Ligne d'en-tête du groupe (accordéon) */
+                        <tr
+                          key={`grp-${gid}`}
+                          className="bg-blue-50 border-l-4 border-blue-500 cursor-pointer hover:bg-blue-100 transition-colors"
+                          onClick={() => toggleGroup(gid!)}
                         >
-                          {getPaymentTypeBadge(payment)}
-                        </span>
-                        <span className="truncate max-w-[220px]" title={getPaymentContactName(payment)}>
-                          {getPaymentContactName(payment)}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900 truncate max-w-[220px]" title={getPaymentSociete(payment)}>
-                        {getPaymentSociete(payment)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        {getModeIcon(payment.mode_paiement)}
-                        <span className="text-sm text-gray-900">{payment.mode_paiement}</span>
-                        {payment.image_url && (payment.mode_paiement === 'Chèque' || payment.mode_paiement === 'Traite') && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 ml-2">
-                            📷 Image
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-xs text-gray-700 max-w-[140px] truncate" title={payment.code_reglement || ''}>
-                        {payment.code_reglement || '-'}
-                      </div>
-                    </td>
-                    
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-gray-900">{Number(payment.montant ?? payment.montant_total ?? 0)} DH</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-semibold text-orange-700">{Number(payment.montant_ignorer ?? 0)} DH</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {payment.date_echeance ? formatYMD(payment.date_echeance) : '-'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <span className={`inline-flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full ${getStatusClasses(displayStatut(payment.statut))}`}>
-                          {getStatusIcon(displayStatut(payment.statut))}
-                          {displayStatut(payment.statut)}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{safeText((paymentsMeta as any)[payment.id]?.created_by_name)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{safeText((paymentsMeta as any)[payment.id]?.updated_by_name)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center gap-3">
-                        {/* Primary compact action icons */}
-                        <div className="flex items-center gap-2 relative" ref={openMenuPaymentId === payment.id ? menuRef : null}>
-                          {/* Validate icon always visible for privileged roles */}
-                          {isPdgOrManagerPlus && (
-                            <button
-                              onClick={() => changePaymentStatus(payment.id, 'Validé')}
-                              className={`p-1 rounded ${payment.statut === 'Validé' ? 'text-green-600' : 'text-gray-500 hover:text-green-600'}`}
-                              title="Valider"
-                              disabled={payment.statut === 'Validé'}
-                            >
-                              <Check size={18} />
-                            </button>
-                          )}
-                          {/* Edit icon */}
-                          {isPdgOrManagerPlus && (
-                            <button
-                              onClick={() => handleEditPayment(payment)}
-                              className={`p-1 rounded ${normalizePaymentStatut(payment.statut) === 'Validé' ? 'text-gray-300 cursor-not-allowed' : 'text-green-600 hover:text-green-700'}`}
-                              title={normalizePaymentStatut(payment.statut) === 'Validé' ? "Paiement validé: remettre en attente pour modifier" : 'Modifier'}
-                              disabled={normalizePaymentStatut(payment.statut) === 'Validé'}
-                            >
-                              <Edit size={18} />
-                            </button>
-                          )}
-                          {/* Print icon */}
-                          <button
-                            onClick={() => handlePrintPayment(payment)}
-                            className="p-1 rounded text-purple-600 hover:text-purple-700"
-                            title="Imprimer"
-                          >
-                            <Printer size={18} />
-                          </button>
-                          {/* 3-dots menu trigger */}
-                          <button
-                            onClick={() => setOpenMenuPaymentId(openMenuPaymentId === payment.id ? null : payment.id)}
-                            className="p-1 rounded text-gray-500 hover:text-gray-700"
-                            title="Plus"
-                          >
-                            <MoreVertical size={18} />
-                          </button>
-                          {/* Dropdown menu */}
-                          {openMenuPaymentId === payment.id && (
-                            <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-20 animate-fade-in">
-                              <ul className="text-xs py-1">
-                                <li>
-                                  <button
-                                    onClick={() => { handleViewPayment(payment); setOpenMenuPaymentId(null); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-blue-600"
-                                  >
-                                    <Eye size={16} /> Voir
-                                  </button>
-                                </li>
-                                <li>
-                                  {isPdgOrManagerPlus ? (
-                                    <button
-                                      onClick={() => { changePaymentStatus(payment.id, 'En attente'); setOpenMenuPaymentId(null); }}
-                                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-gray-600"
-                                      disabled={payment.statut === 'En attente'}
-                                    >
-                                      <Clock size={16} /> Attente
-                                    </button>
-                                  ) : null}
-                                </li>
-                                {(user?.role === 'PDG' || user?.role === 'ManagerPlus') && (
-                                  <>
-                                    <li>
-                                      <button
-                                        onClick={() => { changePaymentStatus(payment.id, 'Refusé'); setOpenMenuPaymentId(null); }}
-                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-orange-600"
-                                        disabled={payment.statut === 'Refusé'}
-                                      >
-                                        <X size={16} /> Refuser
-                                      </button>
-                                    </li>
-                                    <li>
-                                      <button
-                                        onClick={() => { changePaymentStatus(payment.id, 'Annulé'); setOpenMenuPaymentId(null); }}
-                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-red-600"
-                                        disabled={payment.statut === 'Annulé'}
-                                      >
-                                        <XCircle size={16} /> Annuler
-                                      </button>
-                                    </li>
-                                  </>
-                                )}
-                                {user?.role === 'PDG' && (
-                                  <li>
-                                    <button
-                                      onClick={() => { handleDelete(payment.id); setOpenMenuPaymentId(null); }}
-                                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-red-600"
-                                    >
-                                      <Trash2 size={16} /> Supprimer
-                                    </button>
-                                  </li>
-                                )}
-                              </ul>
+                          <td className="px-6 py-3 whitespace-nowrap" colSpan={7}>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleGroup(gid!); }}
+                                className="p-0.5 rounded text-blue-600 hover:bg-blue-200"
+                                title={isExpanded ? 'Replier le groupe' : 'Déplier le groupe'}
+                              >
+                                {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                              </button>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-600 text-white">
+                                Groupe ({group!.length})
+                              </span>
+                              <span className="text-sm font-medium text-blue-900">Série {serieLabel}</span>
+                              <span className="text-xs text-blue-700 truncate max-w-[220px]" title={getPaymentContactName(group![0])}>
+                                — {getPaymentContactName(group![0])}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          </td>
+                          {/* Total payé */}
+                          <td className="px-6 py-3 whitespace-nowrap">
+                            <div className="text-sm font-bold text-blue-800">{groupTotal} DH</div>
+                          </td>
+                          {/* Total montant ignoré */}
+                          <td className="px-6 py-3 whitespace-nowrap">
+                            <div className="text-sm font-bold text-orange-800">{groupTotalIgnorer} DH</div>
+                          </td>
+                          <td className="px-6 py-3 whitespace-nowrap" colSpan={4}></td>
+                          {/* Actions: imprimer le bon de groupe */}
+                          <td className="px-6 py-3 whitespace-nowrap text-sm font-medium">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handlePrintGroup(gid!); }}
+                              className="p-1 rounded text-blue-600 hover:text-blue-700"
+                              title={`Imprimer le bon de groupe (${group!.length} paiements)`}
+                            >
+                              <Receipt size={18} />
+                            </button>
+                          </td>
+                        </tr>,
+                        /* Items du groupe (tous les paiements) quand déplié */
+                        ...(isExpanded ? group!.map((member: Payment) => renderPaymentRow(member, true)) : []),
+                    ];
+                  }
+
+                  // Paiement normal (hors groupe)
+                  return renderPaymentRow(payment, false);
+                })
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPayments > 0 && (
+          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-gray-50">
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-600">
+                Affichage {((currentPage - 1) * itemsPerPage) + 1} à {Math.min(currentPage * itemsPerPage, totalPayments)} sur {totalPayments} paiements
+              </div>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value={10}>10 par page</option>
+                <option value={20}>20 par page</option>
+                <option value={50}>50 par page</option>
+                <option value={100}>100 par page</option>
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Pagination Controls */}
         {totalPayments > 0 && (
@@ -2047,7 +2191,7 @@ const paymentValidationSchema = Yup.object({
                 <div className="text-sm">
                   <p className="font-medium text-gray-800 truncate">{contactName}</p>
                   <p className="text-gray-500 text-xs truncate">{societe}</p>
-                  <p className="mt-1 text-gray-700 font-semibold">{Number(payment.montant ?? payment.montant_total ?? 0)} DH</p>
+                  <p className="mt-1 text-gray-700 font-semibold">{getPaymentPaidAmount(payment)} DH</p>
                   <p className="text-xs font-semibold text-orange-700">Montant ignoré: {Number(payment.montant_ignorer ?? 0)} DH</p>
                   {payment.date_echeance && (
                     <p className="text-xs text-gray-500">Échéance: {formatYMD(payment.date_echeance)}</p>
@@ -2986,8 +3130,8 @@ const paymentValidationSchema = Yup.object({
                   <p className="text-lg">{selectedPayment.date_paiement ? formatYMD(selectedPayment.date_paiement) : '-'}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-600">Montant:</p>
-                  <p className="text-xl font-bold text-blue-600">{Number(selectedPayment.montant ?? selectedPayment.montant_total ?? 0)} DH</p>
+                  <p className="text-sm font-semibold text-gray-600">Payé:</p>
+                  <p className="text-xl font-bold text-blue-600">{getPaymentPaidAmount(selectedPayment)} DH</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Montant ignoré:</p>
@@ -3138,6 +3282,19 @@ const paymentValidationSchema = Yup.object({
           client={selectedPayment.type_paiement === 'Client' ? clients.find(c => c.id === selectedPayment.contact_id) : undefined}
           fournisseur={selectedPayment.type_paiement === 'Fournisseur' ? fournisseurs.find(f => f.id === selectedPayment.contact_id) : undefined}
           allPayments={paymentsForHistory}
+        />
+      )}
+
+      {/* Modal d'impression groupe de paiements */}
+      {groupPrintId && groupPaymentsToPrint.length > 0 && (
+        <PaymentGroupPrintModal
+          isOpen={!!groupPrintId}
+          onClose={() => setGroupPrintId(null)}
+          payments={groupPaymentsToPrint}
+          getContactName={getPaymentContactName}
+          getSociete={getPaymentSociete}
+          client={groupPaymentsToPrint[0]?.type_paiement === 'Client' ? clients.find(c => c.id === groupPaymentsToPrint[0]?.contact_id) : undefined}
+          fournisseur={groupPaymentsToPrint[0]?.type_paiement === 'Fournisseur' ? fournisseurs.find(f => f.id === groupPaymentsToPrint[0]?.contact_id) : undefined}
         />
       )}
     </div>

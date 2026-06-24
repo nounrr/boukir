@@ -1043,6 +1043,30 @@ const BonsPage = () => {
       return Number.isFinite(n) ? n : 0;
     };
 
+    const resolveAverageSnapshotCost = (): number => {
+      if (!pid || !(snapshotProducts as any[])?.length) return 0;
+      const variantKey = String(it.variant_id || '');
+      let weightedValue = 0;
+      let totalQty = 0;
+
+      for (const snap of snapshotProducts as any[]) {
+        if (!snap?.snapshot_id) continue;
+        if (String(snap.id) !== String(pid)) continue;
+        if (String(snap.variant_id || '') !== variantKey) continue;
+
+        const directAverage = toNum(snap.cout_revient_moyen_snapshot);
+        if (directAverage > 0) return directAverage;
+
+        const qty = toNum(snap.snapshot_commande_quantite);
+        const cost = toNum(snap.snapshot_cout_revient ?? snap.cout_revient);
+        if (!qty || !cost) continue;
+        weightedValue += cost * qty;
+        totalQty += qty;
+      }
+
+      return totalQty > 0 ? weightedValue / totalQty : 0;
+    };
+
     if (it?.line_mode === 'detail') {
       return (
         toNum(it.cout_revient) ||
@@ -1055,13 +1079,7 @@ const BonsPage = () => {
     }
 
     // 1) Snapshot-level cost (priorité absolue: données historiques gelées)
-    let baseCost = 0;
-    if (it.product_snapshot_id && (snapshotProducts as any[])?.length) {
-      const snap = (snapshotProducts as any[]).find((p: any) => String(p.snapshot_id) === String(it.product_snapshot_id));
-      if (snap) {
-        baseCost = toNum((snap as any).cout_revient) || toNum((snap as any).prix_achat);
-      }
-    }
+    let baseCost = resolveAverageSnapshotCost();
 
     // 2) Variant-level cost
     if (!baseCost && it.variant_id && prod?.variants) {

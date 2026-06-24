@@ -792,7 +792,17 @@ function buildBasePrixAchatExpr(productAlias = 'p', snapshotAlias = 'ps', varian
 }
 
 function buildBaseCoutRevientExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv') {
-  return `COALESCE(${snapshotAlias}.cout_revient, ${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.prix_achat, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, 0)`;
+  const variantIdExpr = `COALESCE(${variantAlias}.id, ${snapshotAlias}.variant_id)`;
+  return `COALESCE((
+    SELECT SUM(COALESCE(ps_avg.cout_revient, 0) * ci_avg.quantite) / NULLIF(SUM(ci_avg.quantite), 0)
+    FROM product_snapshot ps_avg
+    JOIN commande_items ci_avg ON ci_avg.product_snapshot_id = ps_avg.id
+    WHERE ps_avg.product_id = ${productAlias}.id
+      AND ((${variantIdExpr} IS NULL AND ps_avg.variant_id IS NULL) OR ps_avg.variant_id <=> ${variantIdExpr})
+      AND ci_avg.quantite IS NOT NULL
+      AND ci_avg.quantite <> 0
+      AND ps_avg.cout_revient IS NOT NULL
+  ), ${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.cout_revient, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.prix_achat, 0)`;
 }
 
 function buildConvertedCostExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv', unitAlias = 'pu') {

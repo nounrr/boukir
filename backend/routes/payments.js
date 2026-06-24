@@ -41,6 +41,23 @@ ensurePaymentMontantIgnorerColumn().catch((err) => {
   console.error('ensurePaymentMontantIgnorerColumn init:', err);
 });
 
+async function ensurePaymentGroupColumn() {
+  try {
+    const [rows] = await pool.query("SHOW COLUMNS FROM payments LIKE 'payment_group_id'");
+    if (!Array.isArray(rows) || rows.length === 0) {
+      await pool.query("ALTER TABLE payments ADD COLUMN payment_group_id VARCHAR(64) NULL AFTER numero");
+      await pool.query("CREATE INDEX idx_payments_group_id ON payments (payment_group_id)");
+    }
+  } catch (err) {
+    console.error('ensurePaymentGroupColumn:', err);
+    throw err;
+  }
+}
+
+ensurePaymentGroupColumn().catch((err) => {
+  console.error('ensurePaymentGroupColumn init:', err);
+});
+
 // date helpers
 const isYMD = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const isYMDTime = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s);
@@ -138,6 +155,7 @@ const dbDateTimeToFullOrNull = (d) => {
 const toPayment = (r) => ({
   id: r.id,
   numero: String(r.numero ?? r.id),
+  payment_group_id: r.payment_group_id || null,
   type_paiement: r.type_paiement,
   contact_id: r.contact_id,
   remise_account_id: r.remise_account_id ?? null,
@@ -346,6 +364,7 @@ router.get('/', verifyToken, async (req, res) => {
   try {
     await ensurePaymentRemiseColumns();
     await ensurePaymentMontantIgnorerColumn();
+    await ensurePaymentGroupColumn();
     const { bon_id, bon_type, contact_id, mode_paiement, type_paiement, date_from, date_to, search } = req.query;
     const where = [];
     const params = [];
@@ -375,6 +394,7 @@ router.get('/paged', verifyToken, async (req, res) => {
   try {
     await ensurePaymentRemiseColumns();
     await ensurePaymentMontantIgnorerColumn();
+    await ensurePaymentGroupColumn();
 
     const clampInt = (value, fallback, min, max) => {
       const n = Number.parseInt(String(value ?? ''), 10);
@@ -447,7 +467,7 @@ router.get('/paged', verifyToken, async (req, res) => {
       numero: 'p.id',
       date: 'COALESCE(p.date_paiement, p.created_at)',
       contact: 'COALESCE(p.remise_account_name, c.nom_complet)',
-      montant: 'p.montant_total',
+      montant: 'GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0)',
       montant_ignorer: 'p.montant_ignorer',
       echeance: 'COALESCE(p.date_echeance, "9999-12-31")',
       id: 'p.id',
@@ -462,12 +482,12 @@ router.get('/paged', verifyToken, async (req, res) => {
 
     const [totalsRows] = await pool.query(
       `SELECT
-         COALESCE(SUM(p.montant_total), 0) AS totalEncaissements,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Espèces' THEN p.montant_total ELSE 0 END), 0) AS totalEspeces,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Chèque' THEN p.montant_total ELSE 0 END), 0) AS totalCheques,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Virement' THEN p.montant_total ELSE 0 END), 0) AS totalVirements,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Traite' THEN p.montant_total ELSE 0 END), 0) AS totalTraites,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Remise' THEN p.montant_total ELSE 0 END), 0) AS totalRemises
+         COALESCE(SUM(GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0)), 0) AS totalEncaissements,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Espèces' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalEspeces,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Chèque' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalCheques,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Virement' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalVirements,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Traite' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalTraites,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Remise' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalRemises
        FROM payments p ${joins} ${whereSql}`,
       params
     );
@@ -537,7 +557,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
 
     const contactId = Number(payment.contact_id);
     if (!Number.isFinite(contactId) || contactId <= 0) {
-      const amount = Number(payment.montant_total || 0) || 0;
+      const amount = Math.max((Number(payment.montant_total || 0) || 0) - (Number(payment.montant_ignorer || 0) || 0), 0);
       return res.json({
         paymentId,
         contactId: null,
@@ -568,7 +588,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM avoirs_client WHERE client_id = ?', [contactId]),
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM avoirs_fournisseur WHERE fournisseur_id = ?', [contactId]),
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM avoirs_client WHERE fournisseur_id = ? AND COALESCE(vendre_au_fournisseur, 0) = 1', [contactId]),
-      pool.query('SELECT id, type_paiement, contact_id, montant_total, date_paiement, created_at, statut FROM payments WHERE contact_id = ?', [contactId]),
+      pool.query('SELECT id, type_paiement, contact_id, montant_total, montant_ignorer, date_paiement, created_at, statut FROM payments WHERE contact_id = ?', [contactId]),
       pool.query("SELECT id, total_amount, created_at, status FROM ecommerce_orders WHERE user_id = ? AND is_solde = 1 AND status IN ('pending','confirmed','processing','shipped','delivered')", [contactId]),
     ]);
 
@@ -611,7 +631,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
         kind: 'payment',
         id: row.id,
         date: row.date_paiement || row.created_at,
-        delta: -(Number(row.montant_total || 0) || 0),
+        delta: -Math.max((Number(row.montant_total || 0) || 0) - (Number(row.montant_ignorer || 0) || 0), 0),
       });
     }
 
@@ -633,7 +653,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
     }
 
     if (!found) {
-      const amount = Number(payment.montant_total || 0) || 0;
+      const amount = Math.max((Number(payment.montant_total || 0) || 0) - (Number(payment.montant_ignorer || 0) || 0), 0);
       soldeAvant = solde;
       soldeApres = solde - amount;
     }
@@ -643,7 +663,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
       contactId,
       contactType,
       soldeAvant: Number(soldeAvant.toFixed(3)),
-      montantPaiement: Number(payment.montant_total || 0) || 0,
+      montantPaiement: Math.max((Number(payment.montant_total || 0) || 0) - (Number(payment.montant_ignorer || 0) || 0), 0),
       soldeApres: Number(soldeApres.toFixed(3)),
     });
   } catch (err) {
@@ -655,6 +675,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
 router.get('/:id', verifyToken, async (req, res) => {
 	try {
   await ensurePaymentRemiseColumns();
+  await ensurePaymentGroupColumn();
     const { id } = req.params;
 		const [rows] = await pool.query('SELECT * FROM payments WHERE id = ?', [id]);
     if (!rows.length) return res.status(404).json({ message: 'Paiement introuvable' });
@@ -670,6 +691,7 @@ router.post('/', verifyToken, async (req, res) => {
     await ensurePaymentRemiseColumns();
     await ensurePaymentFlagColumn();
     await ensurePaymentMontantIgnorerColumn();
+    await ensurePaymentGroupColumn();
     const {
       type_paiement = 'Client',
 			contact_id,
@@ -689,6 +711,7 @@ router.post('/', verifyToken, async (req, res) => {
       talon_id = null,
       created_by = null,
       remise_account_id = null,
+      payment_group_id = null,
   } = req.body;
 
     const connection = await pool.getConnection();
@@ -710,6 +733,7 @@ router.post('/', verifyToken, async (req, res) => {
       const cleanTalonId = talon_id ? Number(talon_id) : null;
       const cleanPayment = Number(payment) === 1 ? 1 : 0;
       const cleanMontantIgnorer = Number.isFinite(Number(montant_ignorer)) ? Number(montant_ignorer) : 0;
+      const cleanPaymentGroupId = payment_group_id != null && String(payment_group_id).trim() !== '' ? String(payment_group_id).trim().slice(0, 64) : null;
       const cleanDatePaiement = toYMDTime(date_paiement, true);
       const cleanDateEcheance = toYMD(date_echeance);
 
@@ -809,10 +833,10 @@ router.post('/', verifyToken, async (req, res) => {
 
       const [result] = await connection.query(
       `INSERT INTO payments
-        (numero, type_paiement, contact_id, remise_account_id, remise_account_type, remise_account_name, bon_id, bon_type, montant_total, montant_ignorer, mode_paiement, date_paiement, designation,
+        (numero, payment_group_id, type_paiement, contact_id, remise_account_id, remise_account_type, remise_account_name, bon_id, bon_type, montant_total, montant_ignorer, mode_paiement, date_paiement, designation,
          date_echeance, banque, personnel, code_reglement, image_url, payment, talon_id, statut, created_by, created_at, date_ajout_reelle)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ['', remiseFields.typePaiement, remiseFields.contactId, remiseFields.remiseAccountId, remiseFields.remiseAccountType, remiseFields.remiseAccountName, cleanBonId, cleanBonType, montant_total, cleanMontantIgnorer, mode_paiement, cleanDatePaiement, designation,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ['', cleanPaymentGroupId, remiseFields.typePaiement, remiseFields.contactId, remiseFields.remiseAccountId, remiseFields.remiseAccountType, remiseFields.remiseAccountName, cleanBonId, cleanBonType, montant_total, cleanMontantIgnorer, mode_paiement, cleanDatePaiement, designation,
         cleanDateEcheance, banque, personnel, code_reglement, image_url, cleanPayment, cleanTalonId, statut, created_by, createdAtValue, dateAjoutReelleStr]
     );
       await connection.query('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
@@ -842,6 +866,7 @@ router.put('/:id', verifyToken, async (req, res) => {
     await ensurePaymentRemiseColumns();
     await ensurePaymentFlagColumn();
     await ensurePaymentMontantIgnorerColumn();
+    await ensurePaymentGroupColumn();
     const { id } = req.params;
     const data = req.body || {};
     const [currentRows] = await pool.query('SELECT * FROM payments WHERE id = ?', [id]);
@@ -891,7 +916,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       data.remise_account_name = remiseFields.remiseAccountName;
 
       const fields = [
-        'type_paiement','contact_id','remise_account_id','remise_account_type','remise_account_name','bon_id','bon_type','montant_total','montant_ignorer','mode_paiement','date_paiement','designation',
+        'payment_group_id','type_paiement','contact_id','remise_account_id','remise_account_type','remise_account_name','bon_id','bon_type','montant_total','montant_ignorer','mode_paiement','date_paiement','designation',
         'date_echeance','banque','personnel','code_reglement','image_url','payment','talon_id','statut','updated_by'
       ];
       const setParts = [];

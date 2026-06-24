@@ -480,6 +480,34 @@ const scaleDecimal = (value: any, factor: any = 1) => {
   return n * f;
 };
 
+const resolveAverageSnapshotCoutRevient = (
+  snapshotProducts: any[] = [],
+  productId: any,
+  variantId: any
+) => {
+  if (!productId || !Array.isArray(snapshotProducts) || snapshotProducts.length === 0) return 0;
+  const variantKey = String(variantId || '');
+  let weightedValue = 0;
+  let totalQty = 0;
+
+  for (const snap of snapshotProducts) {
+    if (!snap?.snapshot_id) continue;
+    if (String(snap.id) !== String(productId)) continue;
+    if (String(snap.variant_id || '') !== variantKey) continue;
+
+    const directAverage = Number(snap.cout_revient_moyen_snapshot ?? 0) || 0;
+    if (directAverage > 0) return directAverage;
+
+    const qty = Number(snap.snapshot_commande_quantite ?? 0) || 0;
+    const cost = Number(snap.snapshot_cout_revient ?? snap.cout_revient ?? 0) || 0;
+    if (!qty || !cost) continue;
+    weightedValue += cost * qty;
+    totalQty += qty;
+  }
+
+  return totalQty > 0 ? weightedValue / totalQty : 0;
+};
+
 const getLatestSnapshotEntry = (entries: any[] = []) => {
   if (!Array.isArray(entries) || entries.length === 0) return null;
   return entries.reduce((latest: any, current: any) => {
@@ -666,9 +694,10 @@ const resolveItemCostContext = (
   const variantCR = Number(variant?.cout_revient) || variantPA || 0;
   const productPA = Number(product?.prix_achat) || 0;
   const productCR = Number(product?.cout_revient) || productPA || 0;
+  const averageSnapshotCR = resolveAverageSnapshotCoutRevient(snapshotProducts, item?.product_id, variantId);
 
   const basePA = snapshotPA || variantPA || productPA || itemPA || 0;
-  const baseCR = snapshotCR || variantCR || productCR || itemCR || basePA || 0;
+  const baseCR = averageSnapshotCR || variantCR || productCR || snapshotCR || itemCR || basePA || 0;
 
   return {
     product,
@@ -684,13 +713,14 @@ const resolveItemCostContext = (
     itemCR,
     snapshotPA,
     snapshotCR,
+    averageSnapshotCR,
     variantPA,
     variantCR,
     productPA,
     productCR,
     prix_achat: scaleDecimal(basePA, convFactor),
     cout_revient: scaleDecimal(baseCR, convFactor),
-    source: snapshotPA || snapshotCR ? 'snapshot' : variantPA || variantCR ? 'variant' : productPA || productCR ? 'product' : 'item',
+    source: averageSnapshotCR ? 'snapshot_average' : variantPA || variantCR ? 'variant' : productPA || productCR ? 'product' : snapshotPA || snapshotCR ? 'snapshot' : 'item',
   };
 };
 
@@ -2467,8 +2497,9 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       }
 
       const latestSnap = findLatestSnapshotForProductVariant(snapshotProducts as any[], item.product_id, item.variant_id);
+      const averageSnapshotCR = resolveAverageSnapshotCoutRevient(snapshotProducts as any[], item.product_id, item.variant_id);
       const bestPA = Number(latestSnap?.prix_achat) || Number(variant?.prix_achat) || Number(prod?.prix_achat) || Number(snap?.prix_achat) || 0;
-      const bestCR = Number(latestSnap?.cout_revient) || Number(latestSnap?.prix_achat) || Number(variant?.cout_revient) || Number(prod?.cout_revient) || Number(snap?.cout_revient) || bestPA || 0;
+      const bestCR = averageSnapshotCR || Number(variant?.cout_revient) || Number(prod?.cout_revient) || Number(snap?.cout_revient) || Number(latestSnap?.cout_revient) || Number(latestSnap?.prix_achat) || bestPA || 0;
 
       if (!bestPA && !bestCR) return;
 
@@ -6452,27 +6483,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     const enteredPrice = parseFloat(normalizeDecimal(unitPriceRaw[index] ?? '')) || 0;
     const remise = Number(values.items[index].remise_montant || 0);
 
-    // Compute CR with unit conversion factor applied (safety net for edit mode initial load)
     const itemRow = values.items[index];
-    const profitProduct = (products as any[]).find((p: any) => String(p.id) === String(itemRow.product_id));
-    let profitSnap: any = null;
-    if (itemRow.product_snapshot_id && (snapshotProducts as any[])?.length) {
-      profitSnap = (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(itemRow.product_snapshot_id));
-    }
-    let profitVariant: any = null;
-    if (itemRow.variant_id && profitProduct?.variants?.length) {
-      profitVariant = (profitProduct.variants as any[]).find((v: any) => String(v.id) === String(itemRow.variant_id));
-    }
-    const baseCR = Number(profitSnap?.cout_revient) || Number(profitVariant?.cout_revient) || Number(profitProduct?.cout_revient) || Number(profitProduct?.prix_achat) || 0;
-    let profitConvFactor = 1;
-    if (itemRow.unit_id && profitProduct?.units?.length) {
-      const profitUnit = (profitProduct.units as any[]).find((u: any) => String(u.id) === String(itemRow.unit_id));
-      if (profitUnit && !profitUnit.is_default && !profitUnit.facteur_isNormal) {
-        const f = Number(profitUnit.conversion_factor) || 1;
-        if (f > 0) profitConvFactor = f;
-      }
-    }
-    const cr = baseCR > 0 ? scaleDecimal(baseCR, profitConvFactor) : (Number(itemRow.cout_revient) || Number(itemRow.prix_achat) || 0);
+    const cr = resolveItemCostContext(itemRow, products as any[], snapshotProducts as any[]).cout_revient
+      || Number(itemRow.cout_revient)
+      || Number(itemRow.prix_achat)
+      || 0;
 
     const pv = values.type === 'Charge' && itemRow?.product_id ? cr : enteredPrice;
     const profit = (pv - cr) * q - remise * q;
@@ -6848,26 +6863,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           return sum + (prixVente - coutRevientDetail) * q - remise * q;
         }
 
-        // Compute CR with unit conversion factor
-        const mvProd = (products as any[]).find((p: any) => String(p.id) === String(item.product_id));
-        let mvSnap: any = null;
-        if (item.product_snapshot_id && (snapshotProducts as any[])?.length) {
-          mvSnap = (snapshotProducts as any[]).find((s: any) => String(s.snapshot_id) === String(item.product_snapshot_id));
-        }
-        let mvVar: any = null;
-        if (item.variant_id && mvProd?.variants?.length) {
-          mvVar = (mvProd.variants as any[]).find((v: any) => String(v.id) === String(item.variant_id));
-        }
-        const mvBaseCR = Number(mvSnap?.cout_revient) || Number(mvVar?.cout_revient) || Number(mvProd?.cout_revient) || Number(mvProd?.prix_achat) || 0;
-        let mvFactor = 1;
-        if (item.unit_id && mvProd?.units?.length) {
-          const mvUnit = (mvProd.units as any[]).find((u: any) => String(u.id) === String(item.unit_id));
-          if (mvUnit && !mvUnit.is_default && !mvUnit.facteur_isNormal) {
-            const f = Number(mvUnit.conversion_factor) || 1;
-            if (f > 0) mvFactor = f;
-          }
-        }
-        const coutRevient = mvBaseCR > 0 ? scaleDecimal(mvBaseCR, mvFactor) : (itemCR || itemPA);
+        const coutRevient = resolveItemCostContext(item, products as any[], snapshotProducts as any[]).cout_revient
+          || itemCR
+          || itemPA;
         return sum + (prixVente - coutRevient) * q - remise * q;
       }, 0);
       return formatFull(local);
