@@ -1936,11 +1936,36 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
   // Saisie brute par ligne pour "prix_unitaire"
   const [unitPriceRaw, setUnitPriceRaw] = useState<Record<number, string>>({});
+  // Le dernier prix sert uniquement de préremplissage. Une fois modifié
+  // manuellement, il ne doit plus être réappliqué lors d'un changement de quantité.
+  const manuallyEditedPriceKeysRef = useRef<Set<string>>(new Set());
   // When user clicks other controls (variant/unit/product), we suppress the async price onBlur commit
   // to avoid race conditions (blur finishing after onChange).
   const suppressPriceBlurRef = useRef<{ row: number; ts: number } | null>(null);
 // 🆕 Saisie brute par ligne pour "quantite"
 const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
+
+  const getPricePrefillKey = (values: any, item: any, index: number): string => {
+    const type = String(values?.type || '');
+    const contactId = type === 'Commande' || type === 'AvoirFournisseur' || values?.vendre_au_fournisseur
+      ? values?.fournisseur_id
+      : values?.client_id;
+    const rowId = item?._rowId ?? index;
+    return [
+      type,
+      contactId ?? '',
+      item?.product_id ?? '',
+      item?.variant_id ?? '',
+      item?.unit_id ?? '',
+      rowId,
+    ].join('|');
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      manuallyEditedPriceKeysRef.current.clear();
+    }
+  }, [isOpen]);
 
   const getCommandeSpecialFields = (item: any, quantite: number) => {
     const isSpecial = !!item?.unite_special;
@@ -3651,6 +3676,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     (values.items || []).forEach((item: any, index: number) => {
       if (!item?.product_id) return;
+      const prefillKey = getPricePrefillKey(values, item, index);
+      if (manuallyEditedPriceKeysRef.current.has(prefillKey)) return;
       const fallbackPrice = type === 'Commande'
         ? Number(item.prix_achat ?? 0)
         : Number(item.prix_unitaire ?? 0);
@@ -6312,6 +6339,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       if (isQtyOnlyEdit) return;
       const raw = e.target.value;
       if (!isDecimalLike(raw)) return;
+      manuallyEditedPriceKeysRef.current.add(
+        getPricePrefillKey(values, values.items[index], index)
+      );
       setUnitPriceRaw((prev) => ({ ...prev, [index]: raw }));
 
       const unit = parseFloat(normalizeDecimal(raw)) || 0;
