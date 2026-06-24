@@ -745,6 +745,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Remise cumulée</th>}
           {!detail && <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">RIB / Réf</th>}
           <th className="text-right px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">{detail ? 'Total ligne' : 'Montant'}</th>
+          <th className="text-right px-4 py-3 font-semibold text-orange-700 whitespace-nowrap">Montant ignoré</th>
           {detail && <th className="text-right px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">Mouvement</th>}
           <th className="text-right px-4 py-3 font-semibold text-gray-600 bg-yellow-50 border-l border-yellow-200 whitespace-nowrap">Solde cumulé</th>
           <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Statut / Mode</th>
@@ -771,6 +772,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
           {detail && <><td /><td /><td /><td /><td /><td /><td /><td /><td /><td /><td /></>}
           {!detail && <td className="px-4 py-2.5 text-white/80 text-xs">—</td>}
           <td className="px-4 py-2.5 text-right font-bold text-black">{fmt(soldeInitial)}</td>
+          <td className="px-4 py-2.5 text-right font-semibold text-orange-700">-</td>
           {detail && <td />}
           <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">{fmtSolde(soldeInitial)}</td>
           <td className="px-4 py-2.5 text-xs text-black/90">Solde de départ</td>
@@ -859,6 +861,9 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-4 py-2.5 text-right font-semibold text-white">
                   {fmt(Number(p.montant_total ?? p.montant ?? 0))}
                 </td>
+                <td className="px-4 py-2.5 text-right font-semibold text-orange-700">
+                  {fmt(Number(p.montant_ignorer ?? 0))}
+                </td>
                 {detail && <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>}
                 <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
                   {fmtSolde(soldeCumuleMap.get(`paiement-${p.id}`) ?? 0)}
@@ -901,6 +906,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 </td>
                 <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>
                 <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
+                <td className="px-4 py-2.5 text-right font-semibold text-orange-700">-</td>
                 <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
                   {fmtSolde(soldeCumuleMap.get(bonKey) ?? 0)}
                 </td>
@@ -956,6 +962,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
+                <td className="px-4 py-2.5 text-right font-semibold text-orange-700">-</td>
                 <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
                 <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
                   {fmtSolde(soldeCumuleMap.get(itemKey0) ?? 0)}
@@ -1101,6 +1108,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     </td>
                     {/* Total ligne */}
                     <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
+                    <td className="px-4 py-2 text-right text-xs font-semibold text-orange-700">-</td>
                     {/* Mouvement */}
                     <td className="px-3 py-2 text-right text-xs">
                       {benefice != null
@@ -1343,7 +1351,7 @@ const ClientDetailPage: React.FC = () => {
   const hasDateFilter = !!filterFrom || !!filterTo;
 
   // ── sort for paiements ──
-  const [paySort, setPaySort] = useState<{ col: 'date' | 'montant' | 'rib'; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'asc' });
+  const [paySort, setPaySort] = useState<{ col: 'date' | 'montant' | 'montant_ignorer' | 'rib'; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'asc' });
   const togglePaySort = (col: typeof paySort.col) =>
     setPaySort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
 
@@ -1375,6 +1383,9 @@ const ClientDetailPage: React.FC = () => {
       } else if (paySort.col === 'montant') {
         va = Number(a.montant_total ?? a.montant ?? 0);
         vb = Number(b.montant_total ?? b.montant ?? 0);
+      } else if (paySort.col === 'montant_ignorer') {
+        va = Number(a.montant_ignorer ?? 0);
+        vb = Number(b.montant_ignorer ?? 0);
       } else {
         va = (a.code_reglement || a.reference_virement || '').toLowerCase();
         vb = (b.code_reglement || b.reference_virement || '').toLowerCase();
@@ -1382,6 +1393,11 @@ const ClientDetailPage: React.FC = () => {
       return paySort.dir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
     });
   }, [history, paySort, filterFrom, filterTo]);
+
+  const totalMontantIgnorerPaiements = useMemo(
+    () => paiements.reduce((s: number, p: any) => s + Number(p.montant_ignorer ?? 0), 0),
+    [paiements]
+  );
 
   // completRows = TOUTES les rows (jamais filtrées) — le solde cumulé reste exact
   const normalizedProductSearch = useMemo(() => productSearch.trim().toLowerCase(), [productSearch]);
@@ -1721,6 +1737,12 @@ const ClientDetailPage: React.FC = () => {
             {fmt(totalBenefice)}
           </p>
         </div>
+        <div className="text-right px-3 py-1.5 rounded-lg bg-orange-50 border border-orange-200">
+          <p className="text-xs text-gray-400">Montant ignoré</p>
+          <p className="font-bold text-base text-orange-700">
+            {fmt(totalMontantIgnorerPaiements)}
+          </p>
+        </div>
         <button
           type="button"
           onClick={scrollToTop}
@@ -1915,6 +1937,9 @@ const ClientDetailPage: React.FC = () => {
                       <th className="text-right px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-600" onClick={() => togglePaySort('montant')}>
                         Montant <PaySortIcon col="montant" />
                       </th>
+                      <th className="text-right px-4 py-3 font-semibold text-gray-600 cursor-pointer select-none hover:text-blue-600" onClick={() => togglePaySort('montant_ignorer')}>
+                        Montant ignoré <PaySortIcon col="montant_ignorer" />
+                      </th>
                     </tr>
                   </thead>
                   <Droppable droppableId="paiements-client">
@@ -1948,6 +1973,7 @@ const ClientDetailPage: React.FC = () => {
                                          : <span className="text-gray-300 text-xs">—</span>}
                                   </td>
                                   <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmt(Number(p.montant_total ?? p.montant ?? 0))}</td>
+                                  <td className="px-4 py-3 text-right font-semibold text-orange-700">{fmt(Number(p.montant_ignorer ?? 0))}</td>
                                 </tr>
                               )}
                             </Draggable>
@@ -1962,6 +1988,9 @@ const ClientDetailPage: React.FC = () => {
                       <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-gray-600">Total</td>
                       <td className="px-4 py-2 text-right font-bold text-green-700">
                         {fmt(paiements.reduce((s: number, p: any) => s + Number(p.montant_total ?? p.montant ?? 0), 0))}
+                      </td>
+                      <td className="px-4 py-2 text-right font-bold text-orange-700">
+                        {fmt(totalMontantIgnorerPaiements)}
                       </td>
                     </tr>
                   </tfoot>

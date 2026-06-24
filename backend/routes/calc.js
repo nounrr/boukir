@@ -42,6 +42,34 @@ router.post('/mouvement', verifyToken, async (req, res) => {
       }, new Map());
     }
 
+    let averageSnapshotCostByKey = new Map();
+    if (productIds.length) {
+      try {
+        const [avgRows] = await pool.query(
+          `SELECT
+             ps.product_id,
+             ps.variant_id,
+             SUM(COALESCE(ps.cout_revient, 0) * ci.quantite) / NULLIF(SUM(ci.quantite), 0) AS cout_revient_moyen
+           FROM product_snapshot ps
+           JOIN commande_items ci ON ci.product_snapshot_id = ps.id
+           WHERE ps.product_id IN (?)
+             AND ci.quantite IS NOT NULL
+             AND ci.quantite <> 0
+             AND ps.cout_revient IS NOT NULL
+           GROUP BY ps.product_id, ps.variant_id`,
+          [productIds]
+        );
+        averageSnapshotCostByKey = (avgRows || []).reduce((acc, r) => {
+          const pid = Number(r.product_id);
+          const variantKey = r.variant_id == null ? '' : String(Number(r.variant_id));
+          acc.set(`${pid}:${variantKey}`, Number(r.cout_revient_moyen ?? 0) || 0);
+          return acc;
+        }, new Map());
+      } catch (e) {
+        console.warn('average snapshot cost query failed:', e?.message);
+      }
+    }
+
     // Also fetch snapshot costs for items that reference product_snapshot_id
     const snapshotIds = Array.from(
       new Set(
@@ -136,6 +164,9 @@ router.post('/mouvement', verifyToken, async (req, res) => {
       const varId = Number(it?.variant_id ?? it?.variantId);
       const fromVariant = Number.isFinite(varId) ? variantCostById.get(varId) : null;
       const isDetailedLine = String(it?.line_mode || '') === 'detail';
+      const avgSnapshotCost = Number.isFinite(pid)
+        ? (averageSnapshotCostByKey.get(`${pid}:${Number.isFinite(varId) ? String(varId) : ''}`) || 0)
+        : 0;
 
       // Priority: snapshot → variant → item → product catalog (base values)
       const basePrixAchat =
@@ -147,7 +178,7 @@ router.post('/mouvement', verifyToken, async (req, res) => {
 
       const baseCoutRevient =
         (isDetailedLine ? ((Number(it?.cout_revient) || 0) || (Number(it?.prix_achat) || 0)) : 0) ||
-        (fromSnapshot?.cout_revient) ||
+        avgSnapshotCost ||
         (fromVariant?.cout_revient) ||
         (Number(it?.cout_revient) || 0) ||
         (fromCatalog?.cout_revient ?? 0) ||

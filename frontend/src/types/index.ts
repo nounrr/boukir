@@ -560,6 +560,7 @@ export interface Livraison {
 export interface Payment {
   id: number;
   numero: string;
+  payment_group_id?: string | null;
   type_paiement: 'Client' | 'Fournisseur';
   contact_id: number | null; // ID du client ou fournisseur
   payment?: number;
@@ -592,10 +593,13 @@ export interface Payment {
   updated_by?: number;
   created_at: string;
   updated_at: string;
+  payment_lines?: Payment[];
+  grouped_payment_count?: number;
 }
 
 export interface CreatePaymentData {
   numero: string;
+  payment_group_id?: string | null;
   type_paiement: 'Client' | 'Fournisseur';
   contact_id: number | null;
   payment?: number;

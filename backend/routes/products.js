@@ -1086,6 +1086,16 @@ router.get('/with-snapshots', async (req, res, next) => {
         ps.prix_gros_pourcentage AS snapshot_prix_gros_pourcentage,
         ps.prix_vente_pourcentage AS snapshot_prix_vente_pourcentage,
         ps.quantite AS snapshot_quantite,
+        COALESCE(
+          (SELECT SUM(ci.quantite)
+           FROM commande_items ci
+           WHERE ci.product_snapshot_id = ps.id),
+          (SELECT SUM(ci2.quantite)
+           FROM commande_items ci2
+           WHERE ci2.bon_commande_id = ps.bon_commande_id
+             AND ci2.product_id = ps.product_id
+             AND ((ci2.variant_id IS NULL AND ps.variant_id IS NULL) OR ci2.variant_id = ps.variant_id))
+        ) AS snapshot_commande_quantite,
         ps.bon_commande_id,
         ps.created_at AS snapshot_created_at,
         p.designation,
@@ -1124,7 +1134,8 @@ router.get('/with-snapshots', async (req, res, next) => {
              p.remise_client, p.remise_artisan,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT(
                'id', pv2.id, 'variant_name', pv2.variant_name,
-               'prix_achat', pv2.prix_achat, 'prix_vente', pv2.prix_vente, 'prix_vente_2', pv2.prix_vente_2,
+               'prix_achat', pv2.prix_achat, 'cout_revient', pv2.cout_revient,
+               'prix_vente', pv2.prix_vente, 'prix_vente_2', pv2.prix_vente_2,
                'stock_quantity', pv2.stock_quantity
              )) FROM product_variants pv2 WHERE pv2.product_id = p.id AND COALESCE(pv2.is_deleted, 0) = 0) AS variants,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT(
@@ -1145,6 +1156,20 @@ router.get('/with-snapshots', async (req, res, next) => {
     const productIdsWithSnapshots = new Set(snapRows.map(s => s.product_id));
 
     const result = [];
+    const averageCostByProductVariant = new Map();
+    for (const snap of snapRows) {
+      const qty = Number(snap.snapshot_commande_quantite ?? 0) || 0;
+      const cost = snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : 0;
+      if (qty === 0 || !Number.isFinite(qty) || !Number.isFinite(cost)) continue;
+      const key = `${snap.product_id}:${snap.variant_id || ''}`;
+      const current = averageCostByProductVariant.get(key) || { value: 0, qty: 0 };
+      current.value += cost * qty;
+      current.qty += qty;
+      averageCostByProductVariant.set(key, current);
+    }
+    for (const [key, entry] of averageCostByProductVariant.entries()) {
+      averageCostByProductVariant.set(key, entry.qty ? entry.value / entry.qty : 0);
+    }
 
     // FIFO priority counters per product+variant
     const fifoCounts = new Map(); // key "productId:variantId" -> counter
@@ -1167,6 +1192,8 @@ router.get('/with-snapshots', async (req, res, next) => {
       const fifoKey = `${snap.product_id}:${snap.variant_id || 0}`;
       const fifoNum = (fifoCounts.get(fifoKey) || 0) + 1;
       fifoCounts.set(fifoKey, fifoNum);
+      const averageCostKey = `${snap.product_id}:${snap.variant_id || ''}`;
+      const averageCoutRevient = Number(averageCostByProductVariant.get(averageCostKey) || 0) || 0;
 
       result.push({
         id: snap.product_id,
@@ -1177,6 +1204,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         snapshot_id: snap.snapshot_id,
         snapshot_en_validation: Number(snap.snapshot_en_validation ?? 1),
         snapshot_quantite: Number(snap.snapshot_quantite),
+        snapshot_commande_quantite: Number(snap.snapshot_commande_quantite ?? 0) || 0,
         snapshot_prix_achat: snap.snapshot_prix_achat !== null ? Number(snap.snapshot_prix_achat) : null,
         snapshot_prix_vente: snap.snapshot_prix_vente !== null ? Number(snap.snapshot_prix_vente) : null,
         snapshot_cout_revient: snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : null,
@@ -1191,6 +1219,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         prix_vente: originalPrixVente,
         prix_vente_2: originalPrixVente2,
         cout_revient: snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : 0,
+        cout_revient_moyen_snapshot: averageCoutRevient || null,
         cout_revient_pourcentage: snap.snapshot_cout_revient_pourcentage !== null ? Number(snap.snapshot_cout_revient_pourcentage) : 0,
         prix_gros: snap.snapshot_prix_gros !== null ? Number(snap.snapshot_prix_gros) : 0,
         prix_gros_pourcentage: snap.snapshot_prix_gros_pourcentage !== null ? Number(snap.snapshot_prix_gros_pourcentage) : 0,

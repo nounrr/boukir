@@ -6,6 +6,18 @@ const router = express.Router();
 
 const isProd = process.env.NODE_ENV === 'production';
 
+const averageSnapshotCoutRevientExpr = (itemAlias) => `COALESCE((
+  SELECT SUM(COALESCE(ps_avg.cout_revient, 0) * ci_avg.quantite) / NULLIF(SUM(ci_avg.quantite), 0)
+  FROM product_snapshot ps_avg
+  JOIN commande_items ci_avg ON ci_avg.product_snapshot_id = ps_avg.id
+  WHERE ps_avg.product_id = ${itemAlias}.product_id
+    AND ((COALESCE(${itemAlias}.variant_id, ps.variant_id) IS NULL AND ps_avg.variant_id IS NULL)
+      OR ps_avg.variant_id <=> COALESCE(${itemAlias}.variant_id, ps.variant_id))
+    AND ci_avg.quantite IS NOT NULL
+    AND ci_avg.quantite <> 0
+    AND ps_avg.cout_revient IS NOT NULL
+), p.cout_revient, ps.cout_revient, p.prix_achat, ps.prix_achat, 0)`;
+
 const applyContactsFilters = ({ type, search, clientSubTab, groupId, dateFrom, dateTo, excludeCharge, onlyCharge }) => {
   let whereSql = ' WHERE 1=1';
   const params = [];
@@ -1271,7 +1283,7 @@ router.get('/:id/history', async (req, res) => {
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'designation', p.designation,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
-              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'cout_revient', ${averageSnapshotCoutRevientExpr('si')},
               'quantite', si.quantite,
               'prix_unitaire', si.prix_unitaire,
               'remise_pourcentage', si.remise_pourcentage,
@@ -1301,7 +1313,7 @@ router.get('/:id/history', async (req, res) => {
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'designation', p.designation,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
-              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'cout_revient', ${averageSnapshotCoutRevientExpr('ci')},
               'quantite', ci.quantite,
               'prix_unitaire', ci.prix_unitaire,
               'remise_pourcentage', ci.remise_pourcentage,
@@ -1331,7 +1343,7 @@ router.get('/:id/history', async (req, res) => {
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'designation', p.designation,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
-              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'cout_revient', ${averageSnapshotCoutRevientExpr('chi')},
               'quantite', chi.quantite,
               'prix_unitaire', chi.prix_unitaire,
               'remise_pourcentage', chi.remise_pourcentage,
@@ -1361,7 +1373,7 @@ router.get('/:id/history', async (req, res) => {
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'designation', COALESCE(NULLIF(chi.designation_custom, ''), p.designation),
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
-              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'cout_revient', ${averageSnapshotCoutRevientExpr('chi')},
               'quantite', chi.quantite,
               'prix_unitaire', chi.prix_unitaire,
               'remise_pourcentage', chi.remise_pourcentage,
@@ -1391,7 +1403,7 @@ router.get('/:id/history', async (req, res) => {
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'designation', p.designation,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
-              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'cout_revient', ${averageSnapshotCoutRevientExpr('ci')},
               'quantite', ci.quantite,
               'prix_unitaire', ci.prix_unitaire,
               'remise_pourcentage', ci.remise_pourcentage,
@@ -1421,7 +1433,7 @@ router.get('/:id/history', async (req, res) => {
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'designation', p.designation,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
-              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'cout_revient', ${averageSnapshotCoutRevientExpr('si')},
               'quantite', si.quantite,
               'prix_unitaire', si.prix_unitaire,
               'remise_pourcentage', si.remise_pourcentage,
@@ -1452,7 +1464,7 @@ router.get('/:id/history', async (req, res) => {
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'designation', p.designation,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
-              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'cout_revient', ${averageSnapshotCoutRevientExpr('ai')},
               'quantite', ai.quantite,
               'prix_unitaire', ai.prix_unitaire,
               'remise_pourcentage', ai.remise_pourcentage,
@@ -1482,7 +1494,7 @@ router.get('/:id/history', async (req, res) => {
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(afi.product_id AS CHAR)),
               'designation', p.designation,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
-              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'cout_revient', ${averageSnapshotCoutRevientExpr('afi')},
               'quantite', afi.quantite,
               'prix_unitaire', afi.prix_unitaire,
               'remise_pourcentage', afi.remise_pourcentage,
@@ -1512,7 +1524,7 @@ router.get('/:id/history', async (req, res) => {
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'designation', p.designation,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
-              'cout_revient', COALESCE(ps.cout_revient, p.cout_revient),
+              'cout_revient', ${averageSnapshotCoutRevientExpr('ai')},
               'quantite', ai.quantite,
               'prix_unitaire', ai.prix_unitaire,
               'remise_pourcentage', ai.remise_pourcentage,
