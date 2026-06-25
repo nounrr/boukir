@@ -907,14 +907,14 @@ async function runProductSearch(query) {
 
         const computeSnapshotDisplay = (snaps) => {
           if (!snaps || snaps.length === 0) {
-            return { mode: 'product', data: null, rows: null };
+            return { mode: 'product', data: null, rows: null, latest: null };
           }
           const positiveSnaps = snaps.filter((snap) => snap.quantite > 0);
           if (positiveSnaps.length === 0) {
-            return { mode: 'last_snapshot', data: snaps[0], rows: null };
+            return { mode: 'last_snapshot', data: snaps[0], rows: null, latest: snaps[0] };
           }
           if (positiveSnaps.length === 1) {
-            return { mode: 'single_positive', data: positiveSnaps[0], rows: null };
+            return { mode: 'single_positive', data: positiveSnaps[0], rows: null, latest: snaps[0] };
           }
           const firstPrixAchat = positiveSnaps[0].prix_achat;
           const firstPrixVente = positiveSnaps[0].prix_vente;
@@ -922,9 +922,9 @@ async function runProductSearch(query) {
             snap.prix_achat === firstPrixAchat && snap.prix_vente === firstPrixVente
           ));
           if (allSame) {
-            return { mode: 'uniform_positive', data: positiveSnaps[0], rows: null };
+            return { mode: 'uniform_positive', data: positiveSnaps[0], rows: null, latest: snaps[0] };
           }
-          return { mode: 'multi_different', data: null, rows: positiveSnaps };
+          return { mode: 'multi_different', data: null, rows: positiveSnaps, latest: snaps[0] };
         };
 
         for (const product of products) {
@@ -1505,24 +1505,24 @@ router.get('/', async (req, res, next) => {
          */
         const computeSnapshotDisplay = (snaps) => {
           if (!snaps || snaps.length === 0) {
-            return { mode: 'product', data: null, rows: null };
+            return { mode: 'product', data: null, rows: null, latest: null };
           }
           const positiveSnaps = snaps.filter(s => s.quantite > 0);
           if (positiveSnaps.length === 0) {
             // All qty ≤ 0 → newest snapshot (index 0, sorted DESC)
-            return { mode: 'last_snapshot', data: snaps[0], rows: null };
+            return { mode: 'last_snapshot', data: snaps[0], rows: null, latest: snaps[0] };
           }
           if (positiveSnaps.length === 1) {
-            return { mode: 'single_positive', data: positiveSnaps[0], rows: null };
+            return { mode: 'single_positive', data: positiveSnaps[0], rows: null, latest: snaps[0] };
           }
           // Multiple positive → check price uniformity
           const fPA = positiveSnaps[0].prix_achat;
           const fPV = positiveSnaps[0].prix_vente;
           const allSame = positiveSnaps.every(s => s.prix_achat === fPA && s.prix_vente === fPV);
           if (allSame) {
-            return { mode: 'uniform_positive', data: positiveSnaps[0], rows: null };
+            return { mode: 'uniform_positive', data: positiveSnaps[0], rows: null, latest: snaps[0] };
           }
-          return { mode: 'multi_different', data: null, rows: positiveSnaps };
+          return { mode: 'multi_different', data: null, rows: positiveSnaps, latest: snaps[0] };
         };
 
         for (const product of data) {
@@ -2363,6 +2363,7 @@ router.put('/:id', upload.fields([
     const [existRows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
     if (!existRows.length) return res.status(404).json({ message: 'Produit introuvable' });
     const existing = existRows[0];
+    const canEditCoutRevient = req.user?.role === 'PDG';
 
     const {
       designation,
@@ -2441,10 +2442,14 @@ router.put('/:id', upload.fields([
 
     // Pricing
     const pa = (prix_achat !== undefined && prix_achat !== null && prix_achat !== '') ? Number(prix_achat) : Number(existing.prix_achat ?? 0);
-    const crp = (cout_revient_pourcentage !== undefined && cout_revient_pourcentage !== null && cout_revient_pourcentage !== '') ? Number(cout_revient_pourcentage) : Number(existing.cout_revient_pourcentage ?? 0);
+    const crp = canEditCoutRevient && cout_revient_pourcentage !== undefined && cout_revient_pourcentage !== null && cout_revient_pourcentage !== ''
+      ? Number(cout_revient_pourcentage)
+      : Number(existing.cout_revient_pourcentage ?? 0);
     const pgp = (prix_gros_pourcentage !== undefined && prix_gros_pourcentage !== null && prix_gros_pourcentage !== '') ? Number(prix_gros_pourcentage) : Number(existing.prix_gros_pourcentage ?? 0);
     const pvp = (prix_vente_pourcentage !== undefined && prix_vente_pourcentage !== null && prix_vente_pourcentage !== '') ? Number(prix_vente_pourcentage) : Number(existing.prix_vente_pourcentage ?? 0);
-    const cr = pa * (1 + crp / 100);
+    const cr = canEditCoutRevient
+      ? pa * (1 + crp / 100)
+      : Number(existing.cout_revient ?? 0);
     const pg = pa * (1 + pgp / 100);
     const pvExplicit = (prix_vente !== undefined && prix_vente !== null && prix_vente !== '') ? Number(prix_vente) : null;
     const pv = (pvExplicit !== null && Number.isFinite(pvExplicit)) ? pvExplicit : pa * (1 + pvp / 100);
@@ -2562,6 +2567,13 @@ router.put('/:id', upload.fields([
       let parsed = [];
       try { parsed = typeof variantsJson === 'string' ? JSON.parse(variantsJson) : variantsJson; } catch { }
       if (Array.isArray(parsed)) {
+        const [existingVariantRows] = await pool.query(
+          'SELECT id, cout_revient, cout_revient_pourcentage FROM product_variants WHERE product_id = ?',
+          [id]
+        );
+        const existingVariantsById = new Map(
+          existingVariantRows.map((row) => [Number(row.id), row])
+        );
         // Ensure multilingual columns exist (created lazily).
         {
           const cols = ['variant_name_ar', 'variant_name_en', 'variant_name_zh'];
@@ -2602,6 +2614,13 @@ router.put('/:id', upload.fields([
 
           for (const v of parsed) {
             const variantId = Number(v?.id ?? 0);
+            const existingVariant = existingVariantsById.get(variantId);
+            const variantCoutRevient = canEditCoutRevient
+              ? Number(v?.cout_revient ?? 0)
+              : Number(existingVariant?.cout_revient ?? existing.cout_revient ?? 0);
+            const variantCoutRevientPourcentage = canEditCoutRevient
+              ? Number(v?.cout_revient_pourcentage ?? 0)
+              : Number(existingVariant?.cout_revient_pourcentage ?? existing.cout_revient_pourcentage ?? 0);
             const variantPrixVentePourcentage = lockVariantPrixVente ? 0 : Number(v?.prix_vente_pourcentage ?? 0);
             const variantPrixVente = lockVariantPrixVente
               ? Number(lockedVariantPrixVente ?? 0)
@@ -2615,8 +2634,8 @@ router.put('/:id', upload.fields([
               v?.variant_type || 'Autre',
               v?.reference,
               Number(v?.prix_achat ?? 0),
-              Number(v?.cout_revient ?? 0),
-              Number(v?.cout_revient_pourcentage ?? 0),
+              variantCoutRevient,
+              variantCoutRevientPourcentage,
               Number(v?.prix_gros ?? 0),
               Number(v?.prix_gros_pourcentage ?? 0),
               variantPrixVentePourcentage,
@@ -2897,6 +2916,11 @@ router.patch('/snapshots', async (req, res, next) => {
     const { snapshots } = req.body || {};
     if (!Array.isArray(snapshots) || snapshots.length === 0) {
       return res.status(400).json({ message: 'snapshots array requis' });
+    }
+    if (req.user?.role !== 'PDG' && snapshots.some((snapshot) => (
+      snapshot?.cout_revient !== undefined || snapshot?.cout_revient_pourcentage !== undefined
+    ))) {
+      return res.status(403).json({ message: 'Seul le rôle PDG peut modifier le coût de revient' });
     }
 
     const hasTable = await hasProductSnapshotTable();

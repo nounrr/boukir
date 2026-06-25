@@ -38,6 +38,9 @@ function getOldestPositiveSnapshotRow(rows) {
 
 function getSnapshotDisplayPrices(p) {
   const sd = p.snapshot_display;
+  const latestPrixAchat = sd?.latest?.prix_achat != null
+    ? Number(sd.latest.prix_achat)
+    : Number(p.prix_achat || 0);
   if (!sd || sd.mode === 'product') {
     return {
       prix_achat: Number(p.prix_achat || 0),
@@ -49,7 +52,7 @@ function getSnapshotDisplayPrices(p) {
   if (sd.mode === 'last_snapshot' || sd.mode === 'single_positive' || sd.mode === 'uniform_positive') {
     const d = sd.data;
     return {
-      prix_achat: d?.prix_achat != null ? Number(d.prix_achat) : Number(p.prix_achat || 0),
+      prix_achat: latestPrixAchat,
       cout_revient: d?.cout_revient != null ? Number(d.cout_revient) : Number(p.cout_revient || 0),
       prix_gros: d?.prix_gros != null ? Number(d.prix_gros) : Number(p.prix_gros || 0),
       prix_vente: d?.prix_vente != null ? Number(d.prix_vente) : Number(p.prix_vente || 0),
@@ -58,9 +61,7 @@ function getSnapshotDisplayPrices(p) {
   if (sd.mode === 'multi_different') {
     const oldestRow = getOldestPositiveSnapshotRow(sd.rows);
     return {
-      prix_achat: oldestRow?.prix_achat != null
-        ? Number(oldestRow.prix_achat)
-        : (p?.snapshot_prix_achat_old != null ? Number(p.snapshot_prix_achat_old) : Number(p.prix_achat || 0)),
+      prix_achat: latestPrixAchat,
       cout_revient: oldestRow?.cout_revient != null ? Number(oldestRow.cout_revient) : Number(p.cout_revient || 0),
       prix_gros: oldestRow?.prix_gros != null ? Number(oldestRow.prix_gros) : Number(p.prix_gros || 0),
       prix_vente: oldestRow?.prix_vente != null

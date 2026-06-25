@@ -183,6 +183,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     skip: !editingProduct?.id,
   });
   const authToken = useSelector((s: RootState) => (s as any)?.auth?.token);
+  const currentUserRole = useSelector((s: RootState) => (s as any)?.auth?.user?.role);
+  const canEditCoutRevient = currentUserRole === 'PDG';
 
   const [createProduct] = useCreateProductMutation();
   const [updateProductMutation] = useUpdateProductMutation();
@@ -226,6 +228,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   const handleSnapshotFieldChange = (snap: any, field: string, rawValue: string) => {
+    if (!canEditCoutRevient && (field === 'cout_revient' || field === 'cout_revient_pourcentage')) return;
     const normalizedRaw = String(rawValue ?? '').trim();
     if (normalizedRaw !== '' && !(field === 'quantite' ? isSignedDecimalLike(normalizedRaw) : isDecimalLike(normalizedRaw))) return;
     const val = parseFloat(String(rawValue).replace(',', '.')) || 0;
@@ -248,7 +251,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         ).replace(',', '.')) || 0;
         updates.prix_vente_pourcentage = String(parseFloat(((fixedSellingPrice / newPa - 1) * 100).toFixed(2)));
 
-        ['cout_revient', 'prix_gros'].forEach((priceKey) => {
+        (canEditCoutRevient ? ['cout_revient', 'prix_gros'] : ['prix_gros']).forEach((priceKey) => {
           const pctKey = priceKey + '_pourcentage';
           const curPct = parseFloat(String(
             snapshotEdits[snap.id]?.[pctKey] !== undefined ? snapshotEdits[snap.id][pctKey] : snap[pctKey]
@@ -988,12 +991,20 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       toNum(formik.values.prix_gros_pourcentage),
       toNum(formik.values.prix_vente_pourcentage)
     );
+    if (!canEditCoutRevient && editingProduct) {
+      prices.cout_revient = toNonNegativeNum(
+        (fullProduct as any)?.cout_revient ?? (editingProduct as any)?.cout_revient
+      );
+    }
     setDynamicPrices(prices);
   }, [
     formik.values.prix_achat,
     formik.values.cout_revient_pourcentage,
     formik.values.prix_gros_pourcentage,
     formik.values.prix_vente_pourcentage,
+    canEditCoutRevient,
+    editingProduct,
+    fullProduct,
   ]);
 
   // Quand les valeurs calculées changent, on met à jour l'affichage brut (sauf le champ en cours de saisie)
@@ -1741,16 +1752,16 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     id="cout_revient_pourcentage"
                     name="cout_revient_pourcentage"
                     value={String(formik.values.cout_revient_pourcentage ?? '')}
-                    disabled={hasProductSnapshots}
+                    disabled={hasProductSnapshots || !canEditCoutRevient}
                     onChange={(e) => {
-                      if (hasProductSnapshots) return;
+                      if (hasProductSnapshots || !canEditCoutRevient) return;
                       void setNonNegativeFieldValue('cout_revient_pourcentage', e.target.value);
                     }}
                     onBlur={() => {
-                      if (hasProductSnapshots) return;
+                      if (hasProductSnapshots || !canEditCoutRevient) return;
                       void commitNonNegativeFieldValue('cout_revient_pourcentage', formik.values.cout_revient_pourcentage, 0);
                     }}
-                    className={`w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg transition-all ${hasProductSnapshots ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'}`}
+                    className={`w-20 px-2.5 py-1.5 text-sm font-medium border-2 border-gray-200 rounded-lg transition-all ${hasProductSnapshots || !canEditCoutRevient ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'}`}
                   />
                   <span className="text-sm text-gray-600">%</span>
                 </div>
@@ -1759,10 +1770,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     type="text"
                     inputMode="decimal"
                     value={priceRaw.cout_revient}
-                    disabled={hasProductSnapshots}
+                    disabled={hasProductSnapshots || !canEditCoutRevient}
                     onFocus={() => { priceEditingRef.current = 'cout_revient'; }}
                     onChange={(e) => {
-                      if (hasProductSnapshots) return;
+                      if (hasProductSnapshots || !canEditCoutRevient) return;
                       const v = e.target.value;
                       if (!isDecimalLike(v)) return;
                       setPriceRaw((prev) => ({ ...prev, cout_revient: v }));
@@ -1775,12 +1786,12 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       setDynamicPrices((prev) => ({ ...prev, cout_revient: val }));
                     }}
                     onBlur={() => {
-                      if (hasProductSnapshots) return;
+                      if (hasProductSnapshots || !canEditCoutRevient) return;
                       priceEditingRef.current = null;
                       const val = Math.max(0, parseFloat(normalizeDecimal(priceRaw.cout_revient)) || 0);
                       setPriceRaw((prev) => ({ ...prev, cout_revient: formatNumber(val) }));
                     }}
-                    className={`w-full text-right bg-transparent border-0 focus:outline-none ${hasProductSnapshots ? 'cursor-not-allowed text-gray-500' : ''}`}
+                    className={`w-full text-right bg-transparent border-0 focus:outline-none ${hasProductSnapshots || !canEditCoutRevient ? 'cursor-not-allowed text-gray-500' : ''}`}
                   />
                   <div className="text-xs text-gray-500">DH</div>
                 </div>
@@ -2032,12 +2043,16 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                       type="text"
                                       inputMode="decimal"
                                       value={getSnapshotEditValue(s, key)}
+                                      disabled={!canEditCoutRevient && (key === 'cout_revient' || key === 'cout_revient_pourcentage')}
                                       onChange={(e) => handleSnapshotFieldChange(s, key, e.target.value)}
                                       onBlur={() => {
                                         if (key !== 'quantite') return;
                                         setSnapshotEditField(s.id, key, String(Math.max(0, toNum(getSnapshotEditValue(s, key)))));
                                       }}
                                       className={`w-full px-3 py-2 text-sm font-medium border-2 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors ${
+                                        !canEditCoutRevient && (key === 'cout_revient' || key === 'cout_revient_pourcentage')
+                                          ? 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                                          :
                                         snapshotEdits[s.id]?.[key] !== undefined ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white'
                                       }`}
                                     />
@@ -2576,12 +2591,16 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                                   type="text"
                                                   inputMode="decimal"
                                                   value={getSnapshotEditValue(s, key)}
+                                                  disabled={!canEditCoutRevient && (key === 'cout_revient' || key === 'cout_revient_pourcentage')}
                                                   onChange={(e) => handleSnapshotFieldChange(s, key, e.target.value)}
                                                   onBlur={() => {
                                                     if (key !== 'quantite') return;
                                                     setSnapshotEditField(s.id, key, String(Math.max(0, toNum(getSnapshotEditValue(s, key)))));
                                                   }}
                                                   className={`w-full px-3 py-2 text-sm font-medium border-2 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-colors ${
+                                                    !canEditCoutRevient && (key === 'cout_revient' || key === 'cout_revient_pourcentage')
+                                                      ? 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                                                      :
                                                     snapshotEdits[s.id]?.[key] !== undefined ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white'
                                                   }`}
                                                 />
@@ -2622,8 +2641,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                       if (variantPrixVenteLock.lock) return;
                                       if (e.target.checked) {
                                         formik.setFieldValue(`variants.${index}.prix_achat`, formik.values.prix_achat);
-                                        formik.setFieldValue(`variants.${index}.cout_revient_pourcentage`, formik.values.cout_revient_pourcentage);
-                                        formik.setFieldValue(`variants.${index}.cout_revient`, dynamicPrices.cout_revient);
+                                        if (canEditCoutRevient) {
+                                          formik.setFieldValue(`variants.${index}.cout_revient_pourcentage`, formik.values.cout_revient_pourcentage);
+                                          formik.setFieldValue(`variants.${index}.cout_revient`, dynamicPrices.cout_revient);
+                                        }
                                         formik.setFieldValue(`variants.${index}.prix_gros_pourcentage`, formik.values.prix_gros_pourcentage);
                                         formik.setFieldValue(`variants.${index}.prix_gros`, dynamicPrices.prix_gros);
                                         formik.setFieldValue(
@@ -2656,7 +2677,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   const crp = Number(variant.cout_revient_pourcentage || 0);
                                   const pgp = Number(variant.prix_gros_pourcentage || 0);
                                   const pvp = Number(variant.prix_vente_pourcentage || 0);
-                                  formik.setFieldValue(`variants.${index}.cout_revient`, Number((pa * (1 + crp/100)).toFixed(2)));
+                                  if (canEditCoutRevient) {
+                                    formik.setFieldValue(`variants.${index}.cout_revient`, Number((pa * (1 + crp/100)).toFixed(2)));
+                                  }
                                   formik.setFieldValue(`variants.${index}.prix_gros`, Number((pa * (1 + pgp/100)).toFixed(2)));
                                   if (variantPrixVenteLock.lock) {
                                     formik.setFieldValue(`variants.${index}.prix_vente`, Number(variantPrixVenteLock.forcedPrixVente ?? 0));
@@ -2684,7 +2707,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   type="number"
                                   name={`variants.${index}.cout_revient_pourcentage`}
                                   value={variant.cout_revient_pourcentage}
+                                  disabled={!canEditCoutRevient}
                                   onChange={(e) => {
+                                    if (!canEditCoutRevient) return;
                                     if (!setNonNegativeFieldValue(`variants.${index}.cout_revient_pourcentage`, e.target.value)) return;
                                     const pct = toNonNegativeNum(e.target.value);
                                     const pa = toNonNegativeNum(variant.prix_achat || 0);
@@ -2693,7 +2718,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   onBlur={() => {
                                     void commitNonNegativeFieldValue(`variants.${index}.cout_revient_pourcentage`, (formik.values.variants?.[index] as any)?.cout_revient_pourcentage, 0);
                                   }}
-                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                  className={`w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg transition-all ${canEditCoutRevient ? 'bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500' : 'bg-gray-100 text-gray-500 cursor-not-allowed'}`}
                                   placeholder="%"
                                   min={0}
                                 />
@@ -2705,7 +2730,8 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                   name={`variants.${index}.cout_revient`}
                                   value={variant.cout_revient}
                                   readOnly
-                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-gray-50/80 text-gray-600"
+                                  disabled={!canEditCoutRevient}
+                                  className="w-full px-2.5 py-1.5 text-sm border-2 border-gray-200 rounded-lg bg-gray-50/80 text-gray-600 disabled:cursor-not-allowed"
                                   placeholder="0.00"
                                 />
                               </div>
