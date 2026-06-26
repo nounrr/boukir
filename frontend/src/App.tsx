@@ -645,7 +645,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/solver-prix-achat"
           element={
-            <ProtectedRoute requiredRole="PDG">
+            <ProtectedRoute requiredRoles={['PDG','Manager','ManagerPlus','ChefChauffeur','Employé']}>
               <LayoutWithAccessCheck>
                 <SolverPrixAchatPage />
               </LayoutWithAccessCheck>
