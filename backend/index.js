@@ -76,6 +76,7 @@ import inventoryRouter from './routes/inventory.js';
 import statsRouter from './routes/stats.js';
 import calcRouter from './routes/calc.js';
 import uiSettingsRouter from './routes/uiSettings.js';
+import pricePurchaseSolverRouter from './routes/pricePurchaseSolver.js';
 
 import {
   ensureContactsBloqueColumn,
@@ -356,6 +357,7 @@ app.use('/api/inventory', inventoryRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/calc', calcRouter);
 app.use('/api/ui-settings', uiSettingsRouter);
+app.use('/api/price-purchase-solver', pricePurchaseSolverRouter);
 
 // 404
 app.use((req, res) => {

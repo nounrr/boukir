@@ -24,6 +24,7 @@ import {
   Image,
   Settings,
   ShieldCheck,
+  BadgeDollarSign,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -60,6 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         { name: 'Catégories', href: '/categories', icon: Tags, show: !isChefChauffeur },
         { name: 'Marques', href: '/brands', icon: Award, show: !isChefChauffeur },
         { name: 'Produits archivés', href: '/products/archived', icon: Package, show: !isChefChauffeur && user?.role === 'PDG' },
+        { name: 'Solver prix achat', href: '/solver-prix-achat', icon: BadgeDollarSign, show: !isChefChauffeur && user?.role === 'PDG' },
       ],
     },
     {
