@@ -1071,7 +1071,10 @@ router.get('/with-snapshots', async (req, res, next) => {
 
     const hasEnValidation = await hasProductSnapshotEnValidationColumn();
 
-    // Get all snapshots (including qty <= 0), joined with product info
+    const activeSnapshotSql = hasEnValidation ? 'AND COALESCE(ps.en_validation, 0) <> 0' : '';
+
+    // Get all active snapshots (including qty <= 0), joined with product info.
+    // Draft/pending commande snapshots must not drive "dernier prix achat" in bon/avoir creation.
     const [snapRows] = await pool.query(`
       SELECT
         ps.id AS snapshot_id,
@@ -1120,6 +1123,7 @@ router.get('/with-snapshots', async (req, res, next) => {
       JOIN products p ON p.id = ps.product_id
       LEFT JOIN product_variants pv ON pv.id = ps.variant_id
       WHERE COALESCE(p.is_deleted, 0) = 0
+        ${activeSnapshotSql}
         ${productSearch.sql}
       ORDER BY p.id ASC, ps.created_at ASC, ps.id ASC
       ${limitSql}
@@ -3093,6 +3097,7 @@ router.get('/last-commandes', async (_req, res, next) => {
           MAX(CONCAT(b.date_creation, ' ', LPAD(b.id, 10, '0'))) AS max_key
         FROM commande_items ci
         JOIN bons_commande b ON ci.bon_commande_id = b.id
+        WHERE LOWER(TRIM(COALESCE(b.statut, ''))) IN ('validé','valide','livré','livre','facturé','facture')
         GROUP BY ci.product_id, COALESCE(ci.variant_id, 0)
       ) t
       JOIN commande_items ci ON ci.product_id = t.product_id AND COALESCE(ci.variant_id, 0) = t.variant_key
