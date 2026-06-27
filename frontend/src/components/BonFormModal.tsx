@@ -1420,25 +1420,27 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     [fournisseursRaw, selectedFournisseurById]
   );
   const currentModalType = String((initialValues as any)?.type || currentTab || '');
-  const shouldFetchSortiesHistory = !isEditMode && (heavyDataReady || (
-    isOpen &&
+  // Historiques "dernier prix" : chargés en création ET en édition (le dernier prix
+  // doit aussi s'afficher en modification). En édition heavyDataReady est déjà true.
+  const shouldFetchSortiesHistory = isOpen && (
+    heavyDataReady ||
     ['Sortie', 'Avoir'].includes(currentModalType)
-  ));
+  );
   const { data: sortiesHistory = [] } = useGetSortiesQuery(undefined, { skip: !shouldFetchSortiesHistory });
-  const shouldFetchComptantHistory = !isEditMode && (heavyDataReady || (
-    isOpen &&
+  const shouldFetchComptantHistory = isOpen && (
+    heavyDataReady ||
     ['Comptant', 'AvoirComptant', 'Sortie', 'Avoir'].includes(currentModalType)
-  ));
+  );
   const { data: comptantHistory = [] } = useGetComptantQuery(undefined, { skip: !shouldFetchComptantHistory });
   const { data: comptantPaymentsHistory = [] } = useGetComptantPaymentsQuery((initialValues as any)?.id, {
     skip: !isEditMode || currentTab !== 'Comptant' || !((initialValues as any)?.id),
   });
-  const shouldFetchCommandesHistory = !isEditMode && isOpen && (
+  const shouldFetchCommandesHistory = isOpen && (
     currentModalType === 'Commande' ||
     currentModalType === 'AvoirFournisseur'
   );
   const { data: commandesHistory = [] } = useGetBonsByTypeQuery('Commande', { skip: !shouldFetchCommandesHistory });
-  const shouldFetchAvoirsFournisseurHistory = !isEditMode && isOpen && currentModalType === 'AvoirFournisseur';
+  const shouldFetchAvoirsFournisseurHistory = isOpen && currentModalType === 'AvoirFournisseur';
   const { data: avoirsFournisseurHistory = [] } = useGetBonsByTypeQuery('AvoirFournisseur', { skip: !shouldFetchAvoirsFournisseurHistory });
   const shouldFetchEcommerceOrders = isOpen && (currentTab === 'AvoirEcommerce' || String((initialValues as any)?.type || '') === 'AvoirEcommerce');
   const { data: ecommerceOrders = [] } = useGetBonsByTypeQuery('Ecommerce', { skip: !shouldFetchEcommerceOrders });
@@ -6296,13 +6298,18 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       Number(product?.prix_vente_2) ||
                                       0;
 
-                                    // Apply factor to base values; fall back to formik if base is 0
+                                    // Fallback context (PA/CR résolus via snapshot→variant→product→item,
+                                    // facteur d'unité déjà appliqué). Utile pour les types sans snapshot
+                                    // (ex: Devis) où basePA/baseCR restent 0.
+                                    const costCtx = resolveItemCostContext(item, products as any[], snapshotProducts as any[]);
+
+                                    // Apply factor to base values; fall back to resolved cost context then formik if base is 0
                                     const displayPA = basePA
                                       ? scaleDecimal(basePA, factor)
-                                      : Number(item.prix_achat) || 0;
+                                      : Number(costCtx.prix_achat) || Number(item.prix_achat) || 0;
                                     const displayCR = baseCR
                                       ? scaleDecimal(baseCR, factor)
-                                      : Number(item.cout_revient) || 0;
+                                      : Number(costCtx.cout_revient) || Number(item.cout_revient) || 0;
                                     const displayPV = basePV ? scaleDecimal(basePV, factor) : Number(item.prix_unitaire) || 0;
                                     const displayPV2 = basePV2 ? scaleDecimal(basePV2, factor) : 0;
 
@@ -6416,6 +6423,18 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
           values.items[index].variant_id,
           values.items[index].unit_id
         );
+    // 🔎 DEBUG TEMP — dernier prix client
+    console.log('🔵 [DERNIER PRIX CLIENT]', {
+      type: values.type,
+      client_id: values.client_id,
+      product_id: values.items[index].product_id,
+      variant_id: values.items[index].variant_id,
+      unit_id: values.items[index].unit_id,
+      last,
+      sortiesHistoryCount: (sortiesHistory as any[])?.length,
+      comptantHistoryCount: (comptantHistory as any[])?.length,
+      sampleStatuts: (sortiesHistory as any[])?.slice(0, 5).map((b: any) => ({ id: b.id, statut: b.statut, client_id: b.client_id })),
+    });
     return last && Number.isFinite(last) ? (
       <div className="text-xs text-blue-600 font-medium mt-1">
         {values.type === 'Avoir' && !values.vendre_au_fournisseur ? 'Dernier prix Bon Sortie' : 'Dernier prix client'}: {formatFull(Number(last))} DH
