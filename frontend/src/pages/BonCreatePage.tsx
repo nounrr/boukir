@@ -40,6 +40,7 @@ const BonCreatePage = () => {
 
   const stateInitialValues = (location.state as any)?.initialValues || undefined;
   const returnTab = (location.state as any)?.returnTab || type || currentTab;
+  const returnListState = (location.state as any)?.returnListState;
   const { data: fallbackBons = [], isLoading: isLoadingFallbackBon } = useGetBonsByTypeQuery(currentTab, {
     skip: !isEditMode || Boolean(stateInitialValues),
   });
@@ -53,8 +54,11 @@ const BonCreatePage = () => {
   const [bonFormKey] = useState(() => Date.now());
 
   const goBackToList = useCallback(() => {
-    navigate(`/bons?tab=${encodeURIComponent(returnTab)}`, { replace: true });
-  }, [navigate, returnTab]);
+    navigate(`/bons?tab=${encodeURIComponent(returnTab)}`, {
+      replace: true,
+      state: returnListState ? { restoreListState: returnListState } : undefined,
+    });
+  }, [navigate, returnListState, returnTab]);
 
   const handleBonAdded = useCallback(
     (newBon: any) => {

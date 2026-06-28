@@ -14,6 +14,7 @@ export interface PriceSolverItem {
   variant_name: string | null;
   product_snapshot_id: number | null;
   quantite: number;
+  quantite_snapshot: number | null;
   prix_achat_bon: number;
   remise_pourcentage: number;
   remise_montant: number;
@@ -54,13 +55,18 @@ export const pricePurchaseSolverApi = api.injectEndpoints({
       providesTags: ['PricePurchaseSolver'],
     }),
     updateCommandeItemPrixAchat: builder.mutation<
-      { message: string; commande_item_id: number; prix_achat: number; total: number },
-      { commandeItemId: number; prixAchat: number; updateSnapshot?: boolean }
+      { message: string; commande_item_id: number; prix_achat: number; quantite: number; snapshot_quantite: number | null; total: number },
+      { commandeItemId: number; prixAchat: number; quantite?: number; snapshotQuantite?: number; updateSnapshot?: boolean }
     >({
-      query: ({ commandeItemId, prixAchat, updateSnapshot = true }) => ({
+      query: ({ commandeItemId, prixAchat, quantite, snapshotQuantite, updateSnapshot = true }) => ({
         url: `/price-purchase-solver/commande-items/${commandeItemId}/prix-achat`,
         method: 'PATCH',
-        body: { prix_achat: prixAchat, update_snapshot: updateSnapshot },
+        body: {
+          prix_achat: prixAchat,
+          quantite,
+          snapshot_quantite: snapshotQuantite,
+          update_snapshot: updateSnapshot,
+        },
       }),
       invalidatesTags: ['PricePurchaseSolver', 'Commande', 'Bon', 'Product'],
     }),

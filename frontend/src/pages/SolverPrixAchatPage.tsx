@@ -28,6 +28,8 @@ const SolverPrixAchatPage: React.FC = () => {
   const [thresholdInput, setThresholdInput] = useState('50');
   const [search, setSearch] = useState('');
   const [draftPrices, setDraftPrices] = useState<Record<string, string>>({});
+  const [draftBonStocks, setDraftBonStocks] = useState<Record<string, string>>({});
+  const [draftSnapshotStocks, setDraftSnapshotStocks] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const threshold = Math.max(0, toNumber(thresholdInput) || 0);
 
@@ -39,15 +41,21 @@ const SolverPrixAchatPage: React.FC = () => {
 
   useEffect(() => {
     const next: Record<string, string> = {};
+    const nextBonStocks: Record<string, string> = {};
+    const nextSnapshotStocks: Record<string, string> = {};
     const validIds = new Set<string>();
     for (const group of data?.data || []) {
       for (const item of group.items || []) {
         const key = keyForItem(item);
         validIds.add(key);
         next[key] = String(toNumber(item.prix_achat_affiche || item.prix_achat_bon).toFixed(2));
+        nextBonStocks[key] = String(toNumber(item.quantite).toFixed(3));
+        nextSnapshotStocks[key] = item.quantite_snapshot == null ? '' : String(toNumber(item.quantite_snapshot).toFixed(3));
       }
     }
     setDraftPrices(next);
+    setDraftBonStocks(nextBonStocks);
+    setDraftSnapshotStocks(nextSnapshotStocks);
     setSelectedIds((prev) => new Set([...prev].filter((id) => validIds.has(id))));
   }, [data]);
 
@@ -98,13 +106,27 @@ const SolverPrixAchatPage: React.FC = () => {
   const handlePriceChange = (item: PriceSolverItem, value: string) => {
     const key = keyForItem(item);
     setDraftPrices((prev) => {
-      const next = { ...prev };
-      const targetKeys = selectedIds.has(key) ? [...selectedIds] : [key];
-      for (const targetKey of targetKeys) {
-        next[targetKey] = value;
-      }
-      return next;
+      return { ...prev, [key]: value };
     });
+  };
+
+  const updateSelectedDraft = (
+    item: PriceSolverItem,
+    value: string,
+    setter: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+  ) => {
+    const key = keyForItem(item);
+    setter((prev) => {
+      return { ...prev, [key]: value };
+    });
+  };
+
+  const handleBonStockChange = (item: PriceSolverItem, value: string) => {
+    updateSelectedDraft(item, value, setDraftBonStocks);
+  };
+
+  const handleSnapshotStockChange = (item: PriceSolverItem, value: string) => {
+    updateSelectedDraft(item, value, setDraftSnapshotStocks);
   };
 
   const saveItem = async (item: PriceSolverItem) => {
@@ -116,12 +138,16 @@ const SolverPrixAchatPage: React.FC = () => {
       return;
     }
 
-    const newPrice = toNumber(draftPrices[key]);
     const targets = isMultiSelectMode
       ? [...selectedIds].map((id) => allItemsById.get(id)).filter(Boolean) as PriceSolverItem[]
       : [item];
 
-    if (!Number.isFinite(newPrice) || newPrice < 0) {
+    const invalidPriceTarget = targets.find((target) => {
+      const targetPrice = toNumber(draftPrices[keyForItem(target)]);
+      return !Number.isFinite(targetPrice) || targetPrice < 0;
+    });
+
+    if (invalidPriceTarget) {
       showError("Prix d'achat invalide");
       setDraftPrices((prev) => {
         const next = { ...prev };
@@ -134,25 +160,76 @@ const SolverPrixAchatPage: React.FC = () => {
       return;
     }
 
+    const invalidBonStockTarget = targets.find((target) => {
+      const targetBonStock = toNumber(draftBonStocks[keyForItem(target)]);
+      return !Number.isFinite(targetBonStock) || targetBonStock < 0;
+    });
+
+    if (invalidBonStockTarget) {
+      showError('Stock du bon invalide');
+      setDraftBonStocks((prev) => {
+        const next = { ...prev };
+        for (const target of targets) {
+          const targetKey = keyForItem(target);
+          next[targetKey] = toNumber(target.quantite).toFixed(3);
+        }
+        return next;
+      });
+      return;
+    }
+
+    const invalidSnapshotStockTarget = targets.find((target) => {
+      if (!target.product_snapshot_id) return false;
+      const targetKey = keyForItem(target);
+      const targetSnapshotStock = toNumber(draftSnapshotStocks[targetKey]);
+      return draftSnapshotStocks[targetKey] !== '' && (!Number.isFinite(targetSnapshotStock) || targetSnapshotStock < 0);
+    });
+
+    if (invalidSnapshotStockTarget) {
+      showError('Stock snapshot invalide');
+      setDraftSnapshotStocks((prev) => {
+        const next = { ...prev };
+        for (const target of targets) {
+          const targetKey = keyForItem(target);
+          next[targetKey] = target.quantite_snapshot == null ? '' : toNumber(target.quantite_snapshot).toFixed(3);
+        }
+        return next;
+      });
+      return;
+    }
+
     const changedTargets = targets.filter((target) => {
       const oldPrice = toNumber(target.prix_achat_affiche || target.prix_achat_bon);
-      return Math.abs(newPrice - oldPrice) >= 0.0001;
+      const targetKey = keyForItem(target);
+      const targetPrice = toNumber(draftPrices[targetKey]);
+      const targetBonStock = toNumber(draftBonStocks[targetKey]);
+      const priceChanged = Math.abs(targetPrice - oldPrice) >= 0.0001;
+      const bonStockChanged = Math.abs(targetBonStock - toNumber(target.quantite)) >= 0.0001;
+      const snapshotStockChanged = target.product_snapshot_id
+        ? Math.abs(toNumber(draftSnapshotStocks[targetKey]) - toNumber(target.quantite_snapshot)) >= 0.0001
+        : false;
+      return priceChanged || bonStockChanged || snapshotStockChanged;
     });
 
     if (!changedTargets.length) return;
 
     try {
       for (const target of changedTargets) {
+        const targetKey = keyForItem(target);
+        const targetPrice = toNumber(draftPrices[targetKey]);
+        const snapshotStockValue = target.product_snapshot_id ? toNumber(draftSnapshotStocks[targetKey]) : undefined;
         await updatePrixAchat({
           commandeItemId: target.commande_item_id,
-          prixAchat: newPrice,
+          prixAchat: targetPrice,
+          quantite: toNumber(draftBonStocks[targetKey]),
+          snapshotQuantite: snapshotStockValue,
           updateSnapshot: true,
         }).unwrap();
       }
       showSuccess(
         changedTargets.length > 1
-          ? `${changedTargets.length} prix d'achat mis a jour`
-          : "Prix d'achat mis a jour"
+          ? `${changedTargets.length} lignes mises a jour`
+          : 'Ligne mise a jour'
       );
     } catch (error: any) {
       const message = error?.data?.message || error?.message || "Erreur lors de la mise a jour";
@@ -165,6 +242,22 @@ const SolverPrixAchatPage: React.FC = () => {
         }
         return next;
       });
+      setDraftBonStocks((prev) => {
+        const next = { ...prev };
+        for (const target of targets) {
+          const targetKey = keyForItem(target);
+          next[targetKey] = toNumber(target.quantite).toFixed(3);
+        }
+        return next;
+      });
+      setDraftSnapshotStocks((prev) => {
+        const next = { ...prev };
+        for (const target of targets) {
+          const targetKey = keyForItem(target);
+          next[targetKey] = target.quantite_snapshot == null ? '' : toNumber(target.quantite_snapshot).toFixed(3);
+        }
+        return next;
+      });
     }
   };
 
@@ -172,7 +265,7 @@ const SolverPrixAchatPage: React.FC = () => {
     const key = keyForItem(item);
     const hasSnapshot = Boolean(item.product_snapshot_id);
     const selected = selectedIds.has(key);
-    const bonNumero = item.bon_numero || `CMD${String(item.bon_commande_id).padStart(2, '0')}`;
+    const bonNumero = item.bon_numero || `CMD${String(item.bon_commande_id).padStart(4, '0')}`;
     const snapshotDiff =
       item.prix_achat_snapshot != null
         ? Math.abs(toNumber(item.prix_achat_snapshot) - toNumber(item.prix_achat_bon))
@@ -180,7 +273,7 @@ const SolverPrixAchatPage: React.FC = () => {
 
     return (
       <tr key={item.commande_item_id} className="border-t border-gray-100 hover:bg-gray-50">
-        <td className="min-w-[230px] px-4 py-2 text-sm text-gray-700" title={item.label || bonNumero}>
+        <td className="min-w-[320px] px-4 py-2 text-sm text-gray-700" title={item.label || bonNumero}>
           <div className="flex items-center gap-2 whitespace-nowrap">
             <span className="font-semibold text-gray-900">{bonNumero}</span>
             <span className="text-gray-400">-</span>
@@ -190,7 +283,43 @@ const SolverPrixAchatPage: React.FC = () => {
           </div>
         </td>
         <td className="px-4 py-2 text-sm text-gray-600">{formatDate(item.date_creation)}</td>
-        <td className="px-4 py-2 text-sm text-right text-gray-700">{toNumber(item.quantite).toFixed(3)}</td>
+        <td className="px-4 py-2">
+          <input
+            className="h-9 w-28 rounded-md border border-emerald-200 px-2 text-right text-sm outline-none focus:ring-2 focus:ring-emerald-200"
+            value={draftBonStocks[key] ?? ''}
+            onChange={(event) => handleBonStockChange(item, event.target.value)}
+            onBlur={() => {
+              if (selectedIds.size === 0) saveItem(item);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && selectedIds.size === 0) {
+                event.currentTarget.blur();
+              }
+            }}
+            disabled={isSaving}
+            inputMode="decimal"
+            title="Changer stock du bon uniquement"
+          />
+        </td>
+        <td className="px-4 py-2">
+          <input
+            className="h-9 w-28 rounded-md border border-purple-200 px-2 text-right text-sm outline-none focus:ring-2 focus:ring-purple-200 disabled:bg-gray-100 disabled:text-gray-400"
+            value={draftSnapshotStocks[key] ?? ''}
+            onChange={(event) => handleSnapshotStockChange(item, event.target.value)}
+            onBlur={() => {
+              if (selectedIds.size === 0) saveItem(item);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && selectedIds.size === 0) {
+                event.currentTarget.blur();
+              }
+            }}
+            disabled={isSaving || !hasSnapshot}
+            inputMode="decimal"
+            placeholder={hasSnapshot ? '0.000' : '-'}
+            title={hasSnapshot ? 'Changer stock actuel du snapshot' : 'Pas de snapshot lie'}
+          />
+        </td>
         <td className="px-4 py-2 text-sm text-right text-gray-700">{formatMoney(item.prix_achat_bon)}</td>
         <td className="px-4 py-2 text-sm text-right text-gray-700">
           {item.prix_achat_snapshot == null ? '-' : formatMoney(item.prix_achat_snapshot)}
@@ -315,12 +444,13 @@ const SolverPrixAchatPage: React.FC = () => {
 
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         <div className="max-h-[calc(100vh-260px)] overflow-auto">
-          <table className="min-w-[1180px] w-full border-collapse">
+          <table className="min-w-[1400px] w-full border-collapse">
             <thead className="sticky top-0 z-10 bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Bon / snapshot</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Date</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Qte</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Stock bon</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Stock snapshot</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Prix bon</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Prix snapshot</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Cout snapshot</th>
@@ -331,11 +461,11 @@ const SolverPrixAchatPage: React.FC = () => {
             <tbody>
               {isFetching && !data ? (
                 <tr>
-                  <td className="px-4 py-8 text-center text-gray-500" colSpan={8}>Chargement...</td>
+                  <td className="px-4 py-8 text-center text-gray-500" colSpan={10}>Chargement...</td>
                 </tr>
               ) : filteredGroups.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-8 text-center text-gray-500" colSpan={8}>
+                  <td className="px-4 py-8 text-center text-gray-500" colSpan={10}>
                     Aucun produit avec une difference superieure au seuil.
                   </td>
                 </tr>
@@ -343,7 +473,7 @@ const SolverPrixAchatPage: React.FC = () => {
                 filteredGroups.map((group) => (
                   <React.Fragment key={`${group.product_id}:${group.variant_id || 0}`}>
                     <tr className="border-t border-gray-200 bg-slate-100">
-                      <td className="px-4 py-3" colSpan={8}>
+                      <td className="px-4 py-3" colSpan={10}>
                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                           <div>
                             <div className="text-sm font-semibold text-gray-900">

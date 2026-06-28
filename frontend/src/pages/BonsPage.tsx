@@ -46,7 +46,7 @@ import { useGetUiSettingsQuery } from '../store/api/uiSettingsApi';
   import { logout } from '../store/slices/authSlice';
   import { useAppDispatch, useAuth } from '../hooks/redux';
   import { canModifyBons } from '../utils/permissions';
-  import { useNavigate, useSearchParams } from 'react-router-dom';
+  import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
   
   
 
@@ -90,6 +90,11 @@ const normalizeHumanName = (value: unknown) => {
     .trim();
 };
 
+const readPositiveInteger = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+};
+
 const isKhezinAwatifName = (name: unknown) => {
   const n = normalizeHumanName(name);
   if (!n) return false;
@@ -107,8 +112,12 @@ const isContactBlocked = (contact: any) => {
 // eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [currentTab, setCurrentTab] = useState<BonTabKey>(() => getBonTabFromParam(searchParams.get('tab')) || 'Commande');
+  const restoredListState = (location.state as any)?.restoreListState;
+  const pendingListRestoreRef = useRef<any>(restoredListState || null);
+  const didRunFilterResetRef = useRef(false);
+  const [currentTab, setCurrentTab] = useState<BonTabKey>(() => getBonTabFromParam(restoredListState?.tab) || getBonTabFromParam(searchParams.get('tab')) || 'Commande');
   const changeCurrentTab = useCallback((tab: BonTabKey) => {
     setCurrentTab(tab);
     setSearchParams((prev) => {
@@ -131,9 +140,9 @@ const BonsPage = () => {
   const [isEcommerceRemiseModalOpen, setIsEcommerceRemiseModalOpen] = useState(false);
   const [selectedEcommerceForRemise, setSelectedEcommerceForRemise] = useState<any>(null);
   const [ecommerceRemiseDraftItems, setEcommerceRemiseDraftItems] = useState<Array<any>>([]);
-  const [searchInput, setSearchInput] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [searchInput, setSearchInput] = useState(() => String(restoredListState?.searchInput ?? restoredListState?.searchTerm ?? ''));
+  const [searchTerm, setSearchTerm] = useState(() => String(restoredListState?.searchTerm ?? ''));
+  const [statusFilter, setStatusFilter] = useState<string[]>(() => Array.isArray(restoredListState?.statusFilter) ? restoredListState.statusFilter : []);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
   const [isNewSupplierModalOpen, setIsNewSupplierModalOpen] = useState(false);
   const [isNewVehicleModalOpen, setIsNewVehicleModalOpen] = useState(false);
@@ -175,12 +184,12 @@ const BonsPage = () => {
   const [pendingOpenAvoirEcommercePicker, setPendingOpenAvoirEcommercePicker] = useState(false);
 
   // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(30);
+  const [currentPage, setCurrentPage] = useState(() => readPositiveInteger(restoredListState?.currentPage, 1));
+  const [itemsPerPage, setItemsPerPage] = useState(() => readPositiveInteger(restoredListState?.itemsPerPage, 30));
 
   // Sorting
-  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | null>('numero');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [sortField, setSortField] = useState<'numero' | 'date' | 'contact' | 'montant' | null>(() => restoredListState?.sortField ?? 'numero');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => restoredListState?.sortDirection === 'asc' ? 'asc' : 'desc');
 
   // Auth context
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -1352,6 +1361,11 @@ const BonsPage = () => {
     safeRefetchProducts();
   }, [currentPage, refetchBons, safeRefetchProducts]);
 
+  const refreshBonsPageKeepingPosition = useCallback(() => {
+    void refetchBons();
+    safeRefetchProducts();
+  }, [refetchBons, safeRefetchProducts]);
+
   // Fetch linked info for the visible bons
   const paginatedBonsIdsKey = useMemo(
     () => paginatedBons
@@ -1360,6 +1374,26 @@ const BonsPage = () => {
       .join(','),
     [paginatedBons]
   );
+
+  useEffect(() => {
+    const restore = pendingListRestoreRef.current;
+    if (!restore || bonsLoading) return;
+
+    pendingListRestoreRef.current = null;
+    window.setTimeout(() => {
+      const container = document.querySelector('.responsive-table-container') as HTMLElement | null;
+      if (container) {
+        container.scrollTop = readPositiveInteger(restore.tableScrollTop, 0);
+        container.scrollLeft = readPositiveInteger(restore.tableScrollLeft, 0);
+      }
+
+      window.scrollTo({
+        top: readPositiveInteger(restore.windowScrollY, 0),
+        left: readPositiveInteger(restore.windowScrollX, 0),
+        behavior: 'auto',
+      });
+    }, 0);
+  }, [bonsLoading, paginatedBonsIdsKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1705,6 +1739,10 @@ const BonsPage = () => {
 
   // Réinitialiser la page quand on change d'onglet ou de recherche
   useEffect(() => {
+    if (!didRunFilterResetRef.current) {
+      didRunFilterResetRef.current = true;
+      return;
+    }
     setCurrentPage(1);
   }, [currentTab, searchTerm, statusFilter, sortField, sortDirection]);
 
@@ -1993,11 +2031,30 @@ const BonsPage = () => {
     navigate(`/bons/create/${currentTab}`);
   };
 
+  const getCurrentListState = useCallback(() => {
+    const container = document.querySelector('.responsive-table-container') as HTMLElement | null;
+    return {
+      tab: currentTab,
+      currentPage,
+      itemsPerPage,
+      searchInput,
+      searchTerm,
+      statusFilter,
+      sortField,
+      sortDirection,
+      windowScrollX: window.scrollX,
+      windowScrollY: window.scrollY,
+      tableScrollTop: container?.scrollTop ?? 0,
+      tableScrollLeft: container?.scrollLeft ?? 0,
+    };
+  }, [currentPage, currentTab, itemsPerPage, searchInput, searchTerm, sortDirection, sortField, statusFilter]);
+
   const openEditPage = (bon: any) => {
     navigate(`/bons/edit/${currentTab}/${bon.id}`, {
       state: {
         initialValues: bon,
         returnTab: currentTab,
+        returnListState: getCurrentListState(),
       },
     });
   };
@@ -3732,7 +3789,7 @@ const BonsPage = () => {
               showSuccess(`${labelTab} ${getDisplayNumero(newBon)} mis Ã  jour avec succÃ¨s!`);
               setIsCreateModalOpen(false);
               setSelectedBon(null);
-              refreshFirstBonsPageAfterCreate();
+              refreshBonsPageKeepingPosition();
             }}
           />
         ) : isCreateModalOpen && (
@@ -3753,7 +3810,11 @@ const BonsPage = () => {
               if (newBon?.type && newBon.type !== effectiveCurrentTab) {
                 setCurrentTab(newBon.type);
               }
-              refreshFirstBonsPageAfterCreate();
+              if (selectedBon) {
+                refreshBonsPageKeepingPosition();
+              } else {
+                refreshFirstBonsPageAfterCreate();
+              }
             }}
           />
         )}
