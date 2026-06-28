@@ -29,6 +29,7 @@ import BonPrintModal from './BonPrintModal';
 import BonPrintTemplate from './BonPrintTemplate';
 import { generatePDFBlobFromElement } from '../utils/pdf';
 import { uploadBonPdf } from '../utils/uploads';
+import { printProductTicket } from '../utils/productTicketPrint';
 
 /* -------------------------- Select avec recherche -------------------------- */
 interface SearchableSelectProps {
@@ -1521,6 +1522,44 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     });
     return map;
   }, [products]);
+
+  const printCommandeProductTicket = useCallback((item: any) => {
+    const productId = item?.product_id;
+    const product = productId ? productMap.get(String(productId)) : null;
+    const variantId = item?.variant_id;
+    const variantMeta = variantId && productId ? variantCatalogMap.get(`${productId}:${variantId}`) : null;
+    const variant = variantId && product?.variants
+      ? (product.variants as any[]).find((v: any) => String(v?.id) === String(variantId))
+      : null;
+
+    const productName = String(
+      item?.designation ??
+        item?.product_designation ??
+        product?.designation ??
+        ''
+    ).trim();
+    const variantName = String(
+      item?.variant_name ??
+        variantMeta?.variantName ??
+        variant?.variant_name ??
+        ''
+    ).trim();
+    const reference = String(
+      item?.variant_reference ??
+        variantMeta?.variantReference ??
+        variant?.reference ??
+        item?.product_reference ??
+        product?.reference ??
+        productId ??
+        ''
+    ).trim();
+
+    printProductTicket({
+      name: productName,
+      variantName,
+      reference,
+    });
+  }, [productMap, variantCatalogMap]);
 
   const getEcommerceOrderRef = (o: any) => String(o?.numero || o?.order_number || o?.id || '');
 
@@ -5214,7 +5253,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 Profit
                               </th>
                             )}
-                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">
+                            <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[76px]">
                               Actions
                             </th>
                           </tr>
@@ -5608,7 +5647,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                 </td>
 
                                 {/* Variante */}
-                                <td className="px-1 py-2 w-[100px]">
+                                <td className="px-1 py-2 w-[130px]">
                                   {(() => {
                                     const product = products.find((p: any) => String(p.id) === String(values.items[index].product_id));
                                     const variants = product?.variants ?? [];
@@ -5836,13 +5875,24 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                     const basePriceAchat = Number(snapshotProd?.prix_achat) || Number(product?.prix_achat) || 0;
                                     const basePriceVente = getCatalogPrixVente(product, values.items[index].variant_id);
+                                    if (values.type === 'Commande') {
+                                      return (
+                                        <span className="inline-flex min-h-[36px] w-full items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-2 text-base font-semibold text-emerald-700">
+                                          {baseUnit}
+                                        </span>
+                                      );
+                                    }
                                     if (!product || units.length === 0) {
                                       const displayUnit = !product && values.items[index].unite ? values.items[index].unite : baseUnit;
-                                      return <span className="text-xs text-gray-400">{displayUnit}</span>;
+                                      return (
+                                        <span className="inline-flex min-h-[36px] w-full items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-2 text-base font-semibold text-emerald-700">
+                                          {displayUnit}
+                                        </span>
+                                      );
                                     }
                                     return (
                                       <select
-                                        className="w-full px-1 py-1 text-sm border rounded"
+                                        className="w-full min-h-[36px] rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-base font-semibold text-blue-800 outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500"
                                         disabled={isQtyOnlyEdit}
                                         value={values.items[index].unit_id || ''}
                                         onChange={(e) => {
@@ -6552,7 +6602,21 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
 
                                 {/* Actions */}
-<td className="px-1 py-2 w-[50px]">
+<td className="px-1 py-2 w-[76px]">
+  <div className="flex items-center gap-2">
+  {values.type === 'Commande' && (
+    <button
+      type="button"
+      onClick={() => printCommandeProductTicket(values.items[index])}
+      className="text-gray-600 hover:text-gray-900 disabled:opacity-60"
+      disabled={!values.items[index]?.product_id && !values.items[index]?.product_reference}
+      title="Imprimer ticket produit"
+      data-row={index}
+      data-col="print-ticket"
+    >
+      <Printer size={16} />
+    </button>
+  )}
   <button
     type="button"
     disabled={isQtyOnlyEdit}
@@ -6608,6 +6672,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   >
     <Trash2 size={16} />
   </button>
+  </div>
 </td>
 
                               </tr>

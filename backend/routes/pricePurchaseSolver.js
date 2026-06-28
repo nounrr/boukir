@@ -109,13 +109,31 @@ router.get('/anomalies', async (req, res) => {
     const keys = groups.map((g) => [Number(g.product_id), Number(g.variant_id || 0)]);
     const placeholders = keys.map(() => '(?, ?)').join(', ');
     const params = keys.flat();
+    const fallbackBonNumeroExpr = "CONCAT('CMD', LPAD(ci.bon_commande_id, GREATEST(CHAR_LENGTH(CAST(ci.bon_commande_id AS CHAR)), 4), '0'))";
+    const hasBonCommandeNumero = await columnExists(pool, 'bons_commande', 'numero');
+    const bonNumeroExpr = hasBonCommandeNumero
+      ? `
+        CASE
+          WHEN NULLIF(bc.numero, '') IS NULL THEN ${fallbackBonNumeroExpr}
+          WHEN bc.numero REGEXP '^CMD[0-9]+$' THEN CONCAT(
+            'CMD',
+            LPAD(
+              SUBSTRING(bc.numero, 4),
+              GREATEST(CHAR_LENGTH(SUBSTRING(bc.numero, 4)), 4),
+              '0'
+            )
+          )
+          ELSE bc.numero
+        END
+      `
+      : fallbackBonNumeroExpr;
 
     const [items] = await pool.query(
       `
       SELECT
         ci.id AS commande_item_id,
         ci.bon_commande_id,
-        CONCAT('CMD', LPAD(ci.bon_commande_id, 2, '0')) AS bon_numero,
+        ${bonNumeroExpr} AS bon_numero,
         bc.date_creation,
         bc.statut,
         ci.product_id,
@@ -126,6 +144,7 @@ router.get('/anomalies', async (req, res) => {
         pv.variant_name,
         ci.product_snapshot_id,
         ci.quantite,
+        ps.quantite AS quantite_snapshot,
         ci.prix_unitaire AS prix_achat_bon,
         ci.remise_pourcentage,
         ci.remise_montant,
@@ -135,8 +154,8 @@ router.get('/anomalies', async (req, res) => {
         ps.cout_revient_pourcentage AS snapshot_cout_revient_pourcentage,
         COALESCE(ps.prix_achat, ci.prix_unitaire) AS prix_achat_affiche,
         CASE
-          WHEN ci.product_snapshot_id IS NULL THEN CONCAT('CMD', LPAD(ci.bon_commande_id, 2, '0'), ' direct')
-          ELSE CONCAT('CMD', LPAD(ci.bon_commande_id, 2, '0'), ' - snapshot #', ci.product_snapshot_id)
+          WHEN ci.product_snapshot_id IS NULL THEN CONCAT(${bonNumeroExpr}, ' direct')
+          ELSE CONCAT(${bonNumeroExpr}, ' - snapshot #', ci.product_snapshot_id)
         END AS label
       FROM commande_items ci
       JOIN bons_commande bc ON bc.id = ci.bon_commande_id
@@ -174,6 +193,8 @@ router.get('/anomalies', async (req, res) => {
 router.patch('/commande-items/:id/prix-achat', async (req, res) => {
   const id = Number(req.params.id);
   const prixAchat = Number(req.body?.prix_achat);
+  const nextQuantite = req.body?.quantite === undefined ? null : Number(req.body?.quantite);
+  const nextSnapshotQuantite = req.body?.snapshot_quantite === undefined ? null : Number(req.body?.snapshot_quantite);
   const updateSnapshot = req.body?.update_snapshot !== false;
 
   if (!Number.isInteger(id) || id <= 0) {
@@ -182,6 +203,14 @@ router.patch('/commande-items/:id/prix-achat', async (req, res) => {
 
   if (!Number.isFinite(prixAchat) || prixAchat < 0) {
     return res.status(400).json({ message: "Prix d'achat invalide" });
+  }
+
+  if (nextQuantite !== null && (!Number.isFinite(nextQuantite) || nextQuantite < 0)) {
+    return res.status(400).json({ message: 'Stock du bon invalide' });
+  }
+
+  if (nextSnapshotQuantite !== null && (!Number.isFinite(nextSnapshotQuantite) || nextSnapshotQuantite < 0)) {
+    return res.status(400).json({ message: 'Stock snapshot invalide' });
   }
 
   const connection = await pool.getConnection();
@@ -209,7 +238,7 @@ router.patch('/commande-items/:id/prix-achat', async (req, res) => {
       return res.status(404).json({ message: 'Ligne bon commande introuvable' });
     }
 
-    const quantite = Number(item.quantite || 0);
+    const quantite = nextQuantite === null ? Number(item.quantite || 0) : nextQuantite;
     const remisePourcentage = Number(item.remise_pourcentage || 0);
     const remiseMontant = Number(item.remise_montant || 0);
     const brut = quantite * prixAchat;
@@ -219,13 +248,13 @@ router.patch('/commande-items/:id/prix-achat', async (req, res) => {
 
     if (await columnExists(connection, 'commande_items', 'cout_revient')) {
       await connection.execute(
-        'UPDATE commande_items SET prix_unitaire = ?, cout_revient = ?, total = ? WHERE id = ?',
-        [prixAchat, coutRevient, total, id]
+        'UPDATE commande_items SET quantite = ?, prix_unitaire = ?, cout_revient = ?, total = ? WHERE id = ?',
+        [quantite, prixAchat, coutRevient, total, id]
       );
     } else {
       await connection.execute(
-        'UPDATE commande_items SET prix_unitaire = ?, total = ? WHERE id = ?',
-        [prixAchat, total, id]
+        'UPDATE commande_items SET quantite = ?, prix_unitaire = ?, total = ? WHERE id = ?',
+        [quantite, prixAchat, total, id]
       );
     }
 
@@ -249,6 +278,13 @@ router.patch('/commande-items/:id/prix-achat', async (req, res) => {
       );
     }
 
+    if (nextSnapshotQuantite !== null && snapshotId) {
+      await connection.execute(
+        'UPDATE product_snapshot SET quantite = ? WHERE id = ?',
+        [nextSnapshotQuantite, snapshotId]
+      );
+    }
+
     await connection.execute(
       `
       UPDATE bons_commande bc
@@ -268,6 +304,8 @@ router.patch('/commande-items/:id/prix-achat', async (req, res) => {
       commande_item_id: id,
       bon_commande_id: item.bon_commande_id,
       product_snapshot_id: updateSnapshot ? snapshotId : null,
+      quantite,
+      snapshot_quantite: nextSnapshotQuantite,
       prix_achat: prixAchat,
       cout_revient: coutRevient,
       cout_revient_pourcentage: pct,

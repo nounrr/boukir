@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category } from '../types';
-import { Plus, Edit, Trash2, Search, Package, Settings, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -12,6 +12,7 @@ import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
 import * as XLSX from 'xlsx';
 import Swal from 'sweetalert2';
+import { printProductTicket } from '../utils/productTicketPrint';
 
 const StockPage: React.FC = () => {
   // const dispatch = useDispatch();
@@ -318,6 +319,8 @@ const StockPage: React.FC = () => {
             id: `var-${variant.id}`,
             originalId: product.id,
             designation: `${product.designation} - ${variant.variant_name}`,
+            parent_designation: product.designation,
+            variant_name: variant.variant_name,
             reference: variantReference || parentReference,
             variant_reference: variantReference,
             parent_reference: parentReference,
@@ -1088,7 +1091,17 @@ const StockPage: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {!product.est_service && !product.non_stockable && (
+                    {!product.est_service && !product.non_stockable && (() => {
+                      const unitOptions = unitOptionsForProduct(product);
+                      if (unitOptions.length <= 1) {
+                        return (
+                          <span className="text-sm text-gray-900">
+                            {unitOptions[0]?.label || product.base_unit || 'u'}
+                          </span>
+                        );
+                      }
+
+                      return (
                       <select
                         value={getSelectedUnitKey(product)}
                         onChange={(e) => {
@@ -1098,11 +1111,12 @@ const StockPage: React.FC = () => {
                         className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
                         title="Choisir l'unité d'affichage"
                       >
-                        {unitOptionsForProduct(product).map((opt) => (
+                        {unitOptions.map((opt) => (
                           <option key={opt.key} value={opt.key}>{opt.label}</option>
                         ))}
                       </select>
-                    )}
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(() => {
@@ -1164,6 +1178,19 @@ const StockPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => printProductTicket({
+                          name: String(product.isVariantRow ? (product.parent_designation || product.designation || '') : product.designation || ''),
+                          variantName: product.isVariantRow ? String(product.variant_name || '').trim() || null : null,
+                          reference: product.isVariantRow
+                            ? (product.variant_reference || product.parent_reference || product.reference || product.id)
+                            : (product.reference ?? product.id),
+                        })}
+                        className="text-gray-600 hover:text-gray-900"
+                        title="Imprimer ticket produit"
+                      >
+                        <Printer size={16} />
+                      </button>
                       <button
                         onClick={() => handleEdit(product)}
                         className="text-blue-600 hover:text-blue-900"
