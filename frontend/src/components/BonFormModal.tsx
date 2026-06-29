@@ -2590,7 +2590,11 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       const finalCR = scaleDecimal(bestCR, convFactor);
       const resolvedPA = finalPA;
       const resolvedCR = finalCR;
-      if (resolvedPA > 0 && currentPA !== resolvedPA) {
+      const isExistingCommandeLine =
+        String(formikRef.current?.values?.type || currentTab || '') === 'Commande' &&
+        Boolean(initialValues) &&
+        Boolean(item?.id);
+      if (!isExistingCommandeLine && resolvedPA > 0 && currentPA !== resolvedPA) {
         formikRef.current!.setFieldValue(`items.${idx}.prix_achat`, resolvedPA);
         anyPatched = true;
       }
@@ -3717,6 +3721,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
 
     (values.items || []).forEach((item: any, index: number) => {
       if (!item?.product_id) return;
+      // In edit mode, persisted rows must keep the price stored on the bon.
+      // "Dernier prix" is only a prefill for newly added rows.
+      if (initialValues && item?.id) return;
       const prefillKey = getPricePrefillKey(values, item, index);
       if (manuallyEditedPriceKeysRef.current.has(prefillKey)) return;
       const fallbackPrice = type === 'Commande'
