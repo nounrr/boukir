@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import type { Product, Category } from '../types';
-import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Package, Settings, Eye, Printer, Download } from 'lucide-react';
 import { selectProducts } from '../store/slices/productsSlice';
 import { selectCategories } from '../store/slices/categoriesSlice';
 import { useGetCategoriesQuery } from '../store/api/categoriesApi';
@@ -793,8 +793,10 @@ const StockPage: React.FC = () => {
             onClick={handlePrintStockPdf}
             disabled={isGeneratingStockPdf}
             className="flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            title="Télécharger le PDF du stock"
           >
-            {isGeneratingStockPdf ? 'PDF...' : 'Imprimer PDF'}
+            <Download size={20} />
+            {isGeneratingStockPdf ? 'PDF...' : 'Télécharger PDF'}
           </button>
           <button
             onClick={() => {
@@ -1187,9 +1189,9 @@ const StockPage: React.FC = () => {
                             : (product.reference ?? product.id),
                         })}
                         className="text-gray-600 hover:text-gray-900"
-                        title="Imprimer ticket produit"
+                        title="Télécharger ticket produit PDF"
                       >
-                        <Printer size={16} />
+                        <Download size={16} />
                       </button>
                       <button
                         onClick={() => handleEdit(product)}
