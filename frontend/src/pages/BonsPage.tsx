@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, Truck, RotateCcw } from 'lucide-react';
+  import { Plus, Search, Trash2, Edit, Eye, CheckCircle2, Clock, XCircle, Printer, Download, Copy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, Send, Package, Truck, RotateCcw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCreateBonLinkMutation, useGetBonLinksBatchMutation } from '../store/api/bonLinksApi';
 import { api } from '../store/api/apiSlice';
@@ -179,6 +179,7 @@ const BonsPage = () => {
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [sendingWhatsAppId, setSendingWhatsAppId] = useState<string | null>(null);
+  const [downloadingPdfBonId, setDownloadingPdfBonId] = useState<string | null>(null);
   const statusUpdateInProgressRef = useRef<Set<string>>(new Set());
   const [updatingStatusKeys, setUpdatingStatusKeys] = useState<Set<string>>(new Set());
   const [pendingOpenAvoirEcommercePicker, setPendingOpenAvoirEcommercePicker] = useState(false);
@@ -1487,6 +1488,78 @@ const BonsPage = () => {
     // Les bons sans contact backoffice gardent leur telephone propre.
     return phoneFromRow;
   };
+
+  const resolveBonPrintContacts = (bon: any) => {
+    const type = bon?.type || currentTab;
+    let resolvedClient: any;
+    let resolvedSupplier: any;
+    const isVendreFournisseur =
+      bon?.vendre_au_fournisseur === 1 ||
+      bon?.vendre_au_fournisseur === true ||
+      String(bon?.vendre_au_fournisseur) === '1';
+
+    if (['Commande', 'AvoirFournisseur'].includes(type) || (['Sortie', 'Avoir'].includes(type) && isVendreFournisseur)) {
+      const fournisseurId = bon?.fournisseur_id ?? bon?.contact_id;
+      if (fournisseurId && suppliers.length > 0) {
+        resolvedSupplier = suppliers.find((s: any) => String(s.id) === String(fournisseurId));
+      }
+      if (!resolvedSupplier && bon?.fournisseur_nom) {
+        resolvedSupplier = { nom_complet: bon.fournisseur_nom } as any;
+      }
+      return { resolvedClient, resolvedSupplier };
+    }
+
+    if (['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant', 'Devis'].includes(type)) {
+      const clientId = bon?.client_id ?? bon?.contact_id;
+      if (clientId && clients.length > 0) {
+        resolvedClient = clients.find((c: any) => String(c.id) === String(clientId));
+      }
+      if (!resolvedClient && bon?.client_nom) {
+        resolvedClient = { nom_complet: bon.client_nom } as any;
+      }
+    }
+
+    return { resolvedClient, resolvedSupplier };
+  };
+
+  const handleDownloadBonPdf = async (bon: any) => {
+    const bonKey = bon?.id != null ? String(bon.id) : '__unknown__';
+    setDownloadingPdfBonId(bonKey);
+
+    try {
+      const { resolvedClient, resolvedSupplier } = resolveBonPrintContacts(bon);
+      const pdfElement = (
+        <BonPrintTemplate
+          bon={bon}
+          client={resolvedClient}
+          fournisseur={resolvedSupplier}
+          products={products as any}
+          size="A4"
+          companyType="DIAMOND"
+          usePromo={false}
+        />
+      );
+
+      const pdfBlob = await generatePDFBlobFromElement(pdfElement);
+      const numero = getDisplayNumero(bon) || `bon-${bon?.id || 'document'}`;
+      const safeNumero = numero.replace(/[^a-zA-Z0-9_-]/g, '_') || `bon_${Date.now()}`;
+      const url = window.URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeNumero}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showSuccess('PDF telecharge');
+    } catch (error) {
+      console.error(error);
+      showError('Erreur lors du telechargement du PDF');
+    } finally {
+      setDownloadingPdfBonId(null);
+    }
+  };
+
   const handleSendWhatsAppFromRow = async (bon: any, skipConfirmation = false) => {
     // Debug helper to surface the media URL in case of error (needs outer scope for catch)
     let debugMediaUrl: string | null = null;
@@ -3083,16 +3156,14 @@ const BonsPage = () => {
                             <Printer size={ACTION_ICON_SIZE} />
                           </button>
                           
-                          {/* Always visible: Print PDF */}
+                          {/* Always visible: Download PDF */}
                           <button
-                            onClick={() => { 
-                              setSelectedBonForPDFPrint(bon); 
-                              setIsPrintModalOpen(true); 
-                            }}
-                            className="text-green-600 hover:text-green-800"
-                            title="Imprimer PDF (A4/A5)"
+                            onClick={() => handleDownloadBonPdf(bon)}
+                            className={`text-green-600 hover:text-green-800 ${downloadingPdfBonId === String(bon?.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            title={downloadingPdfBonId === String(bon?.id) ? 'Telechargement PDF...' : 'Telecharger PDF'}
+                            disabled={downloadingPdfBonId === String(bon?.id)}
                           >
-                            <Printer size={ACTION_ICON_SIZE} />
+                            <Download size={ACTION_ICON_SIZE} />
                           </button>
 
                           {/* WhatsApp: bouton visible dans la colonne Actions */}

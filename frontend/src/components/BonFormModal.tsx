@@ -1,9 +1,8 @@
-import { usePreviewMouvementMutation } from '../store/api/calcApi';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Formik, Form, Field, FieldArray, ErrorMessage, useFormikContext } from 'formik';
 import type { FormikProps } from 'formik';
 import * as Yup from 'yup';
-import { Plus, Trash2, Search, Printer } from 'lucide-react';
+import { Download, Plus, Trash2, Search, Printer } from 'lucide-react';
 import { showSuccess, showError, showConfirmation } from '../utils/notifications';
 import { sendWhatsApp } from '../utils/notifications';
 // Feature flag: show WhatsApp prompt popups after save/update
@@ -944,7 +943,6 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   comptantPartialPaymentMode = 'hidden',
   defaultVendreAuFournisseur = false,
 }) => {
-  const [previewMouvement, { data: mouvementPreviewResp, isLoading: mouvementPreviewLoading }] = usePreviewMouvementMutation();
 
   const { user, token } = useAuth();
   const dispatch = useDispatch();
@@ -2024,44 +2022,6 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
     return factor > 0 ? factor : 0;
   };
 
-  // Backend mouvement preview (debounced) to keep displayed mouvement aligned with server during edits
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // Only meaningful for these types (same as BonsPage column)
-    const type = String((formikRef.current?.values as any)?.type || currentTab || '');
-    if (!['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant'].includes(type)) return;
-
-    const handle = setTimeout(() => {
-      try {
-        const values = (formikRef.current?.values as any) || {};
-        const items = Array.isArray(values.items) ? values.items : [];
-        const payloadItems = items.map((item: any, idx: number) => {
-          const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
-          const enteredPrice = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
-          const rm = parseFloat(normalizeDecimal(remiseRaw[idx] ?? String(item.remise_montant ?? ''))) || 0;
-          const cr = parseFloat(normalizeDecimal(String(item.cout_revient ?? item.cout_rev ?? item.cout ?? ''))) || 0;
-          const pa = parseFloat(normalizeDecimal(String(item.prix_achat ?? item.pa ?? item.prixA ?? ''))) || 0;
-          const pu = type === 'Charge' && item?.product_id ? (cr || pa) : enteredPrice;
-          return {
-            ...item,
-            quantite: q,
-            prix_unitaire: pu,
-            remise_montant: rm,
-            cout_revient: cr,
-            prix_achat: pa,
-          };
-        });
-
-        previewMouvement({ type, items: payloadItems });
-      } catch {
-        // ignore preview errors
-      }
-    }, 350);
-
-    return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, currentTab, qtyRaw, unitPriceRaw, remiseRaw, showRemisePanel]);
   /* ----------------------- Initialisation des valeurs ----------------------- */
   const getInitialValues = () => {
   const isRequiredUnpaidComptant =
@@ -6617,11 +6577,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
       onClick={() => printCommandeProductTicket(values.items[index])}
       className="text-gray-600 hover:text-gray-900 disabled:opacity-60"
       disabled={!values.items[index]?.product_id && !values.items[index]?.product_reference}
-      title="Imprimer ticket produit"
+      title="Télécharger ticket produit PDF"
       data-row={index}
       data-col="print-ticket"
     >
-      <Printer size={16} />
+      <Download size={16} />
     </button>
   )}
   <button
@@ -6958,14 +6918,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
   <span className="text-md font-semibold text-green-700">Mouvement:</span>
   <span className="text-md font-semibold text-green-700">
     {(() => {
-      const backend = (mouvementPreviewResp as any)?.mouvement_calc;
-      if (backend && typeof backend.profit === 'number') {
-        return formatFull(Number(backend.profit || 0));
-      }
-      if (mouvementPreviewLoading) {
-        return '...';
-      }
-      // Fallback local calc if preview not available (with unit conversion)
       const local = (values.items || []).reduce((sum: number, item: any, idx: number) => {
         const q = parseFloat(normalizeDecimal(qtyRaw[idx] ?? String(item.quantite ?? ''))) || 0;
         const enteredPrice = parseFloat(normalizeDecimal(unitPriceRaw[idx] ?? String(item.prix_unitaire ?? ''))) || 0;
