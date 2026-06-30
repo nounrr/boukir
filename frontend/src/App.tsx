@@ -22,6 +22,7 @@ import EmployeeSelfPage from './pages/EmployeeSelfPage';
 import EmployeeArchivePage from './pages/EmployeeArchivePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
 import StockPage from './pages/StockPage';
+import StockDepot2Page from './pages/StockDepot2Page';
 import ContactsPage from './pages/ContactsPage';
 import ClientsPage, { ClientDetailPage } from './pages/ClientsPage';
 import FournisseursPage, { FournisseurDetailPage } from './pages/FournisseursPage';
@@ -233,6 +234,17 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <StockPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/stock-depot-2"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <StockDepot2Page />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

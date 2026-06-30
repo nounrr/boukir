@@ -25,6 +25,7 @@ import {
   Settings,
   ShieldCheck,
   BadgeDollarSign,
+  Warehouse,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -56,6 +57,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       title: 'Produits',
       items: [
         { name: 'Stock', href: '/stock', icon: Package, show: !isChefChauffeur },
+        { name: 'Stock dépôt 2', href: '/stock-depot-2', icon: Warehouse, show: !isChefChauffeur },
         { name: 'Produits Translate', href: '/products/translate', icon: Languages, show: !isChefChauffeur },
         { name: 'Inventaire', href: '/inventaire', icon: ClipboardList, show: !isChefChauffeur && user?.role !== undefined },
         { name: 'Catégories', href: '/categories', icon: Tags, show: !isChefChauffeur },
