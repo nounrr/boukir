@@ -62,6 +62,12 @@ const STATUT_COLORS: Record<string, string> = {
   'En attente': 'bg-yellow-100 text-yellow-700',
 };
 const statutColor = (s: string) => STATUT_COLORS[s] ?? 'bg-gray-100 text-gray-600';
+const mouvementCellClass = (value: number) =>
+  value > 0
+    ? 'mouvement-cell mouvement-positive bg-green-50/60'
+    : value < 0
+      ? 'mouvement-cell mouvement-negative bg-red-50/60'
+      : 'mouvement-cell mouvement-zero';
 
 const MODE_COLORS: Record<string, string> = {
   Espèces: 'bg-green-100 text-green-700',
@@ -254,9 +260,9 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                     <td className="px-3 py-2 text-center text-xs font-semibold text-gray-700">{qte}</td>
                     <td className="px-3 py-2 text-right text-xs text-gray-600">{fmt(pu)}</td>
                     <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
-                    <td className="px-3 py-2 text-right text-xs">
+                    <td className={`px-3 py-2 text-right text-xs ${mouvementCellClass(benefice)}`}>
                       {benefice != null
-                        ? <span className={`font-semibold ${benefice > 0 ? 'text-green-600' : benefice < 0 ? 'text-red-600' : 'text-gray-400'}`}>{fmt(benefice)}</span>
+                        ? <span className="font-semibold">{fmt(benefice)}</span>
                         : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-4 py-2">
@@ -1110,9 +1116,9 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                     <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">{fmt(total)}</td>
                     <td className="px-4 py-2 text-right text-xs font-semibold text-orange-700">-</td>
                     {/* Mouvement */}
-                    <td className="px-3 py-2 text-right text-xs">
+                    <td className={`px-3 py-2 text-right text-xs ${mouvementCellClass(benefice)}`}>
                       {benefice != null
-                        ? <span className={`font-semibold ${benefice > 0 ? 'text-green-600' : benefice < 0 ? 'text-red-600' : 'text-gray-400'}`}>{fmt(benefice)}</span>
+                        ? <span className="font-semibold">{fmt(benefice)}</span>
                         : <span className="text-gray-300">—</span>}
                     </td>
                     {/* Solde cumulé */}
@@ -2731,7 +2737,4 @@ const ClientsListPage: React.FC = () => {
 
 export { ClientDetailPage };
 export default ClientsListPage;
-
-
-
 
