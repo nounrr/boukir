@@ -14,8 +14,8 @@
   color: #111827 !important;
   font-weight: 700 !important;
 }
-.colored-row td:not(.solde-cumule-cell),
-.colored-row td:not(.solde-cumule-cell) *:not(.rounded-full) {
+.colored-row td:not(.solde-cumule-cell):not(.mouvement-cell),
+.colored-row td:not(.solde-cumule-cell):not(.mouvement-cell) *:not(.rounded-full) {
   color: #111827 !important;
   font-weight: 700 !important;
 }
@@ -37,6 +37,18 @@
    td:not(.solde-cumule-cell) excludes this cell from the !important override. */
 .colored-row td.solde-cumule-cell {
   color: #374151; /* gray-700 default for any non-spanned text */
+}
+.colored-row td.mouvement-positive,
+.colored-row td.mouvement-positive * {
+  color: #16a34a !important; /* green-600 */
+}
+.colored-row td.mouvement-negative,
+.colored-row td.mouvement-negative * {
+  color: #dc2626 !important; /* red-600 */
+}
+.colored-row td.mouvement-zero,
+.colored-row td.mouvement-zero * {
+  color: #9ca3af !important; /* gray-400 */
 }
 
 /* ========= Responsive Tables Utilities ========= */
