@@ -44,6 +44,7 @@ router.get('/anomalies', async (req, res) => {
           AND ci.quantite IS NOT NULL
           AND ci.quantite <> 0
           AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
           AND COALESCE(p.is_deleted, 0) = 0
 
         UNION ALL
@@ -60,6 +61,7 @@ router.get('/anomalies', async (req, res) => {
           AND ci.quantite IS NOT NULL
           AND ci.quantite <> 0
           AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.non_stockable, 0) = 0
           AND COALESCE(p.is_deleted, 0) = 0
       ),
       suspicious AS (
@@ -97,6 +99,7 @@ router.get('/anomalies', async (req, res) => {
        AND COALESCE(ci.variant_id, ps_count.variant_id, 0) = s.variant_key
       WHERE COALESCE(p.is_deleted, 0) = 0
         AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
         AND COALESCE(ci.variant_id, ps_count.variant_id, 0) = s.variant_key
       GROUP BY
         s.product_id,
@@ -175,6 +178,7 @@ router.get('/anomalies', async (req, res) => {
       LEFT JOIN product_variants pv ON pv.id = COALESCE(ci.variant_id, ps.variant_id)
       WHERE (ci.product_id, COALESCE(ci.variant_id, ps.variant_id, 0)) IN (${placeholders})
         AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.non_stockable, 0) = 0
         AND COALESCE(p.is_deleted, 0) = 0
         AND ci.quantite IS NOT NULL
         AND ci.quantite <> 0
@@ -235,6 +239,7 @@ router.patch('/commande-items/:id/prix-achat', async (req, res) => {
       SELECT
         ci.*,
         p.est_service,
+        p.non_stockable,
         p.cout_revient_pourcentage AS product_cout_revient_pourcentage,
         ps.cout_revient_pourcentage AS snapshot_cout_revient_pourcentage
       FROM commande_items ci
@@ -255,6 +260,11 @@ router.patch('/commande-items/:id/prix-achat', async (req, res) => {
     if (Number(item.est_service || 0) === 1) {
       await connection.rollback();
       return res.status(400).json({ message: 'Les produits service ne sont pas traites par le solver' });
+    }
+
+    if (Number(item.non_stockable || 0) === 1) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Les produits non stockables ne sont pas traites par le solver' });
     }
 
     const quantite = nextQuantite === null ? Number(item.quantite || 0) : nextQuantite;
