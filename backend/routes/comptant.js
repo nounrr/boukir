@@ -129,6 +129,7 @@ router.get('/', async (_req, res) => {
               'variant_id', ci.variant_id,
               'unit_id', ci.unit_id,
               'designation', p.designation,
+              'est_service', p.est_service,
               'quantite', ci.quantite,
               'prix_unitaire', ci.prix_unitaire,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
@@ -207,7 +208,8 @@ router.get('/', async (_req, res) => {
         const items = (b.items || []).map(it => {
           const q = Number(it?.quantite || 0);
           const pv = Number(it?.prix_unitaire || 0);
-          const cost = (it?.cout_revient ?? it?.prix_achat ?? 0);
+          const isService = it?.est_service === true || it?.est_service === 1 || it?.est_service === '1';
+          const cost = isService ? 0 : (it?.cout_revient ?? it?.prix_achat ?? 0);
           const remise = Number(it?.remise_montant || 0) * q;
           const itemProfit = (pv - Number(cost || 0)) * q;
           profit += itemProfit;
@@ -250,6 +252,7 @@ router.get('/:id', async (req, res) => {
               'variant_id', ci.variant_id,
               'unit_id', ci.unit_id,
               'designation', p.designation,
+              'est_service', p.est_service,
               'quantite', ci.quantite,
               'prix_unitaire', ci.prix_unitaire,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),

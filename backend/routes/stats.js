@@ -279,6 +279,7 @@ function getStatsDetailSign(type) {
     case 'Sortie':
     case 'Comptant':
     case 'Ecommerce':
+      return 1;
     case 'Charge':
       return -1;
     case 'Avoir':
@@ -288,6 +289,28 @@ function getStatsDetailSign(type) {
     case 'AvoirCharge':
     case 'Commande':
       return 1;
+    default:
+      return 1;
+  }
+}
+
+function getStatsDetailProfitSign(type) {
+  switch (type) {
+    case 'Sortie':
+    case 'Comptant':
+    case 'Ecommerce':
+      return 1;
+    case 'Avoir':
+    case 'AvoirComptant':
+    case 'AvoirEcommerce':
+    case 'AvoirFournisseur':
+      return -1;
+    case 'Charge':
+      return -1;
+    case 'AvoirCharge':
+      return 1;
+    case 'Commande':
+      return 0;
     default:
       return 1;
   }
@@ -567,7 +590,7 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         ${type === 'Ecommerce' ? `${itemAlias}.unit_price` : `${itemAlias}.prix_unitaire`} AS prix_unitaire,
         COALESCE(${type === 'Ecommerce' ? `${itemAlias}.subtotal` : `${itemAlias}.total`}, ${type === 'Ecommerce' ? `${itemAlias}.unit_price * ${itemAlias}.quantity` : `${itemAlias}.prix_unitaire * ${itemAlias}.quantite`}) AS total,
         ${type === 'Ecommerce' ? `COALESCE(${itemAlias}.remise_amount, 0)` : `COALESCE(${itemAlias}.remise_montant, 0)`} AS remise_montant,
-        ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} * COALESCE(pu.conversion_factor, 1) AS cout_revient
+        ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')} AS cout_revient
     `;
   };
 
@@ -806,7 +829,7 @@ function buildBaseCoutRevientExpr(productAlias = 'p', snapshotAlias = 'ps', vari
 }
 
 function buildConvertedCostExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv', unitAlias = 'pu') {
-  return `(${buildBaseCoutRevientExpr(productAlias, snapshotAlias, variantAlias)} * COALESCE(${unitAlias}.conversion_factor, 1))`;
+  return `(CASE WHEN COALESCE(${productAlias}.est_service, 0) = 1 THEN 0 ELSE ${buildBaseCoutRevientExpr(productAlias, snapshotAlias, variantAlias)} * COALESCE(${unitAlias}.conversion_factor, 1) END)`;
 }
 
 async function tryQuery(sql, params) {
@@ -886,9 +909,12 @@ router.get('/details', async (req, res) => {
       const signedQty = qty * sign;
       const signedTotal = total * sign;
       const signedRemise = remiseUnit * qty * sign;
-      const profit = ['Charge', 'AvoirCharge'].includes(bonType)
-        ? signedTotal
-        : ((unit - costUnit) * qty - remiseUnit * qty) * sign;
+      const profitSign = getStatsDetailProfitSign(bonType);
+      const profit = profitSign === 0
+        ? 0
+        : ['Charge', 'AvoirCharge'].includes(bonType)
+          ? total * profitSign
+          : ((unit - costUnit) * qty - remiseUnit * qty) * profitSign;
       const productLabel = [raw.product_reference, raw.designation].filter(Boolean).join(' - ') || `Produit ${productId}`;
       const productName = raw.designation || productLabel;
       const productClientId = useClientCondition ? realClientId : '__all__';
