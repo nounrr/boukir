@@ -736,18 +736,39 @@ router.get('/days/:date', async (req, res) => {
       return a.id.localeCompare(b.id);
     });
 
+    const initialCaisseActions = actions.filter(
+      (action) => action.sourceTable === 'fond_caisse_entries' && action.type === 'Fond initial caisse'
+    );
+    const activeInitialCaisseId = initialCaisseActions.reduce((selected, action) => {
+      if (!selected) return action.id;
+      const current = actions.find((item) => item.id === selected);
+      const currentTime = new Date(current?.date || 0).getTime();
+      const actionTime = new Date(action.date || 0).getTime();
+      if (actionTime !== currentTime) return actionTime > currentTime ? action.id : selected;
+      return Number(action.sourceId || 0) > Number(current?.sourceId || 0) ? action.id : selected;
+    }, '');
+
+    const affectsCaisseTotal = (action) => {
+      if (action.sourceTable === 'coffre') return false;
+      if (action.sourceTable === 'fond_caisse_entries' && action.type === 'Fond initial caisse') {
+        return action.id === activeInitialCaisseId;
+      }
+      return true;
+    };
+
     let cumulative = 0;
     const data = actions.map((action) => {
-      const signedAmount = action.direction === 'SORTIE' ? -action.amount : action.amount;
+      const affectsCaisse = affectsCaisseTotal(action);
+      const signedAmount = affectsCaisse ? (action.direction === 'SORTIE' ? -action.amount : action.amount) : 0;
       cumulative += signedAmount;
-      return { ...action, signedAmount, cumulative };
+      return { ...action, signedAmount, cumulative, affectsCaisse };
     });
 
     const totalEntrees = data
-      .filter((action) => action.direction === 'ENTREE')
+      .filter((action) => action.affectsCaisse && action.direction === 'ENTREE')
       .reduce((sum, action) => sum + action.amount, 0);
     const totalSorties = data
-      .filter((action) => action.direction === 'SORTIE')
+      .filter((action) => action.affectsCaisse && action.direction === 'SORTIE')
       .reduce((sum, action) => sum + action.amount, 0);
 
     res.json({
