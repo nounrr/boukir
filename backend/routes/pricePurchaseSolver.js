@@ -33,26 +33,34 @@ router.get('/anomalies', async (req, res) => {
       `
       WITH price_points AS (
         SELECT
+          ci.bon_commande_id,
           ci.product_id,
           COALESCE(ci.variant_id, ps.variant_id, 0) AS variant_key,
           ci.prix_unitaire AS prix
         FROM commande_items ci
+        JOIN products p ON p.id = ci.product_id
         LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
         WHERE ci.prix_unitaire IS NOT NULL
           AND ci.quantite IS NOT NULL
           AND ci.quantite <> 0
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.is_deleted, 0) = 0
 
         UNION ALL
 
         SELECT
+          ci.bon_commande_id,
           ci.product_id,
           COALESCE(ci.variant_id, ps.variant_id, 0) AS variant_key,
           ps.prix_achat AS prix
         FROM commande_items ci
+        JOIN products p ON p.id = ci.product_id
         JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
         WHERE ps.prix_achat IS NOT NULL
           AND ci.quantite IS NOT NULL
           AND ci.quantite <> 0
+          AND COALESCE(p.est_service, 0) = 0
+          AND COALESCE(p.is_deleted, 0) = 0
       ),
       suspicious AS (
         SELECT
@@ -61,10 +69,12 @@ router.get('/anomalies', async (req, res) => {
           MIN(prix) AS min_prix_achat,
           MAX(prix) AS max_prix_achat,
           MAX(prix) - MIN(prix) AS difference_prix,
+          COUNT(DISTINCT bon_commande_id) AS nb_bons_points,
           COUNT(*) AS nb_points_prix
         FROM price_points
         GROUP BY product_id, variant_key
         HAVING MAX(prix) - MIN(prix) >= ?
+           AND COUNT(DISTINCT bon_commande_id) > 1
       )
       SELECT
         s.product_id,
@@ -86,6 +96,7 @@ router.get('/anomalies', async (req, res) => {
         ON ps_count.id = ci.product_snapshot_id
        AND COALESCE(ci.variant_id, ps_count.variant_id, 0) = s.variant_key
       WHERE COALESCE(p.is_deleted, 0) = 0
+        AND COALESCE(p.est_service, 0) = 0
         AND COALESCE(ci.variant_id, ps_count.variant_id, 0) = s.variant_key
       GROUP BY
         s.product_id,
@@ -163,6 +174,8 @@ router.get('/anomalies', async (req, res) => {
       LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
       LEFT JOIN product_variants pv ON pv.id = COALESCE(ci.variant_id, ps.variant_id)
       WHERE (ci.product_id, COALESCE(ci.variant_id, ps.variant_id, 0)) IN (${placeholders})
+        AND COALESCE(p.est_service, 0) = 0
+        AND COALESCE(p.is_deleted, 0) = 0
         AND ci.quantite IS NOT NULL
         AND ci.quantite <> 0
       ORDER BY p.designation ASC, COALESCE(ci.variant_id, ps.variant_id, 0) ASC, bc.date_creation ASC, ci.id ASC
@@ -221,6 +234,7 @@ router.patch('/commande-items/:id/prix-achat', async (req, res) => {
       `
       SELECT
         ci.*,
+        p.est_service,
         p.cout_revient_pourcentage AS product_cout_revient_pourcentage,
         ps.cout_revient_pourcentage AS snapshot_cout_revient_pourcentage
       FROM commande_items ci
@@ -236,6 +250,11 @@ router.patch('/commande-items/:id/prix-achat', async (req, res) => {
     if (!item) {
       await connection.rollback();
       return res.status(404).json({ message: 'Ligne bon commande introuvable' });
+    }
+
+    if (Number(item.est_service || 0) === 1) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Les produits service ne sont pas traites par le solver' });
     }
 
     const quantite = nextQuantite === null ? Number(item.quantite || 0) : nextQuantite;
