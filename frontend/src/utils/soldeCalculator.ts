@@ -25,6 +25,16 @@ const num = (v: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const paymentAmountWithIgnored = (payment: any) =>
+  num(payment?.montant_total ?? payment?.montant ?? 0) + num(payment?.montant_ignorer ?? 0);
+
+const bonAmountWithIgnored = (bon: any) => {
+  const base = num(bon?.montant_total ?? 0);
+  return bon?.type === 'Comptant' || bon?.bon_type === 'Comptant'
+    ? base + num(bon?.montant_ignorer ?? 0)
+    : base;
+};
+
 export function computeContactSoldeCumule(contact: SoldeTotals | null | undefined): number {
   if (!contact) return 0;
   const solde = num(contact.solde);
@@ -176,7 +186,7 @@ export function calculateContactSoldeHistory(
   const transactions = [
     ...contactBons.map((bon: Bon) => {
       const isAvoir = bon.type === 'Avoir' || bon.type === 'AvoirFournisseur' || bon.type === 'AvoirComptant' || bon.type === 'AvoirEcommerce';
-      const montant = Number(bon.montant_total ?? 0);
+      const montant = bonAmountWithIgnored(bon);
       return {
         type: 'bon' as const,
         date: bon.date_creation || (bon as any).created_at,
@@ -199,7 +209,7 @@ export function calculateContactSoldeHistory(
       numero: `PAI-${p.numero || p.id}`,
       typeLabel: p.mode_paiement || 'Paiement',
       debit: 0,
-      credit: Number(p.montant ?? p.montant_total ?? 0),
+      credit: paymentAmountWithIgnored(p),
       soldeCumule: 0, // sera calculé après
       id: p.id,
       data: p

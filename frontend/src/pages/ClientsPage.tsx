@@ -196,7 +196,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                     <Calendar className="w-3.5 h-3.5 text-gray-400" />{fmtDate(b.date_creation)}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
+                <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmt(getBonTableTotal(prefix, b))}</td>
                 <td className="px-4 py-3">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
                 </td>
@@ -213,7 +213,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
                   <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
                 <td className="px-3 py-2.5 text-gray-400 text-xs italic" colSpan={8}>—</td>
-                <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
+                <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(getBonTableTotal(prefix, b))}</td>
                 {detail && <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>}
                 <td className="px-4 py-2.5">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statutColor(b.statut ?? '')}`}>{b.statut ?? '—'}</span>
@@ -224,10 +224,10 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
 
           return (
             <React.Fragment key={b.id}>
-              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx: number) => {
+              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx: number, groups) => {
                 const qte = Number(item.quantite ?? 0);
                 const pu = Number(item.prix_unitaire ?? 0);
-                const total = Number(item.total ?? (qte * pu));
+                const total = Number(item.total ?? (qte * pu)) + (groupIdx === groups.length - 1 && (prefix === 'COM' || prefix === 'CPT') ? safeNum(b.montant_ignorer ?? 0) : 0);
                 const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
                 const variantLabel = getHistoryVariantLabel(item, products);
                 const unitLabel = getHistoryUnitLabel(item, products);
@@ -284,7 +284,7 @@ const BonTable: React.FC<BonTableProps> = ({ bons, detail, products = [], prefix
           </td>}
           {detail && <td className="bg-gray-100/10" />} {/* Prix unit */}
           <td className="px-4 py-2.5 text-right font-bold text-gray-900 bg-gray-100/30">
-            {fmt(bons.reduce((s: number, b: any) => s + (b.montant_total ?? 0), 0))}
+            {fmt(bons.reduce((s: number, b: any) => s + getBonTableTotal(prefix, b), 0))}
           </td>
           {detail && <td className="px-3 py-2.5 text-right font-bold text-emerald-700 bg-emerald-50/20">
              {fmt(bons.reduce((s, b) => s + (Array.isArray(b.items) ? b.items.reduce((is: number, i: any) => is + (computeHistoryItemBenefice(i, products) ?? 0), 0) : 0), 0))}
@@ -350,6 +350,26 @@ function safeNum(v: any): number {
   return isNaN(n) ? 0 : n;
 }
 
+function getPaymentTotalWithIgnored(payment: any): number {
+  return safeNum(payment?.montant_total ?? payment?.montant ?? 0) + safeNum(payment?.montant_ignorer ?? 0);
+}
+
+function getBonComptantTotalWithIgnored(bon: any): number {
+  return safeNum(bon?.montant_total ?? bon?.montant ?? 0) + safeNum(bon?.montant_ignorer ?? 0);
+}
+
+function getBonTableTotal(prefix: string, bon: any): number {
+  return prefix === 'COM' || prefix === 'CPT'
+    ? getBonComptantTotalWithIgnored(bon)
+    : safeNum(bon?.montant_total ?? bon?.montant ?? 0);
+}
+
+function getBonTotalForSolde(kind: string, bon: any): number {
+  return kind === 'comptant'
+    ? getBonComptantTotalWithIgnored(bon)
+    : safeNum(bon?.montant_total ?? bon?.montant ?? 0);
+}
+
 function isAnnuleStatut(value: any): boolean {
   const status = String(value ?? '').trim().toLowerCase();
   return status.startsWith('annul');
@@ -398,17 +418,32 @@ function getDisplayRemiseClientTotal(item: any, remises: any[], bonId?: number |
   return Number((split.abonne + split.client).toFixed(3));
 }
 
+function isTruthyServiceFlag(value: any): boolean {
+  return value === true || value === 1 || value === '1' || String(value ?? '').toLowerCase() === 'true';
+}
+
+function isHistoryServiceItem(item: any, product: any): boolean {
+  return [
+    item?.est_service,
+    item?.is_service,
+    item?.service,
+    item?.product_est_service,
+    item?.produit_est_service,
+    item?.snapshot_est_service,
+    item?.product_snapshot_est_service,
+    item?.product?.est_service,
+    item?.produit?.est_service,
+    item?.snapshot?.est_service,
+    item?.product_snapshot?.est_service,
+    product?.est_service,
+    product?.is_service,
+  ].some(isTruthyServiceFlag);
+}
+
 function resolveHistoryItemCost(item: any, products: any[]): number {
   if (item == null) return 0;
   const product = findHistoryProduct(item, products);
-  const isService =
-    item?.est_service === true ||
-    item?.est_service === 1 ||
-    item?.est_service === '1' ||
-    product?.est_service === true ||
-    product?.est_service === 1 ||
-    product?.est_service === '1';
-  if (isService) return 0;
+  if (isHistoryServiceItem(item, product)) return 0;
   if (item.cout_revient !== undefined && item.cout_revient !== null) return Number(item.cout_revient) || 0;
   if (item.prix_achat !== undefined && item.prix_achat !== null) return Number(item.prix_achat) || 0;
   const pid = item.product_id || item.produit_id;
@@ -493,8 +528,10 @@ function computeHistoryItemBenefice(item: any, products: any[]): number | null {
 
   const qte = Number(item.quantite ?? 0) || 0;
   const prixUnit = Number(item.prix_unitaire ?? item.prix ?? 0) || 0;
-  const cost = resolveHistoryItemCost(item, products);
-  const mouvement = (prixUnit - cost) * qte;
+  const product = findHistoryProduct(item, products);
+  const mouvement = isHistoryServiceItem(item, product)
+    ? prixUnit * qte
+    : (prixUnit - resolveHistoryItemCost(item, products)) * qte;
 
   const remisePourcentage = parseFloat(String(item.remise_pourcentage ?? item.remise_pct ?? 0)) || 0;
   const remiseMontant = parseFloat(String(item.remise_montant ?? item.remise_valeur ?? 0)) || 0;
@@ -565,7 +602,9 @@ function buildSoldeCumule(rows: CompletRow[], soldeInitial: number): Map<string,
   const result = new Map<string, number>();
   let running = isNaN(soldeInitial) ? 0 : soldeInitial;
   for (const row of rows) {
-    const montant = safeNum(row.data.montant_total ?? row.data.montant ?? 0);
+    const montant = row.kind === 'paiement'
+      ? getPaymentTotalWithIgnored(row.data)
+      : getBonTotalForSolde(row.kind, row.data);
     if (row.kind === 'sortie' || row.kind === 'comptant') {
       running += montant;
     } else if (row.kind === 'avoir' || row.kind === 'paiement') {
@@ -585,18 +624,19 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
   let running = isNaN(soldeInitial) ? 0 : soldeInitial;
   for (const row of rows) {
     if (row.kind === 'paiement') {
-      const montant = safeNum(row.data.montant_total ?? row.data.montant ?? 0);
+      const montant = getPaymentTotalWithIgnored(row.data);
       running -= montant;
       result.set(`paiement-${row.data.id}`, running);
     } else {
       const items: any[] = Array.isArray(row.data.items) ? row.data.items.filter((i: any) => i && i.id) : [];
       if (items.length === 0) {
-        const montant = safeNum(row.data.montant_total ?? row.data.montant ?? 0);
+        const montant = getBonTotalForSolde(row.kind, row.data);
         if (row.kind === 'sortie' || row.kind === 'comptant') running += montant;
         else running -= montant;
         result.set(`${row.kind}-${row.data.id}-item-0`, running);
       } else {
-        const bonMontant = safeNum(row.data.montant_total ?? row.data.montant ?? 0);
+        const bonMontant = getBonTotalForSolde(row.kind, row.data);
+        const ignoredExtra = row.kind === 'comptant' ? safeNum(row.data.montant_ignorer ?? 0) : 0;
         const itemsSum = items.reduce((s: number, i: any) => {
           return s + safeNum(i.total ?? (safeNum(i.quantite) * safeNum(i.prix_unitaire)));
         }, 0);
@@ -604,7 +644,7 @@ function buildSoldeCumuleDetail(rows: CompletRow[], soldeInitial: number): Map<s
           const rawTotal = safeNum(item.total ?? (safeNum(item.quantite) * safeNum(item.prix_unitaire)));
           const total = itemsSum === 0
             ? (iIdx === items.length - 1 ? bonMontant : 0)
-            : rawTotal;
+            : rawTotal + (iIdx === items.length - 1 ? ignoredExtra : 0);
           if (row.kind === 'sortie' || row.kind === 'comptant') running += total;
           else running -= total;
           result.set(`${row.kind}-${row.data.id}-item-${iIdx}`, running);
@@ -872,7 +912,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   </td>
                 )}
                 <td className="px-4 py-2.5 text-right font-semibold text-white">
-                  {fmt(Number(p.montant_total ?? p.montant ?? 0))}
+                  {fmt(getPaymentTotalWithIgnored(p))}
                 </td>
                 <td className="px-4 py-2.5 text-right font-semibold text-orange-700">
                   {fmt(Number(p.montant_ignorer ?? 0))}
@@ -918,7 +958,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" />{fmtDate(b.date_creation)}</span>
                 </td>
                 <td className="px-4 py-2.5 text-gray-300 text-xs">—</td>
-                <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
+                <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(getBonTotalForSolde(row.kind, b))}</td>
                 <td className="px-4 py-2.5 text-right font-semibold text-orange-700">-</td>
                 <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
                   {fmtSolde(soldeCumuleMap.get(bonKey) ?? 0)}
@@ -974,7 +1014,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 {showRemiseInputs && <td className="px-3 py-2.5 text-gray-300 text-xs bg-orange-50/40">—</td>}
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
                 <td className="px-3 py-2.5 text-gray-400 text-xs">—</td>
-                <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(b.montant_total ?? 0)}</td>
+                <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(getBonTotalForSolde(row.kind, b))}</td>
                 <td className="px-4 py-2.5 text-right font-semibold text-orange-700">-</td>
                 <td className="px-3 py-2.5 text-gray-300 text-xs">—</td>
                 <td className="solde-cumule-cell px-4 py-2.5 text-right bg-yellow-50 border-l border-yellow-200">
@@ -991,10 +1031,10 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
 
           return (
             <React.Fragment key={`${bonKey}-${idx}`}>
-              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx) => {
+              {groupDisplayItems(items).map(({ item, sourceItems, sourceIndices }, groupIdx, groups) => {
                 const qte = Number(item.quantite ?? 0);
                 const pu = Number(item.prix_unitaire ?? 0);
-                const total = Number(item.total ?? (qte * pu));
+                const total = Number(item.total ?? (qte * pu)) + (groupIdx === groups.length - 1 && row.kind === 'comptant' ? safeNum(b.montant_ignorer ?? 0) : 0);
                 const benefice = sourceItems.reduce((sum, src) => sum + (computeHistoryItemBenefice(src, products) ?? 0), 0);
                 const variantLabel = getHistoryVariantLabel(item, products);
                 const unitLabel = getHistoryUnitLabel(item, products);
@@ -1394,8 +1434,8 @@ const ClientDetailPage: React.FC = () => {
         va = new Date(a.date_paiement || a.created_at).getTime();
         vb = new Date(b.date_paiement || b.created_at).getTime();
       } else if (paySort.col === 'montant') {
-        va = Number(a.montant_total ?? a.montant ?? 0);
-        vb = Number(b.montant_total ?? b.montant ?? 0);
+        va = getPaymentTotalWithIgnored(a);
+        vb = getPaymentTotalWithIgnored(b);
       } else if (paySort.col === 'montant_ignorer') {
         va = Number(a.montant_ignorer ?? 0);
         vb = Number(b.montant_ignorer ?? 0);
@@ -1605,7 +1645,7 @@ const ClientDetailPage: React.FC = () => {
           code_reglement: data.code_reglement || data.reference_virement || data.reference || null,
           quantite: 0,
           prix_unitaire: 0,
-          total: Number(data.montant_total ?? data.montant ?? 0),
+          total: getPaymentTotalWithIgnored(data),
           bon_statut: data.statut ?? '',
           soldeCumulatif: -(soldeCumuleMap.get(`paiement-${data.id}`) ?? 0),
           type: 'paiement',
@@ -1624,7 +1664,7 @@ const ClientDetailPage: React.FC = () => {
           product_designation: '—',
           quantite: 0,
           prix_unitaire: 0,
-          total: Number(data.montant_total ?? 0),
+          total: getBonTotalForSolde(kind, data),
           adresse_livraison: adresseLivraison,
           bon_statut: data.statut ?? '',
           soldeCumulatif: -(soldeCumuleMap.get(`${kind}-${data.id}-item-0`) ?? 0),
@@ -1638,7 +1678,7 @@ const ClientDetailPage: React.FC = () => {
         if (selectedItemIds.size > 0 && !selectedItemIds.has(itemKey)) return;
         const qte = Number(item.quantite ?? 0);
         const pu = Number(item.prix_unitaire ?? 0);
-        const total = Number(item.total ?? (qte * pu));
+        const total = Number(item.total ?? (qte * pu)) + (kind === 'comptant' && iIdx === items.length - 1 ? safeNum(data.montant_ignorer ?? 0) : 0);
         result.push({
           id: itemKey,
           bon_numero: bonNum,
@@ -1985,7 +2025,7 @@ const ClientDetailPage: React.FC = () => {
                                     {rib ? <span className="flex items-center gap-1.5 text-gray-700 font-mono text-xs"><Hash className="w-3 h-3 text-gray-400" />{rib}</span>
                                          : <span className="text-gray-300 text-xs">—</span>}
                                   </td>
-                                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmt(Number(p.montant_total ?? p.montant ?? 0))}</td>
+                                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmt(getPaymentTotalWithIgnored(p))}</td>
                                   <td className="px-4 py-3 text-right font-semibold text-orange-700">{fmt(Number(p.montant_ignorer ?? 0))}</td>
                                 </tr>
                               )}
@@ -2000,7 +2040,7 @@ const ClientDetailPage: React.FC = () => {
                     <tr>
                       <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-gray-600">Total</td>
                       <td className="px-4 py-2 text-right font-bold text-green-700">
-                        {fmt(paiements.reduce((s: number, p: any) => s + Number(p.montant_total ?? p.montant ?? 0), 0))}
+                        {fmt(paiements.reduce((s: number, p: any) => s + getPaymentTotalWithIgnored(p), 0))}
                       </td>
                       <td className="px-4 py-2 text-right font-bold text-orange-700">
                         {fmt(totalMontantIgnorerPaiements)}
