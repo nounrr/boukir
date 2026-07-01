@@ -823,16 +823,27 @@ const ContactsPage: React.FC = () => {
 
     const resolveCost = (it: any) => {
       if (it == null) return 0;
-      if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
-      if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
+      if (it?.est_service === true || it?.est_service === 1 || it?.est_service === '1') return 0;
       const pid = it.product_id || it.produit_id;
       if (pid) {
         const prod = (products as any[]).find((p) => String(p.id) === String(pid));
         if (prod) {
+          const isService =
+            it?.est_service === true ||
+            it?.est_service === 1 ||
+            it?.est_service === '1' ||
+            prod?.est_service === true ||
+            prod?.est_service === 1 ||
+            prod?.est_service === '1';
+          if (isService) return 0;
+          if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
+          if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
           if (prod.cout_revient !== undefined && prod.cout_revient !== null) return Number(prod.cout_revient) || 0;
           if (prod.prix_achat !== undefined && prod.prix_achat !== null) return Number(prod.prix_achat) || 0;
         }
       }
+      if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
+      if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
       return 0;
     };
 
@@ -1427,13 +1438,24 @@ const ContactsPage: React.FC = () => {
         }
         const q = Number(it.quantite) || 0;
         const cost = (() => {
-          if (it.cout_revient != null) return Number(it.cout_revient) || 0;
-          if (it.prix_achat != null) return Number(it.prix_achat) || 0;
+          if (it?.est_service === true || it?.est_service === 1 || it?.est_service === '1') return 0;
           const pid = it.product_id || it.produit_id;
           if (pid) {
             const p2 = (products as any[]).find((p) => String(p.id) === String(pid));
+            const isService =
+              it?.est_service === true ||
+              it?.est_service === 1 ||
+              it?.est_service === '1' ||
+              p2?.est_service === true ||
+              p2?.est_service === 1 ||
+              p2?.est_service === '1';
+            if (isService) return 0;
+            if (it.cout_revient != null) return Number(it.cout_revient) || 0;
+            if (it.prix_achat != null) return Number(it.prix_achat) || 0;
             if (p2) return Number(p2.cout_revient ?? p2.prix_achat ?? 0) || 0;
           }
+          if (it.cout_revient != null) return Number(it.cout_revient) || 0;
+          if (it.prix_achat != null) return Number(it.prix_achat) || 0;
           return 0;
         })();
         const mouvement = (prixUnit - cost) * q;
@@ -2248,16 +2270,27 @@ const ContactsPage: React.FC = () => {
 
         const resolveCost = (it: any) => {
           if (it == null) return 0;
-          if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
-          if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
+          if (it?.est_service === true || it?.est_service === 1 || it?.est_service === '1') return 0;
           const pid = it.product_id || it.produit_id;
           if (pid) {
             const prod = (products as any[]).find(p => String(p.id) === String(pid));
             if (prod) {
+              const isService =
+                it?.est_service === true ||
+                it?.est_service === 1 ||
+                it?.est_service === '1' ||
+                prod?.est_service === true ||
+                prod?.est_service === 1 ||
+                prod?.est_service === '1';
+              if (isService) return 0;
+              if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
+              if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
               if (prod.cout_revient !== undefined && prod.cout_revient !== null) return Number(prod.cout_revient) || 0;
               if (prod.prix_achat !== undefined && prod.prix_achat !== null) return Number(prod.prix_achat) || 0;
             }
           }
+          if (it.cout_revient !== undefined && it.cout_revient !== null) return Number(it.cout_revient) || 0;
+          if (it.prix_achat !== undefined && it.prix_achat !== null) return Number(it.prix_achat) || 0;
           return 0;
         };
 

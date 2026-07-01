@@ -1282,6 +1282,7 @@ router.get('/:id/history', async (req, res) => {
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'designation', p.designation,
+              'est_service', p.est_service,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', ${averageSnapshotCoutRevientExpr('si')},
               'quantite', si.quantite,
@@ -1312,6 +1313,7 @@ router.get('/:id/history', async (req, res) => {
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'designation', p.designation,
+              'est_service', p.est_service,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', ${averageSnapshotCoutRevientExpr('ci')},
               'quantite', ci.quantite,
@@ -1342,6 +1344,7 @@ router.get('/:id/history', async (req, res) => {
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'designation', p.designation,
+              'est_service', p.est_service,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', ${averageSnapshotCoutRevientExpr('chi')},
               'quantite', chi.quantite,
@@ -1402,6 +1405,7 @@ router.get('/:id/history', async (req, res) => {
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ci.product_id AS CHAR)),
               'designation', p.designation,
+              'est_service', p.est_service,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', ${averageSnapshotCoutRevientExpr('ci')},
               'quantite', ci.quantite,
@@ -1432,6 +1436,7 @@ router.get('/:id/history', async (req, res) => {
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(si.product_id AS CHAR)),
               'designation', p.designation,
+              'est_service', p.est_service,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', ${averageSnapshotCoutRevientExpr('si')},
               'quantite', si.quantite,
@@ -1463,6 +1468,7 @@ router.get('/:id/history', async (req, res) => {
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'designation', p.designation,
+              'est_service', p.est_service,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', ${averageSnapshotCoutRevientExpr('ai')},
               'quantite', ai.quantite,
@@ -1493,6 +1499,7 @@ router.get('/:id/history', async (req, res) => {
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(afi.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(afi.product_id AS CHAR)),
               'designation', p.designation,
+              'est_service', p.est_service,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', ${averageSnapshotCoutRevientExpr('afi')},
               'quantite', afi.quantite,
@@ -1523,6 +1530,7 @@ router.get('/:id/history', async (req, res) => {
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(ai.product_id AS CHAR)),
               'designation', p.designation,
+              'est_service', p.est_service,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', ${averageSnapshotCoutRevientExpr('ai')},
               'quantite', ai.quantite,
@@ -1692,7 +1700,8 @@ router.get('/:id/history', async (req, res) => {
         const q = Number(it.quantite || 0) || 0;
         const prixUnit = Number(it.prix_unitaire || 0) || 0;
         const total = Number(it.total ?? (q * prixUnit)) || 0;
-        const cost = Number(it.cout_revient ?? it.prix_achat ?? 0) || 0;
+        const isService = it?.est_service === true || it?.est_service === 1 || it?.est_service === '1';
+        const cost = isService ? 0 : (Number(it.cout_revient ?? it.prix_achat ?? 0) || 0);
         const remiseMontant = Number(it.remise_montant || 0) || 0;
         historyRows.push({
           id: `${b.id}-${it.product_id}-${it.id ?? historyRows.length}`,
@@ -2295,3 +2304,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 export default router;
+

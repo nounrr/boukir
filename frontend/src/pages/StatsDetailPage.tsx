@@ -36,6 +36,9 @@ const getBonRowBg = (bonType: string): string => {
   }
 };
 
+const stickyHeaderClass = 'sticky top-0 z-10 bg-white shadow-sm';
+const stickySubHeaderClass = 'sticky top-0 z-20 bg-gray-100 shadow-sm';
+
 const StatsDetailPage: React.FC = () => {
   const { user } = useSelector((state: RootState) => state.auth);
   const navigate = useNavigate();
@@ -316,16 +319,16 @@ const StatsDetailPage: React.FC = () => {
 };
 
 const StatsProductClientsTable: React.FC<{ row: any; expanded: Record<string, boolean>; setExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>> }> = ({ row, expanded, setExpanded }) => (
-  <div className="overflow-x-auto">
+  <div className="max-h-[65vh] overflow-auto">
     <table className="w-full divide-y divide-gray-200">
-      <thead className="bg-white">
+      <thead>
         <tr>
-          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ventes</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Quantité</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">Remise</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+          <th className={`px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Client</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Ventes</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Quantité</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Montant</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase ${stickyHeaderClass}`}>Remise</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Profit</th>
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-gray-200">
@@ -354,22 +357,22 @@ const StatsProductClientsTable: React.FC<{ row: any; expanded: Record<string, bo
 const StatsDetailsRows: React.FC<{ details: any[] }> = ({ details }) => (
   <tr className="bg-gray-50/60">
     <td colSpan={6} className="px-4 pb-4 pt-0">
-      <div className="mt-2 border border-gray-200 rounded-md bg-white overflow-x-auto">
+      <div className="mt-2 max-h-[45vh] overflow-auto border border-gray-200 rounded-md bg-white">
         <table className="w-full text-xs">
-          <thead className="bg-gray-100">
+          <thead>
             <tr>
-              <th className="px-2 py-1 text-left">Bon</th>
-              <th className="px-2 py-1 text-left">Type</th>
-              <th className="px-2 py-1 text-left">Date</th>
-              <th className="px-2 py-1 text-left">Variante</th>
-              <th className="px-2 py-1 text-left">Unité</th>
-              <th className="px-2 py-1 text-right">Qté</th>
-              <th className="px-2 py-1 text-right">P.Unit</th>
-              <th className="px-2 py-1 text-right">Coût</th>
-              <th className="px-2 py-1 text-right">Total</th>
-              <th className="px-2 py-1 text-right text-amber-600">Remise</th>
-              <th className="px-2 py-1 text-right">Profit</th>
-              <th className="px-2 py-1 text-left">Statut</th>
+              <th className={`px-2 py-1 text-left ${stickySubHeaderClass}`}>Bon</th>
+              <th className={`px-2 py-1 text-left ${stickySubHeaderClass}`}>Type</th>
+              <th className={`px-2 py-1 text-left ${stickySubHeaderClass}`}>Date</th>
+              <th className={`px-2 py-1 text-left ${stickySubHeaderClass}`}>Variante</th>
+              <th className={`px-2 py-1 text-left ${stickySubHeaderClass}`}>Unité</th>
+              <th className={`px-2 py-1 text-right ${stickySubHeaderClass}`}>Qté</th>
+              <th className={`px-2 py-1 text-right ${stickySubHeaderClass}`}>P.Unit</th>
+              <th className={`px-2 py-1 text-right ${stickySubHeaderClass}`}>Coût</th>
+              <th className={`px-2 py-1 text-right ${stickySubHeaderClass}`}>Total</th>
+              <th className={`px-2 py-1 text-right text-amber-600 ${stickySubHeaderClass}`}>Remise</th>
+              <th className={`px-2 py-1 text-right ${stickySubHeaderClass}`}>Profit</th>
+              <th className={`px-2 py-1 text-left ${stickySubHeaderClass}`}>Statut</th>
             </tr>
           </thead>
           <tbody>
@@ -397,16 +400,16 @@ const StatsDetailsRows: React.FC<{ details: any[] }> = ({ details }) => (
 );
 
 const StatsClientProductsTable: React.FC<{ row: any }> = ({ row }) => (
-  <div className="overflow-x-auto">
+  <div className="max-h-[65vh] overflow-auto">
     <table className="w-full divide-y divide-gray-200">
-      <thead className="bg-white">
+      <thead>
         <tr>
-          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Produit</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ventes</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Quantité</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase">Remise</th>
-          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
+          <th className={`px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Produit</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Ventes</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Quantité</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Montant</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-amber-600 uppercase ${stickyHeaderClass}`}>Remise</th>
+          <th className={`px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase ${stickyHeaderClass}`}>Profit</th>
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-gray-200">
@@ -426,3 +429,4 @@ const StatsClientProductsTable: React.FC<{ row: any }> = ({ row }) => (
 );
 
 export default StatsDetailPage;
+

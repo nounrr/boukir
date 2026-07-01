@@ -15,8 +15,14 @@ export const computeMouvementCalc = ({ type, items }) => {
     const prixVente = Number(it?.prix_unitaire ?? 0) || 0;
 
     let cost = 0;
-    if (it?.cout_revient !== undefined && it?.cout_revient !== null) cost = Number(it.cout_revient) || 0;
-    else if (it?.prix_achat !== undefined && it?.prix_achat !== null) cost = Number(it.prix_achat) || 0;
+    const isService =
+      it?.est_service === true ||
+      it?.est_service === 1 ||
+      it?.est_service === '1';
+    if (!isService) {
+      if (it?.cout_revient !== undefined && it?.cout_revient !== null) cost = Number(it.cout_revient) || 0;
+      else if (it?.prix_achat !== undefined && it?.prix_achat !== null) cost = Number(it.prix_achat) || 0;
+    }
 
     const remiseUnitaire = Number(it?.remise_montant ?? it?.remise_valeur ?? it?.remise_amount ?? 0) || 0;
     const remiseTotale = remiseUnitaire * q;

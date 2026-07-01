@@ -350,10 +350,17 @@ function getHistoryUnitLabel(item: any, products: any[]): string {
 
 function resolveHistoryItemCost(item: any, products: any[]): number {
   if (item == null) return 0;
+  const product = findHistoryProduct(item, products);
+  const isService =
+    item?.est_service === true ||
+    item?.est_service === 1 ||
+    item?.est_service === '1' ||
+    product?.est_service === true ||
+    product?.est_service === 1 ||
+    product?.est_service === '1';
+  if (isService) return 0;
   if (item.cout_revient !== undefined && item.cout_revient !== null) return Number(item.cout_revient) || 0;
   if (item.prix_achat !== undefined && item.prix_achat !== null) return Number(item.prix_achat) || 0;
-
-  const product = findHistoryProduct(item, products);
   if (!product) return 0;
 
   const variantId = item?.variant_id ?? item?.variantId;

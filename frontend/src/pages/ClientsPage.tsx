@@ -400,12 +400,19 @@ function getDisplayRemiseClientTotal(item: any, remises: any[], bonId?: number |
 
 function resolveHistoryItemCost(item: any, products: any[]): number {
   if (item == null) return 0;
+  const product = findHistoryProduct(item, products);
+  const isService =
+    item?.est_service === true ||
+    item?.est_service === 1 ||
+    item?.est_service === '1' ||
+    product?.est_service === true ||
+    product?.est_service === 1 ||
+    product?.est_service === '1';
+  if (isService) return 0;
   if (item.cout_revient !== undefined && item.cout_revient !== null) return Number(item.cout_revient) || 0;
   if (item.prix_achat !== undefined && item.prix_achat !== null) return Number(item.prix_achat) || 0;
-
   const pid = item.product_id || item.produit_id;
   if (pid) {
-    const product = (products || []).find((p: any) => String(p.id) === String(pid));
     if (product) {
       const variantId = item.variant_id ?? item.variantId;
       if (variantId) {
