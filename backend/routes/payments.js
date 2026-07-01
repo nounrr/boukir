@@ -185,6 +185,8 @@ const toPayment = (r) => ({
   date_ajout_reelle: r.date_ajout_reelle || null,
 });
 
+const paymentPaidAmount = (payment) => Math.max(Number(payment?.montant_total || 0) || 0, 0);
+
 // normalize statut to canonical French labels
 function mapToCanonical(s) {
   if (s == null || s === '') return 'En attente';
@@ -467,7 +469,7 @@ router.get('/paged', verifyToken, async (req, res) => {
       numero: 'p.id',
       date: 'COALESCE(p.date_paiement, p.created_at)',
       contact: 'COALESCE(p.remise_account_name, c.nom_complet)',
-      montant: 'GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0)',
+      montant: 'COALESCE(p.montant_total, 0)',
       montant_ignorer: 'p.montant_ignorer',
       echeance: 'COALESCE(p.date_echeance, "9999-12-31")',
       id: 'p.id',
@@ -482,12 +484,12 @@ router.get('/paged', verifyToken, async (req, res) => {
 
     const [totalsRows] = await pool.query(
       `SELECT
-         COALESCE(SUM(GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0)), 0) AS totalEncaissements,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Espèces' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalEspeces,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Chèque' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalCheques,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Virement' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalVirements,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Traite' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalTraites,
-         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Remise' THEN GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0) ELSE 0 END), 0) AS totalRemises
+         COALESCE(SUM(COALESCE(p.montant_total, 0)), 0) AS totalEncaissements,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Espèces' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalEspeces,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Chèque' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalCheques,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Virement' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalVirements,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Traite' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalTraites,
+         COALESCE(SUM(CASE WHEN p.mode_paiement = 'Remise' THEN COALESCE(p.montant_total, 0) ELSE 0 END), 0) AS totalRemises
        FROM payments p ${joins} ${whereSql}`,
       params
     );
@@ -557,7 +559,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
 
     const contactId = Number(payment.contact_id);
     if (!Number.isFinite(contactId) || contactId <= 0) {
-      const amount = Math.max((Number(payment.montant_total || 0) || 0) - (Number(payment.montant_ignorer || 0) || 0), 0);
+      const amount = paymentPaidAmount(payment);
       return res.json({
         paymentId,
         contactId: null,
@@ -631,7 +633,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
         kind: 'payment',
         id: row.id,
         date: row.date_paiement || row.created_at,
-        delta: -Math.max((Number(row.montant_total || 0) || 0) - (Number(row.montant_ignorer || 0) || 0), 0),
+        delta: -paymentPaidAmount(row),
       });
     }
 
@@ -653,7 +655,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
     }
 
     if (!found) {
-      const amount = Math.max((Number(payment.montant_total || 0) || 0) - (Number(payment.montant_ignorer || 0) || 0), 0);
+      const amount = paymentPaidAmount(payment);
       soldeAvant = solde;
       soldeApres = solde - amount;
     }
@@ -663,7 +665,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
       contactId,
       contactType,
       soldeAvant: Number(soldeAvant.toFixed(3)),
-      montantPaiement: Math.max((Number(payment.montant_total || 0) || 0) - (Number(payment.montant_ignorer || 0) || 0), 0),
+      montantPaiement: paymentPaidAmount(payment),
       soldeApres: Number(soldeApres.toFixed(3)),
     });
   } catch (err) {

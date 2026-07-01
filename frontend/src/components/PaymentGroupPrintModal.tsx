@@ -42,7 +42,7 @@ const ignoredAmountOf = (p: any) => {
   return isNaN(num) ? 0 : num;
 };
 
-const amountOf = (p: any) => Math.max(grossAmountOf(p) - ignoredAmountOf(p), 0);
+const amountOf = (p: any) => Math.max(grossAmountOf(p), 0);
 
 const formatDateTime = (val: any): string => {
   if (!val) return '';
@@ -115,7 +115,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
   const groupId = firstPayment?.payment_group_id || '';
   const totalPaid = payments.reduce((s, p) => s + amountOf(p), 0);
   const totalIgnored = payments.reduce((s, p) => s + ignoredAmountOf(p), 0);
-  const totalGross = payments.reduce((s, p) => s + grossAmountOf(p), 0);
+  const totalGross = totalPaid + totalIgnored;
   const isClient = firstPayment.type_paiement === 'Client' || printBalance?.contactType === 'Client' || (!!client && !fournisseur);
   const contact = client || fournisseur;
   const contactDisplayName = (
@@ -368,7 +368,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
                           <td className="border border-gray-300 px-3 py-2 text-center">{formatDateTime(p.date_paiement)}</td>
                           <td className="border border-gray-300 px-3 py-2 text-right font-medium text-green-700">+{amountOf(p).toFixed(2)}</td>
                           {showIgnored && <td className="border border-gray-300 px-3 py-2 text-right font-medium text-orange-700">{ignoredAmountOf(p).toFixed(2)}</td>}
-                          <td className="border border-gray-300 px-3 py-2 text-right font-medium text-gray-700">{grossAmountOf(p).toFixed(2)}</td>
+                          <td className="border border-gray-300 px-3 py-2 text-right font-medium text-gray-700">{(amountOf(p) + ignoredAmountOf(p)).toFixed(2)}</td>
                           <td className="border border-gray-300 px-3 py-2 text-right">-</td>
                         </tr>
                       ))}

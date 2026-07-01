@@ -517,7 +517,7 @@ const CaissePage = () => {
   const getPaymentGrossAmount = (payment: Payment | any) => Number(payment?.montant ?? payment?.montant_total ?? 0) || 0;
   const getPaymentIgnoredAmount = (payment: Payment | any) => Number(payment?.montant_ignorer ?? 0) || 0;
   const getPaymentPaidAmount = (payment: Payment | any) =>
-    Math.max(getPaymentGrossAmount(payment) - getPaymentIgnoredAmount(payment), 0);
+    Math.max(getPaymentGrossAmount(payment), 0);
 
   const sortedPayments = useMemo(() => {
     return payments;
