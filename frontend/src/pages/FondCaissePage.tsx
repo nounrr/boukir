@@ -7,6 +7,7 @@ import {
   CalendarDays,
   DollarSign,
   Eye,
+  PlusCircle,
   Wallet,
   X,
 } from 'lucide-react';
@@ -16,7 +17,7 @@ import { showError, showSuccess } from '../utils/notifications';
 type FondCaisseEntry = {
   id: number;
   montant: number;
-  entryType: 'caisse_initial' | 'coffre_initial' | 'transfer_to_coffre' | 'transfer_to_poche' | 'coffre_transfer_to_poche';
+  entryType: 'caisse_initial' | 'caisse_libre' | 'coffre_initial' | 'transfer_to_coffre' | 'transfer_to_poche' | 'coffre_transfer_to_poche';
   modePaiement?: 'Espece' | 'Virement' | 'Cheque';
   note?: string;
   openedAt: string;
@@ -29,6 +30,7 @@ type FondCaisseMouvement = {
   bonComptantPaye?: number;
   paiementBonComptantNonPaye?: number;
   paiementClientCaisse?: number;
+  montantLibreCaisse?: number;
   avoirChargeInclusCaisse?: number;
   transfertVersCoffre?: number;
   transfertVersPoche?: number;
@@ -60,6 +62,7 @@ type Row = {
   bonComptantPaye: number;
   paiementBonComptantNonPaye: number;
   paiementClientCaisse: number;
+  montantLibreCaisse: number;
   avoirChargeInclusCaisse: number;
   transfertVersCoffre: number;
   transfertVersPoche: number;
@@ -72,7 +75,7 @@ type Row = {
 
 type PaymentMode = 'Espece' | 'Virement' | 'Cheque';
 
-type ModalKind = 'caisse' | 'coffre' | 'transfert' | 'poche';
+type ModalKind = 'caisse' | 'libre' | 'coffre' | 'transfert' | 'poche';
 
 type FondTab = 'caisse' | 'coffre';
 
@@ -112,6 +115,14 @@ const modalConfig: Record<ModalKind, {
     buttonClass: 'bg-blue-600 hover:bg-blue-700',
     iconBg: 'bg-emerald-100 text-emerald-700',
     icon: Wallet,
+  },
+  libre: {
+    title: 'Montant libre caisse',
+    subtitle: 'Ajouter une entree manuelle a la caisse',
+    submitLabel: 'Ajouter',
+    buttonClass: 'bg-emerald-600 hover:bg-emerald-700',
+    iconBg: 'bg-emerald-100 text-emerald-700',
+    icon: PlusCircle,
   },
   coffre: {
     title: 'Debut coffre',
@@ -155,6 +166,7 @@ const FondCaissePage = () => {
   const [openedAt, setOpenedAt] = useState<string>(nowLocalInput);
   const [sourcePoche, setSourcePoche] = useState<'caisse' | 'coffre'>('caisse');
   const [descriptionPoche, setDescriptionPoche] = useState('');
+  const [descriptionLibre, setDescriptionLibre] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -290,6 +302,7 @@ const FondCaissePage = () => {
           bonComptantPaye: num(mv.bonComptantPaye),
           paiementBonComptantNonPaye: num(mv.paiementBonComptantNonPaye),
           paiementClientCaisse: num(mv.paiementClientCaisse),
+          montantLibreCaisse: num(mv.montantLibreCaisse),
           avoirChargeInclusCaisse: num(mv.avoirChargeInclusCaisse),
           transfertVersCoffre: num(mv.transfertVersCoffre),
           transfertVersPoche: num(mv.transfertVersPoche),
@@ -321,6 +334,7 @@ const FondCaissePage = () => {
     setOpenedAt(nowLocalInput());
     setSourcePoche('caisse');
     setDescriptionPoche('');
+    setDescriptionLibre('');
     setActiveModal(kind);
   };
 
@@ -344,6 +358,8 @@ const FondCaissePage = () => {
     const entryType: FondCaisseEntry['entryType'] =
       activeModal === 'caisse'
         ? 'caisse_initial'
+        : activeModal === 'libre'
+          ? 'caisse_libre'
         : activeModal === 'coffre'
           ? 'coffre_initial'
           : activeModal === 'transfert'
@@ -354,6 +370,8 @@ const FondCaissePage = () => {
     const successMessage =
       activeModal === 'caisse'
         ? 'Fond de caisse enregistre.'
+        : activeModal === 'libre'
+          ? 'Montant libre ajoute a la caisse.'
         : activeModal === 'coffre'
           ? 'Fond de coffre enregistre.'
           : activeModal === 'transfert'
@@ -370,7 +388,7 @@ const FondCaissePage = () => {
           openedAt,
           entryType,
           modePaiement: mode,
-          note: activeModal === 'poche' ? descriptionPoche : undefined,
+          note: activeModal === 'poche' ? descriptionPoche : activeModal === 'libre' ? descriptionLibre : undefined,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -572,6 +590,9 @@ const FondCaissePage = () => {
                           <div className="mt-1 text-xs font-normal text-gray-500">Comptant: {row.bonComptantPaye.toFixed(2)}</div>
                           <div className="text-xs font-normal text-gray-500">Paiem. comptant: {row.paiementBonComptantNonPaye.toFixed(2)}</div>
                           <div className="text-xs font-normal text-gray-500">Paiem. client: {row.paiementClientCaisse.toFixed(2)}</div>
+                          {row.montantLibreCaisse > 0 && (
+                            <div className="text-xs font-normal text-gray-500">Montant libre: {row.montantLibreCaisse.toFixed(2)}</div>
+                          )}
                           {row.avoirChargeInclusCaisse > 0 && (
                             <div className="text-xs font-normal text-gray-500">Avoir charge: {row.avoirChargeInclusCaisse.toFixed(2)}</div>
                           )}
@@ -726,6 +747,18 @@ const FondCaissePage = () => {
                   ))}
                 </select>
               </div>
+              {activeModal === 'libre' && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
+                  <input
+                    type="text"
+                    value={descriptionLibre}
+                    onChange={(e) => setDescriptionLibre(e.target.value)}
+                    placeholder="Description"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  />
+                </div>
+              )}
               {activeModal === 'poche' && (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>

@@ -204,6 +204,7 @@ const mapCoffreEntry = (row) => ({
 
 const ALLOWED_ENTRY_TYPES = new Set([
   'caisse_initial',
+  'caisse_libre',
   'coffre_initial',
   'transfer_to_coffre',
   'transfer_to_poche',
@@ -254,6 +255,7 @@ function mergeMovement(target, jour, values) {
     bonComptantPaye: 0,
     paiementBonComptantNonPaye: 0,
     paiementClientCaisse: 0,
+    montantLibreCaisse: 0,
     avoirChargeInclusCaisse: 0,
     bonChargeInclusCaisse: 0,
     bonCommandeInclusCaisse: 0,
@@ -276,7 +278,7 @@ router.get('/entries', async (req, res) => {
       `SELECT *
          FROM fond_caisse_entries
         WHERE jour BETWEEN ? AND ?
-          AND entry_type IN ('caisse_initial', 'transfer_to_coffre', 'transfer_to_poche')
+          AND entry_type IN ('caisse_initial', 'caisse_libre', 'transfer_to_coffre', 'transfer_to_poche')
         ORDER BY opened_at DESC, id DESC`,
       [dateFrom, dateTo]
     );
@@ -463,6 +465,7 @@ router.get('/days/:date', async (req, res) => {
             opened_at AS action_date,
             CASE
               WHEN entry_type = 'caisse_initial' THEN 'Fond initial caisse'
+              WHEN entry_type = 'caisse_libre' THEN 'Montant libre caisse'
               WHEN entry_type = 'transfer_to_coffre' THEN 'Transfert vers coffre'
               WHEN entry_type = 'transfer_to_poche' THEN 'Transfert vers poche'
               ELSE 'Fond initial'
@@ -474,6 +477,7 @@ router.get('/days/:date', async (req, res) => {
             montant AS amount,
             CASE
               WHEN entry_type = 'caisse_initial' THEN CONCAT('FC-', id)
+              WHEN entry_type = 'caisse_libre' THEN CONCAT('MLC-', id)
               WHEN entry_type = 'transfer_to_coffre' THEN CONCAT('TRC-', id)
               WHEN entry_type = 'transfer_to_poche' THEN CONCAT('TRP-', id)
               ELSE CONCAT('FND-', id)
@@ -485,6 +489,7 @@ router.get('/days/:date', async (req, res) => {
               note,
               CASE
                 WHEN entry_type = 'caisse_initial' THEN 'Fond de caisse saisi'
+                WHEN entry_type = 'caisse_libre' THEN 'Montant libre ajoute a la caisse'
                 WHEN entry_type = 'transfer_to_coffre' THEN 'Montant retire de la caisse et place dans le coffre'
                 WHEN entry_type = 'transfer_to_poche' THEN 'Montant retire de la caisse et transfere vers poche'
                 ELSE 'Ecriture de caisse'
@@ -492,7 +497,7 @@ router.get('/days/:date', async (req, res) => {
             ) AS description
           FROM fond_caisse_entries
           WHERE jour = ?
-            AND entry_type IN ('caisse_initial', 'transfer_to_coffre', 'transfer_to_poche')
+            AND entry_type IN ('caisse_initial', 'caisse_libre', 'transfer_to_coffre', 'transfer_to_poche')
         `,
       },
       {
@@ -859,6 +864,17 @@ router.get('/mouvements', async (req, res) => {
         `,
       },
       {
+        label: 'montant_libre_caisse',
+        field: 'montantLibreCaisse',
+        sql: `
+          SELECT DATE(opened_at) AS jour, COALESCE(SUM(montant), 0) AS total
+            FROM fond_caisse_entries
+           WHERE DATE(opened_at) BETWEEN ? AND ?
+             AND entry_type = 'caisse_libre'
+           GROUP BY DATE(opened_at)
+        `,
+      },
+      {
         label: 'transfert_vers_coffre',
         field: 'transfertVersCoffre',
         sql: `
@@ -977,6 +993,7 @@ router.get('/mouvements', async (req, res) => {
         const bonComptantPaye = toNumber(row.bonComptantPaye);
         const paiementBonComptantNonPaye = toNumber(row.paiementBonComptantNonPaye);
         const paiementClientCaisse = toNumber(row.paiementClientCaisse);
+        const montantLibreCaisse = toNumber(row.montantLibreCaisse);
         const avoirChargeInclusCaisse = toNumber(row.avoirChargeInclusCaisse);
         const transfertVersCoffre = toNumber(row.transfertVersCoffre);
         const transfertVersPoche = toNumber(row.transfertVersPoche);
@@ -985,7 +1002,7 @@ router.get('/mouvements', async (req, res) => {
         const bonCommandeInclusCaisse = toNumber(row.bonCommandeInclusCaisse);
         const bonVehicule = toNumber(row.bonVehicule);
         const avoirComptant = toNumber(row.avoirComptant);
-        const entrees = bonComptantPaye + paiementBonComptantNonPaye + paiementClientCaisse + avoirChargeInclusCaisse;
+        const entrees = bonComptantPaye + paiementBonComptantNonPaye + paiementClientCaisse + montantLibreCaisse + avoirChargeInclusCaisse;
         const sorties = bonChargeInclusCaisse + bonCommandeInclusCaisse + bonVehicule + avoirComptant + transfertVersCoffre + transfertVersPoche;
 
         return {
@@ -993,6 +1010,7 @@ router.get('/mouvements', async (req, res) => {
           bonComptantPaye,
           paiementBonComptantNonPaye,
           paiementClientCaisse,
+          montantLibreCaisse,
           avoirChargeInclusCaisse,
           transfertVersCoffre,
           transfertVersPoche,
