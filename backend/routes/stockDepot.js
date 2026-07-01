@@ -3,6 +3,8 @@ import pool from '../db/pool.js';
 
 const router = express.Router();
 const DEPOT_2_CODE = 'DEPOT_2';
+const SEARCH_COLLATION = 'utf8mb4_unicode_ci';
+const searchText = (expr) => `CONVERT((${expr}) USING utf8mb4) COLLATE ${SEARCH_COLLATION}`;
 
 const normalizeSqlDateTime = (value) => {
   if (!value) return new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -166,7 +168,7 @@ router.get('/depot-2/stock', async (req, res, next) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 30, 1), 100);
     const offset = (page - 1) * limit;
     const where = q
-      ? `AND LOWER(CONCAT_WS(' ', p.id, p.designation, pv.variant_name, pv.reference)) LIKE ?`
+      ? `AND LOWER(${searchText("CONCAT_WS(' ', p.id, p.designation, pv.variant_name, pv.reference)")}) LIKE LOWER(${searchText('?')})`
       : '';
     const params = q ? [`%${q}%`] : [];
 
@@ -262,7 +264,7 @@ router.get('/depot-2/transfer-products', async (req, res, next) => {
     const q = String(req.query.q || '').trim().toLowerCase();
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 80, 1), 200);
     const where = q
-      ? `AND LOWER(CONCAT_WS(' ', p.id, p.designation, pv.variant_name, pv.reference)) LIKE ?`
+      ? `AND LOWER(${searchText("CONCAT_WS(' ', p.id, p.designation, pv.variant_name, pv.reference)")}) LIKE LOWER(${searchText('?')})`
       : '';
     const params = q ? [`%${q}%`] : [];
 
@@ -358,7 +360,7 @@ router.get('/depot-2/transfer-products', async (req, res, next) => {
            WHERE COALESCE(p.is_deleted, 0) = 0
              AND COALESCE(p.has_variants, 0) = 0
              AND NOT EXISTS (SELECT 1 FROM product_snapshot ps2 WHERE ps2.product_id = p.id AND ps2.variant_id IS NULL)
-             ${q ? `AND LOWER(CONCAT_WS(' ', p.id, p.designation)) LIKE ?` : ''}
+             ${q ? `AND LOWER(${searchText("CONCAT_WS(' ', p.id, p.designation)")}) LIKE LOWER(${searchText('?')})` : ''}
 
            UNION ALL
 

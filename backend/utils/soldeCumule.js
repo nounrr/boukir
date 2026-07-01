@@ -16,6 +16,7 @@ const BALANCE_EXPR = `
     WHEN c.type = 'Client' THEN
       COALESCE(c.solde, 0)
       - COALESCE(ventes_client.total_ventes, 0)
+      - COALESCE(ventes_comptant.total_ventes, 0)
       - COALESCE(ventes_ecommerce.total_ventes, 0)
       + COALESCE(paiements_client.total_paiements, 0)
       + COALESCE(avoirs_client.total_avoirs, 0)
@@ -29,6 +30,9 @@ const BALANCE_EXPR = `
     ELSE COALESCE(c.solde, 0)
   END
 `;
+
+const PAYMENT_TOTAL_SQL = `COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0)`;
+const COMPTANT_TOTAL_SQL = `COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0)`;
 
 /**
  * Returns a numeric cumulative balance for a contact.
@@ -53,6 +57,14 @@ export async function getContactSoldeCumule(db, contactId) {
         AND statut IN ('En attente','Validé','Livré','Facturé')
         AND LOWER(TRIM(statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
     ) ventes_client ON c.type = 'Client'
+
+    -- Ventes client = bons_comptant
+    LEFT JOIN (
+      SELECT SUM(${COMPTANT_TOTAL_SQL}) AS total_ventes
+      FROM bons_comptant
+      WHERE client_id = ?
+        AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
+    ) ventes_comptant ON c.type = 'Client'
 
     -- Ventes e-commerce: uniquement is_solde = 1 (sauf annulées/remboursées)
     LEFT JOIN (
@@ -89,7 +101,7 @@ export async function getContactSoldeCumule(db, contactId) {
 
     -- Paiements client
     LEFT JOIN (
-      SELECT SUM(montant_total) AS total_paiements
+      SELECT SUM(${PAYMENT_TOTAL_SQL}) AS total_paiements
       FROM payments
       WHERE type_paiement = 'Client'
         AND contact_id = ?
@@ -100,7 +112,7 @@ export async function getContactSoldeCumule(db, contactId) {
 
     -- Paiements fournisseur
     LEFT JOIN (
-      SELECT SUM(montant_total) AS total_paiements
+      SELECT SUM(${PAYMENT_TOTAL_SQL}) AS total_paiements
       FROM payments
       WHERE type_paiement = 'Fournisseur'
         AND contact_id = ?
@@ -140,6 +152,7 @@ export async function getContactSoldeCumule(db, contactId) {
 
   const params = [
     id, // ventes_client
+    id, // ventes_comptant
     id, // ventes_ecommerce
     id, // achats_fournisseur
     id, // sorties_vendre_fournisseur

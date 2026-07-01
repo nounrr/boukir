@@ -307,8 +307,8 @@ const FondCaissePage = () => {
     }
   }, [entries, mouvements, dateFrom, dateTo]);
 
-  // Affichage chronologique: ancien vers nouveau, comme le calcul cumule.
-  const displayRows = rows;
+  // Affichage liste des jours: aujourd'hui/recent vers ancien. `rows` reste chronologique pour le calcul cumule.
+  const displayRows = useMemo(() => [...rows].reverse(), [rows]);
 
   const today = todayISO();
   const todayTotal = rows.find((r) => r.jour === today)?.total || 0;

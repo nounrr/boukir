@@ -43,6 +43,7 @@ const ignoredAmountOf = (p: any) => {
 };
 
 const amountOf = (p: any) => Math.max(grossAmountOf(p), 0);
+const balanceAmountOf = (p: any) => Math.max(amountOf(p) + ignoredAmountOf(p), 0);
 
 const formatDateTime = (val: any): string => {
   if (!val) return '';
@@ -133,7 +134,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
   })();
   const datePremier = payments.length ? formatDateTime(firstPayment.date_paiement) : '';
   const soldeAvant = Number(printBalance?.soldeAvant ?? 0) || 0;
-  const soldeApres = soldeAvant - totalPaid;
+  const soldeApres = soldeAvant - payments.reduce((s, p) => s + balanceAmountOf(p), 0);
   const soldoAvantLabel = isClient ? 'Solde à recevoir avant paiement' : 'Solde à payer avant paiement';
   const soldoApresLabel = isClient ? 'Solde à recevoir après paiement' : 'Solde à payer après paiement';
   const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE À RECEVOIR' : 'NOUVEAU SOLDE À PAYER';

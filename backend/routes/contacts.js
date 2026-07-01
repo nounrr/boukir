@@ -140,11 +140,16 @@ const TOTAL_CUMULE_EXPR = `
   END
 `;
 
+const PAYMENT_TOTAL_SQL = `COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0)`;
+const PAYMENT_TOTAL_SQL_P = `COALESCE(p.montant_total, 0) + COALESCE(p.montant_ignorer, 0)`;
+const COMPTANT_TOTAL_SQL = `COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0)`;
+const COMPTANT_TOTAL_SQL_BC2 = `COALESCE(bc2.montant_total, 0) + COALESCE(bc2.montant_ignorer, 0)`;
+
 const SUPPLIER_PAYMENT_SUM_EXPR = `
   SUM(
     CASE
-      WHEN COALESCE(payment, 0) = 1 THEN -COALESCE(montant_total, 0)
-      ELSE COALESCE(montant_total, 0)
+      WHEN COALESCE(payment, 0) = 1 THEN -(${PAYMENT_TOTAL_SQL})
+      ELSE ${PAYMENT_TOTAL_SQL}
     END
   )
 `;
@@ -160,7 +165,7 @@ const SINGLE_CONTACT_QUERY = `
       CASE
         WHEN c.type = 'Client' THEN
             COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            + COALESCE((SELECT SUM(${COMPTANT_TOTAL_SQL}) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
@@ -186,7 +191,7 @@ const SINGLE_CONTACT_QUERY = `
       CASE
         WHEN c.type = 'Client' THEN
           COALESCE((
-            SELECT SUM(p.montant_total)
+            SELECT SUM(${PAYMENT_TOTAL_SQL_P})
             FROM payments p
             WHERE p.type_paiement = 'Client'
               AND p.contact_id = c.id
@@ -244,7 +249,7 @@ const SINGLE_CONTACT_QUERY = `
               AND LOWER(TRIM(bs.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           - COALESCE((
-            SELECT SUM(bc2.montant_total)
+            SELECT SUM(${COMPTANT_TOTAL_SQL_BC2})
             FROM bons_comptant bc2
             WHERE bc2.client_id = c.id
               AND LOWER(TRIM(bc2.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
@@ -270,7 +275,7 @@ const SINGLE_CONTACT_QUERY = `
               AND LOWER(TRIM(bch.statut)) NOT IN ('annulé','annule','supprimé','supprime','brouillon','refusé','refuse','expiré','expire')
           ), 0)
           + COALESCE((
-            SELECT SUM(p.montant_total)
+            SELECT SUM(${PAYMENT_TOTAL_SQL_P})
             FROM payments p
             WHERE p.type_paiement = 'Client'
               AND p.contact_id = c.id
@@ -397,7 +402,7 @@ router.get('/', async (req, res) => {
 
       -- Ventes client = bons_comptant
       LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_ventes
+        SELECT client_id, SUM(${COMPTANT_TOTAL_SQL}) AS total_ventes
         FROM bons_comptant
         WHERE client_id IS NOT NULL
           AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
@@ -458,7 +463,7 @@ router.get('/', async (req, res) => {
 
       -- Paiements client
       LEFT JOIN (
-      SELECT contact_id, SUM(montant_total) AS total_paiements
+      SELECT contact_id, SUM(${PAYMENT_TOTAL_SQL}) AS total_paiements
       FROM payments
       WHERE type_paiement = 'Client'
           AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
@@ -570,11 +575,11 @@ router.get('/', async (req, res) => {
           WHEN c.type = 'Client' THEN
             COALESCE(c.solde, 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
-            + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
+            + COALESCE((SELECT SUM(${COMPTANT_TOTAL_SQL}) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             + COALESCE((SELECT SUM(total_amount) FROM ecommerce_orders o INNER JOIN contacts c_link ON o.user_id = c_link.id WHERE c_link.type = 'Client' AND o.is_solde = 1 AND o.status IN ('pending','confirmed','processing','shipped','delivered') AND LOWER(COALESCE(o.status, '')) NOT IN ('cancelled','refunded') AND o.user_id = c.id), 0)
             + COALESCE((SELECT SUM(montant_total) FROM bons_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_charge WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
-            - COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
+            - COALESCE((SELECT SUM(${PAYMENT_TOTAL_SQL}) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM avoirs_client WHERE client_id = c.id AND statut IN ('En attente','ValidÃ©','AppliquÃ©') AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
             COALESCE(c.solde, 0)
@@ -588,7 +593,7 @@ router.get('/', async (req, res) => {
         COALESCE(SUM(CASE 
           WHEN c.type = 'Client' THEN
             COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
-            + COALESCE((SELECT SUM(montant_total) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            + COALESCE((SELECT SUM(${COMPTANT_TOTAL_SQL}) FROM bons_comptant WHERE client_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
             COALESCE((SELECT SUM(montant_total) FROM bons_commande WHERE fournisseur_id = c.id AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
             - COALESCE((SELECT SUM(montant_total) FROM bons_sortie WHERE fournisseur_id = c.id AND COALESCE(vendre_au_fournisseur, 0) = 1 AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
@@ -601,7 +606,7 @@ router.get('/', async (req, res) => {
         END), 0) AS grand_total_solde_initial,
         COALESCE(SUM(CASE
           WHEN c.type = 'Client' THEN
-            COALESCE((SELECT SUM(montant_total) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
+            COALESCE((SELECT SUM(${PAYMENT_TOTAL_SQL}) FROM payments WHERE type_paiement = 'Client' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           WHEN c.type = 'Fournisseur' THEN
             COALESCE((SELECT ${SUPPLIER_PAYMENT_SUM_EXPR} FROM payments WHERE type_paiement = 'Fournisseur' AND contact_id = c.id AND LOWER(TRIM(statut)) NOT LIKE 'annul%' AND LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')), 0)
           ELSE NULL 
@@ -674,7 +679,7 @@ router.get('/summary', async (req, res) => {
       ) ventes_client ON ventes_client.client_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
-        SELECT client_id, SUM(montant_total) AS total_ventes
+        SELECT client_id, SUM(${COMPTANT_TOTAL_SQL}) AS total_ventes
         FROM bons_comptant
         WHERE client_id IS NOT NULL
           AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
@@ -713,7 +718,7 @@ router.get('/summary', async (req, res) => {
       ) sorties_vendre_fournisseur ON sorties_vendre_fournisseur.fournisseur_id = c.id AND c.type = 'Fournisseur'
 
       LEFT JOIN (
-      SELECT contact_id, SUM(montant_total) AS total_paiements
+      SELECT contact_id, SUM(${PAYMENT_TOTAL_SQL}) AS total_paiements
       FROM payments
       WHERE type_paiement = 'Client'
           AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
@@ -722,7 +727,7 @@ router.get('/summary', async (req, res) => {
       ) paiements_client ON paiements_client.contact_id = c.id AND c.type = 'Client'
 
       LEFT JOIN (
-      SELECT contact_id, SUM(montant_total) AS total_paiements
+      SELECT contact_id, ${SUPPLIER_PAYMENT_SUM_EXPR} AS total_paiements
       FROM payments
       WHERE type_paiement = 'Fournisseur'
           AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
@@ -788,7 +793,7 @@ router.get('/solde-cumule-card', async (_req, res) => {
         ),0)
         +
         COALESCE((
-            SELECT SUM(montant_total)
+            SELECT SUM(${COMPTANT_TOTAL_SQL})
             FROM bons_comptant
             WHERE client_id IS NOT NULL
               AND LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
@@ -803,7 +808,7 @@ router.get('/solde-cumule-card', async (_req, res) => {
         ),0) AS total_ventes,
 
         COALESCE((
-            SELECT SUM(montant_total)
+            SELECT SUM(${PAYMENT_TOTAL_SQL})
             FROM payments
             WHERE LOWER(TRIM(statut)) NOT IN ('annulÃ©','annule','supprimÃ©','supprime','brouillon','refusÃ©','refuse','expirÃ©','expire')
               AND LOWER(TRIM(statut)) NOT LIKE 'annul%'
@@ -919,7 +924,7 @@ router.get('/solde-cumule-card-fournisseur', async (_req, res) => {
         ),0) AS total_bons_vendre_fournisseur,
 
         COALESCE((
-            SELECT SUM(montant_total)
+            SELECT ${SUPPLIER_PAYMENT_SUM_EXPR}
             FROM payments
             WHERE LOWER(TRIM(statut)) NOT IN ('annule','annule','supprime','supprime','brouillon','refuse','refuse','expire','expire')
               AND LOWER(TRIM(statut)) NOT LIKE 'annul%'

@@ -129,6 +129,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
     return isNaN(num) ? 0 : num;
   };
   const amountOf = (p: any) => Math.max(grossAmountOf(p), 0);
+  const balanceAmountOf = (p: any) => Math.max(amountOf(p) + ignoredAmountOf(p), 0);
 
   // Calcul du solde cumulÃ©: API historique du paiement, fallback local si indisponible.
   const calculateCumulativeSaldo = () => {
@@ -139,7 +140,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
 
     // Source principale: solde avant/aprÃ¨s calculÃ© cÃ´tÃ© API Ã  la date du paiement.
     if (printBalance) {
-      const montantPaiement = Number(printBalance.montantPaiement ?? amountOf(payment)) || 0;
+      const montantPaiement = amountOf(payment);
       const soldoApres = Number(printBalance.soldeApres ?? 0) || 0;
       const soldoAvant = Number(printBalance.soldeAvant ?? 0) || 0;
       const soldoAvantLabel = isClient ? 'Solde à recevoir avant paiement' : 'Solde à payer avant paiement';
@@ -152,9 +153,9 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       const scoped = (allPayments || []).filter(p => (p.contact_id ?? p.client_id ?? p.fournisseur_id ?? null) === null);
       const sorted = scoped.slice().sort((a, b) => (parseDateTime(a.date_paiement)?.getTime() || 0) - (parseDateTime(b.date_paiement)?.getTime() || 0));
       const idx = sorted.findIndex(p => p.id === payment.id);
-      const soldoAvant = idx > 0 ? sorted.slice(0, idx).reduce((s, p) => s + amountOf(p), startingSolde) : startingSolde;
+      const soldoAvant = idx > 0 ? sorted.slice(0, idx).reduce((s, p) => s + balanceAmountOf(p), startingSolde) : startingSolde;
       const montantPaiement = amountOf(payment);
-      const soldoApres = soldoAvant - montantPaiement; // paiement rÃ©duit le solde dÃ»
+      const soldoApres = soldoAvant - balanceAmountOf(payment); // paiement rÃ©duit le solde dÃ»
       const soldoAvantLabel = isClient ? 'Solde à recevoir avant paiement' : 'Solde à payer avant paiement';
       const soldoApresLabel = isClient ? 'Solde à recevoir après paiement' : 'Solde à payer après paiement';
       const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE À RECEVOIR' : 'NOUVEAU SOLDE À PAYER';
@@ -170,7 +171,9 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       for (const b of [...bonsSorties, ...bonsComptants]) {
         if (String(b.client_id) === String(contactId)) {
           const d = parseDateTime(b.date_creation) || parseDateTime(b.created_at) || new Date();
-          txs.push({ kind: 'bon', id: b.id, date: d, montant: +Number(b.montant_total || 0) });
+          const isComptant = bonsComptants.includes(b);
+          const montant = (Number(b.montant_total || 0) || 0) + (isComptant ? (Number(b.montant_ignorer || 0) || 0) : 0);
+          txs.push({ kind: 'bon', id: b.id, date: d, montant });
         }
       }
       // Avoir client rÃ©duit le solde
@@ -202,7 +205,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       const cId = p.contact_id ?? p.client_id ?? p.fournisseur_id;
       if (String(cId) === String(contactId)) {
         const d = parseDateTime(p.date_paiement) || parseDateTime(p.created_at) || new Date();
-        txs.push({ kind: 'paiement', id: p.id, date: d, montant: -Math.abs(amountOf(p)) });
+        txs.push({ kind: 'paiement', id: p.id, date: d, montant: -Math.abs(balanceAmountOf(p)) });
       }
     }
 
@@ -228,7 +231,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
     }
   const soldoAvant = solde;
   const montantPaiement = amountOf(payment);
-  const soldoApres = soldoAvant - montantPaiement; // paiement rÃ©duit le solde
+  const soldoApres = soldoAvant - balanceAmountOf(payment); // paiement rÃ©duit le solde
 
     const soldoAvantLabel = isClient ? 'Solde à recevoir avant paiement' : 'Solde à payer avant paiement';
     const soldoApresLabel = isClient ? 'Solde à recevoir après paiement' : 'Solde à payer après paiement';
