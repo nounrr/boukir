@@ -405,7 +405,8 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
       [bonId, montant, datePaiement, note, createdBy]
     );
 
-    await syncComptantBonReste(connection, bonId, bon.montant_total);
+    const reste = await syncComptantBonReste(connection, bonId, bon.montant_total);
+    const montantPaye = Math.max(0, Number((Number(bon.montant_total || 0) - reste).toFixed(2)));
 
     const [rows] = await connection.execute(
       `SELECT id, bon_comptant_id, montant, date_paiement, note, created_by, updated_by, created_at, updated_at
@@ -415,7 +416,16 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
     );
 
     await connection.commit();
-    res.status(201).json(rows[0]);
+    res.status(201).json({
+      ...rows[0],
+      bon: {
+        id: bonId,
+        montant_total: Number(bon.montant_total || 0),
+        montant_paye: montantPaye,
+        reste,
+        non_paye: reste > 0 ? 1 : 0,
+      },
+    });
   } catch (error) {
     await connection.rollback();
     console.error('Erreur POST /comptant/:id/paiements:', error);
@@ -463,10 +473,22 @@ router.delete('/:id/paiements/:paymentId', verifyToken, async (req, res) => {
       'DELETE FROM paiement_boncomptant_nonpaye WHERE id = ? AND bon_comptant_id = ?',
       [paymentId, bonId]
     );
-    await syncComptantBonReste(connection, bonId, bonRows[0].montant_total);
+    const reste = await syncComptantBonReste(connection, bonId, bonRows[0].montant_total);
+    const montantTotal = Number(bonRows[0].montant_total || 0);
+    const montantPaye = Math.max(0, Number((montantTotal - reste).toFixed(2)));
 
     await connection.commit();
-    res.json({ success: true, id: paymentId });
+    res.json({
+      success: true,
+      id: paymentId,
+      bon: {
+        id: bonId,
+        montant_total: montantTotal,
+        montant_paye: montantPaye,
+        reste,
+        non_paye: reste > 0 ? 1 : 0,
+      },
+    });
   } catch (error) {
     await connection.rollback();
     console.error('Erreur DELETE /comptant/:id/paiements/:paymentId:', error);

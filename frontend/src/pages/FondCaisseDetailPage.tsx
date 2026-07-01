@@ -7,8 +7,10 @@ import {
   Calculator,
   CalendarDays,
   ListChecks,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
+import { showConfirmation, showError, showSuccess } from '../utils/notifications';
 
 type Action = {
   id: string;
@@ -50,6 +52,23 @@ const fmt = (v: number) => `${num(v).toFixed(2)} DH`;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
+const isInitialCaisseAction = (action: Action) =>
+  action.sourceTable === 'fond_caisse_entries'
+  && (action.type === 'Fond initial caisse' || String(action.reference || '').startsWith('FC-'));
+
+const isInitialCoffreAction = (action: Action) =>
+  action.sourceTable === 'coffre'
+  && (action.type === 'Fond initial coffre' || String(action.reference || '').startsWith('COF-'));
+
+const getActionRowClass = (action: Action) => {
+  if (isInitialCaisseAction(action)) return 'bg-emerald-50 hover:bg-emerald-100/70';
+  if (isInitialCoffreAction(action)) return 'bg-orange-50 hover:bg-orange-100/70';
+  return 'hover:bg-gray-50';
+};
+
+const canDeleteAction = (action: Action) =>
+  action.sourceTable === 'fond_caisse_entries' || action.sourceTable === 'coffre';
+
 const formatDateLong = (iso: string) => {
   if (!iso) return '';
   const d = new Date(`${iso}T00:00:00`);
@@ -76,6 +95,7 @@ const FondCaisseDetailPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [filter, setFilter] = useState<'ALL' | 'ENTREE' | 'SORTIE'>('ALL');
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!token || !date) return;
@@ -110,7 +130,34 @@ const FondCaisseDetailPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [token, date]);
+  }, [token, date, tick]);
+
+  const handleDeleteAction = async (action: Action) => {
+    if (!token || !canDeleteAction(action)) return;
+    const result = await showConfirmation(
+      'Cette ligne sera supprimee.',
+      `Supprimer ${action.reference || action.type} ?`,
+      'Supprimer',
+      'Annuler'
+    );
+    if (!result.isConfirmed) return;
+
+    const deleteId = action.sourceTable === 'coffre' ? -Math.abs(action.sourceId) : action.sourceId;
+    try {
+      const res = await fetch(`/api/fond-caisse/entries/${deleteId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error((data && data.message) || 'Erreur suppression');
+      }
+      showSuccess('Ligne supprimee.');
+      setTick((t) => t + 1);
+    } catch (err: any) {
+      showError(err?.message || 'Erreur lors de la suppression.');
+    }
+  };
 
   const filteredActions = useMemo(() => {
     if (filter === 'ALL') return actions;
@@ -236,13 +283,17 @@ const FondCaisseDetailPage = () => {
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Statut</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-600">Montant</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-600">Total cumule</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-600">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredActions.map((action) => {
                   const isEntry = action.direction === 'ENTREE';
                   return (
-                    <tr key={action.id} className="hover:bg-gray-50">
+                    <tr
+                      key={action.id}
+                      className={getActionRowClass(action)}
+                    >
                       <td className="whitespace-nowrap px-4 py-3 text-gray-600">
                         {formatDateTime(action.date)}
                       </td>
@@ -286,6 +337,20 @@ const FondCaisseDetailPage = () => {
                       <td className="px-4 py-3 text-right font-bold text-gray-900">
                         {fmt(action.cumulative)}
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        {canDeleteAction(action) ? (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAction(action)}
+                            title="Supprimer cette ligne"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -303,6 +368,7 @@ const FondCaisseDetailPage = () => {
                       ? fmt(filteredActions[filteredActions.length - 1].cumulative)
                       : fmt(0)}
                   </td>
+                  <td className="px-4 py-3 text-right text-gray-300">-</td>
                 </tr>
               </tfoot>
             </table>

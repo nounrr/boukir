@@ -801,6 +801,7 @@ const ComptantPaidAmountField: React.FC<{
   isEditMode?: boolean;
 }> = ({ qtyRaw, unitPriceRaw, paymentHistory = [], isEditMode = false }) => {
   const { values, setFieldValue } = useFormikContext<any>();
+  const [localRawValue, setLocalRawValue] = useState(() => String(values.montant_paye_saisi ?? ''));
   const normalizePaidDecimal = (value: string) => value.replace(/\s+/g, '').replace(',', '.');
   const isPaidDecimalLike = (value: string) => /^[0-9]*[.,]?[0-9]*$/.test(value);
   const formatPaidValue = (value: number) => {
@@ -827,16 +828,24 @@ const ComptantPaidAmountField: React.FC<{
   const montantPayeHistorique = Array.isArray(paymentHistory)
     ? paymentHistory.reduce((sum: number, payment: any) => sum + (Number(payment?.montant || 0) || 0), 0)
     : 0;
-  const rawValue = String(values.montant_paye_saisi ?? '');
+  useEffect(() => {
+    setLocalRawValue(String(values.montant_paye_saisi ?? ''));
+  }, [values.montant_paye_saisi]);
+
+  const rawValue = localRawValue;
   const montantPayeSaisi = parseFloat(normalizePaidDecimal(rawValue || '0')) || 0;
   const montantPayeTotal = Math.max(0, Math.min(montantPayeHistorique + montantPayeSaisi, montantTotalComptant));
   const reste = Math.max(0, Number((montantTotalComptant - montantPayeTotal).toFixed(2)));
 
-  useEffect(() => {
-    if (Math.abs(Number(values.reste || 0) - reste) > 0.000001) {
-      setFieldValue('reste', reste, false);
-    }
-  }, [montantTotalComptant, montantPayeHistorique, montantPayeSaisi, reste, setFieldValue, values.reste]);
+  const commitPaymentValue = (nextRawValue = rawValue) => {
+    const parsed = parseFloat(normalizePaidDecimal(nextRawValue || '0')) || 0;
+    const formatted = nextRawValue ? formatPaidValue(parsed) : '';
+    const nextPaidTotal = Math.max(0, Math.min(montantPayeHistorique + parsed, montantTotalComptant));
+    const nextReste = Math.max(0, Number((montantTotalComptant - nextPaidTotal).toFixed(2)));
+    setLocalRawValue(formatted);
+    setFieldValue('montant_paye_saisi', formatted, false);
+    setFieldValue('reste', nextReste, false);
+  };
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
@@ -853,9 +862,14 @@ const ComptantPaidAmountField: React.FC<{
         onChange={(e) => {
           const nextRawValue = e.target.value || '';
           if (!isPaidDecimalLike(nextRawValue)) return;
-          setFieldValue('montant_paye_saisi', nextRawValue);
+          setLocalRawValue(nextRawValue);
         }}
-        onBlur={() => setFieldValue('montant_paye_saisi', rawValue ? formatPaidValue(montantPayeSaisi) : '')}
+        onBlur={() => commitPaymentValue()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commitPaymentValue();
+          }
+        }}
         onWheel={(e) => e.currentTarget.blur()}
         className="w-40 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
       />
@@ -1013,7 +1027,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     if (Array.isArray(iv.items) && iv.items.length > 0) return true;
     return Boolean(iv.client_id || iv.fournisseur_id || iv.client_nom || iv.ecommerce_order_id);
   }, [initialValues]);
-  const loadImmediately = !isEditMode && isPrefilled;
+  const needsImmediateCostData = isEditMode && String(currentTab || (initialValues as any)?.type || '') === 'Devis';
+  const loadImmediately = needsImmediateCostData || (!isEditMode && isPrefilled);
   // Données des LIGNES (produits, snapshots, historiques) : chargées tout de suite en
   // édition/préremplissage car les items existants en ont besoin pour s'afficher.
   const [heavyDataReady, setHeavyDataReady] = useState<boolean>(() => loadImmediately);
@@ -3247,6 +3262,8 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       cleanBonData.montant_total = (cleanBonData.items || []).reduce((s: number, r: any) => s + (Number(r?.total) || 0), 0);
     }
 
+    let submittedBon: any = null;
+
     if (isEditMode) {
       const updated = await updateBonMutation({ id: (initialValues as any).id, type: requestType, ...cleanBonData }).unwrap();
       const mergedUpdatedBon = {
@@ -3410,6 +3427,11 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       }
 
       const created = await createBon({ type: requestType, ...cleanBonData }).unwrap();
+      submittedBon = {
+        ...cleanBonData,
+        ...(created && typeof created === 'object' ? created : {}),
+        type: requestType,
+      };
       // Rafraîchir les stocks produits immédiatement après création du bon
       try { dispatch(api.util.invalidateTags(['Product'])); } catch {}
       // Optionally show WhatsApp prompt on create
@@ -3456,7 +3478,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     }
 
     if (!isEditMode) {
-      onBonAdded && onBonAdded(cleanBonData);
+      onBonAdded && onBonAdded(submittedBon || { ...cleanBonData, type: requestType });
     }
     onClose();
   } catch (error: any) {

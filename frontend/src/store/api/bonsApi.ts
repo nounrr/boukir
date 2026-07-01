@@ -390,9 +390,13 @@ export const bonsApi = api.injectEndpoints({
       },
       providesTags: (result, _error, { type }) => {
         let actual: any = type;
+        if (type === 'ComptantNonPaye') actual = 'Comptant';
+        else if (type === 'VendreFournisseur') actual = 'Sortie';
+        else if (type === 'AvoirVendreFournisseur') actual = 'Avoir';
         if (type === 'Avoir') actual = 'AvoirClient';
         else if (type === 'AvoirComptant') actual = 'AvoirComptant';
         else if (type === 'AvoirEcommerce') actual = 'AvoirEcommerce';
+        else if (actual === 'Avoir') actual = 'AvoirClient';
         return result?.data
           ? [...result.data.map(({ id }) => ({ type: actual, id })), { type: actual, id: 'LIST' }]
           : [{ type: actual, id: 'LIST' }];

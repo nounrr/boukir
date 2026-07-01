@@ -501,17 +501,32 @@ router.get('/days/:date', async (req, res) => {
           SELECT
             id,
             opened_at AS action_date,
-            'Transfert coffre vers poche' AS type,
-            'SORTIE' AS direction,
+            CASE
+              WHEN entry_type = 'coffre_initial' THEN 'Fond initial coffre'
+              ELSE 'Transfert coffre vers poche'
+            END AS type,
+            CASE
+              WHEN entry_type = 'coffre_initial' THEN 'ENTREE'
+              ELSE 'SORTIE'
+            END AS direction,
             montant AS amount,
-            CONCAT('TCP-', id) AS reference,
+            CASE
+              WHEN entry_type = 'coffre_initial' THEN CONCAT('COF-', id)
+              ELSE CONCAT('TCP-', id)
+            END AS reference,
             created_by_name AS actor,
             NULL AS statut,
             mode_paiement AS mode_paiement,
-            COALESCE(note, 'Montant retire du coffre et transfere vers poche') AS description
+            COALESCE(
+              note,
+              CASE
+                WHEN entry_type = 'coffre_initial' THEN 'Fond de coffre saisi'
+                ELSE 'Montant retire du coffre et transfere vers poche'
+              END
+            ) AS description
           FROM coffre
           WHERE jour = ?
-            AND entry_type = 'coffre_transfer_to_poche'
+            AND entry_type IN ('coffre_initial', 'coffre_transfer_to_poche')
         `,
       },
       {
@@ -519,7 +534,7 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             id,
-            date_creation AS action_date,
+            COALESCE(created_at, date_creation) AS action_date,
             'Bon comptant paye' AS type,
             'ENTREE' AS direction,
             ${netAmountSql('montant_total', 'montant_ignorer')} AS amount,
@@ -600,7 +615,7 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bc.id,
-            bc.date_creation AS action_date,
+            COALESCE(bc.created_at, bc.date_creation) AS action_date,
             'Charge incluse caisse' AS type,
             'SORTIE' AS direction,
             COALESCE((SELECT SUM(ci.total) FROM charge_items ci WHERE ci.bon_charge_id = bc.id), bc.montant_total, 0) AS amount,
@@ -620,7 +635,7 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bc.id,
-            bc.date_creation AS action_date,
+            COALESCE(bc.created_at, bc.date_creation) AS action_date,
             'Avoir charge' AS type,
             'ENTREE' AS direction,
             COALESCE((SELECT SUM(ci.total) FROM items_avoir_charge ci WHERE ci.avoir_charge_id = bc.id), bc.montant_total, 0) AS amount,
@@ -640,7 +655,7 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bc.id,
-            bc.date_creation AS action_date,
+            COALESCE(bc.created_at, bc.date_creation) AS action_date,
             'Commande incluse caisse' AS type,
             'SORTIE' AS direction,
             bc.montant_total AS amount,
@@ -660,7 +675,7 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bv.id,
-            bv.date_creation AS action_date,
+            COALESCE(bv.created_at, bv.date_creation) AS action_date,
             'Bon vehicule' AS type,
             'SORTIE' AS direction,
             bv.montant_total AS amount,
@@ -679,7 +694,7 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             acp.id,
-            acp.date_creation AS action_date,
+            COALESCE(acp.created_at, acp.date_creation) AS action_date,
             'Avoir comptant' AS type,
             'SORTIE' AS direction,
             acp.montant_total AS amount,
