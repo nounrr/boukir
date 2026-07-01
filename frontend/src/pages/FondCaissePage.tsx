@@ -7,12 +7,11 @@ import {
   CalendarDays,
   DollarSign,
   Eye,
-  Trash2,
   Wallet,
   X,
 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
-import { showConfirmation, showError, showSuccess } from '../utils/notifications';
+import { showError, showSuccess } from '../utils/notifications';
 
 type FondCaisseEntry = {
   id: number;
@@ -74,6 +73,8 @@ type Row = {
 type PaymentMode = 'Espece' | 'Virement' | 'Cheque';
 
 type ModalKind = 'caisse' | 'coffre' | 'transfert' | 'poche';
+
+type FondTab = 'caisse' | 'coffre';
 
 const paymentModes: PaymentMode[] = ['Espece', 'Virement', 'Cheque'];
 
@@ -158,6 +159,7 @@ const FondCaissePage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [tick, setTick] = useState(0);
+  const [activeTab, setActiveTab] = useState<FondTab>('caisse');
 
   const isAllDates = !dateFrom && !dateTo;
 
@@ -383,31 +385,6 @@ const FondCaissePage = () => {
     }
   };
 
-  const handleDelete = async (entry: FondCaisseEntry) => {
-    if (!token || !entry) return;
-    const result = await showConfirmation(
-      'Cette ligne sera supprimee.',
-      `Supprimer le fond du ${entry.jour} ?`,
-      'Supprimer',
-      'Annuler'
-    );
-    if (!result.isConfirmed) return;
-    try {
-      const res = await fetch(`/api/fond-caisse/entries/${entry.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error((data && data.message) || 'Erreur suppression');
-      }
-      setTick((t) => t + 1);
-      showSuccess('Fond de caisse supprime.');
-    } catch (err: any) {
-      showError(err?.message || 'Erreur lors de la suppression.');
-    }
-  };
-
   const activeConfig = activeModal ? modalConfig[activeModal] : null;
 
   return (
@@ -500,7 +477,42 @@ const FondCaissePage = () => {
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Calcul journalier</h2>
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {activeTab === 'caisse' ? 'Table fond caisse' : 'Table coffre'}
+            </h2>
+            <p className="text-sm text-gray-500">
+              {activeTab === 'caisse'
+                ? 'Calcul journalier de la caisse: debut + entrees - sorties.'
+                : 'Calcul journalier du coffre: debut + entrees - sorties.'}
+            </p>
+          </div>
+          <div className="inline-flex w-fit rounded-lg border border-gray-200 bg-gray-50 p-1">
+            {([
+              { key: 'caisse', label: 'Fond caisse', icon: Wallet },
+              { key: 'coffre', label: 'Coffre', icon: Archive },
+            ] as const).map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
+                    isActive
+                      ? 'bg-white text-blue-700 shadow-sm'
+                      : 'text-gray-600 hover:bg-white/70 hover:text-gray-900'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {isLoading && (
           <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
             Chargement...
@@ -514,45 +526,93 @@ const FondCaissePage = () => {
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Jour</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Debut caisse</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Entrees caisse</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Sorties caisse</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Total caisse</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Debut coffre</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Entrees coffre</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Total coffre</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</th>
-                </tr>
+                {activeTab === 'caisse' ? (
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Jour</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Debut caisse</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Entrees caisse</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Sorties caisse</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Total caisse</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Detail</th>
+                  </tr>
+                ) : (
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Jour</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Debut coffre</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Entrees coffre</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Sorties coffre</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Total coffre</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Detail</th>
+                  </tr>
+                )}
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {displayRows.map((row) => (
-                  <tr key={row.jour} className="hover:bg-gray-50">
+                {displayRows.map((row) => {
+                  const isInitialCoffreRow = activeTab === 'coffre' && Boolean(row.coffreEntry);
+                  return (
+                  <tr
+                    key={row.jour}
+                    className={isInitialCoffreRow ? 'bg-orange-50 hover:bg-orange-100/70' : 'hover:bg-gray-50'}
+                  >
                     <td className="px-4 py-3 text-sm text-gray-700">
                       <span className="inline-flex items-center gap-2">
                         <CalendarDays className="h-4 w-4 text-gray-400" />
                         {row.jour}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                      {row.debut.toFixed(2)} DH
-                      {row.caisseEntry?.modePaiement && <div className="text-xs font-normal text-gray-500">{row.caisseEntry.modePaiement}</div>}
-                      {!row.caisseEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-semibold text-emerald-700">+{row.entrees.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm font-semibold text-red-700">-{row.sorties.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm font-bold text-gray-900">{row.total.toFixed(2)} DH</td>
-                    <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                      {row.debutCoffre.toFixed(2)} DH
-                      {row.coffreEntry?.modePaiement && <div className="text-xs font-normal text-gray-500">{row.coffreEntry.modePaiement}</div>}
-                      {!row.coffreEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-semibold text-amber-700">+{row.entreesCoffre.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm font-bold text-gray-900">
-                      {row.totalCoffre.toFixed(2)} DH
-                      {row.sortiesCoffre > 0 && <div className="text-xs font-normal text-red-600">-{row.sortiesCoffre.toFixed(2)} poche</div>}
-                    </td>
+                    {activeTab === 'caisse' ? (
+                      <>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                          {row.debut.toFixed(2)} DH
+                          {row.caisseEntry?.modePaiement && <div className="text-xs font-normal text-gray-500">{row.caisseEntry.modePaiement}</div>}
+                          {!row.caisseEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-emerald-700">
+                          +{row.entrees.toFixed(2)} DH
+                          <div className="mt-1 text-xs font-normal text-gray-500">Comptant: {row.bonComptantPaye.toFixed(2)}</div>
+                          <div className="text-xs font-normal text-gray-500">Paiem. comptant: {row.paiementBonComptantNonPaye.toFixed(2)}</div>
+                          <div className="text-xs font-normal text-gray-500">Paiem. client: {row.paiementClientCaisse.toFixed(2)}</div>
+                          {row.avoirChargeInclusCaisse > 0 && (
+                            <div className="text-xs font-normal text-gray-500">Avoir charge: {row.avoirChargeInclusCaisse.toFixed(2)}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-red-700">
+                          -{row.sorties.toFixed(2)} DH
+                          <div className="mt-1 text-xs font-normal text-gray-500">Charges: {row.bonChargeInclusCaisse.toFixed(2)}</div>
+                          <div className="text-xs font-normal text-gray-500">Commandes: {row.bonCommandeInclusCaisse.toFixed(2)}</div>
+                          <div className="text-xs font-normal text-gray-500">Vehicule: {row.bonVehicule.toFixed(2)}</div>
+                          <div className="text-xs font-normal text-gray-500">Avoir comptant: {row.avoirComptant.toFixed(2)}</div>
+                          {row.transfertVersCoffre > 0 && (
+                            <div className="text-xs font-normal text-gray-500">Vers coffre: {row.transfertVersCoffre.toFixed(2)}</div>
+                          )}
+                          {row.transfertVersPoche > 0 && (
+                            <div className="text-xs font-normal text-gray-500">Vers poche: {row.transfertVersPoche.toFixed(2)}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-bold text-gray-900">{row.total.toFixed(2)} DH</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                          {row.debutCoffre.toFixed(2)} DH
+                          {row.coffreEntry?.modePaiement && <div className="text-xs font-normal text-gray-500">{row.coffreEntry.modePaiement}</div>}
+                          {!row.coffreEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-amber-700">
+                          +{row.entreesCoffre.toFixed(2)} DH
+                          {row.transfertVersCoffre > 0 && (
+                            <div className="mt-1 text-xs font-normal text-gray-500">Depuis caisse: {row.transfertVersCoffre.toFixed(2)}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-red-700">
+                          -{row.sortiesCoffre.toFixed(2)} DH
+                          {row.transfertCoffreVersPoche > 0 && (
+                            <div className="mt-1 text-xs font-normal text-gray-500">Vers poche: {row.transfertCoffreVersPoche.toFixed(2)}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-bold text-gray-900">{row.totalCoffre.toFixed(2)} DH</td>
+                      </>
+                    )}
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex flex-wrap items-center justify-end gap-2">
                         <button
@@ -563,52 +623,11 @@ const FondCaissePage = () => {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        {row.caisseEntry && (
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(row.caisseEntry as FondCaisseEntry)}
-                            title="Supprimer debut caisse"
-                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                        {row.coffreEntry && (
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(row.coffreEntry as FondCaisseEntry)}
-                            title="Supprimer debut coffre"
-                            className="inline-flex items-center gap-1 rounded-lg border border-orange-200 px-2.5 py-1.5 text-sm font-medium text-orange-600 hover:bg-orange-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                        {row.transferEntries.map((entry) => (
-                          <button
-                            type="button"
-                            key={entry.id}
-                            onClick={() => handleDelete(entry)}
-                            title="Supprimer transfert"
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        ))}
-                        {row.pocheTransferEntries.map((entry) => (
-                          <button
-                            type="button"
-                            key={entry.id}
-                            onClick={() => handleDelete(entry)}
-                            title="Supprimer transfert poche"
-                            className="inline-flex items-center gap-1 rounded-lg border border-purple-200 px-2.5 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        ))}
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

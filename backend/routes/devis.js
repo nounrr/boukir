@@ -22,10 +22,16 @@ router.get('/', async (_req, res) => {
               'id', di.id,
               'product_id', di.product_id,
               'variant_id', di.variant_id,
+              'variant_name', pv.variant_name,
+              'variant_reference', pv.reference,
               'unit_id', di.unit_id,
+              'unite', pu.unit_name,
+              'conversion_factor', pu.conversion_factor,
               'designation', p.designation,
               'quantite', di.quantite,
               'prix_unitaire', di.prix_unitaire,
+              'prix_achat', COALESCE(pv.prix_achat, p.prix_achat, 0),
+              'cout_revient', COALESCE(pv.cout_revient, p.cout_revient, pv.prix_achat, p.prix_achat, 0),
               'remise_pourcentage', di.remise_pourcentage,
               'remise_montant', di.remise_montant,
               'total', di.total
@@ -33,6 +39,8 @@ router.get('/', async (_req, res) => {
           )
           FROM devis_items di
           LEFT JOIN products p ON p.id = di.product_id
+          LEFT JOIN product_variants pv ON pv.id = di.variant_id
+          LEFT JOIN product_units pu ON pu.id = di.unit_id
           WHERE di.devis_id = d.id
         ), JSON_ARRAY()) AS items
       FROM devis d
@@ -66,9 +74,17 @@ router.get('/:id', async (req, res) => {
             JSON_OBJECT(
               'id', di.id,
               'product_id', di.product_id,
+              'variant_id', di.variant_id,
+              'variant_name', pv.variant_name,
+              'variant_reference', pv.reference,
+              'unit_id', di.unit_id,
+              'unite', pu.unit_name,
+              'conversion_factor', pu.conversion_factor,
               'designation', p.designation,
               'quantite', di.quantite,
               'prix_unitaire', di.prix_unitaire,
+              'prix_achat', COALESCE(pv.prix_achat, p.prix_achat, 0),
+              'cout_revient', COALESCE(pv.cout_revient, p.cout_revient, pv.prix_achat, p.prix_achat, 0),
               'remise_pourcentage', di.remise_pourcentage,
               'remise_montant', di.remise_montant,
               'total', di.total
@@ -76,6 +92,8 @@ router.get('/:id', async (req, res) => {
           )
           FROM devis_items di
           LEFT JOIN products p ON p.id = di.product_id
+          LEFT JOIN product_variants pv ON pv.id = di.variant_id
+          LEFT JOIN product_units pu ON pu.id = di.unit_id
           WHERE di.devis_id = d.id
         ), JSON_ARRAY()) AS items
       FROM devis d

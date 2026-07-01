@@ -135,6 +135,7 @@ const bonPagedConfigs = {
     itemFk: 'devis_id',
     itemAlias: 'i',
     itemSnapshot: false,
+    itemPriceJsonFields: `'prix_achat', COALESCE(pv.prix_achat, p.prix_achat, 0), 'cout_revient', COALESCE(pv.cout_revient, p.cout_revient, pv.prix_achat, p.prix_achat, 0),`,
   },
   Avoir: {
     type: 'Avoir',

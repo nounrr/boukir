@@ -1359,7 +1359,48 @@ const BonsPage = () => {
   const endIndex = startIndex + itemsPerPage;
   const paginatedBons = sortedBons;
 
+  const getCurrentListState = useCallback(() => {
+    const container = document.querySelector('.responsive-table-container') as HTMLElement | null;
+    return {
+      tab: currentTab,
+      currentPage,
+      itemsPerPage,
+      searchInput,
+      searchTerm,
+      statusFilter,
+      sortField,
+      sortDirection,
+      windowScrollX: window.scrollX,
+      windowScrollY: window.scrollY,
+      tableScrollTop: container?.scrollTop ?? 0,
+      tableScrollLeft: container?.scrollLeft ?? 0,
+    };
+  }, [currentPage, currentTab, itemsPerPage, searchInput, searchTerm, sortDirection, sortField, statusFilter]);
+
   const refreshFirstBonsPageAfterCreate = useCallback(() => {
+    if (currentTab === 'ComptantNonPaye') {
+      pendingListRestoreRef.current = getCurrentListState();
+      void refetchBons().finally(() => {
+        window.setTimeout(() => {
+          const restore = pendingListRestoreRef.current;
+          if (!restore) return;
+          pendingListRestoreRef.current = null;
+          const container = document.querySelector('.responsive-table-container') as HTMLElement | null;
+          if (container) {
+            container.scrollTop = readPositiveInteger(restore.tableScrollTop, 0);
+            container.scrollLeft = readPositiveInteger(restore.tableScrollLeft, 0);
+          }
+          window.scrollTo({
+            top: readPositiveInteger(restore.windowScrollY, 0),
+            left: readPositiveInteger(restore.windowScrollX, 0),
+            behavior: 'auto',
+          });
+        }, 0);
+      });
+      safeRefetchProducts();
+      return;
+    }
+
     if (currentPage === 1) {
       void refetchBons();
     } else {
@@ -1367,12 +1408,29 @@ const BonsPage = () => {
     }
 
     safeRefetchProducts();
-  }, [currentPage, refetchBons, safeRefetchProducts]);
+  }, [currentPage, currentTab, getCurrentListState, refetchBons, safeRefetchProducts]);
 
   const refreshBonsPageKeepingPosition = useCallback(() => {
-    void refetchBons();
+    pendingListRestoreRef.current = getCurrentListState();
+    void refetchBons().finally(() => {
+      window.setTimeout(() => {
+        const restore = pendingListRestoreRef.current;
+        if (!restore) return;
+        pendingListRestoreRef.current = null;
+        const container = document.querySelector('.responsive-table-container') as HTMLElement | null;
+        if (container) {
+          container.scrollTop = readPositiveInteger(restore.tableScrollTop, 0);
+          container.scrollLeft = readPositiveInteger(restore.tableScrollLeft, 0);
+        }
+        window.scrollTo({
+          top: readPositiveInteger(restore.windowScrollY, 0),
+          left: readPositiveInteger(restore.windowScrollX, 0),
+          behavior: 'auto',
+        });
+      }, 0);
+    });
     safeRefetchProducts();
-  }, [refetchBons, safeRefetchProducts]);
+  }, [getCurrentListState, refetchBons, safeRefetchProducts]);
 
   // Fetch linked info for the visible bons
   const paginatedBonsIdsKey = useMemo(
@@ -1814,6 +1872,59 @@ const BonsPage = () => {
     setNewComptantPaymentNote('');
   };
 
+  const applyUpdatedComptantBonPaymentState = useCallback((bonPatch: any) => {
+    if (!bonPatch?.id) return;
+    const patch = {
+      montant_paye: Number(bonPatch.montant_paye || 0),
+      reste: Number(bonPatch.reste || 0),
+      non_paye: Number(bonPatch.non_paye || 0),
+    };
+
+    setSelectedComptantForPayments((prev: any) =>
+      prev && Number(prev.id) === Number(bonPatch.id) ? { ...prev, ...patch } : prev
+    );
+    setSelectedBonForPrint((prev: any) =>
+      prev && Number(prev.id) === Number(bonPatch.id) && String(prev.type || effectiveCurrentTab) === 'Comptant'
+        ? { ...prev, ...patch }
+        : prev
+    );
+    setSelectedBonForPDFPrint((prev: any) =>
+      prev && Number(prev.id) === Number(bonPatch.id) && String(prev.type || effectiveCurrentTab) === 'Comptant'
+        ? { ...prev, ...patch }
+        : prev
+    );
+    dispatch(
+      api.util.updateQueryData(
+        'getBonsByTypePaged',
+        {
+          type: currentTab,
+          page: currentPage,
+          limit: itemsPerPage,
+          search: searchTerm || undefined,
+          status: backendStatus,
+          sortBy: backendSortBy,
+          sortDir: sortDirection,
+          paymentState: backendPaymentState,
+        },
+        (draft: any) => {
+          const row = draft?.data?.find((bon: any) => Number(bon.id) === Number(bonPatch.id));
+          if (row) Object.assign(row, patch);
+        }
+      )
+    );
+  }, [
+    backendPaymentState,
+    backendSortBy,
+    backendStatus,
+    currentPage,
+    currentTab,
+    dispatch,
+    effectiveCurrentTab,
+    itemsPerPage,
+    searchTerm,
+    sortDirection,
+  ]);
+
   const handleCreateComptantPayment = async () => {
     try {
       if (!selectedComptantForPayments?.id) return;
@@ -1827,13 +1938,15 @@ const BonsPage = () => {
         return;
       }
 
-      await createComptantPayment({
+      const result = await createComptantPayment({
         id: selectedComptantForPayments.id,
         montant,
         date_paiement: formatDateInputToMySQL(newComptantPaymentDate),
         note: newComptantPaymentNote || null,
         created_by: currentUser?.id,
       }).unwrap();
+      applyUpdatedComptantBonPaymentState((result as any)?.bon);
+      void refetchBons();
 
       setNewComptantPaymentAmount('');
       setNewComptantPaymentNote('');
@@ -1855,10 +1968,12 @@ const BonsPage = () => {
     if (!result.isConfirmed) return;
 
     try {
-      await deleteComptantPayment({
+      const result = await deleteComptantPayment({
         id: selectedComptantForPayments.id,
         paymentId,
       }).unwrap();
+      applyUpdatedComptantBonPaymentState((result as any)?.bon);
+      void refetchBons();
       showSuccess('Paiement supprimé.');
     } catch (error: any) {
       showError(error?.data?.message || error?.message || 'Erreur lors de la suppression du paiement.');
@@ -2039,24 +2154,6 @@ const BonsPage = () => {
     // La création se fait désormais sur une page dédiée (hors du tableau) pour éviter le lag.
     navigate(`/bons/create/${currentTab}`);
   };
-
-  const getCurrentListState = useCallback(() => {
-    const container = document.querySelector('.responsive-table-container') as HTMLElement | null;
-    return {
-      tab: currentTab,
-      currentPage,
-      itemsPerPage,
-      searchInput,
-      searchTerm,
-      statusFilter,
-      sortField,
-      sortDirection,
-      windowScrollX: window.scrollX,
-      windowScrollY: window.scrollY,
-      tableScrollTop: container?.scrollTop ?? 0,
-      tableScrollLeft: container?.scrollLeft ?? 0,
-    };
-  }, [currentPage, currentTab, itemsPerPage, searchInput, searchTerm, sortDirection, sortField, statusFilter]);
 
   const openEditPage = (bon: any) => {
     navigate(`/bons/edit/${currentTab}/${bon.id}`, {

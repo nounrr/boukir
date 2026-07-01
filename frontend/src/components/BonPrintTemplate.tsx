@@ -304,6 +304,11 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
     margin: isA5 ? 'mb-2' : 'mb-3',
     gap: isA5 ? 'gap-1' : 'gap-2'
   };
+  const bonTotal = parseMoney(bon?.montant_total) > 0 ? parseMoney(bon?.montant_total) : sousTotal;
+  const bonReste = Math.max(0, parseMoney(bon?.reste));
+  const isUnpaidComptant = bon?.type === 'Comptant'
+    && (bonReste > 0 || bon?.non_paye === true || Number(bon?.non_paye ?? 0) === 1);
+  const bonMontantPaye = Math.max(0, Number((bonTotal - bonReste).toFixed(2)));
 
   return (
     <div 
@@ -579,9 +584,21 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
         <div className={`flex justify-end ${spacing.margin} totals-section`}>
           <div className={isA5 ? 'w-60' : 'w-80'}>
             <div className={`${spacing.padding} rounded`}>
+              {isUnpaidComptant && (
+                <>
+                  <div className={`flex justify-between items-center ${textSizes.normal}`}>
+                    <span>Montant paye:</span>
+                    <span>{bonMontantPaye.toFixed(2)} DH</span>
+                  </div>
+                  <div className={`flex justify-between items-center ${textSizes.normal} text-orange-700 font-semibold`}>
+                    <span>Reste:</span>
+                    <span>{bonReste.toFixed(2)} DH</span>
+                  </div>
+                </>
+              )}
               <div className={`flex justify-between items-center ${textSizes.subheader} font-bold`}>
                 <span>TOTAL GÉNÉRAL:</span>
-                <span>{sousTotal.toFixed(2)} DH</span>
+                <span>{bonTotal.toFixed(2)} DH</span>
               </div>
             </div>
           </div>
