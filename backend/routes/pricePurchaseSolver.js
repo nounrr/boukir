@@ -38,6 +38,7 @@ router.get('/anomalies', async (req, res) => {
           COALESCE(ci.variant_id, ps.variant_id, 0) AS variant_key,
           ci.prix_unitaire AS prix
         FROM commande_items ci
+        JOIN bons_commande bc ON bc.id = ci.bon_commande_id
         JOIN products p ON p.id = ci.product_id
         LEFT JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
         WHERE ci.prix_unitaire IS NOT NULL
@@ -46,6 +47,8 @@ router.get('/anomalies', async (req, res) => {
           AND COALESCE(p.est_service, 0) = 0
           AND COALESCE(p.non_stockable, 0) = 0
           AND COALESCE(p.is_deleted, 0) = 0
+          AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+          AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'refus%'
 
         UNION ALL
 
@@ -55,6 +58,7 @@ router.get('/anomalies', async (req, res) => {
           COALESCE(ci.variant_id, ps.variant_id, 0) AS variant_key,
           ps.prix_achat AS prix
         FROM commande_items ci
+        JOIN bons_commande bc ON bc.id = ci.bon_commande_id
         JOIN products p ON p.id = ci.product_id
         JOIN product_snapshot ps ON ps.id = ci.product_snapshot_id
         WHERE ps.prix_achat IS NOT NULL
@@ -63,6 +67,8 @@ router.get('/anomalies', async (req, res) => {
           AND COALESCE(p.est_service, 0) = 0
           AND COALESCE(p.non_stockable, 0) = 0
           AND COALESCE(p.is_deleted, 0) = 0
+          AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+          AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'refus%'
       ),
       suspicious AS (
         SELECT
@@ -94,6 +100,7 @@ router.get('/anomalies', async (req, res) => {
       LEFT JOIN product_variants pv ON pv.id = NULLIF(s.variant_key, 0)
       JOIN commande_items ci
         ON ci.product_id = s.product_id
+      JOIN bons_commande ci_bon ON ci_bon.id = ci.bon_commande_id
       LEFT JOIN product_snapshot ps_count
         ON ps_count.id = ci.product_snapshot_id
        AND COALESCE(ci.variant_id, ps_count.variant_id, 0) = s.variant_key
@@ -101,6 +108,8 @@ router.get('/anomalies', async (req, res) => {
         AND COALESCE(p.est_service, 0) = 0
         AND COALESCE(p.non_stockable, 0) = 0
         AND COALESCE(ci.variant_id, ps_count.variant_id, 0) = s.variant_key
+        AND LOWER(COALESCE(ci_bon.statut, '')) NOT LIKE 'annul%'
+        AND LOWER(COALESCE(ci_bon.statut, '')) NOT LIKE 'refus%'
       GROUP BY
         s.product_id,
         s.variant_key,
@@ -180,6 +189,8 @@ router.get('/anomalies', async (req, res) => {
         AND COALESCE(p.est_service, 0) = 0
         AND COALESCE(p.non_stockable, 0) = 0
         AND COALESCE(p.is_deleted, 0) = 0
+        AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+        AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'refus%'
         AND ci.quantite IS NOT NULL
         AND ci.quantite <> 0
       ORDER BY p.designation ASC, COALESCE(ci.variant_id, ps.variant_id, 0) ASC, bc.date_creation ASC, ci.id ASC
