@@ -92,6 +92,7 @@ const PaymentPrintModal: React.FC<PaymentPrintModalProps> = ({
       <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="UTF-8" />
           <title>Impression Paiement ${payment.id}</title>
           <style>
             html, body { margin: 0; padding: 0; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }

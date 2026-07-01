@@ -18,12 +18,12 @@ interface PaymentGroupPrintModalProps {
 const companyInfo = {
   DIAMOND: {
     address: 'IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER',
-    phones: 'GSM: 0650812894 - TÃ©l: 0666216657',
+    phones: 'GSM: 0650812894 - Tél: 0666216657',
     email: 'EMAIL: boukir.diamond23@gmail.com',
   },
   MPC: {
-    address: 'ALot Awatif NÂ°179 - TANGER',
-    phones: 'GSM: 0650812894 - TÃ©l: 0666216657',
+    address: 'ALot Awatif N°179 - TANGER',
+    phones: 'GSM: 0650812894 - Tél: 0666216657',
     email: 'EMAIL: boukir.diamond23@gmail.com',
   },
 } as const;
@@ -134,9 +134,9 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
   const datePremier = payments.length ? formatDateTime(firstPayment.date_paiement) : '';
   const soldeAvant = Number(printBalance?.soldeAvant ?? 0) || 0;
   const soldeApres = soldeAvant - totalPaid;
-  const soldoAvantLabel = isClient ? 'Solde Ã  recevoir avant paiement' : 'Solde Ã  payer avant paiement';
-  const soldoApresLabel = isClient ? 'Solde Ã  recevoir aprÃ¨s paiement' : 'Solde Ã  payer aprÃ¨s paiement';
-  const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE Ã€ RECEVOIR' : 'NOUVEAU SOLDE Ã€ PAYER';
+  const soldoAvantLabel = isClient ? 'Solde à recevoir avant paiement' : 'Solde à payer avant paiement';
+  const soldoApresLabel = isClient ? 'Solde à recevoir après paiement' : 'Solde à payer après paiement';
+  const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE À RECEVOIR' : 'NOUVEAU SOLDE À PAYER';
   const contactRefLabel = isClient ? 'Ref client' : 'Ref fournisseur';
   const isA5 = size === 'A5';
   const showIgnored = totalIgnored > 0;
@@ -168,8 +168,8 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
       pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight, undefined, 'MEDIUM');
       pdf.save(`Groupe_paiements_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (error) {
-      console.error('Erreur lors de la gÃ©nÃ©ration du PDF:', error);
-      alert('Erreur lors de la gÃ©nÃ©ration du PDF');
+      console.error('Erreur lors de la génération du PDF:', error);
+      alert('Erreur lors de la génération du PDF');
     } finally {
       if (printRef.current) {
         const els = Array.from(printRef.current.querySelectorAll('.print-hidden')) as HTMLElement[];
@@ -187,6 +187,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
       <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="UTF-8" />
           <title>Impression Groupe de paiements</title>
           <style>
             html, body { margin: 0; padding: 0; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -240,9 +241,9 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col">
         <div className="flex justify-between items-center p-4 border-b bg-gray-50">
           <div className="flex items-center space-x-4">
-            <h2 className="text-lg font-semibold">AperÃ§u impression - Groupe de paiements ({payments.length})</h2>
+            <h2 className="text-lg font-semibold">Aperçu impression - Groupe de paiements ({payments.length})</h2>
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium">SociÃ©tÃ©:</label>
+              <label className="text-sm font-medium">Société:</label>
               <select
                 value={selectedCompany}
                 onChange={(e) => setSelectedCompany(e.target.value as 'DIAMOND' | 'MPC')}
@@ -267,7 +268,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
               <Printer size={16} className="mr-1" /> Imprimer
             </button>
             <button onClick={generatePDF} disabled={isGenerating} className="flex items-center px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">
-              <Download size={16} className="mr-1" /> {isGenerating ? 'GÃ©nÃ©ration...' : 'PDF'}
+              <Download size={16} className="mr-1" /> {isGenerating ? 'Génération...' : 'PDF'}
             </button>
             <button onClick={onClose} className="px-3 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">Fermer</button>
           </div>
@@ -311,7 +312,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
                       <div className={`grid grid-cols-2 ${isA5 ? 'gap-1 text-[10px]' : 'gap-2 text-sm'}`}>
                         <div><span className="font-medium">Nom:</span> {contactDisplayName}</div>
                         {contactRef && <div><span className="font-medium">{contactRefLabel}:</span> {contactRef}</div>}
-                        {societe && <div><span className="font-medium">SociÃ©tÃ©:</span> {societe}</div>}
+                        {societe && <div><span className="font-medium">Société:</span> {societe}</div>}
                         <div><span className="font-medium">Service de charge:</span> <strong>06.66.21.66.57</strong></div>
                       </div>
                     </div>
@@ -320,12 +321,12 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
                   <div className={`${isA5 ? 'ml-2' : 'ml-6'} text-right`}>
                     <div className={`${isA5 ? 'p-2' : 'p-4'} rounded border border-orange-200`}>
                       <h2 className={`${isA5 ? 'text-sm mb-1' : 'text-lg mb-3'} font-bold text-orange-700`}>
-                        REÃ‡U DE PAIEMENT GROUPE
+                        REÇU DE PAIEMENT GROUPE
                       </h2>
                       <div className={`${isA5 ? 'space-y-1 text-[10px]' : 'space-y-2 text-sm'}`}>
                         <div><span className="font-medium">Date:</span> {datePremier}</div>
                         <div><span className="font-medium">Nombre:</span> {payments.length}</div>
-                        {groupId && <div><span className="font-medium">RÃ©f. groupe:</span> {groupId}</div>}
+                        {groupId && <div><span className="font-medium">Réf. groupe:</span> {groupId}</div>}
                       </div>
                     </div>
                   </div>
@@ -337,10 +338,10 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
                       <tr className="bg-orange-500 text-white">
                         <th className={`${isA5 ? 'px-1.5 py-1' : 'px-3 py-2'} border border-gray-300 text-left font-semibold`}>Description</th>
                         <th className={`${isA5 ? 'px-1.5 py-1 w-24' : 'px-3 py-2 w-40'} border border-gray-300 text-center font-semibold`}>Date / Heure</th>
-                        <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>PayÃ© (DH)</th>
+                        <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>Payé (DH)</th>
                         {showIgnored && <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>Ignoré (DH)</th>}
                         <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>Total (DH)</th>
-                        <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-28">{isClient ? 'Solde Ã  recevoir (DH)' : 'Solde Ã  payer (DH)'}</th>
+                        <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-28">{isClient ? 'Solde à recevoir (DH)' : 'Solde à payer (DH)'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -391,11 +392,11 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
                   <div className={isA5 ? 'w-64' : 'w-80'}>
                     <div className={`${isA5 ? 'p-2' : 'p-4'} rounded`}>
                       <div className={`flex justify-between items-center ${isA5 ? 'text-sm' : 'text-lg'} font-bold`}>
-                        <span>MONTANT PAYÃ‰:</span>
+                        <span>MONTANT PAYÉ:</span>
                         <span>{totalPaid.toFixed(2)} DH</span>
                       </div>
                       {showIgnored && <div className={`flex justify-between items-center ${isA5 ? 'text-xs pt-1 mt-1' : 'text-base pt-2 mt-2'} font-semibold text-orange-700 border-t`}>
-                        <span>MONTANT IGNORÃ‰:</span>
+                        <span>MONTANT IGNORÉ:</span>
                         <span>{totalIgnored.toFixed(2)} DH</span>
                       </div>}
                       <div className={`flex justify-between items-center ${isA5 ? 'text-xs pt-1 mt-1' : 'text-base pt-2 mt-2'} font-semibold text-gray-700 border-t`}>
@@ -417,7 +418,7 @@ const PaymentGroupPrintModal: React.FC<PaymentGroupPrintModalProps> = ({
         </div>
 
         <div className="p-2 border-t bg-gray-50 text-xs text-gray-600 text-center">
-          AperÃ§u impression - Les couleurs peuvent diffÃ©rer de l'impression finale
+          Aperçu impression - Les couleurs peuvent différer de l'impression finale
         </div>
       </div>
     </div>
