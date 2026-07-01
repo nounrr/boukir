@@ -160,8 +160,12 @@ const FondCaisseDetailPage = () => {
   };
 
   const filteredActions = useMemo(() => {
-    if (filter === 'ALL') return actions;
-    return actions.filter((a) => a.direction === filter);
+    const scoped = filter === 'ALL' ? actions : actions.filter((a) => a.direction === filter);
+    return [...scoped].sort((a, b) => {
+      const byDate = new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (byDate !== 0) return byDate;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
   }, [actions, filter]);
 
   const cards = [

@@ -88,12 +88,12 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
   }> = {
     DIAMOND: {
       address: "IKAMAT REDOUAN 1 AZIB HAJ KADDOUR LOCAL 1 ET N2 - TANGER",
-      phones: "GSM: 0650812894 - TÃ©l: 0666216657",
+      phones: "GSM: 0650812894 - Tél: 0666216657",
       email: "EMAIL: boukir.diamond23@gmail.com",
     },
     MPC: {
-      address: "ALot Awatif NÂ°179 - TANGER",
-      phones: "GSM: 0650812894 - TÃ©l: 0666216657",
+      address: "ALot Awatif N°179 - TANGER",
+      phones: "GSM: 0650812894 - Tél: 0666216657",
       email: "EMAIL: boukir.diamond23@gmail.com",
     }
   };
@@ -142,9 +142,9 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       const montantPaiement = Number(printBalance.montantPaiement ?? amountOf(payment)) || 0;
       const soldoApres = Number(printBalance.soldeApres ?? 0) || 0;
       const soldoAvant = Number(printBalance.soldeAvant ?? 0) || 0;
-      const soldoAvantLabel = isClient ? 'Solde Ã  recevoir avant paiement' : 'Solde Ã  payer avant paiement';
-      const soldoApresLabel = isClient ? 'Solde Ã  recevoir aprÃ¨s paiement' : 'Solde Ã  payer aprÃ¨s paiement';
-      const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE Ã€ RECEVOIR' : 'NOUVEAU SOLDE Ã€ PAYER';
+      const soldoAvantLabel = isClient ? 'Solde à recevoir avant paiement' : 'Solde à payer avant paiement';
+      const soldoApresLabel = isClient ? 'Solde à recevoir après paiement' : 'Solde à payer après paiement';
+      const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE À RECEVOIR' : 'NOUVEAU SOLDE À PAYER';
       return { soldoAvant, montantPaiement, soldoApres, soldoAvantLabel, soldoApresLabel, nouveauSoldeLabel, isClient };
     }
     if (contactId == null) {
@@ -155,9 +155,9 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       const soldoAvant = idx > 0 ? sorted.slice(0, idx).reduce((s, p) => s + amountOf(p), startingSolde) : startingSolde;
       const montantPaiement = amountOf(payment);
       const soldoApres = soldoAvant - montantPaiement; // paiement rÃ©duit le solde dÃ»
-      const soldoAvantLabel = isClient ? 'Solde Ã  recevoir avant paiement' : 'Solde Ã  payer avant paiement';
-      const soldoApresLabel = isClient ? 'Solde Ã  recevoir aprÃ¨s paiement' : 'Solde Ã  payer aprÃ¨s paiement';
-      const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE Ã€ RECEVOIR' : 'NOUVEAU SOLDE Ã€ PAYER';
+      const soldoAvantLabel = isClient ? 'Solde à recevoir avant paiement' : 'Solde à payer avant paiement';
+      const soldoApresLabel = isClient ? 'Solde à recevoir après paiement' : 'Solde à payer après paiement';
+      const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE À RECEVOIR' : 'NOUVEAU SOLDE À PAYER';
       return { soldoAvant, montantPaiement, soldoApres, soldoAvantLabel, soldoApresLabel, nouveauSoldeLabel, isClient };
     }
 
@@ -230,9 +230,9 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
   const montantPaiement = amountOf(payment);
   const soldoApres = soldoAvant - montantPaiement; // paiement rÃ©duit le solde
 
-    const soldoAvantLabel = isClient ? 'Solde Ã  recevoir avant paiement' : 'Solde Ã  payer avant paiement';
-    const soldoApresLabel = isClient ? 'Solde Ã  recevoir aprÃ¨s paiement' : 'Solde Ã  payer aprÃ¨s paiement';
-    const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE Ã€ RECEVOIR' : 'NOUVEAU SOLDE Ã€ PAYER';
+    const soldoAvantLabel = isClient ? 'Solde à recevoir avant paiement' : 'Solde à payer avant paiement';
+    const soldoApresLabel = isClient ? 'Solde à recevoir après paiement' : 'Solde à payer après paiement';
+    const nouveauSoldeLabel = isClient ? 'NOUVEAU SOLDE À RECEVOIR' : 'NOUVEAU SOLDE À PAYER';
     return { soldoAvant, montantPaiement, soldoApres, soldoAvantLabel, soldoApresLabel, nouveauSoldeLabel, isClient };
   };
 
@@ -282,7 +282,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
       {/* Options */}
       <div className="flex justify-end items-center gap-4 mb-2 print-hidden">
         <div className="flex items-center">
-          <label htmlFor="company-select" className="mr-2 text-sm font-medium">SociÃ©tÃ© :</label>
+          <label htmlFor="company-select" className="mr-2 text-sm font-medium">Société :</label>
           <select
             id="company-select"
             value={selectedCompany}
@@ -320,14 +320,14 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
         <div className={`${isA5 ? 'ml-2' : 'ml-6'} text-right`}>
           <div className={`${isA5 ? 'p-2' : 'p-4'} rounded border border-orange-200`}>
             <h2 className={`${isA5 ? 'text-sm mb-1' : 'text-lg mb-3'} font-bold text-orange-700`}>
-              REÃ‡U DE PAIEMENT NÂ° {payment.numero || `PAY${String(payment.id).padStart(2, '0')}`}
+              REÇU DE PAIEMENT N° {payment.numero || `PAY${String(payment.id).padStart(2, '0')}`}
             </h2>
             <div className={`${isA5 ? 'space-y-1 text-[10px]' : 'space-y-2 text-sm'}`}>
               <div><span className="font-medium">Date:</span> {formatHeure(payment.date_paiement)}</div>
               <div><span className="font-medium">Mode:</span> {payment.mode_paiement}</div>
               <div><span className="font-medium">Statut:</span> {payment.statut}</div>
               {payment.code_reglement && (
-                <div><span className="font-medium">RÃ©fÃ©rence:</span> {payment.code_reglement}</div>
+                <div><span className="font-medium">Référence:</span> {payment.code_reglement}</div>
               )}
             </div>
           </div>
@@ -341,10 +341,10 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
             <tr className="bg-orange-500 text-white">
               <th className={`${isA5 ? 'px-1.5 py-1' : 'px-3 py-2'} border border-gray-300 text-left font-semibold`}>Description</th>
               <th className={`${isA5 ? 'px-1.5 py-1 w-24' : 'px-3 py-2 w-40'} border border-gray-300 text-center font-semibold`}>Date / Heure</th>
-              <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>PayÃ© (DH)</th>
-              {showIgnored && <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>IgnorÃ© (DH)</th>}
+              <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>Payé (DH)</th>
+              {showIgnored && <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>Ignoré (DH)</th>}
               <th className={`${isA5 ? 'px-1.5 py-1 w-20' : 'px-3 py-2 w-28'} border border-gray-300 text-right font-semibold`}>Total (DH)</th>
-              <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-28">{isClient ? 'Solde Ã  recevoir (DH)' : 'Solde Ã  payer (DH)'}</th>
+              <th className="border border-gray-300 px-3 py-2 text-right font-semibold w-28">{isClient ? 'Solde à recevoir (DH)' : 'Solde à payer (DH)'}</th>
             </tr>
           </thead>
           <tbody>
@@ -367,7 +367,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
             {/* Ligne du paiement */}
             <tr className="bg-white">
               <td className="border border-gray-300 px-3 py-2">
-                <div className="font-medium">Paiement {payment.mode_paiement} {isClient ? 'reÃ§u de' : 'versÃ© Ã '}</div>
+                <div className="font-medium">Paiement {payment.mode_paiement} {isClient ? 'reçu de' : 'versé à'}</div>
                 {payment.notes && (
                   <div className="text-xs text-gray-600 italic">{payment.notes}</div>
                 )}
@@ -419,11 +419,11 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
         <div className={isA5 ? 'w-64' : 'w-80'}>
           <div className={`${isA5 ? 'p-2' : 'p-4'} rounded`}>
             <div className={`flex justify-between items-center ${isA5 ? 'text-sm' : 'text-lg'} font-bold`}>
-              <span>MONTANT PAYÃ‰:</span>
+              <span>MONTANT PAYÉ:</span>
               <span>{montantPaiement.toFixed(2)} DH</span>
             </div>
             {showIgnored && <div className={`flex justify-between items-center ${isA5 ? 'text-xs pt-1 mt-1' : 'text-base pt-2 mt-2'} font-semibold text-orange-700 border-t`}>
-              <span>MONTANT IGNORÃ‰:</span>
+              <span>MONTANT IGNORÉ:</span>
               <span>{montantIgnorer.toFixed(2)} DH</span>
             </div>}
             <div className={`flex justify-between items-center ${isA5 ? 'text-xs pt-1 mt-1' : 'text-base pt-2 mt-2'} font-semibold text-gray-700 border-t`}>
