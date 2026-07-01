@@ -1241,6 +1241,29 @@ const BonsPage = () => {
     return total;
   };
 
+  const getComptantPaymentRows = (payments: any[]): any[] => {
+    return (Array.isArray(payments) ? payments : [])
+      .filter((payment: any) => parseMontantNumber(payment?.montant) > 0)
+      .sort((a: any, b: any) => {
+        const dateA = new Date(a?.date_paiement || a?.created_at || 0).getTime();
+        const dateB = new Date(b?.date_paiement || b?.created_at || 0).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        return Number(a?.id || 0) - Number(b?.id || 0);
+      });
+  };
+
+  const getComptantPaidAmount = (bon: any, payments?: any[]): number => {
+    const paymentRows = getComptantPaymentRows(payments || []);
+    if (paymentRows.length) {
+      return paymentRows.reduce((sum, payment: any) => sum + parseMontantNumber(payment?.montant), 0);
+    }
+
+    const explicitPaid = parseMontantNumber(bon?.montant_paye);
+    if (explicitPaid > 0) return explicitPaid;
+
+    return Math.max(0, computeMontantTotal(bon) - parseMontantNumber(bon?.reste));
+  };
+
   // Calcule le poids total d'un bon = somme (quantite * kg_unitaire)
   const computeTotalPoids = (bon: any): number => {
     const items = parseItemsSafe(bon?.items);
@@ -1510,6 +1533,22 @@ const BonsPage = () => {
   const [auditMeta, setAuditMeta] = useState<Record<string, { created_by_name: string|null; updated_by_name: string|null }>>({});
   const { token } = useAuth();
   const apiBaseUrl = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
+  const fetchComptantPaymentHistoryForPrint = async (bon: any): Promise<any[]> => {
+    const isUnpaid = bon?.type === 'Comptant'
+      && (Number(bon?.reste || 0) > 0 || bon?.non_paye === true || Number(bon?.non_paye ?? 0) === 1);
+    if (!isUnpaid || !bon?.id) return [];
+
+    try {
+      const res = await fetch(`/api/comptant/${bon.id}/paiements`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) return [];
+      const data = await res.json().catch(() => []);
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  };
   // Helper: envoyer WhatsApp pour un bon depuis la liste
   // (imports moved to top of file)
   const resolveBonPhone = (bon: any): string | null => {
@@ -1666,6 +1705,7 @@ const BonsPage = () => {
           resolvedSupplier = suppliers.find((s: any) => String(s.id) === String(fournisseurId));
         }
       }
+      const printPaymentHistory = await fetchComptantPaymentHistoryForPrint(bon);
 
       const pdfElement = (
         <BonPrintTemplate
@@ -1676,6 +1716,7 @@ const BonsPage = () => {
           size="A4"
           companyType={selectedCompany}
           usePromo={selectedUsePromo}
+          paymentHistory={printPaymentHistory}
         />
       );
 
@@ -2942,13 +2983,18 @@ const BonsPage = () => {
                         <div className="text-sm font-semibold text-gray-900">{formatNumber4(computeMontantTotal(bon))} DH</div>
                         <div className="text-xs text-gray-500">{bon.items?.length || 0} articles</div>
                         {(() => {
-                          const bonReste = Number((bon as any)?.reste ?? 0);
-                          const bonPaye = Math.max(0, computeMontantTotal(bon) - bonReste);
+                          const bonReste = parseMontantNumber((bon as any)?.reste);
+                          const bonPaye = getComptantPaidAmount(bon);
                           if (currentTab !== 'ComptantNonPaye' || bonReste <= 0) return null;
                           return (
-                            <div className="text-xs font-semibold text-orange-600 mt-1 flex items-center gap-1">
-                              <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-                              Montant payé: {formatNumber4(bonPaye)} DH
+                            <div className="mt-1 space-y-0.5 text-xs">
+                              <div className="font-semibold text-emerald-700">
+                                Montant payé: {formatNumber4(bonPaye)} DH
+                              </div>
+                              <div className="font-semibold text-orange-600 flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                                Reste: {formatNumber4(bonReste)} DH
+                              </div>
                             </div>
                           );
                         })()}
@@ -3787,22 +3833,36 @@ const BonsPage = () => {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-                <div className="rounded-lg border border-gray-200 p-3">
-                  <div className="text-xs text-gray-500">Montant total</div>
-                  <div className="text-lg font-semibold text-gray-900">{formatNumber4(computeMontantTotal(selectedComptantForPayments))} DH</div>
-                </div>
-                <div className="rounded-lg border border-gray-200 p-3">
-                  <div className="text-xs text-gray-500">Montant payé</div>
-                  <div className="text-lg font-semibold text-emerald-700">
-                    {formatNumber4((comptantPayments as any[]).reduce((sum, p: any) => sum + Number(p?.montant || 0), 0))} DH
+              {(() => {
+                const paymentRows = getComptantPaymentRows(comptantPayments as any[]);
+                const paidTotal = getComptantPaidAmount(selectedComptantForPayments, paymentRows);
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                    <div className="rounded-lg border border-gray-200 p-3">
+                      <div className="text-xs text-gray-500">Montant total</div>
+                      <div className="text-lg font-semibold text-gray-900">{formatNumber4(computeMontantTotal(selectedComptantForPayments))} DH</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 p-3">
+                      <div className="text-xs text-gray-500">Montant payé</div>
+                      <div className="text-lg font-semibold text-emerald-700">{formatNumber4(paidTotal)} DH</div>
+                      {paymentRows.length > 1 && (
+                        <div className="mt-2 space-y-1 border-t border-emerald-100 pt-2">
+                          {paymentRows.map((payment: any) => (
+                            <div key={payment.id} className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                              <span className="truncate">{formatDateTimeWithHour(payment.date_paiement)}</span>
+                              <span className="font-semibold text-emerald-700 whitespace-nowrap">{formatNumber4(payment.montant)} DH</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded-lg border border-gray-200 p-3">
+                      <div className="text-xs text-gray-500">Reste</div>
+                      <div className="text-lg font-semibold text-orange-700">{formatNumber4(Number(selectedComptantForPayments?.reste || 0))} DH</div>
+                    </div>
                   </div>
-                </div>
-                <div className="rounded-lg border border-gray-200 p-3">
-                  <div className="text-xs text-gray-500">Reste</div>
-                  <div className="text-lg font-semibold text-orange-700">{formatNumber4(Number(selectedComptantForPayments?.reste || 0))} DH</div>
-                </div>
-              </div>
+                );
+              })()}
 
               <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4 mb-5">
                 <div className="text-sm font-medium text-gray-800 mb-3">Ajouter un paiement</div>

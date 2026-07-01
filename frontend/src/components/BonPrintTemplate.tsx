@@ -13,6 +13,7 @@ interface BonPrintTemplateProps {
   size?: 'A4' | 'A5';
   companyType?: 'DIAMOND' | 'MPC';
   usePromo?: boolean; // afficher prix original et colonne promo si applicable
+  paymentHistory?: any[];
 }
 
 // Pied de page adaptatif selon le nombre d'articles et le format A4/A5
@@ -85,7 +86,8 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   products = [],
   size = 'A4',
   companyType = 'DIAMOND',
-  usePromo = false
+  usePromo = false,
+  paymentHistory = []
 }) => {
   const [selectedCompany, setSelectedCompany] = useState<'DIAMOND' | 'MPC'>(companyType);
   const [printMode, setPrintMode] = useState<'WITH_PRICES' | 'WITHOUT_PRICES' | 'PRODUCTS_ONLY'>('WITH_PRICES');
@@ -308,7 +310,20 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
   const bonReste = Math.max(0, parseMoney(bon?.reste));
   const isUnpaidComptant = bon?.type === 'Comptant'
     && (bonReste > 0 || bon?.non_paye === true || Number(bon?.non_paye ?? 0) === 1);
-  const bonMontantPaye = Math.max(0, Number((bonTotal - bonReste).toFixed(2)));
+  const comptantPaymentRows = (Array.isArray(paymentHistory) ? paymentHistory : [])
+    .filter((payment: any) => parseMoney(payment?.montant) > 0)
+    .sort((a: any, b: any) => {
+      const dateA = new Date(a?.date_paiement || a?.created_at || 0).getTime();
+      const dateB = new Date(b?.date_paiement || b?.created_at || 0).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      return Number(a?.id || 0) - Number(b?.id || 0);
+    });
+  const bonMontantPaye = comptantPaymentRows.length
+    ? comptantPaymentRows.reduce((sum: number, payment: any) => sum + parseMoney(payment?.montant), 0)
+    : Math.max(0, Number((bonTotal - bonReste).toFixed(2)));
+  const printReste = comptantPaymentRows.length
+    ? Math.max(0, Number((bonTotal - bonMontantPaye).toFixed(2)))
+    : bonReste;
 
   return (
     <div 
@@ -584,22 +599,37 @@ const BonPrintTemplate: React.FC<BonPrintTemplateProps> = ({
         <div className={`flex justify-end ${spacing.margin} totals-section`}>
           <div className={isA5 ? 'w-60' : 'w-80'}>
             <div className={`${spacing.padding} rounded`}>
-              {isUnpaidComptant && (
+              {isUnpaidComptant ? (
                 <>
+                  <div className={`flex justify-between items-center ${textSizes.subheader} font-bold`}>
+                    <span>TOTAL GÉNÉRAL:</span>
+                    <span>{bonTotal.toFixed(2)} DH</span>
+                  </div>
                   <div className={`flex justify-between items-center ${textSizes.normal}`}>
                     <span>Montant paye:</span>
                     <span>{bonMontantPaye.toFixed(2)} DH</span>
                   </div>
+                  {comptantPaymentRows.length > 1 && (
+                    <div className="my-1 border-t border-gray-200 pt-1">
+                      {comptantPaymentRows.map((payment: any) => (
+                        <div key={payment.id} className={`flex justify-between items-center ${textSizes.small} text-gray-600`}>
+                          <span>{formatHeure(payment.date_paiement)}</span>
+                          <span>{parseMoney(payment.montant).toFixed(2)} DH</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className={`flex justify-between items-center ${textSizes.normal} text-orange-700 font-semibold`}>
                     <span>Reste:</span>
-                    <span>{bonReste.toFixed(2)} DH</span>
+                    <span>{printReste.toFixed(2)} DH</span>
                   </div>
                 </>
+              ) : (
+                <div className={`flex justify-between items-center ${textSizes.subheader} font-bold`}>
+                  <span>TOTAL GÉNÉRAL:</span>
+                  <span>{bonTotal.toFixed(2)} DH</span>
+                </div>
               )}
-              <div className={`flex justify-between items-center ${textSizes.subheader} font-bold`}>
-                <span>TOTAL GÉNÉRAL:</span>
-                <span>{bonTotal.toFixed(2)} DH</span>
-              </div>
             </div>
           </div>
         </div>

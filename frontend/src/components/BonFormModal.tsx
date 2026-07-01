@@ -1944,6 +1944,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
           fournisseur={fournisseurContact as Contact | undefined}
           products={products as any}
           size="A4"
+          paymentHistory={Array.isArray(comptantPaymentsHistory) ? comptantPaymentsHistory : []}
         />
       );
 

@@ -5,6 +5,7 @@ import { Printer, Download } from 'lucide-react';
 import BonPrintTemplate from './BonPrintTemplate';
 import { getBonNumeroDisplay } from '../utils/numero';
 import type { Contact } from '../types';
+import { useGetComptantPaymentsQuery } from '../store/api/comptantApi';
 
 interface BonPrintModalProps {
   isOpen: boolean;
@@ -28,6 +29,11 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
   const [usePromo, setUsePromo] = useState(false);
+  const isUnpaidComptant = bon?.type === 'Comptant'
+    && (Number(bon?.reste || 0) > 0 || bon?.non_paye === true || Number(bon?.non_paye ?? 0) === 1);
+  const { data: comptantPayments = [] } = useGetComptantPaymentsQuery(bon?.id, {
+    skip: !isOpen || !bon?.id || !isUnpaidComptant,
+  });
 
   if (!isOpen) return null;
 
@@ -224,6 +230,7 @@ const BonPrintModal: React.FC<BonPrintModalProps> = ({
                 products={products}
                 size={size}
                 usePromo={usePromo}
+                paymentHistory={comptantPayments as any[]}
               />
             </div>
           </div>
