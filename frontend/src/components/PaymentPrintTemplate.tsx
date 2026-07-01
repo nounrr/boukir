@@ -128,7 +128,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
     const num = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(/,/g, '.'));
     return isNaN(num) ? 0 : num;
   };
-  const amountOf = (p: any) => Math.max(grossAmountOf(p) - ignoredAmountOf(p), 0);
+  const amountOf = (p: any) => Math.max(grossAmountOf(p), 0);
 
   // Calcul du solde cumulÃ©: API historique du paiement, fallback local si indisponible.
   const calculateCumulativeSaldo = () => {
@@ -237,8 +237,8 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
   };
 
   const { soldoAvant, montantPaiement, soldoApres, soldoAvantLabel, soldoApresLabel, nouveauSoldeLabel, isClient } = calculateCumulativeSaldo();
-  const montantTotal = grossAmountOf(payment);
   const montantIgnorer = ignoredAmountOf(payment);
+  const montantTotal = montantPaiement + montantIgnorer;
   const showIgnored = montantIgnorer > 0;
 
   const contact = client || fournisseur || ((payment?.type === 'Comptant' && payment?.client_nom) ? { nom_complet: payment.client_nom } as any : undefined);
