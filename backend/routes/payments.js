@@ -185,7 +185,10 @@ const toPayment = (r) => ({
   date_ajout_reelle: r.date_ajout_reelle || null,
 });
 
-const paymentPaidAmount = (payment) => Math.max(Number(payment?.montant_total || 0) || 0, 0);
+const paymentPaidAmount = (payment) => Math.max(
+  (Number(payment?.montant_total || 0) || 0) + (Number(payment?.montant_ignorer || 0) || 0),
+  0
+);
 
 // normalize statut to canonical French labels
 function mapToCanonical(s) {
@@ -584,7 +587,7 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
     ] = await Promise.all([
       pool.query('SELECT id, type, solde FROM contacts WHERE id = ? LIMIT 1', [contactId]),
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM bons_sortie WHERE client_id = ?', [contactId]),
-      pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM bons_comptant WHERE client_id = ?', [contactId]),
+      pool.query('SELECT id, montant_total, montant_ignorer, date_creation, created_at, statut FROM bons_comptant WHERE client_id = ?', [contactId]),
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM bons_commande WHERE fournisseur_id = ?', [contactId]),
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM bons_sortie WHERE fournisseur_id = ? AND COALESCE(vendre_au_fournisseur, 0) = 1', [contactId]),
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM avoirs_client WHERE client_id = ?', [contactId]),
@@ -605,18 +608,21 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
     const pushTx = (rows, kind, deltaSign, amountKey = 'montant_total', dateKey = 'date_creation') => {
       for (const row of rows || []) {
         if (!isActiveBalanceStatus(row.statut ?? row.status)) continue;
+        const amount = amountKey === 'comptant_total'
+          ? (Number(row.montant_total || 0) || 0) + (Number(row.montant_ignorer || 0) || 0)
+          : (Number(row[amountKey] || 0) || 0);
         txs.push({
           kind,
           id: row.id,
           date: row[dateKey] || row.created_at,
-          delta: deltaSign * (Number(row[amountKey] || 0) || 0),
+          delta: deltaSign * amount,
         });
       }
     };
 
     if (isClient) {
       pushTx(sortiesResult[0], 'sale', 1);
-      pushTx(comptantsResult[0], 'sale', 1);
+      pushTx(comptantsResult[0], 'sale', 1, 'comptant_total');
       pushTx(ecommerceOrdersResult[0], 'sale', 1, 'total_amount', 'created_at');
       pushTx(avoirsClientResult[0], 'avoir', -1);
     } else {
