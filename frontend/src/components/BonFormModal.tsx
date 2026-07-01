@@ -442,6 +442,31 @@ const findCatalogProductForItem = (item: any, products: any[] = []) => {
   }
 };
 
+const isTruthyServiceFlag = (value: any): boolean => (
+  value === true ||
+  value === 1 ||
+  value === '1' ||
+  String(value).toLowerCase() === 'true'
+);
+
+const isServiceItem = (item: any, product: any = null, snapshot: any = null): boolean => (
+  isTruthyServiceFlag(item?.est_service) ||
+  isTruthyServiceFlag(item?.is_service) ||
+  isTruthyServiceFlag(item?.service) ||
+  isTruthyServiceFlag(item?.product_est_service) ||
+  isTruthyServiceFlag(item?.produit_est_service) ||
+  isTruthyServiceFlag(item?.snapshot_est_service) ||
+  isTruthyServiceFlag(item?.product_snapshot_est_service) ||
+  isTruthyServiceFlag(item?.product?.est_service) ||
+  isTruthyServiceFlag(item?.produit?.est_service) ||
+  isTruthyServiceFlag(item?.snapshot?.est_service) ||
+  isTruthyServiceFlag(item?.product_snapshot?.est_service) ||
+  isTruthyServiceFlag(product?.est_service) ||
+  isTruthyServiceFlag(product?.is_service) ||
+  isTruthyServiceFlag(snapshot?.est_service) ||
+  isTruthyServiceFlag(snapshot?.is_service)
+);
+
 const resolveCatalogMetaForItem = (item: any, product: any = null, snapshot: any = null, variant: any = null) => {
   const productId = item?.product_id ?? item?.produit_id ?? item?.productId ?? item?.product?.id ?? item?.produit?.id ?? product?.id ?? snapshot?.id ?? '';
   const reference = String(
@@ -697,7 +722,8 @@ const resolveItemCostContext = (
   const averageSnapshotCR = resolveAverageSnapshotCoutRevient(snapshotProducts, item?.product_id, variantId);
 
   const basePA = snapshotPA || variantPA || productPA || itemPA || 0;
-  const baseCR = averageSnapshotCR || variantCR || productCR || snapshotCR || itemCR || basePA || 0;
+  const isService = isServiceItem(item, product, snapshot);
+  const baseCR = isService ? 0 : (averageSnapshotCR || variantCR || productCR || snapshotCR || itemCR || basePA || 0);
 
   return {
     product,
@@ -719,8 +745,9 @@ const resolveItemCostContext = (
     productPA,
     productCR,
     prix_achat: scaleDecimal(basePA, convFactor),
-    cout_revient: scaleDecimal(baseCR, convFactor),
-    source: averageSnapshotCR ? 'snapshot_average' : variantPA || variantCR ? 'variant' : productPA || productCR ? 'product' : snapshotPA || snapshotCR ? 'snapshot' : 'item',
+    cout_revient: isService ? 0 : scaleDecimal(baseCR, convFactor),
+    isService,
+    source: isService ? 'service' : averageSnapshotCR ? 'snapshot_average' : variantPA || variantCR ? 'variant' : productPA || productCR ? 'product' : snapshotPA || snapshotCR ? 'snapshot' : 'item',
   };
 };
 
@@ -6573,7 +6600,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
     const remise = Number(values.items[index].remise_montant || 0);
 
     const itemRow = values.items[index];
-    const cr = resolveItemCostContext(itemRow, products as any[], snapshotProducts as any[]).cout_revient
+    const costContext = resolveItemCostContext(itemRow, products as any[], snapshotProducts as any[]);
+    const cr = costContext.isService ? 0 : costContext.cout_revient
       || Number(itemRow.cout_revient)
       || Number(itemRow.prix_achat)
       || 0;
@@ -6954,14 +6982,16 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
         const remise =
           parseFloat(normalizeDecimal(remiseRaw[idx] ?? String(item.remise_montant ?? item.remise_valeur ?? ''))) || 0;
 
+        const costContext = resolveItemCostContext(item, products as any[], snapshotProducts as any[]);
+        const isService = costContext.isService || isServiceItem(item, costContext.product, costContext.snapshot);
+
         if (item?.line_mode === 'detail') {
+          if (isService) return sum + prixVente * q - remise * q;
           const coutRevientDetail = itemCR || itemPA;
           return sum + (prixVente - coutRevientDetail) * q - remise * q;
         }
 
-        const coutRevient = resolveItemCostContext(item, products as any[], snapshotProducts as any[]).cout_revient
-          || itemCR
-          || itemPA;
+        const coutRevient = isService ? 0 : (costContext.cout_revient || itemCR || itemPA);
         return sum + (prixVente - coutRevient) * q - remise * q;
       }, 0);
       return formatFull(local);
