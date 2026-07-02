@@ -10,7 +10,6 @@ import { useGetProductsPaginatedQuery, useDeleteProductMutation, useTranslatePro
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryFormModal from '../components/CategoryFormModal';
-import * as XLSX from 'xlsx';
 import Swal from 'sweetalert2';
 import { printProductTicket } from '../utils/productTicketPrint';
 
@@ -84,6 +83,7 @@ const StockPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isTranslating, setIsTranslating] = useState(false);
   const [isGeneratingSpecs, setIsGeneratingSpecs] = useState(false);
+  const [isExportingStockExcel, setIsExportingStockExcel] = useState(false);
   const [isGeneratingStockPdf, setIsGeneratingStockPdf] = useState(false);
   // translation mutation
   const [translateProducts] = useTranslateProductsMutation();
@@ -343,66 +343,41 @@ const StockPage: React.FC = () => {
 
   const filteredProducts = flattenedProducts;
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    setIsExportingStockExcel(true);
     try {
-      // Export depends on active tab (Produits vs Services)
-      const exportableProducts = filteredProducts;
+      const categoryLabel = filterCategory
+        ? (organizedCategories.find((c) => String(c.id) === String(filterCategory))?.nom || '')
+        : '';
+      const params = new URLSearchParams();
+      params.set('type', productType);
+      if (searchTerm) params.set('q', searchTerm);
+      if (filterCategory) params.set('category_id', String(filterCategory));
+      if (categoryLabel) params.set('category_label', categoryLabel);
 
-      const rows = exportableProducts.map((p: any, index: number) => {
-        const pa = getSnapshotAwarePrixAchat(p);
-        return {
-          'N°': index + 1,
-          'Référence': p.reference ?? p.id,
-          'Désignation': p.designation ?? '',
-          'Quantité': '', // Laisser vide pour saisie
-          'Prix Achat': pa,
-          'Total Achat': '' // Sera remplacé par une formule
-        };
+      const resp = await fetch(`/api/products/stock-excel?${params.toString()}`, {
+        headers: authToken ? { authorization: `Bearer ${authToken}` } : undefined,
       });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-      const ws = XLSX.utils.json_to_sheet(rows);
-
-      // Ajouter les formules pour chaque ligne produit
-      // Les données commencent à la ligne 2 (index 1) car la ligne 1 est l'en-tête
-      exportableProducts.forEach((_, index) => {
-        const rowNum = index + 2; // Excel row number (1-based)
-        const qtyCell = `D${rowNum}`; // Colonne Quantité
-        const priceCell = `E${rowNum}`; // Colonne Prix Achat
-
-        // Formule: Quantité * Prix Achat
-        const cellRef = XLSX.utils.encode_cell({ r: index + 1, c: 5 }); // Colonne F (index 5)
-        ws[cellRef] = { t: 'n', f: `${qtyCell}*${priceCell}`, v: 0 };
-      });
-
-      // Ajouter la ligne TOTAL
-      const totalRowIndex = rows.length + 1; // 0-based index for the new row
-      const totalRowNum = totalRowIndex + 1; // 1-based Excel row number
-
-      XLSX.utils.sheet_add_json(ws, [{
-        'N°': 'TOTAL',
-        'Référence': '',
-        'Désignation': '',
-        'Quantité': '',
-        'Prix Achat': '',
-        'Total Achat': ''
-      }], { skipHeader: true, origin: -1 });
-
-      // Formule Somme Prix Achat (Colonne E)
-      const sumPriceRef = XLSX.utils.encode_cell({ r: totalRowIndex, c: 4 });
-      ws[sumPriceRef] = { t: 'n', f: `SUM(E2:E${totalRowNum - 1})` };
-
-      // Formule Somme Total Achat (Colonne F)
-      const sumTotalRef = XLSX.utils.encode_cell({ r: totalRowIndex, c: 5 });
-      ws[sumTotalRef] = { t: 'n', f: `SUM(F2:F${totalRowNum - 1})` };
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Stock');
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
       const suffix = activeTab === 'Services' ? 'services' : activeTab === 'Produits non stockables' ? 'produits-non-stockables' : 'produits';
-      XLSX.writeFile(wb, `export-${suffix}-${new Date().toISOString().slice(0, 10)}.xlsx`);
-      showSuccess('Export Excel généré avec formules');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `stock-${suffix}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showSuccess('Export Excel stock genere');
+      return;
     } catch (e) {
       console.error(e);
-      showError('Erreur lors de la génération du fichier Excel');
+      showError('Erreur lors de la generation du fichier Excel stock');
+      return;
+    } finally {
+      setIsExportingStockExcel(false);
     }
   };
 
@@ -785,9 +760,10 @@ const StockPage: React.FC = () => {
           </button>
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition-colors"
+            disabled={isExportingStockExcel}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md transition-colors disabled:opacity-50"
           >
-            Exporter Excel
+            {isExportingStockExcel ? 'Excel...' : 'Exporter Excel'}
           </button>
           <button
             onClick={handlePrintStockPdf}
