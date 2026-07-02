@@ -16,6 +16,56 @@ const parseDateRange = (req) => {
 const toNumber = (value) => Number(value || 0);
 const netAmountSql = (amountExpr, ignoredAmountExpr) =>
   `GREATEST(COALESCE(${amountExpr}, 0) - COALESCE(${ignoredAmountExpr}, 0), 0)`;
+const afterLatestCaisseStartSql = (dateTimeExpr) => `
+            AND (
+              NOT EXISTS (
+                SELECT 1
+                  FROM fond_caisse_entries fci_start
+                 WHERE fci_start.jour = DATE(${dateTimeExpr})
+                   AND fci_start.entry_type = 'caisse_initial'
+              )
+              OR ${dateTimeExpr} >= (
+                SELECT fci_start.opened_at
+                  FROM fond_caisse_entries fci_start
+                 WHERE fci_start.jour = DATE(${dateTimeExpr})
+                   AND fci_start.entry_type = 'caisse_initial'
+                 ORDER BY fci_start.opened_at DESC, fci_start.id DESC
+                 LIMIT 1
+              )
+            )
+            AND (
+              NOT EXISTS (
+                SELECT 1
+                  FROM coffre cof_start
+                 WHERE cof_start.jour = DATE(${dateTimeExpr})
+                   AND cof_start.entry_type = 'coffre_initial'
+              )
+              OR ${dateTimeExpr} >= (
+                SELECT cof_start.opened_at
+                  FROM coffre cof_start
+                 WHERE cof_start.jour = DATE(${dateTimeExpr})
+                   AND cof_start.entry_type = 'coffre_initial'
+                 ORDER BY cof_start.opened_at DESC, cof_start.id DESC
+                 LIMIT 1
+              )
+            )`;
+const afterLatestCoffreStartSql = (dateTimeExpr) => `
+            AND (
+              NOT EXISTS (
+                SELECT 1
+                  FROM coffre cof_start
+                 WHERE cof_start.jour = DATE(${dateTimeExpr})
+                   AND cof_start.entry_type = 'coffre_initial'
+              )
+              OR ${dateTimeExpr} >= (
+                SELECT cof_start.opened_at
+                  FROM coffre cof_start
+                 WHERE cof_start.jour = DATE(${dateTimeExpr})
+                   AND cof_start.entry_type = 'coffre_initial'
+                 ORDER BY cof_start.opened_at DESC, cof_start.id DESC
+                 LIMIT 1
+              )
+            )`;
 
 const emptyMovementRows = [];
 
@@ -744,6 +794,9 @@ router.get('/days/:date', async (req, res) => {
     const initialCaisseActions = actions.filter(
       (action) => action.sourceTable === 'fond_caisse_entries' && action.type === 'Fond initial caisse'
     );
+    const initialCoffreActions = actions.filter(
+      (action) => action.sourceTable === 'coffre' && action.type === 'Fond initial coffre'
+    );
     const activeInitialCaisseId = initialCaisseActions.reduce((selected, action) => {
       if (!selected) return action.id;
       const current = actions.find((item) => item.id === selected);
@@ -752,6 +805,41 @@ router.get('/days/:date', async (req, res) => {
       if (actionTime !== currentTime) return actionTime > currentTime ? action.id : selected;
       return Number(action.sourceId || 0) > Number(current?.sourceId || 0) ? action.id : selected;
     }, '');
+    const activeInitialCoffreId = initialCoffreActions.reduce((selected, action) => {
+      if (!selected) return action.id;
+      const current = actions.find((item) => item.id === selected);
+      const currentTime = new Date(current?.date || 0).getTime();
+      const actionTime = new Date(action.date || 0).getTime();
+      if (actionTime !== currentTime) return actionTime > currentTime ? action.id : selected;
+      return Number(action.sourceId || 0) > Number(current?.sourceId || 0) ? action.id : selected;
+    }, '');
+
+    const activeInitialCaisse = actions.find((action) => action.id === activeInitialCaisseId);
+    const activeInitialCoffre = actions.find((action) => action.id === activeInitialCoffreId);
+    const activeInitialCaisseTime = activeInitialCaisse ? new Date(activeInitialCaisse.date || 0).getTime() : null;
+    const activeInitialCoffreTime = activeInitialCoffre ? new Date(activeInitialCoffre.date || 0).getTime() : null;
+    const activeBonCutoffTime = Math.max(
+      Number.isFinite(activeInitialCaisseTime) ? activeInitialCaisseTime : 0,
+      Number.isFinite(activeInitialCoffreTime) ? activeInitialCoffreTime : 0
+    ) || null;
+
+    const isBeforeCutoff = (action, cutoffTime) => {
+      if (!cutoffTime) return false;
+      const actionTime = new Date(action.date || 0).getTime();
+      return Number.isFinite(actionTime) && actionTime < cutoffTime;
+    };
+
+    const isCaisseInitial = (action) =>
+      action.sourceTable === 'fond_caisse_entries' && action.type === 'Fond initial caisse';
+    const isCoffreInitial = (action) =>
+      action.sourceTable === 'coffre' && action.type === 'Fond initial coffre';
+
+    const visibleActions = actions.filter((action) => {
+      if (isCaisseInitial(action)) return action.id === activeInitialCaisseId;
+      if (isCoffreInitial(action)) return action.id === activeInitialCoffreId;
+      if (action.sourceTable === 'coffre') return !isBeforeCutoff(action, activeInitialCoffreTime);
+      return !isBeforeCutoff(action, activeBonCutoffTime);
+    });
 
     const affectsCaisseTotal = (action) => {
       if (action.sourceTable === 'coffre') return false;
@@ -762,7 +850,7 @@ router.get('/days/:date', async (req, res) => {
     };
 
     let cumulative = 0;
-    const data = actions.map((action) => {
+    const data = visibleActions.map((action) => {
       const affectsCaisse = affectsCaisseTotal(action);
       const signedAmount = affectsCaisse ? (action.direction === 'SORTIE' ? -action.amount : action.amount) : 0;
       cumulative += signedAmount;
@@ -795,6 +883,7 @@ router.get('/days/:date', async (req, res) => {
 // GET /api/fond-caisse/mouvements?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
 router.get('/mouvements', async (req, res) => {
   try {
+    await ensureFondCaisseEntriesTable();
     await ensureCoffreTable();
     await ensureMontantIgnorerColumns();
     const { dateFrom, dateTo } = parseDateRange(req);
@@ -807,104 +896,112 @@ router.get('/mouvements', async (req, res) => {
         label: 'bons_comptant',
         field: 'bonComptantPaye',
         sql: `
-          SELECT DATE(date_creation) AS jour,
-                 COALESCE(SUM(${netAmountSql('montant_total', 'montant_ignorer')}), 0) AS total
-            FROM bons_comptant
-           WHERE DATE(date_creation) BETWEEN ? AND ?
-             AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
-             AND LOWER(COALESCE(statut, '')) <> 'avoir'
-             AND ${netAmountSql('montant_total', 'montant_ignorer')} > 0
-           GROUP BY DATE(date_creation)
+          SELECT DATE(bc.date_creation) AS jour,
+                 COALESCE(SUM(${netAmountSql('bc.montant_total', 'bc.montant_ignorer')}), 0) AS total
+            FROM bons_comptant bc
+           WHERE DATE(bc.date_creation) BETWEEN ? AND ?
+             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+             AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+             AND ${netAmountSql('bc.montant_total', 'bc.montant_ignorer')} > 0
+             ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
+           GROUP BY DATE(bc.date_creation)
         `,
       },
       {
         label: 'paiement_boncomptant_nonpaye',
         field: 'paiementBonComptantNonPaye',
         sql: `
-          SELECT DATE(date_paiement) AS jour, COALESCE(SUM(montant), 0) AS total
-            FROM paiement_boncomptant_nonpaye
-           WHERE DATE(date_paiement) BETWEEN ? AND ?
-           GROUP BY DATE(date_paiement)
+          SELECT DATE(p.date_paiement) AS jour, COALESCE(SUM(p.montant), 0) AS total
+           FROM paiement_boncomptant_nonpaye p
+           WHERE DATE(p.date_paiement) BETWEEN ? AND ?
+             ${afterLatestCaisseStartSql('p.date_paiement')}
+           GROUP BY DATE(p.date_paiement)
         `,
       },
       {
         label: 'payments',
         field: 'paiementClientCaisse',
         sql: `
-          SELECT DATE(date_paiement) AS jour,
-                 COALESCE(SUM(${netAmountSql('montant_total', 'montant_ignorer')}), 0) AS total
-            FROM payments
-           WHERE DATE(date_paiement) BETWEEN ? AND ?
-             AND COALESCE(bon_type, '') <> 'Comptant'
-             AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
-             AND LOWER(COALESCE(statut, '')) NOT LIKE 'refus%'
-             AND ${netAmountSql('montant_total', 'montant_ignorer')} > 0
+          SELECT DATE(p.date_paiement) AS jour,
+                 COALESCE(SUM(${netAmountSql('p.montant_total', 'p.montant_ignorer')}), 0) AS total
+            FROM payments p
+           WHERE DATE(p.date_paiement) BETWEEN ? AND ?
+             AND COALESCE(p.bon_type, '') <> 'Comptant'
+             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
+             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
+             AND ${netAmountSql('p.montant_total', 'p.montant_ignorer')} > 0
+             ${afterLatestCaisseStartSql('p.date_paiement')}
              AND (
-               type_paiement = 'Client'
+               p.type_paiement = 'Client'
                OR (
-                 type_paiement = 'Fournisseur'
+                 p.type_paiement = 'Fournisseur'
                  AND (
-                   (COALESCE(bon_type, '') = 'Sortie' AND EXISTS (
+                   (COALESCE(p.bon_type, '') = 'Sortie' AND EXISTS (
                      SELECT 1
                      FROM bons_sortie bs
-                     WHERE bs.id = payments.bon_id
+                     WHERE bs.id = p.bon_id
                        AND COALESCE(bs.vendre_au_fournisseur, 0) = 1
                    ))
                    OR
-                   (COALESCE(bon_type, '') = 'Avoir' AND EXISTS (
+                   (COALESCE(p.bon_type, '') = 'Avoir' AND EXISTS (
                      SELECT 1
                      FROM avoirs_client ac
-                     WHERE ac.id = payments.bon_id
+                     WHERE ac.id = p.bon_id
                        AND COALESCE(ac.vendre_au_fournisseur, 0) = 1
                    ))
                  )
                )
              )
-           GROUP BY DATE(date_paiement)
+           GROUP BY DATE(p.date_paiement)
         `,
       },
       {
         label: 'montant_libre_caisse',
         field: 'montantLibreCaisse',
         sql: `
-          SELECT DATE(opened_at) AS jour, COALESCE(SUM(montant), 0) AS total
-            FROM fond_caisse_entries
-           WHERE DATE(opened_at) BETWEEN ? AND ?
-             AND entry_type = 'caisse_libre'
-           GROUP BY DATE(opened_at)
+          SELECT DATE(fce.opened_at) AS jour, COALESCE(SUM(fce.montant), 0) AS total
+           FROM fond_caisse_entries fce
+           WHERE DATE(fce.opened_at) BETWEEN ? AND ?
+             AND fce.entry_type = 'caisse_libre'
+             ${afterLatestCaisseStartSql('fce.opened_at')}
+           GROUP BY DATE(fce.opened_at)
         `,
       },
       {
         label: 'transfert_vers_coffre',
         field: 'transfertVersCoffre',
         sql: `
-          SELECT DATE(opened_at) AS jour, COALESCE(SUM(montant), 0) AS total
-            FROM coffre
-           WHERE DATE(opened_at) BETWEEN ? AND ?
-             AND entry_type = 'transfer_from_caisse'
-           GROUP BY DATE(opened_at)
+          SELECT DATE(cof.opened_at) AS jour, COALESCE(SUM(cof.montant), 0) AS total
+           FROM coffre cof
+           WHERE DATE(cof.opened_at) BETWEEN ? AND ?
+             AND cof.entry_type = 'transfer_from_caisse'
+             ${afterLatestCaisseStartSql('cof.opened_at')}
+             ${afterLatestCoffreStartSql('cof.opened_at')}
+           GROUP BY DATE(cof.opened_at)
         `,
       },
       {
         label: 'transfert_vers_poche',
         field: 'transfertVersPoche',
         sql: `
-          SELECT DATE(opened_at) AS jour, COALESCE(SUM(montant), 0) AS total
-            FROM fond_caisse_entries
-           WHERE DATE(opened_at) BETWEEN ? AND ?
-             AND entry_type = 'transfer_to_poche'
-           GROUP BY DATE(opened_at)
+          SELECT DATE(fce.opened_at) AS jour, COALESCE(SUM(fce.montant), 0) AS total
+           FROM fond_caisse_entries fce
+           WHERE DATE(fce.opened_at) BETWEEN ? AND ?
+             AND fce.entry_type = 'transfer_to_poche'
+             ${afterLatestCaisseStartSql('fce.opened_at')}
+           GROUP BY DATE(fce.opened_at)
         `,
       },
       {
         label: 'transfert_coffre_vers_poche',
         field: 'transfertCoffreVersPoche',
         sql: `
-          SELECT DATE(opened_at) AS jour, COALESCE(SUM(montant), 0) AS total
-            FROM coffre
-           WHERE DATE(opened_at) BETWEEN ? AND ?
-             AND entry_type = 'coffre_transfer_to_poche'
-           GROUP BY DATE(opened_at)
+          SELECT DATE(cof.opened_at) AS jour, COALESCE(SUM(cof.montant), 0) AS total
+           FROM coffre cof
+           WHERE DATE(cof.opened_at) BETWEEN ? AND ?
+             AND cof.entry_type = 'coffre_transfer_to_poche'
+             ${afterLatestCoffreStartSql('cof.opened_at')}
+           GROUP BY DATE(cof.opened_at)
         `,
       },
       {
@@ -922,6 +1019,7 @@ router.get('/mouvements', async (req, res) => {
            WHERE DATE(bc.date_creation) BETWEEN ? AND ?
              AND COALESCE(bc.inclus_en_caisse, 0) = 1
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+             ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
            GROUP BY DATE(bc.date_creation)
         `,
       },
@@ -940,6 +1038,7 @@ router.get('/mouvements', async (req, res) => {
            WHERE DATE(bc.date_creation) BETWEEN ? AND ?
              AND COALESCE(bc.inclus_en_caisse, 0) = 1
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+             ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
            GROUP BY DATE(bc.date_creation)
         `,
       },
@@ -947,34 +1046,37 @@ router.get('/mouvements', async (req, res) => {
         label: 'bons_commande',
         field: 'bonCommandeInclusCaisse',
         sql: `
-          SELECT DATE(date_creation) AS jour, COALESCE(SUM(montant_total), 0) AS total
-            FROM bons_commande
-           WHERE DATE(date_creation) BETWEEN ? AND ?
-             AND COALESCE(inclus_en_caisse, 0) = 1
-             AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
-           GROUP BY DATE(date_creation)
+          SELECT DATE(bc.date_creation) AS jour, COALESCE(SUM(bc.montant_total), 0) AS total
+            FROM bons_commande bc
+           WHERE DATE(bc.date_creation) BETWEEN ? AND ?
+             AND COALESCE(bc.inclus_en_caisse, 0) = 1
+             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+             ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
+           GROUP BY DATE(bc.date_creation)
         `,
       },
       {
         label: 'bons_vehicule',
         field: 'bonVehicule',
         sql: `
-          SELECT DATE(date_creation) AS jour, COALESCE(SUM(montant_total), 0) AS total
-            FROM bons_vehicule
-           WHERE DATE(date_creation) BETWEEN ? AND ?
-             AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
-           GROUP BY DATE(date_creation)
+          SELECT DATE(bv.date_creation) AS jour, COALESCE(SUM(bv.montant_total), 0) AS total
+            FROM bons_vehicule bv
+           WHERE DATE(bv.date_creation) BETWEEN ? AND ?
+             AND LOWER(COALESCE(bv.statut, '')) NOT LIKE 'annul%'
+             ${afterLatestCaisseStartSql('COALESCE(bv.created_at, bv.date_creation)')}
+           GROUP BY DATE(bv.date_creation)
         `,
       },
       {
         label: 'avoirs_comptant',
         field: 'avoirComptant',
         sql: `
-          SELECT DATE(date_creation) AS jour, COALESCE(SUM(montant_total), 0) AS total
-            FROM avoirs_comptant
-           WHERE DATE(date_creation) BETWEEN ? AND ?
-             AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
-           GROUP BY DATE(date_creation)
+          SELECT DATE(acp.date_creation) AS jour, COALESCE(SUM(acp.montant_total), 0) AS total
+            FROM avoirs_comptant acp
+           WHERE DATE(acp.date_creation) BETWEEN ? AND ?
+             AND LOWER(COALESCE(acp.statut, '')) NOT LIKE 'annul%'
+             ${afterLatestCaisseStartSql('COALESCE(acp.created_at, acp.date_creation)')}
+           GROUP BY DATE(acp.date_creation)
         `,
       },
     ];
