@@ -602,6 +602,7 @@ router.get('/days/:date', async (req, res) => {
             AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(statut, '')) <> 'avoir'
             AND ${netAmountSql('montant_total', 'montant_ignorer')} > 0
+            ${afterLatestCaisseStartSql('COALESCE(created_at, date_creation)')}
         `,
       },
       {
@@ -620,6 +621,7 @@ router.get('/days/:date', async (req, res) => {
           FROM paiement_boncomptant_nonpaye p
           LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
           WHERE DATE(p.date_paiement) = ?
+            ${afterLatestCaisseStartSql('p.date_paiement')}
         `,
       },
       {
@@ -642,6 +644,7 @@ router.get('/days/:date', async (req, res) => {
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
             AND ${netAmountSql('p.montant_total', 'p.montant_ignorer')} > 0
+            ${afterLatestCaisseStartSql('p.date_paiement')}
             AND (
               p.type_paiement = 'Client'
               OR (
@@ -683,6 +686,7 @@ router.get('/days/:date', async (req, res) => {
           WHERE DATE(bc.date_creation) = ?
             AND COALESCE(bc.inclus_en_caisse, 0) = 1
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+            ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
         `,
       },
       {
@@ -703,6 +707,7 @@ router.get('/days/:date', async (req, res) => {
           WHERE DATE(bc.date_creation) = ?
             AND COALESCE(bc.inclus_en_caisse, 0) = 1
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+            ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
         `,
       },
       {
@@ -723,6 +728,7 @@ router.get('/days/:date', async (req, res) => {
           WHERE DATE(bc.date_creation) = ?
             AND COALESCE(bc.inclus_en_caisse, 0) = 1
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+            ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
         `,
       },
       {
@@ -742,6 +748,7 @@ router.get('/days/:date', async (req, res) => {
           LEFT JOIN vehicules v ON v.id = bv.vehicule_id
           WHERE DATE(bv.date_creation) = ?
             AND LOWER(COALESCE(bv.statut, '')) NOT LIKE 'annul%'
+            ${afterLatestCaisseStartSql('COALESCE(bv.created_at, bv.date_creation)')}
         `,
       },
       {
@@ -760,6 +767,7 @@ router.get('/days/:date', async (req, res) => {
           FROM avoirs_comptant acp
           WHERE DATE(acp.date_creation) = ?
             AND LOWER(COALESCE(acp.statut, '')) NOT LIKE 'annul%'
+            ${afterLatestCaisseStartSql('COALESCE(acp.created_at, acp.date_creation)')}
         `,
       },
     ];
@@ -833,12 +841,23 @@ router.get('/days/:date', async (req, res) => {
       action.sourceTable === 'fond_caisse_entries' && action.type === 'Fond initial caisse';
     const isCoffreInitial = (action) =>
       action.sourceTable === 'coffre' && action.type === 'Fond initial coffre';
+    const actionOrderPriority = (action) => {
+      if (isCaisseInitial(action)) return 0;
+      if (isCoffreInitial(action)) return 1;
+      return 2;
+    };
 
     const visibleActions = actions.filter((action) => {
       if (isCaisseInitial(action)) return action.id === activeInitialCaisseId;
       if (isCoffreInitial(action)) return action.id === activeInitialCoffreId;
       if (action.sourceTable === 'coffre') return !isBeforeCutoff(action, activeInitialCoffreTime);
       return !isBeforeCutoff(action, activeBonCutoffTime);
+    }).sort((a, b) => {
+      const byDate = new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (byDate !== 0) return byDate;
+      const byPriority = actionOrderPriority(a) - actionOrderPriority(b);
+      if (byPriority !== 0) return byPriority;
+      return String(a.id || '').localeCompare(String(b.id || ''));
     });
 
     const affectsCaisseTotal = (action) => {
@@ -853,7 +872,11 @@ router.get('/days/:date', async (req, res) => {
     const data = visibleActions.map((action) => {
       const affectsCaisse = affectsCaisseTotal(action);
       const signedAmount = affectsCaisse ? (action.direction === 'SORTIE' ? -action.amount : action.amount) : 0;
-      cumulative += signedAmount;
+      if (isCaisseInitial(action)) {
+        cumulative = action.amount;
+      } else {
+        cumulative += signedAmount;
+      }
       return { ...action, signedAmount, cumulative, affectsCaisse };
     });
 
