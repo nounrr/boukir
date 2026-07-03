@@ -109,7 +109,7 @@ const TransferModal: React.FC<{ direction: TransferDirection; onClose: () => voi
     const qty = Number(String(quantite).replace(',', '.'));
     if (!Number.isFinite(qty) || qty <= 0) return showError('Quantite invalide');
     const qtyBase = qty * selectedUnitFactor;
-    if (qtyBase > Number(selected.quantite_disponible || 0)) return showError('Quantite insuffisante');
+    if (direction === 'VERS_STOCK' && qtyBase > Number(selected.quantite_disponible || 0)) return showError('Quantite insuffisante');
     setItems((prev) => [...prev, { product: selected, quantite: qty, unit_id: unitId ? Number(unitId) : null }]);
     setSelected(null);
     setQuantite('');
