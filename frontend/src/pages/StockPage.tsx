@@ -22,6 +22,7 @@ const StockPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'Produits' | 'Produits non stockables' | 'Services'>('Produits');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
+  const [sortMode, setSortMode] = useState<'recent' | 'quantite_desc' | 'quantite_asc'>('recent');
 
   const productType =
     activeTab === 'Services'
@@ -37,6 +38,8 @@ const StockPage: React.FC = () => {
     q: searchTerm || undefined,
     category_id: filterCategory || undefined,
     type: productType,
+    sortBy: sortMode === 'recent' ? 'id' : 'quantite',
+    sortDir: sortMode === 'quantite_asc' ? 'asc' : 'desc',
   });
   const { data: categoriesApiData } = useGetCategoriesQuery();
   // Keep legacy selectors as fallback during transition
@@ -428,7 +431,7 @@ const StockPage: React.FC = () => {
   // Réinitialiser la page quand on change les filtres
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterCategory, activeTab, itemsPerPage]);
+  }, [searchTerm, filterCategory, activeTab, itemsPerPage, sortMode]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -788,7 +791,7 @@ const StockPage: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4">
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_1fr] gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
@@ -821,6 +824,16 @@ const StockPage: React.FC = () => {
               {'\u00A0'.repeat(category.level * 4)}{category.nom}
             </option>
           ))}
+        </select>
+        <select
+          value={sortMode}
+          onChange={(e) => setSortMode(e.target.value as typeof sortMode)}
+          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          title="Trier les produits"
+        >
+          <option value="recent">Tri: plus recent</option>
+          <option value="quantite_desc">Quantite: plus grand</option>
+          <option value="quantite_asc">Quantite: plus petit</option>
         </select>
       </div>
 
