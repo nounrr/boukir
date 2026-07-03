@@ -8,9 +8,12 @@ import {
   CalendarDays,
   ListChecks,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
 import { showConfirmation, showError, showSuccess } from '../utils/notifications';
+import BonFormModal from '../components/BonFormModal';
+import ChargeEditFormModal from '../components/ChargeEditFormModal';
 
 type Action = {
   id: string;
@@ -27,6 +30,17 @@ type Action = {
   statut: string;
   modePaiement?: string;
   description: string;
+};
+
+type EditableBonType = 'Commande' | 'Comptant' | 'Charge' | 'AvoirCharge' | 'Vehicule' | 'AvoirComptant';
+
+const bonActionConfig: Record<string, { type: EditableBonType; endpoint: (id: number) => string }> = {
+  bons_comptant: { type: 'Comptant', endpoint: (id) => `/api/comptant/${id}?includeCalc=1` },
+  bons_charge: { type: 'Charge', endpoint: (id) => `/api/charges/${id}` },
+  avoirs_charge: { type: 'AvoirCharge', endpoint: (id) => `/api/charges/${id}?type=avoir` },
+  bons_commande: { type: 'Commande', endpoint: (id) => `/api/commandes/${id}` },
+  bons_vehicule: { type: 'Vehicule', endpoint: (id) => `/api/bons_vehicule/${id}` },
+  avoirs_comptant: { type: 'AvoirComptant', endpoint: (id) => `/api/avoirs_comptant/${id}?includeCalc=1` },
 };
 
 type Summary = {
@@ -69,6 +83,24 @@ const getActionRowClass = (action: Action) => {
 const canDeleteAction = (action: Action) =>
   action.sourceTable === 'fond_caisse_entries' || action.sourceTable === 'coffre';
 
+const canOpenBonAction = (action: Action) => Boolean(bonActionConfig[action.sourceTable]);
+
+const isValidatedStatus = (statut?: string) =>
+  String(statut || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('valid');
+
+const parseItems = (items: any) => {
+  if (Array.isArray(items)) return items;
+  if (typeof items === 'string') {
+    try {
+      const parsed = JSON.parse(items || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
 const formatDateLong = (iso: string) => {
   if (!iso) return '';
   const d = new Date(`${iso}T00:00:00`);
@@ -96,6 +128,11 @@ const FondCaisseDetailPage = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [filter, setFilter] = useState<'ALL' | 'ENTREE' | 'SORTIE'>('ALL');
   const [tick, setTick] = useState(0);
+  const [selectedBon, setSelectedBon] = useState<any>(null);
+  const [selectedBonType, setSelectedBonType] = useState<EditableBonType | null>(null);
+  const [isBonLoading, setIsBonLoading] = useState(false);
+  const [isViewBonOpen, setIsViewBonOpen] = useState(false);
+  const [isEditBonOpen, setIsEditBonOpen] = useState(false);
 
   useEffect(() => {
     if (!token || !date) return;
@@ -157,6 +194,44 @@ const FondCaisseDetailPage = () => {
     } catch (err: any) {
       showError(err?.message || 'Erreur lors de la suppression.');
     }
+  };
+
+  const handleOpenBon = async (action: Action) => {
+    const config = bonActionConfig[action.sourceTable];
+    if (!token || !config) return;
+    setIsBonLoading(true);
+    try {
+      const res = await fetch(config.endpoint(action.sourceId), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && data.message) || 'Erreur chargement bon');
+      const bon = {
+        ...(data || {}),
+        id: data?.id ?? action.sourceId,
+        type: config.type,
+        numero: data?.numero || action.reference,
+        statut: data?.statut || action.statut,
+      };
+      setSelectedBon(bon);
+      setSelectedBonType(config.type);
+      if (isValidatedStatus(bon.statut)) {
+        setIsViewBonOpen(true);
+      } else {
+        setIsEditBonOpen(true);
+      }
+    } catch (err: any) {
+      showError(err?.message || 'Impossible de charger ce bon.');
+    } finally {
+      setIsBonLoading(false);
+    }
+  };
+
+  const closeBonPopups = () => {
+    setIsViewBonOpen(false);
+    setIsEditBonOpen(false);
+    setSelectedBon(null);
+    setSelectedBonType(null);
   };
 
   const filteredActions = useMemo(() => {
@@ -317,7 +392,19 @@ const FondCaisseDetailPage = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-600">
-                        {action.reference || '-'}
+                        {canOpenBonAction(action) ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenBon(action)}
+                            disabled={isBonLoading}
+                            className="font-mono text-xs font-semibold text-blue-700 underline-offset-2 hover:underline disabled:opacity-60"
+                            title="Ouvrir le bon"
+                          >
+                            {action.reference || '-'}
+                          </button>
+                        ) : (
+                          action.reference || '-'
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-700">{action.actor || '-'}</td>
                       <td className="px-4 py-3 text-gray-700">{action.modePaiement || '-'}</td>
@@ -379,6 +466,114 @@ const FondCaisseDetailPage = () => {
           </div>
         )}
       </section>
+
+      {isEditBonOpen && selectedBon && selectedBonType && (
+        selectedBonType === 'Charge' ? (
+          <ChargeEditFormModal
+            isOpen={isEditBonOpen}
+            onClose={closeBonPopups}
+            initialValues={selectedBon}
+            onBonAdded={() => {
+              showSuccess('Bon mis a jour.');
+              closeBonPopups();
+              setTick((t) => t + 1);
+            }}
+          />
+        ) : (
+          <BonFormModal
+            isOpen={isEditBonOpen}
+            onClose={closeBonPopups}
+            currentTab={selectedBonType as any}
+            initialValues={selectedBon}
+            onBonAdded={() => {
+              showSuccess('Bon mis a jour.');
+              closeBonPopups();
+              setTick((t) => t + 1);
+            }}
+          />
+        )
+      )}
+
+      {isViewBonOpen && selectedBon && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white shadow-xl">
+            <div className="flex items-start justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {selectedBon.type} {selectedBon.numero || selectedBon.id}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Bon valide - consultation seulement
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeBonPopups}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                title="Fermer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div>
+                  <div className="text-xs text-gray-500">Date</div>
+                  <div className="font-medium text-gray-900">{formatDateTime(selectedBon.date_creation || selectedBon.created_at || '')}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Client / Fournisseur</div>
+                  <div className="font-medium text-gray-900">{selectedBon.client_nom || selectedBon.fournisseur_nom || selectedBon.vehicule_nom || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Statut</div>
+                  <div className="font-medium text-gray-900">{selectedBon.statut || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Total</div>
+                  <div className="font-medium text-gray-900">{fmt(Number(selectedBon.montant_total || 0))}</div>
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-semibold text-gray-600">Produit</th>
+                      <th className="px-4 py-2 text-right font-semibold text-gray-600">Qte</th>
+                      <th className="px-4 py-2 text-right font-semibold text-gray-600">Prix</th>
+                      <th className="px-4 py-2 text-right font-semibold text-gray-600">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {parseItems(selectedBon.items).map((item: any, index: number) => (
+                      <tr key={item.id || index}>
+                        <td className="px-4 py-2">{item.designation || item.designation_custom || item.product_designation || '-'}</td>
+                        <td className="px-4 py-2 text-right">{Number(item.quantite || 0).toFixed(3)}</td>
+                        <td className="px-4 py-2 text-right">{fmt(Number(item.prix_unitaire || 0))}</td>
+                        <td className="px-4 py-2 text-right font-medium">{fmt(Number(item.total || item.montant_ligne || 0))}</td>
+                      </tr>
+                    ))}
+                    {!parseItems(selectedBon.items).length && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-8 text-center text-gray-500">Aucune ligne</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={closeBonPopups}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

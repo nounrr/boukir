@@ -524,11 +524,6 @@ router.post('/transferts', async (req, res, next) => {
       let depotStockSnapshotId = null;
 
       if (direction === 'VERS_DEPOT') {
-        if (Number(source.quantite || 0) < quantiteBase) {
-          const err = new Error(`Stock normal insuffisant pour ${source.designation}`);
-          err.status = 400;
-          throw err;
-        }
         if (source.source_kind === 'SNAPSHOT') {
           await connection.execute('UPDATE product_snapshot SET quantite = quantite - ? WHERE id = ?', [quantiteBase, source.product_snapshot_id]);
         } else if (source.source_kind === 'PRODUCT') {

@@ -589,11 +589,11 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             id,
-            COALESCE(created_at, date_creation) AS action_date,
+            date_creation AS action_date,
             'Bon comptant paye' AS type,
             'ENTREE' AS direction,
             ${netAmountSql('montant_total', 'montant_ignorer')} AS amount,
-            CONCAT('COM', LPAD(id, 2, '0')) AS reference,
+            CONCAT('COM', LPAD(id, 4, '0')) AS reference,
             COALESCE(client_nom, '') AS actor,
             statut,
             'Bon comptant regle en caisse' AS description
@@ -602,7 +602,7 @@ router.get('/days/:date', async (req, res) => {
             AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(statut, '')) <> 'avoir'
             AND ${netAmountSql('montant_total', 'montant_ignorer')} > 0
-            ${afterLatestCaisseStartSql('COALESCE(created_at, date_creation)')}
+            ${afterLatestCaisseStartSql('date_creation')}
         `,
       },
       {
@@ -614,7 +614,7 @@ router.get('/days/:date', async (req, res) => {
             'Paiement bon comptant' AS type,
             'ENTREE' AS direction,
             p.montant AS amount,
-            CONCAT('P-COM', p.id) AS reference,
+            CONCAT('P-COM', LPAD(COALESCE(p.bon_comptant_id, p.id), 4, '0')) AS reference,
             COALESCE(bc.client_nom, '') AS actor,
             NULL AS statut,
             COALESCE(p.note, 'Paiement d un bon comptant non paye') AS description
@@ -633,7 +633,7 @@ router.get('/days/:date', async (req, res) => {
             'Paiement caisse' AS type,
             'ENTREE' AS direction,
             ${netAmountSql('p.montant_total', 'p.montant_ignorer')} AS amount,
-            COALESCE(p.numero, CONCAT('PAY', p.id)) AS reference,
+            COALESCE(p.numero, CONCAT('PAY', LPAD(p.id, 4, '0'))) AS reference,
             COALESCE(c.nom_complet, p.remise_account_name, '') AS actor,
             p.statut,
             COALESCE(p.designation, 'Paiement caisse') AS description
@@ -673,11 +673,11 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bc.id,
-            COALESCE(bc.created_at, bc.date_creation) AS action_date,
+            bc.date_creation AS action_date,
             'Charge incluse caisse' AS type,
             'SORTIE' AS direction,
             COALESCE((SELECT SUM(ci.total) FROM charge_items ci WHERE ci.bon_charge_id = bc.id), bc.montant_total, 0) AS amount,
-            CONCAT('CHG', LPAD(CAST(bc.id AS CHAR), 2, '0')) AS reference,
+            CONCAT('CHG', LPAD(CAST(bc.id AS CHAR), 4, '0')) AS reference,
             COALESCE(c.nom_complet, '') AS actor,
             bc.statut,
             COALESCE(bc.observations, 'Charge sortie de caisse') AS description
@@ -686,7 +686,7 @@ router.get('/days/:date', async (req, res) => {
           WHERE DATE(bc.date_creation) = ?
             AND COALESCE(bc.inclus_en_caisse, 0) = 1
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-            ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
+            ${afterLatestCaisseStartSql('bc.date_creation')}
         `,
       },
       {
@@ -694,11 +694,11 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bc.id,
-            COALESCE(bc.created_at, bc.date_creation) AS action_date,
+            bc.date_creation AS action_date,
             'Avoir charge' AS type,
             'ENTREE' AS direction,
             COALESCE((SELECT SUM(ci.total) FROM items_avoir_charge ci WHERE ci.avoir_charge_id = bc.id), bc.montant_total, 0) AS amount,
-            CONCAT('ACH', LPAD(CAST(bc.id AS CHAR), 2, '0')) AS reference,
+            CONCAT('ACH', LPAD(CAST(bc.id AS CHAR), 4, '0')) AS reference,
             COALESCE(c.nom_complet, '') AS actor,
             bc.statut,
             COALESCE(bc.observations, 'Avoir charge entree en caisse') AS description
@@ -707,7 +707,7 @@ router.get('/days/:date', async (req, res) => {
           WHERE DATE(bc.date_creation) = ?
             AND COALESCE(bc.inclus_en_caisse, 0) = 1
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-            ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
+            ${afterLatestCaisseStartSql('bc.date_creation')}
         `,
       },
       {
@@ -715,11 +715,11 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bc.id,
-            COALESCE(bc.created_at, bc.date_creation) AS action_date,
+            bc.date_creation AS action_date,
             'Commande incluse caisse' AS type,
             'SORTIE' AS direction,
             bc.montant_total AS amount,
-            CONCAT('CMD', LPAD(bc.id, 2, '0')) AS reference,
+            CONCAT('CMD', LPAD(bc.id, 4, '0')) AS reference,
             COALESCE(f.nom_complet, '') AS actor,
             bc.statut,
             COALESCE(bc.lieu_chargement, 'Commande sortie de caisse') AS description
@@ -728,7 +728,7 @@ router.get('/days/:date', async (req, res) => {
           WHERE DATE(bc.date_creation) = ?
             AND COALESCE(bc.inclus_en_caisse, 0) = 1
             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-            ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
+            ${afterLatestCaisseStartSql('bc.date_creation')}
         `,
       },
       {
@@ -736,11 +736,11 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             bv.id,
-            COALESCE(bv.created_at, bv.date_creation) AS action_date,
+            bv.date_creation AS action_date,
             'Bon vehicule' AS type,
             'SORTIE' AS direction,
             bv.montant_total AS amount,
-            CONCAT('VEH', LPAD(bv.id, 2, '0')) AS reference,
+            CONCAT('VEH', LPAD(bv.id, 4, '0')) AS reference,
             COALESCE(v.nom, '') AS actor,
             bv.statut,
             COALESCE(bv.lieu_chargement, 'Depense vehicule') AS description
@@ -748,7 +748,7 @@ router.get('/days/:date', async (req, res) => {
           LEFT JOIN vehicules v ON v.id = bv.vehicule_id
           WHERE DATE(bv.date_creation) = ?
             AND LOWER(COALESCE(bv.statut, '')) NOT LIKE 'annul%'
-            ${afterLatestCaisseStartSql('COALESCE(bv.created_at, bv.date_creation)')}
+            ${afterLatestCaisseStartSql('bv.date_creation')}
         `,
       },
       {
@@ -756,18 +756,18 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             acp.id,
-            COALESCE(acp.created_at, acp.date_creation) AS action_date,
+            acp.date_creation AS action_date,
             'Avoir comptant' AS type,
             'SORTIE' AS direction,
             acp.montant_total AS amount,
-            CONCAT('AVCC', LPAD(acp.id, 2, '0')) AS reference,
+            CONCAT('AVCC', LPAD(acp.id, 4, '0')) AS reference,
             COALESCE(acp.client_nom, '') AS actor,
             acp.statut,
             COALESCE(acp.lieu_chargement, 'Avoir comptant') AS description
           FROM avoirs_comptant acp
           WHERE DATE(acp.date_creation) = ?
             AND LOWER(COALESCE(acp.statut, '')) NOT LIKE 'annul%'
-            ${afterLatestCaisseStartSql('COALESCE(acp.created_at, acp.date_creation)')}
+            ${afterLatestCaisseStartSql('acp.date_creation')}
         `,
       },
     ];
@@ -926,7 +926,7 @@ router.get('/mouvements', async (req, res) => {
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
              AND ${netAmountSql('bc.montant_total', 'bc.montant_ignorer')} > 0
-             ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
+             ${afterLatestCaisseStartSql('bc.date_creation')}
            GROUP BY DATE(bc.date_creation)
         `,
       },
@@ -1042,7 +1042,7 @@ router.get('/mouvements', async (req, res) => {
            WHERE DATE(bc.date_creation) BETWEEN ? AND ?
              AND COALESCE(bc.inclus_en_caisse, 0) = 1
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-             ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
+             ${afterLatestCaisseStartSql('bc.date_creation')}
            GROUP BY DATE(bc.date_creation)
         `,
       },
@@ -1061,7 +1061,7 @@ router.get('/mouvements', async (req, res) => {
            WHERE DATE(bc.date_creation) BETWEEN ? AND ?
              AND COALESCE(bc.inclus_en_caisse, 0) = 1
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-             ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
+             ${afterLatestCaisseStartSql('bc.date_creation')}
            GROUP BY DATE(bc.date_creation)
         `,
       },
@@ -1074,7 +1074,7 @@ router.get('/mouvements', async (req, res) => {
            WHERE DATE(bc.date_creation) BETWEEN ? AND ?
              AND COALESCE(bc.inclus_en_caisse, 0) = 1
              AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
-             ${afterLatestCaisseStartSql('COALESCE(bc.created_at, bc.date_creation)')}
+             ${afterLatestCaisseStartSql('bc.date_creation')}
            GROUP BY DATE(bc.date_creation)
         `,
       },
@@ -1086,7 +1086,7 @@ router.get('/mouvements', async (req, res) => {
             FROM bons_vehicule bv
            WHERE DATE(bv.date_creation) BETWEEN ? AND ?
              AND LOWER(COALESCE(bv.statut, '')) NOT LIKE 'annul%'
-             ${afterLatestCaisseStartSql('COALESCE(bv.created_at, bv.date_creation)')}
+             ${afterLatestCaisseStartSql('bv.date_creation')}
            GROUP BY DATE(bv.date_creation)
         `,
       },
@@ -1098,7 +1098,7 @@ router.get('/mouvements', async (req, res) => {
             FROM avoirs_comptant acp
            WHERE DATE(acp.date_creation) BETWEEN ? AND ?
              AND LOWER(COALESCE(acp.statut, '')) NOT LIKE 'annul%'
-             ${afterLatestCaisseStartSql('COALESCE(acp.created_at, acp.date_creation)')}
+             ${afterLatestCaisseStartSql('acp.date_creation')}
            GROUP BY DATE(acp.date_creation)
         `,
       },

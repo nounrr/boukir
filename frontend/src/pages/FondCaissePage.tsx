@@ -178,7 +178,7 @@ const FondCaissePage = () => {
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
-    const effFrom = dateFrom || ALL_DATES_FROM;
+    const effFrom = ALL_DATES_FROM;
     const effTo = dateTo || todayISO();
     const qs = `dateFrom=${effFrom}&dateTo=${effTo}`;
     setIsLoading(true);
@@ -249,9 +249,11 @@ const FondCaissePage = () => {
       }
 
       const allDays = new Set<string>();
-      if (dateFrom && dateTo) {
-        const a = new Date(`${dateFrom}T00:00:00`);
-        const b = new Date(`${dateTo}T00:00:00`);
+      const displayRangeFrom = dateFrom || (dateTo ? dateTo : '');
+      const displayRangeTo = dateTo || (dateFrom ? todayISO() : '');
+      if (displayRangeFrom && displayRangeTo) {
+        const a = new Date(`${displayRangeFrom}T00:00:00`);
+        const b = new Date(`${displayRangeTo}T00:00:00`);
         if (!isNaN(a.getTime()) && !isNaN(b.getTime())) {
           const lo = a <= b ? a : b;
           const hi = a <= b ? b : a;
@@ -260,6 +262,7 @@ const FondCaissePage = () => {
           }
         }
       }
+      if (!dateFrom && !dateTo) allDays.add(todayISO());
       caisseEntryByDay.forEach((_v, k) => allDays.add(k));
       coffreEntryByDay.forEach((_v, k) => allDays.add(k));
       transferEntriesByDay.forEach((_v, k) => allDays.add(k));
@@ -321,7 +324,14 @@ const FondCaissePage = () => {
   }, [entries, mouvements, dateFrom, dateTo]);
 
   // Affichage liste des jours: aujourd'hui/recent vers ancien. `rows` reste chronologique pour le calcul cumule.
-  const displayRows = useMemo(() => [...rows].reverse(), [rows]);
+  const displayRows = useMemo(() => {
+    const filtered = rows.filter((row) => {
+      if (dateFrom && row.jour < dateFrom) return false;
+      if (dateTo && row.jour > dateTo) return false;
+      return true;
+    });
+    return [...filtered].reverse();
+  }, [rows, dateFrom, dateTo]);
 
   const today = todayISO();
   const todayTotal = rows.find((r) => r.jour === today)?.total || 0;
@@ -583,7 +593,7 @@ const FondCaissePage = () => {
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">
                           {row.debut.toFixed(2)} DH
                           {row.caisseEntry?.modePaiement && <div className="text-xs font-normal text-gray-500">{row.caisseEntry.modePaiement}</div>}
-                          {!row.caisseEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
+                          {!row.caisseEntry && <div className="text-xs font-normal text-gray-500">Auto depuis dernier jour</div>}
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-emerald-700">
                           +{row.entrees.toFixed(2)} DH
@@ -617,7 +627,7 @@ const FondCaissePage = () => {
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">
                           {row.debutCoffre.toFixed(2)} DH
                           {row.coffreEntry?.modePaiement && <div className="text-xs font-normal text-gray-500">{row.coffreEntry.modePaiement}</div>}
-                          {!row.coffreEntry && <div className="text-xs font-normal text-gray-500">Auto depuis hier</div>}
+                          {!row.coffreEntry && <div className="text-xs font-normal text-gray-500">Auto depuis dernier jour</div>}
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-amber-700">
                           +{row.entreesCoffre.toFixed(2)} DH
