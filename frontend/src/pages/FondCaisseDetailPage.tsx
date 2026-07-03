@@ -36,6 +36,7 @@ type EditableBonType = 'Commande' | 'Comptant' | 'Charge' | 'AvoirCharge' | 'Veh
 
 const bonActionConfig: Record<string, { type: EditableBonType; endpoint: (id: number) => string }> = {
   bons_comptant: { type: 'Comptant', endpoint: (id) => `/api/comptant/${id}?includeCalc=1` },
+  paiement_boncomptant_nonpaye: { type: 'Comptant', endpoint: (id) => `/api/comptant/${id}?includeCalc=1` },
   bons_charge: { type: 'Charge', endpoint: (id) => `/api/charges/${id}` },
   avoirs_charge: { type: 'AvoirCharge', endpoint: (id) => `/api/charges/${id}?type=avoir` },
   bons_commande: { type: 'Commande', endpoint: (id) => `/api/commandes/${id}` },
