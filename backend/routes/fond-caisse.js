@@ -36,6 +36,16 @@ const bonComptantPaymentNetSql = (paymentAlias = 'p', bonAlias = 'bc') => `
     ELSE COALESCE(${paymentAlias}.montant, 0)
   END
 `;
+const paymentIncludedInCaisseSql = (paymentAlias = 'p') => `
+            AND (
+              COALESCE(${paymentAlias}.bon_type, '') <> 'Comptant'
+              OR EXISTS (
+                SELECT 1
+                  FROM bons_comptant bc_payment
+                 WHERE bc_payment.id = ${paymentAlias}.bon_id
+                   AND COALESCE(bc_payment.non_paye, 0) = 1
+              )
+            )`;
 const afterLatestCaisseStartSql = (dateTimeExpr) => `
             AND (
               NOT EXISTS (
@@ -50,22 +60,6 @@ const afterLatestCaisseStartSql = (dateTimeExpr) => `
                  WHERE fci_start.jour = DATE(${dateTimeExpr})
                    AND fci_start.entry_type = 'caisse_initial'
                  ORDER BY fci_start.opened_at DESC, fci_start.id DESC
-                 LIMIT 1
-              )
-            )
-            AND (
-              NOT EXISTS (
-                SELECT 1
-                  FROM coffre cof_start
-                 WHERE cof_start.jour = DATE(${dateTimeExpr})
-                   AND cof_start.entry_type = 'coffre_initial'
-              )
-              OR ${dateTimeExpr} >= (
-                SELECT cof_start.opened_at
-                  FROM coffre cof_start
-                 WHERE cof_start.jour = DATE(${dateTimeExpr})
-                   AND cof_start.entry_type = 'coffre_initial'
-                 ORDER BY cof_start.opened_at DESC, cof_start.id DESC
                  LIMIT 1
               )
             )`;
@@ -593,7 +587,7 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
                COALESCE(SUM(${netAmountSql('p.montant_total', 'p.montant_ignorer')}), 0) AS total
           FROM payments p
          WHERE DATE(p.date_paiement) BETWEEN ? AND ?
-           AND COALESCE(p.bon_type, '') <> 'Comptant'
+           ${paymentIncludedInCaisseSql('p')}
            AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
            AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
            AND ${netAmountSql('p.montant_total', 'p.montant_ignorer')} > 0
@@ -961,7 +955,7 @@ router.get('/days/:date', async (req, res) => {
           FROM payments p
           LEFT JOIN contacts c ON c.id = p.contact_id
           WHERE DATE(p.date_paiement) = ?
-            AND COALESCE(p.bon_type, '') <> 'Comptant'
+            ${paymentIncludedInCaisseSql('p')}
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
             AND ${netAmountSql('p.montant_total', 'p.montant_ignorer')} > 0
@@ -1297,7 +1291,7 @@ router.get('/mouvements', async (req, res) => {
                  COALESCE(SUM(${netAmountSql('p.montant_total', 'p.montant_ignorer')}), 0) AS total
             FROM payments p
            WHERE DATE(p.date_paiement) BETWEEN ? AND ?
-             AND COALESCE(p.bon_type, '') <> 'Comptant'
+             ${paymentIncludedInCaisseSql('p')}
              AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
              AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
              AND ${netAmountSql('p.montant_total', 'p.montant_ignorer')} > 0

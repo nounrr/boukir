@@ -574,6 +574,8 @@ async function runProductSearch(query) {
     const useSnapshot = await hasProductSnapshotTable();
 
     const { category_id, brand_id, missing_lang, type } = query;
+    const sortBy = String(query.sortBy || 'id').trim();
+    const sortDir = String(query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     const qRaw = String(query.q ?? '').trim();
     const q = qRaw.length > 100 ? qRaw.slice(0, 100) : qRaw;
     const qLower = q.toLowerCase();
@@ -648,8 +650,33 @@ async function runProductSearch(query) {
     const whereSql = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
     const orderParams = [];
     let orderBySql = 'ORDER BY p.id DESC';
+    const stockQuantityOrderSql = useSnapshot
+      ? `
+        CASE
+          WHEN COALESCE(p.has_variants, 0) = 1 AND COALESCE(p.is_obligatoire_variant, 0) = 1 THEN COALESCE((
+            SELECT SUM(COALESCE((
+              SELECT SUM(psv_order.quantite)
+                FROM product_snapshot psv_order
+               WHERE psv_order.variant_id = pv_order_qty.id
+            ), pv_order_qty.stock_quantity, 0))
+              FROM product_variants pv_order_qty
+             WHERE pv_order_qty.product_id = p.id
+               AND COALESCE(pv_order_qty.is_deleted, 0) = 0
+          ), 0)
+          ELSE COALESCE((
+            SELECT SUM(ps_order.quantite)
+              FROM product_snapshot ps_order
+             WHERE ps_order.product_id = p.id
+          ), p.quantite, 0)
+        END
+      `
+      : 'COALESCE(p.quantite, 0)';
 
-    if (qTerms.length > 0) {
+    if (sortBy === 'quantite') {
+      orderBySql = `ORDER BY ${stockQuantityOrderSql} ${sortDir}, p.id DESC`;
+    }
+
+    if (qTerms.length > 0 && sortBy !== 'quantite') {
       const qPrefix = `${qLower}%`;
       const qWild = `%${qLower}%`;
       const qNum = Number(q);
