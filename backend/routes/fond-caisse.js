@@ -16,6 +16,24 @@ const parseDateRange = (req) => {
 const toNumber = (value) => Number(value || 0);
 const netAmountSql = (amountExpr, ignoredAmountExpr) =>
   `GREATEST(COALESCE(${amountExpr}, 0) - COALESCE(${ignoredAmountExpr}, 0), 0)`;
+const bonComptantPaymentNetSql = (paymentAlias = 'p', bonAlias = 'bc') => `
+  CASE
+    WHEN NOT EXISTS (
+      SELECT 1
+        FROM paiement_boncomptant_nonpaye pbcnp_next
+       WHERE pbcnp_next.bon_comptant_id = ${paymentAlias}.bon_comptant_id
+         AND (
+           pbcnp_next.date_paiement > ${paymentAlias}.date_paiement
+           OR (
+             pbcnp_next.date_paiement = ${paymentAlias}.date_paiement
+             AND pbcnp_next.id > ${paymentAlias}.id
+           )
+         )
+    )
+      THEN GREATEST(COALESCE(${paymentAlias}.montant, 0) - COALESCE(${bonAlias}.montant_ignorer, 0), 0)
+    ELSE COALESCE(${paymentAlias}.montant, 0)
+  END
+`;
 const afterLatestCaisseStartSql = (dateTimeExpr) => `
             AND (
               NOT EXISTS (
@@ -556,10 +574,12 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
       label: 'paiement_boncomptant_nonpaye',
       field: 'paiementBonComptantNonPaye',
       sql: `
-        SELECT DATE(p.date_paiement) AS jour, COALESCE(SUM(p.montant), 0) AS total
+        SELECT DATE(p.date_paiement) AS jour, COALESCE(SUM(${bonComptantPaymentNetSql('p', 'bc')}), 0) AS total
           FROM paiement_boncomptant_nonpaye p
+          LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
          WHERE DATE(p.date_paiement) BETWEEN ? AND ?
            ${afterLatestCaisseStartSql('p.date_paiement')}
+           AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
          GROUP BY DATE(p.date_paiement)
       `,
     },
@@ -911,7 +931,7 @@ router.get('/days/:date', async (req, res) => {
             p.date_paiement AS action_date,
             'Paiement bon comptant' AS type,
             'ENTREE' AS direction,
-            p.montant AS amount,
+            ${bonComptantPaymentNetSql('p', 'bc')} AS amount,
             CONCAT('COM', LPAD(COALESCE(p.bon_comptant_id, p.id), 4, '0')) AS reference,
             COALESCE(bc.client_nom, '') AS actor,
             NULL AS statut,
@@ -920,6 +940,7 @@ router.get('/days/:date', async (req, res) => {
           LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
           WHERE DATE(p.date_paiement) = ?
             ${afterLatestCaisseStartSql('p.date_paiement')}
+            AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
         `,
       },
       {
@@ -1257,10 +1278,12 @@ router.get('/mouvements', async (req, res) => {
         label: 'paiement_boncomptant_nonpaye',
         field: 'paiementBonComptantNonPaye',
         sql: `
-          SELECT DATE(p.date_paiement) AS jour, COALESCE(SUM(p.montant), 0) AS total
+          SELECT DATE(p.date_paiement) AS jour, COALESCE(SUM(${bonComptantPaymentNetSql('p', 'bc')}), 0) AS total
            FROM paiement_boncomptant_nonpaye p
+           LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
            WHERE DATE(p.date_paiement) BETWEEN ? AND ?
              ${afterLatestCaisseStartSql('p.date_paiement')}
+             AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
            GROUP BY DATE(p.date_paiement)
         `,
       },
