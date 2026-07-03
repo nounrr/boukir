@@ -16,6 +16,8 @@ const parseDateRange = (req) => {
 const toNumber = (value) => Number(value || 0);
 const netAmountSql = (amountExpr, ignoredAmountExpr) =>
   `GREATEST(COALESCE(${amountExpr}, 0) - COALESCE(${ignoredAmountExpr}, 0), 0)`;
+const paddedReferenceIdSql = (idExpr) =>
+  `LPAD(CAST(${idExpr} AS CHAR), GREATEST(CHAR_LENGTH(CAST(${idExpr} AS CHAR)), 4), '0')`;
 const bonComptantPaymentNetSql = (paymentAlias = 'p', bonAlias = 'bc') => `
   CASE
     WHEN NOT EXISTS (
@@ -904,7 +906,7 @@ router.get('/days/:date', async (req, res) => {
             'Bon comptant paye' AS type,
             'ENTREE' AS direction,
             ${netAmountSql('montant_total', 'montant_ignorer')} AS amount,
-            CONCAT('COM', LPAD(id, 4, '0')) AS reference,
+            CONCAT('COM', ${paddedReferenceIdSql('id')}) AS reference,
             COALESCE(client_nom, '') AS actor,
             statut,
             'Bon comptant regle en caisse' AS description
@@ -932,7 +934,7 @@ router.get('/days/:date', async (req, res) => {
             'Paiement bon comptant' AS type,
             'ENTREE' AS direction,
             ${bonComptantPaymentNetSql('p', 'bc')} AS amount,
-            CONCAT('COM', LPAD(COALESCE(p.bon_comptant_id, p.id), 4, '0')) AS reference,
+            CONCAT('COM', ${paddedReferenceIdSql('COALESCE(p.bon_comptant_id, p.id)')}) AS reference,
             COALESCE(bc.client_nom, '') AS actor,
             NULL AS statut,
             COALESCE(p.note, 'Paiement d un bon comptant non paye') AS description
@@ -952,7 +954,7 @@ router.get('/days/:date', async (req, res) => {
             'Paiement caisse' AS type,
             'ENTREE' AS direction,
             ${netAmountSql('p.montant_total', 'p.montant_ignorer')} AS amount,
-            COALESCE(p.numero, CONCAT('PAY', LPAD(p.id, 4, '0'))) AS reference,
+            COALESCE(p.numero, CONCAT('PAY', ${paddedReferenceIdSql('p.id')})) AS reference,
             COALESCE(c.nom_complet, p.remise_account_name, '') AS actor,
             p.statut,
             COALESCE(p.designation, 'Paiement caisse') AS description
@@ -996,7 +998,7 @@ router.get('/days/:date', async (req, res) => {
             'Charge incluse caisse' AS type,
             'SORTIE' AS direction,
             COALESCE((SELECT SUM(ci.total) FROM charge_items ci WHERE ci.bon_charge_id = bc.id), bc.montant_total, 0) AS amount,
-            CONCAT('CHG', LPAD(CAST(bc.id AS CHAR), 4, '0')) AS reference,
+            CONCAT('CHG', ${paddedReferenceIdSql('bc.id')}) AS reference,
             COALESCE(c.nom_complet, '') AS actor,
             bc.statut,
             COALESCE(bc.observations, 'Charge sortie de caisse') AS description
@@ -1017,7 +1019,7 @@ router.get('/days/:date', async (req, res) => {
             'Avoir charge' AS type,
             'ENTREE' AS direction,
             COALESCE((SELECT SUM(ci.total) FROM items_avoir_charge ci WHERE ci.avoir_charge_id = bc.id), bc.montant_total, 0) AS amount,
-            CONCAT('ACH', LPAD(CAST(bc.id AS CHAR), 4, '0')) AS reference,
+            CONCAT('ACH', ${paddedReferenceIdSql('bc.id')}) AS reference,
             COALESCE(c.nom_complet, '') AS actor,
             bc.statut,
             COALESCE(bc.observations, 'Avoir charge entree en caisse') AS description
@@ -1038,7 +1040,7 @@ router.get('/days/:date', async (req, res) => {
             'Commande incluse caisse' AS type,
             'SORTIE' AS direction,
             bc.montant_total AS amount,
-            CONCAT('CMD', LPAD(bc.id, 4, '0')) AS reference,
+            CONCAT('CMD', ${paddedReferenceIdSql('bc.id')}) AS reference,
             COALESCE(f.nom_complet, '') AS actor,
             bc.statut,
             COALESCE(bc.lieu_chargement, 'Commande sortie de caisse') AS description
@@ -1059,7 +1061,7 @@ router.get('/days/:date', async (req, res) => {
             'Bon vehicule' AS type,
             'SORTIE' AS direction,
             bv.montant_total AS amount,
-            CONCAT('VEH', LPAD(bv.id, 4, '0')) AS reference,
+            CONCAT('VEH', ${paddedReferenceIdSql('bv.id')}) AS reference,
             COALESCE(v.nom, '') AS actor,
             bv.statut,
             COALESCE(bv.lieu_chargement, 'Depense vehicule') AS description
@@ -1079,7 +1081,7 @@ router.get('/days/:date', async (req, res) => {
             'Avoir comptant' AS type,
             'SORTIE' AS direction,
             acp.montant_total AS amount,
-            CONCAT('AVCC', LPAD(acp.id, 4, '0')) AS reference,
+            CONCAT('AVCC', ${paddedReferenceIdSql('acp.id')}) AS reference,
             COALESCE(acp.client_nom, '') AS actor,
             acp.statut,
             COALESCE(acp.lieu_chargement, 'Avoir comptant') AS description
