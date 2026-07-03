@@ -610,11 +610,12 @@ router.get('/days/:date', async (req, res) => {
         sql: `
           SELECT
             p.id,
+            COALESCE(p.bon_comptant_id, p.id) AS source_id,
             p.date_paiement AS action_date,
             'Paiement bon comptant' AS type,
             'ENTREE' AS direction,
             p.montant AS amount,
-            CONCAT('P-COM', LPAD(COALESCE(p.bon_comptant_id, p.id), 4, '0')) AS reference,
+            CONCAT('P-COM', LPAD(p.id, 4, '0')) AS reference,
             COALESCE(bc.client_nom, '') AS actor,
             NULL AS statut,
             COALESCE(p.note, 'Paiement d un bon comptant non paye') AS description
@@ -779,7 +780,7 @@ router.get('/days/:date', async (req, res) => {
         actions.push({
           id: `${query.label}-${row.id}`,
           sourceTable: query.label,
-          sourceId: Number(row.id),
+          sourceId: Number(row.source_id || row.id),
           date: mapActionDateTime(row.action_date),
           type: row.type,
           direction: row.direction,
