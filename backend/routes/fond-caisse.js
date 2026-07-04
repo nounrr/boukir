@@ -25,9 +25,9 @@ const bonComptantPaymentNetSql = (paymentAlias = 'p', bonAlias = 'bc') => `
         FROM paiement_boncomptant_nonpaye pbcnp_next
        WHERE pbcnp_next.bon_comptant_id = ${paymentAlias}.bon_comptant_id
          AND (
-           pbcnp_next.date_paiement > ${paymentAlias}.date_paiement
+           COALESCE(pbcnp_next.created_at, pbcnp_next.date_paiement) > COALESCE(${paymentAlias}.created_at, ${paymentAlias}.date_paiement)
            OR (
-             pbcnp_next.date_paiement = ${paymentAlias}.date_paiement
+             COALESCE(pbcnp_next.created_at, pbcnp_next.date_paiement) = COALESCE(${paymentAlias}.created_at, ${paymentAlias}.date_paiement)
              AND pbcnp_next.id > ${paymentAlias}.id
            )
          )
@@ -39,13 +39,9 @@ const bonComptantPaymentNetSql = (paymentAlias = 'p', bonAlias = 'bc') => `
 const paymentIncludedInCaisseSql = (paymentAlias = 'p') => `
             AND (
               COALESCE(${paymentAlias}.bon_type, '') <> 'Comptant'
-              OR EXISTS (
-                SELECT 1
-                  FROM bons_comptant bc_payment
-                 WHERE bc_payment.id = ${paymentAlias}.bon_id
-                   AND COALESCE(bc_payment.non_paye, 0) = 1
-              )
             )`;
+const bonComptantPaymentCaisseDateSql = (paymentAlias = 'p') =>
+  `COALESCE(${paymentAlias}.created_at, ${paymentAlias}.date_paiement)`;
 const afterLatestCaisseStartSql = (dateTimeExpr) => `
             AND (
               NOT EXISTS (
@@ -570,13 +566,13 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
       label: 'paiement_boncomptant_nonpaye',
       field: 'paiementBonComptantNonPaye',
       sql: `
-        SELECT DATE(p.date_paiement) AS jour, COALESCE(SUM(${bonComptantPaymentNetSql('p', 'bc')}), 0) AS total
-          FROM paiement_boncomptant_nonpaye p
-          LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
-         WHERE DATE(p.date_paiement) BETWEEN ? AND ?
-           ${afterLatestCaisseStartSql('p.date_paiement')}
+        SELECT DATE(${bonComptantPaymentCaisseDateSql('p')}) AS jour, COALESCE(SUM(${bonComptantPaymentNetSql('p', 'bc')}), 0) AS total
+         FROM paiement_boncomptant_nonpaye p
+         LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
+         WHERE DATE(${bonComptantPaymentCaisseDateSql('p')}) BETWEEN ? AND ?
+           ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
            AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
-         GROUP BY DATE(p.date_paiement)
+         GROUP BY DATE(${bonComptantPaymentCaisseDateSql('p')})
       `,
     },
     {
@@ -924,7 +920,7 @@ router.get('/days/:date', async (req, res) => {
           SELECT
             p.id,
             COALESCE(p.bon_comptant_id, p.id) AS source_id,
-            p.date_paiement AS action_date,
+            ${bonComptantPaymentCaisseDateSql('p')} AS action_date,
             'Paiement bon comptant' AS type,
             'ENTREE' AS direction,
             ${bonComptantPaymentNetSql('p', 'bc')} AS amount,
@@ -934,8 +930,8 @@ router.get('/days/:date', async (req, res) => {
             COALESCE(p.note, 'Paiement d un bon comptant non paye') AS description
           FROM paiement_boncomptant_nonpaye p
           LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
-          WHERE DATE(p.date_paiement) = ?
-            ${afterLatestCaisseStartSql('p.date_paiement')}
+          WHERE DATE(${bonComptantPaymentCaisseDateSql('p')}) = ?
+            ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
             AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
         `,
       },
@@ -1274,13 +1270,13 @@ router.get('/mouvements', async (req, res) => {
         label: 'paiement_boncomptant_nonpaye',
         field: 'paiementBonComptantNonPaye',
         sql: `
-          SELECT DATE(p.date_paiement) AS jour, COALESCE(SUM(${bonComptantPaymentNetSql('p', 'bc')}), 0) AS total
+          SELECT DATE(${bonComptantPaymentCaisseDateSql('p')}) AS jour, COALESCE(SUM(${bonComptantPaymentNetSql('p', 'bc')}), 0) AS total
            FROM paiement_boncomptant_nonpaye p
            LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
-           WHERE DATE(p.date_paiement) BETWEEN ? AND ?
-             ${afterLatestCaisseStartSql('p.date_paiement')}
+           WHERE DATE(${bonComptantPaymentCaisseDateSql('p')}) BETWEEN ? AND ?
+             ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
              AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
-           GROUP BY DATE(p.date_paiement)
+           GROUP BY DATE(${bonComptantPaymentCaisseDateSql('p')})
         `,
       },
       {

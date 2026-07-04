@@ -994,176 +994,38 @@ async function fetchAllProductsForExport(query) {
   return allProducts;
 }
 
-function getSnapshotAwareQuantity(item) {
-  const hasRequiredVariants =
-    !item?.isVariantRow &&
-    (item?.has_variants === true || item?.has_variants === 1) &&
-    (item?.is_obligatoire_variant === true ||
-      item?.isObligatoireVariant === true ||
-      item?.is_obligatoire_variant === 1);
-
-  if (hasRequiredVariants && Array.isArray(item?.variants) && item.variants.length > 0) {
-    return item.variants.reduce((sum, variant) => {
-      const snapshotQty = variant?.snapshot_quantite_total;
-      const qty = snapshotQty === null || snapshotQty === undefined
-        ? Number(variant?.stock_quantity || 0)
-        : Number(snapshotQty);
-      return sum + (Number.isFinite(qty) ? qty : Number(variant?.stock_quantity || 0));
-    }, 0);
-  }
-
-  const snapshotQty = item?.snapshot_quantite_total;
-  if (snapshotQty === null || snapshotQty === undefined) return Number(item?.quantite || 0);
-  const n = Number(snapshotQty);
-  return Number.isFinite(n) ? n : Number(item?.quantite || 0);
-}
-
-function getSnapshotAwarePrixAchat(item) {
-  const n = item?.snapshot_prix_achat_old === null || item?.snapshot_prix_achat_old === undefined
-    ? null
-    : Number(item.snapshot_prix_achat_old);
-  if (n !== null && Number.isFinite(n) && n > 0) return n;
-  return Number(item?.prix_achat || 0);
-}
-
-function appendStockExportRows(rows, product, index) {
-  const categoryName = product?.categorie?.nom || product?.categories?.[0]?.nom || '';
-  const productRef = product?.reference ?? product?.id ?? '';
-  const productPrice = getSnapshotAwarePrixAchat(product);
-  const productRowNumber = rows.length + 2;
-
+function appendStockDesignationRows(rows, product) {
   rows.push({
-    'N': index + 1,
-    'Type': 'Produit',
-    'ID Produit': product?.id ?? '',
-    'ID Variante': '',
-    'Reference': productRef,
     'Designation': product?.designation ?? '',
     'Variante': '',
-    'Categorie': categoryName,
-    'Unite': product?.base_unit || 'u',
-    'Quantite stock': getSnapshotAwareQuantity(product),
-    'Quantite saisie': '',
-    'Prix achat': productPrice,
-    'Total achat': { f: `K${productRowNumber}*L${productRowNumber}` },
-    'Prix vente': Number(product?.prix_vente || 0),
-    'Prix vente 2': Number(product?.prix_vente_2 || 0),
-    'Remise client %': Number(product?.remise_client || 0),
-    'Remise artisan %': Number(product?.remise_artisan || 0),
   });
 
   if (!Array.isArray(product?.variants)) return;
 
   for (const variant of product.variants) {
-    const variantRef = String(variant?.reference ?? '').trim();
-    const rowNumber = rows.length + 2;
     rows.push({
-      'N': '',
-      'Type': 'Variante',
-      'ID Produit': product?.id ?? '',
-      'ID Variante': variant?.id ?? '',
-      'Reference': variantRef || productRef,
       'Designation': product?.designation ?? '',
       'Variante': variant?.variant_name ?? '',
-      'Categorie': categoryName,
-      'Unite': product?.base_unit || 'u',
-      'Quantite stock': getSnapshotAwareQuantity({ ...variant, quantite: variant?.stock_quantity, isVariantRow: true }),
-      'Quantite saisie': '',
-      'Prix achat': getSnapshotAwarePrixAchat(variant),
-      'Total achat': { f: `K${rowNumber}*L${rowNumber}` },
-      'Prix vente': Number(variant?.prix_vente || 0),
-      'Prix vente 2': Number(variant?.prix_vente_2 || 0),
-      'Remise client %': Number(variant?.remise_client || 0),
-      'Remise artisan %': Number(variant?.remise_artisan || 0),
     });
   }
 }
 
 function createStockExcelBuffer(products) {
   const wb = XLSX.utils.book_new();
-  const headers = [
-    'N',
-    'Type',
-    'ID Produit',
-    'ID Variante',
-    'Reference',
-    'Designation',
-    'Variante',
-    'Categorie',
-    'Unite',
-    'Quantite stock',
-    'Quantite saisie',
-    'Prix achat',
-    'Total achat',
-    'Prix vente',
-    'Prix vente 2',
-    'Remise client %',
-    'Remise artisan %',
+  const headers = ['Designation', 'Variante'];
+  const rows = [];
+
+  for (const product of products) {
+    appendStockDesignationRows(rows, product);
+  }
+
+  const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
+  ws['!cols'] = [
+    { wch: 50 },
+    { wch: 30 },
   ];
 
-  const productChunks = [];
-  for (let i = 0; i < products.length; i += 100) {
-    productChunks.push(products.slice(i, i + 100));
-  }
-  if (productChunks.length === 0) productChunks.push([]);
-
-  productChunks.forEach((chunk, chunkIndex) => {
-    const rows = [];
-    chunk.forEach((product, localIndex) => {
-      appendStockExportRows(rows, product, chunkIndex * 100 + localIndex);
-    });
-
-    const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
-    const totalRowIndex = rows.length + 1;
-    XLSX.utils.sheet_add_json(ws, [{
-      'N': 'TOTAL',
-      'Type': '',
-      'ID Produit': '',
-      'ID Variante': '',
-      'Reference': '',
-      'Designation': '',
-      'Variante': '',
-      'Categorie': '',
-      'Unite': '',
-      'Quantite stock': '',
-      'Quantite saisie': '',
-      'Prix achat': '',
-      'Total achat': '',
-      'Prix vente': '',
-      'Prix vente 2': '',
-      'Remise client %': '',
-      'Remise artisan %': '',
-    }], { skipHeader: true, origin: -1 });
-
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 12 })] = {
-      t: 'n',
-      f: rows.length > 0 ? `SUM(M2:M${totalRowIndex})` : '0',
-      v: 0,
-    };
-    ws['!cols'] = [
-      { wch: 8 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 16 },
-      { wch: 42 },
-      { wch: 24 },
-      { wch: 22 },
-      { wch: 10 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 12 },
-      { wch: 14 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 14 },
-      { wch: 14 },
-    ];
-
-    const start = chunkIndex * 100 + 1;
-    const end = chunkIndex * 100 + chunk.length;
-    XLSX.utils.book_append_sheet(wb, ws, `Produits ${start}-${end || start}`);
-  });
+  XLSX.utils.book_append_sheet(wb, ws, 'Stock');
 
   return XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
 }

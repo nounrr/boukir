@@ -28,7 +28,7 @@ Les entrees du fond de caisse sont:
 
 2. `Paiement bon comptant non paye`
    - source: `paiement_boncomptant_nonpaye`
-   - inclus selon `date_paiement`
+   - inclus selon `created_at` (date de saisie du paiement en caisse), pas selon `date_paiement`
   
 3. `Paiement caisse`
    - source: `payments`
@@ -45,6 +45,8 @@ Les entrees du fond de caisse sont:
    - exclus si:
      - `type_paiement = 'Fournisseur'`
      - et `vendre_au_fournisseur = 0`
+
+Note: les paiements lies aux bons comptant non payes ne passent pas par `payments` dans le fond de caisse. Ils sont comptes uniquement depuis `paiement_boncomptant_nonpaye`, a leur `created_at`, pour eviter de compter le bon ou son paiement deux fois.
 
 4. `Avoir charge incluse caisse`
    - source: `bons_charge`
