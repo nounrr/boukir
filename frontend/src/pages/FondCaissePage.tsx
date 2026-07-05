@@ -610,7 +610,6 @@ const FondCaissePage = () => {
                         <td className="px-4 py-3 text-sm font-semibold text-red-700">
                           -{row.sorties.toFixed(2)} DH
                           <div className="mt-1 text-xs font-normal text-gray-500">Charges: {row.bonChargeInclusCaisse.toFixed(2)}</div>
-                          <div className="text-xs font-normal text-gray-500">Commandes: {row.bonCommandeInclusCaisse.toFixed(2)}</div>
                           <div className="text-xs font-normal text-gray-500">Vehicule: {row.bonVehicule.toFixed(2)}</div>
                           <div className="text-xs font-normal text-gray-500">Avoir comptant: {row.avoirComptant.toFixed(2)}</div>
                           {row.transfertVersCoffre > 0 && (

@@ -25,6 +25,7 @@ Les entrees du fond de caisse sont:
      - `non_paye <> 1`
      - `statut` n'est pas annule
      - `statut <> 'avoir'`
+   - inclus selon `created_at`
 
 2. `Paiement bon comptant non paye`
    - source: `paiement_boncomptant_nonpaye`
@@ -38,13 +39,9 @@ Les entrees du fond de caisse sont:
      - `statut` est refuse
    - inclus si:
      - `type_paiement = 'Client'`
-   - inclus aussi si:
-     - `type_paiement = 'Fournisseur'`
-     - et le paiement est lie a un `Bon Sortie` avec `vendre_au_fournisseur = 1`
-     - ou le paiement est lie a un `Avoir` avec `vendre_au_fournisseur = 1`
+   - inclus selon `created_at`, pas selon `date_paiement`
    - exclus si:
      - `type_paiement = 'Fournisseur'`
-     - et `vendre_au_fournisseur = 0`
 
 Note: les paiements lies aux bons comptant non payes ne passent pas par `payments` dans le fond de caisse. Ils sont comptes uniquement depuis `paiement_boncomptant_nonpaye`, a leur `created_at`, pour eviter de compter le bon ou son paiement deux fois.
 
@@ -54,6 +51,7 @@ Note: les paiements lies aux bons comptant non payes ne passent pas par `payment
      - `inclus_en_caisse = 1`
      - `operation_type = 'avoir'`
      - `statut` n'est pas annule
+   - inclus selon `created_at`
    - montant retenu:
      - somme des `charge_items.total` si disponible
      - sinon `bons_charge.montant_total`
@@ -72,6 +70,7 @@ Les sorties du fond de caisse sont:
      - `inclus_en_caisse = 1`
      - `operation_type = 'charge'`
      - `statut` n'est pas annule
+   - inclus selon `created_at`
    - montant retenu:
      - somme des `charge_items.total` si disponible
      - sinon `bons_charge.montant_total`
@@ -80,11 +79,13 @@ Les sorties du fond de caisse sont:
    - source: `bons_vehicule`
    - inclus si:
      - `statut` n'est pas annule
+   - inclus selon `created_at`
 
 3. `Avoir comptant`
    - source: `avoirs_comptant`
    - inclus si:
      - `statut` n'est pas annule
+   - inclus selon `created_at`
 
 4. `Transfert vers coffre`
    - source: `fond_caisse_entries`
@@ -162,6 +163,7 @@ Le fond de caisse represente uniquement les mouvements qui impactent reellement 
 - un bon vehicule sort de la caisse
 - un avoir comptant sort de la caisse
 - un transfert vers coffre sort de la caisse et entre dans le coffre
-- un paiement fournisseur normal n'entre pas dans la caisse
-- un paiement fournisseur n'entre dans la caisse que s'il appartient a un flux `vendre_au_fournisseur = 1`
+- un paiement fournisseur n'entre pas dans la caisse
+- un bon commande n'entre pas dans le calcul du fond caisse
+- un bon sortie n'entre pas directement dans la caisse; seuls ses paiements client valides sont comptes
 - le coffre peut avoir un debut manuel propre, independant du debut caisse
