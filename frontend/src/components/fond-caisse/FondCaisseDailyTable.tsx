@@ -78,7 +78,6 @@ const FondCaisseDailyTable = ({ rows, isLoading, hasError, onOpenDetail, onDelet
                 <td className="px-4 py-4 text-sm text-gray-700">
                   <div className="font-semibold text-red-700">-{row.sorties.toFixed(2)} DH</div>
                   <div className="mt-1 text-xs text-gray-500">Charges caisse: {row.bonChargeInclusCaisse.toFixed(2)}</div>
-                  <div className="text-xs text-gray-500">Commandes caisse: {row.bonCommandeInclusCaisse.toFixed(2)}</div>
                   <div className="text-xs text-gray-500">Vehicule: {row.bonVehicule.toFixed(2)}</div>
                   <div className="text-xs text-gray-500">Avoir client: {row.avoirClient.toFixed(2)}</div>
                 </td>

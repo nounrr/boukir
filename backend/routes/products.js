@@ -995,9 +995,14 @@ async function fetchAllProductsForExport(query) {
 }
 
 function appendStockDesignationRows(rows, product) {
+  const productReference = String(product?.reference ?? product?.id ?? '').trim();
+
   rows.push({
     'Designation': product?.designation ?? '',
     'Variante': '',
+    'Reference': productReference,
+    'Ref variant': '',
+    'Image': product?.image_url ? 'Oui' : 'Non',
   });
 
   if (!Array.isArray(product?.variants)) return;
@@ -1006,13 +1011,16 @@ function appendStockDesignationRows(rows, product) {
     rows.push({
       'Designation': product?.designation ?? '',
       'Variante': variant?.variant_name ?? '',
+      'Reference': productReference,
+      'Ref variant': String(variant?.reference ?? '').trim(),
+      'Image': variant?.image_url ? 'Oui' : 'Non',
     });
   }
 }
 
 function createStockExcelBuffer(products) {
   const wb = XLSX.utils.book_new();
-  const headers = ['Designation', 'Variante'];
+  const headers = ['Designation', 'Variante', 'Reference', 'Ref variant', 'Image'];
   const rows = [];
 
   for (const product of products) {
@@ -1023,6 +1031,9 @@ function createStockExcelBuffer(products) {
   ws['!cols'] = [
     { wch: 50 },
     { wch: 30 },
+    { wch: 16 },
+    { wch: 24 },
+    { wch: 10 },
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Stock');
