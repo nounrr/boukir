@@ -43,7 +43,7 @@ const ignoredAmountOf = (p: any) => {
 };
 
 const amountOf = (p: any) => Math.max(grossAmountOf(p), 0);
-const balanceAmountOf = (p: any) => Math.max(amountOf(p) + ignoredAmountOf(p), 0);
+const balanceAmountOf = (p: any) => Math.max(amountOf(p) - ignoredAmountOf(p), 0);
 
 const formatDateTime = (val: any): string => {
   if (!val) return '';

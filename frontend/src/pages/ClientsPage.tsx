@@ -1042,7 +1042,10 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                 const variantLabel = getHistoryVariantLabel(item, products);
                 const unitLabel = getHistoryUnitLabel(item, products);
                 const sourceKeys = sourceIndices.map((sourceIdx) => `${bonKey}-item-${sourceIdx}`);
-                const lastItemSoldeKey = sourceKeys[sourceKeys.length - 1];
+                const lastItemSoldeKey =
+                  row.kind === 'comptant' && groupIdx === groups.length - 1
+                    ? `${bonKey}-item-${items.length - 1}`
+                    : sourceKeys[sourceKeys.length - 1];
                 const itemSelected = sourceKeys.every((key) => selectedItemIds?.has(key));
                 const remiseAbonne = sourceItems.reduce((sum, src) => {
                   return sum + getDisplayRemiseAbonneTotal(row.kind, src, remises, b.id);
