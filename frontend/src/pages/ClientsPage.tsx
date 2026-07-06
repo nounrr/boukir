@@ -351,10 +351,7 @@ function safeNum(v: any): number {
 }
 
 function getPaymentTotalWithIgnored(payment: any): number {
-  return Math.max(
-    safeNum(payment?.montant_total ?? payment?.montant ?? 0) - safeNum(payment?.montant_ignorer ?? 0),
-    0
-  );
+  return safeNum(payment?.montant_total ?? payment?.montant ?? 0) + safeNum(payment?.montant_ignorer ?? 0);
 }
 
 function getBonComptantTotalWithIgnored(bon: any): number {

@@ -185,10 +185,7 @@ const toPayment = (r) => ({
   date_ajout_reelle: r.date_ajout_reelle || null,
 });
 
-const paymentPaidAmount = (payment) => Math.max(
-  (Number(payment?.montant_total || 0) || 0) - (Number(payment?.montant_ignorer || 0) || 0),
-  0
-);
+const paymentPaidAmount = (payment) => Math.max(Number(payment?.montant_total || 0) || 0, 0);
 
 // normalize statut to canonical French labels
 function mapToCanonical(s) {
