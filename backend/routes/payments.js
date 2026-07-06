@@ -186,7 +186,7 @@ const toPayment = (r) => ({
 });
 
 const paymentPaidAmount = (payment) => Math.max(
-  (Number(payment?.montant_total || 0) || 0) + (Number(payment?.montant_ignorer || 0) || 0),
+  (Number(payment?.montant_total || 0) || 0) - (Number(payment?.montant_ignorer || 0) || 0),
   0
 );
 
