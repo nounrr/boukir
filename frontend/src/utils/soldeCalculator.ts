@@ -26,7 +26,7 @@ const num = (v: any) => {
 };
 
 const paymentAmountWithIgnored = (payment: any) =>
-  num(payment?.montant_total ?? payment?.montant ?? 0) + num(payment?.montant_ignorer ?? 0);
+  num(payment?.montant_total ?? payment?.montant ?? 0);
 
 const bonAmountWithIgnored = (bon: any) => {
   const base = num(bon?.montant_total ?? 0);

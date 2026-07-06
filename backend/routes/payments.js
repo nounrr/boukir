@@ -641,7 +641,9 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
     }
 
     txs.sort(txSort);
-    let solde = Number(contact.solde || 0) || 0;
+    // Impression caisse: le solde avant paiement doit suivre l'historique visible
+    // (bons/avoirs/paiements avant ce paiement), sans réinjecter le solde actuel du contact.
+    let solde = 0;
     let soldeAvant = solde;
     let soldeApres = solde;
     let found = false;
