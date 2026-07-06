@@ -580,7 +580,6 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
       avoirsFournisseurResult,
       avoirsClientVendreFournisseurResult,
       paymentsResult,
-      ecommerceOrdersResult,
     ] = await Promise.all([
       pool.query('SELECT id, type, solde FROM contacts WHERE id = ? LIMIT 1', [contactId]),
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM bons_sortie WHERE client_id = ?', [contactId]),
@@ -591,7 +590,6 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM avoirs_fournisseur WHERE fournisseur_id = ?', [contactId]),
       pool.query('SELECT id, montant_total, date_creation, created_at, statut FROM avoirs_client WHERE fournisseur_id = ? AND COALESCE(vendre_au_fournisseur, 0) = 1', [contactId]),
       pool.query('SELECT id, type_paiement, contact_id, montant_total, montant_ignorer, date_paiement, created_at, statut FROM payments WHERE contact_id = ?', [contactId]),
-      pool.query("SELECT id, total_amount, created_at, status FROM ecommerce_orders WHERE user_id = ? AND is_solde = 1 AND status IN ('pending','confirmed','processing','shipped','delivered')", [contactId]),
     ]);
 
     const contact = contactResult?.[0]?.[0];
@@ -620,7 +618,6 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
     if (isClient) {
       pushTx(sortiesResult[0], 'sale', 1);
       pushTx(comptantsResult[0], 'sale', 1, 'comptant_total');
-      pushTx(ecommerceOrdersResult[0], 'sale', 1, 'total_amount', 'created_at');
       pushTx(avoirsClientResult[0], 'avoir', -1);
     } else {
       pushTx(commandesResult[0], 'sale', 1);
@@ -641,9 +638,10 @@ router.get('/:id/print-balance', verifyToken, async (req, res) => {
     }
 
     txs.sort(txSort);
-    // Impression caisse: le solde avant paiement doit suivre l'historique visible
-    // (bons/avoirs/paiements avant ce paiement), sans réinjecter le solde actuel du contact.
-    let solde = 0;
+    // Impression caisse: le solde avant paiement doit être identique au "Solde cumulé"
+    // du détail client (buildSoldeCumuleDetail): solde initial du contact + bons/avoirs/paiements
+    // rejoués jusqu'à ce paiement.
+    let solde = Number(contact.solde || 0) || 0;
     let soldeAvant = solde;
     let soldeApres = solde;
     let found = false;
