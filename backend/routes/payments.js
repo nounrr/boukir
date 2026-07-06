@@ -251,6 +251,8 @@ function isActiveBalanceStatus(statut) {
 
 const txDateMs = (value) => {
   if (!value) return 0;
+  // mysql2 renvoie les DATETIME comme objets Date: ne pas passer par String()
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? 0 : value.getTime();
   const d = new Date(String(value).replace(' ', 'T'));
   return Number.isNaN(d.getTime()) ? 0 : d.getTime();
 };

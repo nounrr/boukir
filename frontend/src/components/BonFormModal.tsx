@@ -853,7 +853,10 @@ const ComptantPaidAmountField: React.FC<{
     ? montantTotalFromItems
     : Number(values.montant_total || 0);
   const montantPayeHistorique = Array.isArray(paymentHistory)
-    ? paymentHistory.reduce((sum: number, payment: any) => sum + (Number(payment?.montant || 0) || 0), 0)
+    ? paymentHistory.reduce((sum: number, payment: any) => {
+        const statut = String(payment?.statut || '').trim().toLowerCase();
+        return statut.startsWith('annul') ? sum : sum + (Number(payment?.montant || 0) || 0);
+      }, 0)
     : 0;
   useEffect(() => {
     setLocalRawValue(String(values.montant_paye_saisi ?? ''));
@@ -861,13 +864,16 @@ const ComptantPaidAmountField: React.FC<{
 
   const rawValue = localRawValue;
   const montantPayeSaisi = parseFloat(normalizePaidDecimal(rawValue || '0')) || 0;
-  const montantPayeTotal = Math.max(0, Math.min(montantPayeHistorique + montantPayeSaisi, montantTotalComptant));
+  const montantPayeDisponible = Math.max(0, Number((montantTotalComptant - montantPayeHistorique).toFixed(2)));
+  const montantPayeSaisiPlafonne = Math.max(0, Math.min(montantPayeSaisi, montantPayeDisponible));
+  const montantPayeTotal = Math.max(0, Math.min(montantPayeHistorique + montantPayeSaisiPlafonne, montantTotalComptant));
   const reste = Math.max(0, Number((montantTotalComptant - montantPayeTotal).toFixed(2)));
 
   const commitPaymentValue = (nextRawValue = rawValue) => {
     const parsed = parseFloat(normalizePaidDecimal(nextRawValue || '0')) || 0;
-    const formatted = nextRawValue ? formatPaidValue(parsed) : '';
-    const nextPaidTotal = Math.max(0, Math.min(montantPayeHistorique + parsed, montantTotalComptant));
+    const clamped = Math.max(0, Math.min(parsed, montantPayeDisponible));
+    const formatted = nextRawValue ? formatPaidValue(clamped) : '';
+    const nextPaidTotal = Math.max(0, Math.min(montantPayeHistorique + clamped, montantTotalComptant));
     const nextReste = Math.max(0, Number((montantTotalComptant - nextPaidTotal).toFixed(2)));
     setLocalRawValue(formatted);
     setFieldValue('montant_paye_saisi', formatted, false);
@@ -3228,6 +3234,22 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     if (requestType === 'Comptant') {
       if (values.payer_partiellement) {
       const montantPayeSaisi = parseFloat(normalizeDecimal(String(values.montant_paye_saisi ?? ''))) || 0;
+      if (montantPayeSaisi > 0) {
+        const montantPayeHistorique = Array.isArray(comptantPaymentsHistory)
+          ? comptantPaymentsHistory.reduce((sum: number, payment: any) => {
+              const statut = String(payment?.statut || '').trim().toLowerCase();
+              return statut.startsWith('annul') ? sum : sum + (Number(payment?.montant || 0) || 0);
+            }, 0)
+          : 0;
+        const montantTotalComptant = Number(cleanBonData.montant_total || 0);
+        const resteDisponible = Math.max(0, Number((montantTotalComptant - montantPayeHistorique).toFixed(2)));
+        // Paiement partiel autorisé: le total payé (historique + saisie) ne doit jamais dépasser le total du bon
+        if (montantPayeSaisi > resteDisponible + 0.000001) {
+          showError(`Le paiement dépasse le reste (${resteDisponible.toFixed(2)} DH).`);
+          setSubmitting(false);
+          return;
+        }
+      }
       cleanBonData.paiements_non_payes = montantPayeSaisi > 0
         ? [{
             montant: Number(montantPayeSaisi.toFixed(2)),
@@ -4730,7 +4752,10 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                           const checked = e.target.checked;
                           const montantTotalComptant = computeComptantMontantTotal(values, qtyRaw, unitPriceRaw);
                           const montantPayeHistorique = Array.isArray(comptantPaymentsHistory)
-                            ? comptantPaymentsHistory.reduce((sum: number, payment: any) => sum + (Number(payment?.montant || 0) || 0), 0)
+                            ? comptantPaymentsHistory.reduce((sum: number, payment: any) => {
+                                const statut = String(payment?.statut || '').trim().toLowerCase();
+                                return statut.startsWith('annul') ? sum : sum + (Number(payment?.montant || 0) || 0);
+                              }, 0)
                             : 0;
                           setFieldValue('payer_partiellement', checked);
                           if (checked) {
