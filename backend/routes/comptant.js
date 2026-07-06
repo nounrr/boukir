@@ -30,6 +30,7 @@ async function ensureComptantPaymentsTable() {
       montant DECIMAL(12,2) NOT NULL,
       date_paiement DATETIME NOT NULL,
       note TEXT NULL,
+      statut VARCHAR(50) NOT NULL DEFAULT 'Validé',
       created_by INT NULL,
       updated_by INT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -41,6 +42,10 @@ async function ensureComptantPaymentsTable() {
         ON DELETE CASCADE
     )
   `);
+  const [statutCols] = await pool.query("SHOW COLUMNS FROM paiement_boncomptant_nonpaye LIKE 'statut'");
+  if (!Array.isArray(statutCols) || statutCols.length === 0) {
+    await pool.query("ALTER TABLE paiement_boncomptant_nonpaye ADD COLUMN statut VARCHAR(50) NOT NULL DEFAULT 'Validé' AFTER note");
+  }
 }
 
 ensureComptantPaymentsTable().catch((error) => {
@@ -84,7 +89,10 @@ const parseBooleanFlag = (value) => (
 
 async function sumComptantBonPayments(db, bonComptantId) {
   const [rows] = await db.execute(
-    'SELECT COALESCE(SUM(montant), 0) AS total FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?',
+    `SELECT COALESCE(SUM(montant), 0) AS total
+       FROM paiement_boncomptant_nonpaye
+      WHERE bon_comptant_id = ?
+        AND LOWER(COALESCE(statut, '')) NOT LIKE 'annul%'`,
     [bonComptantId]
   );
   return Number(rows?.[0]?.total || 0);
@@ -340,7 +348,7 @@ router.get('/:id/paiements', verifyToken, async (req, res) => {
     }
 
     const [rows] = await pool.execute(
-      `SELECT id, bon_comptant_id, montant, date_paiement, note, created_by, updated_by, created_at, updated_at
+      `SELECT id, bon_comptant_id, montant, date_paiement, note, statut, created_by, updated_by, created_at, updated_at
          FROM paiement_boncomptant_nonpaye
         WHERE bon_comptant_id = ?
         ORDER BY date_paiement ASC, id ASC`,
@@ -382,7 +390,7 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
     }
 
     const [bonRows] = await connection.execute(
-      'SELECT id, montant_total FROM bons_comptant WHERE id = ? FOR UPDATE',
+      'SELECT id, montant_total, statut FROM bons_comptant WHERE id = ? FOR UPDATE',
       [bonId]
     );
     if (!Array.isArray(bonRows) || !bonRows.length) {
@@ -391,6 +399,11 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
     }
 
     const bon = bonRows[0];
+    const bonStatut = String(bon.statut || '').toLowerCase();
+    if (bonStatut.includes('annul') || bonStatut === 'avoir') {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Impossible d ajouter un paiement sur un bon comptant annulé/avoir' });
+    }
     const dejaPaye = await sumComptantBonPayments(connection, bonId);
     const montantDisponible = Math.max(0, Number(bon.montant_total || 0) - dejaPaye);
     if (montant > montantDisponible + 0.000001) {
@@ -400,8 +413,8 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
 
     const [result] = await connection.execute(
       `INSERT INTO paiement_boncomptant_nonpaye
-        (bon_comptant_id, montant, date_paiement, note, created_by)
-       VALUES (?, ?, ?, ?, ?)`,
+        (bon_comptant_id, montant, date_paiement, note, statut, created_by)
+       VALUES (?, ?, ?, ?, 'Validé', ?)`,
       [bonId, montant, datePaiement, note, createdBy]
     );
 
@@ -409,7 +422,7 @@ router.post('/:id/paiements', verifyToken, async (req, res) => {
     const montantPaye = Math.max(0, Number((Number(bon.montant_total || 0) - reste).toFixed(2)));
 
     const [rows] = await connection.execute(
-      `SELECT id, bon_comptant_id, montant, date_paiement, note, created_by, updated_by, created_at, updated_at
+      `SELECT id, bon_comptant_id, montant, date_paiement, note, statut, created_by, updated_by, created_at, updated_at
          FROM paiement_boncomptant_nonpaye
         WHERE id = ? LIMIT 1`,
       [result.insertId]
@@ -503,6 +516,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   try {
     await connection.beginTransaction();
     await ensureBonsComptantMontantIgnorerColumn();
+    await ensureComptantPaymentsTable();
 
   const {
       date_creation,
@@ -679,8 +693,8 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         }
         await connection.execute(
           `INSERT INTO paiement_boncomptant_nonpaye
-            (bon_comptant_id, montant, date_paiement, note, created_by)
-           VALUES (?, ?, ?, ?, ?)`,
+            (bon_comptant_id, montant, date_paiement, note, statut, created_by)
+           VALUES (?, ?, ?, ?, 'Validé', ?)`,
           [comptantId, montantPaiement, datePaiement, notePaiement, created_by ?? null]
         );
       }
@@ -728,6 +742,7 @@ router.put('/:id', async (req, res) => {
   try {
     await connection.beginTransaction();
     await ensureBonsComptantMontantIgnorerColumn();
+    await ensureComptantPaymentsTable();
 
     const { id } = req.params;
     const userRole = req.user?.role;
@@ -904,8 +919,8 @@ router.put('/:id', async (req, res) => {
 
         await connection.execute(
           `INSERT INTO paiement_boncomptant_nonpaye
-            (bon_comptant_id, montant, date_paiement, note, created_by)
-           VALUES (?, ?, ?, ?, ?)`,
+            (bon_comptant_id, montant, date_paiement, note, statut, created_by)
+           VALUES (?, ?, ?, ?, 'Validé', ?)`,
           [id, montantPaiement, datePaiement, notePaiement, createdBy]
         );
       }
@@ -1156,8 +1171,17 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
 
     // Stock: Comptant => effet = -quantite quand pas Annulé
     // Si on passe en Annulé => on restaure (+). Si on sort de Annulé => on retire (-).
-    const enteringCancelled = oldStatut !== 'Annulé' && statut === 'Annulé';
-    const leavingCancelled = oldStatut === 'Annulé' && statut !== 'Annulé';
+    const oldIsCancelled = String(oldStatut || '').toLowerCase().includes('annul');
+    const newIsCancelled = String(statut || '').toLowerCase().includes('annul');
+    const enteringCancelled = !oldIsCancelled && newIsCancelled;
+    const leavingCancelled = oldIsCancelled && !newIsCancelled;
+    if (enteringCancelled || leavingCancelled) {
+      await ensureComptantPaymentsTable();
+      await connection.execute(
+        'UPDATE paiement_boncomptant_nonpaye SET statut = ?, updated_by = ?, updated_at = NOW() WHERE bon_comptant_id = ?',
+        [enteringCancelled ? 'Annulé' : 'Validé', req.user?.id ?? null, id]
+      );
+    }
     if (enteringCancelled || leavingCancelled) {
       const [itemsStock] = await connection.execute(
         'SELECT product_id, variant_id, quantite, product_snapshot_id FROM comptant_items WHERE bon_comptant_id = ?',

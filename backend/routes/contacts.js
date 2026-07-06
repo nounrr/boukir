@@ -140,8 +140,8 @@ const TOTAL_CUMULE_EXPR = `
   END
 `;
 
-const PAYMENT_TOTAL_SQL = `COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0)`;
-const PAYMENT_TOTAL_SQL_P = `COALESCE(p.montant_total, 0) + COALESCE(p.montant_ignorer, 0)`;
+const PAYMENT_TOTAL_SQL = `GREATEST(COALESCE(montant_total, 0) - COALESCE(montant_ignorer, 0), 0)`;
+const PAYMENT_TOTAL_SQL_P = `GREATEST(COALESCE(p.montant_total, 0) - COALESCE(p.montant_ignorer, 0), 0)`;
 const COMPTANT_TOTAL_SQL = `COALESCE(montant_total, 0) + COALESCE(montant_ignorer, 0)`;
 const COMPTANT_TOTAL_SQL_BC2 = `COALESCE(bc2.montant_total, 0) + COALESCE(bc2.montant_ignorer, 0)`;
 
