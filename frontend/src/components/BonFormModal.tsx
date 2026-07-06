@@ -1405,15 +1405,18 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       })),
     [products]
   );
+  const currentContactTypeForSelect = String(currentTab || (initialValues as any)?.type || '');
+  const isChargeContactSelect = ['Charge', 'AvoirCharge'].includes(currentContactTypeForSelect);
   const clientSearchEnabled = debouncedClientSearchTerm.length >= 2;
+  const chargeClientSearchEnabled = isChargeContactSelect;
   const fournisseurSearchEnabled = debouncedFournisseurSearchTerm.length >= 2;
   const { data: clientsResponse, isFetching: isSearchingClients } = useGetClientsQuery(
     { page: 1, limit: 80, search: debouncedClientSearchTerm },
-    { skip: !clientSearchEnabled }
+    { skip: !clientSearchEnabled || isChargeContactSelect }
   );
   const { data: chargeClientsResponse, isFetching: isSearchingChargeClients } = useGetChargesQuery(
-    { page: 1, limit: 80, search: debouncedClientSearchTerm },
-    { skip: !clientSearchEnabled }
+    { page: 1, limit: debouncedClientSearchTerm ? 80 : 1000, search: debouncedClientSearchTerm },
+    { skip: !chargeClientSearchEnabled }
   );
   const { data: fournisseursResponse, isFetching: isSearchingFournisseurs } = useGetFournisseursQuery(
     { page: 1, limit: 80, search: debouncedFournisseurSearchTerm },
@@ -1422,9 +1425,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const clientsRaw = clientsResponse?.data || [];
   const chargeClientsRaw = chargeClientsResponse?.data || [];
   const fournisseursRaw = fournisseursResponse?.data || [];
-  const currentContactTypeForSelect = String(currentTab || (initialValues as any)?.type || '');
-  const isChargeContactSelect = ['Charge', 'AvoirCharge'].includes(currentContactTypeForSelect);
-  const clientSelectLoading = clientSearchEnabled && (isChargeContactSelect ? isSearchingChargeClients : isSearchingClients);
+  const clientSelectLoading = isChargeContactSelect ? isSearchingChargeClients : (clientSearchEnabled && isSearchingClients);
   const fournisseurSelectLoading = fournisseurSearchEnabled && isSearchingFournisseurs;
 
   // À l'ouverture en modification, on récupère le contact (client/fournisseur) DÉJÀ
@@ -1949,7 +1950,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         normalizedItems.length
           ? 'Articles:\n' + normalizedItems.map((it: any) => {
               const unit = it.prix_unitaire || it.prix || 0;
-              return `  - ${it.designation || ''} x${it.quantite || 0} @ ${Number(unit).toFixed(2)} DH`;
+              return `  - ${it.designation || ''} x${Number(it.quantite || 0).toFixed(2)} @ ${Number(unit).toFixed(2)} DH`;
             }).join('\n')
           : '',
         'Merci.'
@@ -4433,6 +4434,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     options={clientOptions}
                     value={values.client_id}
                     valueLabelFallback={values.client_nom || ''}
+                    minSearchChars={['Charge', 'AvoirCharge'].includes(values.type) ? 0 : 2}
                     disabled={isQtyOnlyEdit}
                     onChange={async (clientId) => {
                       if (isQtyOnlyEdit) return;
@@ -4513,7 +4515,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                     placeholder="Sélectionnez un client"
                     className="w-full"
                     maxDisplayItems={200}
-                    minSearchChars={2}
                     autoOpenOnFocus
                   />
                   <ErrorMessage name="client_id" component="div" className="text-red-500 text-sm mt-1" />

@@ -24,6 +24,7 @@ const bonComptantPaymentNetSql = (paymentAlias = 'p', bonAlias = 'bc') => `
       SELECT 1
         FROM paiement_boncomptant_nonpaye pbcnp_next
        WHERE pbcnp_next.bon_comptant_id = ${paymentAlias}.bon_comptant_id
+         AND LOWER(COALESCE(pbcnp_next.statut, '')) NOT LIKE 'annul%'
          AND (
            pbcnp_next.created_at > ${paymentAlias}.created_at
            OR (
@@ -203,6 +204,17 @@ async function ensureMontantIgnorerColumns(db = pool) {
   } catch (error) {
     if (error?.code !== 'ER_NO_SUCH_TABLE') {
       console.error('ensureMontantIgnorerColumns bons_comptant non_paye:', error);
+    }
+  }
+
+  try {
+    const [paymentBonCols] = await db.query("SHOW COLUMNS FROM paiement_boncomptant_nonpaye LIKE 'statut'");
+    if (!Array.isArray(paymentBonCols) || paymentBonCols.length === 0) {
+      await db.query("ALTER TABLE paiement_boncomptant_nonpaye ADD COLUMN statut VARCHAR(50) NOT NULL DEFAULT 'Validé' AFTER note");
+    }
+  } catch (error) {
+    if (error?.code !== 'ER_NO_SUCH_TABLE') {
+      console.error('ensureMontantIgnorerColumns paiement_boncomptant_nonpaye statut:', error);
     }
   }
 }
@@ -554,8 +566,9 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
            AND COALESCE(bc.non_paye, 0) = 0
            AND NOT EXISTS (
              SELECT 1
-               FROM paiement_boncomptant_nonpaye pbcnp
+              FROM paiement_boncomptant_nonpaye pbcnp
               WHERE pbcnp.bon_comptant_id = bc.id
+                AND LOWER(COALESCE(pbcnp.statut, '')) NOT LIKE 'annul%'
            )
            AND ${netAmountSql('bc.montant_total', 'bc.montant_ignorer')} > 0
            ${afterLatestCaisseStartSql('bc.created_at')}
@@ -570,6 +583,9 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
          FROM paiement_boncomptant_nonpaye p
          LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
          WHERE DATE(${bonComptantPaymentCaisseDateSql('p')}) BETWEEN ? AND ?
+           AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
+           AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+           AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
            ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
            AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
          GROUP BY DATE(${bonComptantPaymentCaisseDateSql('p')})
@@ -876,6 +892,7 @@ router.get('/days/:date', async (req, res) => {
               SELECT 1
                 FROM paiement_boncomptant_nonpaye pbcnp
                WHERE pbcnp.bon_comptant_id = bons_comptant.id
+                 AND LOWER(COALESCE(pbcnp.statut, '')) NOT LIKE 'annul%'
             )
             AND ${netAmountSql('montant_total', 'montant_ignorer')} > 0
             ${afterLatestCaisseStartSql('created_at')}
@@ -893,11 +910,14 @@ router.get('/days/:date', async (req, res) => {
             ${bonComptantPaymentNetSql('p', 'bc')} AS amount,
             CONCAT('COM', ${paddedReferenceIdSql('COALESCE(p.bon_comptant_id, p.id)')}) AS reference,
             COALESCE(bc.client_nom, '') AS actor,
-            NULL AS statut,
+            p.statut AS statut,
             COALESCE(p.note, 'Paiement d un bon comptant non paye') AS description
           FROM paiement_boncomptant_nonpaye p
           LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
           WHERE DATE(${bonComptantPaymentCaisseDateSql('p')}) = ?
+            AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
+            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+            AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
             ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
             AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
         `,
@@ -1186,6 +1206,7 @@ router.get('/mouvements', async (req, res) => {
                SELECT 1
                  FROM paiement_boncomptant_nonpaye pbcnp
                 WHERE pbcnp.bon_comptant_id = bc.id
+                  AND LOWER(COALESCE(pbcnp.statut, '')) NOT LIKE 'annul%'
              )
              AND ${netAmountSql('bc.montant_total', 'bc.montant_ignorer')} > 0
              ${afterLatestCaisseStartSql('bc.created_at')}
@@ -1200,6 +1221,9 @@ router.get('/mouvements', async (req, res) => {
            FROM paiement_boncomptant_nonpaye p
            LEFT JOIN bons_comptant bc ON bc.id = p.bon_comptant_id
            WHERE DATE(${bonComptantPaymentCaisseDateSql('p')}) BETWEEN ? AND ?
+             AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
+             AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+             AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
              ${afterLatestCaisseStartSql(bonComptantPaymentCaisseDateSql('p'))}
              AND ${bonComptantPaymentNetSql('p', 'bc')} > 0
            GROUP BY DATE(${bonComptantPaymentCaisseDateSql('p')})

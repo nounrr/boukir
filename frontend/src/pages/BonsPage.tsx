@@ -1194,6 +1194,7 @@ const BonsPage = () => {
   };
 
   const formatNumber4 = (value: any): string => parseMontantNumber(value).toFixed(4);
+  const formatNumber2 = (value: any): string => parseMontantNumber(value).toFixed(2);
 
   const getDisplayedUnitPrice = (item: any, type: string): number => {
     if (type === 'Commande') {
@@ -1624,7 +1625,7 @@ const BonsPage = () => {
         `Bonjour ${getContactName(bon) || ''}`,
         `Type: ${bon.type || effectiveCurrentTab}`,
         `Numéro: ${getDisplayNumero(bon)}`,
-        `Montant: ${formatNumber4(computeMontantTotal(bon))} DH`,
+        `Montant: ${formatNumber2(computeMontantTotal(bon))} DH`,
         bon.date_creation ? `Date: ${formatDateTimeWithHour(bon.date_creation)}` : '',
         bon.adresse_livraison ? `Adresse: ${bon.adresse_livraison}` : '',
         bon.lieu_chargement ? `Lieu de chargement: ${bon.lieu_chargement}` : '',
@@ -1632,7 +1633,7 @@ const BonsPage = () => {
         bonItems.length
           ? 'Articles:\n' + bonItems.map((it: any) => {
               const unit = it.prix_unitaire || it.prix || 0;
-              return `  - ${it.nom || it.name || it.designation || ''} x${formatNumber4(it.quantite || it.qty || 1)} @ ${formatNumber4(unit)} DH`;
+              return `  - ${it.nom || it.name || it.designation || ''} x${formatNumber2(it.quantite || it.qty || 1)} @ ${formatNumber2(unit)} DH`;
             }).join('\n')
           : '',
         'Merci.'
@@ -1739,7 +1740,7 @@ const BonsPage = () => {
 
       // Utiliser la route /whatsapp/bon pour tous les types (envoie le PDF en pièce jointe)
       const numeroDisplay = getDisplayNumero(bon) || 'N/A';
-      const montantDisplay = formatNumber4(computeMontantTotal(bon));
+      const montantDisplay = formatNumber2(computeMontantTotal(bon));
       
       try {
         const resp = await fetch('/api/notifications/whatsapp/bon', {
