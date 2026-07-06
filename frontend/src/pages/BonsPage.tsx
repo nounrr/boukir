@@ -1244,7 +1244,10 @@ const BonsPage = () => {
 
   const getComptantPaymentRows = (payments: any[]): any[] => {
     return (Array.isArray(payments) ? payments : [])
-      .filter((payment: any) => parseMontantNumber(payment?.montant) > 0)
+      .filter((payment: any) => {
+        const statut = String(payment?.statut || '').trim().toLowerCase();
+        return parseMontantNumber(payment?.montant) > 0 && !statut.startsWith('annul');
+      })
       .sort((a: any, b: any) => {
         const dateA = new Date(a?.date_paiement || a?.created_at || 0).getTime();
         const dateB = new Date(b?.date_paiement || b?.created_at || 0).getTime();
@@ -1973,6 +1976,18 @@ const BonsPage = () => {
       const montant = Number(String(newComptantPaymentAmount || '').replace(',', '.'));
       if (!(montant > 0)) {
         showError('Montant de paiement invalide.');
+        return;
+      }
+      const paymentRows = getComptantPaymentRows(comptantPayments as any[]);
+      const montantTotal = computeMontantTotal(selectedComptantForPayments);
+      const dejaPaye = getComptantPaidAmount(selectedComptantForPayments, paymentRows);
+      const resteDisponible = Math.max(0, Number((montantTotal - dejaPaye).toFixed(2)));
+      if (montant > resteDisponible + 0.000001) {
+        showError(`Le paiement depasse le reste (${formatNumber4(resteDisponible)} DH).`);
+        return;
+      }
+      if (montant < resteDisponible - 0.000001) {
+        showError(`Le paiement doit etre egal au reste (${formatNumber4(resteDisponible)} DH).`);
         return;
       }
       if (!newComptantPaymentDate) {
@@ -3871,6 +3886,7 @@ const BonsPage = () => {
                   <input
                     type="number"
                     min="0"
+                    max={Math.max(0, Number((computeMontantTotal(selectedComptantForPayments) - getComptantPaidAmount(selectedComptantForPayments, comptantPayments as any[])).toFixed(2)))}
                     step="0.01"
                     value={newComptantPaymentAmount}
                     onChange={(e) => setNewComptantPaymentAmount(e.target.value)}

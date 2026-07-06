@@ -98,6 +98,37 @@ async function sumComptantBonPayments(db, bonComptantId) {
   return Number(rows?.[0]?.total || 0);
 }
 
+const roundMoney = (value) => Number((Number(value || 0)).toFixed(2));
+
+const sumPaymentPayloadAmounts = (payments = []) => (
+  (Array.isArray(payments) ? payments : []).reduce((sum, payment) => {
+    const montant = Number(payment?.montant || 0);
+    return sum + (Number.isFinite(montant) && montant > 0 ? montant : 0);
+  }, 0)
+);
+
+async function assertComptantPaymentsWithinTotal(db, bonComptantId, montantTotal, incomingPayments = [], options = {}) {
+  const totalBon = roundMoney(montantTotal);
+  const dejaPaye = bonComptantId ? await sumComptantBonPayments(db, bonComptantId) : 0;
+  const montantEntrant = sumPaymentPayloadAmounts(incomingPayments);
+  const totalPaye = roundMoney(dejaPaye + montantEntrant);
+  const reste = Math.max(0, roundMoney(totalBon - dejaPaye));
+
+  if (totalPaye > totalBon + 0.000001) {
+    throw Object.assign(
+      new Error(`Le total paye (${totalPaye.toFixed(2)} DH) depasse le montant total du bon (${totalBon.toFixed(2)} DH). Reste autorise: ${reste.toFixed(2)} DH`),
+      { statusCode: 400 }
+    );
+  }
+
+  if (options.requireFullPayment && montantEntrant > 0 && totalPaye < totalBon - 0.000001) {
+    throw Object.assign(
+      new Error(`Le paiement doit etre egal au reste (${reste.toFixed(2)} DH). Montant saisi: ${montantEntrant.toFixed(2)} DH`),
+      { statusCode: 400 }
+    );
+  }
+}
+
 async function syncComptantBonReste(db, bonComptantId, montantTotalOverride = null) {
   const bonId = Number(bonComptantId);
   if (!Number.isFinite(bonId) || bonId <= 0) return 0;
@@ -618,6 +649,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const remiseExterne = Number(resolved.remise_is_client) === 0
       && Number.isFinite(Number(resolved.remise_id))
       && Number(resolved.remise_id) > 0;
+    let montantTotalForPayments = Number(montant_total || 0);
 
     for (const it of items) {
       const {
@@ -667,6 +699,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
         0
       );
       await connection.execute('UPDATE bons_comptant SET montant_total = ? WHERE id = ?', [recomputed, comptantId]);
+      montantTotalForPayments = recomputed;
     }
 
     await syncBonItemRemises({
@@ -683,6 +716,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       : [];
 
     if (initialNonPayePayments.length) {
+      await assertComptantPaymentsWithinTotal(connection, null, montantTotalForPayments, initialNonPayePayments);
       for (const paiement of initialNonPayePayments) {
         const montantPaiement = Number(paiement?.montant || 0);
         const datePaiement = normalizeSqlDateTime(paiement?.date_paiement || normalizedDateCreation);
@@ -701,7 +735,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     }
 
     if (nonPayeRequested) {
-      await syncComptantBonReste(connection, comptantId, montant_total);
+      await syncComptantBonReste(connection, comptantId, montantTotalForPayments);
     } else {
       await connection.execute('UPDATE bons_comptant SET reste = 0, non_paye = 0 WHERE id = ?', [comptantId]);
     }
@@ -728,7 +762,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('Erreur POST /comptant:', error);
-    res.status(500).json({ message: 'Erreur du serveur', error: error?.sqlMessage || error?.message || String(error) });
+    const status = error?.statusCode && Number.isFinite(Number(error.statusCode)) ? Number(error.statusCode) : 500;
+    const msg = status === 500 ? 'Erreur du serveur' : (error?.message || 'Erreur');
+    res.status(status).json({ message: msg, error: status === 500 ? (error?.sqlMessage || error?.message || String(error)) : undefined });
   } finally {
     connection.release();
   }
@@ -876,6 +912,16 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ message: resolved.error });
     }
 
+    const remiseExterneUpd = Number(resolved.remise_is_client) === 0
+      && Number.isFinite(Number(resolved.remise_id))
+      && Number(resolved.remise_id) > 0;
+    const montantTotalForPayments = remiseExterneUpd
+      ? (Array.isArray(items) ? items : []).reduce(
+          (s, r) => s + (Number(r?.quantite || 0) * Number(r?.prix_unitaire || 0)),
+          0
+        )
+      : Number(montant_total || 0);
+
     await connection.execute(`
       UPDATE bons_comptant SET
         date_creation = ?, client_id = ?, client_nom = ?, phone = ?,
@@ -890,7 +936,7 @@ router.put('/:id', async (req, res) => {
       vId,
       lieu,
       adresse_livraison ?? null,
-      montant_total,
+      montantTotalForPayments,
       montantIgnorer,
       nonPayeRequested ? (req.body.reste || 0) : 0,
       nonPayeRequested ? 1 : 0,
@@ -904,6 +950,10 @@ router.put('/:id', async (req, res) => {
     const nextNonPayePayments = nonPayeRequested && Array.isArray(paiements_non_payes)
       ? paiements_non_payes
       : [];
+
+    if (nonPayeRequested) {
+      await assertComptantPaymentsWithinTotal(connection, id, montantTotalForPayments, nextNonPayePayments);
+    }
 
     if (nextNonPayePayments.length) {
       for (const paiement of nextNonPayePayments) {
@@ -927,7 +977,7 @@ router.put('/:id', async (req, res) => {
     }
 
     if (nonPayeRequested) {
-      await syncComptantBonReste(connection, id, montant_total);
+      await syncComptantBonReste(connection, id, montantTotalForPayments);
     } else {
       await connection.execute('DELETE FROM paiement_boncomptant_nonpaye WHERE bon_comptant_id = ?', [id]);
       await connection.execute('UPDATE bons_comptant SET reste = 0, non_paye = 0 WHERE id = ?', [id]);
@@ -946,10 +996,6 @@ router.put('/:id', async (req, res) => {
         );
       }
     }
-
-    const remiseExterneUpd = Number(resolved.remise_is_client) === 0
-      && Number.isFinite(Number(resolved.remise_id))
-      && Number(resolved.remise_id) > 0;
 
     for (const it of items) {
       const {
