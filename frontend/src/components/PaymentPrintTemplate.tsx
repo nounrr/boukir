@@ -129,7 +129,8 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
     return isNaN(num) ? 0 : num;
   };
   const amountOf = (p: any) => Math.max(grossAmountOf(p), 0);
-  const balanceAmountOf = (p: any) => Math.max(amountOf(p) - ignoredAmountOf(p), 0);
+  const paidDisplayAmountOf = (p: any) => Math.max(amountOf(p) - ignoredAmountOf(p), 0);
+  const balanceAmountOf = (p: any) => amountOf(p);
 
   // Calcul du solde cumulÃ©: API historique du paiement, fallback local si indisponible.
   const calculateCumulativeSaldo = () => {
@@ -241,7 +242,8 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
 
   const { soldoAvant, montantPaiement, soldoApres, soldoAvantLabel, soldoApresLabel, nouveauSoldeLabel, isClient } = calculateCumulativeSaldo();
   const montantIgnorer = ignoredAmountOf(payment);
-  const montantTotal = montantPaiement + montantIgnorer;
+  const montantPayeAffiche = Math.max(montantPaiement - montantIgnorer, 0);
+  const montantTotal = montantPaiement;
   const showIgnored = montantIgnorer > 0;
 
   const contact = client || fournisseur || ((payment?.type === 'Comptant' && payment?.client_nom) ? { nom_complet: payment.client_nom } as any : undefined);
@@ -385,7 +387,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
                 {formatHeure(payment.date_paiement)}
               </td>
               <td className="border border-gray-300 px-3 py-2 text-right font-medium text-green-700">
-                +{montantPaiement.toFixed(2)}
+                +{montantPayeAffiche.toFixed(2)}
               </td>
               {showIgnored && (
                 <td className="border border-gray-300 px-3 py-2 text-right font-medium text-orange-700">
@@ -423,7 +425,7 @@ const PaymentPrintTemplate: React.FC<PaymentPrintTemplateProps> = ({
           <div className={`${isA5 ? 'p-2' : 'p-4'} rounded`}>
             <div className={`flex justify-between items-center ${isA5 ? 'text-sm' : 'text-lg'} font-bold`}>
               <span>MONTANT PAYÉ:</span>
-              <span>{montantPaiement.toFixed(2)} DH</span>
+              <span>{montantPayeAffiche.toFixed(2)} DH</span>
             </div>
             {showIgnored && <div className={`flex justify-between items-center ${isA5 ? 'text-xs pt-1 mt-1' : 'text-base pt-2 mt-2'} font-semibold text-orange-700 border-t`}>
               <span>MONTANT IGNORÉ:</span>
