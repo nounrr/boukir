@@ -351,7 +351,14 @@ function safeNum(v: any): number {
 }
 
 function getPaymentTotalWithIgnored(payment: any): number {
-  return safeNum(payment?.montant_total ?? payment?.montant ?? 0) + safeNum(payment?.montant_ignorer ?? 0);
+  return safeNum(payment?.montant_total ?? payment?.montant ?? 0);
+}
+
+function getPaymentLineTotal(payment: any): number {
+  return Math.max(
+    safeNum(payment?.montant_total ?? payment?.montant ?? 0) - safeNum(payment?.montant_ignorer ?? 0),
+    0
+  );
 }
 
 function getBonComptantTotalWithIgnored(bon: any): number {
@@ -912,7 +919,7 @@ const CompletTable: React.FC<CompletTableProps> = ({ rows, detail, soldeInitial,
                   </td>
                 )}
                 <td className="px-4 py-2.5 text-right font-semibold text-white">
-                  {fmt(getPaymentTotalWithIgnored(p))}
+                  {fmt(getPaymentLineTotal(p))}
                 </td>
                 <td className="px-4 py-2.5 text-right font-semibold text-orange-700">
                   {fmt(Number(p.montant_ignorer ?? 0))}
@@ -1437,8 +1444,8 @@ const ClientDetailPage: React.FC = () => {
         va = new Date(a.date_paiement || a.created_at).getTime();
         vb = new Date(b.date_paiement || b.created_at).getTime();
       } else if (paySort.col === 'montant') {
-        va = getPaymentTotalWithIgnored(a);
-        vb = getPaymentTotalWithIgnored(b);
+        va = getPaymentLineTotal(a);
+        vb = getPaymentLineTotal(b);
       } else if (paySort.col === 'montant_ignorer') {
         va = Number(a.montant_ignorer ?? 0);
         vb = Number(b.montant_ignorer ?? 0);
@@ -1648,7 +1655,7 @@ const ClientDetailPage: React.FC = () => {
           code_reglement: data.code_reglement || data.reference_virement || data.reference || null,
           quantite: 0,
           prix_unitaire: 0,
-          total: getPaymentTotalWithIgnored(data),
+          total: getPaymentLineTotal(data),
           bon_statut: data.statut ?? '',
           soldeCumulatif: -(soldeCumuleMap.get(`paiement-${data.id}`) ?? 0),
           type: 'paiement',
@@ -2028,7 +2035,7 @@ const ClientDetailPage: React.FC = () => {
                                     {rib ? <span className="flex items-center gap-1.5 text-gray-700 font-mono text-xs"><Hash className="w-3 h-3 text-gray-400" />{rib}</span>
                                          : <span className="text-gray-300 text-xs">—</span>}
                                   </td>
-                                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmt(getPaymentTotalWithIgnored(p))}</td>
+                                  <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmt(getPaymentLineTotal(p))}</td>
                                   <td className="px-4 py-3 text-right font-semibold text-orange-700">{fmt(Number(p.montant_ignorer ?? 0))}</td>
                                 </tr>
                               )}
@@ -2043,7 +2050,7 @@ const ClientDetailPage: React.FC = () => {
                     <tr>
                       <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-gray-600">Total</td>
                       <td className="px-4 py-2 text-right font-bold text-green-700">
-                        {fmt(paiements.reduce((s: number, p: any) => s + getPaymentTotalWithIgnored(p), 0))}
+                        {fmt(paiements.reduce((s: number, p: any) => s + getPaymentLineTotal(p), 0))}
                       </td>
                       <td className="px-4 py-2 text-right font-bold text-orange-700">
                         {fmt(totalMontantIgnorerPaiements)}
