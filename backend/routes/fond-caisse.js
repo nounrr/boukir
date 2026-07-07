@@ -1,5 +1,6 @@
 import express from 'express';
 import pool from '../db/pool.js';
+import { ensurePaymentRemiseColumns, getDirectContactRemiseInfo, getRemisePaymentAccounts } from '../utils/remisePaymentAccounts.js';
 
 const router = express.Router();
 
@@ -40,7 +41,8 @@ const bonComptantPaymentNetSql = (paymentAlias = 'p', bonAlias = 'bc') => `
 const paymentIncludedInCaisseSql = (paymentAlias = 'p') => `
             AND (
               COALESCE(${paymentAlias}.bon_type, '') <> 'Comptant'
-            )`;
+            )
+            AND COALESCE(${paymentAlias}.mode_paiement, '') <> 'Remise'`;
 const bonComptantPaymentCaisseDateSql = (paymentAlias = 'p') =>
   `${paymentAlias}.created_at`;
 const afterLatestCaisseStartSql = (dateTimeExpr) => `
@@ -219,6 +221,24 @@ async function ensureMontantIgnorerColumns(db = pool) {
   }
 }
 
+async function ensurePaymentGroupColumn(db = pool) {
+  try {
+    const [cols] = await db.query("SHOW COLUMNS FROM payments LIKE 'payment_group_id'");
+    if (!Array.isArray(cols) || cols.length === 0) {
+      await db.query("ALTER TABLE payments ADD COLUMN payment_group_id VARCHAR(64) NULL AFTER numero");
+    }
+    try {
+      await db.query("CREATE INDEX idx_payments_group_id ON payments (payment_group_id)");
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_KEYNAME') throw error;
+    }
+  } catch (error) {
+    if (error?.code !== 'ER_NO_SUCH_TABLE') {
+      console.error('ensurePaymentGroupColumn:', error);
+    }
+  }
+}
+
 ensureFondCaisseEntriesTable().catch((error) => {
   console.error('ensureFondCaisseEntriesTable:', error);
 });
@@ -227,6 +247,9 @@ ensureCoffreTable().catch((error) => {
 });
 ensureMontantIgnorerColumns().catch((error) => {
   console.error('ensureMontantIgnorerColumns:', error);
+});
+ensurePaymentGroupColumn().catch((error) => {
+  console.error('ensurePaymentGroupColumn:', error);
 });
 
 const normalizeSqlDateTime = (value) => {
@@ -307,6 +330,7 @@ const mapCoffreEntry = (row) => ({
 const ALLOWED_ENTRY_TYPES = new Set([
   'caisse_initial',
   'caisse_libre',
+  'sortie_remise',
   'coffre_initial',
   'transfer_to_coffre',
   'transfer_to_poche',
@@ -330,6 +354,59 @@ async function getEmployeeName(userId) {
   );
   const row = Array.isArray(rows) ? rows[0] : null;
   return row?.nom_complet || row?.cin || null;
+}
+
+async function resolveFondCaisseRemiseTarget(db, payload, montant) {
+  const rawType = String(payload?.remiseTargetType || '').trim();
+  const rawId = Number(payload?.remiseTargetId);
+  if (!['client_remise', 'direct_client'].includes(rawType)) {
+    const error = new Error('Type beneficiaire remise invalide');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!Number.isFinite(rawId) || rawId <= 0) {
+    const error = new Error('Beneficiaire remise requis');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (rawType === 'client_remise') {
+    const accounts = await getRemisePaymentAccounts(db, { ids: [rawId] });
+    const account = accounts[0];
+    if (!account) {
+      const error = new Error('Compte remise introuvable');
+      error.statusCode = 404;
+      throw error;
+    }
+    const available = Number(account.available_total || 0);
+    if (montant > available + 0.000001) {
+      const error = new Error(`Montant remise superieur au disponible (${available.toFixed(2)} DH)`);
+      error.statusCode = 400;
+      throw error;
+    }
+    return {
+      contactId: account.contact_id ? Number(account.contact_id) : null,
+      remiseAccountId: Number(account.id),
+      remiseAccountType: account.type,
+      remiseAccountName: account.nom,
+      available,
+    };
+  }
+
+  const info = await getDirectContactRemiseInfo(db, rawId);
+  const available = Number(info.available || 0);
+  if (montant > available + 0.000001) {
+    const error = new Error(`Montant remise superieur au disponible (${available.toFixed(2)} DH)`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return {
+    contactId: rawId,
+    remiseAccountId: null,
+    remiseAccountType: 'direct-client',
+    remiseAccountName: info.nom_complet,
+    available,
+  };
 }
 
 async function runMovementQuery(sql, params, label) {
@@ -359,6 +436,7 @@ function mergeMovement(target, jour, values) {
     paiementClientCaisse: 0,
     montantLibreCaisse: 0,
     avoirChargeInclusCaisse: 0,
+    sortieRemise: 0,
     bonChargeInclusCaisse: 0,
     bonCommandeInclusCaisse: 0,
     bonVehicule: 0,
@@ -375,12 +453,13 @@ router.get('/entries', async (req, res) => {
   try {
     await ensureFondCaisseEntriesTable();
     await ensureCoffreTable();
+    await ensurePaymentGroupColumn();
     const { dateFrom, dateTo } = parseDateRange(req);
     const [caisseRows] = await pool.query(
       `SELECT *
          FROM fond_caisse_entries
         WHERE jour BETWEEN ? AND ?
-          AND entry_type IN ('caisse_initial', 'caisse_libre', 'transfer_to_coffre', 'transfer_to_poche')
+          AND entry_type IN ('caisse_initial', 'caisse_libre', 'sortie_remise', 'transfer_to_coffre', 'transfer_to_poche')
         ORDER BY opened_at DESC, id DESC`,
       [dateFrom, dateTo]
     );
@@ -411,6 +490,8 @@ router.post('/entries', async (req, res) => {
   try {
     await ensureFondCaisseEntriesTable();
     await ensureCoffreTable();
+    await ensurePaymentRemiseColumns();
+    await ensurePaymentGroupColumn();
 
     const montant = Number(req.body?.montant);
     const entryType = String(req.body?.entryType || 'caisse_initial').trim();
@@ -456,16 +537,70 @@ router.post('/entries', async (req, res) => {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
+      const remiseTarget = entryType === 'sortie_remise'
+        ? await resolveFondCaisseRemiseTarget(connection, req.body, montant)
+        : null;
       const [result] = await connection.query(
         `INSERT INTO fond_caisse_entries (montant, entry_type, note, mode_paiement, opened_at, jour, created_by, created_by_name)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [montant, entryType, note, modePaiement, openedAt, jour, createdBy, createdByName]
+        [
+          montant,
+          entryType,
+          note || (entryType === 'sortie_remise' ? `Sortie remise - ${remiseTarget?.remiseAccountName || ''}` : null),
+          modePaiement,
+          openedAt,
+          jour,
+          createdBy,
+          createdByName,
+        ]
       );
       if (entryType === 'transfer_to_coffre') {
         await connection.query(
           `INSERT INTO coffre (montant, entry_type, note, mode_paiement, opened_at, jour, fond_caisse_entry_id, created_by, created_by_name)
            VALUES (?, 'transfer_from_caisse', ?, ?, ?, ?, ?, ?, ?)`,
           [montant, note || 'Transfert vers coffre', modePaiement, openedAt, jour, result.insertId, createdBy, createdByName]
+        );
+      }
+      if (entryType === 'sortie_remise' && remiseTarget) {
+        const paymentGroupId = `fond-remise-${result.insertId}`;
+        const designation = note || `Sortie fond caisse remise - ${remiseTarget.remiseAccountName || ''}`;
+        await connection.query(
+          `INSERT INTO payments
+            (numero, payment_group_id, type_paiement, contact_id, remise_account_id, remise_account_type, remise_account_name,
+             bon_id, bon_type, montant_total, montant_ignorer, mode_paiement, date_paiement, designation,
+             date_echeance, banque, personnel, code_reglement, image_url, payment, talon_id, statut, created_by, created_at, date_ajout_reelle)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [
+            '',
+            paymentGroupId,
+            'Client',
+            remiseTarget.contactId,
+            remiseTarget.remiseAccountId,
+            remiseTarget.remiseAccountType,
+            remiseTarget.remiseAccountName,
+            null,
+            null,
+            montant,
+            0,
+            'Remise',
+            openedAt,
+            designation,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0,
+            null,
+            'Validé',
+            createdBy,
+            openedAt,
+            openedAt,
+          ]
+        );
+        await connection.query(
+          `UPDATE payments SET numero = CAST(id AS CHAR) WHERE payment_group_id = ? AND numero = ''`,
+          [paymentGroupId]
         );
       }
       await connection.commit();
@@ -487,6 +622,7 @@ router.delete('/entries/:id', async (req, res) => {
   try {
     await ensureFondCaisseEntriesTable();
     await ensureCoffreTable();
+    await ensurePaymentGroupColumn();
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id === 0) {
       return res.status(400).json({ message: 'ID invalide' });
@@ -513,6 +649,9 @@ router.delete('/entries/:id', async (req, res) => {
       }
       if (rows[0].entry_type === 'transfer_to_coffre') {
         await connection.query('DELETE FROM coffre WHERE fond_caisse_entry_id = ?', [id]);
+      }
+      if (rows[0].entry_type === 'sortie_remise') {
+        await connection.query('DELETE FROM payments WHERE payment_group_id = ?', [`fond-remise-${id}`]);
       }
       const [result] = await connection.query('DELETE FROM fond_caisse_entries WHERE id = ?', [id]);
       await connection.commit();
@@ -646,6 +785,18 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
       `,
     },
     {
+      label: 'sortie_remise',
+      field: 'sortieRemise',
+      sql: `
+        SELECT DATE(fce.opened_at) AS jour, COALESCE(SUM(fce.montant), 0) AS total
+          FROM fond_caisse_entries fce
+         WHERE DATE(fce.opened_at) BETWEEN ? AND ?
+           AND fce.entry_type = 'sortie_remise'
+           ${afterLatestCaisseStartSql('fce.opened_at')}
+         GROUP BY DATE(fce.opened_at)
+      `,
+    },
+    {
       label: 'bons_charge',
       field: 'bonChargeInclusCaisse',
       sql: `
@@ -724,12 +875,13 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
     const avoirChargeInclusCaisse = toNumber(row.avoirChargeInclusCaisse);
     const transfertVersCoffre = toNumber(row.transfertVersCoffre);
     const transfertVersPoche = toNumber(row.transfertVersPoche);
+    const sortieRemise = toNumber(row.sortieRemise);
     const bonChargeInclusCaisse = toNumber(row.bonChargeInclusCaisse);
     const bonCommandeInclusCaisse = toNumber(row.bonCommandeInclusCaisse);
     const bonVehicule = toNumber(row.bonVehicule);
     const avoirComptant = toNumber(row.avoirComptant);
     const entrees = bonComptantPaye + paiementBonComptantNonPaye + paiementClientCaisse + montantLibreCaisse + avoirChargeInclusCaisse;
-    const sorties = bonChargeInclusCaisse + bonVehicule + avoirComptant + transfertVersCoffre + transfertVersPoche;
+    const sorties = bonChargeInclusCaisse + bonVehicule + avoirComptant + transfertVersCoffre + transfertVersPoche + sortieRemise;
 
     return {
       jour: row.jour,
@@ -740,6 +892,7 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
       avoirChargeInclusCaisse,
       transfertVersCoffre,
       transfertVersPoche,
+      sortieRemise,
       bonChargeInclusCaisse,
       bonCommandeInclusCaisse,
       bonVehicule,
@@ -802,18 +955,20 @@ router.get('/days/:date', async (req, res) => {
             CASE
               WHEN entry_type = 'caisse_initial' THEN 'Fond initial caisse'
               WHEN entry_type = 'caisse_libre' THEN 'Montant libre caisse'
+              WHEN entry_type = 'sortie_remise' THEN 'Sortie remise'
               WHEN entry_type = 'transfer_to_coffre' THEN 'Transfert vers coffre'
               WHEN entry_type = 'transfer_to_poche' THEN 'Transfert vers poche'
               ELSE 'Fond initial'
             END AS type,
             CASE
-              WHEN entry_type IN ('transfer_to_coffre', 'transfer_to_poche') THEN 'SORTIE'
+              WHEN entry_type IN ('sortie_remise', 'transfer_to_coffre', 'transfer_to_poche') THEN 'SORTIE'
               ELSE 'ENTREE'
             END AS direction,
             montant AS amount,
             CASE
               WHEN entry_type = 'caisse_initial' THEN CONCAT('FC-', id)
               WHEN entry_type = 'caisse_libre' THEN CONCAT('MLC-', id)
+              WHEN entry_type = 'sortie_remise' THEN CONCAT('SRM-', id)
               WHEN entry_type = 'transfer_to_coffre' THEN CONCAT('TRC-', id)
               WHEN entry_type = 'transfer_to_poche' THEN CONCAT('TRP-', id)
               ELSE CONCAT('FND-', id)
@@ -826,6 +981,7 @@ router.get('/days/:date', async (req, res) => {
               CASE
                 WHEN entry_type = 'caisse_initial' THEN 'Fond de caisse saisi'
                 WHEN entry_type = 'caisse_libre' THEN 'Montant libre ajoute a la caisse'
+                WHEN entry_type = 'sortie_remise' THEN 'Montant sorti de la caisse et utilise comme remise'
                 WHEN entry_type = 'transfer_to_coffre' THEN 'Montant retire de la caisse et place dans le coffre'
                 WHEN entry_type = 'transfer_to_poche' THEN 'Montant retire de la caisse et transfere vers poche'
                 ELSE 'Ecriture de caisse'
@@ -833,7 +989,7 @@ router.get('/days/:date', async (req, res) => {
             ) AS description
           FROM fond_caisse_entries
           WHERE jour = ?
-            AND entry_type IN ('caisse_initial', 'caisse_libre', 'transfer_to_coffre', 'transfer_to_poche')
+            AND entry_type IN ('caisse_initial', 'caisse_libre', 'sortie_remise', 'transfer_to_coffre', 'transfer_to_poche')
         `,
       },
       {
@@ -1284,6 +1440,18 @@ router.get('/mouvements', async (req, res) => {
         `,
       },
       {
+        label: 'sortie_remise',
+        field: 'sortieRemise',
+        sql: `
+          SELECT DATE(fce.opened_at) AS jour, COALESCE(SUM(fce.montant), 0) AS total
+           FROM fond_caisse_entries fce
+           WHERE DATE(fce.opened_at) BETWEEN ? AND ?
+             AND fce.entry_type = 'sortie_remise'
+             ${afterLatestCaisseStartSql('fce.opened_at')}
+           GROUP BY DATE(fce.opened_at)
+        `,
+      },
+      {
         label: 'transfert_coffre_vers_poche',
         field: 'transfertCoffreVersPoche',
         sql: `
@@ -1377,13 +1545,14 @@ router.get('/mouvements', async (req, res) => {
         const avoirChargeInclusCaisse = toNumber(row.avoirChargeInclusCaisse);
         const transfertVersCoffre = toNumber(row.transfertVersCoffre);
         const transfertVersPoche = toNumber(row.transfertVersPoche);
+        const sortieRemise = toNumber(row.sortieRemise);
         const transfertCoffreVersPoche = toNumber(row.transfertCoffreVersPoche);
         const bonChargeInclusCaisse = toNumber(row.bonChargeInclusCaisse);
         const bonCommandeInclusCaisse = toNumber(row.bonCommandeInclusCaisse);
         const bonVehicule = toNumber(row.bonVehicule);
         const avoirComptant = toNumber(row.avoirComptant);
         const entrees = bonComptantPaye + paiementBonComptantNonPaye + paiementClientCaisse + montantLibreCaisse + avoirChargeInclusCaisse;
-        const sorties = bonChargeInclusCaisse + bonVehicule + avoirComptant + transfertVersCoffre + transfertVersPoche;
+        const sorties = bonChargeInclusCaisse + bonVehicule + avoirComptant + transfertVersCoffre + transfertVersPoche + sortieRemise;
 
         return {
           jour: row.jour,
@@ -1394,6 +1563,7 @@ router.get('/mouvements', async (req, res) => {
           avoirChargeInclusCaisse,
           transfertVersCoffre,
           transfertVersPoche,
+          sortieRemise,
           transfertCoffreVersPoche,
           bonChargeInclusCaisse,
           bonCommandeInclusCaisse,

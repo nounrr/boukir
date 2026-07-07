@@ -13,11 +13,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/redux';
 import { showError, showSuccess } from '../utils/notifications';
+import SearchableSelect from '../components/SearchableSelect';
 
 type FondCaisseEntry = {
   id: number;
   montant: number;
-  entryType: 'caisse_initial' | 'caisse_libre' | 'coffre_initial' | 'transfer_to_coffre' | 'transfer_to_poche' | 'coffre_transfer_to_poche';
+  entryType: 'caisse_initial' | 'caisse_libre' | 'sortie_remise' | 'coffre_initial' | 'transfer_to_coffre' | 'transfer_to_poche' | 'coffre_transfer_to_poche';
   modePaiement?: 'Espece' | 'Virement' | 'Cheque';
   note?: string;
   openedAt: string;
@@ -32,6 +33,7 @@ type FondCaisseMouvement = {
   paiementClientCaisse?: number;
   montantLibreCaisse?: number;
   avoirChargeInclusCaisse?: number;
+  sortieRemise?: number;
   transfertVersCoffre?: number;
   transfertVersPoche?: number;
   transfertCoffreVersPoche?: number;
@@ -64,6 +66,7 @@ type Row = {
   paiementClientCaisse: number;
   montantLibreCaisse: number;
   avoirChargeInclusCaisse: number;
+  sortieRemise: number;
   transfertVersCoffre: number;
   transfertVersPoche: number;
   transfertCoffreVersPoche: number;
@@ -75,9 +78,19 @@ type Row = {
 
 type PaymentMode = 'Espece' | 'Virement' | 'Cheque';
 
-type ModalKind = 'caisse' | 'libre' | 'coffre' | 'transfert' | 'poche';
+type ModalKind = 'caisse' | 'libre' | 'sortie_remise' | 'coffre' | 'transfert' | 'poche';
 
 type FondTab = 'caisse' | 'coffre';
+
+type RemiseBeneficiaryOption = {
+  value: string;
+  label: string;
+  type: 'client_remise' | 'direct_client';
+  id: number;
+  available: number;
+  earned?: number;
+  used?: number;
+};
 
 const paymentModes: PaymentMode[] = ['Espece', 'Virement', 'Cheque'];
 
@@ -124,6 +137,14 @@ const modalConfig: Record<ModalKind, {
     iconBg: 'bg-emerald-100 text-emerald-700',
     icon: PlusCircle,
   },
+  sortie_remise: {
+    title: 'Sortie remise',
+    subtitle: 'Sortir un montant de la caisse et le marquer comme remise utilisee',
+    submitLabel: 'Sortir',
+    buttonClass: 'bg-red-600 hover:bg-red-700',
+    iconBg: 'bg-red-100 text-red-700',
+    icon: Banknote,
+  },
   coffre: {
     title: 'Debut coffre',
     subtitle: 'Montant initial du coffre',
@@ -167,6 +188,10 @@ const FondCaissePage = () => {
   const [sourcePoche, setSourcePoche] = useState<'caisse' | 'coffre'>('caisse');
   const [descriptionPoche, setDescriptionPoche] = useState('');
   const [descriptionLibre, setDescriptionLibre] = useState('');
+  const [descriptionRemise, setDescriptionRemise] = useState('');
+  const [remiseOptions, setRemiseOptions] = useState<RemiseBeneficiaryOption[]>([]);
+  const [selectedRemiseValue, setSelectedRemiseValue] = useState('');
+  const [isLoadingRemises, setIsLoadingRemises] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -174,6 +199,82 @@ const FondCaissePage = () => {
   const [activeTab, setActiveTab] = useState<FondTab>('caisse');
 
   const isAllDates = !dateFrom && !dateTo;
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+
+    const loadRemiseOptions = async () => {
+      setIsLoadingRemises(true);
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const [accountsRes, directRes] = await Promise.all([
+          fetch('/api/remises/payment-accounts?onlyAvailable=1&types=client-remise,client_abonne', { headers }),
+          fetch('/api/remises/direct-contact-balances', { headers }),
+        ]);
+        const accountsPayload = await accountsRes.json().catch(() => []);
+        const directPayload = await directRes.json().catch(() => []);
+        if (!accountsRes.ok) throw new Error(accountsPayload?.message || 'Chargement comptes remise impossible');
+        if (!directRes.ok) throw new Error(directPayload?.message || 'Chargement clients remise impossible');
+
+        const accountOptions = (Array.isArray(accountsPayload) ? accountsPayload : [])
+          .filter((account: any) => Number(account?.available_total || 0) > 0)
+          .map((account: any) => {
+            const available = Number(account.available_total || 0);
+            const label = [
+              account.nom,
+              account.contact_nom || '',
+              account.contact_societe || '',
+              account.type === 'client_abonne' ? 'Client abonne' : 'Client remise',
+              `${available.toFixed(2)} DH`,
+            ].filter(Boolean).join(' - ');
+            return {
+              value: `client_remise:${account.id}`,
+              label,
+              type: 'client_remise' as const,
+              id: Number(account.id),
+              available,
+              earned: Number(account.earned_total || 0),
+              used: Number(account.used_total || 0),
+            };
+          });
+
+        const directOptions = (Array.isArray(directPayload) ? directPayload : [])
+          .filter((row: any) => Number(row?.available_total || 0) > 0)
+          .map((row: any) => {
+            const available = Number(row.available_total || 0);
+            const label = [
+              row.nom_complet || `#${row.contact_id}`,
+              row.societe || '',
+              row.telephone || '',
+              'Client des bons',
+              `${available.toFixed(2)} DH`,
+            ].filter(Boolean).join(' - ');
+            return {
+              value: `direct_client:${row.contact_id}`,
+              label,
+              type: 'direct_client' as const,
+              id: Number(row.contact_id),
+              available,
+              earned: Number(row.earned_total || 0),
+              used: Number(row.used_total || 0),
+            };
+          });
+
+        if (!cancelled) setRemiseOptions([...directOptions, ...accountOptions]);
+      } catch (err) {
+        console.error('[FondCaisse] load remise options', err);
+        if (!cancelled) setRemiseOptions([]);
+      } finally {
+        if (!cancelled) setIsLoadingRemises(false);
+      }
+    };
+
+    loadRemiseOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, tick]);
 
   useEffect(() => {
     if (!token) return;
@@ -309,6 +410,7 @@ const FondCaissePage = () => {
           avoirChargeInclusCaisse: num(mv.avoirChargeInclusCaisse),
           transfertVersCoffre: num(mv.transfertVersCoffre),
           transfertVersPoche: num(mv.transfertVersPoche),
+          sortieRemise: num(mv.sortieRemise),
           transfertCoffreVersPoche: num(mv.transfertCoffreVersPoche),
           bonChargeInclusCaisse: num(mv.bonChargeInclusCaisse),
           bonCommandeInclusCaisse: num(mv.bonCommandeInclusCaisse),
@@ -345,6 +447,8 @@ const FondCaissePage = () => {
     setSourcePoche('caisse');
     setDescriptionPoche('');
     setDescriptionLibre('');
+    setDescriptionRemise('');
+    setSelectedRemiseValue('');
     setActiveModal(kind);
   };
 
@@ -364,12 +468,29 @@ const FondCaissePage = () => {
       showError("Date d'ouverture requise.");
       return;
     }
+    if (activeModal === 'sortie_remise') {
+      const selected = remiseOptions.find((option) => option.value === selectedRemiseValue);
+      if (!selected) {
+        showError('Beneficiaire remise requis.');
+        return;
+      }
+      if (m <= 0) {
+        showError('Montant remise invalide.');
+        return;
+      }
+      if (m > selected.available + 0.000001) {
+        showError(`Montant superieur au disponible (${selected.available.toFixed(2)} DH).`);
+        return;
+      }
+    }
 
     const entryType: FondCaisseEntry['entryType'] =
       activeModal === 'caisse'
         ? 'caisse_initial'
         : activeModal === 'libre'
           ? 'caisse_libre'
+        : activeModal === 'sortie_remise'
+          ? 'sortie_remise'
         : activeModal === 'coffre'
           ? 'coffre_initial'
           : activeModal === 'transfert'
@@ -382,6 +503,8 @@ const FondCaissePage = () => {
         ? 'Fond de caisse enregistre.'
         : activeModal === 'libre'
           ? 'Montant libre ajoute a la caisse.'
+        : activeModal === 'sortie_remise'
+          ? 'Sortie remise enregistree.'
         : activeModal === 'coffre'
           ? 'Fond de coffre enregistre.'
           : activeModal === 'transfert'
@@ -398,7 +521,19 @@ const FondCaissePage = () => {
           openedAt,
           entryType,
           modePaiement: mode,
-          note: activeModal === 'poche' ? descriptionPoche : activeModal === 'libre' ? descriptionLibre : undefined,
+          note: activeModal === 'poche'
+            ? descriptionPoche
+            : activeModal === 'libre'
+              ? descriptionLibre
+              : activeModal === 'sortie_remise'
+                ? descriptionRemise
+                : undefined,
+          ...(activeModal === 'sortie_remise'
+            ? {
+                remiseTargetType: selectedRemiseValue.split(':')[0],
+                remiseTargetId: Number(selectedRemiseValue.split(':')[1]),
+              }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => null);
@@ -414,6 +549,7 @@ const FondCaissePage = () => {
   };
 
   const activeConfig = activeModal ? modalConfig[activeModal] : null;
+  const selectedRemise = remiseOptions.find((option) => option.value === selectedRemiseValue);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -618,6 +754,9 @@ const FondCaissePage = () => {
                           {row.transfertVersPoche > 0 && (
                             <div className="text-xs font-normal text-gray-500">Vers poche: {row.transfertVersPoche.toFixed(2)}</div>
                           )}
+                          {row.sortieRemise > 0 && (
+                            <div className="text-xs font-normal text-gray-500">Remise: {row.sortieRemise.toFixed(2)}</div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm font-bold text-gray-900">{row.total.toFixed(2)} DH</td>
                       </>
@@ -717,6 +856,32 @@ const FondCaissePage = () => {
                   </div>
                 </div>
               )}
+              {activeModal === 'sortie_remise' && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Beneficiaire remise</label>
+                  <SearchableSelect
+                    options={remiseOptions.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                      data: option,
+                    }))}
+                    value={selectedRemiseValue}
+                    onChange={setSelectedRemiseValue}
+                    placeholder={isLoadingRemises ? 'Chargement...' : 'Choisir client remise ou client des bons'}
+                    disabled={isLoadingRemises}
+                    autoOpenOnFocus
+                    className="w-full"
+                  />
+                  {selectedRemise && (
+                    <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-900">
+                      <div>Type: {selectedRemise.type === 'direct_client' ? 'Client des bons' : 'Client remise'}</div>
+                      <div>Total gagne: {(selectedRemise.earned || 0).toFixed(2)} DH</div>
+                      <div>Remise utilisee: {(selectedRemise.used || 0).toFixed(2)} DH</div>
+                      <div className="font-semibold">Disponible: {selectedRemise.available.toFixed(2)} DH</div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Montant</label>
                 <div className="relative">
@@ -763,6 +928,18 @@ const FondCaissePage = () => {
                     type="text"
                     value={descriptionLibre}
                     onChange={(e) => setDescriptionLibre(e.target.value)}
+                    placeholder="Description"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  />
+                </div>
+              )}
+              {activeModal === 'sortie_remise' && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
+                  <input
+                    type="text"
+                    value={descriptionRemise}
+                    onChange={(e) => setDescriptionRemise(e.target.value)}
                     placeholder="Description"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2"
                   />
