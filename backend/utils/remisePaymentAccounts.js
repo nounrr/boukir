@@ -410,7 +410,33 @@ export async function getDirectContactRemiseInfo(db, contactId) {
      WHERE (COALESCE(bc.remise_is_client, 1) = 1 OR bc.remise_id IS NULL) AND bc.client_id = ?`,
     [numId]
   );
-  const earned = Math.max(0, Number(sortieRows[0]?.total || 0) + Number(comptantRows[0]?.total || 0));
+  let oldEarned = 0;
+  try {
+    const [oldRows] = await db.execute(
+      `SELECT COALESCE(SUM(qte * prix_remise), 0) AS total
+       FROM ancien_remises_abonne
+       WHERE contact_id = ? AND COALESCE(statut, '') NOT LIKE 'Annul%'`,
+      [numId]
+    );
+    oldEarned = Number(oldRows[0]?.total || 0);
+  } catch {
+    oldEarned = 0;
+  }
+
+  let separateEarned = 0;
+  try {
+    const [separateRows] = await db.execute(
+      `SELECT COALESCE(SUM(qte * prix_remise), 0) AS total
+       FROM remise_contact_items
+       WHERE contact_id = ? AND statut <> 'Annulé'`,
+      [numId]
+    );
+    separateEarned = Number(separateRows[0]?.total || 0);
+  } catch {
+    separateEarned = 0;
+  }
+
+  const earned = Math.max(0, Number(sortieRows[0]?.total || 0) + Number(comptantRows[0]?.total || 0) + oldEarned + separateEarned);
 
   const usedMap = await getUsedByContactDirect(db, [numId]);
   const used = usedMap.get(numId) || 0;
