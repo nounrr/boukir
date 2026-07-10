@@ -61,6 +61,8 @@ import WhatsAppTestPage from './pages/WhatsAppTestPage';
 import InventoryPage from './pages/InventoryPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProductsTranslatePage from './pages/ProductsTranslatePage';
+import ProductPhotoStudioPage from './pages/ProductPhotoStudioPage';
+import ProductNameCorrectionsPage from './pages/ProductNameCorrectionsPage';
 import UiSettingsPage from './pages/UiSettingsPage';
 import SolverPrixAchatPage from './pages/SolverPrixAchatPage';
 
@@ -256,6 +258,28 @@ const AppContent: React.FC = () => {
             <ProtectedRoute>
               <LayoutWithAccessCheck>
                 <ProductsTranslatePage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/product-photos"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <ProductPhotoStudioPage />
+              </LayoutWithAccessCheck>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/products/name-corrections"
+          element={
+            <ProtectedRoute>
+              <LayoutWithAccessCheck>
+                <ProductNameCorrectionsPage />
               </LayoutWithAccessCheck>
             </ProtectedRoute>
           }

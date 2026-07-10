@@ -52,6 +52,8 @@ import bonsVehiculeRouter from './routes/bons_vehicule.js';
 import paymentsRouter from './routes/payments.js';
 import uploadRouter from './routes/upload.js';
 import uploadsRouter from './routes/uploads.js';
+import productPhotosRouter from './routes/productPhotos.js';
+import productNameCorrectionsRouter from './routes/productNameCorrections.js';
 
 import importProuctsRouter from './routes/importProducts.js';
 import importContactsRouter from './routes/importContacts.js';
@@ -334,6 +336,8 @@ app.use('/api/bons_vehicule', bonsVehiculeRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/uploads', uploadsRouter);
+app.use('/api/product-photos', productPhotosRouter);
+app.use('/api/product-name-corrections', productNameCorrectionsRouter);
 
 app.use('/api/import/products-excel', importProuctsRouter);
 app.use('/api/import/contacts-excel', importContactsRouter);
