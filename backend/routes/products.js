@@ -31,6 +31,34 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
+function normalizeSearchText(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function accentFoldSql(expression) {
+  const replacements = [
+    ['à', 'a'], ['á', 'a'], ['â', 'a'], ['ã', 'a'], ['ä', 'a'], ['å', 'a'],
+    ['ç', 'c'],
+    ['è', 'e'], ['é', 'e'], ['ê', 'e'], ['ë', 'e'],
+    ['ì', 'i'], ['í', 'i'], ['î', 'i'], ['ï', 'i'],
+    ['ñ', 'n'],
+    ['ò', 'o'], ['ó', 'o'], ['ô', 'o'], ['õ', 'o'], ['ö', 'o'],
+    ['ù', 'u'], ['ú', 'u'], ['û', 'u'], ['ü', 'u'],
+    ['ý', 'y'], ['ÿ', 'y'],
+    ['æ', 'ae'], ['œ', 'oe'],
+  ];
+
+  return replacements.reduce(
+    (sql, [from, to]) => `REPLACE(${sql}, '${from}', '${to}')`,
+    `LOWER(${expression})`
+  );
+}
+
 // Optional schema support (product_snapshot)
 let cachedHasProductSnapshotTable = null;
 async function hasProductSnapshotTable() {
@@ -578,20 +606,20 @@ async function runProductSearch(query) {
     const sortDir = String(query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     const qRaw = String(query.q ?? '').trim();
     const q = qRaw.length > 100 ? qRaw.slice(0, 100) : qRaw;
-    const qLower = q.toLowerCase();
-    const qTerms = qLower.split(/\s+/).filter(Boolean);
+    const qNormalized = normalizeSearchText(q);
+    const qTerms = qNormalized.split(/\s+/).filter(Boolean);
 
     const conditions = ['COALESCE(p.is_deleted, 0) = 0'];
     const params = [];
 
     if (qTerms.length > 0) {
       const termConditions = qTerms.map(() => `(
-        LOWER(CONCAT_WS(' ', p.id, p.designation, p.designation_ar, p.designation_en, p.designation_zh)) LIKE ?
+        ${accentFoldSql("CONCAT_WS(' ', p.id, p.designation, p.designation_ar, p.designation_en, p.designation_zh)")} LIKE ?
         OR EXISTS (
           SELECT 1 FROM product_variants pv_search
           WHERE pv_search.product_id = p.id
             AND COALESCE(pv_search.is_deleted, 0) = 0
-            AND LOWER(CONCAT_WS(' ', pv_search.variant_name, pv_search.reference)) LIKE ?
+            AND ${accentFoldSql("CONCAT_WS(' ', pv_search.variant_name, pv_search.reference)")} LIKE ?
         )
       )`);
 
@@ -677,8 +705,8 @@ async function runProductSearch(query) {
     }
 
     if (qTerms.length > 0 && sortBy !== 'quantite') {
-      const qPrefix = `${qLower}%`;
-      const qWild = `%${qLower}%`;
+      const qPrefix = `${qNormalized}%`;
+      const qWild = `%${qNormalized}%`;
       const qNum = Number(q);
       const hasNumericQ = q !== '' && Number.isFinite(qNum);
       const exactIdSql = hasNumericQ ? 'WHEN p.id = ? THEN 0' : '';
@@ -688,33 +716,33 @@ async function runProductSearch(query) {
         ORDER BY
           CASE
             ${exactIdSql}
-            WHEN LOWER(p.designation) = ? THEN 1
-            WHEN LOWER(p.designation) LIKE ?
+            WHEN ${accentFoldSql('p.designation')} = ? THEN 1
+            WHEN ${accentFoldSql('p.designation')} LIKE ?
               OR EXISTS (
                 SELECT 1 FROM product_variants pv_order
                 WHERE pv_order.product_id = p.id
                   AND COALESCE(pv_order.is_deleted, 0) = 0
                   AND (
-                    LOWER(pv_order.variant_name) LIKE ?
-                    OR LOWER(pv_order.reference) LIKE ?
+                    ${accentFoldSql('pv_order.variant_name')} LIKE ?
+                    OR ${accentFoldSql('pv_order.reference')} LIKE ?
                   )
               ) THEN 2
-            WHEN LOWER(p.designation) LIKE ?
+            WHEN ${accentFoldSql('p.designation')} LIKE ?
               OR CAST(p.id AS CHAR) LIKE ?
               OR EXISTS (
                 SELECT 1 FROM product_variants pv_order
                 WHERE pv_order.product_id = p.id
                   AND COALESCE(pv_order.is_deleted, 0) = 0
                   AND (
-                    LOWER(pv_order.variant_name) LIKE ?
-                    OR LOWER(pv_order.reference) LIKE ?
+                    ${accentFoldSql('pv_order.variant_name')} LIKE ?
+                    OR ${accentFoldSql('pv_order.reference')} LIKE ?
                   )
               ) THEN 3
             ELSE 4
           END,
           p.id DESC
       `;
-      orderParams.push(qLower, qPrefix, qPrefix, qPrefix, qWild, qWild, qWild, qWild);
+      orderParams.push(qNormalized, qPrefix, qPrefix, qPrefix, qWild, qWild, qWild, qWild);
     }
 
     const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM products p ${whereSql}`, params);
@@ -1121,7 +1149,8 @@ router.get('/with-snapshots', async (req, res, next) => {
     await ensureProductsColumns();
     const qRaw = String(req.query.q ?? '').trim();
     const q = qRaw.length > 100 ? qRaw.slice(0, 100) : qRaw;
-    const qTerms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const qNormalized = normalizeSearchText(q);
+    const qTerms = qNormalized.split(/\s+/).filter(Boolean);
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 80, 1), 200);
     const limitSql = qTerms.length ? 'LIMIT ?' : '';
     const limitParams = qTerms.length ? [limit] : [];
@@ -1129,12 +1158,12 @@ router.get('/with-snapshots', async (req, res, next) => {
       if (qTerms.length === 0) return { sql: '', params: [] };
       const termSql = qTerms.map(() => {
         return `(
-          LOWER(CONCAT_WS(' ', ${alias}.id, ${alias}.designation, ${alias}.designation_ar, ${alias}.designation_en, ${alias}.designation_zh)) LIKE ?
+          ${accentFoldSql(`CONCAT_WS(' ', ${alias}.id, ${alias}.designation, ${alias}.designation_ar, ${alias}.designation_en, ${alias}.designation_zh)`)} LIKE ?
           OR EXISTS (
             SELECT 1 FROM product_variants pv_search
             WHERE pv_search.product_id = ${alias}.id
               AND COALESCE(pv_search.is_deleted, 0) = 0
-              AND LOWER(CONCAT_WS(' ', pv_search.variant_name, pv_search.reference)) LIKE ?
+              AND ${accentFoldSql("CONCAT_WS(' ', pv_search.variant_name, pv_search.reference)")} LIKE ?
           )
         )`;
       });
