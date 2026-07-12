@@ -32,17 +32,18 @@ function sleep(ms) {
 
 async function withSchemaLock(db, fn) {
   const lockName = 'boukir_schema_lock';
+  const ownsConnection = typeof db?.getConnection === 'function';
+  const connection = ownsConnection ? await db.getConnection() : db;
   try {
-    const [rows] = await db.execute('SELECT GET_LOCK(?, 15) AS ok', [lockName]);
-    const ok = Number(rows?.[0]?.ok || 0);
-    if (ok !== 1) return await fn();
-    return await fn();
+    await connection.execute('SELECT GET_LOCK(?, 15) AS ok', [lockName]);
+    return await fn(connection);
   } finally {
     try {
-      await db.execute('SELECT RELEASE_LOCK(?)', [lockName]);
+      await connection.execute('SELECT RELEASE_LOCK(?)', [lockName]);
     } catch {
       // ignore
     }
+    if (ownsConnection) connection.release();
   }
 }
 
@@ -87,8 +88,8 @@ export async function ensureUniteSpecialColumns(db = pool) {
   }
 
   ensureState.uniteSpecialColumns.inFlight = (async () => {
-    await withSchemaLock(db, async () => {
-      await ensureColumns(db, 'commande_items', true);
+    await withSchemaLock(db, async (connection) => {
+      await ensureColumns(connection, 'commande_items', true);
     });
 
     ensureState.uniteSpecialColumns.done = true;

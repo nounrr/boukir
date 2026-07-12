@@ -25,20 +25,18 @@ async function withSchemaLock(db, fn) {
   // Ensure only one request/process runs DDL at a time.
   // Named locks are per-MySQL instance and released on connection close.
   const lockName = 'boukir_schema_lock';
+  const ownsConnection = typeof db?.getConnection === 'function';
+  const connection = ownsConnection ? await db.getConnection() : db;
   try {
-    const [rows] = await db.execute('SELECT GET_LOCK(?, 15) AS ok', [lockName]);
-    const ok = Number(rows?.[0]?.ok || 0);
-    if (ok !== 1) {
-      // Couldn't get lock; still attempt without it.
-      return await fn();
-    }
-    return await fn();
+    await connection.execute('SELECT GET_LOCK(?, 15) AS ok', [lockName]);
+    return await fn(connection);
   } finally {
     try {
-      await db.execute('SELECT RELEASE_LOCK(?)', [lockName]);
+      await connection.execute('SELECT RELEASE_LOCK(?)', [lockName]);
     } catch {
       // ignore
     }
+    if (ownsConnection) connection.release();
   }
 }
 
@@ -61,13 +59,13 @@ async function execDdlWithRetry(db, sql, maxAttempts = 6) {
 }
 
 export async function ensureProductRemiseColumns(db = pool) {
-  await withSchemaLock(db, async () => {
+  await withSchemaLock(db, async (connection) => {
     // products
-    if (!(await columnExists(db, 'products', 'remise_client'))) {
-      await execDdlWithRetry(db, `ALTER TABLE products ADD COLUMN remise_client DECIMAL(5,2) NOT NULL DEFAULT 0`);
+    if (!(await columnExists(connection, 'products', 'remise_client'))) {
+      await execDdlWithRetry(connection, `ALTER TABLE products ADD COLUMN remise_client DECIMAL(5,2) NOT NULL DEFAULT 0`);
     }
-    if (!(await columnExists(db, 'products', 'remise_artisan'))) {
-      await execDdlWithRetry(db, `ALTER TABLE products ADD COLUMN remise_artisan DECIMAL(5,2) NOT NULL DEFAULT 0`);
+    if (!(await columnExists(connection, 'products', 'remise_artisan'))) {
+      await execDdlWithRetry(connection, `ALTER TABLE products ADD COLUMN remise_artisan DECIMAL(5,2) NOT NULL DEFAULT 0`);
     }
   });
 }
@@ -80,9 +78,9 @@ export async function ensureContactsRemiseBalance(db = pool) {
   }
 
   ensureState.contactsRemiseBalance.inFlight = (async () => {
-    await withSchemaLock(db, async () => {
-      if (!(await columnExists(db, 'contacts', 'remise_balance'))) {
-        await execDdlWithRetry(db, `ALTER TABLE contacts ADD COLUMN remise_balance DECIMAL(10,2) NOT NULL DEFAULT 0`);
+    await withSchemaLock(db, async (connection) => {
+      if (!(await columnExists(connection, 'contacts', 'remise_balance'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE contacts ADD COLUMN remise_balance DECIMAL(10,2) NOT NULL DEFAULT 0`);
       }
     });
     ensureState.contactsRemiseBalance.done = true;
@@ -103,9 +101,9 @@ export async function ensureContactsBloqueColumn(db = pool) {
   }
 
   ensureState.contactsBloqueColumn.inFlight = (async () => {
-    await withSchemaLock(db, async () => {
-      if (!(await columnExists(db, 'contacts', 'bloque'))) {
-        await execDdlWithRetry(db, `ALTER TABLE contacts ADD COLUMN bloque TINYINT(1) NOT NULL DEFAULT 0`);
+    await withSchemaLock(db, async (connection) => {
+      if (!(await columnExists(connection, 'contacts', 'bloque'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE contacts ADD COLUMN bloque TINYINT(1) NOT NULL DEFAULT 0`);
       }
     });
     ensureState.contactsBloqueColumn.done = true;
@@ -126,25 +124,25 @@ export async function ensureContactsCheckoutColumns(db = pool) {
   }
 
   ensureState.contactsCheckoutColumns.inFlight = (async () => {
-    await withSchemaLock(db, async () => {
+    await withSchemaLock(db, async (connection) => {
       // Store last checkout shipping details on contacts (for /api/users/auth/me prefill)
-      if (!(await columnExists(db, 'contacts', 'shipping_address_line1'))) {
-        await execDdlWithRetry(db, `ALTER TABLE contacts ADD COLUMN shipping_address_line1 VARCHAR(255) NULL`);
+      if (!(await columnExists(connection, 'contacts', 'shipping_address_line1'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE contacts ADD COLUMN shipping_address_line1 VARCHAR(255) NULL`);
       }
-      if (!(await columnExists(db, 'contacts', 'shipping_address_line2'))) {
-        await execDdlWithRetry(db, `ALTER TABLE contacts ADD COLUMN shipping_address_line2 VARCHAR(255) NULL`);
+      if (!(await columnExists(connection, 'contacts', 'shipping_address_line2'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE contacts ADD COLUMN shipping_address_line2 VARCHAR(255) NULL`);
       }
-      if (!(await columnExists(db, 'contacts', 'shipping_city'))) {
-        await execDdlWithRetry(db, `ALTER TABLE contacts ADD COLUMN shipping_city VARCHAR(100) NULL`);
+      if (!(await columnExists(connection, 'contacts', 'shipping_city'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE contacts ADD COLUMN shipping_city VARCHAR(100) NULL`);
       }
-      if (!(await columnExists(db, 'contacts', 'shipping_state'))) {
-        await execDdlWithRetry(db, `ALTER TABLE contacts ADD COLUMN shipping_state VARCHAR(100) NULL`);
+      if (!(await columnExists(connection, 'contacts', 'shipping_state'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE contacts ADD COLUMN shipping_state VARCHAR(100) NULL`);
       }
-      if (!(await columnExists(db, 'contacts', 'shipping_postal_code'))) {
-        await execDdlWithRetry(db, `ALTER TABLE contacts ADD COLUMN shipping_postal_code VARCHAR(20) NULL`);
+      if (!(await columnExists(connection, 'contacts', 'shipping_postal_code'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE contacts ADD COLUMN shipping_postal_code VARCHAR(20) NULL`);
       }
-      if (!(await columnExists(db, 'contacts', 'shipping_country'))) {
-        await execDdlWithRetry(db, `ALTER TABLE contacts ADD COLUMN shipping_country VARCHAR(100) NULL`);
+      if (!(await columnExists(connection, 'contacts', 'shipping_country'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE contacts ADD COLUMN shipping_country VARCHAR(100) NULL`);
       }
     });
     ensureState.contactsCheckoutColumns.done = true;
@@ -158,16 +156,16 @@ export async function ensureContactsCheckoutColumns(db = pool) {
 }
 
 export async function ensureEcommerceOrdersRemiseColumns(db = pool) {
-  await withSchemaLock(db, async () => {
-    if (!(await columnExists(db, 'ecommerce_orders', 'remise_earned_amount'))) {
-      await execDdlWithRetry(db, `ALTER TABLE ecommerce_orders ADD COLUMN remise_earned_amount DECIMAL(10,2) NOT NULL DEFAULT 0`);
+  await withSchemaLock(db, async (connection) => {
+    if (!(await columnExists(connection, 'ecommerce_orders', 'remise_earned_amount'))) {
+      await execDdlWithRetry(connection, `ALTER TABLE ecommerce_orders ADD COLUMN remise_earned_amount DECIMAL(10,2) NOT NULL DEFAULT 0`);
     }
-    if (!(await columnExists(db, 'ecommerce_orders', 'remise_earned_at'))) {
-      await execDdlWithRetry(db, `ALTER TABLE ecommerce_orders ADD COLUMN remise_earned_at TIMESTAMP NULL DEFAULT NULL`);
+    if (!(await columnExists(connection, 'ecommerce_orders', 'remise_earned_at'))) {
+      await execDdlWithRetry(connection, `ALTER TABLE ecommerce_orders ADD COLUMN remise_earned_at TIMESTAMP NULL DEFAULT NULL`);
     }
-    if (!(await columnExists(db, 'ecommerce_orders', 'remise_used_amount'))) {
+    if (!(await columnExists(connection, 'ecommerce_orders', 'remise_used_amount'))) {
       await execDdlWithRetry(
-        db,
+        connection,
         `ALTER TABLE ecommerce_orders ADD COLUMN remise_used_amount DECIMAL(10,2) NOT NULL DEFAULT 0`
       );
     }
@@ -175,16 +173,16 @@ export async function ensureEcommerceOrdersRemiseColumns(db = pool) {
 }
 
 export async function ensureEcommerceOrderItemsRemiseColumns(db = pool) {
-  await withSchemaLock(db, async () => {
-    if (!(await columnExists(db, 'ecommerce_order_items', 'remise_percent_applied'))) {
+  await withSchemaLock(db, async (connection) => {
+    if (!(await columnExists(connection, 'ecommerce_order_items', 'remise_percent_applied'))) {
       await execDdlWithRetry(
-        db,
+        connection,
         `ALTER TABLE ecommerce_order_items ADD COLUMN remise_percent_applied DECIMAL(5,2) NOT NULL DEFAULT 0`
       );
     }
-    if (!(await columnExists(db, 'ecommerce_order_items', 'remise_amount'))) {
+    if (!(await columnExists(connection, 'ecommerce_order_items', 'remise_amount'))) {
       await execDdlWithRetry(
-        db,
+        connection,
         `ALTER TABLE ecommerce_order_items ADD COLUMN remise_amount DECIMAL(10,2) NOT NULL DEFAULT 0`
       );
     }
@@ -192,30 +190,30 @@ export async function ensureEcommerceOrderItemsRemiseColumns(db = pool) {
 }
 
 export async function ensureBonsRemiseTargetColumns(db = pool) {
-  await withSchemaLock(db, async () => {
+  await withSchemaLock(db, async (connection) => {
     // bons_sortie
-    if (await columnExists(db, 'bons_sortie', 'id')) {
-      if (!(await columnExists(db, 'bons_sortie', 'remise_is_client'))) {
+    if (await columnExists(connection, 'bons_sortie', 'id')) {
+      if (!(await columnExists(connection, 'bons_sortie', 'remise_is_client'))) {
         await execDdlWithRetry(
-          db,
+          connection,
           `ALTER TABLE bons_sortie ADD COLUMN remise_is_client TINYINT(1) NOT NULL DEFAULT 1`
         );
       }
-      if (!(await columnExists(db, 'bons_sortie', 'remise_id'))) {
-        await execDdlWithRetry(db, `ALTER TABLE bons_sortie ADD COLUMN remise_id INT NULL`);
+      if (!(await columnExists(connection, 'bons_sortie', 'remise_id'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE bons_sortie ADD COLUMN remise_id INT NULL`);
       }
     }
 
     // bons_comptant
-    if (await columnExists(db, 'bons_comptant', 'id')) {
-      if (!(await columnExists(db, 'bons_comptant', 'remise_is_client'))) {
+    if (await columnExists(connection, 'bons_comptant', 'id')) {
+      if (!(await columnExists(connection, 'bons_comptant', 'remise_is_client'))) {
         await execDdlWithRetry(
-          db,
+          connection,
           `ALTER TABLE bons_comptant ADD COLUMN remise_is_client TINYINT(1) NOT NULL DEFAULT 1`
         );
       }
-      if (!(await columnExists(db, 'bons_comptant', 'remise_id'))) {
-        await execDdlWithRetry(db, `ALTER TABLE bons_comptant ADD COLUMN remise_id INT NULL`);
+      if (!(await columnExists(connection, 'bons_comptant', 'remise_id'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE bons_comptant ADD COLUMN remise_id INT NULL`);
       }
     }
   });
