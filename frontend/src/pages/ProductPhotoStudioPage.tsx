@@ -16,7 +16,13 @@ import {
   useReorderPhotoImagesMutation,
   useAttachPhotoShootMutation,
 } from '../store/api/productPhotosApi';
-import type { PhotoShoot, PhotoShootImage, PhotoShootStatus } from '../store/api/productPhotosApi';
+import type {
+  AiImageModel,
+  AiImageQuality,
+  PhotoShoot,
+  PhotoShootImage,
+  PhotoShootStatus,
+} from '../store/api/productPhotosApi';
 import { useAuth } from '../hooks/redux';
 import type { Product, ProductVariant } from '../types';
 
@@ -76,6 +82,69 @@ const STATUS_LABELS: Record<PhotoShootStatus, { label: string; cls: string }> = 
   attached: { label: 'Attaché au produit', cls: 'bg-purple-100 text-purple-800' },
   error: { label: 'Erreur IA', cls: 'bg-red-100 text-red-800' },
 };
+
+interface AiConfiguration {
+  model: AiImageModel;
+  quality: AiImageQuality;
+}
+
+const QUALITY_HELP: Record<AiImageQuality, string> = {
+  low: 'Traitement le plus économique, adapté aux lots simples et aux premiers essais.',
+  medium: 'Bon équilibre entre coût et rendu pour la majorité des photos produit.',
+  high: 'Rendu maximal pour les produits complexes, avec un traitement plus coûteux.',
+};
+
+const AiConfigurationPanel: React.FC<{
+  value: AiConfiguration;
+  onChange: (next: AiConfiguration) => void;
+  compact?: boolean;
+}> = ({ value, onChange, compact = false }) => (
+  <section className={`border border-orange-200 bg-orange-50/50 rounded-xl ${compact ? 'p-3' : 'p-4'}`} aria-labelledby="ai-config-title">
+    <div className="flex items-center justify-between gap-3 mb-3">
+      <div>
+        <h2 id="ai-config-title" className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+          <Aperture className="w-4 h-4 text-orange-600" /> Configuration IA
+        </h2>
+        <p className="text-xs text-gray-500 mt-0.5">Appliquée au prochain traitement</p>
+      </div>
+      {value.model === 'gpt-image-2' && value.quality === 'medium' && (
+        <span className="text-[11px] font-semibold text-orange-700 bg-orange-100 border border-orange-200 px-2 py-1 rounded-full whitespace-nowrap">
+          Recommandé · Équilibré
+        </span>
+      )}
+    </div>
+    <div className="grid sm:grid-cols-2 gap-3">
+      <label className="block">
+        <span className="text-xs font-medium text-gray-700">Modèle</span>
+        <select
+          value={value.model}
+          onChange={(e) => onChange({ ...value, model: e.target.value as AiImageModel })}
+          className="mt-1 w-full border border-gray-300 bg-white rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
+        >
+          <option value="gpt-image-2">GPT Image 2 — recommandé</option>
+          <option value="gpt-image-1.5">GPT Image 1.5 — ancien</option>
+          <option value="gpt-image-1-mini">GPT Image 1 mini — économique / ancien</option>
+        </select>
+      </label>
+      <label className="block">
+        <span className="text-xs font-medium text-gray-700">Qualité</span>
+        <select
+          value={value.quality}
+          onChange={(e) => onChange({ ...value, quality: e.target.value as AiImageQuality })}
+          className="mt-1 w-full border border-gray-300 bg-white rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
+        >
+          <option value="low">Basse — économique</option>
+          <option value="medium">Moyenne — équilibrée / recommandée</option>
+          <option value="high">Haute — qualité maximale</option>
+        </select>
+      </label>
+    </div>
+    <p className="mt-2 text-xs text-gray-600" aria-live="polite">
+      {QUALITY_HELP[value.quality]}
+      {value.model !== 'gpt-image-2' && ' Modèle d’ancienne génération sélectionné.'}
+    </p>
+  </section>
+);
 
 const formatDate = (s: string) => {
   try {
@@ -335,7 +404,10 @@ const ProductPicker: React.FC<{
 // Onglet Capture
 // ----------------------------------------------------------------------------
 
-const CaptureTab: React.FC = () => {
+const CaptureTab: React.FC<{
+  aiConfiguration: AiConfiguration;
+  onAiConfigurationChange: (next: AiConfiguration) => void;
+}> = ({ aiConfiguration, onAiConfigurationChange }) => {
   const { user } = useAuth();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -372,7 +444,7 @@ const CaptureTab: React.FC = () => {
     try {
       const shoot = await createShoot(fd).unwrap();
       if (processNow) {
-        await processShoots({ shootIds: [shoot.id] }).unwrap();
+        await processShoots({ shootIds: [shoot.id], ...aiConfiguration }).unwrap();
         toast('success', 'Images enregistrées, traitement IA lancé');
       } else {
         toast('success', 'Images enregistrées');
@@ -472,6 +544,8 @@ const CaptureTab: React.FC = () => {
       )}
 
       {/* Étape 3 : enregistrer */}
+      <AiConfigurationPanel value={aiConfiguration} onChange={onAiConfigurationChange} />
+
       {product && photos.length > 0 && (
         <div className="bg-white rounded-xl border p-4 flex flex-wrap gap-3">
           <button
@@ -521,7 +595,8 @@ const ShootCard: React.FC<{
   shoot: PhotoShoot;
   selected: boolean;
   onToggleSelect: () => void;
-}> = ({ shoot, selected, onToggleSelect }) => {
+  aiConfiguration: AiConfiguration;
+}> = ({ shoot, selected, onToggleSelect, aiConfiguration }) => {
   const [deleteShoot] = useDeletePhotoShootMutation();
   const [deleteImage] = useDeletePhotoImageMutation();
   const [processShoots, { isLoading: processing }] = useProcessPhotoShootsMutation();
@@ -616,7 +691,7 @@ const ShootCard: React.FC<{
         </span>
         {(shoot.status === 'pending' || shoot.status === 'error') && (
           <button
-            onClick={() => processShoots({ shootIds: [shoot.id] })}
+            onClick={() => processShoots({ shootIds: [shoot.id], ...aiConfiguration })}
             disabled={processing}
             className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-1.5"
           >
@@ -758,7 +833,10 @@ const ShootCard: React.FC<{
 // Onglet Historique
 // ----------------------------------------------------------------------------
 
-const HistoryTab: React.FC = () => {
+const HistoryTab: React.FC<{
+  aiConfiguration: AiConfiguration;
+  onAiConfigurationChange: (next: AiConfiguration) => void;
+}> = ({ aiConfiguration, onAiConfigurationChange }) => {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -800,7 +878,7 @@ const HistoryTab: React.FC = () => {
   const batchProcess = async () => {
     if (!selectableForProcess.length) return;
     try {
-      await processShoots({ shootIds: selectableForProcess.map((s) => s.id) }).unwrap();
+      await processShoots({ shootIds: selectableForProcess.map((s) => s.id), ...aiConfiguration }).unwrap();
       toast('success', `Traitement IA lancé pour ${selectableForProcess.length} session(s)`);
       setSelectedIds([]);
     } catch (e: any) {
@@ -836,6 +914,8 @@ const HistoryTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      <AiConfigurationPanel value={aiConfiguration} onChange={onAiConfigurationChange} compact />
+
       {/* Filtres */}
       <div className="bg-white rounded-xl border p-3 flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
@@ -901,7 +981,13 @@ const HistoryTab: React.FC = () => {
       )}
       <div className="space-y-3">
         {shoots.map((s) => (
-          <ShootCard key={s.id} shoot={s} selected={selectedIds.includes(s.id)} onToggleSelect={() => toggleSelect(s.id)} />
+          <ShootCard
+            key={s.id}
+            shoot={s}
+            selected={selectedIds.includes(s.id)}
+            onToggleSelect={() => toggleSelect(s.id)}
+            aiConfiguration={aiConfiguration}
+          />
         ))}
       </div>
     </div>
@@ -1028,6 +1114,10 @@ const AttachedTab: React.FC = () => {
 
 const ProductPhotoStudioPage: React.FC = () => {
   const [tab, setTab] = useState<'capture' | 'history' | 'attached'>('capture');
+  const [aiConfiguration, setAiConfiguration] = useState<AiConfiguration>({
+    model: 'gpt-image-2',
+    quality: 'medium',
+  });
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
@@ -1062,8 +1152,12 @@ const ProductPhotoStudioPage: React.FC = () => {
         </button>
       </div>
 
-      {tab === 'capture' && <CaptureTab />}
-      {tab === 'history' && <HistoryTab />}
+      {tab === 'capture' && (
+        <CaptureTab aiConfiguration={aiConfiguration} onAiConfigurationChange={setAiConfiguration} />
+      )}
+      {tab === 'history' && (
+        <HistoryTab aiConfiguration={aiConfiguration} onAiConfigurationChange={setAiConfiguration} />
+      )}
       {tab === 'attached' && <AttachedTab />}
     </div>
   );

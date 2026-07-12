@@ -108,8 +108,14 @@ router.use(async (_req, _res, next) => {
 // ----------------------------
 // AI processing
 // ----------------------------
-const IMAGE_MODEL = process.env.AI_IMAGE_MODEL || 'gpt-image-1';
-const IMAGE_QUALITY = process.env.AI_IMAGE_QUALITY || 'high';
+const ALLOWED_IMAGE_MODELS = new Set(['gpt-image-2', 'gpt-image-1.5', 'gpt-image-1-mini']);
+const ALLOWED_IMAGE_QUALITIES = new Set(['low', 'medium', 'high']);
+const DEFAULT_IMAGE_MODEL = ALLOWED_IMAGE_MODELS.has(process.env.AI_IMAGE_MODEL)
+  ? process.env.AI_IMAGE_MODEL
+  : 'gpt-image-2';
+const DEFAULT_IMAGE_QUALITY = ALLOWED_IMAGE_QUALITIES.has(process.env.AI_IMAGE_QUALITY)
+  ? process.env.AI_IMAGE_QUALITY
+  : 'medium';
 const IMAGE_PROMPT =
   process.env.AI_IMAGE_PROMPT ||
   'Professional e-commerce studio product photo. ' +
@@ -125,7 +131,7 @@ const getOpenAIClient = () => {
   return new OpenAI({ apiKey: key, maxRetries: 2 });
 };
 
-async function processOneImage(client, image) {
+async function processOneImage(client, image, { model, quality }) {
   const abs = absolutePathForUrl(image.image_url);
   if (!abs || !fs.existsSync(abs)) {
     throw new Error(`Fichier introuvable: ${image.image_url}`);
@@ -136,16 +142,14 @@ async function processOneImage(client, image) {
   const file = await toFile(fs.createReadStream(abs), path.basename(abs), { type: mime });
 
   const params = {
-    model: IMAGE_MODEL,
+    model,
     image: file,
     prompt: IMAGE_PROMPT,
   };
-  // gpt-image-1: haute qualité + fidélité maximale au produit d'origine
-  if (String(IMAGE_MODEL).startsWith('gpt-image')) {
-    params.quality = IMAGE_QUALITY;
-    params.input_fidelity = 'high';
-    params.background = 'opaque';
-  }
+  // Les anciens modèles acceptent le contrôle explicite de fidélité ; GPT Image 2 l'applique automatiquement.
+  params.quality = quality;
+  params.background = 'opaque';
+  if (model !== 'gpt-image-2') params.input_fidelity = 'high';
 
   let result;
   try {
@@ -154,7 +158,7 @@ async function processOneImage(client, image) {
     // Certains modèles/versions d'API ne supportent pas ces paramètres : retry en mode simple
     const msg = String(e?.message || '').toLowerCase();
     if (msg.includes('input_fidelity') || msg.includes('quality') || msg.includes('background') || msg.includes('unknown parameter')) {
-      result = await client.images.edit({ model: IMAGE_MODEL, image: file, prompt: IMAGE_PROMPT });
+      result = await client.images.edit({ model, image: file, prompt: IMAGE_PROMPT });
     } else {
       throw e;
     }
@@ -169,7 +173,7 @@ async function processOneImage(client, image) {
 }
 
 // Sequential background worker per request (avoids rate-limit bursts)
-async function processShootsInBackground(shootIds) {
+async function processShootsInBackground(shootIds, options) {
   const client = getOpenAIClient();
 
   for (const shootId of shootIds) {
@@ -191,7 +195,7 @@ async function processShootsInBackground(shootIds) {
         );
         if (existing.length) continue;
 
-        const url = await processOneImage(client, img);
+        const url = await processOneImage(client, img, options);
         await pool.query(
           `INSERT INTO product_photo_images (shoot_id, kind, source_image_id, image_url, position) VALUES (?, 'processed', ?, ?, ?)`,
           [shootId, img.id, url, img.position]
@@ -438,6 +442,15 @@ router.post('/process', async (req, res) => {
 
     if (!shootIds.length) return res.status(400).json({ message: 'shootIds requis' });
 
+    const model = req.body?.model ?? DEFAULT_IMAGE_MODEL;
+    const quality = req.body?.quality ?? DEFAULT_IMAGE_QUALITY;
+    if (!ALLOWED_IMAGE_MODELS.has(model)) {
+      return res.status(400).json({ message: 'Modèle IA non autorisé' });
+    }
+    if (!ALLOWED_IMAGE_QUALITIES.has(quality)) {
+      return res.status(400).json({ message: 'Qualité IA non autorisée' });
+    }
+
     if (!getOpenAIClient()) {
       return res.status(500).json({ message: 'OPENAI_API_KEY non configurée côté serveur' });
     }
@@ -457,7 +470,7 @@ router.post('/process', async (req, res) => {
     );
 
     // Fire-and-forget: frontend polls /shoots for status changes
-    processShootsInBackground(validIds);
+    processShootsInBackground(validIds, { model, quality });
 
     res.json({ ok: true, processing: validIds });
   } catch (err) {
