@@ -15,20 +15,6 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (!id.includes('node_modules')) return undefined
-            if (id.includes('/xlsx/')) return 'excel'
-            if (id.includes('/jspdf/') || id.includes('/pdf-lib/') || id.includes('/pdfmake/') || id.includes('/html2canvas/')) return 'pdf'
-            if (id.includes('/recharts/') || id.includes('/d3-')) return 'charts'
-            if (id.includes('/sweetalert2/')) return 'alerts'
-            if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/react-router') || id.includes('/redux')) return 'react-vendor'
-            if (id.includes('/@radix-ui/')) return 'ui-vendor'
-            return 'vendor'
-          },
-        },
-      },
     },
     server: {
       proxy: {
