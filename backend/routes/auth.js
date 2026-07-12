@@ -3,15 +3,65 @@ import pool from '../db/pool.js';
 import { signToken, verifyToken } from '../middleware/auth.js';
 import { checkUserAccess } from '../middleware/accessSchedule.js';
 import bcrypt from 'bcryptjs';
+import { createHash } from 'crypto';
 
 const router = Router();
+
+const LOGIN_MAX_ATTEMPTS = 5;
+let loginAttemptsTablePromise = null;
+
+function loginAttemptKey(req, cin) {
+  return createHash('sha256')
+    .update(`${req.ip || 'unknown'}:${String(cin || '').trim().toUpperCase()}`)
+    .digest('hex');
+}
+
+function ensureLoginAttemptsTable() {
+  if (!loginAttemptsTablePromise) {
+    loginAttemptsTablePromise = pool.query(`
+      CREATE TABLE IF NOT EXISTS employee_login_attempts (
+        attempt_key CHAR(64) PRIMARY KEY,
+        attempt_count INT NOT NULL DEFAULT 0,
+        reset_at DATETIME NOT NULL,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_employee_login_attempts_reset (reset_at)
+      ) ENGINE=InnoDB
+    `).catch((error) => {
+      loginAttemptsTablePromise = null;
+      throw error;
+    });
+  }
+  return loginAttemptsTablePromise;
+}
+
+async function getLoginAttempt(key) {
+  await ensureLoginAttemptsTable();
+  await pool.query('DELETE FROM employee_login_attempts WHERE reset_at <= NOW() LIMIT 1000');
+  const [rows] = await pool.query(
+    'SELECT attempt_count AS count, reset_at AS resetAt FROM employee_login_attempts WHERE attempt_key = ? AND reset_at > NOW() LIMIT 1',
+    [key]
+  );
+  return rows[0] || null;
+}
+
+async function registerLoginFailure(key) {
+  await ensureLoginAttemptsTable();
+  await pool.query(
+    `INSERT INTO employee_login_attempts (attempt_key, attempt_count, reset_at)
+     VALUES (?, 1, DATE_ADD(NOW(), INTERVAL 15 MINUTE))
+     ON DUPLICATE KEY UPDATE
+       attempt_count = IF(reset_at <= NOW(), 1, attempt_count + 1),
+       reset_at = IF(reset_at <= NOW(), VALUES(reset_at), reset_at)`,
+    [key]
+  );
+}
 
 async function getEmployeePasswordChangeRequired(employeeId) {
   const [rows] = await pool.query(
     `
     SELECT
-      (DAYOFWEEK(CURDATE()) = 2) AS is_monday,
-      (password_changed_at IS NULL OR DATE(password_changed_at) < CURDATE()) AS needs_change
+      DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AS week_start,
+      (password_changed_at IS NULL OR DATE(password_changed_at) < DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)) AS needs_change
     FROM employees
     WHERE id = ? AND deleted_at IS NULL
     LIMIT 1
@@ -20,7 +70,7 @@ async function getEmployeePasswordChangeRequired(employeeId) {
   );
   const r = rows[0];
   if (!r) return false;
-  return Boolean(r.is_monday) && Boolean(r.needs_change);
+  return Boolean(r.needs_change);
 }
 
 // POST /api/auth/login
@@ -28,16 +78,31 @@ router.post('/login', async (req, res, next) => {
   try {
     const { cin, password } = req.body;
     if (!cin || !password) return res.status(400).json({ message: 'CIN et mot de passe requis' });
+    const attemptKey = loginAttemptKey(req, cin);
+    const existingAttempt = await getLoginAttempt(attemptKey);
+    if (existingAttempt?.count >= LOGIN_MAX_ATTEMPTS) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((new Date(existingAttempt.resetAt).getTime() - Date.now()) / 1000));
+      res.set('Retry-After', String(retryAfterSeconds));
+      return res.status(429).json({ message: 'Trop de tentatives. Réessayez plus tard.' });
+    }
     
     const [rows] = await pool.query(
       'SELECT id, nom_complet, cin, date_embauche, role, password, password_changed_at, password_change_required_week_start FROM employees WHERE cin = ? AND deleted_at IS NULL',
       [cin]
     );
     const row = rows[0];
-    if (!row) return res.status(401).json({ message: 'Identifiants invalides' });
+    if (!row) {
+      await registerLoginFailure(attemptKey);
+      return res.status(401).json({ message: 'Identifiants invalides' });
+    }
     
     const ok = await bcrypt.compare(password, row.password || '');
-    if (!ok) return res.status(401).json({ message: 'Identifiants invalides' });
+    if (!ok) {
+      await registerLoginFailure(attemptKey);
+      return res.status(401).json({ message: 'Identifiants invalides' });
+    }
+
+    await pool.query('DELETE FROM employee_login_attempts WHERE attempt_key = ?', [attemptKey]);
 
     // Vérifier les horaires d'accès après authentification réussie
     const accessCheck = await checkUserAccess(row.id);
@@ -57,7 +122,7 @@ router.post('/login', async (req, res, next) => {
     const passwordChangeRequired = await getEmployeePasswordChangeRequired(row.id);
     if (passwordChangeRequired) {
       await pool.query(
-        'UPDATE employees SET password_change_required_week_start = CURDATE() WHERE id = ? AND deleted_at IS NULL',
+        'UPDATE employees SET password_change_required_week_start = DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) WHERE id = ? AND deleted_at IS NULL',
         [row.id]
       );
     }
@@ -95,7 +160,7 @@ router.get('/me', verifyToken, async (req, res, next) => {
     const passwordChangeRequired = await getEmployeePasswordChangeRequired(id);
     if (passwordChangeRequired) {
       await pool.query(
-        'UPDATE employees SET password_change_required_week_start = CURDATE() WHERE id = ? AND deleted_at IS NULL',
+        'UPDATE employees SET password_change_required_week_start = DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) WHERE id = ? AND deleted_at IS NULL',
         [id]
       );
     }

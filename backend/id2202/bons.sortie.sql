@@ -1,5 +1,7 @@
+SET NAMES utf8mb4;
+SET CHARACTER SET utf8mb4;
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -9,6 +11,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(83, '2025-08-27 20:38:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 1110.000000, 2, 8, '2025-08-26 13:16:16', '2025-12-22 11:00:25', 'TERIA ATLASS', 1, 1, NULL),
 
 
 
@@ -25,6 +28,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(100, '2025-08-27 22:33:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 8, '2025-08-26 16:33:48', '2025-08-29 17:50:09', 'ibrahim mol kango', NULL, 1, NULL),
 
 
 
@@ -44,10 +48,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(120, '2025-08-27 19:31:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 80.000000, 2, 1, '2025-08-27 09:53:57', '2025-08-27 18:35:20', 'brahim mol kango', NULL, 1, NULL),
 
 
 
 
+(125, '2025-08-27 18:15:00', 220, NULL, 0, NULL, NULL, 'SSOLAR PAYE', 870.000000, 2, 8, '2025-08-27 11:50:59', '2025-12-22 11:00:10', 'Ù…Ø¯ÙŠÙ†Ø© Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø©', 1, 1, NULL),
 
 
 
@@ -57,24 +63,27 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(137, '2025-08-27 18:58:00', 220, NULL, 0, NULL, NULL, '', 11165.080000, 2, 8, '2025-08-27 16:55:52', '2025-08-29 17:51:16', '', NULL, 1, NULL),
 
 
 
 
 
+(143, '2025-08-27 20:49:00', 220, NULL, 0, NULL, NULL, '', 410.000000, 2, 1, '2025-08-27 18:49:23', '2025-12-22 11:00:01', '', 1, 1, NULL),
 
 
 
 
 
 
+(150, '2025-08-25 21:15:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 2, 1, '2025-08-27 19:16:23', '2025-12-22 10:59:57', '', 1, 1, NULL),
 
 
 
 
 
+(156, '2025-08-27 22:08:00', 220, NULL, 0, NULL, NULL, '', 146.000000, 2, 1, '2025-08-27 21:10:50', '2025-08-29 17:49:53', 'ibrahim mol kango', NULL, 1, NULL),
 
-(83, '2025-08-27 20:38:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 1110.000000, 'Validé', 8, '2025-08-26 13:16:16', '2025-12-22 11:00:25', 'TERIA ATLASS', 1, 1, NULL),
 
 
 
@@ -91,7 +100,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(100, '2025-08-27 22:33:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 8, '2025-08-26 16:33:48', '2025-08-29 17:50:09', 'ibrahim mol kango', NULL, 1, NULL),
 
 
 
@@ -111,12 +119,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(120, '2025-08-27 19:31:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 80.000000, 'Validé', 1, '2025-08-27 09:53:57', '2025-08-27 18:35:20', 'brahim mol kango', NULL, 1, NULL),
 
 
 
 
-(125, '2025-08-27 18:15:00', 220, NULL, 0, NULL, NULL, 'SSOLAR PAYE', 870.000000, 'Validé', 8, '2025-08-27 11:50:59', '2025-12-22 11:00:10', 'مدينة الجديدة', 1, 1, NULL),
 
 
 
@@ -126,26 +132,23 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(137, '2025-08-27 18:58:00', 220, NULL, 0, NULL, NULL, '', 11165.080000, 'Validé', 8, '2025-08-27 16:55:52', '2025-08-29 17:51:16', '', NULL, 1, NULL),
 
 
 
 
+(210, '2025-08-29 10:54:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 439.200000, 2, 7, '2025-08-29 08:55:17', '2025-08-29 17:48:48', 'ibrahim mol kango', NULL, 1, NULL),
 
-(143, '2025-08-27 20:49:00', 220, NULL, 0, NULL, NULL, '', 410.000000, 'Validé', 1, '2025-08-27 18:49:23', '2025-12-22 11:00:01', '', 1, 1, NULL),
 
 
 
 
 
 
-(150, '2025-08-25 21:15:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 'Validé', 1, '2025-08-27 19:16:23', '2025-12-22 10:59:57', '', 1, 1, NULL),
 
 
 
 
 
-(156, '2025-08-27 22:08:00', 220, NULL, 0, NULL, NULL, '', 146.000000, 'Validé', 1, '2025-08-27 21:10:50', '2025-08-29 17:49:53', 'ibrahim mol kango', NULL, 1, NULL),
 
 
 
@@ -174,6 +177,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(253, '2025-08-29 20:55:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 1, '2025-08-29 16:57:55', '2025-09-04 17:21:49', 'HAMID SAHIB ALI SOSI', NULL, 1, NULL),
+(254, '2025-08-29 19:54:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 1, '2025-08-29 17:54:24', '2025-12-22 10:59:32', '', 1, 1, NULL),
+(255, '2025-08-27 19:55:00', 220, NULL, 0, NULL, NULL, '', 1070.000000, 2, 1, '2025-08-29 17:57:22', '2025-12-22 10:54:23', '', 1, 1, NULL),
+(256, '2025-08-29 19:58:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 2, 1, '2025-08-29 17:58:55', '2025-12-22 10:54:18', '', 1, 1, NULL),
 
 
 
@@ -199,12 +206,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(210, '2025-08-29 10:54:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 439.200000, 'Validé', 7, '2025-08-29 08:55:17', '2025-08-29 17:48:48', 'ibrahim mol kango', NULL, 1, NULL),
 
 
 
 
 
+(290, '2025-08-30 16:09:00', 220, NULL, 0, NULL, NULL, '', 1236.000000, 2, 1, '2025-08-30 14:10:05', '2025-09-01 18:37:15', '', NULL, 1, NULL),
 
 
 
@@ -225,6 +232,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(311, '2025-09-01 10:01:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 1, '2025-09-01 08:01:34', '2025-09-01 18:40:06', 'brahim mol kango', NULL, 1, NULL);
 
 
 
@@ -240,10 +248,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(253, '2025-08-29 20:55:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 1, '2025-08-29 16:57:55', '2025-09-04 17:21:49', 'HAMID SAHIB ALI SOSI', NULL, 1, NULL),
-(254, '2025-08-29 19:54:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 1, '2025-08-29 17:54:24', '2025-12-22 10:59:32', '', 1, 1, NULL),
-(255, '2025-08-27 19:55:00', 220, NULL, 0, NULL, NULL, '', 1070.000000, 'Validé', 1, '2025-08-29 17:57:22', '2025-12-22 10:54:23', '', 1, 1, NULL),
-(256, '2025-08-29 19:58:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 'Validé', 1, '2025-08-29 17:58:55', '2025-12-22 10:54:18', '', 1, 1, NULL),
 
 
 
@@ -255,6 +259,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -263,18 +268,19 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(347, '2025-09-01 18:29:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 2640.000000, 2, 1, '2025-09-01 13:30:21', '2025-09-01 18:35:09', 'awatif', NULL, 1, NULL),
 
 
 
 
 
+(353, '2025-09-01 21:38:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND ', 6126.000000, 2, 11, '2025-09-01 14:41:10', '2025-09-04 17:19:40', 'AWATIF', NULL, 1, NULL),
 
 
 
 
 
 
-(290, '2025-08-30 16:09:00', 220, NULL, 0, NULL, NULL, '', 1236.000000, 'Validé', 1, '2025-08-30 14:10:05', '2025-09-01 18:37:15', '', NULL, 1, NULL),
 
 
 
@@ -285,6 +291,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(370, '2025-09-01 20:38:00', 220, NULL, 0, NULL, NULL, '', 2700.000000, 2, 1, '2025-09-01 18:39:55', '2025-09-01 18:46:26', '', NULL, 1, NULL),
+(371, '2025-08-30 19:44:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 2, 1, '2025-09-01 18:45:01', '2025-09-01 18:45:28', '', NULL, 1, NULL),
+(372, '2025-08-30 20:46:00', 220, NULL, 0, NULL, NULL, '', 230.000000, 2, 1, '2025-09-01 18:47:31', '2025-12-22 10:50:22', '', 1, 1, NULL),
+(373, '2025-09-01 20:49:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 2, 1, '2025-09-01 18:50:27', '2025-12-22 10:50:17', '', 1, 1, NULL),
+(374, '2025-09-01 20:15:00', 220, NULL, 0, NULL, NULL, '', 5100.000000, 2, 1, '2025-09-01 19:16:10', '2025-09-01 19:16:39', '', NULL, 1, NULL),
 
 
 
@@ -295,7 +306,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(311, '2025-09-01 10:01:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 1, '2025-09-01 08:01:34', '2025-09-01 18:40:06', 'brahim mol kango', NULL, 1, NULL),
 
 
 
@@ -312,9 +322,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(401, '2025-09-02 14:55:00', 220, NULL, 0, NULL, NULL, '', 156.000000, 2, 7, '2025-09-02 12:55:45', '2025-09-04 17:10:17', '', NULL, 1, NULL),
 
 
 
+(405, '2025-09-02 18:19:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 80.000000, 2, 1, '2025-09-02 14:20:14', '2025-09-12 18:18:18', 'Ø¨Ø±Ø§Ù‡ÙŠÙ… Ù…ÙˆÙ„ ÙƒØ§Ù†ØºÙˆ', NULL, 1, NULL),
 
 
 
@@ -322,8 +334,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
+(414, '2025-09-02 19:36:00', 220, NULL, 0, NULL, NULL, '', 35840.000000, 2, 1, '2025-09-02 17:36:48', '2025-09-04 17:17:43', '', NULL, 1, NULL),
+(415, '2025-09-02 22:16:00', 220, NULL, 0, NULL, NULL, '', 5410.000000, 2, 1, '2025-09-02 18:17:22', '2025-12-22 10:49:53', 'WADALEYANE ', 1, 1, NULL),
 
 
 
@@ -331,13 +344,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(347, '2025-09-01 18:29:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 2640.000000, 'Validé', 1, '2025-09-01 13:30:21', '2025-09-01 18:35:09', 'awatif', NULL, 1, NULL),
 
 
 
 
 
-(353, '2025-09-01 21:38:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND ', 6126.000000, 'Validé', 11, '2025-09-01 14:41:10', '2025-09-04 17:19:40', 'AWATIF', NULL, 1, NULL),
 
 
 
@@ -354,17 +365,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(370, '2025-09-01 20:38:00', 220, NULL, 0, NULL, NULL, '', 2700.000000, 'Validé', 1, '2025-09-01 18:39:55', '2025-09-01 18:46:26', '', NULL, 1, NULL),
-(371, '2025-08-30 19:44:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 'Validé', 1, '2025-09-01 18:45:01', '2025-09-01 18:45:28', '', NULL, 1, NULL),
-(372, '2025-08-30 20:46:00', 220, NULL, 0, NULL, NULL, '', 230.000000, 'Validé', 1, '2025-09-01 18:47:31', '2025-12-22 10:50:22', '', 1, 1, NULL),
-(373, '2025-09-01 20:49:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 'Validé', 1, '2025-09-01 18:50:27', '2025-12-22 10:50:17', '', 1, 1, NULL),
-(374, '2025-09-01 20:15:00', 220, NULL, 0, NULL, NULL, '', 5100.000000, 'Validé', 1, '2025-09-01 19:16:10', '2025-09-01 19:16:39', '', NULL, 1, NULL),
 
 
 
 
 
 
+(450, '2025-09-03 17:41:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 2, 1, '2025-09-03 16:42:57', '2025-09-06 17:01:01', '', NULL, 1, NULL),
 
 
 
@@ -374,6 +381,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(461, '2025-09-03 22:47:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 156.900000, 2, 1, '2025-09-03 18:49:05', '2025-09-12 18:28:24', '', NULL, 1, NULL),
 
 
 
@@ -385,11 +393,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(401, '2025-09-02 14:55:00', 220, NULL, 0, NULL, NULL, '', 156.000000, 'Validé', 7, '2025-09-02 12:55:45', '2025-09-04 17:10:17', '', NULL, 1, NULL),
 
 
 
-(405, '2025-09-02 18:19:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 80.000000, 'Validé', 1, '2025-09-02 14:20:14', '2025-09-12 18:18:18', 'براهيم مول كانغو', NULL, 1, NULL),
 
 
 
@@ -398,14 +404,14 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(414, '2025-09-02 19:36:00', 220, NULL, 0, NULL, NULL, '', 35840.000000, 'Validé', 1, '2025-09-02 17:36:48', '2025-09-04 17:17:43', '', NULL, 1, NULL),
-(415, '2025-09-02 22:16:00', 220, NULL, 0, NULL, NULL, '', 5410.000000, 'Validé', 1, '2025-09-02 18:17:22', '2025-12-22 10:49:53', 'WADALEYANE ', 1, 1, NULL),
 
 
 
+(488, '2025-09-04 13:50:00', 220, NULL, 0, NULL, NULL, '', 3500.000000, 2, 1, '2025-09-04 11:51:33', '2025-09-04 17:16:01', '', NULL, 1, NULL),
 
 
 
+(492, '2025-09-04 15:11:00', 220, NULL, 0, NULL, NULL, '', 59.500000, 2, 1, '2025-09-04 12:11:22', '2025-09-04 17:15:45', '', NULL, 1, NULL),
 
 
 
@@ -415,6 +421,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(502, '2025-09-04 18:23:00', 220, NULL, 0, NULL, NULL, '', 950.400000, 2, 1, '2025-09-04 17:23:56', '2025-09-04 17:24:16', '', NULL, 1, NULL),
+(503, '2025-09-04 19:28:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 2, 1, '2025-09-04 17:29:06', '2025-12-22 10:43:03', '', 1, 1, NULL),
+(504, '2025-09-03 19:29:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 2, 1, '2025-09-04 17:30:18', '2025-12-22 10:42:59', '', 1, 1, NULL),
 
 
 
@@ -428,13 +437,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(518, '2025-09-05 21:56:00', 220, NULL, 0, NULL, NULL, '', 33075.000000, 2, 1, '2025-09-05 19:57:51', '2025-09-06 16:56:57', '', NULL, 1, NULL),
+(519, '2025-09-05 22:03:00', 220, NULL, 0, NULL, NULL, '', 23625.000000, 2, 1, '2025-09-05 20:03:31', '2025-09-06 16:56:41', '', NULL, 1, NULL),
+(520, '2025-09-05 23:14:00', 220, NULL, 0, NULL, NULL, '', 5200.000000, 2, 1, '2025-09-05 21:15:29', '2025-09-06 16:49:59', '', NULL, 1, NULL),
 
 
 
 
 
 
-(450, '2025-09-03 17:41:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 'Validé', 1, '2025-09-03 16:42:57', '2025-09-06 17:01:01', '', NULL, 1, NULL),
 
 
 
@@ -444,8 +455,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(461, '2025-09-03 22:47:00', 220, NULL, 0, NULL, NULL, 'BOUKIR DIAMOND', 156.900000, 'Validé', 1, '2025-09-03 18:49:05', '2025-09-12 18:28:24', '', NULL, 1, NULL),
+(536, '2025-09-06 16:42:00', 220, NULL, 0, NULL, NULL, '', 3400.000000, 2, 1, '2025-09-06 14:42:51', '2025-09-06 17:02:11', '', NULL, 1, NULL),
 
+(538, '2025-09-06 17:43:00', 220, NULL, 0, NULL, NULL, '', 7090.000000, 2, 1, '2025-09-06 16:47:39', '2025-09-06 16:48:02', '', NULL, 1, NULL),
+(539, '2025-09-06 18:51:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 2, 1, '2025-09-06 16:55:52', '2025-12-22 10:42:21', '', 1, 1, NULL),
+(540, '2025-08-23 18:03:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 1, 1, '2025-09-06 17:04:27', '2025-09-06 17:04:27', '', NULL, 1, NULL),
 
 
 
@@ -465,16 +479,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(560, '2025-09-08 16:18:00', 220, NULL, 0, NULL, NULL, '', 3873.600000, 2, 8, '2025-09-08 13:20:30', '2025-09-12 18:34:31', '', NULL, 1, NULL),
 
 
 
 
 
-(488, '2025-09-04 13:50:00', 220, NULL, 0, NULL, NULL, '', 3500.000000, 'Validé', 1, '2025-09-04 11:51:33', '2025-09-04 17:16:01', '', NULL, 1, NULL),
 
 
 
-(492, '2025-09-04 15:11:00', 220, NULL, 0, NULL, NULL, '', 59.500000, 'Validé', 1, '2025-09-04 12:11:22', '2025-09-04 17:15:45', '', NULL, 1, NULL),
 
 
 
@@ -484,9 +497,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(502, '2025-09-04 18:23:00', 220, NULL, 0, NULL, NULL, '', 950.400000, 'Validé', 1, '2025-09-04 17:23:56', '2025-09-04 17:24:16', '', NULL, 1, NULL),
-(503, '2025-09-04 19:28:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 'Validé', 1, '2025-09-04 17:29:06', '2025-12-22 10:43:03', '', 1, 1, NULL),
-(504, '2025-09-03 19:29:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 'Validé', 1, '2025-09-04 17:30:18', '2025-12-22 10:42:59', '', 1, 1, NULL),
 
 
 
@@ -500,9 +510,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(518, '2025-09-05 21:56:00', 220, NULL, 0, NULL, NULL, '', 33075.000000, 'Validé', 1, '2025-09-05 19:57:51', '2025-09-06 16:56:57', '', NULL, 1, NULL),
-(519, '2025-09-05 22:03:00', 220, NULL, 0, NULL, NULL, '', 23625.000000, 'Validé', 1, '2025-09-05 20:03:31', '2025-09-06 16:56:41', '', NULL, 1, NULL),
-(520, '2025-09-05 23:14:00', 220, NULL, 0, NULL, NULL, '', 5200.000000, 'Validé', 1, '2025-09-05 21:15:29', '2025-09-06 16:49:59', '', NULL, 1, NULL),
 
 
 
@@ -513,16 +520,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(601, '2025-09-09 16:17:00', 220, NULL, 0, NULL, NULL, '', 2640.000000, 2, 11, '2025-09-09 13:18:13', '2025-09-12 18:33:07', '', NULL, 1, NULL),
 
 
 
 
 
-(536, '2025-09-06 16:42:00', 220, NULL, 0, NULL, NULL, '', 3400.000000, 'Validé', 1, '2025-09-06 14:42:51', '2025-09-06 17:02:11', '', NULL, 1, NULL),
 
-(538, '2025-09-06 17:43:00', 220, NULL, 0, NULL, NULL, '', 7090.000000, 'Validé', 1, '2025-09-06 16:47:39', '2025-09-06 16:48:02', '', NULL, 1, NULL),
-(539, '2025-09-06 18:51:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 'Validé', 1, '2025-09-06 16:55:52', '2025-12-22 10:42:21', '', 1, 1, NULL),
-(540, '2025-08-23 18:03:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 'En attente', 1, '2025-09-06 17:04:27', '2025-09-06 17:04:27', '', NULL, 1, NULL),
 
 
 
@@ -542,7 +546,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(560, '2025-09-08 16:18:00', 220, NULL, 0, NULL, NULL, '', 3873.600000, 'Validé', 8, '2025-09-08 13:20:30', '2025-09-12 18:34:31', '', NULL, 1, NULL),
 
 
 
@@ -563,6 +566,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(648, '2025-09-10 12:47:00', 220, NULL, 0, NULL, NULL, '', 413.800000, 2, 11, '2025-09-10 10:51:21', '2025-09-11 17:15:53', 'BOUKIR DIAMOND', NULL, 1, NULL),
 
 
 
@@ -576,22 +580,25 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(662, '2025-09-10 19:01:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 2, 1, '2025-09-10 16:02:14', '2025-09-12 18:22:12', '', NULL, 1, NULL);
 
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
-(601, '2025-09-09 16:17:00', 220, NULL, 0, NULL, NULL, '', 2640.000000, 'Validé', 11, '2025-09-09 13:18:13', '2025-09-12 18:33:07', '', NULL, 1, NULL),
 
 
 
 
 
 
+(676, '2025-09-11 11:08:00', 220, NULL, 0, NULL, NULL, '', 2640.000000, 2, 11, '2025-09-11 08:08:44', '2025-09-12 18:22:50', '', NULL, 1, NULL),
 
 
+(679, '2025-09-11 12:38:00', 220, NULL, 0, NULL, NULL, '', 3336.000000, 2, 11, '2025-09-11 08:39:03', '2025-09-12 18:23:21', 'Ø§Ø¨Ø±Ø§Ù‡ÙŠÙ… ÙƒÙ†ÙƒÙˆ', NULL, 1, NULL),
 
 
 
@@ -610,8 +617,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(698, '2025-09-11 14:52:00', 220, NULL, 0, NULL, NULL, '', 3696.000000, 2, 10, '2025-09-11 11:52:45', '2025-09-12 18:23:41', '', NULL, 1, NULL),
 
 
+(701, '2025-09-11 15:46:00', 220, NULL, 0, NULL, NULL, '', 43470.000000, 2, 10, '2025-09-11 12:47:10', '2025-09-12 18:20:35', '', NULL, 1, NULL),
 
 
 
@@ -629,7 +638,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(648, '2025-09-10 12:47:00', 220, NULL, 0, NULL, NULL, '', 413.800000, 'Validé', 11, '2025-09-10 10:51:21', '2025-09-11 17:15:53', 'BOUKIR DIAMOND', NULL, 1, NULL),
 
 
 
@@ -643,12 +651,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(662, '2025-09-10 19:01:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 'Validé', 1, '2025-09-10 16:02:14', '2025-09-12 18:22:12', '', NULL, 1, NULL),
 
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -658,10 +664,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(676, '2025-09-11 11:08:00', 220, NULL, 0, NULL, NULL, '', 2640.000000, 'Validé', 11, '2025-09-11 08:08:44', '2025-09-12 18:22:50', '', NULL, 1, NULL),
 
 
-(679, '2025-09-11 12:38:00', 220, NULL, 0, NULL, NULL, '', 3336.000000, 'Validé', 11, '2025-09-11 08:39:03', '2025-09-12 18:23:21', 'ابراهيم كنكو', NULL, 1, NULL),
 
 
 
@@ -680,10 +684,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(698, '2025-09-11 14:52:00', 220, NULL, 0, NULL, NULL, '', 3696.000000, 'Validé', 10, '2025-09-11 11:52:45', '2025-09-12 18:23:41', '', NULL, 1, NULL),
 
 
-(701, '2025-09-11 15:46:00', 220, NULL, 0, NULL, NULL, '', 43470.000000, 'Validé', 10, '2025-09-11 12:47:10', '2025-09-12 18:20:35', '', NULL, 1, NULL),
 
 
 
@@ -700,8 +702,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(783, '2025-09-12 21:36:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 1, '2025-09-12 18:37:21', '2025-12-22 10:41:17', '', 1, 1, NULL),
+(784, '2025-09-12 21:55:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 1, '2025-09-12 18:56:17', '2025-12-22 10:41:14', '', 1, 1, NULL),
+(785, '2025-09-11 22:00:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 2, 1, '2025-09-12 19:01:03', '2025-12-22 10:41:11', '', 1, 1, NULL),
+(786, '2025-09-10 22:01:00', 220, NULL, 0, NULL, NULL, '', 970.000000, 2, 1, '2025-09-12 19:02:14', '2025-12-22 10:41:06', '', 1, 1, NULL),
+(787, '2025-09-09 22:02:00', 220, NULL, 0, NULL, NULL, '', 490.000000, 2, 1, '2025-09-12 19:03:50', '2025-12-22 10:41:03', '', 1, 1, NULL),
+(788, '2025-09-08 22:04:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 2, 1, '2025-09-12 19:05:35', '2025-12-22 10:40:59', '', 1, 1, NULL),
+(789, '2025-09-06 22:05:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 2, 1, '2025-09-12 19:06:25', '2025-12-22 10:40:55', '', 1, 1, NULL),
 
 
+(792, '2025-09-13 12:11:00', 220, NULL, 0, NULL, NULL, '', 850.000000, 2, 1, '2025-09-13 08:12:23', '2025-12-22 10:40:47', 'JBEL KEBIR 0644684144', 1, 1, NULL),
 
 
 
@@ -717,13 +727,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(808, '2025-09-13 12:13:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 6, 1, '2025-09-13 10:14:21', '2025-09-13 10:37:57', 'JBEL KEBIR', NULL, 1, NULL),
 
 
 
 
+(813, '2025-09-13 14:18:00', 220, NULL, 0, NULL, NULL, '', 560.000000, 1, 1, '2025-09-13 12:19:05', '2025-09-13 12:19:05', '', NULL, 1, NULL),
 
 
 
+(817, '2025-09-13 17:08:00', 220, NULL, 0, NULL, NULL, '', 1750.000000, 2, 1, '2025-09-13 13:08:55', '2025-12-22 10:40:41', '', 1, 1, NULL),
 
 
 
@@ -731,6 +744,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(825, '2025-09-13 18:30:00', 220, NULL, 0, NULL, NULL, '', 5750.000000, 2, 1, '2025-09-13 15:33:13', '2025-09-15 18:37:02', '', NULL, 1, NULL),
 
 
 
@@ -765,16 +779,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(783, '2025-09-12 21:36:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 1, '2025-09-12 18:37:21', '2025-12-22 10:41:17', '', 1, 1, NULL),
-(784, '2025-09-12 21:55:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 1, '2025-09-12 18:56:17', '2025-12-22 10:41:14', '', 1, 1, NULL),
-(785, '2025-09-11 22:00:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 'Validé', 1, '2025-09-12 19:01:03', '2025-12-22 10:41:11', '', 1, 1, NULL),
-(786, '2025-09-10 22:01:00', 220, NULL, 0, NULL, NULL, '', 970.000000, 'Validé', 1, '2025-09-12 19:02:14', '2025-12-22 10:41:06', '', 1, 1, NULL),
-(787, '2025-09-09 22:02:00', 220, NULL, 0, NULL, NULL, '', 490.000000, 'Validé', 1, '2025-09-12 19:03:50', '2025-12-22 10:41:03', '', 1, 1, NULL),
-(788, '2025-09-08 22:04:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 'Validé', 1, '2025-09-12 19:05:35', '2025-12-22 10:40:59', '', 1, 1, NULL),
-(789, '2025-09-06 22:05:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 'Validé', 1, '2025-09-12 19:06:25', '2025-12-22 10:40:55', '', 1, 1, NULL),
 
 
-(792, '2025-09-13 12:11:00', 220, NULL, 0, NULL, NULL, '', 850.000000, 'Validé', 1, '2025-09-13 08:12:23', '2025-12-22 10:40:47', 'JBEL KEBIR 0644684144', 1, 1, NULL),
+(862, '2025-09-15 14:49:00', 220, NULL, 0, NULL, NULL, '', 1900.800000, 2, 1, '2025-09-15 11:49:33', '2025-09-15 18:36:20', '', NULL, 1, NULL),
 
 
 
@@ -788,26 +795,26 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(876, '2025-09-15 20:34:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 2, 1, '2025-09-15 18:34:39', '2025-09-15 18:34:44', '', NULL, 1, NULL),
 
+(878, '2025-09-13 21:40:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 2, 1, '2025-09-15 18:40:57', '2025-12-22 10:40:18', '', 1, 1, NULL),
+(879, '2025-09-15 21:41:00', 220, NULL, 0, NULL, NULL, '', 540.000000, 2, 1, '2025-09-15 18:41:54', '2025-12-22 10:40:14', '', 1, 1, NULL),
 
-(808, '2025-09-13 12:13:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 'Annulé', 1, '2025-09-13 10:14:21', '2025-09-13 10:37:57', 'JBEL KEBIR', NULL, 1, NULL),
 
 
 
 
-(813, '2025-09-13 14:18:00', 220, NULL, 0, NULL, NULL, '', 560.000000, 'En attente', 1, '2025-09-13 12:19:05', '2025-09-13 12:19:05', '', NULL, 1, NULL),
 
 
 
-(817, '2025-09-13 17:08:00', 220, NULL, 0, NULL, NULL, '', 1750.000000, 'Validé', 1, '2025-09-13 13:08:55', '2025-12-22 10:40:41', '', 1, 1, NULL),
 
 
 
 
+(892, '2025-09-15 22:10:00', 220, NULL, 0, NULL, NULL, '', 4400.000000, 2, 1, '2025-09-15 19:11:54', '2025-09-24 19:01:41', '', NULL, 1, NULL),
 
 
 
-(825, '2025-09-13 18:30:00', 220, NULL, 0, NULL, NULL, '', 5750.000000, 'Validé', 1, '2025-09-13 15:33:13', '2025-09-15 18:37:02', '', NULL, 1, NULL),
 
 
 
@@ -837,6 +844,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(925, '2025-09-16 13:48:00', 220, NULL, 0, NULL, NULL, '', 2600.000000, 2, 1, '2025-09-16 12:48:43', '2025-09-16 12:48:53', '', NULL, 1, NULL),
 
 
 
@@ -844,7 +852,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(862, '2025-09-15 14:49:00', 220, NULL, 0, NULL, NULL, '', 1900.800000, 'Validé', 1, '2025-09-15 11:49:33', '2025-09-15 18:36:20', '', NULL, 1, NULL),
 
 
 
@@ -858,10 +865,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(876, '2025-09-15 20:34:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 'Validé', 1, '2025-09-15 18:34:39', '2025-09-15 18:34:44', '', NULL, 1, NULL),
 
-(878, '2025-09-13 21:40:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 'Validé', 1, '2025-09-15 18:40:57', '2025-12-22 10:40:18', '', 1, 1, NULL),
-(879, '2025-09-15 21:41:00', 220, NULL, 0, NULL, NULL, '', 540.000000, 'Validé', 1, '2025-09-15 18:41:54', '2025-12-22 10:40:14', '', 1, 1, NULL),
 
 
 
@@ -871,10 +875,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(957, '2025-09-17 08:31:00', 220, NULL, 0, NULL, NULL, '', 130.000000, 1, 1, '2025-09-17 07:32:07', '2025-09-17 07:32:07', '', NULL, 1, NULL),
 
 
 
-(892, '2025-09-15 22:10:00', 220, NULL, 0, NULL, NULL, '', 4400.000000, 'Validé', 1, '2025-09-15 19:11:54', '2025-09-24 19:01:41', '', NULL, 1, NULL),
 
 
 
@@ -893,6 +897,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(979, '2025-09-17 13:55:00', 220, NULL, 0, NULL, NULL, '', 650.000000, 2, 1, '2025-09-17 11:56:44', '2025-09-24 19:08:00', '', NULL, 1, NULL),
 
 
 
@@ -905,9 +910,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(992, '2025-09-17 17:37:00', 220, NULL, 0, NULL, NULL, '', 3990.000000, 2, 11, '2025-09-17 15:37:28', '2025-09-18 16:16:14', '', NULL, 1, NULL);
 
 
-(925, '2025-09-16 13:48:00', 220, NULL, 0, NULL, NULL, '', 2600.000000, 'Validé', 1, '2025-09-16 12:48:43', '2025-09-16 12:48:53', '', NULL, 1, NULL),
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -938,7 +944,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(957, '2025-09-17 08:31:00', 220, NULL, 0, NULL, NULL, '', 130.000000, 'En attente', 1, '2025-09-17 07:32:07', '2025-09-17 07:32:07', '', NULL, 1, NULL),
 
 
 
@@ -954,13 +959,17 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1040, '2025-09-18 16:09:00', 220, NULL, 0, NULL, NULL, 'awatif', 780.000000, 2, 11, '2025-09-18 14:11:08', '2025-09-24 19:06:59', 'hassan marmo nourdin imeuble', NULL, 1, NULL),
 
 
 
 
 
 
-(979, '2025-09-17 13:55:00', 220, NULL, 0, NULL, NULL, '', 650.000000, 'Validé', 1, '2025-09-17 11:56:44', '2025-09-24 19:08:00', '', NULL, 1, NULL),
+(1047, '2025-09-17 17:18:00', 220, NULL, 0, NULL, NULL, '', 2944.000000, 2, 1, '2025-09-18 16:19:31', '2025-09-18 16:19:47', '', NULL, 1, NULL),
+(1048, '2025-09-17 17:20:00', 220, NULL, 0, NULL, NULL, '', 1100.000000, 2, 1, '2025-09-18 16:20:48', '2025-09-18 16:21:04', '', NULL, 1, NULL),
+(1049, '2025-09-16 18:35:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 2, 11, '2025-09-18 16:35:33', '2025-12-22 10:39:37', '', 1, 1, NULL),
+(1050, '2025-09-17 18:35:00', 220, NULL, 0, NULL, NULL, '', 350.000000, 2, 11, '2025-09-18 16:36:58', '2025-12-22 10:39:33', '', 1, 1, NULL),
 
 
 
@@ -973,10 +982,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(992, '2025-09-17 17:37:00', 220, NULL, 0, NULL, NULL, '', 3990.000000, 'Validé', 11, '2025-09-17 15:37:28', '2025-09-18 16:16:14', '', NULL, 1, NULL),
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -1002,6 +1009,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1090, '2025-09-19 18:31:00', 220, NULL, 0, NULL, NULL, '', 1015.400000, 2, 11, '2025-09-19 14:38:23', '2025-09-24 19:03:56', '', NULL, 1, NULL),
 
 
 
@@ -1022,17 +1030,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1040, '2025-09-18 16:09:00', 220, NULL, 0, NULL, NULL, 'awatif', 780.000000, 'Validé', 11, '2025-09-18 14:11:08', '2025-09-24 19:06:59', 'hassan marmo nourdin imeuble', NULL, 1, NULL),
 
 
 
 
 
 
-(1047, '2025-09-17 17:18:00', 220, NULL, 0, NULL, NULL, '', 2944.000000, 'Validé', 1, '2025-09-18 16:19:31', '2025-09-18 16:19:47', '', NULL, 1, NULL),
-(1048, '2025-09-17 17:20:00', 220, NULL, 0, NULL, NULL, '', 1100.000000, 'Validé', 1, '2025-09-18 16:20:48', '2025-09-18 16:21:04', '', NULL, 1, NULL),
-(1049, '2025-09-16 18:35:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 'Validé', 11, '2025-09-18 16:35:33', '2025-12-22 10:39:37', '', 1, 1, NULL),
-(1050, '2025-09-17 18:35:00', 220, NULL, 0, NULL, NULL, '', 350.000000, 'Validé', 11, '2025-09-18 16:36:58', '2025-12-22 10:39:33', '', 1, 1, NULL),
 
 
 
@@ -1072,7 +1075,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1090, '2025-09-19 18:31:00', 220, NULL, 0, NULL, NULL, '', 1015.400000, 'Validé', 11, '2025-09-19 14:38:23', '2025-09-24 19:03:56', '', NULL, 1, NULL),
 
 
 
@@ -1117,6 +1119,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1202, '2025-09-22 17:42:00', 220, NULL, 0, NULL, NULL, '', 1232.000000, 2, 11, '2025-09-22 11:44:38', '2025-10-02 18:36:24', '', NULL, 1, NULL),
 
 
 
@@ -1182,7 +1185,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1202, '2025-09-22 17:42:00', 220, NULL, 0, NULL, NULL, '', 1232.000000, 'Validé', 11, '2025-09-22 11:44:38', '2025-10-02 18:36:24', '', NULL, 1, NULL),
 
 
 
@@ -1200,7 +1202,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1286, '2025-09-23 23:52:00', 220, NULL, 0, NULL, NULL, '', 42980.000000, 2, 1, '2025-09-23 16:52:39', '2025-09-27 17:27:50', '', NULL, 1, NULL),
+(1287, '2025-09-23 17:54:00', 220, NULL, 0, NULL, NULL, '', 795.000000, 6, 11, '2025-09-23 16:56:26', '2025-09-23 16:56:37', '', NULL, 1, NULL),
 
+(1289, '2025-09-24 15:25:00', 220, NULL, 0, NULL, NULL, '', 96.600000, 2, 11, '2025-09-24 07:26:49', '2025-09-27 17:29:19', 'ben mohamadi', NULL, 1, NULL);
 
 
 
@@ -1231,6 +1236,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -1244,6 +1250,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1333, '2025-09-24 17:44:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 2, 11, '2025-09-24 13:44:51', '2025-09-27 17:30:34', '', NULL, 1, NULL),
+(1334, '2025-09-24 17:45:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 2, 11, '2025-09-24 13:46:46', '2025-10-02 18:34:08', '', NULL, 1, NULL),
 
 
 
@@ -1253,6 +1261,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1344, '2025-09-18 21:11:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 2, 1, '2025-09-24 19:13:41', '2025-12-22 10:37:30', '', 1, 1, NULL),
+(1345, '2025-09-19 21:13:00', 220, NULL, 0, NULL, NULL, '', 140.000000, 2, 1, '2025-09-24 19:14:21', '2025-12-22 10:37:26', '', 1, 1, NULL),
+(1346, '2025-09-20 21:14:00', 220, NULL, 0, NULL, NULL, '', 460.000000, 2, 1, '2025-09-24 19:15:20', '2025-12-22 10:37:22', '', 1, 1, NULL),
+(1347, '2025-09-22 21:15:00', 220, NULL, 0, NULL, NULL, '', 270.000000, 2, 1, '2025-09-24 19:15:52', '2025-12-22 10:37:17', '', 1, 1, NULL),
+(1348, '2025-09-23 21:16:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 2, 1, '2025-09-24 19:16:19', '2025-12-22 10:37:12', '', 1, 1, NULL),
+(1349, '2025-09-24 21:16:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 2, 1, '2025-09-24 19:16:47', '2025-12-22 10:37:06', '', 1, 1, NULL),
 
 
 
@@ -1265,10 +1279,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1286, '2025-09-23 23:52:00', 220, NULL, 0, NULL, NULL, '', 42980.000000, 'Validé', 1, '2025-09-23 16:52:39', '2025-09-27 17:27:50', '', NULL, 1, NULL),
-(1287, '2025-09-23 17:54:00', 220, NULL, 0, NULL, NULL, '', 795.000000, 'Annulé', 11, '2025-09-23 16:56:26', '2025-09-23 16:56:37', '', NULL, 1, NULL),
 
-(1289, '2025-09-24 15:25:00', 220, NULL, 0, NULL, NULL, '', 96.600000, 'Validé', 11, '2025-09-24 07:26:49', '2025-09-27 17:29:19', 'ben mohamadi', NULL, 1, NULL),
 
 
 
@@ -1299,7 +1310,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -1313,23 +1323,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1333, '2025-09-24 17:44:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 'Validé', 11, '2025-09-24 13:44:51', '2025-09-27 17:30:34', '', NULL, 1, NULL),
-(1334, '2025-09-24 17:45:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 'Validé', 11, '2025-09-24 13:46:46', '2025-10-02 18:34:08', '', NULL, 1, NULL),
 
 
 
 
+(1412, '2025-09-25 18:45:00', 220, NULL, 0, NULL, NULL, '', 1970.000000, 2, 11, '2025-09-25 16:47:00', '2025-10-02 18:36:05', '', NULL, 1, NULL),
 
 
 
 
 
-(1344, '2025-09-18 21:11:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 'Validé', 1, '2025-09-24 19:13:41', '2025-12-22 10:37:30', '', 1, 1, NULL),
-(1345, '2025-09-19 21:13:00', 220, NULL, 0, NULL, NULL, '', 140.000000, 'Validé', 1, '2025-09-24 19:14:21', '2025-12-22 10:37:26', '', 1, 1, NULL),
-(1346, '2025-09-20 21:14:00', 220, NULL, 0, NULL, NULL, '', 460.000000, 'Validé', 1, '2025-09-24 19:15:20', '2025-12-22 10:37:22', '', 1, 1, NULL),
-(1347, '2025-09-22 21:15:00', 220, NULL, 0, NULL, NULL, '', 270.000000, 'Validé', 1, '2025-09-24 19:15:52', '2025-12-22 10:37:17', '', 1, 1, NULL),
-(1348, '2025-09-23 21:16:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 'Validé', 1, '2025-09-24 19:16:19', '2025-12-22 10:37:12', '', 1, 1, NULL),
-(1349, '2025-09-24 21:16:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 'Validé', 1, '2025-09-24 19:16:47', '2025-12-22 10:37:06', '', 1, 1, NULL),
 
 
 
@@ -1340,6 +1343,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1428, '2025-09-26 12:43:00', 220, NULL, 0, NULL, NULL, '92156-Ø¨-40', 937.500000, 2, 11, '2025-09-26 08:44:10', '2025-10-02 18:35:45', 'deboun said ', NULL, 1, NULL),
 
 
 
@@ -1384,13 +1388,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1473, '2025-09-27 13:09:00', 220, NULL, 0, NULL, 3, '', 950.400000, 2, 11, '2025-09-27 08:09:56', '2025-09-27 17:46:24', '', NULL, 1, NULL),
 
 
 
 
 
 
-(1412, '2025-09-25 18:45:00', 220, NULL, 0, NULL, NULL, '', 1970.000000, 'Validé', 11, '2025-09-25 16:47:00', '2025-10-02 18:36:05', '', NULL, 1, NULL),
 
 
 
@@ -1406,7 +1410,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1428, '2025-09-26 12:43:00', 220, NULL, 0, NULL, NULL, '92156-ب-40', 937.500000, 'Validé', 11, '2025-09-26 08:44:10', '2025-10-02 18:35:45', 'deboun said ', NULL, 1, NULL),
 
 
 
@@ -1444,14 +1447,19 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1532, '2025-09-27 19:50:00', 220, NULL, 0, NULL, NULL, '', 42980.000000, 2, 11, '2025-09-27 15:50:43', '2025-09-27 17:48:00', '', NULL, 1, NULL),
 
+(1534, '2025-09-27 19:34:00', 220, NULL, 0, NULL, NULL, '', 2250.000000, 2, 11, '2025-09-27 16:35:17', '2025-09-27 17:47:33', '', NULL, 1, NULL),
+(1535, '2025-09-27 22:49:00', 220, NULL, 0, NULL, NULL, '', 270.000000, 2, 1, '2025-09-27 17:49:52', '2025-12-22 10:36:37', '', 1, 1, NULL),
+(1536, '2025-09-25 20:51:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 1, '2025-09-27 17:51:41', '2025-12-22 10:36:34', '', 1, 1, NULL),
+(1537, '2025-09-26 20:52:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 2, 1, '2025-09-27 17:52:31', '2025-12-22 10:36:30', '', 1, 1, NULL),
 
+(1539, '2025-09-27 22:01:00', 220, NULL, 0, NULL, NULL, '', 19460.000000, 2, 1, '2025-09-27 19:02:21', '2025-10-02 18:39:13', '', NULL, 1, NULL),
 
 
 
 
 
-(1473, '2025-09-27 13:09:00', 220, NULL, 0, NULL, 3, '', 950.400000, 'Validé', 11, '2025-09-27 08:09:56', '2025-09-27 17:46:24', '', NULL, 1, NULL),
 
 
 
@@ -1492,11 +1500,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1585, '2025-09-29 17:11:00', 220, NULL, 0, NULL, NULL, '', 73.000000, 2, 11, '2025-09-29 14:12:26', '2025-10-02 18:27:05', 'ZEFAT', NULL, 1, NULL),
 
 
 
 
 
+(1591, '2025-09-29 19:44:00', 220, NULL, 0, NULL, NULL, '', 2549.000000, 2, 1, '2025-09-29 17:45:05', '2025-10-02 18:30:40', '', NULL, 1, NULL),
 
 
 
@@ -1510,15 +1520,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1532, '2025-09-27 19:50:00', 220, NULL, 0, NULL, NULL, '', 42980.000000, 'Validé', 11, '2025-09-27 15:50:43', '2025-09-27 17:48:00', '', NULL, 1, NULL),
 
-(1534, '2025-09-27 19:34:00', 220, NULL, 0, NULL, NULL, '', 2250.000000, 'Validé', 11, '2025-09-27 16:35:17', '2025-09-27 17:47:33', '', NULL, 1, NULL),
-(1535, '2025-09-27 22:49:00', 220, NULL, 0, NULL, NULL, '', 270.000000, 'Validé', 1, '2025-09-27 17:49:52', '2025-12-22 10:36:37', '', 1, 1, NULL),
-(1536, '2025-09-25 20:51:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 1, '2025-09-27 17:51:41', '2025-12-22 10:36:34', '', 1, 1, NULL),
-(1537, '2025-09-26 20:52:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 'Validé', 1, '2025-09-27 17:52:31', '2025-12-22 10:36:30', '', 1, 1, NULL),
 
-(1539, '2025-09-27 22:01:00', 220, NULL, 0, NULL, NULL, '', 19460.000000, 'Validé', 1, '2025-09-27 19:02:21', '2025-10-02 18:39:13', '', NULL, 1, NULL),
 
+(1608, '2025-09-30 14:54:00', 220, NULL, 0, NULL, NULL, '', 61770.600000, 2, 7, '2025-09-30 10:00:41', '2025-10-02 18:38:42', '', NULL, 1, NULL),
 
 
 
@@ -1553,23 +1558,23 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1643, '2025-09-30 20:40:00', 220, NULL, 0, NULL, NULL, '', 94000.000000, 6, 1, '2025-09-30 18:41:12', '2025-10-01 11:45:23', '', 1, 1, NULL);
 
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
 
 
 
-(1585, '2025-09-29 17:11:00', 220, NULL, 0, NULL, NULL, '', 73.000000, 'Validé', 11, '2025-09-29 14:12:26', '2025-10-02 18:27:05', 'ZEFAT', NULL, 1, NULL),
 
 
 
 
 
-(1591, '2025-09-29 19:44:00', 220, NULL, 0, NULL, NULL, '', 2549.000000, 'Validé', 1, '2025-09-29 17:45:05', '2025-10-02 18:30:40', '', NULL, 1, NULL),
 
 
 
@@ -1586,7 +1591,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1608, '2025-09-30 14:54:00', 220, NULL, 0, NULL, NULL, '', 61770.600000, 'Validé', 7, '2025-09-30 10:00:41', '2025-10-02 18:38:42', '', NULL, 1, NULL),
 
 
 
@@ -1621,12 +1625,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1643, '2025-09-30 20:40:00', 220, NULL, 0, NULL, NULL, '', 94000.000000, 'Annulé', 1, '2025-09-30 18:41:12', '2025-10-01 11:45:23', '', 1, 1, NULL),
 
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -1634,6 +1636,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1721, '2025-10-02 15:05:00', 220, NULL, 0, NULL, NULL, '', 802.250000, 2, 11, '2025-10-02 08:05:57', '2025-10-02 18:39:04', '', NULL, 1, NULL),
 
 
 
@@ -1653,6 +1656,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1742, '2025-10-02 13:45:00', 220, NULL, 0, NULL, NULL, '', 1102.500000, 2, 7, '2025-10-02 11:46:29', '2025-10-02 18:04:20', '', NULL, 1, NULL),
 
 
 
@@ -1666,6 +1670,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1756, '2025-10-02 18:57:00', 220, NULL, 0, NULL, NULL, '', 809.200000, 2, 7, '2025-10-02 16:00:09', '2025-10-07 18:20:26', '', NULL, 1, NULL),
 
 
 
@@ -1674,8 +1679,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1765, '2025-10-02 23:39:00', 220, NULL, 0, NULL, NULL, '', 60250.000000, 2, 7, '2025-10-02 18:40:07', '2025-10-02 18:49:32', 'BHF', NULL, 1, NULL),
+(1766, '2025-10-02 20:40:00', 220, NULL, 0, NULL, NULL, '', 490.000000, 2, 10, '2025-10-02 18:43:54', '2025-12-22 10:35:47', '', 1, 1, NULL),
+(1767, '2025-10-01 20:44:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 2, 10, '2025-10-02 18:44:56', '2025-12-22 10:35:43', '', 1, 1, NULL),
+(1768, '2025-09-30 20:45:00', 220, NULL, 0, NULL, NULL, '', 350.000000, 2, 10, '2025-10-02 18:45:46', '2025-12-22 10:35:37', '', 1, 1, NULL),
 
+(1770, '2025-09-29 21:45:00', 220, NULL, 0, NULL, NULL, '', 140.000000, 2, 10, '2025-10-02 18:46:34', '2025-12-22 11:05:25', '', 1, 1, NULL),
 
+(1772, '2025-10-01 19:54:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 10, '2025-10-02 18:55:04', '2025-10-02 18:55:20', '', NULL, 1, NULL),
+(1773, '2025-10-02 10:43:00', 220, NULL, 0, NULL, NULL, '', 6384.000000, 2, 7, '2025-10-03 07:44:26', '2025-10-07 18:17:50', '', NULL, 1, NULL),
 
 
 
@@ -1699,10 +1711,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1721, '2025-10-02 15:05:00', 220, NULL, 0, NULL, NULL, '', 802.250000, 'Validé', 11, '2025-10-02 08:05:57', '2025-10-02 18:39:04', '', NULL, 1, NULL),
 
 
 
+(1800, '2025-10-03 19:52:00', 220, NULL, 0, 'IBRAHIM KANGO', NULL, '', 105.000000, 2, 11, '2025-10-03 14:53:23', '2025-10-07 18:21:59', '', NULL, 1, NULL),
 
 
 
@@ -1719,7 +1731,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1742, '2025-10-02 13:45:00', 220, NULL, 0, NULL, NULL, '', 1102.500000, 'Validé', 7, '2025-10-02 11:46:29', '2025-10-02 18:04:20', '', NULL, 1, NULL),
 
 
 
@@ -1733,7 +1744,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1756, '2025-10-02 18:57:00', 220, NULL, 0, NULL, NULL, '', 809.200000, 'Validé', 7, '2025-10-02 16:00:09', '2025-10-07 18:20:26', '', NULL, 1, NULL),
 
 
 
@@ -1742,15 +1752,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1765, '2025-10-02 23:39:00', 220, NULL, 0, NULL, NULL, '', 60250.000000, 'Validé', 7, '2025-10-02 18:40:07', '2025-10-02 18:49:32', 'BHF', NULL, 1, NULL),
-(1766, '2025-10-02 20:40:00', 220, NULL, 0, NULL, NULL, '', 490.000000, 'Validé', 10, '2025-10-02 18:43:54', '2025-12-22 10:35:47', '', 1, 1, NULL),
-(1767, '2025-10-01 20:44:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 'Validé', 10, '2025-10-02 18:44:56', '2025-12-22 10:35:43', '', 1, 1, NULL),
-(1768, '2025-09-30 20:45:00', 220, NULL, 0, NULL, NULL, '', 350.000000, 'Validé', 10, '2025-10-02 18:45:46', '2025-12-22 10:35:37', '', 1, 1, NULL),
 
-(1770, '2025-09-29 21:45:00', 220, NULL, 0, NULL, NULL, '', 140.000000, 'Validé', 10, '2025-10-02 18:46:34', '2025-12-22 11:05:25', '', 1, 1, NULL),
 
-(1772, '2025-10-01 19:54:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 10, '2025-10-02 18:55:04', '2025-10-02 18:55:20', '', NULL, 1, NULL),
-(1773, '2025-10-02 10:43:00', 220, NULL, 0, NULL, NULL, '', 6384.000000, 'Validé', 7, '2025-10-03 07:44:26', '2025-10-07 18:17:50', '', NULL, 1, NULL),
 
 
 
@@ -1777,7 +1780,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1800, '2025-10-03 19:52:00', 220, NULL, 0, 'IBRAHIM KANGO', NULL, '', 105.000000, 'Validé', 11, '2025-10-03 14:53:23', '2025-10-07 18:21:59', '', NULL, 1, NULL),
 
 
 
@@ -1834,6 +1836,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1922, '2025-10-06 20:11:00', 220, NULL, 0, NULL, NULL, '', 850.000000, 2, 7, '2025-10-06 16:12:15', '2025-12-22 10:35:20', '', 1, 1, NULL),
 
 
 
@@ -1848,6 +1851,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1937, '2025-10-07 09:17:00', 220, NULL, 0, NULL, NULL, '', 1720.000000, 6, 7, '2025-10-07 07:20:12', '2025-10-10 09:31:42', 'brahim qawasim', NULL, 1, NULL),
 
 
 
@@ -1859,6 +1863,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(1949, '2025-10-07 10:26:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 2, 7, '2025-10-07 08:26:40', '2025-10-07 18:24:20', '', NULL, 1, NULL);
 
 
 
@@ -1884,6 +1889,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -1899,9 +1905,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1922, '2025-10-06 20:11:00', 220, NULL, 0, NULL, NULL, '', 850.000000, 'Validé', 7, '2025-10-06 16:12:15', '2025-12-22 10:35:20', '', 1, 1, NULL),
 
 
+(1992, '2025-10-04 19:15:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 2, 1, '2025-10-07 18:16:25', '2025-10-07 18:16:43', '', NULL, 1, NULL),
+(1993, '2025-10-07 20:39:00', 220, NULL, 0, NULL, NULL, '', 3720.000000, 2, 1, '2025-10-07 18:39:54', '2025-10-07 21:13:10', '', NULL, 1, NULL),
+(1994, '2025-10-04 20:41:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 2, 1, '2025-10-07 18:42:39', '2025-12-22 10:35:02', '', 1, 1, NULL),
+(1995, '2025-10-03 20:44:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 2, 1, '2025-10-07 18:44:23', '2025-12-22 10:34:58', '', 1, 1, NULL),
+(1996, '2025-10-06 20:44:00', 220, NULL, 0, NULL, NULL, '', 560.000000, 2, 1, '2025-10-07 18:44:57', '2025-12-22 10:34:53', '', 1, 1, NULL),
+(1997, '2025-10-07 20:45:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 2, 1, '2025-10-07 18:45:58', '2025-12-22 10:34:47', '', 1, 1, NULL),
+(1998, '2025-10-03 19:54:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 2, 1, '2025-10-07 18:54:36', '2025-10-07 18:54:40', '', NULL, 1, NULL),
 
 
 
@@ -1914,7 +1926,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1937, '2025-10-07 09:17:00', 220, NULL, 0, NULL, NULL, '', 1720.000000, 'Annulé', 7, '2025-10-07 07:20:12', '2025-10-10 09:31:42', 'brahim qawasim', NULL, 1, NULL),
 
 
 
@@ -1926,7 +1937,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1949, '2025-10-07 10:26:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 'Validé', 7, '2025-10-07 08:26:40', '2025-10-07 18:24:20', '', NULL, 1, NULL),
 
 
 
@@ -1952,7 +1962,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -1970,13 +1979,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(1992, '2025-10-04 19:15:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 'Validé', 1, '2025-10-07 18:16:25', '2025-10-07 18:16:43', '', NULL, 1, NULL),
-(1993, '2025-10-07 20:39:00', 220, NULL, 0, NULL, NULL, '', 3720.000000, 'Validé', 1, '2025-10-07 18:39:54', '2025-10-07 21:13:10', '', NULL, 1, NULL),
-(1994, '2025-10-04 20:41:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 'Validé', 1, '2025-10-07 18:42:39', '2025-12-22 10:35:02', '', 1, 1, NULL),
-(1995, '2025-10-03 20:44:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 'Validé', 1, '2025-10-07 18:44:23', '2025-12-22 10:34:58', '', 1, 1, NULL),
-(1996, '2025-10-06 20:44:00', 220, NULL, 0, NULL, NULL, '', 560.000000, 'Validé', 1, '2025-10-07 18:44:57', '2025-12-22 10:34:53', '', 1, 1, NULL),
-(1997, '2025-10-07 20:45:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 'Validé', 1, '2025-10-07 18:45:58', '2025-12-22 10:34:47', '', 1, 1, NULL),
-(1998, '2025-10-03 19:54:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 'Validé', 1, '2025-10-07 18:54:36', '2025-10-07 18:54:40', '', NULL, 1, NULL),
 
 
 
@@ -2136,8 +2138,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2223, '2025-10-11 15:34:00', 220, NULL, 0, NULL, NULL, '', 2100.000000, 2, 7, '2025-10-11 13:36:02', '2025-10-18 18:02:00', '', NULL, 1, NULL),
 
 
+(2226, '2025-10-11 15:48:00', 220, NULL, 0, NULL, NULL, '', 95.000000, 2, 7, '2025-10-11 13:48:25', '2025-10-18 17:55:03', '', NULL, 1, NULL),
 
 
 
@@ -2197,20 +2201,23 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2286, '2025-10-13 19:10:00', 220, NULL, 0, NULL, NULL, '', 2739.000000, 2, 1, '2025-10-13 16:10:40', '2025-10-18 18:03:18', '', 1, 1, NULL),
 
 
+(2289, '2025-10-13 18:51:00', 220, NULL, 0, NULL, NULL, '', 3680.000000, 2, 7, '2025-10-13 16:52:12', '2025-10-18 17:59:40', '', NULL, 1, NULL),
+(2290, '2025-10-13 21:09:00', 220, NULL, 0, NULL, NULL, '', 42970.050000, 1, 7, '2025-10-13 17:11:43', '2025-10-13 17:11:54', '', NULL, 1, NULL),
 
 
-(2223, '2025-10-11 15:34:00', 220, NULL, 0, NULL, NULL, '', 2100.000000, 'Validé', 7, '2025-10-11 13:36:02', '2025-10-18 18:02:00', '', NULL, 1, NULL),
+(2293, '2025-10-13 20:02:00', 220, NULL, 0, NULL, NULL, '', 453.000000, 2, 1, '2025-10-13 18:04:11', '2025-10-18 18:02:59', '', NULL, 1, NULL);
 
 
-(2226, '2025-10-11 15:48:00', 220, NULL, 0, NULL, NULL, '', 95.000000, 'Validé', 7, '2025-10-11 13:48:25', '2025-10-18 17:55:03', '', NULL, 1, NULL),
 
 
 
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -2241,6 +2248,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2332, '2025-10-14 16:44:00', 220, NULL, 0, NULL, NULL, '', 1328.040000, 2, 7, '2025-10-14 11:45:19', '2025-10-18 18:07:34', 'mahal', NULL, 1, NULL),
 
 
 
@@ -2264,14 +2272,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2286, '2025-10-13 19:10:00', 220, NULL, 0, NULL, NULL, '', 2739.000000, 'Validé', 1, '2025-10-13 16:10:40', '2025-10-18 18:03:18', '', 1, 1, NULL),
 
 
-(2289, '2025-10-13 18:51:00', 220, NULL, 0, NULL, NULL, '', 3680.000000, 'Validé', 7, '2025-10-13 16:52:12', '2025-10-18 17:59:40', '', NULL, 1, NULL),
-(2290, '2025-10-13 21:09:00', 220, NULL, 0, NULL, NULL, '', 42970.050000, 'En attente', 7, '2025-10-13 17:11:43', '2025-10-13 17:11:54', '', NULL, 1, NULL),
 
 
-(2293, '2025-10-13 20:02:00', 220, NULL, 0, NULL, NULL, '', 453.000000, 'Validé', 1, '2025-10-13 18:04:11', '2025-10-18 18:02:59', '', NULL, 1, NULL),
 
 
 
@@ -2280,7 +2284,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -2298,6 +2301,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2385, '2025-10-15 13:10:00', 220, NULL, 0, NULL, NULL, '', 1512.500000, 2, 7, '2025-10-15 10:10:36', '2025-10-18 18:08:03', '', NULL, 1, NULL),
 
 
 
@@ -2311,12 +2315,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2332, '2025-10-14 16:44:00', 220, NULL, 0, NULL, NULL, '', 1328.040000, 'Validé', 7, '2025-10-14 11:45:19', '2025-10-18 18:07:34', 'mahal', NULL, 1, NULL),
 
 
 
 
 
+(2404, '2025-10-15 21:34:00', 220, NULL, 0, NULL, NULL, 'hemdi', 4000.000000, 2, 7, '2025-10-15 17:35:35', '2026-04-08 10:56:47', '', 1, 1, 220),
 
 
 
@@ -2329,6 +2333,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2417, '2025-10-16 11:16:00', 220, NULL, 0, NULL, NULL, '', 2270.000000, 2, 7, '2025-10-16 08:16:42', '2025-10-18 18:14:04', '', NULL, 1, NULL),
 
 
 
@@ -2347,6 +2352,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2436, '2025-10-16 14:53:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 2, 7, '2025-10-16 12:54:11', '2025-10-18 18:09:13', '', NULL, 1, NULL),
 
 
 
@@ -2362,9 +2368,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2452, '2025-10-14 16:21:00', 220, NULL, 0, NULL, NULL, '', 2230.000000, 2, 1, '2025-10-16 17:20:06', '2025-12-22 11:03:40', 'houssayen wessewass ', 1, 1, NULL),
 
 
-(2385, '2025-10-15 13:10:00', 220, NULL, 0, NULL, NULL, '', 1512.500000, 'Validé', 7, '2025-10-15 10:10:36', '2025-10-18 18:08:03', '', NULL, 1, NULL),
 
 
 
@@ -2383,7 +2389,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2404, '2025-10-15 21:34:00', 220, NULL, 0, NULL, NULL, 'hemdi', 4000.000000, 'Validé', 7, '2025-10-15 17:35:35', '2026-04-08 10:56:47', '', 1, 1, 220),
 
 
 
@@ -2396,7 +2401,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2417, '2025-10-16 11:16:00', 220, NULL, 0, NULL, NULL, '', 2270.000000, 'Validé', 7, '2025-10-16 08:16:42', '2025-10-18 18:14:04', '', NULL, 1, NULL),
 
 
 
@@ -2415,7 +2419,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2436, '2025-10-16 14:53:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 'Validé', 7, '2025-10-16 12:54:11', '2025-10-18 18:09:13', '', NULL, 1, NULL),
 
 
 
@@ -2431,7 +2434,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2452, '2025-10-14 16:21:00', 220, NULL, 0, NULL, NULL, '', 2230.000000, 'Validé', 1, '2025-10-16 17:20:06', '2025-12-22 11:03:40', 'houssayen wessewass ', 1, 1, NULL),
+(2519, '2025-10-18 13:20:00', 220, NULL, 0, NULL, NULL, '', 450.000000, 2, 1, '2025-10-18 11:20:41', '2025-10-18 18:11:39', '', NULL, 1, NULL),
 
 
 
@@ -2450,6 +2453,27 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2538, '2025-10-08 19:18:00', 220, NULL, 0, NULL, NULL, '', 475.000000, 2, 10, '2025-10-18 18:18:53', '2025-10-18 18:19:00', '', NULL, 1, NULL),
+(2539, '2025-10-09 19:22:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 10, '2025-10-18 18:22:48', '2025-10-18 18:22:51', '', NULL, 1, NULL),
+(2540, '2025-10-09 19:23:00', 220, NULL, 0, NULL, NULL, '', 2340.000000, 2, 10, '2025-10-18 18:23:49', '2025-10-18 18:23:54', '', NULL, 1, NULL),
+(2541, '2025-10-11 19:24:00', 220, NULL, 0, NULL, NULL, '', 1310.000000, 2, 10, '2025-10-18 18:26:06', '2025-10-18 18:26:09', '', NULL, 1, NULL),
+(2542, '2025-10-14 19:26:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 2, 10, '2025-10-18 18:27:09', '2025-10-18 18:27:12', '', NULL, 1, NULL),
+(2543, '2025-10-15 19:27:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 2, 10, '2025-10-18 18:27:48', '2025-10-18 18:27:50', '', NULL, 1, NULL),
+(2544, '2025-10-15 19:28:00', 220, NULL, 0, NULL, NULL, '', 99.000000, 2, 10, '2025-10-18 18:28:40', '2025-10-18 18:28:42', '', NULL, 1, NULL),
+(2545, '2025-10-16 19:28:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 2, 10, '2025-10-18 18:29:16', '2025-10-18 18:29:18', '', NULL, 1, NULL),
+(2546, '2025-10-16 19:29:00', 220, NULL, 0, NULL, NULL, '', 165.000000, 2, 10, '2025-10-18 18:30:04', '2025-10-18 18:30:06', '', NULL, 1, NULL),
+(2547, '2025-10-17 19:30:00', 220, NULL, 0, NULL, NULL, '', 324.000000, 2, 10, '2025-10-18 18:31:12', '2025-10-18 18:31:14', '', NULL, 1, NULL),
+(2548, '2025-10-08 20:47:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 2, 10, '2025-10-18 18:48:07', '2025-12-22 11:02:54', '', 1, 1, NULL),
+(2549, '2025-10-09 20:48:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 2, 10, '2025-10-18 18:48:40', '2025-12-22 11:02:50', '', 1, 1, NULL),
+(2550, '2025-10-10 20:48:00', 220, NULL, 0, NULL, NULL, '', 430.000000, 2, 10, '2025-10-18 18:49:05', '2025-12-22 11:02:45', '', 1, 1, NULL),
+(2551, '2025-10-11 21:49:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 2, 10, '2025-10-18 18:49:33', '2025-12-22 11:02:42', '', 1, 1, NULL),
+(2552, '2025-10-11 20:49:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 2, 10, '2025-10-18 18:50:57', '2025-12-22 11:02:37', '', 1, 1, NULL),
+(2553, '2025-10-13 21:51:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 2, 10, '2025-10-18 18:52:14', '2025-12-22 11:02:14', '', 1, 1, NULL),
+(2554, '2025-10-14 20:53:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 2, 10, '2025-10-18 18:55:19', '2025-12-22 11:02:10', '', 1, 1, NULL),
+(2555, '2025-10-15 20:55:00', 220, NULL, 0, NULL, NULL, '', 450.000000, 2, 10, '2025-10-18 18:55:44', '2025-12-22 11:02:05', '', 1, 1, NULL),
+(2556, '2025-10-17 20:55:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 2, 10, '2025-10-18 18:56:17', '2025-12-22 11:02:00', '', 1, 1, NULL),
+(2557, '2025-10-18 20:56:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 2, 10, '2025-10-18 18:56:41', '2025-12-22 11:01:56', '', 1, 1, NULL),
+(2558, '2025-10-16 21:05:00', 220, NULL, 0, NULL, NULL, '', 260.000000, 2, 10, '2025-10-18 19:06:06', '2025-12-22 11:01:50', '', 1, 1, NULL),
 
 
 
@@ -2490,6 +2514,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2599, '2025-10-20 19:13:00', 220, NULL, 0, NULL, NULL, '', 256.000000, 2, 7, '2025-10-20 17:14:06', '2025-10-29 16:50:10', '', NULL, 1, NULL);
 
 
 
@@ -2497,7 +2522,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2519, '2025-10-18 13:20:00', 220, NULL, 0, NULL, NULL, '', 450.000000, 'Validé', 1, '2025-10-18 11:20:41', '2025-10-18 18:11:39', '', NULL, 1, NULL),
 
 
 
@@ -2516,30 +2540,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2538, '2025-10-08 19:18:00', 220, NULL, 0, NULL, NULL, '', 475.000000, 'Validé', 10, '2025-10-18 18:18:53', '2025-10-18 18:19:00', '', NULL, 1, NULL),
-(2539, '2025-10-09 19:22:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 10, '2025-10-18 18:22:48', '2025-10-18 18:22:51', '', NULL, 1, NULL),
-(2540, '2025-10-09 19:23:00', 220, NULL, 0, NULL, NULL, '', 2340.000000, 'Validé', 10, '2025-10-18 18:23:49', '2025-10-18 18:23:54', '', NULL, 1, NULL),
-(2541, '2025-10-11 19:24:00', 220, NULL, 0, NULL, NULL, '', 1310.000000, 'Validé', 10, '2025-10-18 18:26:06', '2025-10-18 18:26:09', '', NULL, 1, NULL),
-(2542, '2025-10-14 19:26:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 'Validé', 10, '2025-10-18 18:27:09', '2025-10-18 18:27:12', '', NULL, 1, NULL),
-(2543, '2025-10-15 19:27:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 'Validé', 10, '2025-10-18 18:27:48', '2025-10-18 18:27:50', '', NULL, 1, NULL),
-(2544, '2025-10-15 19:28:00', 220, NULL, 0, NULL, NULL, '', 99.000000, 'Validé', 10, '2025-10-18 18:28:40', '2025-10-18 18:28:42', '', NULL, 1, NULL),
-(2545, '2025-10-16 19:28:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 'Validé', 10, '2025-10-18 18:29:16', '2025-10-18 18:29:18', '', NULL, 1, NULL),
-(2546, '2025-10-16 19:29:00', 220, NULL, 0, NULL, NULL, '', 165.000000, 'Validé', 10, '2025-10-18 18:30:04', '2025-10-18 18:30:06', '', NULL, 1, NULL),
-(2547, '2025-10-17 19:30:00', 220, NULL, 0, NULL, NULL, '', 324.000000, 'Validé', 10, '2025-10-18 18:31:12', '2025-10-18 18:31:14', '', NULL, 1, NULL),
-(2548, '2025-10-08 20:47:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 'Validé', 10, '2025-10-18 18:48:07', '2025-12-22 11:02:54', '', 1, 1, NULL),
-(2549, '2025-10-09 20:48:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 'Validé', 10, '2025-10-18 18:48:40', '2025-12-22 11:02:50', '', 1, 1, NULL),
-(2550, '2025-10-10 20:48:00', 220, NULL, 0, NULL, NULL, '', 430.000000, 'Validé', 10, '2025-10-18 18:49:05', '2025-12-22 11:02:45', '', 1, 1, NULL),
-(2551, '2025-10-11 21:49:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 'Validé', 10, '2025-10-18 18:49:33', '2025-12-22 11:02:42', '', 1, 1, NULL),
-(2552, '2025-10-11 20:49:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 'Validé', 10, '2025-10-18 18:50:57', '2025-12-22 11:02:37', '', 1, 1, NULL),
-(2553, '2025-10-13 21:51:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 'Validé', 10, '2025-10-18 18:52:14', '2025-12-22 11:02:14', '', 1, 1, NULL),
-(2554, '2025-10-14 20:53:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 'Validé', 10, '2025-10-18 18:55:19', '2025-12-22 11:02:10', '', 1, 1, NULL),
-(2555, '2025-10-15 20:55:00', 220, NULL, 0, NULL, NULL, '', 450.000000, 'Validé', 10, '2025-10-18 18:55:44', '2025-12-22 11:02:05', '', 1, 1, NULL),
-(2556, '2025-10-17 20:55:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 'Validé', 10, '2025-10-18 18:56:17', '2025-12-22 11:02:00', '', 1, 1, NULL),
-(2557, '2025-10-18 20:56:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 'Validé', 10, '2025-10-18 18:56:41', '2025-12-22 11:01:56', '', 1, 1, NULL),
-(2558, '2025-10-16 21:05:00', 220, NULL, 0, NULL, NULL, '', 260.000000, 'Validé', 10, '2025-10-18 19:06:06', '2025-12-22 11:01:50', '', 1, 1, NULL),
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -2577,7 +2581,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2599, '2025-10-20 19:13:00', 220, NULL, 0, NULL, NULL, '', 256.000000, 'Validé', 7, '2025-10-20 17:14:06', '2025-10-29 16:50:10', '', NULL, 1, NULL),
 
 
 
@@ -2604,15 +2607,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2691, '2025-10-22 13:35:00', NULL, NULL, 0, NULL, NULL, '', 625.000000, 6, 7, '2025-10-22 11:39:00', '2025-11-18 16:06:51', '', NULL, 1, NULL),
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
 
 
 
+(2701, '2025-10-22 19:25:00', 220, NULL, 0, NULL, NULL, '', 7070.000000, 2, 7, '2025-10-22 14:36:46', '2025-10-29 16:35:34', '', NULL, 1, NULL),
 
 
 
@@ -2623,6 +2627,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2713, '2025-10-22 18:03:00', 220, NULL, 0, NULL, NULL, '', 134.640000, 2, 7, '2025-10-22 16:03:37', '2025-10-29 16:31:33', '', NULL, 1, NULL),
 
 
 
@@ -2670,7 +2675,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2691, '2025-10-22 13:35:00', NULL, NULL, 0, NULL, NULL, '', 625.000000, 'Annulé', 7, '2025-10-22 11:39:00', '2025-11-18 16:06:51', '', NULL, 1, NULL),
 
 
 
@@ -2679,7 +2683,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2701, '2025-10-22 19:25:00', 220, NULL, 0, NULL, NULL, '', 7070.000000, 'Validé', 7, '2025-10-22 14:36:46', '2025-10-29 16:35:34', '', NULL, 1, NULL),
 
 
 
@@ -2690,7 +2693,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2713, '2025-10-22 18:03:00', 220, NULL, 0, NULL, NULL, '', 134.640000, 'Validé', 7, '2025-10-22 16:03:37', '2025-10-29 16:31:33', '', NULL, 1, NULL),
 
 
 
@@ -2704,6 +2706,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2793, '2025-10-24 13:02:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 7, '2025-10-24 10:03:10', '2025-10-29 16:40:51', '', NULL, 1, NULL),
 
 
 
@@ -2769,7 +2772,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2793, '2025-10-24 13:02:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 7, '2025-10-24 10:03:10', '2025-10-29 16:40:51', '', NULL, 1, NULL),
 
 
 
@@ -2802,6 +2804,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2891, '2025-10-27 11:55:00', 220, NULL, 0, NULL, NULL, '', 6600.000000, 2, 1, '2025-10-27 09:56:17', '2025-10-29 16:45:11', '', NULL, 1, NULL),
 
 
 
@@ -2817,6 +2820,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2907, '2025-10-27 16:26:00', 220, NULL, 0, NULL, NULL, '', 5257.000000, 2, 11, '2025-10-27 12:31:15', '2025-10-29 16:37:00', '', NULL, 1, NULL),
 
 
 
@@ -2829,6 +2833,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(2920, '2025-10-27 20:09:00', 220, NULL, 0, NULL, NULL, '', 1260.000000, 2, 7, '2025-10-27 17:10:01', '2025-10-29 16:41:18', '', NULL, 1, NULL);
 
 
 
@@ -2865,9 +2870,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
-(2891, '2025-10-27 11:55:00', 220, NULL, 0, NULL, NULL, '', 6600.000000, 'Validé', 1, '2025-10-27 09:56:17', '2025-10-29 16:45:11', '', NULL, 1, NULL),
 
 
 
@@ -2883,7 +2888,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2907, '2025-10-27 16:26:00', 220, NULL, 0, NULL, NULL, '', 5257.000000, 'Validé', 11, '2025-10-27 12:31:15', '2025-10-29 16:37:00', '', NULL, 1, NULL),
 
 
 
@@ -2896,13 +2900,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2920, '2025-10-27 20:09:00', 220, NULL, 0, NULL, NULL, '', 1260.000000, 'Validé', 7, '2025-10-27 17:10:01', '2025-10-29 16:41:18', '', NULL, 1, NULL),
 
 
 
 
 
 
+(2992, '2025-10-29 15:44:00', 220, NULL, 0, NULL, NULL, '', 3440.000000, 2, 7, '2025-10-29 10:44:20', '2025-10-30 12:50:05', '', NULL, 1, NULL),
 
 
 
@@ -2913,6 +2917,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3003, '2025-10-29 14:59:00', NULL, NULL, 0, NULL, NULL, '', 900.000000, 6, 7, '2025-10-29 13:06:59', '2025-10-29 14:40:59', '', NULL, 1, NULL),
 
 
 
@@ -2920,6 +2925,18 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3011, '2025-10-29 17:14:00', 220, NULL, 0, NULL, NULL, '', 460.000000, 2, 10, '2025-10-29 16:15:36', '2025-10-29 17:11:43', '', NULL, 1, NULL),
+(3012, '2025-10-20 18:12:00', 220, NULL, 0, NULL, NULL, '', 255.000000, 2, 10, '2025-10-29 17:12:58', '2025-10-29 17:13:01', '', NULL, 1, NULL),
+(3013, '2025-10-25 18:28:00', 220, NULL, 0, NULL, NULL, '', 4575.000000, 2, 10, '2025-10-29 17:29:22', '2025-10-29 17:29:36', '', NULL, 1, NULL),
+(3014, '2025-10-29 19:33:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 2, 10, '2025-10-29 17:33:31', '2025-12-22 10:29:44', '', 1, 1, NULL),
+(3015, '2025-10-20 19:33:00', 220, NULL, 0, NULL, NULL, '', 510.000000, 2, 10, '2025-10-29 17:34:09', '2025-12-22 10:29:40', '', 1, 1, NULL),
+(3016, '2025-10-21 19:34:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 2, 10, '2025-10-29 17:34:45', '2025-12-22 10:29:03', '', 1, 1, NULL),
+(3017, '2025-10-22 19:34:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 2, 10, '2025-10-29 17:35:11', '2025-12-22 10:28:58', '', 1, 1, NULL),
+(3018, '2025-10-23 19:35:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 2, 10, '2025-10-29 17:35:45', '2025-12-22 10:28:52', '', 1, 1, NULL),
+(3019, '2025-10-24 19:35:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 2, 10, '2025-10-29 17:36:14', '2025-12-22 10:28:45', '', 1, 1, NULL),
+(3020, '2025-10-28 19:36:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 2, 10, '2025-10-29 17:36:40', '2025-12-22 10:28:41', '', 1, 1, NULL),
+(3021, '2025-10-27 20:36:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 2, 10, '2025-10-29 17:37:02', '2025-12-22 10:28:35', '', 1, 1, NULL),
+(3022, '2025-10-25 19:37:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 2, 10, '2025-10-29 17:37:35', '2025-12-22 10:28:28', '', 1, 1, NULL),
 
 
 
@@ -2933,7 +2950,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -2960,6 +2976,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3062, '2025-10-30 18:27:00', 220, NULL, 0, NULL, NULL, '', 4910.500000, 2, 7, '2025-10-30 15:31:14', '2025-11-12 18:26:37', '', NULL, 1, NULL),
 
 
 
@@ -2969,7 +2986,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(2992, '2025-10-29 15:44:00', 220, NULL, 0, NULL, NULL, '', 3440.000000, 'Validé', 7, '2025-10-29 10:44:20', '2025-10-30 12:50:05', '', NULL, 1, NULL),
 
 
 
@@ -2980,7 +2996,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3003, '2025-10-29 14:59:00', NULL, NULL, 0, NULL, NULL, '', 900.000000, 'Annulé', 7, '2025-10-29 13:06:59', '2025-10-29 14:40:59', '', NULL, 1, NULL),
 
 
 
@@ -2988,18 +3003,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3011, '2025-10-29 17:14:00', 220, NULL, 0, NULL, NULL, '', 460.000000, 'Validé', 10, '2025-10-29 16:15:36', '2025-10-29 17:11:43', '', NULL, 1, NULL),
-(3012, '2025-10-20 18:12:00', 220, NULL, 0, NULL, NULL, '', 255.000000, 'Validé', 10, '2025-10-29 17:12:58', '2025-10-29 17:13:01', '', NULL, 1, NULL),
-(3013, '2025-10-25 18:28:00', 220, NULL, 0, NULL, NULL, '', 4575.000000, 'Validé', 10, '2025-10-29 17:29:22', '2025-10-29 17:29:36', '', NULL, 1, NULL),
-(3014, '2025-10-29 19:33:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 'Validé', 10, '2025-10-29 17:33:31', '2025-12-22 10:29:44', '', 1, 1, NULL),
-(3015, '2025-10-20 19:33:00', 220, NULL, 0, NULL, NULL, '', 510.000000, 'Validé', 10, '2025-10-29 17:34:09', '2025-12-22 10:29:40', '', 1, 1, NULL),
-(3016, '2025-10-21 19:34:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 'Validé', 10, '2025-10-29 17:34:45', '2025-12-22 10:29:03', '', 1, 1, NULL),
-(3017, '2025-10-22 19:34:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 'Validé', 10, '2025-10-29 17:35:11', '2025-12-22 10:28:58', '', 1, 1, NULL),
-(3018, '2025-10-23 19:35:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 'Validé', 10, '2025-10-29 17:35:45', '2025-12-22 10:28:52', '', 1, 1, NULL),
-(3019, '2025-10-24 19:35:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 'Validé', 10, '2025-10-29 17:36:14', '2025-12-22 10:28:45', '', 1, 1, NULL),
-(3020, '2025-10-28 19:36:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 'Validé', 10, '2025-10-29 17:36:40', '2025-12-22 10:28:41', '', 1, 1, NULL),
-(3021, '2025-10-27 20:36:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 'Validé', 10, '2025-10-29 17:37:02', '2025-12-22 10:28:35', '', 1, 1, NULL),
-(3022, '2025-10-25 19:37:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 'Validé', 10, '2025-10-29 17:37:35', '2025-12-22 10:28:28', '', 1, 1, NULL),
 
 
 
@@ -3039,9 +3042,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3062, '2025-10-30 18:27:00', 220, NULL, 0, NULL, NULL, '', 4910.500000, 'Validé', 7, '2025-10-30 15:31:14', '2025-11-12 18:26:37', '', NULL, 1, NULL),
 
 
+(3130, '2025-11-01 11:44:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 2, 11, '2025-11-01 09:44:45', '2025-11-12 17:40:34', '', NULL, 1, NULL),
 
 
 
@@ -3107,12 +3110,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3130, '2025-11-01 11:44:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 'Validé', 11, '2025-11-01 09:44:45', '2025-11-12 17:40:34', '', NULL, 1, NULL),
 
 
 
 
 
+(3202, '2025-11-03 14:24:00', 220, NULL, 0, NULL, NULL, '', 477.000000, 2, 11, '2025-11-03 10:25:27', '2025-11-12 18:03:52', '', NULL, 1, NULL),
 
 
 
@@ -3126,6 +3129,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3216, '2025-11-03 15:03:00', 220, NULL, 0, NULL, NULL, '', 163.000000, 2, 11, '2025-11-03 13:05:41', '2025-11-12 18:04:47', '', NULL, 1, NULL),
+(3217, '2025-11-03 14:37:00', 220, NULL, 0, NULL, NULL, '', 114.650000, 1, 11, '2025-11-03 13:39:39', '2025-11-03 13:39:39', '', NULL, 1, NULL),
 
 
 
@@ -3178,11 +3183,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3202, '2025-11-03 14:24:00', 220, NULL, 0, NULL, NULL, '', 477.000000, 'Validé', 11, '2025-11-03 10:25:27', '2025-11-12 18:03:52', '', NULL, 1, NULL),
+(3270, '2025-11-04 18:13:00', 220, NULL, 0, NULL, NULL, '', 402.000000, 2, 11, '2025-11-04 16:13:49', '2025-11-12 17:52:31', '', NULL, 1, NULL),
 
 
 
 
+(3275, '2025-11-05 09:35:00', 220, NULL, 0, NULL, NULL, '', 5700.000000, 2, 11, '2025-11-05 07:37:07', '2025-11-12 17:51:41', '', NULL, 1, NULL);
 
 
 
@@ -3191,9 +3197,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
-(3216, '2025-11-03 15:03:00', 220, NULL, 0, NULL, NULL, '', 163.000000, 'Validé', 11, '2025-11-03 13:05:41', '2025-11-12 18:04:47', '', NULL, 1, NULL),
-(3217, '2025-11-03 14:37:00', 220, NULL, 0, NULL, NULL, '', 114.650000, 'En attente', 11, '2025-11-03 13:39:39', '2025-11-03 13:39:39', '', NULL, 1, NULL),
 
 
 
@@ -3246,12 +3251,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3270, '2025-11-04 18:13:00', 220, NULL, 0, NULL, NULL, '', 402.000000, 'Validé', 11, '2025-11-04 16:13:49', '2025-11-12 17:52:31', '', NULL, 1, NULL),
 
 
 
 
-(3275, '2025-11-05 09:35:00', 220, NULL, 0, NULL, NULL, '', 5700.000000, 'Validé', 11, '2025-11-05 07:37:07', '2025-11-12 17:51:41', '', NULL, 1, NULL),
 
 
 
@@ -3260,7 +3263,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
+(3349, '2025-11-06 14:19:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 2, 1, '2025-11-06 12:19:34', '2025-11-06 15:58:14', '', NULL, 1, NULL),
 
 
 
@@ -3290,6 +3293,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3379, '2025-11-05 16:58:00', 220, NULL, 0, NULL, NULL, '', 1320.000000, 2, 11, '2025-11-06 15:59:32', '2025-11-06 15:59:36', '', NULL, 1, NULL),
 
 
 
@@ -3326,7 +3330,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3349, '2025-11-06 14:19:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 'Validé', 1, '2025-11-06 12:19:34', '2025-11-06 15:58:14', '', NULL, 1, NULL),
 
 
 
@@ -3344,6 +3347,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3433, '2025-11-07 18:37:00', 220, NULL, 0, NULL, NULL, '', 53064.000000, 2, 11, '2025-11-07 16:37:46', '2025-11-12 17:38:06', '', NULL, 1, NULL),
 
 
 
@@ -3356,7 +3360,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3379, '2025-11-05 16:58:00', 220, NULL, 0, NULL, NULL, '', 1320.000000, 'Validé', 11, '2025-11-06 15:59:32', '2025-11-06 15:59:36', '', NULL, 1, NULL),
 
 
 
@@ -3407,10 +3410,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3496, '2025-11-10 10:45:00', 220, NULL, 0, NULL, NULL, '', 2650.000000, 2, 1, '2025-11-10 08:46:07', '2025-11-12 17:26:27', '', NULL, 1, NULL),
 
 
 
-(3433, '2025-11-07 18:37:00', 220, NULL, 0, NULL, NULL, '', 53064.000000, 'Validé', 11, '2025-11-07 16:37:46', '2025-11-12 17:38:06', '', NULL, 1, NULL),
 
 
 
@@ -3436,6 +3439,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3525, '2025-11-10 16:23:00', 220, NULL, 0, NULL, NULL, '', 390.000000, 2, 11, '2025-11-10 14:23:33', '2025-11-12 17:27:30', '', NULL, 1, NULL),
 
 
 
@@ -3473,7 +3477,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3496, '2025-11-10 10:45:00', 220, NULL, 0, NULL, NULL, '', 2650.000000, 'Validé', 1, '2025-11-10 08:46:07', '2025-11-12 17:26:27', '', NULL, 1, NULL),
 
 
 
@@ -3496,13 +3499,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3585, '2025-11-11 14:50:00', 220, NULL, 0, NULL, NULL, '', 520.000000, 2, 1, '2025-11-11 12:50:48', '2025-11-12 17:16:49', '', NULL, 1, NULL);
 
 
 
 
 
 
-(3525, '2025-11-10 16:23:00', 220, NULL, 0, NULL, NULL, '', 390.000000, 'Validé', 11, '2025-11-10 14:23:33', '2025-11-12 17:27:30', '', NULL, 1, NULL),
 
 
 
@@ -3519,6 +3522,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -3540,18 +3544,47 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3630, '2025-11-12 17:11:00', 220, NULL, 0, NULL, NULL, '', 850.000000, 2, 11, '2025-11-12 13:12:07', '2025-12-22 10:26:20', '', 1, 1, NULL),
 
 
+(3633, '2025-11-12 15:34:00', 220, NULL, 0, NULL, NULL, '', 792.000000, 2, 10, '2025-11-12 14:36:49', '2025-11-12 16:01:09', '', NULL, 1, NULL),
 
 
 
+(3637, '2025-11-12 17:02:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 2, 10, '2025-11-12 16:02:49', '2025-11-12 16:02:52', '', NULL, 1, NULL),
 
 
 
 
 
+(3643, '2025-11-12 18:45:00', 220, NULL, 0, NULL, NULL, '', 335.000000, 2, 11, '2025-11-12 16:46:16', '2025-11-12 17:16:13', '', NULL, 1, NULL),
 
+(3645, '2025-11-11 18:18:00', 220, NULL, 0, NULL, NULL, '', 3300.000000, 2, 10, '2025-11-12 17:19:50', '2025-11-12 17:20:00', '', NULL, 1, NULL),
+(3646, '2025-11-11 18:20:00', 220, NULL, 0, NULL, NULL, '', 1560.000000, 2, 10, '2025-11-12 17:20:41', '2025-11-12 17:20:44', '', NULL, 1, NULL),
+(3647, '2025-11-11 18:21:00', 220, NULL, 0, NULL, NULL, '', 4740.000000, 2, 10, '2025-11-12 17:21:46', '2025-11-12 17:21:48', '', NULL, 1, NULL),
+(3648, '2025-11-11 18:23:00', 220, NULL, 0, NULL, NULL, '', 5520.000000, 2, 10, '2025-11-12 17:24:24', '2025-11-12 17:24:26', '', NULL, 1, NULL),
+(3649, '2025-11-08 18:28:00', 220, NULL, 0, NULL, NULL, '', 3440.000000, 2, 10, '2025-11-12 17:28:56', '2025-11-12 17:29:00', '', NULL, 1, NULL),
+(3650, '2025-11-08 19:33:00', 220, NULL, 0, NULL, NULL, '', 198.000000, 2, 10, '2025-11-12 17:33:52', '2025-11-12 17:34:09', '', NULL, 1, NULL),
+(3651, '2025-11-08 18:34:00', 220, NULL, 0, NULL, NULL, '', 625.000000, 2, 10, '2025-11-12 17:35:01', '2025-11-12 17:35:04', '', NULL, 1, NULL),
+(3652, '2025-11-07 18:38:00', 220, NULL, 0, NULL, NULL, '', 2944.000000, 2, 10, '2025-11-12 17:39:08', '2025-11-12 17:39:12', '', NULL, 1, NULL),
+(3653, '2025-11-05 18:43:00', 220, NULL, 0, NULL, NULL, '', 10600.000000, 2, 10, '2025-11-12 17:43:59', '2025-11-12 17:44:04', '', NULL, 1, NULL),
+(3654, '2025-11-04 18:53:00', 220, NULL, 0, NULL, NULL, '', 2400.000000, 2, 10, '2025-11-12 17:53:42', '2025-11-12 17:53:45', '', NULL, 1, NULL),
+(3655, '2025-11-01 19:11:00', 220, NULL, 0, NULL, NULL, '', 1060.000000, 2, 10, '2025-11-12 18:12:01', '2025-11-12 18:12:07', '', NULL, 1, NULL),
+(3656, '2025-11-01 19:12:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 10, '2025-11-12 18:12:56', '2025-11-12 18:12:58', '', NULL, 1, NULL),
 
+(3658, '2025-10-30 19:45:00', 220, NULL, 0, NULL, NULL, '', 41124.000000, 2, 10, '2025-11-12 18:45:55', '2025-11-12 18:58:31', '', NULL, 1, NULL),
+(3659, '2025-10-31 20:58:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 2, 10, '2025-11-12 19:20:42', '2025-12-22 10:22:57', '', 1, 1, NULL),
+(3660, '2025-11-01 21:21:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 2, 10, '2025-11-12 19:21:48', '2025-12-22 10:22:51', '', 1, 1, NULL),
+(3661, '2025-11-03 21:22:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 2, 10, '2025-11-12 19:22:33', '2025-12-22 10:22:46', '', 1, 1, NULL),
+(3662, '2025-11-04 21:22:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 2, 10, '2025-11-12 19:23:45', '2025-12-22 10:22:40', '', 1, 1, NULL),
+(3663, '2025-11-05 21:24:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 2, 10, '2025-11-12 19:26:25', '2025-12-22 10:22:34', '', 1, 1, NULL),
+(3664, '2025-11-06 21:26:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 10, '2025-11-12 19:27:32', '2025-12-22 10:22:29', '', 1, 1, NULL),
+(3665, '2025-11-07 21:27:00', 220, NULL, 0, NULL, NULL, '', 50.000000, 2, 10, '2025-11-12 19:28:08', '2025-12-22 10:22:23', '', 1, 1, NULL),
+(3666, '2025-11-08 21:28:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 2, 10, '2025-11-12 19:28:43', '2025-12-22 10:22:16', '', 1, 1, NULL),
+(3667, '2025-11-10 21:28:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 2, 10, '2025-11-12 19:31:52', '2025-12-22 10:22:12', '', 1, 1, NULL),
+(3668, '2025-11-12 21:32:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 2, 10, '2025-11-12 19:32:27', '2025-12-22 10:22:08', '', 1, 1, NULL),
+(3669, '2025-11-11 21:32:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 2, 10, '2025-11-12 19:32:57', '2025-12-22 10:22:02', '', 1, 1, NULL),
+(3670, '2025-10-30 21:33:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 2, 10, '2025-11-12 19:33:26', '2025-12-22 10:21:55', '', 1, 1, NULL),
 
 
 
@@ -3562,7 +3595,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3585, '2025-11-11 14:50:00', 220, NULL, 0, NULL, NULL, '', 520.000000, 'Validé', 1, '2025-11-11 12:50:48', '2025-11-12 17:16:49', '', NULL, 1, NULL),
 
 
 
@@ -3585,7 +3617,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -3607,47 +3638,18 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3630, '2025-11-12 17:11:00', 220, NULL, 0, NULL, NULL, '', 850.000000, 'Validé', 11, '2025-11-12 13:12:07', '2025-12-22 10:26:20', '', 1, 1, NULL),
 
 
-(3633, '2025-11-12 15:34:00', 220, NULL, 0, NULL, NULL, '', 792.000000, 'Validé', 10, '2025-11-12 14:36:49', '2025-11-12 16:01:09', '', NULL, 1, NULL),
 
 
 
-(3637, '2025-11-12 17:02:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 'Validé', 10, '2025-11-12 16:02:49', '2025-11-12 16:02:52', '', NULL, 1, NULL),
 
 
 
 
 
-(3643, '2025-11-12 18:45:00', 220, NULL, 0, NULL, NULL, '', 335.000000, 'Validé', 11, '2025-11-12 16:46:16', '2025-11-12 17:16:13', '', NULL, 1, NULL),
 
-(3645, '2025-11-11 18:18:00', 220, NULL, 0, NULL, NULL, '', 3300.000000, 'Validé', 10, '2025-11-12 17:19:50', '2025-11-12 17:20:00', '', NULL, 1, NULL),
-(3646, '2025-11-11 18:20:00', 220, NULL, 0, NULL, NULL, '', 1560.000000, 'Validé', 10, '2025-11-12 17:20:41', '2025-11-12 17:20:44', '', NULL, 1, NULL),
-(3647, '2025-11-11 18:21:00', 220, NULL, 0, NULL, NULL, '', 4740.000000, 'Validé', 10, '2025-11-12 17:21:46', '2025-11-12 17:21:48', '', NULL, 1, NULL),
-(3648, '2025-11-11 18:23:00', 220, NULL, 0, NULL, NULL, '', 5520.000000, 'Validé', 10, '2025-11-12 17:24:24', '2025-11-12 17:24:26', '', NULL, 1, NULL),
-(3649, '2025-11-08 18:28:00', 220, NULL, 0, NULL, NULL, '', 3440.000000, 'Validé', 10, '2025-11-12 17:28:56', '2025-11-12 17:29:00', '', NULL, 1, NULL),
-(3650, '2025-11-08 19:33:00', 220, NULL, 0, NULL, NULL, '', 198.000000, 'Validé', 10, '2025-11-12 17:33:52', '2025-11-12 17:34:09', '', NULL, 1, NULL),
-(3651, '2025-11-08 18:34:00', 220, NULL, 0, NULL, NULL, '', 625.000000, 'Validé', 10, '2025-11-12 17:35:01', '2025-11-12 17:35:04', '', NULL, 1, NULL),
-(3652, '2025-11-07 18:38:00', 220, NULL, 0, NULL, NULL, '', 2944.000000, 'Validé', 10, '2025-11-12 17:39:08', '2025-11-12 17:39:12', '', NULL, 1, NULL),
-(3653, '2025-11-05 18:43:00', 220, NULL, 0, NULL, NULL, '', 10600.000000, 'Validé', 10, '2025-11-12 17:43:59', '2025-11-12 17:44:04', '', NULL, 1, NULL),
-(3654, '2025-11-04 18:53:00', 220, NULL, 0, NULL, NULL, '', 2400.000000, 'Validé', 10, '2025-11-12 17:53:42', '2025-11-12 17:53:45', '', NULL, 1, NULL),
-(3655, '2025-11-01 19:11:00', 220, NULL, 0, NULL, NULL, '', 1060.000000, 'Validé', 10, '2025-11-12 18:12:01', '2025-11-12 18:12:07', '', NULL, 1, NULL),
-(3656, '2025-11-01 19:12:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 10, '2025-11-12 18:12:56', '2025-11-12 18:12:58', '', NULL, 1, NULL),
 
-(3658, '2025-10-30 19:45:00', 220, NULL, 0, NULL, NULL, '', 41124.000000, 'Validé', 10, '2025-11-12 18:45:55', '2025-11-12 18:58:31', '', NULL, 1, NULL),
-(3659, '2025-10-31 20:58:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 'Validé', 10, '2025-11-12 19:20:42', '2025-12-22 10:22:57', '', 1, 1, NULL),
-(3660, '2025-11-01 21:21:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 'Validé', 10, '2025-11-12 19:21:48', '2025-12-22 10:22:51', '', 1, 1, NULL),
-(3661, '2025-11-03 21:22:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 'Validé', 10, '2025-11-12 19:22:33', '2025-12-22 10:22:46', '', 1, 1, NULL),
-(3662, '2025-11-04 21:22:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 'Validé', 10, '2025-11-12 19:23:45', '2025-12-22 10:22:40', '', 1, 1, NULL),
-(3663, '2025-11-05 21:24:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 'Validé', 10, '2025-11-12 19:26:25', '2025-12-22 10:22:34', '', 1, 1, NULL),
-(3664, '2025-11-06 21:26:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 10, '2025-11-12 19:27:32', '2025-12-22 10:22:29', '', 1, 1, NULL),
-(3665, '2025-11-07 21:27:00', 220, NULL, 0, NULL, NULL, '', 50.000000, 'Validé', 10, '2025-11-12 19:28:08', '2025-12-22 10:22:23', '', 1, 1, NULL),
-(3666, '2025-11-08 21:28:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 'Validé', 10, '2025-11-12 19:28:43', '2025-12-22 10:22:16', '', 1, 1, NULL),
-(3667, '2025-11-10 21:28:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 'Validé', 10, '2025-11-12 19:31:52', '2025-12-22 10:22:12', '', 1, 1, NULL),
-(3668, '2025-11-12 21:32:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 'Validé', 10, '2025-11-12 19:32:27', '2025-12-22 10:22:08', '', 1, 1, NULL),
-(3669, '2025-11-11 21:32:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 'Validé', 10, '2025-11-12 19:32:57', '2025-12-22 10:22:02', '', 1, 1, NULL),
-(3670, '2025-10-30 21:33:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 'Validé', 10, '2025-11-12 19:33:26', '2025-12-22 10:21:55', '', 1, 1, NULL),
 
 
 
@@ -3657,6 +3659,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3745, '2025-11-14 16:23:00', 220, NULL, 0, NULL, NULL, '', 5950.000000, 2, 10, '2025-11-14 14:23:37', '2025-11-25 17:48:08', 'Ø¬ÙˆØ§Ù†', NULL, 1, NULL),
 
 
 
@@ -3722,11 +3725,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3745, '2025-11-14 16:23:00', 220, NULL, 0, NULL, NULL, '', 5950.000000, 'Validé', 10, '2025-11-14 14:23:37', '2025-11-25 17:48:08', 'جوان', NULL, 1, NULL),
 
 
 
 
+(3816, '2025-11-17 12:41:00', 220, NULL, 0, NULL, NULL, '', 675.000000, 2, 11, '2025-11-17 10:41:40', '2025-11-25 17:40:13', '', NULL, 1, NULL),
 
 
 
@@ -3792,7 +3795,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3816, '2025-11-17 12:41:00', 220, NULL, 0, NULL, NULL, '', 675.000000, 'Validé', 11, '2025-11-17 10:41:40', '2025-11-25 17:40:13', '', NULL, 1, NULL),
 
 
 
@@ -3808,6 +3810,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3897, '2025-11-18 17:09:00', 220, NULL, 0, NULL, NULL, '', 106.000000, 2, 11, '2025-11-18 13:09:36', '2025-11-25 16:49:29', 'ali zefat', NULL, 1, NULL),
 
 
 
@@ -3818,6 +3821,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(3908, '2025-11-18 19:20:00', 220, NULL, 0, NULL, NULL, '', 8730.000000, 1, 11, '2025-11-18 16:21:27', '2025-11-18 17:08:25', '', NULL, 1, NULL);
 
 
 
@@ -3844,6 +3848,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -3873,7 +3878,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3897, '2025-11-18 17:09:00', 220, NULL, 0, NULL, NULL, '', 106.000000, 'Validé', 11, '2025-11-18 13:09:36', '2025-11-25 16:49:29', 'ali zefat', NULL, 1, NULL),
 
 
 
@@ -3884,7 +3888,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(3908, '2025-11-18 19:20:00', 220, NULL, 0, NULL, NULL, '', 8730.000000, 'En attente', 11, '2025-11-18 16:21:27', '2025-11-18 17:08:25', '', NULL, 1, NULL),
 
 
 
@@ -3911,7 +3914,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -3939,6 +3941,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4028, '2025-11-21 10:27:00', 220, NULL, 0, NULL, NULL, '', 325.000000, 6, 11, '2025-11-21 08:28:07', '2025-11-25 18:59:30', '', NULL, 1, NULL),
 
 
 
@@ -3957,6 +3960,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4047, '2025-11-21 14:10:00', 220, NULL, 0, NULL, NULL, '', 3300.000000, 2, 11, '2025-11-21 11:10:26', '2025-12-22 10:21:14', '', 1, 1, NULL),
 
 
 
@@ -4004,7 +4008,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4028, '2025-11-21 10:27:00', 220, NULL, 0, NULL, NULL, '', 325.000000, 'Annulé', 11, '2025-11-21 08:28:07', '2025-11-25 18:59:30', '', NULL, 1, NULL),
 
 
 
@@ -4023,7 +4026,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4047, '2025-11-21 14:10:00', 220, NULL, 0, NULL, NULL, '', 3300.000000, 'Validé', 11, '2025-11-21 11:10:26', '2025-12-22 10:21:14', '', 1, 1, NULL),
 
 
 
@@ -4079,6 +4081,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4168, '2025-11-24 14:02:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 2, 11, '2025-11-24 12:04:11', '2025-11-25 16:47:01', '', NULL, 1, NULL),
 
 
 
@@ -4109,6 +4112,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4199, '2025-11-25 12:08:00', 220, NULL, 0, NULL, NULL, '', 41538.000000, 2, 11, '2025-11-25 08:09:37', '2025-11-25 16:37:38', '', NULL, 1, NULL),
 
 
 
@@ -4144,7 +4148,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4168, '2025-11-24 14:02:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 'Validé', 11, '2025-11-24 12:04:11', '2025-11-25 16:47:01', '', NULL, 1, NULL),
 
 
 
@@ -4153,6 +4156,25 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4244, '2025-11-18 18:56:00', 220, NULL, 0, NULL, NULL, '', 1650.000000, 2, 11, '2025-11-25 17:57:03', '2025-11-25 17:57:19', '', NULL, 1, NULL),
+(4245, '2025-11-20 18:57:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 11, '2025-11-25 17:57:44', '2025-11-25 17:57:47', '', NULL, 1, NULL),
+(4246, '2025-11-21 18:58:00', 220, NULL, 0, NULL, NULL, '', 3300.000000, 2, 11, '2025-11-25 17:58:37', '2025-11-25 17:58:39', '', NULL, 1, NULL),
+(4247, '2025-11-22 18:58:00', 220, NULL, 0, NULL, NULL, '', 780.000000, 2, 11, '2025-11-25 17:59:10', '2025-11-25 17:59:12', '', NULL, 1, NULL),
+(4248, '2025-11-25 18:59:00', 220, NULL, 0, NULL, NULL, '', 3300.000000, 2, 11, '2025-11-25 17:59:35', '2025-11-25 17:59:38', '', NULL, 1, NULL),
+(4249, '2025-11-25 18:59:00', 220, NULL, 0, NULL, NULL, '', 1300.000000, 2, 11, '2025-11-25 18:00:05', '2025-11-25 18:00:14', '', NULL, 1, NULL),
+(4250, '2025-11-17 20:14:00', 220, NULL, 0, NULL, NULL, '', 4575.000000, 2, 11, '2025-11-25 18:18:02', '2025-11-25 18:20:32', '', NULL, 1, NULL),
+(4251, '2025-11-21 20:20:00', 220, NULL, 0, NULL, NULL, '', 325.000000, 2, 11, '2025-11-25 18:21:21', '2025-12-22 10:20:19', '', 1, 1, NULL),
+(4252, '2025-11-13 20:22:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 2, 11, '2025-11-25 18:23:11', '2025-12-22 10:20:10', '', 1, 1, NULL),
+(4253, '2025-11-14 20:23:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 2, 11, '2025-11-25 18:24:15', '2025-12-22 10:20:06', '', 1, 1, NULL),
+(4254, '2025-11-15 20:24:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 2, 11, '2025-11-25 18:24:53', '2025-12-22 10:20:01', '', 1, 1, NULL),
+(4255, '2025-11-17 20:25:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 11, '2025-11-25 18:25:35', '2025-12-22 10:19:57', '', 1, 1, NULL),
+(4256, '2025-11-18 20:46:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 2, 10, '2025-11-25 18:47:16', '2025-12-22 10:19:52', '', 1, 1, NULL),
+(4257, '2025-11-19 20:47:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 10, '2025-11-25 18:47:58', '2025-12-22 10:19:48', '', 1, 1, NULL),
+(4258, '2025-11-20 20:48:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 2, 10, '2025-11-25 18:48:49', '2025-12-22 10:19:43', '', 1, 1, NULL),
+(4259, '2025-11-22 20:49:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 2, 10, '2025-11-25 18:49:39', '2025-12-22 10:19:37', '', 1, 1, NULL),
+(4260, '2025-11-24 20:49:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 2, 10, '2025-11-25 18:50:22', '2025-12-22 10:19:32', '', 1, 1, NULL),
+(4261, '2025-11-25 20:50:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 2, 10, '2025-11-25 18:50:59', '2025-12-22 10:19:26', '', 1, 1, NULL);
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -4175,7 +4197,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4199, '2025-11-25 12:08:00', 220, NULL, 0, NULL, NULL, '', 41538.000000, 'Validé', 11, '2025-11-25 08:09:37', '2025-11-25 16:37:38', '', NULL, 1, NULL),
 
 
 
@@ -4217,27 +4238,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4325, '2025-11-27 13:07:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 11, '2025-11-27 07:08:07', '2025-12-22 10:19:19', 'ali zefat qawassim', 1, 1, NULL),
 
 
-(4244, '2025-11-18 18:56:00', 220, NULL, 0, NULL, NULL, '', 1650.000000, 'Validé', 11, '2025-11-25 17:57:03', '2025-11-25 17:57:19', '', NULL, 1, NULL),
-(4245, '2025-11-20 18:57:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 11, '2025-11-25 17:57:44', '2025-11-25 17:57:47', '', NULL, 1, NULL),
-(4246, '2025-11-21 18:58:00', 220, NULL, 0, NULL, NULL, '', 3300.000000, 'Validé', 11, '2025-11-25 17:58:37', '2025-11-25 17:58:39', '', NULL, 1, NULL),
-(4247, '2025-11-22 18:58:00', 220, NULL, 0, NULL, NULL, '', 780.000000, 'Validé', 11, '2025-11-25 17:59:10', '2025-11-25 17:59:12', '', NULL, 1, NULL),
-(4248, '2025-11-25 18:59:00', 220, NULL, 0, NULL, NULL, '', 3300.000000, 'Validé', 11, '2025-11-25 17:59:35', '2025-11-25 17:59:38', '', NULL, 1, NULL),
-(4249, '2025-11-25 18:59:00', 220, NULL, 0, NULL, NULL, '', 1300.000000, 'Validé', 11, '2025-11-25 18:00:05', '2025-11-25 18:00:14', '', NULL, 1, NULL),
-(4250, '2025-11-17 20:14:00', 220, NULL, 0, NULL, NULL, '', 4575.000000, 'Validé', 11, '2025-11-25 18:18:02', '2025-11-25 18:20:32', '', NULL, 1, NULL),
-(4251, '2025-11-21 20:20:00', 220, NULL, 0, NULL, NULL, '', 325.000000, 'Validé', 11, '2025-11-25 18:21:21', '2025-12-22 10:20:19', '', 1, 1, NULL),
-(4252, '2025-11-13 20:22:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 'Validé', 11, '2025-11-25 18:23:11', '2025-12-22 10:20:10', '', 1, 1, NULL),
-(4253, '2025-11-14 20:23:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 'Validé', 11, '2025-11-25 18:24:15', '2025-12-22 10:20:06', '', 1, 1, NULL),
-(4254, '2025-11-15 20:24:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 'Validé', 11, '2025-11-25 18:24:53', '2025-12-22 10:20:01', '', 1, 1, NULL),
-(4255, '2025-11-17 20:25:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 11, '2025-11-25 18:25:35', '2025-12-22 10:19:57', '', 1, 1, NULL),
-(4256, '2025-11-18 20:46:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 'Validé', 10, '2025-11-25 18:47:16', '2025-12-22 10:19:52', '', 1, 1, NULL),
-(4257, '2025-11-19 20:47:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 10, '2025-11-25 18:47:58', '2025-12-22 10:19:48', '', 1, 1, NULL),
-(4258, '2025-11-20 20:48:00', 220, NULL, 0, NULL, NULL, '', 300.000000, 'Validé', 10, '2025-11-25 18:48:49', '2025-12-22 10:19:43', '', 1, 1, NULL),
-(4259, '2025-11-22 20:49:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 'Validé', 10, '2025-11-25 18:49:39', '2025-12-22 10:19:37', '', 1, 1, NULL),
-(4260, '2025-11-24 20:49:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 'Validé', 10, '2025-11-25 18:50:22', '2025-12-22 10:19:32', '', 1, 1, NULL),
-(4261, '2025-11-25 20:50:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 'Validé', 10, '2025-11-25 18:50:59', '2025-12-22 10:19:26', '', 1, 1, NULL);
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -4288,6 +4291,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4378, '2025-11-27 17:54:00', 220, NULL, 0, NULL, NULL, '', 46.000000, 2, 10, '2025-11-27 15:58:16', '2025-12-01 18:04:53', '', NULL, 1, NULL),
 
 
 
@@ -4296,12 +4300,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4387, '2025-11-28 14:21:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 11, '2025-11-28 07:22:28', '2025-12-22 10:19:06', 'ali zefat ', 1, 1, NULL),
 
 
 
 
 
-(4325, '2025-11-27 13:07:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 11, '2025-11-27 07:08:07', '2025-12-22 10:19:19', 'ali zefat qawassim', 1, 1, NULL),
 
 
 
@@ -4329,6 +4333,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4420, '2025-11-28 18:25:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 11, '2025-11-28 11:25:53', '2025-12-22 10:18:57', 'AWATEF', 1, 1, NULL),
 
 
 
@@ -4341,7 +4346,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4433, '2025-11-28 20:36:00', 220, NULL, 0, NULL, NULL, '', 10952.000000, 2, 11, '2025-11-28 16:38:25', '2025-12-01 17:57:51', '', NULL, 1, NULL),
 
+(4435, '2025-11-28 19:11:00', 220, NULL, 0, NULL, NULL, '', 1425.000000, 2, 11, '2025-11-28 17:15:41', '2025-12-01 17:55:09', '', NULL, 1, NULL),
 
 
 
@@ -4354,7 +4361,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4378, '2025-11-27 17:54:00', 220, NULL, 0, NULL, NULL, '', 46.000000, 'Validé', 10, '2025-11-27 15:58:16', '2025-12-01 18:04:53', '', NULL, 1, NULL),
 
 
 
@@ -4363,7 +4369,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4387, '2025-11-28 14:21:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 11, '2025-11-28 07:22:28', '2025-12-22 10:19:06', 'ali zefat ', 1, 1, NULL),
 
 
 
@@ -4396,12 +4401,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4420, '2025-11-28 18:25:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 11, '2025-11-28 11:25:53', '2025-12-22 10:18:57', 'AWATEF', 1, 1, NULL),
 
 
 
 
 
+(4495, '2025-12-01 09:14:00', 220, NULL, 0, NULL, NULL, '', 448.800000, 2, 1, '2025-12-01 08:15:08', '2025-12-19 11:16:22', 'debone ', NULL, 1, NULL),
 
 
 
@@ -4409,10 +4414,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4433, '2025-11-28 20:36:00', 220, NULL, 0, NULL, NULL, '', 10952.000000, 'Validé', 11, '2025-11-28 16:38:25', '2025-12-01 17:57:51', '', NULL, 1, NULL),
 
-(4435, '2025-11-28 19:11:00', 220, NULL, 0, NULL, NULL, '', 1425.000000, 'Validé', 11, '2025-11-28 17:15:41', '2025-12-01 17:55:09', '', NULL, 1, NULL),
 
+(4505, '2025-12-01 15:28:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 7, '2025-12-01 09:28:38', '2026-01-10 16:44:55', 'ali zefat qawassim', 1, 1, NULL),
 
 
 
@@ -4432,6 +4436,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4525, '2025-11-29 14:55:00', 220, NULL, 0, NULL, NULL, '', 2100.000000, 2, 1, '2025-12-01 11:57:05', '2025-12-01 17:48:29', 'flos jwan', NULL, 1, NULL),
 
 
 
@@ -4449,6 +4454,14 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4543, '2025-11-26 19:12:00', 220, NULL, 0, NULL, NULL, '', 167.000000, 2, 10, '2025-12-01 18:13:26', '2025-12-01 18:13:28', '', NULL, 1, NULL),
+(4544, '2025-11-28 19:13:00', 220, NULL, 0, NULL, NULL, '', 696.000000, 2, 10, '2025-12-01 18:15:23', '2025-12-01 18:15:26', '', NULL, 1, NULL),
+(4545, '2025-11-29 20:15:00', 220, NULL, 0, NULL, NULL, '', 780.000000, 2, 10, '2025-12-01 18:17:23', '2025-12-22 10:16:57', '', 1, 1, NULL),
+(4546, '2025-12-01 20:17:00', 220, NULL, 0, NULL, NULL, '', 1300.000000, 2, 10, '2025-12-01 18:17:58', '2025-12-22 10:16:53', '', 1, 1, NULL),
+(4547, '2025-11-26 20:20:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 2, 10, '2025-12-01 18:21:23', '2025-12-22 10:16:48', '', 1, 1, NULL),
+(4548, '2025-11-27 20:21:00', 220, NULL, 0, NULL, NULL, '', 610.000000, 2, 10, '2025-12-01 18:22:03', '2025-12-22 10:16:34', '', 1, 1, NULL),
+(4549, '2025-11-29 20:22:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 2, 10, '2025-12-01 18:22:38', '2025-12-22 10:16:28', '', 1, 1, NULL),
+(4550, '2025-12-01 20:22:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 2, 10, '2025-12-01 18:23:11', '2025-12-22 10:16:17', '', 1, 1, NULL);
 
 
 
@@ -4469,7 +4482,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4495, '2025-12-01 09:14:00', 220, NULL, 0, NULL, NULL, '', 448.800000, 'Validé', 1, '2025-12-01 08:15:08', '2025-12-19 11:16:22', 'debone ', NULL, 1, NULL),
 
 
 
@@ -4479,7 +4491,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4505, '2025-12-01 15:28:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 7, '2025-12-01 09:28:38', '2026-01-10 16:44:55', 'ali zefat qawassim', 1, 1, NULL),
 
 
 
@@ -4489,6 +4500,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -4499,7 +4511,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4525, '2025-11-29 14:55:00', 220, NULL, 0, NULL, NULL, '', 2100.000000, 'Validé', 1, '2025-12-01 11:57:05', '2025-12-01 17:48:29', 'flos jwan', NULL, 1, NULL),
 
 
 
@@ -4517,14 +4528,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4543, '2025-11-26 19:12:00', 220, NULL, 0, NULL, NULL, '', 167.000000, 'Validé', 10, '2025-12-01 18:13:26', '2025-12-01 18:13:28', '', NULL, 1, NULL),
-(4544, '2025-11-28 19:13:00', 220, NULL, 0, NULL, NULL, '', 696.000000, 'Validé', 10, '2025-12-01 18:15:23', '2025-12-01 18:15:26', '', NULL, 1, NULL),
-(4545, '2025-11-29 20:15:00', 220, NULL, 0, NULL, NULL, '', 780.000000, 'Validé', 10, '2025-12-01 18:17:23', '2025-12-22 10:16:57', '', 1, 1, NULL),
-(4546, '2025-12-01 20:17:00', 220, NULL, 0, NULL, NULL, '', 1300.000000, 'Validé', 10, '2025-12-01 18:17:58', '2025-12-22 10:16:53', '', 1, 1, NULL),
-(4547, '2025-11-26 20:20:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 'Validé', 10, '2025-12-01 18:21:23', '2025-12-22 10:16:48', '', 1, 1, NULL),
-(4548, '2025-11-27 20:21:00', 220, NULL, 0, NULL, NULL, '', 610.000000, 'Validé', 10, '2025-12-01 18:22:03', '2025-12-22 10:16:34', '', 1, 1, NULL),
-(4549, '2025-11-29 20:22:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 'Validé', 10, '2025-12-01 18:22:38', '2025-12-22 10:16:28', '', 1, 1, NULL),
-(4550, '2025-12-01 20:22:00', 220, NULL, 0, NULL, NULL, '', 470.000000, 'Validé', 10, '2025-12-01 18:23:11', '2025-12-22 10:16:17', '', 1, 1, NULL),
 
 
 
@@ -4535,6 +4538,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4626, '2025-12-03 17:50:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 7, '2025-12-03 10:51:01', '2026-01-10 16:45:40', 'ali zefat kawassim', 1, 1, NULL),
 
 
 
@@ -4563,7 +4567,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -4595,13 +4598,14 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4686, '2025-12-04 17:36:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 7, '2025-12-04 10:36:48', '2026-01-10 16:46:23', 'ali zefat ka wassim', 1, 1, NULL),
+(4687, '2025-12-04 14:43:00', 220, NULL, 0, NULL, NULL, '', 5520.000000, 2, 1, '2025-12-04 10:44:10', '2025-12-19 11:24:31', '', NULL, 1, NULL),
 
 
 
 
 
 
-(4626, '2025-12-03 17:50:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 7, '2025-12-03 10:51:01', '2026-01-10 16:45:40', 'ali zefat kawassim', 1, 1, NULL),
 
 
 
@@ -4657,12 +4661,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4749, '2025-12-05 20:21:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 7, '2025-12-05 14:21:27', '2026-01-10 16:46:42', 'kawassim', 1, 1, NULL),
 
 
 
 
-(4686, '2025-12-04 17:36:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 7, '2025-12-04 10:36:48', '2026-01-10 16:46:23', 'ali zefat ka wassim', 1, 1, NULL),
-(4687, '2025-12-04 14:43:00', 220, NULL, 0, NULL, NULL, '', 5520.000000, 'Validé', 1, '2025-12-04 10:44:10', '2025-12-19 11:24:31', '', NULL, 1, NULL),
 
 
 
@@ -4674,13 +4677,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4765, '2025-12-06 10:05:00', 220, NULL, 0, NULL, NULL, '', 418.200000, 2, 7, '2025-12-06 08:06:43', '2025-12-19 11:18:17', '', NULL, 1, NULL),
 
 
 
+(4769, '2025-12-06 10:29:00', 220, NULL, 0, NULL, NULL, '', 290.700000, 2, 7, '2025-12-06 08:29:33', '2025-12-19 11:17:39', '', NULL, 1, NULL),
 
 
 
 
+(4774, '2025-12-06 10:53:00', 220, NULL, 0, NULL, NULL, '', 572.820000, 2, 7, '2025-12-06 08:55:30', '2025-12-19 11:18:30', '', NULL, 1, NULL),
 
 
 
@@ -4717,6 +4723,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4811, '2025-12-08 10:54:00', 220, NULL, 0, NULL, NULL, '', 1440.000000, 2, 7, '2025-12-08 07:54:33', '2025-12-25 13:59:00', '', 1, 1, NULL),
 
 
 
@@ -4724,7 +4731,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4749, '2025-12-05 20:21:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 7, '2025-12-05 14:21:27', '2026-01-10 16:46:42', 'kawassim', 1, 1, NULL),
 
 
 
@@ -4740,21 +4746,19 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4765, '2025-12-06 10:05:00', 220, NULL, 0, NULL, NULL, '', 418.200000, 'Validé', 7, '2025-12-06 08:06:43', '2025-12-19 11:18:17', '', NULL, 1, NULL),
 
 
 
-(4769, '2025-12-06 10:29:00', 220, NULL, 0, NULL, NULL, '', 290.700000, 'Validé', 7, '2025-12-06 08:29:33', '2025-12-19 11:17:39', '', NULL, 1, NULL),
 
 
 
 
-(4774, '2025-12-06 10:53:00', 220, NULL, 0, NULL, NULL, '', 572.820000, 'Validé', 7, '2025-12-06 08:55:30', '2025-12-19 11:18:30', '', NULL, 1, NULL),
 
 
 
 
 
+(4846, '2025-12-08 19:58:00', 220, NULL, 0, NULL, NULL, '', 43039.920000, 2, 1, '2025-12-08 16:58:37', '2025-12-19 11:19:45', '', NULL, 1, NULL),
 
 
 
@@ -4786,7 +4790,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4811, '2025-12-08 10:54:00', 220, NULL, 0, NULL, NULL, '', 1440.000000, 'Validé', 7, '2025-12-08 07:54:33', '2025-12-25 13:59:00', '', 1, 1, NULL),
 
 
 
@@ -4820,12 +4823,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4911, '2025-12-09 16:58:00', 220, NULL, 0, NULL, NULL, '', 1836.000000, 1, 7, '2025-12-09 15:59:30', '2025-12-09 15:59:30', '', NULL, 1, NULL);
 
-(4846, '2025-12-08 19:58:00', 220, NULL, 0, NULL, NULL, '', 43039.920000, 'Validé', 1, '2025-12-08 16:58:37', '2025-12-19 11:19:45', '', NULL, 1, NULL),
 
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -4842,6 +4846,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(4933, '2025-12-10 15:46:00', 220, NULL, 0, NULL, NULL, '', 3948.100000, 2, 7, '2025-12-10 09:52:30', '2025-12-25 14:00:43', '', 1, 1, NULL),
 
 
 
@@ -4886,13 +4891,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4911, '2025-12-09 16:58:00', 220, NULL, 0, NULL, NULL, '', 1836.000000, 'En attente', 7, '2025-12-09 15:59:30', '2025-12-09 15:59:30', '', NULL, 1, NULL),
 
 
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -4909,7 +4912,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(4933, '2025-12-10 15:46:00', 220, NULL, 0, NULL, NULL, '', 3948.100000, 'Validé', 7, '2025-12-10 09:52:30', '2025-12-25 14:00:43', '', 1, 1, NULL),
 
 
 
@@ -4950,6 +4952,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5039, '2025-12-12 19:11:00', 220, NULL, 0, NULL, NULL, '', 1220.000000, 2, 7, '2025-12-12 10:11:30', '2026-01-10 16:47:19', 'MAHAL', 1, 1, NULL),
 
 
 
@@ -5015,7 +5018,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5039, '2025-12-12 19:11:00', 220, NULL, 0, NULL, NULL, '', 1220.000000, 'Validé', 7, '2025-12-12 10:11:30', '2026-01-10 16:47:19', 'MAHAL', 1, 1, NULL),
 
 
 
@@ -5024,6 +5026,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5113, '2025-12-13 19:03:00', 220, NULL, 0, NULL, NULL, '', 2835.000000, 2, 11, '2025-12-13 16:03:56', '2025-12-25 14:21:53', '', 1, 1, NULL),
 
 
 
@@ -5068,6 +5071,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5158, '2025-12-15 17:28:00', 220, NULL, 0, NULL, NULL, '', 1328.000000, 2, 7, '2025-12-15 14:28:43', '2025-12-25 14:18:47', '', 1, 1, NULL),
+(5159, '2025-12-15 19:02:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 2, 7, '2025-12-15 16:02:33', '2025-12-27 08:40:16', '', 1, 1, NULL),
 
 
 
@@ -5089,7 +5094,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5113, '2025-12-13 19:03:00', 220, NULL, 0, NULL, NULL, '', 2835.000000, 'Validé', 11, '2025-12-13 16:03:56', '2025-12-25 14:21:53', '', 1, 1, NULL),
 
 
 
@@ -5100,6 +5104,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5191, '2025-12-16 18:11:00', 220, NULL, 0, NULL, NULL, '', 504.520000, 2, 7, '2025-12-16 17:12:26', '2025-12-19 15:50:34', '', NULL, 1, NULL);
 
 
 
@@ -5134,8 +5139,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5158, '2025-12-15 17:28:00', 220, NULL, 0, NULL, NULL, '', 1328.000000, 'Validé', 7, '2025-12-15 14:28:43', '2025-12-25 14:18:47', '', 1, 1, NULL),
-(5159, '2025-12-15 19:02:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 'Validé', 7, '2025-12-15 16:02:33', '2025-12-27 08:40:16', '', 1, 1, NULL),
 
 
 
@@ -5156,6 +5159,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -5167,7 +5171,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5191, '2025-12-16 18:11:00', 220, NULL, 0, NULL, NULL, '', 504.520000, 'Validé', 7, '2025-12-16 17:12:26', '2025-12-19 15:50:34', '', NULL, 1, NULL),
 
 
 
@@ -5189,12 +5192,14 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5278, '2025-12-18 15:40:00', 220, NULL, 0, NULL, NULL, '', 551.200000, 2, 7, '2025-12-18 12:41:28', '2025-12-25 14:10:41', '', 1, 1, NULL),
 
 
 
 
 
 
+(5285, '2025-12-18 15:18:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 6, 12, '2025-12-18 13:19:07', '2025-12-18 13:20:39', '', 1, 1, NULL),
 
 
 
@@ -5206,11 +5211,35 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5297, '2025-12-06 17:22:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 2, 17, '2025-12-18 15:24:33', '2025-12-20 14:30:42', '', 1, 1, NULL),
+(5299, '2025-12-02 16:25:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 2, 17, '2025-12-18 15:26:46', '2025-12-20 14:31:41', '', 1, 1, NULL),
 
+(5301, '2025-12-04 17:27:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 2, 17, '2025-12-18 15:28:12', '2025-12-20 14:32:02', '', 1, 1, NULL),
 
+(5303, '2025-12-13 16:28:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 2, 17, '2025-12-18 15:29:17', '2025-12-20 14:32:08', '', 1, 1, NULL),
+(5304, '2025-12-15 16:29:00', 220, NULL, 0, NULL, NULL, '', 330.000000, 2, 17, '2025-12-18 15:31:32', '2025-12-20 14:32:16', '', 1, 1, NULL),
 
+(5306, '2025-12-16 16:31:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 2, 17, '2025-12-18 15:32:52', '2025-12-20 14:32:22', '', 1, 1, NULL),
+(5307, '2025-12-10 16:33:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 2, 17, '2025-12-18 15:35:49', '2025-12-20 14:32:28', '', 1, 1, NULL),
+(5308, '2025-12-08 16:36:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 2, 17, '2025-12-18 15:37:13', '2025-12-20 14:32:36', '', 1, 1, NULL),
+(5309, '2025-12-11 16:37:00', 220, NULL, 0, NULL, NULL, '', 430.000000, 2, 17, '2025-12-18 15:38:44', '2025-12-20 14:32:43', '', 1, 1, NULL),
+(5310, '2025-12-09 16:38:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 17, '2025-12-18 15:39:42', '2025-12-20 14:32:49', '', 1, 1, NULL),
+(5311, '2025-12-03 16:39:00', 220, NULL, 0, NULL, NULL, '', 350.000000, 2, 17, '2025-12-18 15:40:42', '2025-12-20 14:32:55', '', 1, 1, NULL),
+(5312, '2025-12-05 16:40:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 2, 17, '2025-12-18 15:41:50', '2025-12-20 14:33:08', '', 1, 1, NULL),
+(5313, '2025-12-12 16:41:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 17, '2025-12-18 15:42:39', '2025-12-20 14:33:14', '', 1, 1, NULL),
+(5314, '2025-12-17 16:42:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 2, 17, '2025-12-18 15:43:28', '2025-12-20 14:33:01', '', 1, 1, NULL),
+(5315, '2025-12-06 16:43:00', 220, NULL, 0, NULL, NULL, '', 1489.200000, 2, 17, '2025-12-18 15:45:18', '2025-12-20 14:30:49', '', 1, 1, NULL),
 
+(5317, '2025-12-06 16:45:00', 220, NULL, 0, NULL, NULL, '', 665.000000, 2, 17, '2025-12-18 15:46:08', '2025-12-20 14:30:55', '', 1, 1, NULL),
+(5318, '2025-12-17 16:46:00', 220, NULL, 0, NULL, NULL, '', 2996.480000, 2, 17, '2025-12-18 15:48:04', '2025-12-20 14:31:00', '', 1, 1, NULL),
+(5319, '2025-12-17 16:48:00', 220, NULL, 0, NULL, NULL, '', 2255.680000, 2, 17, '2025-12-18 15:49:06', '2025-12-20 14:31:05', '', 1, 1, NULL),
+(5320, '2025-12-12 16:49:00', 220, NULL, 0, NULL, NULL, '', 665.000000, 2, 17, '2025-12-18 15:49:51', '2025-12-20 14:31:11', '', 1, 1, NULL),
 
+(5323, '2025-12-09 18:49:00', 220, NULL, 0, NULL, NULL, '', 3616.640000, 2, 17, '2025-12-18 15:56:20', '2025-12-20 14:31:19', '', 1, 1, NULL),
+(5324, '2025-12-02 17:56:00', 220, NULL, 0, NULL, NULL, '', 1673.760000, 2, 17, '2025-12-18 15:57:45', '2025-12-20 14:31:27', '', 1, 1, NULL),
+(5325, '2025-12-08 16:58:00', 220, NULL, 0, NULL, NULL, '', 290.700000, 2, 17, '2025-12-18 15:59:32', '2025-12-20 14:31:34', '', 1, 1, NULL),
+(5326, '2025-12-04 16:59:00', 220, NULL, 0, NULL, NULL, '', 306.000000, 2, 17, '2025-12-18 16:01:42', '2025-12-20 14:31:49', '', 1, 1, NULL),
+(5327, '2025-12-04 17:01:00', 220, NULL, 0, NULL, NULL, '', 1127.840000, 2, 17, '2025-12-18 16:02:29', '2025-12-20 14:31:57', '', 1, 1, NULL),
 
 
 
@@ -5222,12 +5251,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
 
 
+(5344, '2025-12-19 12:51:00', 220, NULL, 0, NULL, NULL, '', 117.300000, 2, 11, '2025-12-19 10:51:30', '2025-12-20 14:21:34', '', NULL, 1, NULL),
 
 
 
@@ -5255,14 +5284,17 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5278, '2025-12-18 15:40:00', 220, NULL, 0, NULL, NULL, '', 551.200000, 'Validé', 7, '2025-12-18 12:41:28', '2025-12-25 14:10:41', '', 1, 1, NULL),
+(5374, '2025-12-20 16:22:00', 220, NULL, 0, NULL, NULL, '', 431.800000, 2, 10, '2025-12-20 14:24:02', '2025-12-20 15:55:01', '', 1, 1, NULL),
+(5375, '2025-12-06 16:34:00', 220, NULL, 0, NULL, NULL, '', 5610.000000, 2, 10, '2025-12-20 14:36:11', '2025-12-20 14:39:43', '', NULL, 1, NULL),
+(5376, '2025-12-20 16:40:00', 220, NULL, 0, NULL, NULL, '', 4666.500000, 2, 10, '2025-12-20 14:40:58', '2025-12-20 14:41:35', '', NULL, 1, NULL),
 
 
+(5379, '2025-12-20 18:14:00', 220, NULL, 0, NULL, NULL, '', 1254.000000, 2, 10, '2025-12-20 15:18:30', '2025-12-22 10:07:27', '', 1, 1, NULL),
 
+(5381, '2025-12-20 19:13:00', 220, NULL, 0, NULL, NULL, '', 510.000000, 2, 11, '2025-12-20 17:14:42', '2025-12-20 17:15:11', '', 1, 1, NULL),
 
 
 
-(5285, '2025-12-18 15:18:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 'Annulé', 12, '2025-12-18 13:19:07', '2025-12-18 13:20:39', '', 1, 1, NULL),
 
 
 
@@ -5274,35 +5306,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5297, '2025-12-06 17:22:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 'Validé', 17, '2025-12-18 15:24:33', '2025-12-20 14:30:42', '', 1, 1, NULL),
-(5299, '2025-12-02 16:25:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 'Validé', 17, '2025-12-18 15:26:46', '2025-12-20 14:31:41', '', 1, 1, NULL),
 
-(5301, '2025-12-04 17:27:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 'Validé', 17, '2025-12-18 15:28:12', '2025-12-20 14:32:02', '', 1, 1, NULL),
 
-(5303, '2025-12-13 16:28:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 'Validé', 17, '2025-12-18 15:29:17', '2025-12-20 14:32:08', '', 1, 1, NULL),
-(5304, '2025-12-15 16:29:00', 220, NULL, 0, NULL, NULL, '', 330.000000, 'Validé', 17, '2025-12-18 15:31:32', '2025-12-20 14:32:16', '', 1, 1, NULL),
 
-(5306, '2025-12-16 16:31:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 'Validé', 17, '2025-12-18 15:32:52', '2025-12-20 14:32:22', '', 1, 1, NULL),
-(5307, '2025-12-10 16:33:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 'Validé', 17, '2025-12-18 15:35:49', '2025-12-20 14:32:28', '', 1, 1, NULL),
-(5308, '2025-12-08 16:36:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 'Validé', 17, '2025-12-18 15:37:13', '2025-12-20 14:32:36', '', 1, 1, NULL),
-(5309, '2025-12-11 16:37:00', 220, NULL, 0, NULL, NULL, '', 430.000000, 'Validé', 17, '2025-12-18 15:38:44', '2025-12-20 14:32:43', '', 1, 1, NULL),
-(5310, '2025-12-09 16:38:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 17, '2025-12-18 15:39:42', '2025-12-20 14:32:49', '', 1, 1, NULL),
-(5311, '2025-12-03 16:39:00', 220, NULL, 0, NULL, NULL, '', 350.000000, 'Validé', 17, '2025-12-18 15:40:42', '2025-12-20 14:32:55', '', 1, 1, NULL),
-(5312, '2025-12-05 16:40:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 'Validé', 17, '2025-12-18 15:41:50', '2025-12-20 14:33:08', '', 1, 1, NULL),
-(5313, '2025-12-12 16:41:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 17, '2025-12-18 15:42:39', '2025-12-20 14:33:14', '', 1, 1, NULL),
-(5314, '2025-12-17 16:42:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 'Validé', 17, '2025-12-18 15:43:28', '2025-12-20 14:33:01', '', 1, 1, NULL),
-(5315, '2025-12-06 16:43:00', 220, NULL, 0, NULL, NULL, '', 1489.200000, 'Validé', 17, '2025-12-18 15:45:18', '2025-12-20 14:30:49', '', 1, 1, NULL),
 
-(5317, '2025-12-06 16:45:00', 220, NULL, 0, NULL, NULL, '', 665.000000, 'Validé', 17, '2025-12-18 15:46:08', '2025-12-20 14:30:55', '', 1, 1, NULL),
-(5318, '2025-12-17 16:46:00', 220, NULL, 0, NULL, NULL, '', 2996.480000, 'Validé', 17, '2025-12-18 15:48:04', '2025-12-20 14:31:00', '', 1, 1, NULL),
-(5319, '2025-12-17 16:48:00', 220, NULL, 0, NULL, NULL, '', 2255.680000, 'Validé', 17, '2025-12-18 15:49:06', '2025-12-20 14:31:05', '', 1, 1, NULL),
-(5320, '2025-12-12 16:49:00', 220, NULL, 0, NULL, NULL, '', 665.000000, 'Validé', 17, '2025-12-18 15:49:51', '2025-12-20 14:31:11', '', 1, 1, NULL),
 
-(5323, '2025-12-09 18:49:00', 220, NULL, 0, NULL, NULL, '', 3616.640000, 'Validé', 17, '2025-12-18 15:56:20', '2025-12-20 14:31:19', '', 1, 1, NULL),
-(5324, '2025-12-02 17:56:00', 220, NULL, 0, NULL, NULL, '', 1673.760000, 'Validé', 17, '2025-12-18 15:57:45', '2025-12-20 14:31:27', '', 1, 1, NULL),
-(5325, '2025-12-08 16:58:00', 220, NULL, 0, NULL, NULL, '', 290.700000, 'Validé', 17, '2025-12-18 15:59:32', '2025-12-20 14:31:34', '', 1, 1, NULL),
-(5326, '2025-12-04 16:59:00', 220, NULL, 0, NULL, NULL, '', 306.000000, 'Validé', 17, '2025-12-18 16:01:42', '2025-12-20 14:31:49', '', 1, 1, NULL),
-(5327, '2025-12-04 17:01:00', 220, NULL, 0, NULL, NULL, '', 1127.840000, 'Validé', 17, '2025-12-18 16:02:29', '2025-12-20 14:31:57', '', 1, 1, NULL),
 
 
 
@@ -5315,11 +5323,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5413, '2025-12-22 17:52:00', 220, NULL, 0, NULL, NULL, '', 6098.300000, 2, 11, '2025-12-22 15:07:23', '2025-12-27 12:12:58', '', 1, 1, NULL),
 
 
 
 
-(5344, '2025-12-19 12:51:00', 220, NULL, 0, NULL, NULL, '', 117.300000, 'Validé', 11, '2025-12-19 10:51:30', '2025-12-20 14:21:34', '', NULL, 1, NULL),
 
 
 
@@ -5347,14 +5355,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5374, '2025-12-20 16:22:00', 220, NULL, 0, NULL, NULL, '', 431.800000, 'Validé', 10, '2025-12-20 14:24:02', '2025-12-20 15:55:01', '', 1, 1, NULL),
-(5375, '2025-12-06 16:34:00', 220, NULL, 0, NULL, NULL, '', 5610.000000, 'Validé', 10, '2025-12-20 14:36:11', '2025-12-20 14:39:43', '', NULL, 1, NULL),
-(5376, '2025-12-20 16:40:00', 220, NULL, 0, NULL, NULL, '', 4666.500000, 'Validé', 10, '2025-12-20 14:40:58', '2025-12-20 14:41:35', '', NULL, 1, NULL),
 
 
-(5379, '2025-12-20 18:14:00', 220, NULL, 0, NULL, NULL, '', 1254.000000, 'Validé', 10, '2025-12-20 15:18:30', '2025-12-22 10:07:27', '', 1, 1, NULL),
 
-(5381, '2025-12-20 19:13:00', 220, NULL, 0, NULL, NULL, '', 510.000000, 'Validé', 11, '2025-12-20 17:14:42', '2025-12-20 17:15:11', '', 1, 1, NULL),
 
 
 
@@ -5386,7 +5389,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5413, '2025-12-22 17:52:00', 220, NULL, 0, NULL, NULL, '', 6098.300000, 'Validé', 11, '2025-12-22 15:07:23', '2025-12-27 12:12:58', '', 1, 1, NULL),
 
 
 
@@ -5432,6 +5434,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5524, '2025-12-25 20:26:00', 220, NULL, 0, NULL, NULL, '', 43292.000000, 2, 7, '2025-12-25 17:28:18', '2025-12-30 12:01:47', '', 1, 1, NULL);
 
 
 
@@ -5484,6 +5487,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -5494,10 +5498,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5587, '2025-12-22 09:41:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 17, '2025-12-27 08:43:36', '2025-12-27 12:14:45', '', 1, 1, NULL),
+(5588, '2025-12-24 09:46:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 2, 17, '2025-12-27 08:47:08', '2025-12-27 12:14:19', '', 1, 1, NULL),
+(5589, '2025-12-22 09:47:00', 220, NULL, 0, NULL, NULL, '', 2204.800000, 2, 17, '2025-12-27 08:49:07', '2025-12-27 12:13:40', '', 1, 1, NULL),
 
 
 
-(5524, '2025-12-25 20:26:00', 220, NULL, 0, NULL, NULL, '', 43292.000000, 'Validé', 7, '2025-12-25 17:28:18', '2025-12-30 12:01:47', '', 1, 1, NULL),
 
 
 
@@ -5507,6 +5513,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5602, '2025-12-27 17:25:00', 220, NULL, 0, NULL, NULL, '', 2799.000000, 2, 11, '2025-12-27 13:26:18', '2025-12-30 17:20:42', '', 1, 1, NULL),
 
 
 
@@ -5546,11 +5553,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5642, '2025-12-29 15:25:00', 220, NULL, 0, NULL, NULL, '', 1110.000000, 2, 11, '2025-12-29 12:25:34', '2026-01-05 09:24:40', 'MAHAL', 1, 1, NULL),
 
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -5561,9 +5568,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5587, '2025-12-22 09:41:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 17, '2025-12-27 08:43:36', '2025-12-27 12:14:45', '', 1, 1, NULL),
-(5588, '2025-12-24 09:46:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 'Validé', 17, '2025-12-27 08:47:08', '2025-12-27 12:14:19', '', 1, 1, NULL),
-(5589, '2025-12-22 09:47:00', 220, NULL, 0, NULL, NULL, '', 2204.800000, 'Validé', 17, '2025-12-27 08:49:07', '2025-12-27 12:13:40', '', 1, 1, NULL),
 
 
 
@@ -5576,16 +5580,20 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5602, '2025-12-27 17:25:00', 220, NULL, 0, NULL, NULL, '', 2799.000000, 'Validé', 11, '2025-12-27 13:26:18', '2025-12-30 17:20:42', '', 1, 1, NULL),
 
 
 
 
 
 
+(5675, '2025-12-30 11:34:00', 220, NULL, 0, NULL, NULL, '', 6100.000000, 2, 17, '2025-12-30 10:34:56', '2025-12-30 12:26:03', '', 1, 1, NULL),
 
+(5677, '2025-12-29 11:36:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 2, 17, '2025-12-30 10:37:58', '2025-12-30 12:26:22', '', 1, 1, NULL),
 
+(5679, '2025-12-26 11:44:00', 220, NULL, 0, NULL, NULL, '', 60.000000, 2, 17, '2025-12-30 10:45:53', '2025-12-30 12:17:46', '', 1, 1, NULL),
 
+(5681, '2025-12-25 11:50:00', 220, NULL, 0, NULL, NULL, '', 60.000000, 2, 17, '2025-12-30 10:50:50', '2025-12-30 12:16:13', '', 1, 1, NULL),
+(5682, '2025-12-27 12:02:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 17, '2025-12-30 11:03:07', '2025-12-30 12:20:33', '', 1, 1, NULL),
 
 
 
@@ -5594,6 +5602,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5691, '2025-12-30 16:27:00', 220, NULL, 0, NULL, NULL, '', 555.000000, 2, 7, '2025-12-30 12:27:55', '2026-01-06 10:48:57', 'MAHAL', 1, 1, NULL),
 
 
 
@@ -5616,7 +5625,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5642, '2025-12-29 15:25:00', 220, NULL, 0, NULL, NULL, '', 1110.000000, 'Validé', 11, '2025-12-29 12:25:34', '2026-01-05 09:24:40', 'MAHAL', 1, 1, NULL),
 
 
 
@@ -5627,6 +5635,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5724, '2025-12-31 10:44:00', 220, NULL, 0, NULL, NULL, '', 730.000000, 1, 7, '2025-12-31 09:45:05', '2025-12-31 09:45:05', 'VAFLORI', 1, 1, NULL),
 
 
 
@@ -5649,14 +5658,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5675, '2025-12-30 11:34:00', 220, NULL, 0, NULL, NULL, '', 6100.000000, 'Validé', 17, '2025-12-30 10:34:56', '2025-12-30 12:26:03', '', 1, 1, NULL),
 
-(5677, '2025-12-29 11:36:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 'Validé', 17, '2025-12-30 10:37:58', '2025-12-30 12:26:22', '', 1, 1, NULL),
 
-(5679, '2025-12-26 11:44:00', 220, NULL, 0, NULL, NULL, '', 60.000000, 'Validé', 17, '2025-12-30 10:45:53', '2025-12-30 12:17:46', '', 1, 1, NULL),
 
-(5681, '2025-12-25 11:50:00', 220, NULL, 0, NULL, NULL, '', 60.000000, 'Validé', 17, '2025-12-30 10:50:50', '2025-12-30 12:16:13', '', 1, 1, NULL),
-(5682, '2025-12-27 12:02:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 17, '2025-12-30 11:03:07', '2025-12-30 12:20:33', '', 1, 1, NULL),
 
 
 
@@ -5665,7 +5669,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5691, '2025-12-30 16:27:00', 220, NULL, 0, NULL, NULL, '', 555.000000, 'Validé', 7, '2025-12-30 12:27:55', '2026-01-06 10:48:57', 'MAHAL', 1, 1, NULL),
 
 
 
@@ -5677,6 +5680,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5769, '2026-01-01 13:39:00', 220, NULL, 0, NULL, NULL, '', 880.000000, 2, 7, '2026-01-01 10:40:13', '2026-01-05 09:23:58', 'MOJAHEDEN', 1, 1, NULL),
 
 
 
@@ -5698,7 +5702,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5724, '2025-12-31 10:44:00', 220, NULL, 0, NULL, NULL, '', 730.000000, 'En attente', 7, '2025-12-31 09:45:05', '2025-12-31 09:45:05', 'VAFLORI', 1, 1, NULL),
 
 
 
@@ -5739,11 +5742,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5831, '2026-01-02 17:04:00', 220, NULL, 0, NULL, NULL, '', 432.000000, 2, 7, '2026-01-02 15:05:28', '2026-01-06 08:20:42', '', 1, 1, NULL),
+(5832, '2026-01-02 16:21:00', 220, NULL, 0, NULL, NULL, '', 390.000000, 6, 7, '2026-01-02 15:23:31', '2026-01-02 16:36:34', '', 1, 1, NULL),
+(5833, '2026-01-02 19:24:00', 220, NULL, 0, NULL, NULL, '', 536.000000, 2, 7, '2026-01-02 15:24:37', '2026-05-14 19:44:14', '', 1, 1, 220),
 
 
 
 
-(5769, '2026-01-01 13:39:00', 220, NULL, 0, NULL, NULL, '', 880.000000, 'Validé', 7, '2026-01-01 10:40:13', '2026-01-05 09:23:58', 'MOJAHEDEN', 1, 1, NULL),
 
 
 
@@ -5764,6 +5769,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5858, '2026-01-03 17:26:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 2, 7, '2026-01-03 14:26:41', '2026-01-20 08:50:53', '', 1, 1, NULL),
 
 
 
@@ -5780,11 +5786,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5875, '2026-01-03 09:49:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 2, 17, '2026-01-05 08:50:39', '2026-05-14 19:44:33', '', 1, 1, NULL),
 
 
 
+(5879, '2025-12-30 10:08:00', 220, NULL, 0, NULL, NULL, '', 290.000000, 2, 17, '2026-01-05 09:09:14', '2026-01-06 10:53:36', '', 1, 1, NULL),
 
+(5881, '2025-12-31 10:10:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 2, 17, '2026-01-05 09:11:39', '2026-01-06 10:58:52', '', 1, 1, NULL),
 
+(5883, '2026-01-02 11:16:00', 220, NULL, 0, NULL, NULL, '', 460.000000, 2, 17, '2026-01-05 09:17:30', '2026-01-06 10:43:53', '', 1, 1, NULL);
 
 
 
@@ -5805,13 +5815,17 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5831, '2026-01-02 17:04:00', 220, NULL, 0, NULL, NULL, '', 432.000000, 'Validé', 7, '2026-01-02 15:05:28', '2026-01-06 08:20:42', '', 1, 1, NULL),
-(5832, '2026-01-02 16:21:00', 220, NULL, 0, NULL, NULL, '', 390.000000, 'Annulé', 7, '2026-01-02 15:23:31', '2026-01-02 16:36:34', '', 1, 1, NULL),
-(5833, '2026-01-02 19:24:00', 220, NULL, 0, NULL, NULL, '', 536.000000, 'Validé', 7, '2026-01-02 15:24:37', '2026-05-14 19:44:14', '', 1, 1, 220),
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
+(5906, '2025-12-26 15:04:00', 220, NULL, 0, NULL, NULL, '', 4620.000000, 2, 17, '2026-01-05 14:06:35', '2026-01-06 08:19:10', '', 1, 1, NULL),
+(5907, '2026-01-02 15:07:00', 220, NULL, 0, NULL, NULL, '', 235.500000, 2, 17, '2026-01-05 14:07:55', '2026-01-06 08:18:53', '', 1, 1, NULL),
+(5908, '2025-12-31 15:08:00', 220, NULL, 0, NULL, NULL, '', 3140.000000, 2, 17, '2026-01-05 14:09:10', '2026-01-06 08:18:36', '', 1, 1, NULL),
+(5909, '2026-01-03 15:09:00', 220, NULL, 0, NULL, NULL, '', 455.000000, 2, 17, '2026-01-05 14:11:05', '2026-01-06 08:18:20', '', 1, 1, NULL),
 
+(5911, '2026-01-01 15:15:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 2, 17, '2026-01-05 14:24:40', '2026-01-06 08:17:44', '', 1, 1, NULL),
 
+(5913, '2025-12-26 15:25:00', 220, NULL, 0, NULL, NULL, '', 347.050000, 2, 17, '2026-01-05 14:42:40', '2026-01-06 08:20:07', '', 1, 1, NULL),
 
 
 
@@ -5832,7 +5846,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5858, '2026-01-03 17:26:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 'Validé', 7, '2026-01-03 14:26:41', '2026-01-20 08:50:53', '', 1, 1, NULL),
 
 
 
@@ -5846,21 +5859,20 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(5947, '2026-01-06 16:07:00', 220, NULL, 0, NULL, NULL, '', 1085.000000, 2, 7, '2026-01-06 11:07:37', '2026-01-23 12:52:10', 'Ø¨Ù†Ùƒ Ø´Ø¹Ø¨ÙŠ', 1, 1, NULL),
 
 
 
-(5875, '2026-01-03 09:49:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 'Validé', 17, '2026-01-05 08:50:39', '2026-05-14 19:44:33', '', 1, 1, NULL),
 
 
 
-(5879, '2025-12-30 10:08:00', 220, NULL, 0, NULL, NULL, '', 290.000000, 'Validé', 17, '2026-01-05 09:09:14', '2026-01-06 10:53:36', '', 1, 1, NULL),
 
-(5881, '2025-12-31 10:10:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 'Validé', 17, '2026-01-05 09:11:39', '2026-01-06 10:58:52', '', 1, 1, NULL),
 
-(5883, '2026-01-02 11:16:00', 220, NULL, 0, NULL, NULL, '', 460.000000, 'Validé', 17, '2026-01-05 09:17:30', '2026-01-06 10:43:53', '', 1, 1, NULL),
 
 
 
+(5959, '2026-01-06 15:23:00', 220, NULL, 0, NULL, NULL, '', 48.750000, 2, 7, '2026-01-06 13:24:02', '2026-01-23 12:52:35', '', 1, 1, NULL),
+(5960, '2026-01-06 17:36:00', 220, NULL, 0, NULL, NULL, '', 1455.000000, 2, 7, '2026-01-06 13:37:34', '2026-01-23 12:51:26', 'MAHAL', 1, 1, NULL),
 
 
 
@@ -5879,22 +5891,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
-(5906, '2025-12-26 15:04:00', 220, NULL, 0, NULL, NULL, '', 4620.000000, 'Validé', 17, '2026-01-05 14:06:35', '2026-01-06 08:19:10', '', 1, 1, NULL),
-(5907, '2026-01-02 15:07:00', 220, NULL, 0, NULL, NULL, '', 235.500000, 'Validé', 17, '2026-01-05 14:07:55', '2026-01-06 08:18:53', '', 1, 1, NULL),
-(5908, '2025-12-31 15:08:00', 220, NULL, 0, NULL, NULL, '', 3140.000000, 'Validé', 17, '2026-01-05 14:09:10', '2026-01-06 08:18:36', '', 1, 1, NULL),
-(5909, '2026-01-03 15:09:00', 220, NULL, 0, NULL, NULL, '', 455.000000, 'Validé', 17, '2026-01-05 14:11:05', '2026-01-06 08:18:20', '', 1, 1, NULL),
 
-(5911, '2026-01-01 15:15:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 'Validé', 17, '2026-01-05 14:24:40', '2026-01-06 08:17:44', '', 1, 1, NULL),
 
-(5913, '2025-12-26 15:25:00', 220, NULL, 0, NULL, NULL, '', 347.050000, 'Validé', 17, '2026-01-05 14:42:40', '2026-01-06 08:20:07', '', 1, 1, NULL),
 
 
 
 
 
 
+(5988, '2026-01-07 12:01:00', 220, NULL, 0, NULL, NULL, '', 2851.160000, 2, 10, '2026-01-07 10:02:52', '2026-01-23 13:23:07', '', 1, 1, NULL),
 
 
 
@@ -5922,10 +5928,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5947, '2026-01-06 16:07:00', 220, NULL, 0, NULL, NULL, '', 1085.000000, 'Validé', 7, '2026-01-06 11:07:37', '2026-01-23 12:52:10', 'بنك شعبي', 1, 1, NULL),
 
 
 
+(6019, '2026-01-07 21:33:00', 220, NULL, 0, NULL, NULL, '', 7131.220000, 2, 10, '2026-01-07 16:55:21', '2026-01-24 11:53:10', '', 1, 1, NULL),
 
 
 
@@ -5934,8 +5940,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5959, '2026-01-06 15:23:00', 220, NULL, 0, NULL, NULL, '', 48.750000, 'Validé', 7, '2026-01-06 13:24:02', '2026-01-23 12:52:35', '', 1, 1, NULL),
-(5960, '2026-01-06 17:36:00', 220, NULL, 0, NULL, NULL, '', 1455.000000, 'Validé', 7, '2026-01-06 13:37:34', '2026-01-23 12:51:26', 'MAHAL', 1, 1, NULL),
 
 
 
@@ -5963,7 +5967,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(5988, '2026-01-07 12:01:00', 220, NULL, 0, NULL, NULL, '', 2851.160000, 'Validé', 10, '2026-01-07 10:02:52', '2026-01-23 13:23:07', '', 1, 1, NULL),
 
 
 
@@ -5994,7 +5997,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6019, '2026-01-07 21:33:00', 220, NULL, 0, NULL, NULL, '', 7131.220000, 'Validé', 10, '2026-01-07 16:55:21', '2026-01-24 11:53:10', '', 1, 1, NULL),
 
 
 
@@ -6023,6 +6025,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6113, '2026-01-09 15:07:00', 220, NULL, 0, NULL, NULL, '', 1185.000000, 2, 7, '2026-01-09 11:10:15', '2026-01-23 13:27:56', 'AHLAN', 1, 1, NULL),
 
 
 
@@ -6088,7 +6091,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6113, '2026-01-09 15:07:00', 220, NULL, 0, NULL, NULL, '', 1185.000000, 'Validé', 7, '2026-01-09 11:10:15', '2026-01-23 13:27:56', 'AHLAN', 1, 1, NULL),
 
 
 
@@ -6112,6 +6114,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6202, '2026-01-12 12:30:00', 220, NULL, 0, NULL, NULL, '', 4950.000000, 2, 1, '2026-01-12 11:31:19', '2026-01-23 13:04:20', 'ÙÙ„ÙˆØ³ Ø¬ÙˆØ§Ù†', 1, 1, NULL),
 
 
 
@@ -6123,6 +6126,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6214, '2026-01-12 18:30:00', 220, NULL, 0, NULL, NULL, '', 4616.440000, 2, 7, '2026-01-12 13:34:53', '2026-01-23 13:16:27', '', 1, 1, NULL);
 
 
 
@@ -6141,6 +6145,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -6150,6 +6155,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6242, '2026-01-13 13:39:00', 220, NULL, 0, NULL, NULL, '', 1185.000000, 2, 7, '2026-01-13 09:40:12', '2026-01-23 13:05:09', 'AHLAN', 1, 1, NULL),
 
 
 
@@ -6177,7 +6183,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6202, '2026-01-12 12:30:00', 220, NULL, 0, NULL, NULL, '', 4950.000000, 'Validé', 1, '2026-01-12 11:31:19', '2026-01-23 13:04:20', 'فلوس جوان', 1, 1, NULL),
 
 
 
@@ -6189,7 +6194,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6214, '2026-01-12 18:30:00', 220, NULL, 0, NULL, NULL, '', 4616.440000, 'Validé', 7, '2026-01-12 13:34:53', '2026-01-23 13:16:27', '', 1, 1, NULL),
 
 
 
@@ -6208,7 +6212,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -6218,10 +6221,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6242, '2026-01-13 13:39:00', 220, NULL, 0, NULL, NULL, '', 1185.000000, 'Validé', 7, '2026-01-13 09:40:12', '2026-01-23 13:05:09', 'AHLAN', 1, 1, NULL),
 
 
 
+(6311, '2026-01-15 11:02:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 7, '2026-01-15 08:02:49', '2026-02-11 11:20:24', ' kawassim', 1, 1, NULL),
 
 
 
@@ -6285,10 +6288,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6375, '2026-01-16 17:12:00', 220, NULL, 0, NULL, NULL, '', 1489.960000, 2, 11, '2026-01-16 15:12:41', '2026-01-23 12:41:19', '', 1, 1, NULL),
 
 
-(6311, '2026-01-15 11:02:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 7, '2026-01-15 08:02:49', '2026-02-11 11:20:24', ' kawassim', 1, 1, NULL),
 
+(6379, '2026-01-16 16:34:00', 220, NULL, 0, NULL, NULL, '', 3250.000000, 6, 7, '2026-01-16 15:35:51', '2026-01-16 15:55:57', 'canter', 1, 1, NULL),
 
 
 
@@ -6306,6 +6310,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6397, '2026-01-17 15:12:00', 220, NULL, 0, NULL, NULL, '', 1085.000000, 2, 7, '2026-01-17 10:12:54', '2026-02-11 11:20:49', 'ahlan', 1, 1, 220),
 
 
 
@@ -6351,11 +6356,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6375, '2026-01-16 17:12:00', 220, NULL, 0, NULL, NULL, '', 1489.960000, 'Validé', 11, '2026-01-16 15:12:41', '2026-01-23 12:41:19', '', 1, 1, NULL),
 
 
 
-(6379, '2026-01-16 16:34:00', 220, NULL, 0, NULL, NULL, '', 3250.000000, 'Annulé', 7, '2026-01-16 15:35:51', '2026-01-16 15:55:57', 'canter', 1, 1, NULL),
 
 
 
@@ -6373,16 +6376,20 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6397, '2026-01-17 15:12:00', 220, NULL, 0, NULL, NULL, '', 1085.000000, 'Validé', 7, '2026-01-17 10:12:54', '2026-02-11 11:20:49', 'ahlan', 1, 1, 220),
 
 
 
 
+(6467, '2026-01-14 09:26:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 2, 17, '2026-01-20 08:27:51', '2026-01-23 12:59:42', '', 1, 1, NULL),
 
 
 
+(6471, '2026-01-12 09:37:00', 220, NULL, 0, NULL, NULL, '', 60.000000, 2, 17, '2026-01-20 08:38:06', '2026-01-23 13:04:05', '', 1, 1, NULL),
 
 
+(6474, '2026-01-10 09:43:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 2, 17, '2026-01-20 08:44:37', '2026-01-23 13:02:06', '', 1, 1, NULL),
+(6475, '2026-01-05 09:51:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 2, 12, '2026-01-20 08:52:31', '2026-05-14 19:44:54', '', 1, 1, NULL),
+(6476, '2026-01-05 09:55:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 6, 17, '2026-01-20 08:59:40', '2026-01-20 09:00:07', '', 1, 1, NULL),
 
 
 
@@ -6391,6 +6398,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6485, '2026-01-13 10:38:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 2, 12, '2026-01-20 09:39:36', '2026-01-23 13:17:11', '', 1, 1, NULL),
 
 
 
@@ -6401,6 +6409,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6496, '2026-01-17 11:43:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 2, 12, '2026-01-20 10:44:42', '2026-01-23 13:27:25', '', 1, 1, NULL),
 
 
 
@@ -6443,36 +6452,31 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6467, '2026-01-14 09:26:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 'Validé', 17, '2026-01-20 08:27:51', '2026-01-23 12:59:42', '', 1, 1, NULL),
 
 
 
-(6471, '2026-01-12 09:37:00', 220, NULL, 0, NULL, NULL, '', 60.000000, 'Validé', 17, '2026-01-20 08:38:06', '2026-01-23 13:04:05', '', 1, 1, NULL),
 
 
-(6474, '2026-01-10 09:43:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 'Validé', 17, '2026-01-20 08:44:37', '2026-01-23 13:02:06', '', 1, 1, NULL),
-(6475, '2026-01-05 09:51:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 'Validé', 12, '2026-01-20 08:52:31', '2026-05-14 19:44:54', '', 1, 1, NULL),
-(6476, '2026-01-05 09:55:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 'Annulé', 17, '2026-01-20 08:59:40', '2026-01-20 09:00:07', '', 1, 1, NULL),
 
 
+(6546, '2026-01-21 12:44:00', 220, NULL, 0, NULL, NULL, '', 41540.000000, 2, 1, '2026-01-21 10:45:25', '2026-02-11 11:29:15', '', 1, 1, NULL);
 
 
 
 
 
 
-(6485, '2026-01-13 10:38:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 'Validé', 12, '2026-01-20 09:39:36', '2026-01-23 13:17:11', '', 1, 1, NULL),
 
 
 
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
 
-(6496, '2026-01-17 11:43:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 'Validé', 12, '2026-01-20 10:44:42', '2026-01-23 13:27:25', '', 1, 1, NULL),
 
 
 
@@ -6506,23 +6510,37 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6596, '2026-01-16 15:30:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 2, 17, '2026-01-22 13:31:08', '2026-01-23 12:45:23', '', 1, 1, NULL),
+(6597, '2026-01-15 15:38:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 2, 17, '2026-01-22 13:42:34', '2026-01-23 13:21:54', '', 1, 1, NULL),
+(6598, '2026-01-08 14:46:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 17, '2026-01-22 13:47:11', '2026-01-23 13:24:24', '', 1, 1, NULL),
 
 
 
 
+(6603, '2026-01-07 16:05:00', 220, NULL, 0, NULL, NULL, '', 270.000000, 2, 17, '2026-01-22 14:06:12', '2026-01-24 09:32:36', '', 1, 1, 220),
 
 
 
 
+(6608, '2026-01-06 15:36:00', 220, NULL, 0, NULL, NULL, '', 350.000000, 2, 17, '2026-01-22 14:37:50', '2026-01-23 12:57:15', '', 1, 1, NULL),
 
+(6610, '2026-01-07 17:42:00', 220, NULL, 0, NULL, NULL, '', 1570.000000, 2, 17, '2026-01-22 14:43:58', '2026-01-24 09:03:41', '', 1, 1, 220),
+(6611, '2026-01-09 16:44:00', 220, NULL, 0, NULL, NULL, '', 1570.000000, 2, 17, '2026-01-22 14:45:12', '2026-01-24 09:03:18', '', 1, 1, 220),
 
+(6613, '2026-01-10 15:45:00', 220, NULL, 0, NULL, NULL, '', 2246.400000, 2, 17, '2026-01-22 14:47:29', '2026-01-24 09:02:36', '', 1, 1, NULL),
 
+(6615, '2026-01-10 16:48:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 2, 17, '2026-01-22 14:48:42', '2026-01-24 09:01:57', '', 1, 1, 220),
+(6616, '2026-01-06 15:49:00', 220, NULL, 0, NULL, NULL, '', 1102.400000, 2, 17, '2026-01-22 14:50:48', '2026-01-24 09:01:29', '', 1, 1, NULL),
+(6617, '2026-01-13 15:53:00', 220, NULL, 0, NULL, NULL, '', 2937.600000, 2, 17, '2026-01-22 14:55:04', '2026-01-24 09:01:13', '', 1, 1, NULL),
+(6618, '2026-01-14 15:55:00', 220, NULL, 0, NULL, NULL, '', 960.000000, 2, 17, '2026-01-22 14:56:01', '2026-01-24 09:00:47', '', 1, 1, NULL),
+(6619, '2026-01-19 16:56:00', 220, NULL, 0, NULL, NULL, '', 863.500000, 2, 17, '2026-01-22 14:57:20', '2026-01-24 09:00:22', '', 1, 1, 220),
+(6620, '2026-01-15 16:57:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 2, 17, '2026-01-22 14:58:19', '2026-01-24 08:59:18', '', 1, 1, 220),
 
+(6622, '2026-01-22 17:40:00', 220, NULL, 0, NULL, NULL, '', 4632.100000, 2, 7, '2026-01-22 15:50:22', '2026-02-11 13:22:36', '', 1, 1, 220),
 
 
 
 
-(6546, '2026-01-21 12:44:00', 220, NULL, 0, NULL, NULL, '', 41540.000000, 'Validé', 1, '2026-01-21 10:45:25', '2026-02-11 11:29:15', '', 1, 1, NULL),
 
 
 
@@ -6535,7 +6553,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -6553,6 +6570,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6656, '2026-01-23 14:28:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 12, '2026-01-23 13:29:16', '2026-01-23 13:29:20', '', 1, 1, NULL),
 
 
 
@@ -6573,33 +6591,22 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6596, '2026-01-16 15:30:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 'Validé', 17, '2026-01-22 13:31:08', '2026-01-23 12:45:23', '', 1, 1, NULL),
-(6597, '2026-01-15 15:38:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 'Validé', 17, '2026-01-22 13:42:34', '2026-01-23 13:21:54', '', 1, 1, NULL),
-(6598, '2026-01-08 14:46:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 17, '2026-01-22 13:47:11', '2026-01-23 13:24:24', '', 1, 1, NULL),
 
 
 
 
-(6603, '2026-01-07 16:05:00', 220, NULL, 0, NULL, NULL, '', 270.000000, 'Validé', 17, '2026-01-22 14:06:12', '2026-01-24 09:32:36', '', 1, 1, 220),
 
+(6682, '2026-01-15 10:57:00', 220, NULL, 0, NULL, NULL, '', 3360.000000, 2, 12, '2026-01-24 08:58:05', '2026-01-24 09:14:48', '', 1, 1, 220),
+(6683, '2026-01-10 11:04:00', 220, NULL, 0, NULL, NULL, '', 117.000000, 2, 12, '2026-01-24 09:04:27', '2026-01-24 09:05:15', '', 1, 1, 220),
+(6684, '2026-01-12 11:05:00', 220, NULL, 0, NULL, NULL, '', 73.000000, 2, 12, '2026-01-24 09:09:01', '2026-01-24 09:12:25', '', 1, 1, 220),
+(6685, '2026-01-12 10:09:00', 220, NULL, 0, NULL, NULL, '', 2637.500000, 2, 12, '2026-01-24 09:11:33', '2026-01-24 09:12:26', '', 1, 1, 220),
 
 
 
-(6608, '2026-01-06 15:36:00', 220, NULL, 0, NULL, NULL, '', 350.000000, 'Validé', 17, '2026-01-22 14:37:50', '2026-01-23 12:57:15', '', 1, 1, NULL),
 
-(6610, '2026-01-07 17:42:00', 220, NULL, 0, NULL, NULL, '', 1570.000000, 'Validé', 17, '2026-01-22 14:43:58', '2026-01-24 09:03:41', '', 1, 1, 220),
-(6611, '2026-01-09 16:44:00', 220, NULL, 0, NULL, NULL, '', 1570.000000, 'Validé', 17, '2026-01-22 14:45:12', '2026-01-24 09:03:18', '', 1, 1, 220),
 
-(6613, '2026-01-10 15:45:00', 220, NULL, 0, NULL, NULL, '', 2246.400000, 'Validé', 17, '2026-01-22 14:47:29', '2026-01-24 09:02:36', '', 1, 1, NULL),
 
-(6615, '2026-01-10 16:48:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 'Validé', 17, '2026-01-22 14:48:42', '2026-01-24 09:01:57', '', 1, 1, 220),
-(6616, '2026-01-06 15:49:00', 220, NULL, 0, NULL, NULL, '', 1102.400000, 'Validé', 17, '2026-01-22 14:50:48', '2026-01-24 09:01:29', '', 1, 1, NULL),
-(6617, '2026-01-13 15:53:00', 220, NULL, 0, NULL, NULL, '', 2937.600000, 'Validé', 17, '2026-01-22 14:55:04', '2026-01-24 09:01:13', '', 1, 1, NULL),
-(6618, '2026-01-14 15:55:00', 220, NULL, 0, NULL, NULL, '', 960.000000, 'Validé', 17, '2026-01-22 14:56:01', '2026-01-24 09:00:47', '', 1, 1, NULL),
-(6619, '2026-01-19 16:56:00', 220, NULL, 0, NULL, NULL, '', 863.500000, 'Validé', 17, '2026-01-22 14:57:20', '2026-01-24 09:00:22', '', 1, 1, 220),
-(6620, '2026-01-15 16:57:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 'Validé', 17, '2026-01-22 14:58:19', '2026-01-24 08:59:18', '', 1, 1, 220),
 
-(6622, '2026-01-22 17:40:00', 220, NULL, 0, NULL, NULL, '', 4632.100000, 'Validé', 7, '2026-01-22 15:50:22', '2026-02-11 13:22:36', '', 1, 1, 220),
 
 
 
@@ -6608,6 +6615,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6701, '2026-01-24 13:19:00', 220, NULL, 0, NULL, NULL, '', 1855.000000, 2, 12, '2026-01-24 11:20:01', '2026-01-24 11:24:30', '', 1, 1, 220),
 
 
 
@@ -6633,12 +6641,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6656, '2026-01-23 14:28:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 12, '2026-01-23 13:29:16', '2026-01-23 13:29:20', '', 1, 1, NULL),
 
 
 
 
 
+(6732, '2026-01-26 14:50:00', 220, NULL, 0, NULL, NULL, '', 52.300000, 2, 7, '2026-01-26 10:51:18', '2026-02-11 11:10:53', '', 1, 1, 220),
 
 
 
@@ -6659,10 +6667,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6682, '2026-01-15 10:57:00', 220, NULL, 0, NULL, NULL, '', 3360.000000, 'Validé', 12, '2026-01-24 08:58:05', '2026-01-24 09:14:48', '', 1, 1, 220),
-(6683, '2026-01-10 11:04:00', 220, NULL, 0, NULL, NULL, '', 117.000000, 'Validé', 12, '2026-01-24 09:04:27', '2026-01-24 09:05:15', '', 1, 1, 220),
-(6684, '2026-01-12 11:05:00', 220, NULL, 0, NULL, NULL, '', 73.000000, 'Validé', 12, '2026-01-24 09:09:01', '2026-01-24 09:12:25', '', 1, 1, 220),
-(6685, '2026-01-12 10:09:00', 220, NULL, 0, NULL, NULL, '', 2637.500000, 'Validé', 12, '2026-01-24 09:11:33', '2026-01-24 09:12:26', '', 1, 1, 220),
 
 
 
@@ -6678,7 +6682,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6701, '2026-01-24 13:19:00', 220, NULL, 0, NULL, NULL, '', 1855.000000, 'Validé', 12, '2026-01-24 11:20:01', '2026-01-24 11:24:30', '', 1, 1, 220),
 
 
 
@@ -6709,7 +6712,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6732, '2026-01-26 14:50:00', 220, NULL, 0, NULL, NULL, '', 52.300000, 'Validé', 7, '2026-01-26 10:51:18', '2026-02-11 11:10:53', '', 1, 1, 220),
 
 
 
@@ -6771,6 +6773,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6859, '2026-01-30 14:38:00', 220, NULL, 0, NULL, NULL, '', 820.000000, 2, 11, '2026-01-30 09:39:35', '2026-02-11 12:36:03', 'AHLAN', 1, 1, 220),
+(6860, '2026-01-30 15:38:00', 220, NULL, 0, NULL, NULL, '', 875.000000, 2, 11, '2026-01-30 09:40:43', '2026-02-11 12:37:40', 'AHLAN', 1, 1, 220);
 
 
 
@@ -6798,6 +6802,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -6827,6 +6832,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6917, '2026-01-31 14:15:00', 220, NULL, 0, NULL, NULL, '', 533.520000, 2, 7, '2026-01-31 12:16:04', '2026-02-11 12:42:38', '', 1, 1, 220),
 
 
 
@@ -6836,8 +6842,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6859, '2026-01-30 14:38:00', 220, NULL, 0, NULL, NULL, '', 820.000000, 'Validé', 11, '2026-01-30 09:39:35', '2026-02-11 12:36:03', 'AHLAN', 1, 1, 220),
-(6860, '2026-01-30 15:38:00', 220, NULL, 0, NULL, NULL, '', 875.000000, 'Validé', 11, '2026-01-30 09:40:43', '2026-02-11 12:37:40', 'AHLAN', 1, 1, 220),
 
 
 
@@ -6865,7 +6869,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -6885,6 +6888,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(6973, '2026-02-02 18:11:00', 220, NULL, 0, NULL, NULL, '', 16528.000000, 2, 12, '2026-02-02 13:13:18', '2026-03-31 14:57:14', 'Ø®Ù„Ø§Øµ MOIS 1', 1, 1, 220),
 
 
 
@@ -6895,7 +6899,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6917, '2026-01-31 14:15:00', 220, NULL, 0, NULL, NULL, '', 533.520000, 'Validé', 7, '2026-01-31 12:16:04', '2026-02-11 12:42:38', '', 1, 1, 220),
 
 
 
@@ -6951,9 +6954,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(6973, '2026-02-02 18:11:00', 220, NULL, 0, NULL, NULL, '', 16528.000000, 'Validé', 12, '2026-02-02 13:13:18', '2026-03-31 14:57:14', 'خلاص MOIS 1', 1, 1, 220),
 
 
+(7041, '2026-02-05 12:04:00', 220, NULL, 0, NULL, NULL, '', 3677.940000, 2, 7, '2026-02-05 08:10:29', '2026-02-11 12:57:31', '', 1, 1, 220),
 
 
 
@@ -6971,6 +6974,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7059, '2026-02-05 19:19:00', 220, NULL, 0, NULL, NULL, '', 1695.000000, 2, 7, '2026-02-05 14:25:47', '2026-02-11 12:56:39', 'AWATEF ahlan', 1, 0, NULL),
 
 
 
@@ -7013,13 +7017,14 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7102, '2026-02-07 12:12:00', 220, NULL, 0, NULL, NULL, '', 32.400000, 2, 7, '2026-02-07 09:12:46', '2026-02-11 11:19:57', '', 1, 1, 220),
 
 
 
 
 
+(7108, '2026-02-07 14:06:00', 220, NULL, 0, NULL, NULL, '', 3090.960000, 2, 7, '2026-02-07 10:06:48', '2026-02-19 11:03:30', '', 1, 0, NULL),
 
-(7041, '2026-02-05 12:04:00', 220, NULL, 0, NULL, NULL, '', 3677.940000, 'Validé', 7, '2026-02-05 08:10:29', '2026-02-11 12:57:31', '', 1, 1, 220),
 
 
 
@@ -7037,7 +7042,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7059, '2026-02-05 19:19:00', 220, NULL, 0, NULL, NULL, '', 1695.000000, 'Validé', 7, '2026-02-05 14:25:47', '2026-02-11 12:56:39', 'AWATEF ahlan', 1, 0, NULL),
 
 
 
@@ -7080,13 +7084,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7102, '2026-02-07 12:12:00', 220, NULL, 0, NULL, NULL, '', 32.400000, 'Validé', 7, '2026-02-07 09:12:46', '2026-02-11 11:19:57', '', 1, 1, 220),
 
 
 
 
 
-(7108, '2026-02-07 14:06:00', 220, NULL, 0, NULL, NULL, '', 3090.960000, 'Validé', 7, '2026-02-07 10:06:48', '2026-02-19 11:03:30', '', 1, 0, NULL),
 
 
 
@@ -7100,6 +7102,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7187, '2026-02-10 14:08:00', 220, NULL, 0, NULL, NULL, '', 1695.000000, 2, 7, '2026-02-10 10:10:02', '2026-02-19 10:58:14', 'awatef ahlan', 1, 0, NULL),
 
 
 
@@ -7114,10 +7117,24 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7202, '2026-01-26 14:21:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 17, '2026-02-10 13:23:03', '2026-02-11 11:10:31', '', 1, 0, NULL),
 
+(7204, '2026-02-03 14:40:00', 220, NULL, 0, NULL, NULL, '', 60.000000, 2, 17, '2026-02-10 13:41:25', '2026-02-11 11:23:42', '', 1, 0, NULL),
+(7205, '2026-01-21 15:08:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 2, 17, '2026-02-10 14:08:56', '2026-02-11 11:34:54', '', 1, 0, NULL),
 
+(7207, '2026-01-31 15:31:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 17, '2026-02-10 14:32:49', '2026-02-11 12:44:59', '', 1, 0, NULL),
+(7208, '2026-01-24 15:41:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 17, '2026-02-10 14:42:47', '2026-02-11 12:51:28', '', 1, 0, NULL),
+(7209, '2026-01-19 15:47:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 2, 17, '2026-02-10 14:47:57', '2026-02-11 12:55:23', '', 1, 0, NULL),
+(7210, '2026-02-05 15:55:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 2, 17, '2026-02-10 14:56:13', '2026-02-11 12:59:07', '', 1, 0, NULL),
+(7211, '2026-01-23 16:02:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 2, 17, '2026-02-10 15:03:35', '2026-02-11 13:04:03', '', 1, 0, NULL),
 
 
+(7214, '2026-01-22 16:12:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 2, 17, '2026-02-10 15:14:42', '2026-02-11 13:24:26', '', 1, 0, NULL);
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
+(7215, '2026-02-02 16:18:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 17, '2026-02-10 15:20:22', '2026-02-11 13:22:09', '', 1, 0, NULL),
+(7216, '2026-01-29 16:25:00', 220, NULL, 0, NULL, NULL, '', 455.000000, 2, 17, '2026-02-10 15:25:44', '2026-02-11 13:01:01', '', 1, 0, NULL),
+(7217, '2026-01-31 16:26:00', 220, NULL, 0, NULL, NULL, '', 2246.400000, 2, 17, '2026-02-10 15:26:47', '2026-02-11 13:00:43', '', 1, 0, NULL),
+(7218, '2026-02-05 16:27:00', 220, NULL, 0, NULL, NULL, '', 204.000000, 2, 17, '2026-02-10 15:28:48', '2026-02-11 12:59:58', '', 1, 0, NULL),
 
 
 
@@ -7149,10 +7166,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7250, '2026-01-29 13:27:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 2, 12, '2026-02-11 11:27:35', '2026-02-11 12:24:26', '', 1, 1, 220),
 
 
 
+(7254, '2026-01-27 14:20:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 2, 12, '2026-02-11 12:21:05', '2026-02-11 12:22:47', '', 1, 1, 220),
 
+(7256, '2026-01-30 14:39:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 2, 12, '2026-02-11 12:40:06', '2026-02-11 12:40:40', '', 1, 1, 220),
 
 
 
@@ -7165,7 +7185,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7187, '2026-02-10 14:08:00', 220, NULL, 0, NULL, NULL, '', 1695.000000, 'Validé', 7, '2026-02-10 10:10:02', '2026-02-19 10:58:14', 'awatef ahlan', 1, 0, NULL),
 
 
 
@@ -7180,24 +7199,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7202, '2026-01-26 14:21:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 17, '2026-02-10 13:23:03', '2026-02-11 11:10:31', '', 1, 0, NULL),
 
-(7204, '2026-02-03 14:40:00', 220, NULL, 0, NULL, NULL, '', 60.000000, 'Validé', 17, '2026-02-10 13:41:25', '2026-02-11 11:23:42', '', 1, 0, NULL),
-(7205, '2026-01-21 15:08:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 'Validé', 17, '2026-02-10 14:08:56', '2026-02-11 11:34:54', '', 1, 0, NULL),
 
-(7207, '2026-01-31 15:31:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 17, '2026-02-10 14:32:49', '2026-02-11 12:44:59', '', 1, 0, NULL),
-(7208, '2026-01-24 15:41:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 17, '2026-02-10 14:42:47', '2026-02-11 12:51:28', '', 1, 0, NULL),
-(7209, '2026-01-19 15:47:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 'Validé', 17, '2026-02-10 14:47:57', '2026-02-11 12:55:23', '', 1, 0, NULL),
-(7210, '2026-02-05 15:55:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 'Validé', 17, '2026-02-10 14:56:13', '2026-02-11 12:59:07', '', 1, 0, NULL),
-(7211, '2026-01-23 16:02:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 'Validé', 17, '2026-02-10 15:03:35', '2026-02-11 13:04:03', '', 1, 0, NULL),
+(7285, '2026-02-12 14:25:00', 220, NULL, 0, NULL, NULL, '', 820.000000, 2, 7, '2026-02-12 10:32:24', '2026-02-19 11:53:29', 'AHLAN', 1, 0, NULL),
 
 
-(7214, '2026-01-22 16:12:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 'Validé', 17, '2026-02-10 15:14:42', '2026-02-11 13:24:26', '', 1, 0, NULL);
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
-(7215, '2026-02-02 16:18:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 17, '2026-02-10 15:20:22', '2026-02-11 13:22:09', '', 1, 0, NULL),
-(7216, '2026-01-29 16:25:00', 220, NULL, 0, NULL, NULL, '', 455.000000, 'Validé', 17, '2026-02-10 15:25:44', '2026-02-11 13:01:01', '', 1, 0, NULL),
-(7217, '2026-01-31 16:26:00', 220, NULL, 0, NULL, NULL, '', 2246.400000, 'Validé', 17, '2026-02-10 15:26:47', '2026-02-11 13:00:43', '', 1, 0, NULL),
-(7218, '2026-02-05 16:27:00', 220, NULL, 0, NULL, NULL, '', 204.000000, 'Validé', 17, '2026-02-10 15:28:48', '2026-02-11 12:59:58', '', 1, 0, NULL),
 
 
 
@@ -7228,14 +7234,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7318, '2026-02-13 16:07:00', 220, NULL, 0, NULL, NULL, '', 176.770000, 2, 7, '2026-02-13 14:07:41', '2026-02-19 10:39:20', '', 1, 0, NULL),
 
-(7250, '2026-01-29 13:27:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 'Validé', 12, '2026-02-11 11:27:35', '2026-02-11 12:24:26', '', 1, 1, 220),
 
 
 
-(7254, '2026-01-27 14:20:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 'Validé', 12, '2026-02-11 12:21:05', '2026-02-11 12:22:47', '', 1, 1, 220),
 
-(7256, '2026-01-30 14:39:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 'Validé', 12, '2026-02-11 12:40:06', '2026-02-11 12:40:40', '', 1, 1, 220),
 
 
 
@@ -7244,6 +7248,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7332, '2026-02-07 20:43:00', 220, NULL, 0, NULL, NULL, '', 1768.000000, 2, 10, '2026-02-13 18:43:42', '2026-02-19 11:44:17', 'NUMERO DE CHEQUE 001378', 1, 1, 220),
 
 
 
@@ -7264,13 +7269,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7285, '2026-02-12 14:25:00', 220, NULL, 0, NULL, NULL, '', 820.000000, 'Validé', 7, '2026-02-12 10:32:24', '2026-02-19 11:53:29', 'AHLAN', 1, 0, NULL),
 
 
 
 
 
 
+(7359, '2026-02-14 12:59:00', 220, NULL, 0, NULL, NULL, '', 1140.000000, 2, 7, '2026-02-14 11:28:33', '2026-02-14 18:33:30', 'Ø¹Ù„ÙŠ Ø²ÙØ§Øª Ø¹ÙˆØ§Ø·Ù', 1, 0, NULL),
 
 
 
@@ -7297,7 +7302,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7318, '2026-02-13 16:07:00', 220, NULL, 0, NULL, NULL, '', 176.770000, 'Validé', 7, '2026-02-13 14:07:41', '2026-02-19 10:39:20', '', 1, 0, NULL),
 
 
 
@@ -7311,7 +7315,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7332, '2026-02-07 20:43:00', 220, NULL, 0, NULL, NULL, '', 1768.000000, 'Validé', 10, '2026-02-13 18:43:42', '2026-02-19 11:44:17', 'NUMERO DE CHEQUE 001378', 1, 1, 220),
 
 
 
@@ -7330,6 +7333,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7418, '2026-02-16 16:21:00', 220, NULL, 0, NULL, NULL, '', 1200.000000, 2, 7, '2026-02-16 11:22:08', '2026-02-17 18:45:55', 'AHLAN', 1, 0, NULL),
 
 
 
@@ -7338,12 +7342,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7359, '2026-02-14 12:59:00', 220, NULL, 0, NULL, NULL, '', 1140.000000, 'Validé', 7, '2026-02-14 11:28:33', '2026-02-14 18:33:30', 'علي زفات عواطف', 1, 0, NULL),
 
 
 
 
 
+(7432, '2026-02-16 13:25:00', 220, NULL, 0, NULL, NULL, '', 198.000000, 2, 7, '2026-02-16 13:26:47', '2026-02-19 10:37:31', '', 1, 0, NULL),
 
 
 
@@ -7356,6 +7360,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7445, '2026-02-16 20:01:00', 220, NULL, 0, NULL, NULL, '', 3629.500000, 2, 7, '2026-02-16 18:02:29', '2026-03-02 17:39:24', '', 1, 0, NULL),
 
 
 
@@ -7388,6 +7393,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7478, '2026-02-17 11:18:00', 220, NULL, 0, NULL, NULL, '', 1587.000000, 2, 7, '2026-02-17 11:18:56', '2026-02-19 10:04:22', '', 1, 0, NULL),
 
 
 
@@ -7396,7 +7402,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7418, '2026-02-16 16:21:00', 220, NULL, 0, NULL, NULL, '', 1200.000000, 'Validé', 7, '2026-02-16 11:22:08', '2026-02-17 18:45:55', 'AHLAN', 1, 0, NULL),
 
 
 
@@ -7410,9 +7415,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7432, '2026-02-16 13:25:00', 220, NULL, 0, NULL, NULL, '', 198.000000, 'Validé', 7, '2026-02-16 13:26:47', '2026-02-19 10:37:31', '', 1, 0, NULL),
 
 
+(7502, '2026-02-17 18:08:00', 220, NULL, 0, NULL, NULL, '', 15630.000000, 2, 1, '2026-02-17 18:08:52', '2026-02-17 18:09:06', 'cheque n6341082', 1, 0, NULL),
+(7503, '2026-02-17 18:09:00', 220, NULL, 0, NULL, NULL, '', 11500.000000, 2, 1, '2026-02-17 18:09:44', '2026-02-17 18:10:25', 'cheque n 9440493', 1, 1, 220);
 
 
 
@@ -7423,7 +7429,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7445, '2026-02-16 20:01:00', 220, NULL, 0, NULL, NULL, '', 3629.500000, 'Validé', 7, '2026-02-16 18:02:29', '2026-03-02 17:39:24', '', 1, 0, NULL),
 
 
 
@@ -7452,11 +7457,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
 
-(7478, '2026-02-17 11:18:00', 220, NULL, 0, NULL, NULL, '', 1587.000000, 'Validé', 7, '2026-02-17 11:18:56', '2026-02-19 10:04:22', '', 1, 0, NULL),
+(7547, '2026-02-17 11:13:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 17, '2026-02-18 11:14:44', '2026-02-18 14:42:49', '', 1, 0, NULL),
 
 
 
@@ -7466,10 +7472,24 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7557, '2026-02-16 13:30:00', 220, NULL, 0, NULL, NULL, '', 650.000000, 2, 17, '2026-02-18 13:30:58', '2026-02-19 10:37:56', '', 1, 0, NULL),
 
+(7559, '2026-02-07 14:17:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 2, 17, '2026-02-18 14:18:04', '2026-02-19 11:03:50', '', 1, 0, NULL),
+(7560, '2026-02-11 14:27:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 2, 17, '2026-02-18 14:28:40', '2026-02-19 10:56:30', '', 1, 0, NULL),
+(7561, '2026-02-14 15:18:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 2, 17, '2026-02-18 15:19:17', '2026-02-19 10:50:16', '', 1, 0, NULL),
+(7562, '2026-02-09 16:25:00', 220, NULL, 0, NULL, NULL, '', 140.000000, 2, 17, '2026-02-18 15:26:09', '2026-02-19 10:42:39', '', 1, 0, NULL),
+(7563, '2026-02-13 15:40:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 2, 17, '2026-02-18 15:41:49', '2026-02-19 10:41:23', '', 1, 0, NULL),
+(7564, '2026-02-18 15:36:00', 220, NULL, 0, NULL, NULL, '', 8291.000000, 2, 7, '2026-02-18 15:42:47', '2026-02-25 09:28:03', '', 1, 0, NULL),
+(7565, '2026-02-10 15:50:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 2, 17, '2026-02-18 15:50:37', '2026-02-19 11:01:58', '', 1, 0, NULL),
 
+(7567, '2026-02-18 17:52:00', 220, NULL, 0, NULL, NULL, '', 1280.000000, 2, 7, '2026-02-18 15:54:58', '2026-02-19 16:16:11', 'awatef ', 1, 0, NULL),
+(7568, '2026-02-16 15:55:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 2, 17, '2026-02-18 15:56:06', '2026-02-19 10:38:14', '', 1, 0, NULL),
 
 
+(7571, '2026-02-18 16:01:00', 220, NULL, 0, NULL, NULL, '', 108.000000, 2, 17, '2026-02-18 16:02:59', '2026-02-19 11:45:06', '', 1, 0, NULL),
+(7572, '2026-02-13 16:03:00', 220, NULL, 0, NULL, NULL, '', 650.000000, 2, 17, '2026-02-18 16:03:57', '2026-02-19 11:44:46', '', 1, 0, NULL),
+(7573, '2026-02-09 16:04:00', 220, NULL, 0, NULL, NULL, '', 650.000000, 2, 17, '2026-02-18 16:04:49', '2026-02-19 11:28:52', '', 1, 0, NULL),
+(7574, '2026-02-09 16:05:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 1, 17, '2026-02-18 16:05:41', '2026-02-18 16:05:41', '', 1, 0, NULL),
 
 
 
@@ -7480,8 +7500,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7502, '2026-02-17 18:08:00', 220, NULL, 0, NULL, NULL, '', 15630.000000, 'Validé', 1, '2026-02-17 18:08:52', '2026-02-17 18:09:06', 'cheque n6341082', 1, 0, NULL),
-(7503, '2026-02-17 18:09:00', 220, NULL, 0, NULL, NULL, '', 11500.000000, 'Validé', 1, '2026-02-17 18:09:44', '2026-02-17 18:10:25', 'cheque n 9440493', 1, 1, 220),
 
 
 
@@ -7508,6 +7526,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7611, '2026-02-19 10:14:00', 220, NULL, 0, NULL, NULL, '', 38976.500000, 2, 12, '2026-02-19 10:16:01', '2026-02-19 10:17:25', '', 1, 0, NULL),
 
 
 
@@ -7520,12 +7539,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
+(7626, '2026-02-19 13:32:00', 220, NULL, 0, NULL, NULL, '', 820.000000, 2, 7, '2026-02-19 11:33:23', '2026-02-20 16:18:18', 'AHLAN', 1, 0, NULL),
 
 
-(7547, '2026-02-17 11:13:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 17, '2026-02-18 11:14:44', '2026-02-18 14:42:49', '', 1, 0, NULL),
 
 
 
@@ -7535,24 +7553,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7557, '2026-02-16 13:30:00', 220, NULL, 0, NULL, NULL, '', 650.000000, 'Validé', 17, '2026-02-18 13:30:58', '2026-02-19 10:37:56', '', 1, 0, NULL),
 
-(7559, '2026-02-07 14:17:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 'Validé', 17, '2026-02-18 14:18:04', '2026-02-19 11:03:50', '', 1, 0, NULL),
-(7560, '2026-02-11 14:27:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 'Validé', 17, '2026-02-18 14:28:40', '2026-02-19 10:56:30', '', 1, 0, NULL),
-(7561, '2026-02-14 15:18:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 'Validé', 17, '2026-02-18 15:19:17', '2026-02-19 10:50:16', '', 1, 0, NULL),
-(7562, '2026-02-09 16:25:00', 220, NULL, 0, NULL, NULL, '', 140.000000, 'Validé', 17, '2026-02-18 15:26:09', '2026-02-19 10:42:39', '', 1, 0, NULL),
-(7563, '2026-02-13 15:40:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 'Validé', 17, '2026-02-18 15:41:49', '2026-02-19 10:41:23', '', 1, 0, NULL),
-(7564, '2026-02-18 15:36:00', 220, NULL, 0, NULL, NULL, '', 8291.000000, 'Validé', 7, '2026-02-18 15:42:47', '2026-02-25 09:28:03', '', 1, 0, NULL),
-(7565, '2026-02-10 15:50:00', 220, NULL, 0, NULL, NULL, '', 110.000000, 'Validé', 17, '2026-02-18 15:50:37', '2026-02-19 11:01:58', '', 1, 0, NULL),
 
-(7567, '2026-02-18 17:52:00', 220, NULL, 0, NULL, NULL, '', 1280.000000, 'Validé', 7, '2026-02-18 15:54:58', '2026-02-19 16:16:11', 'awatef ', 1, 0, NULL),
-(7568, '2026-02-16 15:55:00', 220, NULL, 0, NULL, NULL, '', 100.000000, 'Validé', 17, '2026-02-18 15:56:06', '2026-02-19 10:38:14', '', 1, 0, NULL),
 
 
-(7571, '2026-02-18 16:01:00', 220, NULL, 0, NULL, NULL, '', 108.000000, 'Validé', 17, '2026-02-18 16:02:59', '2026-02-19 11:45:06', '', 1, 0, NULL),
-(7572, '2026-02-13 16:03:00', 220, NULL, 0, NULL, NULL, '', 650.000000, 'Validé', 17, '2026-02-18 16:03:57', '2026-02-19 11:44:46', '', 1, 0, NULL),
-(7573, '2026-02-09 16:04:00', 220, NULL, 0, NULL, NULL, '', 650.000000, 'Validé', 17, '2026-02-18 16:04:49', '2026-02-19 11:28:52', '', 1, 0, NULL),
-(7574, '2026-02-09 16:05:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 'En attente', 17, '2026-02-18 16:05:41', '2026-02-18 16:05:41', '', 1, 0, NULL),
 
 
 
@@ -7589,7 +7593,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7611, '2026-02-19 10:14:00', 220, NULL, 0, NULL, NULL, '', 38976.500000, 'Validé', 12, '2026-02-19 10:16:01', '2026-02-19 10:17:25', '', 1, 0, NULL),
 
 
 
@@ -7604,7 +7607,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7626, '2026-02-19 13:32:00', 220, NULL, 0, NULL, NULL, '', 820.000000, 'Validé', 7, '2026-02-19 11:33:23', '2026-02-20 16:18:18', 'AHLAN', 1, 0, NULL),
 
 
 
@@ -7721,6 +7723,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7831, '2026-02-23 15:11:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 2, 7, '2026-02-23 14:11:30', '2026-03-02 17:39:50', '', 1, 0, NULL),
 
 
 
@@ -7736,6 +7739,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7850, '2026-02-23 08:15:00', 220, NULL, 0, NULL, NULL, '', 130.000000, 2, 7, '2026-02-24 08:16:02', '2026-03-03 16:37:16', '', 1, 0, NULL),
 
 
 
@@ -7744,6 +7748,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7859, '2026-02-24 09:42:00', 220, NULL, 0, NULL, NULL, '', 30902.000000, 2, 1, '2026-02-24 09:43:51', '2026-02-24 17:25:28', 'Ø§Ù„Ø¨Ø§Ù‚ÙŠ Ù…Ù† Ø§Ù„Ø´ÙŠÙƒØ§Øª ', 1, 0, NULL),
 
 
 
@@ -7758,6 +7763,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7875, '2026-02-19 13:15:00', 220, NULL, 0, NULL, NULL, '', 2480.000000, 2, 7, '2026-02-24 11:16:20', '2026-02-24 17:25:01', 'ÙÙ„ÙˆØ³ Ø¬ÙˆØ§Ù†', 1, 0, NULL);
 
 
 
@@ -7777,6 +7783,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -7786,8 +7793,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7831, '2026-02-23 15:11:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 'Validé', 7, '2026-02-23 14:11:30', '2026-03-02 17:39:50', '', 1, 0, NULL),
 
+(7905, '2026-02-24 17:12:00', 220, NULL, 0, NULL, NULL, '', 50000.000000, 2, 1, '2026-02-24 17:12:42', '2026-02-24 17:12:55', 'Ø§Ù„Ø¨Ø§Ù‚ÙŠ Ù…Ù† Ø§Ù„Ø´ÙŠÙƒØ§Øª ', 1, 0, NULL),
 
 
 
@@ -7802,7 +7809,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7850, '2026-02-23 08:15:00', 220, NULL, 0, NULL, NULL, '', 130.000000, 'Validé', 7, '2026-02-24 08:16:02', '2026-03-03 16:37:16', '', 1, 0, NULL),
 
 
 
@@ -7811,7 +7817,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7859, '2026-02-24 09:42:00', 220, NULL, 0, NULL, NULL, '', 30902.000000, 'Validé', 1, '2026-02-24 09:43:51', '2026-02-24 17:25:28', 'الباقي من الشيكات ', 1, 0, NULL),
 
 
 
@@ -7826,7 +7831,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7875, '2026-02-19 13:15:00', 220, NULL, 0, NULL, NULL, '', 2480.000000, 'Validé', 7, '2026-02-24 11:16:20', '2026-02-24 17:25:01', 'فلوس جوان', 1, 0, NULL),
 
 
 
@@ -7835,18 +7839,20 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7951, '2026-02-25 14:13:00', 220, NULL, 0, NULL, NULL, '', 450.000000, 2, 7, '2026-02-25 13:13:26', '2026-03-04 09:10:12', '', 1, 0, NULL),
 
 
 
 
 
 
+(7958, '2026-02-25 15:10:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 2, 7, '2026-02-25 14:11:21', '2026-03-02 17:27:37', '', 1, 0, NULL),
+(7959, '2026-02-25 15:12:00', 220, NULL, 0, NULL, NULL, '', 1771.000000, 2, 7, '2026-02-25 14:17:52', '2026-03-02 18:03:22', '', 1, 0, NULL),
 
 
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -7857,7 +7863,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7905, '2026-02-24 17:12:00', 220, NULL, 0, NULL, NULL, '', 50000.000000, 'Validé', 1, '2026-02-24 17:12:42', '2026-02-24 17:12:55', 'الباقي من الشيكات ', 1, 0, NULL),
 
 
 
@@ -7881,6 +7886,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(7999, '2026-02-26 14:40:00', 220, NULL, 0, NULL, NULL, '', 775.000000, 2, 11, '2026-02-26 12:41:32', '2026-03-02 17:50:03', 'ahlan', 1, 0, NULL),
 
 
 
@@ -7902,22 +7908,22 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7951, '2026-02-25 14:13:00', 220, NULL, 0, NULL, NULL, '', 450.000000, 'Validé', 7, '2026-02-25 13:13:26', '2026-03-04 09:10:12', '', 1, 0, NULL),
 
 
 
 
 
 
-(7958, '2026-02-25 15:10:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 'Validé', 7, '2026-02-25 14:11:21', '2026-03-02 17:27:37', '', 1, 0, NULL),
-(7959, '2026-02-25 15:12:00', 220, NULL, 0, NULL, NULL, '', 1771.000000, 'Validé', 7, '2026-02-25 14:17:52', '2026-03-02 18:03:22', '', 1, 0, NULL),
 
 
+(8029, '2026-02-26 16:07:00', 220, NULL, 0, NULL, NULL, '', 424.500000, 2, 11, '2026-02-26 17:37:16', '2026-02-27 07:58:50', '', 1, 0, NULL),
 
 
 
 
 
+(8035, '2026-02-27 11:23:00', 220, NULL, 0, NULL, NULL, '', 765.000000, 2, 7, '2026-02-27 08:24:25', '2026-03-02 14:19:43', 'AWATEF HAJREYEN', 1, 0, NULL),
+(8036, '2026-02-27 09:35:00', 220, NULL, 0, NULL, NULL, '', 775.000000, 2, 7, '2026-02-27 08:37:35', '2026-03-02 14:21:21', 'markaz lhaleb', 1, 0, NULL),
 
 
 
@@ -7949,12 +7955,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(7999, '2026-02-26 14:40:00', 220, NULL, 0, NULL, NULL, '', 775.000000, 'Validé', 11, '2026-02-26 12:41:32', '2026-03-02 17:50:03', 'ahlan', 1, 0, NULL),
 
 
 
 
 
+(8076, '2026-02-27 15:43:00', 220, NULL, 0, NULL, NULL, '', 7141.440000, 6, 7, '2026-02-27 15:44:10', '2026-03-02 16:36:53', '', 1, 0, NULL),
 
 
 
@@ -7968,6 +7974,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8094, '2026-02-28 09:17:00', 220, NULL, 0, NULL, NULL, '', 18.500000, 2, 1, '2026-02-28 08:17:39', '2026-03-02 17:57:47', '', 1, 0, NULL),
 
 
 
@@ -7979,14 +7986,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8029, '2026-02-26 16:07:00', 220, NULL, 0, NULL, NULL, '', 424.500000, 'Validé', 11, '2026-02-26 17:37:16', '2026-02-27 07:58:50', '', 1, 0, NULL),
 
 
 
 
 
-(8035, '2026-02-27 11:23:00', 220, NULL, 0, NULL, NULL, '', 765.000000, 'Validé', 7, '2026-02-27 08:24:25', '2026-03-02 14:19:43', 'AWATEF HAJREYEN', 1, 0, NULL),
-(8036, '2026-02-27 09:35:00', 220, NULL, 0, NULL, NULL, '', 775.000000, 'Validé', 7, '2026-02-27 08:37:35', '2026-03-02 14:21:21', 'markaz lhaleb', 1, 0, NULL),
 
 
 
@@ -7994,6 +7998,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8118, '2026-02-28 13:26:00', 220, NULL, 0, NULL, NULL, '', 820.000000, 2, 7, '2026-02-28 11:27:25', '2026-03-02 16:37:10', 'awatef branes ', 1, 0, NULL),
 
 
 
@@ -8008,6 +8013,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8134, '2026-02-28 13:54:00', 220, NULL, 0, NULL, NULL, '', 16528.000000, 2, 12, '2026-02-28 13:55:44', '2026-02-28 13:55:51', 'Ø®Ù„Ø§Øµ mois 2', 1, 0, NULL),
 
 
 
@@ -8023,7 +8029,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8076, '2026-02-27 15:43:00', 220, NULL, 0, NULL, NULL, '', 7141.440000, 'Annulé', 7, '2026-02-27 15:44:10', '2026-03-02 16:36:53', '', 1, 0, NULL),
 
 
 
@@ -8037,7 +8042,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8094, '2026-02-28 09:17:00', 220, NULL, 0, NULL, NULL, '', 18.500000, 'Validé', 1, '2026-02-28 08:17:39', '2026-03-02 17:57:47', '', 1, 0, NULL),
 
 
 
@@ -8046,6 +8050,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8173, '2026-03-02 10:51:00', 220, NULL, 0, NULL, NULL, '', 1889.380000, 2, 7, '2026-03-02 08:51:54', '2026-03-02 17:59:02', '', 1, 0, NULL),
 
 
 
@@ -8061,7 +8066,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8118, '2026-02-28 13:26:00', 220, NULL, 0, NULL, NULL, '', 820.000000, 'Validé', 7, '2026-02-28 11:27:25', '2026-03-02 16:37:10', 'awatef branes ', 1, 0, NULL),
 
 
 
@@ -8076,7 +8080,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8134, '2026-02-28 13:54:00', 220, NULL, 0, NULL, NULL, '', 16528.000000, 'Validé', 12, '2026-02-28 13:55:44', '2026-02-28 13:55:51', 'خلاص mois 2', 1, 0, NULL),
 
 
 
@@ -8090,11 +8093,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8218, '2026-03-02 17:20:00', 220, NULL, 0, NULL, NULL, '', 116.600000, 2, 7, '2026-03-02 16:21:07', '2026-03-02 18:03:51', '', 1, 0, NULL),
+(8219, '2026-03-02 17:21:00', 220, NULL, 0, NULL, NULL, '', 312.000000, 2, 7, '2026-03-02 16:22:19', '2026-03-04 09:10:25', '', 1, 0, NULL),
 
 
 
 
 
+(8228, '2026-02-25 19:06:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 2, 7, '2026-03-02 18:07:20', '2026-03-02 18:07:29', '', 1, 0, NULL),
+(8229, '2026-02-25 20:08:00', 220, NULL, 0, NULL, NULL, '', 450.000000, 2, 7, '2026-03-02 18:08:46', '2026-03-02 18:09:09', '', 1, 0, NULL),
+(8230, '2026-02-25 19:09:00', 220, NULL, 0, NULL, NULL, '', 780.000000, 2, 7, '2026-03-02 18:09:51', '2026-03-02 18:10:03', '', 1, 0, NULL);
 
 
 
@@ -8103,6 +8111,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -8113,7 +8122,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8173, '2026-03-02 10:51:00', 220, NULL, 0, NULL, NULL, '', 1889.380000, 'Validé', 7, '2026-03-02 08:51:54', '2026-03-02 17:59:02', '', 1, 0, NULL),
 
 
 
@@ -8156,25 +8164,41 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8218, '2026-03-02 17:20:00', 220, NULL, 0, NULL, NULL, '', 116.600000, 'Validé', 7, '2026-03-02 16:21:07', '2026-03-02 18:03:51', '', 1, 0, NULL),
-(8219, '2026-03-02 17:21:00', 220, NULL, 0, NULL, NULL, '', 312.000000, 'Validé', 7, '2026-03-02 16:22:19', '2026-03-04 09:10:25', '', 1, 0, NULL),
 
 
 
 
 
-(8228, '2026-02-25 19:06:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 'Validé', 7, '2026-03-02 18:07:20', '2026-03-02 18:07:29', '', 1, 0, NULL),
-(8229, '2026-02-25 20:08:00', 220, NULL, 0, NULL, NULL, '', 450.000000, 'Validé', 7, '2026-03-02 18:08:46', '2026-03-02 18:09:09', '', 1, 0, NULL),
-(8230, '2026-02-25 19:09:00', 220, NULL, 0, NULL, NULL, '', 780.000000, 'Validé', 7, '2026-03-02 18:09:51', '2026-03-02 18:10:03', '', 1, 0, NULL),
 
+(8299, '2026-02-20 18:06:00', 220, NULL, 0, NULL, NULL, '', 50.000000, 2, 7, '2026-03-03 16:10:00', '2026-03-03 16:10:34', '', 1, 0, NULL),
+(8300, '2026-02-25 17:22:00', 220, NULL, 0, NULL, NULL, '', 375.000000, 2, 7, '2026-03-03 16:22:31', '2026-03-03 16:22:36', '', 1, 0, NULL),
+(8301, '2026-02-27 17:25:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 2, 7, '2026-03-03 16:26:09', '2026-03-03 16:26:28', '', 1, 0, NULL),
+(8302, '2026-02-28 17:30:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 2, 7, '2026-03-03 16:30:49', '2026-03-03 16:31:01', '', 1, 0, NULL),
+(8303, '2026-03-02 17:36:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 2, 7, '2026-03-03 16:36:38', '2026-03-03 16:36:54', '', 1, 0, NULL),
+(8304, '2026-02-21 17:37:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 2, 7, '2026-03-03 16:38:02', '2026-03-03 16:38:11', '', 1, 0, NULL),
+(8305, '2026-02-21 17:41:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 7, '2026-03-03 16:41:23', '2026-03-03 16:41:36', '', 1, 0, NULL),
+(8306, '2026-02-19 18:45:00', 220, NULL, 0, NULL, NULL, '', 260.000000, 2, 7, '2026-03-03 16:46:39', '2026-03-03 16:46:58', '', 1, 0, NULL),
+(8307, '2026-02-19 18:47:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 2, 7, '2026-03-03 16:47:45', '2026-03-03 16:48:46', '', 1, 0, NULL),
+(8308, '2026-02-27 17:48:00', 220, NULL, 0, NULL, NULL, '', 430.860000, 2, 7, '2026-03-03 16:49:33', '2026-03-03 16:49:43', '', 1, 0, NULL),
+(8309, '2026-02-27 17:49:00', 220, NULL, 0, NULL, NULL, '', 274.010000, 2, 7, '2026-03-03 16:50:12', '2026-03-03 16:50:21', '', 1, 0, NULL),
+(8310, '2026-02-27 18:50:00', 220, NULL, 0, NULL, NULL, '', 280.810000, 2, 7, '2026-03-03 16:51:09', '2026-03-03 16:51:26', '', 1, 0, NULL),
+(8311, '2026-02-27 17:51:00', 220, NULL, 0, NULL, NULL, '', 1800.000000, 2, 7, '2026-03-03 16:52:06', '2026-03-03 16:52:15', '', 1, 0, NULL),
+(8312, '2026-03-03 18:52:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 2, 7, '2026-03-03 16:52:35', '2026-03-03 16:52:52', '', 1, 0, NULL),
+(8313, '2026-02-27 17:52:00', 220, NULL, 0, NULL, NULL, '', 564.000000, 2, 7, '2026-03-03 16:53:39', '2026-03-03 16:53:48', '', 1, 0, NULL),
+(8314, '2026-02-24 17:55:00', 220, NULL, 0, NULL, NULL, '', 230.000000, 2, 7, '2026-03-03 16:56:27', '2026-03-03 16:56:35', '', 1, 0, NULL),
+(8315, '2026-02-24 18:56:00', 220, NULL, 0, NULL, NULL, '', 4960.000000, 2, 7, '2026-03-03 16:57:11', '2026-03-03 16:57:42', '', 1, 0, NULL),
+(8316, '2026-02-26 17:59:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 2, 7, '2026-03-03 17:00:01', '2026-03-03 17:00:15', '', 1, 0, NULL),
+(8317, '2026-02-26 21:00:00', 220, NULL, 0, NULL, NULL, '', 1435.000000, 2, 7, '2026-03-03 17:03:12', '2026-03-03 17:03:38', 'AWATEF', 1, 0, NULL),
+(8318, '2026-03-03 18:08:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 2, 7, '2026-03-03 17:09:03', '2026-03-03 17:09:36', '', 1, 0, NULL),
 
+(8320, '2026-03-03 19:12:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 2, 7, '2026-03-03 17:15:57', '2026-03-03 17:16:18', '', 1, 0, NULL),
+(8321, '2026-03-03 18:16:00', 220, NULL, 0, NULL, NULL, '', 478.000000, 2, 7, '2026-03-03 17:17:19', '2026-03-03 17:17:28', '', 1, 0, NULL),
 
 
 
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -8204,10 +8228,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8358, '2026-03-04 13:47:00', 220, NULL, 0, NULL, NULL, '', 1115.500000, 2, 7, '2026-03-04 13:46:54', '2026-03-04 17:05:36', 'mohamed boukir', 1, 0, NULL),
 
 
 
 
+(8363, '2026-03-04 16:56:00', 220, NULL, 0, NULL, NULL, '', 11871.300000, 2, 7, '2026-03-04 15:24:29', '2026-03-04 17:03:36', '', 1, 0, NULL),
 
 
 
@@ -8216,11 +8242,19 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8372, '2026-02-18 17:49:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 2, 7, '2026-03-04 16:50:43', '2026-03-04 16:51:09', '', 1, 0, NULL),
+(8373, '2026-02-18 17:51:00', 220, NULL, 0, NULL, NULL, '', 2073.600000, 2, 7, '2026-03-04 16:51:34', '2026-03-04 16:51:40', '', 1, 0, NULL),
+(8374, '2026-02-18 18:52:00', 220, NULL, 0, NULL, NULL, '', 4270.000000, 2, 7, '2026-03-04 16:53:13', '2026-03-04 16:53:37', '', 1, 0, NULL),
+(8375, '2026-02-18 17:54:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 7, '2026-03-04 16:54:35', '2026-03-04 17:00:22', '', 1, 0, NULL),
+(8376, '2026-03-04 17:59:00', 220, NULL, 0, NULL, NULL, '', 2073.600000, 2, 7, '2026-03-04 17:00:09', '2026-03-04 17:00:35', '', 1, 0, NULL),
+(8377, '2026-03-04 18:06:00', 220, NULL, 0, NULL, NULL, '', 40.000000, 2, 7, '2026-03-04 17:07:28', '2026-03-05 07:29:34', '', 1, 0, NULL),
 
 
 
 
 
+(8383, '2026-03-05 09:04:00', 220, NULL, 0, NULL, NULL, '', 397.500000, 2, 7, '2026-03-05 08:05:12', '2026-03-05 17:14:12', '', 1, 0, NULL),
+(8384, '2026-03-05 09:14:00', 220, NULL, 0, NULL, NULL, '', 673.010000, 2, 7, '2026-03-05 08:15:03', '2026-03-05 17:13:36', '', 1, 0, NULL),
 
 
 
@@ -8233,29 +8267,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8299, '2026-02-20 18:06:00', 220, NULL, 0, NULL, NULL, '', 50.000000, 'Validé', 7, '2026-03-03 16:10:00', '2026-03-03 16:10:34', '', 1, 0, NULL),
-(8300, '2026-02-25 17:22:00', 220, NULL, 0, NULL, NULL, '', 375.000000, 'Validé', 7, '2026-03-03 16:22:31', '2026-03-03 16:22:36', '', 1, 0, NULL),
-(8301, '2026-02-27 17:25:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 'Validé', 7, '2026-03-03 16:26:09', '2026-03-03 16:26:28', '', 1, 0, NULL),
-(8302, '2026-02-28 17:30:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 'Validé', 7, '2026-03-03 16:30:49', '2026-03-03 16:31:01', '', 1, 0, NULL),
-(8303, '2026-03-02 17:36:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 'Validé', 7, '2026-03-03 16:36:38', '2026-03-03 16:36:54', '', 1, 0, NULL),
-(8304, '2026-02-21 17:37:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 'Validé', 7, '2026-03-03 16:38:02', '2026-03-03 16:38:11', '', 1, 0, NULL),
-(8305, '2026-02-21 17:41:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 7, '2026-03-03 16:41:23', '2026-03-03 16:41:36', '', 1, 0, NULL),
-(8306, '2026-02-19 18:45:00', 220, NULL, 0, NULL, NULL, '', 260.000000, 'Validé', 7, '2026-03-03 16:46:39', '2026-03-03 16:46:58', '', 1, 0, NULL),
-(8307, '2026-02-19 18:47:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 'Validé', 7, '2026-03-03 16:47:45', '2026-03-03 16:48:46', '', 1, 0, NULL),
-(8308, '2026-02-27 17:48:00', 220, NULL, 0, NULL, NULL, '', 430.860000, 'Validé', 7, '2026-03-03 16:49:33', '2026-03-03 16:49:43', '', 1, 0, NULL),
-(8309, '2026-02-27 17:49:00', 220, NULL, 0, NULL, NULL, '', 274.010000, 'Validé', 7, '2026-03-03 16:50:12', '2026-03-03 16:50:21', '', 1, 0, NULL),
-(8310, '2026-02-27 18:50:00', 220, NULL, 0, NULL, NULL, '', 280.810000, 'Validé', 7, '2026-03-03 16:51:09', '2026-03-03 16:51:26', '', 1, 0, NULL),
-(8311, '2026-02-27 17:51:00', 220, NULL, 0, NULL, NULL, '', 1800.000000, 'Validé', 7, '2026-03-03 16:52:06', '2026-03-03 16:52:15', '', 1, 0, NULL),
-(8312, '2026-03-03 18:52:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 'Validé', 7, '2026-03-03 16:52:35', '2026-03-03 16:52:52', '', 1, 0, NULL),
-(8313, '2026-02-27 17:52:00', 220, NULL, 0, NULL, NULL, '', 564.000000, 'Validé', 7, '2026-03-03 16:53:39', '2026-03-03 16:53:48', '', 1, 0, NULL),
-(8314, '2026-02-24 17:55:00', 220, NULL, 0, NULL, NULL, '', 230.000000, 'Validé', 7, '2026-03-03 16:56:27', '2026-03-03 16:56:35', '', 1, 0, NULL),
-(8315, '2026-02-24 18:56:00', 220, NULL, 0, NULL, NULL, '', 4960.000000, 'Validé', 7, '2026-03-03 16:57:11', '2026-03-03 16:57:42', '', 1, 0, NULL),
-(8316, '2026-02-26 17:59:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 'Validé', 7, '2026-03-03 17:00:01', '2026-03-03 17:00:15', '', 1, 0, NULL),
-(8317, '2026-02-26 21:00:00', 220, NULL, 0, NULL, NULL, '', 1435.000000, 'Validé', 7, '2026-03-03 17:03:12', '2026-03-03 17:03:38', 'AWATEF', 1, 0, NULL),
-(8318, '2026-03-03 18:08:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 'Validé', 7, '2026-03-03 17:09:03', '2026-03-03 17:09:36', '', 1, 0, NULL),
 
-(8320, '2026-03-03 19:12:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 'Validé', 7, '2026-03-03 17:15:57', '2026-03-03 17:16:18', '', 1, 0, NULL),
-(8321, '2026-03-03 18:16:00', 220, NULL, 0, NULL, NULL, '', 478.000000, 'Validé', 7, '2026-03-03 17:17:19', '2026-03-03 17:17:28', '', 1, 0, NULL),
 
 
 
@@ -8291,12 +8303,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8358, '2026-03-04 13:47:00', 220, NULL, 0, NULL, NULL, '', 1115.500000, 'Validé', 7, '2026-03-04 13:46:54', '2026-03-04 17:05:36', 'mohamed boukir', 1, 0, NULL),
 
 
 
 
-(8363, '2026-03-04 16:56:00', 220, NULL, 0, NULL, NULL, '', 11871.300000, 'Validé', 7, '2026-03-04 15:24:29', '2026-03-04 17:03:36', '', 1, 0, NULL),
 
 
 
@@ -8305,19 +8315,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8372, '2026-02-18 17:49:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 'Validé', 7, '2026-03-04 16:50:43', '2026-03-04 16:51:09', '', 1, 0, NULL),
-(8373, '2026-02-18 17:51:00', 220, NULL, 0, NULL, NULL, '', 2073.600000, 'Validé', 7, '2026-03-04 16:51:34', '2026-03-04 16:51:40', '', 1, 0, NULL),
-(8374, '2026-02-18 18:52:00', 220, NULL, 0, NULL, NULL, '', 4270.000000, 'Validé', 7, '2026-03-04 16:53:13', '2026-03-04 16:53:37', '', 1, 0, NULL),
-(8375, '2026-02-18 17:54:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 7, '2026-03-04 16:54:35', '2026-03-04 17:00:22', '', 1, 0, NULL),
-(8376, '2026-03-04 17:59:00', 220, NULL, 0, NULL, NULL, '', 2073.600000, 'Validé', 7, '2026-03-04 17:00:09', '2026-03-04 17:00:35', '', 1, 0, NULL),
-(8377, '2026-03-04 18:06:00', 220, NULL, 0, NULL, NULL, '', 40.000000, 'Validé', 7, '2026-03-04 17:07:28', '2026-03-05 07:29:34', '', 1, 0, NULL),
 
 
 
 
 
-(8383, '2026-03-05 09:04:00', 220, NULL, 0, NULL, NULL, '', 397.500000, 'Validé', 7, '2026-03-05 08:05:12', '2026-03-05 17:14:12', '', 1, 0, NULL),
-(8384, '2026-03-05 09:14:00', 220, NULL, 0, NULL, NULL, '', 673.010000, 'Validé', 7, '2026-03-05 08:15:03', '2026-03-05 17:13:36', '', 1, 0, NULL),
 
 
 
@@ -8331,6 +8333,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8465, '2026-03-06 16:36:00', 220, NULL, 0, NULL, NULL, '', 1632.960000, 2, 7, '2026-03-06 16:37:21', '2026-03-06 16:39:49', '', 1, 0, NULL),
 
 
 
@@ -8362,6 +8365,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8502, '2026-03-07 12:56:00', 220, NULL, 0, NULL, NULL, '', 740.000000, 2, 1, '2026-03-07 12:56:30', '2026-03-07 16:32:50', '', 1, 0, NULL),
 
 
 
@@ -8375,6 +8379,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8518, '2026-03-07 17:29:00', 220, NULL, 0, NULL, NULL, '', 70.000000, 2, 11, '2026-03-07 16:30:01', '2026-03-07 16:30:14', '', 1, 0, NULL),
+(8519, '2026-03-07 18:30:00', 220, NULL, 0, NULL, NULL, '', 4575.000000, 2, 11, '2026-03-07 16:31:16', '2026-03-07 16:31:28', '', 1, 0, NULL),
 
 
 
@@ -8396,7 +8402,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8465, '2026-03-06 16:36:00', 220, NULL, 0, NULL, NULL, '', 1632.960000, 'Validé', 7, '2026-03-06 16:37:21', '2026-03-06 16:39:49', '', 1, 0, NULL),
 
 
 
@@ -8415,10 +8420,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8559, '2026-03-09 12:56:00', 220, NULL, 0, NULL, NULL, '', 1458.000000, 2, 7, '2026-03-09 11:57:11', '2026-03-09 16:45:44', '', 1, 0, NULL),
 
 
 
 
+(8564, '2026-03-09 13:33:00', 220, NULL, 0, NULL, NULL, '', 1550.000000, 2, 7, '2026-03-09 12:34:10', '2026-03-09 17:34:44', 'kawassim', 1, 0, NULL);
 
 
 
@@ -8428,11 +8435,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8502, '2026-03-07 12:56:00', 220, NULL, 0, NULL, NULL, '', 740.000000, 'Validé', 1, '2026-03-07 12:56:30', '2026-03-07 16:32:50', '', 1, 0, NULL),
 
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -8442,11 +8449,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8518, '2026-03-07 17:29:00', 220, NULL, 0, NULL, NULL, '', 70.000000, 'Validé', 11, '2026-03-07 16:30:01', '2026-03-07 16:30:14', '', 1, 0, NULL),
-(8519, '2026-03-07 18:30:00', 220, NULL, 0, NULL, NULL, '', 4575.000000, 'Validé', 11, '2026-03-07 16:31:16', '2026-03-07 16:31:28', '', 1, 0, NULL),
 
 
 
+(8591, '2026-03-09 17:52:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 2, 11, '2026-03-09 16:52:42', '2026-03-09 16:52:51', '', 1, 0, NULL),
+(8592, '2026-03-09 17:56:00', 220, NULL, 0, NULL, NULL, '', 70.000000, 2, 11, '2026-03-09 16:56:19', '2026-03-09 16:59:58', '', 1, 0, NULL),
 
 
 
@@ -8483,12 +8490,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8559, '2026-03-09 12:56:00', 220, NULL, 0, NULL, NULL, '', 1458.000000, 'Validé', 7, '2026-03-09 11:57:11', '2026-03-09 16:45:44', '', 1, 0, NULL),
 
 
 
 
-(8564, '2026-03-09 13:33:00', 220, NULL, 0, NULL, NULL, '', 1550.000000, 'Validé', 7, '2026-03-09 12:34:10', '2026-03-09 17:34:44', 'kawassim', 1, 0, NULL),
 
 
 
@@ -8502,21 +8507,21 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
 
 
+(8651, '2026-03-11 11:18:00', 220, NULL, 0, NULL, NULL, '', 1020.000000, 2, 7, '2026-03-11 09:18:49', '2026-03-11 17:15:43', '', 1, 0, NULL),
+(8652, '2026-03-11 09:26:00', 220, NULL, 0, NULL, NULL, '', 1800.000000, 2, 7, '2026-03-11 09:27:10', '2026-03-11 17:14:56', 'ÙÙ„ÙˆØ³ Ø¬ÙˆØ§Ù†', 1, 0, NULL),
 
 
 
 
 
 
+(8659, '2026-03-11 10:59:00', 220, NULL, 0, NULL, NULL, '', 1550.000000, 2, 7, '2026-03-11 10:00:01', '2026-03-12 08:30:45', 'kawassim', 1, 0, NULL),
 
-(8591, '2026-03-09 17:52:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 'Validé', 11, '2026-03-09 16:52:42', '2026-03-09 16:52:51', '', 1, 0, NULL),
-(8592, '2026-03-09 17:56:00', 220, NULL, 0, NULL, NULL, '', 70.000000, 'Validé', 11, '2026-03-09 16:56:19', '2026-03-09 16:59:58', '', 1, 0, NULL),
 
 
 
@@ -8574,16 +8579,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8718, '2026-03-11 18:20:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 2, 11, '2026-03-11 17:21:03', '2026-03-11 17:21:14', '', 1, 0, NULL),
+(8719, '2026-03-11 18:21:00', 220, NULL, 0, NULL, NULL, '', 3000.000000, 2, 11, '2026-03-11 17:21:45', '2026-03-11 17:22:00', '', 1, 0, NULL),
+(8720, '2026-03-11 18:23:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 2, 11, '2026-03-11 17:24:22', '2026-03-11 17:24:48', '', 1, 0, NULL),
 
-(8651, '2026-03-11 11:18:00', 220, NULL, 0, NULL, NULL, '', 1020.000000, 'Validé', 7, '2026-03-11 09:18:49', '2026-03-11 17:15:43', '', 1, 0, NULL),
-(8652, '2026-03-11 09:26:00', 220, NULL, 0, NULL, NULL, '', 1800.000000, 'Validé', 7, '2026-03-11 09:27:10', '2026-03-11 17:14:56', 'فلوس جوان', 1, 0, NULL),
 
 
 
 
 
 
-(8659, '2026-03-11 10:59:00', 220, NULL, 0, NULL, NULL, '', 1550.000000, 'Validé', 7, '2026-03-11 10:00:01', '2026-03-12 08:30:45', 'kawassim', 1, 0, NULL),
 
 
 
@@ -8618,15 +8623,21 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8763, '2026-03-12 12:20:00', 220, NULL, 0, NULL, NULL, '', 3700.000000, 2, 1, '2026-03-12 12:21:40', '2026-03-18 07:29:31', 'h100 de abdewahid masa o disco ', 1, 0, NULL),
 
 
 
 
 
+(8769, '2026-03-12 13:28:00', 220, NULL, 0, NULL, NULL, '', 38086.000000, 2, 1, '2026-03-12 13:29:33', '2026-03-12 16:34:08', '', 1, 0, NULL),
 
 
 
+(8773, '2026-03-12 17:08:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 2, 7, '2026-03-12 16:09:35', '2026-03-12 16:33:50', '', 1, 0, NULL),
+(8774, '2026-03-12 17:34:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 2, 11, '2026-03-12 16:35:18', '2026-03-12 16:35:33', '', 1, 0, NULL),
+(8775, '2026-03-12 17:35:00', 220, NULL, 0, NULL, NULL, '', 1500.000000, 2, 11, '2026-03-12 16:35:55', '2026-03-12 16:37:18', '', 1, 0, NULL),
 
+(8777, '2026-03-12 17:38:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 2, 11, '2026-03-12 16:39:35', '2026-03-12 16:40:07', '', 1, 0, NULL),
 
 
 
@@ -8642,9 +8653,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8718, '2026-03-11 18:20:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 'Validé', 11, '2026-03-11 17:21:03', '2026-03-11 17:21:14', '', 1, 0, NULL),
-(8719, '2026-03-11 18:21:00', 220, NULL, 0, NULL, NULL, '', 3000.000000, 'Validé', 11, '2026-03-11 17:21:45', '2026-03-11 17:22:00', '', 1, 0, NULL),
-(8720, '2026-03-11 18:23:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 'Validé', 11, '2026-03-11 17:24:22', '2026-03-11 17:24:48', '', 1, 0, NULL),
 
 
 
@@ -8659,6 +8667,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8808, '2026-03-13 12:25:00', 220, NULL, 0, NULL, NULL, '', 1575.000000, 2, 7, '2026-03-13 10:26:07', '2026-03-13 17:03:10', 'ali zefat kawassim', 1, 0, NULL),
 
 
 
@@ -8686,22 +8695,18 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8763, '2026-03-12 12:20:00', 220, NULL, 0, NULL, NULL, '', 3700.000000, 'Validé', 1, '2026-03-12 12:21:40', '2026-03-18 07:29:31', 'h100 de abdewahid masa o disco ', 1, 0, NULL),
 
+(8838, '2026-03-13 17:44:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 2, 11, '2026-03-13 16:46:21', '2026-03-13 16:46:32', '', 1, 0, NULL),
 
 
 
 
-(8769, '2026-03-12 13:28:00', 220, NULL, 0, NULL, NULL, '', 38086.000000, 'Validé', 1, '2026-03-12 13:29:33', '2026-03-12 16:34:08', '', 1, 0, NULL),
 
 
 
-(8773, '2026-03-12 17:08:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 'Validé', 7, '2026-03-12 16:09:35', '2026-03-12 16:33:50', '', 1, 0, NULL),
-(8774, '2026-03-12 17:34:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 'Validé', 11, '2026-03-12 16:35:18', '2026-03-12 16:35:33', '', 1, 0, NULL),
-(8775, '2026-03-12 17:35:00', 220, NULL, 0, NULL, NULL, '', 1500.000000, 'Validé', 11, '2026-03-12 16:35:55', '2026-03-12 16:37:18', '', 1, 0, NULL),
 
-(8777, '2026-03-12 17:38:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 'Validé', 11, '2026-03-12 16:39:35', '2026-03-12 16:40:07', '', 1, 0, NULL),
 
+(8848, '2026-03-14 08:41:00', 220, NULL, 0, NULL, NULL, '', 775.000000, 2, 7, '2026-03-14 08:41:25', '2026-03-16 07:49:31', 'KAWASSIM ', 1, 0, NULL);
 
 
 
@@ -8730,7 +8735,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8808, '2026-03-13 12:25:00', 220, NULL, 0, NULL, NULL, '', 1575.000000, 'Validé', 7, '2026-03-13 10:26:07', '2026-03-13 17:03:10', 'ali zefat kawassim', 1, 0, NULL),
 
 
 
@@ -8759,9 +8763,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8838, '2026-03-13 17:44:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 'Validé', 11, '2026-03-13 16:46:21', '2026-03-13 16:46:32', '', 1, 0, NULL),
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -8769,7 +8773,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8848, '2026-03-14 08:41:00', 220, NULL, 0, NULL, NULL, '', 775.000000, 'Validé', 7, '2026-03-14 08:41:25', '2026-03-16 07:49:31', 'KAWASSIM ', 1, 0, NULL),
 
 
 
@@ -8784,6 +8787,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8929, '2026-03-16 10:06:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 2, 1, '2026-03-16 10:07:44', '2026-03-16 16:36:44', 'boukir mohamed ', 1, 0, NULL),
 
 
 
@@ -8808,12 +8812,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8954, '2026-03-16 13:29:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 2, 1, '2026-03-16 13:29:46', '2026-03-16 16:36:32', '', 1, 0, NULL),
 
 
 
 
 
 
+(8961, '2026-03-16 17:34:00', 220, NULL, 0, NULL, NULL, '', 3360.000000, 2, 11, '2026-03-16 16:34:51', '2026-03-16 16:35:03', '', 1, 0, NULL),
+(8962, '2026-03-16 17:39:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 2, 11, '2026-03-16 16:40:06', '2026-03-16 16:40:37', '', 1, 0, NULL),
+(8963, '2026-03-16 17:42:00', 220, NULL, 0, NULL, NULL, '', 330.000000, 2, 11, '2026-03-16 16:43:29', '2026-03-16 16:43:56', '', 1, 0, NULL),
 
 
 
@@ -8828,7 +8836,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -8845,12 +8852,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(8994, '2026-03-17 10:17:00', 220, NULL, 0, NULL, NULL, '', 434.000000, 2, 7, '2026-03-17 09:18:24', '2026-03-17 16:37:41', '', 1, 0, NULL),
 
 
 
 
 
-(8929, '2026-03-16 10:06:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 'Validé', 1, '2026-03-16 10:07:44', '2026-03-16 16:36:44', 'boukir mohamed ', 1, 0, NULL),
 
 
 
@@ -8866,6 +8873,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9015, '2026-03-16 14:31:00', 220, NULL, 0, NULL, NULL, '', 2016.030000, 2, 11, '2026-03-17 14:30:48', '2026-03-17 14:40:51', 'hameza ', 1, 0, NULL),
 
 
 
@@ -8875,18 +8883,17 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8954, '2026-03-16 13:29:00', 220, NULL, 0, NULL, NULL, '', 280.000000, 'Validé', 1, '2026-03-16 13:29:46', '2026-03-16 16:36:32', '', 1, 0, NULL),
 
+(9027, '2026-03-17 17:39:00', 220, NULL, 0, NULL, NULL, '', 260.000000, 2, 7, '2026-03-17 16:40:41', '2026-03-17 16:41:05', '', 1, 0, NULL),
 
 
+(9031, '2026-03-17 07:36:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 2, 7, '2026-03-18 07:37:42', '2026-03-18 07:38:38', '', 1, 0, NULL),
 
 
 
-(8961, '2026-03-16 17:34:00', 220, NULL, 0, NULL, NULL, '', 3360.000000, 'Validé', 11, '2026-03-16 16:34:51', '2026-03-16 16:35:03', '', 1, 0, NULL),
-(8962, '2026-03-16 17:39:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 'Validé', 11, '2026-03-16 16:40:06', '2026-03-16 16:40:37', '', 1, 0, NULL),
-(8963, '2026-03-16 17:42:00', 220, NULL, 0, NULL, NULL, '', 330.000000, 'Validé', 11, '2026-03-16 16:43:29', '2026-03-16 16:43:56', '', 1, 0, NULL),
 
 
+(9037, '2026-03-18 09:50:00', 220, NULL, 0, NULL, NULL, '', 640.000000, 2, 7, '2026-03-18 08:51:16', '2026-03-18 15:56:26', 'awatef ', 1, 0, NULL),
 
 
 
@@ -8902,8 +8909,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9056, '2026-03-18 13:43:00', 220, NULL, 0, NULL, NULL, '', 42880.000000, 2, 12, '2026-03-18 13:43:54', '2026-03-18 13:45:42', '', 1, 0, NULL),
 
 
+(9059, '2026-03-18 16:52:00', 220, NULL, 0, NULL, NULL, '', 235.500000, 2, 7, '2026-03-18 15:52:40', '2026-03-18 15:52:53', '', 1, 0, NULL),
 
 
 
@@ -8915,7 +8924,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(8994, '2026-03-17 10:17:00', 220, NULL, 0, NULL, NULL, '', 434.000000, 'Validé', 7, '2026-03-17 09:18:24', '2026-03-17 16:37:41', '', 1, 0, NULL),
 
 
 
@@ -8936,28 +8944,29 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9015, '2026-03-16 14:31:00', 220, NULL, 0, NULL, NULL, '', 2016.030000, 'Validé', 11, '2026-03-17 14:30:48', '2026-03-17 14:40:51', 'hameza ', 1, 0, NULL),
 
 
 
 
 
 
+(9100, '2026-03-30 16:57:00', 220, NULL, 0, NULL, NULL, '', 25.500000, 2, 7, '2026-03-30 15:58:45', '2026-03-30 16:54:40', '', 1, 0, NULL),
 
 
 
 
-(9027, '2026-03-17 17:39:00', 220, NULL, 0, NULL, NULL, '', 260.000000, 'Validé', 7, '2026-03-17 16:40:41', '2026-03-17 16:41:05', '', 1, 0, NULL),
 
 
-(9031, '2026-03-17 07:36:00', 220, NULL, 0, NULL, NULL, '', 80.000000, 'Validé', 7, '2026-03-18 07:37:42', '2026-03-18 07:38:38', '', 1, 0, NULL),
+(9107, '2026-03-30 19:28:00', 220, NULL, 0, NULL, NULL, '', 577.750000, 2, 11, '2026-03-30 16:29:03', '2026-03-30 17:18:14', '', 1, 0, NULL),
 
 
 
 
 
-(9037, '2026-03-18 09:50:00', 220, NULL, 0, NULL, NULL, '', 640.000000, 'Validé', 7, '2026-03-18 08:51:16', '2026-03-18 15:56:26', 'awatef ', 1, 0, NULL),
 
+(9114, '2026-03-30 19:18:00', 220, NULL, 0, NULL, NULL, '', 729.000000, 2, 7, '2026-03-30 17:18:41', '2026-03-30 17:18:52', '', 1, 0, NULL),
+(9115, '2026-03-30 19:19:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 2, 7, '2026-03-30 17:19:16', '2026-03-30 17:19:26', '', 1, 0, NULL),
+(9116, '2026-03-30 19:30:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 2, 7, '2026-03-30 17:30:37', '2026-03-30 17:30:58', '', 1, 0, NULL),
 
 
 
@@ -8972,10 +8981,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9056, '2026-03-18 13:43:00', 220, NULL, 0, NULL, NULL, '', 42880.000000, 'Validé', 12, '2026-03-18 13:43:54', '2026-03-18 13:45:42', '', 1, 0, NULL),
 
 
-(9059, '2026-03-18 16:52:00', 220, NULL, 0, NULL, NULL, '', 235.500000, 'Validé', 7, '2026-03-18 15:52:40', '2026-03-18 15:52:53', '', 1, 0, NULL),
 
 
 
@@ -8985,11 +8992,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9142, '2026-03-31 13:28:00', 220, NULL, 0, NULL, NULL, '', 640.000000, 2, 7, '2026-03-31 09:29:01', '2026-03-31 15:58:46', 'markaz lhaleb', 1, 0, NULL),
 
 
 
 
 
+(9148, '2026-03-31 15:17:00', 220, NULL, 0, NULL, NULL, '', 2610.000000, 2, 7, '2026-03-31 10:18:26', '2026-03-31 15:53:23', '', 1, 0, NULL),
 
 
 
@@ -9013,23 +9022,21 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9100, '2026-03-30 16:57:00', 220, NULL, 0, NULL, NULL, '', 25.500000, 'Validé', 7, '2026-03-30 15:58:45', '2026-03-30 16:54:40', '', 1, 0, NULL),
 
 
 
 
 
+(9177, '2026-03-31 15:57:00', 220, NULL, 0, NULL, NULL, '', 16528.000000, 2, 12, '2026-03-31 14:57:53', '2026-03-31 14:57:58', 'Ø®Ù„Ø§Øµ MOIS 3', 1, 0, NULL),
 
-(9107, '2026-03-30 19:28:00', 220, NULL, 0, NULL, NULL, '', 577.750000, 'Validé', 11, '2026-03-30 16:29:03', '2026-03-30 17:18:14', '', 1, 0, NULL),
 
 
 
+(9182, '2026-03-31 17:53:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 2, 7, '2026-03-31 15:54:04', '2026-03-31 15:57:01', '', 1, 0, NULL),
+(9183, '2026-03-31 18:54:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 2, 7, '2026-03-31 17:55:03', '2026-03-31 17:55:23', '', 1, 0, NULL),
 
 
 
-(9114, '2026-03-30 19:18:00', 220, NULL, 0, NULL, NULL, '', 729.000000, 'Validé', 7, '2026-03-30 17:18:41', '2026-03-30 17:18:52', '', 1, 0, NULL),
-(9115, '2026-03-30 19:19:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 'Validé', 7, '2026-03-30 17:19:16', '2026-03-30 17:19:26', '', 1, 0, NULL),
-(9116, '2026-03-30 19:30:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 'Validé', 7, '2026-03-30 17:30:37', '2026-03-30 17:30:58', '', 1, 0, NULL),
 
 
 
@@ -9044,6 +9051,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9202, '2026-04-01 13:17:00', 220, NULL, 0, NULL, NULL, '', 41053.610000, 2, 11, '2026-04-01 10:18:00', '2026-04-01 17:21:11', '', 1, 0, NULL),
 
 
 
@@ -9055,13 +9063,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9142, '2026-03-31 13:28:00', 220, NULL, 0, NULL, NULL, '', 640.000000, 'Validé', 7, '2026-03-31 09:29:01', '2026-03-31 15:58:46', 'markaz lhaleb', 1, 0, NULL),
 
 
 
 
 
-(9148, '2026-03-31 15:17:00', 220, NULL, 0, NULL, NULL, '', 2610.000000, 'Validé', 7, '2026-03-31 10:18:26', '2026-03-31 15:53:23', '', 1, 0, NULL),
 
 
 
@@ -9080,7 +9086,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9237, '2026-04-01 19:15:00', 220, NULL, 0, NULL, NULL, '', 645.000000, 2, 7, '2026-04-01 17:19:17', '2026-04-01 17:24:02', '', 1, 0, NULL),
+(9238, '2026-04-01 19:25:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 7, '2026-04-01 17:26:02', '2026-04-01 17:26:19', '', 1, 0, NULL),
 
+(9240, '2026-04-01 19:29:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 1, 7, '2026-04-01 17:29:55', '2026-04-01 17:29:55', '', 1, 0, NULL),
+(9241, '2026-04-01 19:29:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 1, 7, '2026-04-01 17:30:34', '2026-04-01 17:30:34', '', 1, 0, NULL);
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -9090,13 +9101,10 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9177, '2026-03-31 15:57:00', 220, NULL, 0, NULL, NULL, '', 16528.000000, 'Validé', 12, '2026-03-31 14:57:53', '2026-03-31 14:57:58', 'خلاص MOIS 3', 1, 0, NULL),
 
 
 
 
-(9182, '2026-03-31 17:53:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 'Validé', 7, '2026-03-31 15:54:04', '2026-03-31 15:57:01', '', 1, 0, NULL),
-(9183, '2026-03-31 18:54:00', 220, NULL, 0, NULL, NULL, '', 250.000000, 'Validé', 7, '2026-03-31 17:55:03', '2026-03-31 17:55:23', '', 1, 0, NULL),
 
 
 
@@ -9114,7 +9122,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9202, '2026-04-01 13:17:00', 220, NULL, 0, NULL, NULL, '', 41053.610000, 'Validé', 11, '2026-04-01 10:18:00', '2026-04-01 17:21:11', '', 1, 0, NULL),
 
 
 
@@ -9138,10 +9145,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9296, '2026-04-02 19:04:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 2, 7, '2026-04-02 17:05:02', '2026-04-02 17:05:12', '', 1, 0, NULL),
 
 
 
 
+(9301, '2026-04-02 21:37:00', 220, NULL, 0, NULL, NULL, '', 3660.000000, 2, 7, '2026-04-02 17:37:32', '2026-04-02 17:37:52', '', 1, 0, NULL),
+(9302, '2026-04-02 21:38:00', 220, NULL, 0, NULL, NULL, '', 440.000000, 2, 7, '2026-04-02 17:38:42', '2026-04-02 17:39:34', '', 1, 0, NULL),
 
 
 
@@ -9149,12 +9159,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9237, '2026-04-01 19:15:00', 220, NULL, 0, NULL, NULL, '', 645.000000, 'Validé', 7, '2026-04-01 17:19:17', '2026-04-01 17:24:02', '', 1, 0, NULL),
-(9238, '2026-04-01 19:25:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 7, '2026-04-01 17:26:02', '2026-04-01 17:26:19', '', 1, 0, NULL),
 
-(9240, '2026-04-01 19:29:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 'En attente', 7, '2026-04-01 17:29:55', '2026-04-01 17:29:55', '', 1, 0, NULL),
-(9241, '2026-04-01 19:29:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 'En attente', 7, '2026-04-01 17:30:34', '2026-04-01 17:30:34', '', 1, 0, NULL);
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -9208,13 +9213,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9296, '2026-04-02 19:04:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 'Validé', 7, '2026-04-02 17:05:02', '2026-04-02 17:05:12', '', 1, 0, NULL),
+(9364, '2026-04-03 21:05:00', 220, NULL, 0, NULL, NULL, '', 4710.000000, 2, 7, '2026-04-03 17:05:52', '2026-04-03 17:06:49', '', 1, 0, NULL),
+(9365, '2026-04-03 19:49:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 7, '2026-04-03 17:49:36', '2026-04-03 17:49:52', '', 1, 0, NULL),
 
 
 
 
-(9301, '2026-04-02 21:37:00', 220, NULL, 0, NULL, NULL, '', 3660.000000, 'Validé', 7, '2026-04-02 17:37:32', '2026-04-02 17:37:52', '', 1, 0, NULL),
-(9302, '2026-04-02 21:38:00', 220, NULL, 0, NULL, NULL, '', 440.000000, 'Validé', 7, '2026-04-02 17:38:42', '2026-04-02 17:39:34', '', 1, 0, NULL),
 
 
 
@@ -9252,6 +9256,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9409, '2026-04-04 16:06:00', 220, NULL, 0, NULL, NULL, '', 5068.100000, 2, 7, '2026-04-04 12:13:28', '2026-04-04 18:47:59', '', 1, 0, NULL),
 
 
 
@@ -9276,8 +9281,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9364, '2026-04-03 21:05:00', 220, NULL, 0, NULL, NULL, '', 4710.000000, 'Validé', 7, '2026-04-03 17:05:52', '2026-04-03 17:06:49', '', 1, 0, NULL),
-(9365, '2026-04-03 19:49:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 7, '2026-04-03 17:49:36', '2026-04-03 17:49:52', '', 1, 0, NULL),
 
 
 
@@ -9297,11 +9300,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9455, '2026-04-04 20:53:00', 220, NULL, 0, NULL, NULL, '', 330.000000, 2, 7, '2026-04-04 18:54:18', '2026-04-04 18:54:28', '', 1, 0, NULL),
 
 
 
 
 
+(9462, '2026-04-06 11:51:00', 220, NULL, 0, NULL, NULL, '', 660.000000, 2, 7, '2026-04-06 07:51:35', '2026-04-06 17:54:17', 'awatef', 1, 0, NULL),
 
 
 
@@ -9313,16 +9318,17 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9474, '2026-04-06 14:51:00', 220, NULL, 0, NULL, NULL, '', 960.000000, 2, 11, '2026-04-06 08:51:41', '2026-04-06 18:00:51', 'AWATEF MOWADEFN', 1, 0, NULL),
 
 
 
 
 
 
-(9409, '2026-04-04 16:06:00', 220, NULL, 0, NULL, NULL, '', 5068.100000, 'Validé', 7, '2026-04-04 12:13:28', '2026-04-04 18:47:59', '', 1, 0, NULL),
 
 
 
+(9484, '2026-04-06 11:03:00', 220, NULL, 0, NULL, NULL, '', 4440.000000, 2, 11, '2026-04-06 10:04:02', '2026-04-06 18:57:47', 'debone ', 1, 0, NULL),
 
 
 
@@ -9332,6 +9338,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9494, '2026-04-06 12:52:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 7, '2026-04-06 10:52:59', '2026-04-06 18:09:43', 'AWAMA', 1, 0, NULL),
 
 
 
@@ -9351,6 +9358,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9514, '2026-04-06 18:42:00', 220, NULL, 0, '0680352237', NULL, '', 1414.000000, 2, 7, '2026-04-06 12:44:27', '2026-04-06 18:36:32', '', 1, 0, NULL),
 
 
 
@@ -9363,13 +9371,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9455, '2026-04-04 20:53:00', 220, NULL, 0, NULL, NULL, '', 330.000000, 'Validé', 7, '2026-04-04 18:54:18', '2026-04-04 18:54:28', '', 1, 0, NULL),
 
 
 
 
 
-(9462, '2026-04-06 11:51:00', 220, NULL, 0, NULL, NULL, '', 660.000000, 'Validé', 7, '2026-04-06 07:51:35', '2026-04-06 17:54:17', 'awatef', 1, 0, NULL),
 
 
 
@@ -9381,17 +9387,20 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9474, '2026-04-06 14:51:00', 220, NULL, 0, NULL, NULL, '', 960.000000, 'Validé', 11, '2026-04-06 08:51:41', '2026-04-06 18:00:51', 'AWATEF MOWADEFN', 1, 0, NULL),
 
 
 
 
+(9548, '2026-04-06 20:50:00', 220, NULL, 0, NULL, NULL, '', 2880.000000, 2, 11, '2026-04-06 18:51:05', '2026-04-06 18:51:17', '', 1, 0, NULL),
+(9549, '2026-04-06 20:51:00', 220, NULL, 0, NULL, NULL, '', 432.000000, 2, 11, '2026-04-06 18:51:39', '2026-04-06 18:51:43', '', 1, 0, NULL),
+(9550, '2026-04-06 20:52:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 2, 11, '2026-04-06 18:52:18', '2026-04-06 18:52:23', '', 1, 0, NULL),
+(9551, '2026-04-06 20:52:00', 220, NULL, 0, NULL, NULL, '', 3925.000000, 2, 11, '2026-04-06 18:52:51', '2026-04-06 18:53:05', '', 1, 0, NULL),
+(9552, '2026-04-06 20:58:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 2, 11, '2026-04-06 18:59:02', '2026-04-06 18:59:13', '', 1, 0, NULL);
 
 
 
 
 
-(9484, '2026-04-06 11:03:00', 220, NULL, 0, NULL, NULL, '', 4440.000000, 'Validé', 11, '2026-04-06 10:04:02', '2026-04-06 18:57:47', 'debone ', 1, 0, NULL),
 
 
 
@@ -9401,13 +9410,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9494, '2026-04-06 12:52:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 7, '2026-04-06 10:52:59', '2026-04-06 18:09:43', 'AWAMA', 1, 0, NULL),
 
 
 
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -9421,7 +9430,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9514, '2026-04-06 18:42:00', 220, NULL, 0, '0680352237', NULL, '', 1414.000000, 'Validé', 7, '2026-04-06 12:44:27', '2026-04-06 18:36:32', '', 1, 0, NULL),
 
 
 
@@ -9454,11 +9462,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9548, '2026-04-06 20:50:00', 220, NULL, 0, NULL, NULL, '', 2880.000000, 'Validé', 11, '2026-04-06 18:51:05', '2026-04-06 18:51:17', '', 1, 0, NULL),
-(9549, '2026-04-06 20:51:00', 220, NULL, 0, NULL, NULL, '', 432.000000, 'Validé', 11, '2026-04-06 18:51:39', '2026-04-06 18:51:43', '', 1, 0, NULL),
-(9550, '2026-04-06 20:52:00', 220, NULL, 0, NULL, NULL, '', 2355.000000, 'Validé', 11, '2026-04-06 18:52:18', '2026-04-06 18:52:23', '', 1, 0, NULL),
-(9551, '2026-04-06 20:52:00', 220, NULL, 0, NULL, NULL, '', 3925.000000, 'Validé', 11, '2026-04-06 18:52:51', '2026-04-06 18:53:05', '', 1, 0, NULL),
-(9552, '2026-04-06 20:58:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 'Validé', 11, '2026-04-06 18:59:02', '2026-04-06 18:59:13', '', 1, 0, NULL),
+(9618, '2026-04-07 21:31:00', 220, NULL, 0, NULL, NULL, '', 4147.200000, 2, 11, '2026-04-07 17:32:08', '2026-04-07 17:32:41', '', 1, 0, NULL),
+(9619, '2026-04-07 19:33:00', 220, NULL, 0, NULL, NULL, '', 114.000000, 2, 11, '2026-04-07 17:33:21', '2026-04-07 17:36:09', '', 1, 0, NULL),
+(9620, '2026-04-07 19:36:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 2, 11, '2026-04-07 17:36:29', '2026-04-07 17:36:34', '', 1, 0, NULL),
 
 
 
@@ -9479,7 +9485,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -9492,6 +9497,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9653, '2026-04-08 13:40:00', 220, NULL, 0, NULL, NULL, '', 1231.440000, 2, 7, '2026-04-08 10:41:29', '2026-04-08 17:27:00', '', 1, 0, NULL),
 
 
 
@@ -9500,6 +9506,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9662, '2026-04-08 13:34:00', 220, NULL, 0, NULL, NULL, '', 1890.000000, 6, 7, '2026-04-08 11:35:40', '2026-04-08 13:47:00', 'awatef ahlan', 1, 0, NULL),
 
 
 
@@ -9525,9 +9532,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9618, '2026-04-07 21:31:00', 220, NULL, 0, NULL, NULL, '', 4147.200000, 'Validé', 11, '2026-04-07 17:32:08', '2026-04-07 17:32:41', '', 1, 0, NULL),
-(9619, '2026-04-07 19:33:00', 220, NULL, 0, NULL, NULL, '', 114.000000, 'Validé', 11, '2026-04-07 17:33:21', '2026-04-07 17:36:09', '', 1, 0, NULL),
-(9620, '2026-04-07 19:36:00', 220, NULL, 0, NULL, NULL, '', 90.000000, 'Validé', 11, '2026-04-07 17:36:29', '2026-04-07 17:36:34', '', 1, 0, NULL),
 
 
 
@@ -9560,7 +9564,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9653, '2026-04-08 13:40:00', 220, NULL, 0, NULL, NULL, '', 1231.440000, 'Validé', 7, '2026-04-08 10:41:29', '2026-04-08 17:27:00', '', 1, 0, NULL),
 
 
 
@@ -9569,7 +9572,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9662, '2026-04-08 13:34:00', 220, NULL, 0, NULL, NULL, '', 1890.000000, 'Annulé', 7, '2026-04-08 11:35:40', '2026-04-08 13:47:00', 'awatef ahlan', 1, 0, NULL),
 
 
 
@@ -9632,6 +9634,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9790, '2026-04-09 19:29:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 2, 11, '2026-04-09 17:30:32', '2026-04-09 17:30:46', '', 1, 0, NULL),
 
 
 
@@ -9643,6 +9646,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9802, '2026-04-10 12:57:00', 220, NULL, 0, NULL, NULL, '', 11264.000000, 2, 7, '2026-04-10 06:57:47', '2026-04-13 15:22:14', '', 1, 0, NULL),
 
 
 
@@ -9691,13 +9695,14 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(9852, '2026-04-10 17:56:00', 220, NULL, 0, NULL, NULL, '', 2000.000000, 2, 1, '2026-04-10 16:56:38', '2026-04-10 18:07:59', '', 1, 0, NULL),
 
 
 
+(9857, '2026-04-10 20:06:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 11, '2026-04-10 18:06:21', '2026-04-10 18:06:35', '', 1, 0, NULL);
 
 
 
-(9790, '2026-04-09 19:29:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 'Validé', 11, '2026-04-09 17:30:32', '2026-04-09 17:30:46', '', 1, 0, NULL),
 
 
 
@@ -9709,7 +9714,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9802, '2026-04-10 12:57:00', 220, NULL, 0, NULL, NULL, '', 11264.000000, 'Validé', 7, '2026-04-10 06:57:47', '2026-04-13 15:22:14', '', 1, 0, NULL),
 
 
 
@@ -9738,6 +9742,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -9758,18 +9763,20 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9852, '2026-04-10 17:56:00', 220, NULL, 0, NULL, NULL, '', 2000.000000, 'Validé', 1, '2026-04-10 16:56:38', '2026-04-10 18:07:59', '', 1, 0, NULL),
 
 
 
-(9857, '2026-04-10 20:06:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 11, '2026-04-10 18:06:21', '2026-04-10 18:06:35', '', 1, 0, NULL),
 
+(9925, '2026-04-11 17:54:00', 220, NULL, 0, NULL, NULL, '', 1350.000000, 2, 7, '2026-04-11 13:54:28', '2026-04-11 17:32:52', 'AWATEF GZENAYA', 1, 0, NULL),
 
 
 
 
 
 
+(9933, '2026-04-11 19:04:00', 220, NULL, 0, NULL, NULL, '', 79.000000, 2, 11, '2026-04-11 16:05:24', '2026-04-11 17:41:04', '', 1, 0, NULL),
+(9934, '2026-04-11 18:37:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 2, 7, '2026-04-11 17:37:51', '2026-04-11 17:40:33', '', 1, 0, NULL),
+(9935, '2026-04-11 18:47:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 2, 7, '2026-04-11 17:48:12', '2026-04-11 17:48:26', '', 1, 0, NULL),
 
 
 
@@ -9805,7 +9812,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -9830,16 +9836,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(9925, '2026-04-11 17:54:00', 220, NULL, 0, NULL, NULL, '', 1350.000000, 'Validé', 7, '2026-04-11 13:54:28', '2026-04-11 17:32:52', 'AWATEF GZENAYA', 1, 0, NULL),
 
 
 
 
 
 
-(9933, '2026-04-11 19:04:00', 220, NULL, 0, NULL, NULL, '', 79.000000, 'Validé', 11, '2026-04-11 16:05:24', '2026-04-11 17:41:04', '', 1, 0, NULL),
-(9934, '2026-04-11 18:37:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 'Validé', 7, '2026-04-11 17:37:51', '2026-04-11 17:40:33', '', 1, 0, NULL),
-(9935, '2026-04-11 18:47:00', 220, NULL, 0, NULL, NULL, '', 600.000000, 'Validé', 7, '2026-04-11 17:48:12', '2026-04-11 17:48:26', '', 1, 0, NULL),
 
 
 
@@ -9858,6 +9860,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10020, '2026-04-13 18:01:00', 220, NULL, 0, NULL, NULL, '', 2537.000000, 2, 11, '2026-04-13 15:04:36', '2026-04-13 18:13:47', '', 1, 0, NULL),
 
 
 
@@ -9867,6 +9870,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10030, '2026-04-13 20:10:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 2, 7, '2026-04-13 18:11:01', '2026-04-13 18:11:08', '', 1, 0, NULL),
+(10031, '2026-04-13 20:11:00', 220, NULL, 0, NULL, NULL, '', 648.000000, 2, 7, '2026-04-13 18:11:51', '2026-04-13 18:11:59', '', 1, 0, NULL),
+(10032, '2026-04-13 20:14:00', 220, NULL, 0, NULL, NULL, '', 430.000000, 2, 7, '2026-04-13 18:15:21', '2026-04-13 18:17:33', '', 1, 0, NULL),
 
 
 
@@ -9923,7 +9929,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10020, '2026-04-13 18:01:00', 220, NULL, 0, NULL, NULL, '', 2537.000000, 'Validé', 11, '2026-04-13 15:04:36', '2026-04-13 18:13:47', '', 1, 0, NULL),
 
 
 
@@ -9933,9 +9938,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10030, '2026-04-13 20:10:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 'Validé', 7, '2026-04-13 18:11:01', '2026-04-13 18:11:08', '', 1, 0, NULL),
-(10031, '2026-04-13 20:11:00', 220, NULL, 0, NULL, NULL, '', 648.000000, 'Validé', 7, '2026-04-13 18:11:51', '2026-04-13 18:11:59', '', 1, 0, NULL),
-(10032, '2026-04-13 20:14:00', 220, NULL, 0, NULL, NULL, '', 430.000000, 'Validé', 7, '2026-04-13 18:15:21', '2026-04-13 18:17:33', '', 1, 0, NULL),
 
 
 
@@ -9947,7 +9949,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10109, '2026-04-14 21:55:00', 220, NULL, 0, NULL, NULL, '', 5769.080000, 2, 11, '2026-04-14 15:59:22', '2026-04-14 17:57:40', '', 1, 0, NULL),
 
+(10112, '2026-04-14 20:00:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 2, 11, '2026-04-14 18:00:40', '2026-04-14 18:00:54', '', 1, 0, NULL),
 
 
 
@@ -9994,6 +9998,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10159, '2026-04-15 19:54:00', 220, NULL, 0, NULL, NULL, '', 5540.020000, 2, 11, '2026-04-15 16:17:15', '2026-04-15 17:51:03', '', 1, 0, NULL),
 
 
 
@@ -10003,6 +10008,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10169, '2026-04-15 19:52:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 2, 11, '2026-04-15 17:53:02', '2026-04-15 17:53:23', '', 1, 0, NULL),
+(10170, '2026-04-15 19:56:00', 220, NULL, 0, NULL, NULL, '', 460.000000, 2, 11, '2026-04-15 17:56:59', '2026-04-15 17:57:09', '', 1, 0, NULL);
 
 
 
@@ -10012,9 +10019,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10109, '2026-04-14 21:55:00', 220, NULL, 0, NULL, NULL, '', 5769.080000, 'Validé', 11, '2026-04-14 15:59:22', '2026-04-14 17:57:40', '', 1, 0, NULL),
 
-(10112, '2026-04-14 20:00:00', 220, NULL, 0, NULL, NULL, '', 200.000000, 'Validé', 11, '2026-04-14 18:00:40', '2026-04-14 18:00:54', '', 1, 0, NULL),
 
 
 
@@ -10060,8 +10065,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
-(10159, '2026-04-15 19:54:00', 220, NULL, 0, NULL, NULL, '', 5540.020000, 'Validé', 11, '2026-04-15 16:17:15', '2026-04-15 17:51:03', '', 1, 0, NULL),
 
 
 
@@ -10070,15 +10075,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10236, '2026-04-16 14:19:00', 220, NULL, 0, NULL, NULL, '', 3550.000000, 2, 7, '2026-04-16 13:19:57', '2026-04-16 17:01:43', 'Ø¬ÙˆØ§Ù†', 1, 0, NULL),
 
-(10169, '2026-04-15 19:52:00', 220, NULL, 0, NULL, NULL, '', 720.000000, 'Validé', 11, '2026-04-15 17:53:02', '2026-04-15 17:53:23', '', 1, 0, NULL),
-(10170, '2026-04-15 19:56:00', 220, NULL, 0, NULL, NULL, '', 460.000000, 'Validé', 11, '2026-04-15 17:56:59', '2026-04-15 17:57:09', '', 1, 0, NULL),
 
 
 
 
 
 
+(10245, '2026-04-16 18:16:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 2, 7, '2026-04-16 17:16:53', '2026-04-16 17:17:13', '', 1, 0, NULL),
 
 
 
@@ -10093,6 +10098,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10262, '2026-04-17 11:23:00', 220, NULL, 0, NULL, NULL, '', 1300.000000, 2, 7, '2026-04-17 07:28:48', '2026-04-18 17:28:59', 'ALI SOUSI GZENAYA', 1, 0, NULL),
 
 
 
@@ -10113,6 +10119,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10285, '2026-04-17 14:04:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 2, 7, '2026-04-17 10:18:31', '2026-04-18 18:14:52', 'AWATEF', 1, 0, NULL),
 
 
 
@@ -10128,7 +10135,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -10138,7 +10144,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10236, '2026-04-16 14:19:00', 220, NULL, 0, NULL, NULL, '', 3550.000000, 'Validé', 7, '2026-04-16 13:19:57', '2026-04-16 17:01:43', 'جوان', 1, 0, NULL),
 
 
 
@@ -10146,7 +10151,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10245, '2026-04-16 18:16:00', 220, NULL, 0, NULL, NULL, '', 120.000000, 'Validé', 7, '2026-04-16 17:16:53', '2026-04-16 17:17:13', '', 1, 0, NULL),
 
 
 
@@ -10161,7 +10165,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10262, '2026-04-17 11:23:00', 220, NULL, 0, NULL, NULL, '', 1300.000000, 'Validé', 7, '2026-04-17 07:28:48', '2026-04-18 17:28:59', 'ALI SOUSI GZENAYA', 1, 0, NULL),
 
 
 
@@ -10182,7 +10185,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10285, '2026-04-17 14:04:00', 220, NULL, 0, NULL, NULL, '', 800.000000, 'Validé', 7, '2026-04-17 10:18:31', '2026-04-18 18:14:52', 'AWATEF', 1, 0, NULL),
 
 
 
@@ -10369,6 +10371,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10541, '2026-04-21 11:19:00', 220, NULL, 0, NULL, NULL, '', 44183.000000, 2, 1, '2026-04-21 09:21:17', '2026-04-21 18:15:14', 'ciment toreya ', 1, 0, NULL);
 
 
 
@@ -10386,6 +10389,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
+(10559, '2026-04-21 15:42:00', 220, NULL, 0, NULL, NULL, '', 57.840000, 2, 11, '2026-04-21 12:43:14', '2026-04-21 18:16:50', '', 1, 0, NULL),
 
 
 
@@ -10411,6 +10416,14 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10585, '2026-04-21 19:47:00', 220, NULL, 0, NULL, NULL, '', 140.000000, 2, 11, '2026-04-21 17:48:01', '2026-04-21 17:48:21', '', 1, 0, NULL),
+(10586, '2026-04-21 19:52:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 2, 11, '2026-04-21 17:52:11', '2026-04-21 17:52:27', '', 1, 0, NULL),
+(10587, '2026-04-21 19:57:00', 220, NULL, 0, NULL, NULL, '', 3360.000000, 2, 11, '2026-04-21 17:58:11', '2026-04-21 17:58:20', '', 1, 0, NULL),
+(10588, '2026-04-21 19:58:00', 220, NULL, 0, NULL, NULL, '', 2250.000000, 2, 11, '2026-04-21 17:58:48', '2026-04-21 17:59:03', '', 1, 0, NULL),
+(10589, '2026-04-18 20:02:00', 220, NULL, 0, NULL, NULL, '', 1600.000000, 2, 11, '2026-04-21 18:02:30', '2026-04-21 18:02:38', '', 1, 0, NULL),
+(10590, '2026-04-21 20:02:00', 220, NULL, 0, NULL, NULL, '', 550.000000, 2, 11, '2026-04-21 18:03:12', '2026-04-21 18:03:26', '', 1, 0, NULL),
+(10591, '2026-04-21 20:12:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 2, 11, '2026-04-21 18:14:18', '2026-04-21 18:14:51', '', 1, 0, NULL),
+(10592, '2026-04-21 20:20:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 2, 11, '2026-04-21 18:21:01', '2026-04-21 18:21:19', '', 1, 0, NULL),
 
 
 
@@ -10418,6 +10431,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10600, '2026-04-22 10:20:00', 220, NULL, 0, NULL, NULL, '', 612.000000, 2, 7, '2026-04-22 07:22:08', '2026-04-22 17:28:46', '', 1, 0, NULL),
 
 
 
@@ -10434,7 +10448,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10541, '2026-04-21 11:19:00', 220, NULL, 0, NULL, NULL, '', 44183.000000, 'Validé', 1, '2026-04-21 09:21:17', '2026-04-21 18:15:14', 'ciment toreya ', 1, 0, NULL),
 
 
 
@@ -10452,8 +10465,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
-(10559, '2026-04-21 15:42:00', 220, NULL, 0, NULL, NULL, '', 57.840000, 'Validé', 11, '2026-04-21 12:43:14', '2026-04-21 18:16:50', '', 1, 0, NULL),
 
 
 
@@ -10461,6 +10472,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10642, '2026-04-22 16:46:00', 220, NULL, 0, NULL, NULL, '', 20.400000, 2, 11, '2026-04-22 12:47:05', '2026-04-22 17:42:43', '', 1, 0, NULL),
 
 
 
@@ -10479,14 +10491,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10585, '2026-04-21 19:47:00', 220, NULL, 0, NULL, NULL, '', 140.000000, 'Validé', 11, '2026-04-21 17:48:01', '2026-04-21 17:48:21', '', 1, 0, NULL),
-(10586, '2026-04-21 19:52:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 'Validé', 11, '2026-04-21 17:52:11', '2026-04-21 17:52:27', '', 1, 0, NULL),
-(10587, '2026-04-21 19:57:00', 220, NULL, 0, NULL, NULL, '', 3360.000000, 'Validé', 11, '2026-04-21 17:58:11', '2026-04-21 17:58:20', '', 1, 0, NULL),
-(10588, '2026-04-21 19:58:00', 220, NULL, 0, NULL, NULL, '', 2250.000000, 'Validé', 11, '2026-04-21 17:58:48', '2026-04-21 17:59:03', '', 1, 0, NULL),
-(10589, '2026-04-18 20:02:00', 220, NULL, 0, NULL, NULL, '', 1600.000000, 'Validé', 11, '2026-04-21 18:02:30', '2026-04-21 18:02:38', '', 1, 0, NULL),
-(10590, '2026-04-21 20:02:00', 220, NULL, 0, NULL, NULL, '', 550.000000, 'Validé', 11, '2026-04-21 18:03:12', '2026-04-21 18:03:26', '', 1, 0, NULL),
-(10591, '2026-04-21 20:12:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 'Validé', 11, '2026-04-21 18:14:18', '2026-04-21 18:14:51', '', 1, 0, NULL),
-(10592, '2026-04-21 20:20:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 'Validé', 11, '2026-04-21 18:21:01', '2026-04-21 18:21:19', '', 1, 0, NULL),
 
 
 
@@ -10494,8 +10498,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10600, '2026-04-22 10:20:00', 220, NULL, 0, NULL, NULL, '', 612.000000, 'Validé', 7, '2026-04-22 07:22:08', '2026-04-22 17:28:46', '', 1, 0, NULL),
 
+(10672, '2026-04-22 22:44:00', 220, NULL, 0, NULL, NULL, '', 43953.000000, 2, 11, '2026-04-22 17:46:53', '2026-04-24 11:13:52', '', 1, 0, NULL),
+(10673, '2026-04-22 19:58:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 11, '2026-04-22 17:58:39', '2026-04-22 17:58:58', '', 1, 0, NULL),
 
 
 
@@ -10507,6 +10512,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10685, '2026-04-23 15:42:00', 220, NULL, 0, NULL, NULL, '', 9820.320000, 2, 11, '2026-04-23 08:01:57', '2026-04-23 17:04:41', '', 1, 0, NULL),
 
 
 
@@ -10535,7 +10541,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10642, '2026-04-22 16:46:00', 220, NULL, 0, NULL, NULL, '', 20.400000, 'Validé', 11, '2026-04-22 12:47:05', '2026-04-22 17:42:43', '', 1, 0, NULL),
 
 
 
@@ -10552,6 +10557,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10731, '2026-04-23 19:14:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 2, 11, '2026-04-23 17:14:44', '2026-04-23 17:15:00', '', 1, 0, NULL),
 
 
 
@@ -10562,8 +10568,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10672, '2026-04-22 22:44:00', 220, NULL, 0, NULL, NULL, '', 43953.000000, 'Validé', 11, '2026-04-22 17:46:53', '2026-04-24 11:13:52', '', 1, 0, NULL),
-(10673, '2026-04-22 19:58:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 11, '2026-04-22 17:58:39', '2026-04-22 17:58:58', '', 1, 0, NULL),
 
 
 
@@ -10575,7 +10579,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10685, '2026-04-23 15:42:00', 220, NULL, 0, NULL, NULL, '', 9820.320000, 'Validé', 11, '2026-04-23 08:01:57', '2026-04-23 17:04:41', '', 1, 0, NULL),
 
 
 
@@ -10604,6 +10607,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10783, '2026-04-24 19:21:00', 220, NULL, 0, NULL, NULL, '', 4270.000000, 2, 11, '2026-04-24 17:21:45', '2026-04-24 17:22:13', '', 1, 1, 220),
+(10784, '2026-04-24 19:22:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 2, 11, '2026-04-24 17:22:56', '2026-04-24 17:23:15', '', 1, 1, 220),
 
 
 
@@ -10620,7 +10625,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10731, '2026-04-23 19:14:00', 220, NULL, 0, NULL, NULL, '', 340.000000, 'Validé', 11, '2026-04-23 17:14:44', '2026-04-23 17:15:00', '', 1, 0, NULL),
 
 
 
@@ -10662,6 +10666,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10843, '2026-04-25 17:40:00', 220, NULL, 0, NULL, NULL, '', 1130.000000, 2, 11, '2026-04-25 13:42:26', '2026-04-25 17:50:41', 'awatef ahlan', 1, 0, NULL),
 
 
 
@@ -10670,11 +10675,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10783, '2026-04-24 19:21:00', 220, NULL, 0, NULL, NULL, '', 4270.000000, 'Validé', 11, '2026-04-24 17:21:45', '2026-04-24 17:22:13', '', 1, 1, 220),
-(10784, '2026-04-24 19:22:00', 220, NULL, 0, NULL, NULL, '', 240.000000, 'Validé', 11, '2026-04-24 17:22:56', '2026-04-24 17:23:15', '', 1, 1, 220),
 
 
 
+(10855, '2026-04-25 22:03:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 2, 1, '2026-04-25 17:03:56', '2026-04-25 17:44:57', 'ali sosi ', 1, 1, 220),
+(10856, '2026-04-25 23:45:00', 220, NULL, 0, NULL, NULL, '', 6297.600000, 2, 11, '2026-04-25 17:46:59', '2026-04-27 02:33:31', '', 1, 1, 220),
+(10857, '2026-04-25 19:52:00', 220, NULL, 0, NULL, NULL, '', 610.000000, 2, 11, '2026-04-25 17:52:55', '2026-04-25 17:53:19', '', 1, 1, 220),
 
 
 
@@ -10694,6 +10700,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10877, '2026-04-27 13:03:00', 220, NULL, 0, NULL, NULL, '', 5384.000000, 2, 1, '2026-04-27 10:06:16', '2026-04-27 17:38:25', '', 1, 1, 220);
 
 
 
@@ -10704,6 +10711,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -10727,9 +10735,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10912, '2026-04-27 19:46:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 2, 11, '2026-04-27 17:46:52', '2026-04-27 17:46:57', '', 1, 1, 220),
 
 
-(10843, '2026-04-25 17:40:00', 220, NULL, 0, NULL, NULL, '', 1130.000000, 'Validé', 11, '2026-04-25 13:42:26', '2026-04-25 17:50:41', 'awatef ahlan', 1, 0, NULL),
 
 
 
@@ -10741,9 +10749,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10855, '2026-04-25 22:03:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 'Validé', 1, '2026-04-25 17:03:56', '2026-04-25 17:44:57', 'ali sosi ', 1, 1, 220),
-(10856, '2026-04-25 23:45:00', 220, NULL, 0, NULL, NULL, '', 6297.600000, 'Validé', 11, '2026-04-25 17:46:59', '2026-04-27 02:33:31', '', 1, 1, 220),
-(10857, '2026-04-25 19:52:00', 220, NULL, 0, NULL, NULL, '', 610.000000, 'Validé', 11, '2026-04-25 17:52:55', '2026-04-25 17:53:19', '', 1, 1, 220),
 
 
 
@@ -10763,7 +10768,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10877, '2026-04-27 13:03:00', 220, NULL, 0, NULL, NULL, '', 5384.000000, 'Validé', 1, '2026-04-27 10:06:16', '2026-04-27 17:38:25', '', 1, 1, 220),
 
 
 
@@ -10774,7 +10778,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -10798,7 +10801,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10912, '2026-04-27 19:46:00', 220, NULL, 0, NULL, NULL, '', 400.000000, 'Validé', 11, '2026-04-27 17:46:52', '2026-04-27 17:46:57', '', 1, 1, 220),
 
 
 
@@ -10817,6 +10819,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(10998, '2026-04-28 21:21:00', 220, NULL, 0, NULL, NULL, '', 68.000000, 2, 1, '2026-04-28 17:21:51', '2026-04-28 18:26:17', 'ali sosi ', 1, 1, 220),
 
 
 
@@ -10826,6 +10829,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11008, '2026-04-28 20:26:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 2, 11, '2026-04-28 18:27:16', '2026-04-28 18:27:27', '', 1, 1, 220),
+(11009, '2026-04-28 20:29:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 2, 11, '2026-04-28 18:29:48', '2026-04-28 18:30:16', '', 1, 1, 220),
 
 
 
@@ -10843,6 +10848,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11028, '2026-04-29 17:04:00', 220, NULL, 0, NULL, NULL, '', 825.000000, 2, 11, '2026-04-29 09:05:28', '2026-04-30 17:36:53', 'said ibno machich ahlan', 1, 0, NULL),
 
 
 
@@ -10882,7 +10888,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(10998, '2026-04-28 21:21:00', 220, NULL, 0, NULL, NULL, '', 68.000000, 'Validé', 1, '2026-04-28 17:21:51', '2026-04-28 18:26:17', 'ali sosi ', 1, 1, 220),
 
 
 
@@ -10892,8 +10897,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11008, '2026-04-28 20:26:00', 220, NULL, 0, NULL, NULL, '', 518.400000, 'Validé', 11, '2026-04-28 18:27:16', '2026-04-28 18:27:27', '', 1, 1, 220),
-(11009, '2026-04-28 20:29:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 'Validé', 11, '2026-04-28 18:29:48', '2026-04-28 18:30:16', '', 1, 1, 220),
 
 
 
@@ -10905,13 +10908,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11089, '2026-04-29 17:57:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 2, 11, '2026-04-29 14:57:15', '2026-04-30 17:30:37', '', 1, 1, 220),
 
 
 
 
 
 
-(11028, '2026-04-29 17:04:00', 220, NULL, 0, NULL, NULL, '', 825.000000, 'Validé', 11, '2026-04-29 09:05:28', '2026-04-30 17:36:53', 'said ibno machich ahlan', 1, 0, NULL),
 
 
 
@@ -10971,7 +10974,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11089, '2026-04-29 17:57:00', 220, NULL, 0, NULL, NULL, '', 360.000000, 'Validé', 11, '2026-04-29 14:57:15', '2026-04-30 17:30:37', '', 1, 1, 220),
 
 
 
@@ -10990,12 +10992,14 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11175, '2026-04-30 12:39:00', 220, NULL, 0, NULL, NULL, '', 4500.000000, 6, 1, '2026-04-30 11:39:57', '2026-04-30 12:23:32', 'ALI ZEFAT MGHOGHA', 1, 1, 220),
 
 
 
 
 
 
+(11182, '2026-04-30 15:25:00', 220, NULL, 0, NULL, NULL, '', 17.000000, 2, 11, '2026-04-30 12:43:51', '2026-04-30 17:49:49', '', 1, 1, 220),
 
 
 
@@ -11023,11 +11027,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11211, '2026-04-29 19:38:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 2, 11, '2026-04-30 17:39:20', '2026-04-30 17:39:28', '', 1, 0, NULL),
+(11212, '2026-04-30 19:42:00', 220, NULL, 0, NULL, NULL, '', 396.000000, 2, 11, '2026-04-30 17:43:16', '2026-04-30 17:43:25', '', 1, 1, 220),
+(11213, '2026-04-30 19:43:00', 220, NULL, 0, NULL, NULL, '', 313.500000, 2, 11, '2026-04-30 17:44:01', '2026-04-30 17:44:03', '', 1, 1, 220),
+(11214, '2026-04-30 19:47:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 2, 11, '2026-04-30 17:48:16', '2026-04-30 17:48:29', '', 1, 1, 220);
 
 
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -11055,14 +11064,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11175, '2026-04-30 12:39:00', 220, NULL, 0, NULL, NULL, '', 4500.000000, 'Annulé', 1, '2026-04-30 11:39:57', '2026-04-30 12:23:32', 'ALI ZEFAT MGHOGHA', 1, 1, 220),
 
 
 
 
 
 
-(11182, '2026-04-30 15:25:00', 220, NULL, 0, NULL, NULL, '', 17.000000, 'Validé', 11, '2026-04-30 12:43:51', '2026-04-30 17:49:49', '', 1, 1, 220),
 
 
 
@@ -11079,6 +11086,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11270, '2026-05-01 17:42:00', 220, NULL, 0, NULL, NULL, '', 875.000000, 2, 11, '2026-05-01 11:42:42', '2026-05-01 17:53:44', 'marjan meghogha', 1, 0, NULL),
 
 
 
@@ -11090,16 +11098,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11211, '2026-04-29 19:38:00', 220, NULL, 0, NULL, NULL, '', 310.000000, 'Validé', 11, '2026-04-30 17:39:20', '2026-04-30 17:39:28', '', 1, 0, NULL),
-(11212, '2026-04-30 19:42:00', 220, NULL, 0, NULL, NULL, '', 396.000000, 'Validé', 11, '2026-04-30 17:43:16', '2026-04-30 17:43:25', '', 1, 1, 220),
-(11213, '2026-04-30 19:43:00', 220, NULL, 0, NULL, NULL, '', 313.500000, 'Validé', 11, '2026-04-30 17:44:01', '2026-04-30 17:44:03', '', 1, 1, 220),
-(11214, '2026-04-30 19:47:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 'Validé', 11, '2026-04-30 17:48:16', '2026-04-30 17:48:29', '', 1, 1, 220),
+(11282, '2026-05-01 23:52:00', 220, NULL, 0, NULL, NULL, '', 825.000000, 2, 11, '2026-05-01 15:53:10', '2026-05-01 17:58:53', 'MAHAL', 1, 0, NULL),
 
 
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -11107,6 +11111,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11295, '2026-05-01 20:15:00', 220, NULL, 0, NULL, NULL, '', 270.000000, 2, 11, '2026-05-01 18:16:20', '2026-05-01 18:16:22', '', 1, 1, 220),
 
 
 
@@ -11139,6 +11144,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11330, '2026-05-02 11:09:00', NULL, 337, 1, NULL, NULL, '', 1200.000000, 2, 1, '2026-05-02 10:10:16', '2026-05-09 14:34:21', 'rachid boukhalef ', NULL, 0, NULL),
 
 
 
@@ -11149,7 +11155,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11270, '2026-05-01 17:42:00', 220, NULL, 0, NULL, NULL, '', 875.000000, 'Validé', 11, '2026-05-01 11:42:42', '2026-05-01 17:53:44', 'marjan meghogha', 1, 0, NULL),
 
 
 
@@ -11161,7 +11166,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11282, '2026-05-01 23:52:00', 220, NULL, 0, NULL, NULL, '', 825.000000, 'Validé', 11, '2026-05-01 15:53:10', '2026-05-01 17:58:53', 'MAHAL', 1, 0, NULL),
 
 
 
@@ -11174,7 +11178,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11295, '2026-05-01 20:15:00', 220, NULL, 0, NULL, NULL, '', 270.000000, 'Validé', 11, '2026-05-01 18:16:20', '2026-05-01 18:16:22', '', 1, 1, 220),
 
 
 
@@ -11184,8 +11187,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11376, '2026-05-02 20:48:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 2, 1, '2026-05-02 17:48:53', '2026-05-05 18:12:35', '', 1, 1, 220),
+(11378, '2026-05-02 18:51:00', 220, NULL, 0, NULL, NULL, '', 6800.000000, 2, 1, '2026-05-02 17:51:17', '2026-05-05 18:09:46', '', 1, 1, 220),
 
 
+(11381, '2026-05-04 10:06:00', 220, NULL, 0, NULL, NULL, '', 1319.360000, 2, 11, '2026-05-04 07:06:20', '2026-05-05 17:40:11', '', 1, 1, 220),
 
 
 
@@ -11198,6 +11204,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11394, '2026-05-04 11:39:00', 220, NULL, 0, NULL, NULL, '', 405.000000, 2, 1, '2026-05-04 08:40:32', '2026-05-05 17:39:44', 'ali sosi ', 1, 1, 220),
 
 
 
@@ -11207,7 +11214,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11330, '2026-05-02 11:09:00', NULL, 337, 1, NULL, NULL, '', 1200.000000, 'Validé', 1, '2026-05-02 10:10:16', '2026-05-09 14:34:21', 'rachid boukhalef ', NULL, 0, NULL),
 
 
 
@@ -11232,6 +11238,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11428, '2026-05-04 13:27:00', NULL, 390, 1, NULL, NULL, '', 925.000000, 2, 1, '2026-05-04 12:28:32', '2026-05-09 14:29:20', '', NULL, 0, NULL),
 
 
 
@@ -11250,11 +11257,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11376, '2026-05-02 20:48:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 'Validé', 1, '2026-05-02 17:48:53', '2026-05-05 18:12:35', '', 1, 1, 220),
-(11378, '2026-05-02 18:51:00', 220, NULL, 0, NULL, NULL, '', 6800.000000, 'Validé', 1, '2026-05-02 17:51:17', '2026-05-05 18:09:46', '', 1, 1, 220),
 
 
-(11381, '2026-05-04 10:06:00', 220, NULL, 0, NULL, NULL, '', 1319.360000, 'Validé', 11, '2026-05-04 07:06:20', '2026-05-05 17:40:11', '', 1, 1, 220),
 
 
 
@@ -11267,7 +11271,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11394, '2026-05-04 11:39:00', 220, NULL, 0, NULL, NULL, '', 405.000000, 'Validé', 1, '2026-05-04 08:40:32', '2026-05-05 17:39:44', 'ali sosi ', 1, 1, 220),
 
 
 
@@ -11283,6 +11286,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11477, '2026-05-05 12:51:00', 220, NULL, 0, NULL, NULL, '', 1615.000000, 2, 11, '2026-05-05 08:51:29', '2026-05-05 17:17:59', '', 1, 1, 220),
 
 
 
@@ -11301,7 +11305,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11428, '2026-05-04 13:27:00', NULL, 390, 1, NULL, NULL, '', 925.000000, 'Validé', 1, '2026-05-04 12:28:32', '2026-05-09 14:29:20', '', NULL, 0, NULL),
 
 
 
@@ -11331,6 +11334,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11527, '2026-05-05 20:13:00', 220, NULL, 0, NULL, NULL, '', 1400.000000, 2, 11, '2026-05-05 14:14:19', '2026-05-05 17:24:36', 'awatif rahrah', 1, 0, NULL),
 
 
 
@@ -11346,10 +11350,19 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11544, '2026-05-05 18:13:00', NULL, 369, 1, NULL, NULL, '', 1700.000000, 2, 10, '2026-05-05 17:13:37', '2026-05-09 14:45:27', '', NULL, 0, NULL),
+(11547, '2026-05-05 19:29:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 2, 11, '2026-05-05 17:30:15', '2026-05-05 17:30:16', '', 1, 1, 220),
+(11548, '2026-05-04 21:48:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 2, 11, '2026-05-05 17:48:42', '2026-05-05 17:49:18', '', 1, 1, 220),
+(11549, '2026-05-04 19:49:00', 220, NULL, 0, NULL, NULL, '', 2073.600000, 2, 11, '2026-05-05 17:49:45', '2026-05-05 17:50:11', '', 1, 1, 220),
+(11550, '2026-05-04 19:50:00', 220, NULL, 0, NULL, NULL, '', 677.540000, 2, 11, '2026-05-05 17:51:10', '2026-05-05 17:52:16', '', 1, 1, 220),
+(11551, '2026-05-04 22:02:00', 220, NULL, 0, NULL, NULL, '', 1209.500000, 2, 11, '2026-05-05 18:04:06', '2026-05-05 18:04:44', '', 1, 0, NULL),
+(11552, '2026-05-05 20:04:00', 220, NULL, 0, NULL, NULL, '', 430.000000, 2, 11, '2026-05-05 18:05:41', '2026-05-05 18:05:44', '', 1, 1, 220),
+(11553, '2026-05-05 22:10:00', 220, NULL, 0, NULL, NULL, '', 1008.000000, 2, 11, '2026-05-05 18:10:50', '2026-05-05 18:12:14', '', 1, 1, 220),
+(11554, '2026-05-05 20:17:00', 220, NULL, 0, NULL, NULL, '', 230.000000, 2, 11, '2026-05-05 18:17:32', '2026-05-05 18:17:37', '', 1, 1, 220);
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
-(11477, '2026-05-05 12:51:00', 220, NULL, 0, NULL, NULL, '', 1615.000000, 'Validé', 11, '2026-05-05 08:51:29', '2026-05-05 17:17:59', '', 1, 1, 220),
 
 
 
@@ -11360,6 +11373,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11569, '2026-05-06 09:23:00', NULL, 337, 1, NULL, NULL, '', 1190.000000, 2, 1, '2026-05-06 08:23:29', '2026-05-15 12:58:58', 'MOHAMED SSAHRAOUI ', NULL, 0, NULL),
 
 
 
@@ -11377,6 +11391,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11587, '2026-05-06 18:19:00', 220, NULL, 0, NULL, NULL, '', 5083.250000, 2, 11, '2026-05-06 09:43:59', '2026-05-06 17:51:22', '', 1, 1, 220),
 
 
 
@@ -11390,14 +11405,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11602, '2026-05-06 12:48:00', NULL, 333, 1, NULL, NULL, '', 5925.000000, 2, 11, '2026-05-06 10:49:25', '2026-05-12 13:20:20', '', NULL, 0, NULL),
 
 
 
 
 
 
+(11609, '2026-05-06 14:53:00', NULL, 333, 1, NULL, NULL, '', 370.000000, 2, 1, '2026-05-06 11:53:45', '2026-05-12 13:17:47', 'ABDELGHAFOR', NULL, 0, NULL),
 
-(11527, '2026-05-05 20:13:00', 220, NULL, 0, NULL, NULL, '', 1400.000000, 'Validé', 11, '2026-05-05 14:14:19', '2026-05-05 17:24:36', 'awatif rahrah', 1, 0, NULL),
 
 
 
@@ -11413,17 +11429,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11544, '2026-05-05 18:13:00', NULL, 369, 1, NULL, NULL, '', 1700.000000, 'Validé', 10, '2026-05-05 17:13:37', '2026-05-09 14:45:27', '', NULL, 0, NULL),
-(11547, '2026-05-05 19:29:00', 220, NULL, 0, NULL, NULL, '', 160.000000, 'Validé', 11, '2026-05-05 17:30:15', '2026-05-05 17:30:16', '', 1, 1, 220),
-(11548, '2026-05-04 21:48:00', 220, NULL, 0, NULL, NULL, '', 180.000000, 'Validé', 11, '2026-05-05 17:48:42', '2026-05-05 17:49:18', '', 1, 1, 220),
-(11549, '2026-05-04 19:49:00', 220, NULL, 0, NULL, NULL, '', 2073.600000, 'Validé', 11, '2026-05-05 17:49:45', '2026-05-05 17:50:11', '', 1, 1, 220),
-(11550, '2026-05-04 19:50:00', 220, NULL, 0, NULL, NULL, '', 677.540000, 'Validé', 11, '2026-05-05 17:51:10', '2026-05-05 17:52:16', '', 1, 1, 220),
-(11551, '2026-05-04 22:02:00', 220, NULL, 0, NULL, NULL, '', 1209.500000, 'Validé', 11, '2026-05-05 18:04:06', '2026-05-05 18:04:44', '', 1, 0, NULL),
-(11552, '2026-05-05 20:04:00', 220, NULL, 0, NULL, NULL, '', 430.000000, 'Validé', 11, '2026-05-05 18:05:41', '2026-05-05 18:05:44', '', 1, 1, 220),
-(11553, '2026-05-05 22:10:00', 220, NULL, 0, NULL, NULL, '', 1008.000000, 'Validé', 11, '2026-05-05 18:10:50', '2026-05-05 18:12:14', '', 1, 1, 220),
-(11554, '2026-05-05 20:17:00', 220, NULL, 0, NULL, NULL, '', 230.000000, 'Validé', 11, '2026-05-05 18:17:32', '2026-05-05 18:17:37', '', 1, 1, 220),
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -11432,29 +11438,31 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11637, '2026-05-06 20:59:00', 220, NULL, 0, NULL, NULL, '', 32.000000, 2, 11, '2026-05-06 16:59:26', '2026-05-06 16:59:55', '', 1, 1, 220),
 
+(11640, '2026-05-06 19:59:00', 220, NULL, 0, NULL, NULL, '', 697.500000, 2, 11, '2026-05-06 17:59:54', '2026-05-06 17:59:56', '', 1, 1, 220),
 
 
 
-(11569, '2026-05-06 09:23:00', NULL, 337, 1, NULL, NULL, '', 1190.000000, 'Validé', 1, '2026-05-06 08:23:29', '2026-05-15 12:58:58', 'MOHAMED SSAHRAOUI ', NULL, 0, NULL),
 
 
 
 
 
 
+(11651, '2026-05-06 08:20:00', 220, NULL, 0, NULL, NULL, '', 2976.000000, 2, 11, '2026-05-07 07:21:21', '2026-05-07 07:21:24', '', 1, 1, 220),
 
 
 
 
 
+(11657, '2026-05-06 09:33:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 1, 11, '2026-05-07 07:34:09', '2026-05-07 07:34:17', '', 1, 1, 220),
 
 
 
 
 
 
-(11587, '2026-05-06 18:19:00', 220, NULL, 0, NULL, NULL, '', 5083.250000, 'Validé', 11, '2026-05-06 09:43:59', '2026-05-06 17:51:22', '', 1, 1, 220),
 
 
 
@@ -11468,14 +11476,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11602, '2026-05-06 12:48:00', NULL, 333, 1, NULL, NULL, '', 5925.000000, 'Validé', 11, '2026-05-06 10:49:25', '2026-05-12 13:20:20', '', NULL, 0, NULL),
 
 
 
 
 
 
-(11609, '2026-05-06 14:53:00', NULL, 333, 1, NULL, NULL, '', 370.000000, 'Validé', 1, '2026-05-06 11:53:45', '2026-05-12 13:17:47', 'ABDELGHAFOR', NULL, 0, NULL),
 
 
 
@@ -11496,14 +11502,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11704, '2026-05-07 13:38:00', NULL, 367, 1, NULL, NULL, '', 4380.000000, 2, 1, '2026-05-07 11:38:34', '2026-05-12 13:41:21', '', NULL, 0, NULL),
 
 
 
 
 
-(11637, '2026-05-06 20:59:00', 220, NULL, 0, NULL, NULL, '', 32.000000, 'Validé', 11, '2026-05-06 16:59:26', '2026-05-06 16:59:55', '', 1, 1, 220),
 
-(11640, '2026-05-06 19:59:00', 220, NULL, 0, NULL, NULL, '', 697.500000, 'Validé', 11, '2026-05-06 17:59:54', '2026-05-06 17:59:56', '', 1, 1, 220),
 
 
 
@@ -11513,16 +11518,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11651, '2026-05-06 08:20:00', 220, NULL, 0, NULL, NULL, '', 2976.000000, 'Validé', 11, '2026-05-07 07:21:21', '2026-05-07 07:21:24', '', 1, 1, 220),
+(11720, '2026-05-07 17:14:00', 220, NULL, 0, NULL, NULL, '', 308.640000, 2, 11, '2026-05-07 13:15:37', '2026-05-11 18:14:05', '', 1, 1, 220),
 
 
 
 
 
-(11657, '2026-05-06 09:33:00', 220, NULL, 0, NULL, NULL, '', 210.000000, 'En attente', 11, '2026-05-07 07:34:09', '2026-05-07 07:34:17', '', 1, 1, 220),
 
 
 
+(11730, '2026-05-07 15:34:00', NULL, 507, 1, NULL, NULL, '', 4500.000000, 2, 11, '2026-05-07 14:34:49', '2026-05-09 14:58:01', '', NULL, 0, NULL),
 
 
 
@@ -11541,6 +11546,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11751, '2026-05-08 10:55:00', NULL, 364, 1, NULL, NULL, '', 1100.000000, 2, 11, '2026-05-08 07:55:20', '2026-05-12 14:02:59', '', NULL, 0, NULL),
 
 
 
@@ -11548,6 +11554,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11759, '2026-05-08 09:21:00', NULL, 337, 1, NULL, NULL, '', 5000.000000, 2, 11, '2026-05-08 08:22:26', '2026-05-15 12:51:53', '', NULL, 0, NULL),
 
 
 
@@ -11557,6 +11564,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11770, '2026-05-08 10:02:00', NULL, 337, 1, NULL, NULL, '', 70.000000, 2, 11, '2026-05-08 09:03:30', '2026-05-15 12:54:05', 'ABDELTEF AWAMA (MOHAMED TELE)', NULL, 0, NULL),
 
 
 
@@ -11565,23 +11573,23 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11704, '2026-05-07 13:38:00', NULL, 367, 1, NULL, NULL, '', 4380.000000, 'Validé', 1, '2026-05-07 11:38:34', '2026-05-12 13:41:21', '', NULL, 0, NULL),
 
 
 
 
 
+(11784, '2026-05-08 15:59:00', NULL, 337, 1, NULL, NULL, '', 960.000000, 2, 11, '2026-05-08 09:59:23', '2026-05-15 12:55:32', '', NULL, 0, NULL),
 
 
 
 
 
+(11790, '2026-05-08 17:20:00', 220, NULL, 0, NULL, NULL, '', 1100.000000, 2, 11, '2026-05-08 10:21:59', '2026-05-09 18:25:52', 'awatif rahrah', 1, 0, NULL),
 
 
 
 
 
-(11720, '2026-05-07 17:14:00', 220, NULL, 0, NULL, NULL, '', 308.640000, 'Validé', 11, '2026-05-07 13:15:37', '2026-05-11 18:14:05', '', 1, 1, 220),
 
 
 
@@ -11589,8 +11597,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11804, '2026-05-08 12:58:00', NULL, 337, 1, NULL, NULL, '', 280.000000, 2, 11, '2026-05-08 10:59:07', '2026-05-15 12:51:01', '', NULL, 0, NULL),
 
-(11730, '2026-05-07 15:34:00', NULL, 507, 1, NULL, NULL, '', 4500.000000, 'Validé', 11, '2026-05-07 14:34:49', '2026-05-09 14:58:01', '', NULL, 0, NULL),
 
 
 
@@ -11609,15 +11617,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11751, '2026-05-08 10:55:00', NULL, 364, 1, NULL, NULL, '', 1100.000000, 'Validé', 11, '2026-05-08 07:55:20', '2026-05-12 14:02:59', '', NULL, 0, NULL),
 
 
+(11826, '2026-05-08 22:45:00', NULL, 335, 1, NULL, NULL, '', 5880.800000, 2, 11, '2026-05-08 14:46:02', '2026-05-12 17:35:07', '', NULL, 0, NULL),
 
+(11828, '2026-05-08 16:55:00', NULL, 337, 1, NULL, NULL, '', 560.000000, 6, 11, '2026-05-08 14:56:15', '2026-05-08 14:56:41', '', NULL, 0, NULL),
 
 
 
 
-(11759, '2026-05-08 09:21:00', NULL, 337, 1, NULL, NULL, '', 5000.000000, 'Validé', 11, '2026-05-08 08:22:26', '2026-05-15 12:51:53', '', NULL, 0, NULL),
 
 
 
@@ -11627,7 +11635,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11770, '2026-05-08 10:02:00', NULL, 337, 1, NULL, NULL, '', 70.000000, 'Validé', 11, '2026-05-08 09:03:30', '2026-05-15 12:54:05', 'ABDELTEF AWAMA (MOHAMED TELE)', NULL, 0, NULL),
 
 
 
@@ -11641,26 +11648,26 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11784, '2026-05-08 15:59:00', NULL, 337, 1, NULL, NULL, '', 960.000000, 'Validé', 11, '2026-05-08 09:59:23', '2026-05-15 12:55:32', '', NULL, 0, NULL),
 
 
+(11858, '2026-05-09 09:52:00', NULL, 337, 1, NULL, NULL, '', 230.000000, 2, 11, '2026-05-09 07:53:16', '2026-05-15 12:56:31', '', NULL, 0, NULL),
 
 
 
-(11790, '2026-05-08 17:20:00', 220, NULL, 0, NULL, NULL, '', 1100.000000, 'Validé', 11, '2026-05-08 10:21:59', '2026-05-09 18:25:52', 'awatif rahrah', 1, 0, NULL),
 
 
 
 
 
+(11867, '2026-05-09 10:39:00', NULL, 333, 1, NULL, NULL, '', 4608.000000, 2, 11, '2026-05-09 08:40:16', '2026-05-12 13:15:34', '', NULL, 0, NULL),
 
 
 
+(11871, '2026-05-09 10:47:00', NULL, 337, 1, NULL, NULL, '', 2451.000000, 2, 10, '2026-05-09 08:50:01', '2026-05-15 13:02:45', '', NULL, 0, NULL),
 
 
 
 
-(11804, '2026-05-08 12:58:00', NULL, 337, 1, NULL, NULL, '', 280.000000, 'Validé', 11, '2026-05-08 10:59:07', '2026-05-15 12:51:01', '', NULL, 0, NULL),
 
 
 
@@ -11669,6 +11676,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11884, '2026-05-09 11:17:00', NULL, 334, 1, NULL, NULL, '', 725.000000, 2, 11, '2026-05-09 09:18:39', '2026-05-15 12:26:57', '', NULL, 0, NULL);
 
 
 
@@ -11678,19 +11686,20 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
 
-(11826, '2026-05-08 22:45:00', NULL, 335, 1, NULL, NULL, '', 5880.800000, 'Validé', 11, '2026-05-08 14:46:02', '2026-05-12 17:35:07', '', NULL, 0, NULL),
 
-(11828, '2026-05-08 16:55:00', NULL, 337, 1, NULL, NULL, '', 560.000000, 'Annulé', 11, '2026-05-08 14:56:15', '2026-05-08 14:56:41', '', NULL, 0, NULL),
+(11900, '2026-05-09 13:28:00', NULL, 335, 1, NULL, NULL, '', 350.000000, 2, 11, '2026-05-09 10:28:35', '2026-05-12 13:21:38', '', NULL, 0, NULL),
 
 
 
 
 
 
+(11907, '2026-05-09 17:10:00', 220, NULL, 0, NULL, NULL, '', 1240.000000, 2, 11, '2026-05-09 11:11:00', '2026-05-09 19:06:41', 'AWATEF IBN MACHICH', 1, 0, NULL),
 
 
 
@@ -11699,6 +11708,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11916, '2026-05-09 17:36:00', 220, NULL, 0, NULL, NULL, '', 3821.700000, 2, 11, '2026-05-09 11:57:51', '2026-05-14 18:46:46', '', 1, 1, 220),
 
 
 
@@ -11712,8 +11722,8 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11930, '2026-05-09 15:41:00', NULL, 335, 1, NULL, NULL, '', 3102.000000, 2, 11, '2026-05-09 13:36:38', '2026-05-15 14:55:15', '', NULL, 0, NULL),
 
-(11858, '2026-05-09 09:52:00', NULL, 337, 1, NULL, NULL, '', 230.000000, 'Validé', 11, '2026-05-09 07:53:16', '2026-05-15 12:56:31', '', NULL, 0, NULL),
 
 
 
@@ -11722,11 +11732,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11867, '2026-05-09 10:39:00', NULL, 333, 1, NULL, NULL, '', 4608.000000, 'Validé', 11, '2026-05-09 08:40:16', '2026-05-12 13:15:34', '', NULL, 0, NULL),
+(11940, '2026-05-09 15:58:00', NULL, 337, 1, NULL, NULL, '', 600.000000, 2, 10, '2026-05-09 14:59:04', '2026-05-15 12:58:06', '', NULL, 0, NULL),
 
+(11942, '2026-05-09 18:11:00', NULL, 420, 1, NULL, NULL, '', 225.000000, 1, 11, '2026-05-09 15:12:26', '2026-05-09 15:59:45', '', NULL, 0, NULL),
 
 
-(11871, '2026-05-09 10:47:00', NULL, 337, 1, NULL, NULL, '', 2451.000000, 'Validé', 10, '2026-05-09 08:50:01', '2026-05-15 13:02:45', '', NULL, 0, NULL),
 
 
 
@@ -11739,7 +11749,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11884, '2026-05-09 11:17:00', NULL, 334, 1, NULL, NULL, '', 725.000000, 'Validé', 11, '2026-05-09 09:18:39', '2026-05-15 12:26:57', '', NULL, 0, NULL),
 
 
 
@@ -11747,22 +11756,22 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(11965, '2026-05-09 22:37:00', 220, NULL, 0, NULL, NULL, '', 3750.000000, 2, 11, '2026-05-09 19:38:04', '2026-05-12 19:03:58', '', 1, 1, 220),
+(11966, '2026-05-11 12:42:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 2, 11, '2026-05-11 06:43:16', '2026-05-11 16:11:00', 'awatef', 1, 0, NULL),
+(11967, '2026-05-11 07:46:00', 220, NULL, 0, NULL, NULL, '', 975.000000, 6, 11, '2026-05-11 06:46:52', '2026-05-11 06:54:22', '', 1, 1, 220),
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
 
 
-(11900, '2026-05-09 13:28:00', NULL, 335, 1, NULL, NULL, '', 350.000000, 'Validé', 11, '2026-05-09 10:28:35', '2026-05-12 13:21:38', '', NULL, 0, NULL),
 
 
 
 
 
 
-(11907, '2026-05-09 17:10:00', 220, NULL, 0, NULL, NULL, '', 1240.000000, 'Validé', 11, '2026-05-09 11:11:00', '2026-05-09 19:06:41', 'AWATEF IBN MACHICH', 1, 0, NULL),
 
 
 
@@ -11771,7 +11780,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11916, '2026-05-09 17:36:00', 220, NULL, 0, NULL, NULL, '', 3821.700000, 'Validé', 11, '2026-05-09 11:57:51', '2026-05-14 18:46:46', '', 1, 1, 220),
 
 
 
@@ -11785,7 +11793,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(11930, '2026-05-09 15:41:00', NULL, 335, 1, NULL, NULL, '', 3102.000000, 'Validé', 11, '2026-05-09 13:36:38', '2026-05-15 14:55:15', '', NULL, 0, NULL),
 
 
 
@@ -11794,12 +11801,12 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(12010, '2026-05-11 17:18:00', 220, NULL, 0, NULL, NULL, '', 750.000000, 2, 11, '2026-05-11 10:42:40', '2026-05-11 17:42:12', 'awatif carrefor', 1, 0, NULL),
 
-(11940, '2026-05-09 15:58:00', NULL, 337, 1, NULL, NULL, '', 600.000000, 'Validé', 10, '2026-05-09 14:59:04', '2026-05-15 12:58:06', '', NULL, 0, NULL),
 
-(11942, '2026-05-09 18:11:00', NULL, 420, 1, NULL, NULL, '', 225.000000, 'En attente', 11, '2026-05-09 15:12:26', '2026-05-09 15:59:45', '', NULL, 0, NULL),
 
 
+(12015, '2026-05-11 12:04:00', NULL, 337, 1, NULL, NULL, '', 315.000000, 6, 11, '2026-05-11 11:04:57', '2026-05-11 11:07:58', '', NULL, 0, NULL),
 
 
 
@@ -11817,11 +11824,9 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(12033, '2026-05-11 16:51:00', NULL, 333, 1, NULL, NULL, '', 3627.000000, 2, 11, '2026-05-11 12:52:38', '2026-05-15 16:06:48', '', NULL, 0, NULL),
 
 
-(11965, '2026-05-09 22:37:00', 220, NULL, 0, NULL, NULL, '', 3750.000000, 'Validé', 11, '2026-05-09 19:38:04', '2026-05-12 19:03:58', '', 1, 1, 220),
-(11966, '2026-05-11 12:42:00', 220, NULL, 0, NULL, NULL, '', 700.000000, 'Validé', 11, '2026-05-11 06:43:16', '2026-05-11 16:11:00', 'awatef', 1, 0, NULL),
-(11967, '2026-05-11 07:46:00', 220, NULL, 0, NULL, NULL, '', 975.000000, 'Annulé', 11, '2026-05-11 06:46:52', '2026-05-11 06:54:22', '', 1, 1, 220),
 
 
 
@@ -11830,12 +11835,16 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(12044, '2026-05-11 17:38:00', NULL, 393, 1, NULL, NULL, '', 810.000000, 2, 11, '2026-05-11 15:39:05', '2026-05-15 12:38:26', '', NULL, 0, NULL),
 
 
 
 
+(12049, '2026-05-11 21:36:00', 220, NULL, 0, NULL, NULL, '', 25.850000, 2, 11, '2026-05-11 17:37:24', '2026-05-12 18:56:21', '', 1, 1, 220),
+(12050, '2026-05-11 21:53:00', 220, NULL, 0, NULL, NULL, '', 3750.000000, 2, 11, '2026-05-11 17:54:29', '2026-05-13 17:46:50', 'RAHRAH', 1, 1, 220),
 
 
+(12053, '2026-05-07 20:29:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 2, 11, '2026-05-11 18:32:25', '2026-05-11 18:57:36', '', 1, 1, 220),
 
 
 
@@ -11864,16 +11873,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(12010, '2026-05-11 17:18:00', 220, NULL, 0, NULL, NULL, '', 750.000000, 'Validé', 11, '2026-05-11 10:42:40', '2026-05-11 17:42:12', 'awatif carrefor', 1, 0, NULL),
 
 
 
 
-(12015, '2026-05-11 12:04:00', NULL, 337, 1, NULL, NULL, '', 315.000000, 'Annulé', 11, '2026-05-11 11:04:57', '2026-05-11 11:07:58', '', NULL, 0, NULL),
 
 
 
 
+(12090, '2026-05-12 11:48:00', NULL, 337, 1, NULL, NULL, '', 6272.000000, 2, 11, '2026-05-12 09:48:27', '2026-05-15 13:06:58', '', NULL, 0, NULL),
 
 
 
@@ -11887,27 +11895,25 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(12033, '2026-05-11 16:51:00', NULL, 333, 1, NULL, NULL, '', 3627.000000, 'Validé', 11, '2026-05-11 12:52:38', '2026-05-15 16:06:48', '', NULL, 0, NULL),
 
 
 
 
+(12108, '2026-05-12 15:53:00', 220, NULL, 0, NULL, NULL, '', 850.000000, 2, 11, '2026-05-12 11:54:22', '2026-05-13 18:12:08', 'awatef ahlan', 1, 0, NULL),
+(12109, '2026-05-12 17:55:00', 220, NULL, 0, NULL, NULL, '', 1800.000000, 2, 11, '2026-05-12 11:56:40', '2026-05-13 18:12:44', 'AWATEF RAHRAH', 1, 0, NULL),
 
+(12111, '2026-05-12 13:17:00', NULL, 364, 1, NULL, NULL, '', 1057.320000, 2, 11, '2026-05-12 12:17:35', '2026-05-15 11:23:08', '', NULL, 0, NULL),
 
 
 
 
 
-(12044, '2026-05-11 17:38:00', NULL, 393, 1, NULL, NULL, '', 810.000000, 'Validé', 11, '2026-05-11 15:39:05', '2026-05-15 12:38:26', '', NULL, 0, NULL),
 
 
 
 
-(12049, '2026-05-11 21:36:00', 220, NULL, 0, NULL, NULL, '', 25.850000, 'Validé', 11, '2026-05-11 17:37:24', '2026-05-12 18:56:21', '', 1, 1, 220),
-(12050, '2026-05-11 21:53:00', 220, NULL, 0, NULL, NULL, '', 3750.000000, 'Validé', 11, '2026-05-11 17:54:29', '2026-05-13 17:46:50', 'RAHRAH', 1, 1, 220),
 
 
-(12053, '2026-05-07 20:29:00', 220, NULL, 0, NULL, NULL, '', 380.000000, 'Validé', 11, '2026-05-11 18:32:25', '2026-05-11 18:57:36', '', 1, 1, 220),
 
 
 
@@ -11920,6 +11926,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(12135, '2026-05-12 23:00:00', 220, NULL, 0, NULL, NULL, '', 1820.000000, 2, 11, '2026-05-12 17:00:59', '2026-05-14 19:02:01', '', 1, 1, 220),
 
 
 
@@ -11935,6 +11942,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(12151, '2026-05-13 08:18:00', 220, NULL, 0, NULL, NULL, '', 3500.000000, 2, 10, '2026-05-13 07:18:57', '2026-05-14 19:14:16', 'Ø¬ÙˆØ§Ù†', 1, 1, 220),
 
 
 
@@ -11944,7 +11952,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(12090, '2026-05-12 11:48:00', NULL, 337, 1, NULL, NULL, '', 6272.000000, 'Validé', 11, '2026-05-12 09:48:27', '2026-05-15 13:06:58', '', NULL, 0, NULL),
 
 
 
@@ -11962,10 +11969,7 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(12108, '2026-05-12 15:53:00', 220, NULL, 0, NULL, NULL, '', 850.000000, 'Validé', 11, '2026-05-12 11:54:22', '2026-05-13 18:12:08', 'awatef ahlan', 1, 0, NULL),
-(12109, '2026-05-12 17:55:00', 220, NULL, 0, NULL, NULL, '', 1800.000000, 'Validé', 11, '2026-05-12 11:56:40', '2026-05-13 18:12:44', 'AWATEF RAHRAH', 1, 0, NULL),
 
-(12111, '2026-05-12 13:17:00', NULL, 364, 1, NULL, NULL, '', 1057.320000, 'Validé', 11, '2026-05-12 12:17:35', '2026-05-15 11:23:08', '', NULL, 0, NULL),
 
 
 
@@ -11989,7 +11993,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(12135, '2026-05-12 23:00:00', 220, NULL, 0, NULL, NULL, '', 1820.000000, 'Validé', 11, '2026-05-12 17:00:59', '2026-05-14 19:02:01', '', 1, 1, 220),
 
 
 
@@ -12000,14 +12003,15 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(12212, '2026-05-13 13:09:00', NULL, 333, 1, NULL, NULL, '', 370.000000, 2, 11, '2026-05-13 11:10:06', '2026-05-15 15:06:08', '', NULL, 0, NULL);
 
 
 
 
 
-(12151, '2026-05-13 08:18:00', 220, NULL, 0, NULL, NULL, '', 3500.000000, 'Validé', 10, '2026-05-13 07:18:57', '2026-05-14 19:14:16', 'جوان', 1, 1, 220),
 
 
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -12016,11 +12020,13 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(12228, '2026-05-13 15:01:00', NULL, 507, 1, NULL, NULL, '', 1470.000000, 2, 11, '2026-05-13 13:01:52', '2026-05-15 16:08:40', '', NULL, 0, NULL),
 
 
 
 
 
+(12234, '2026-05-13 16:56:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 2, 11, '2026-05-13 13:56:47', '2026-05-14 19:11:29', '', 1, 1, 220),
 
 
 
@@ -12066,7 +12072,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(12212, '2026-05-13 13:09:00', NULL, 333, 1, NULL, NULL, '', 370.000000, 'Validé', 11, '2026-05-13 11:10:06', '2026-05-15 15:06:08', '', NULL, 0, NULL),
 
 
 
@@ -12074,7 +12079,6 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
 
 
 
@@ -12083,13 +12087,11 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
-(12228, '2026-05-13 15:01:00', NULL, 507, 1, NULL, NULL, '', 1470.000000, 'Validé', 11, '2026-05-13 13:01:52', '2026-05-15 16:08:40', '', NULL, 0, NULL),
 
 
 
 
 
-(12234, '2026-05-13 16:56:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 'Validé', 11, '2026-05-13 13:56:47', '2026-05-14 19:11:29', '', 1, 1, 220),
 
 
 
@@ -12098,310 +12100,49 @@ INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`,
 
 
 
+(12308, '2026-05-14 13:38:00', NULL, 335, 1, NULL, NULL, '', 1605.000000, 2, 11, '2026-05-14 11:39:11', '2026-05-15 14:53:43', '', NULL, 0, NULL),
 
 
 
 
 
 
+(12315, '2026-05-14 15:39:00', 220, NULL, 0, NULL, NULL, '', 3063.230000, 2, 11, '2026-05-14 12:44:29', '2026-05-14 19:30:25', '', 1, 1, 220),
 
 
+(12325, '2026-05-14 16:28:00', NULL, 362, 1, NULL, NULL, '', 890.000000, 6, 11, '2026-05-14 14:29:01', '2026-05-14 14:31:37', '', NULL, 0, NULL),
 
+(12327, '2026-05-14 19:48:00', 220, NULL, 0, NULL, NULL, '', 1920.000000, 2, 1, '2026-05-14 14:54:50', '2026-05-14 19:35:50', '', 1, 1, 220),
+(12333, '2026-05-14 21:06:00', 220, NULL, 0, NULL, NULL, '', 3750.000000, 2, 11, '2026-05-14 17:07:29', '2026-05-14 19:36:31', 'AWATEF RAHRAH', 1, 0, NULL),
+(12335, '2026-04-30 15:46:00', 220, NULL, 0, NULL, NULL, '', 1332.000000, 2, 11, '2026-05-14 18:00:33', '2026-05-14 18:02:01', '', 1, 0, NULL),
+(12336, '2026-05-08 00:03:00', 220, NULL, 0, NULL, NULL, '', 5295.000000, 2, 11, '2026-05-14 18:04:03', '2026-05-14 18:04:39', '', 1, 0, NULL),
+(12337, '2026-05-08 20:04:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 2, 11, '2026-05-14 18:05:22', '2026-05-14 18:05:34', '', 1, 1, 220),
+(12340, '2026-05-09 20:44:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 2, 11, '2026-05-14 18:44:49', '2026-05-14 18:48:40', '', 1, 1, 220),
+(12341, '2026-05-11 20:54:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 2, 11, '2026-05-14 18:55:08', '2026-05-14 18:55:45', '', 1, 1, 220),
+(12342, '2026-05-12 21:08:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 2, 11, '2026-05-14 19:09:25', '2026-05-14 19:09:40', '', 1, 1, 220),
+(12344, '2026-05-13 23:16:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 2, 11, '2026-05-14 19:16:56', '2026-05-14 19:17:13', '', 1, 1, 220),
+(12345, '2026-05-13 23:17:00', 220, NULL, 0, NULL, NULL, '', 2592.000000, 2, 11, '2026-05-14 19:17:45', '2026-05-14 19:17:51', '', 1, 1, 220),
+(12346, '2026-05-13 21:23:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 2, 11, '2026-05-14 19:24:08', '2026-05-14 19:24:18', '', 1, 1, 220),
+(12347, '2026-05-14 21:30:00', 220, NULL, 0, NULL, NULL, '', 135.000000, 2, 11, '2026-05-14 19:31:32', '2026-05-14 19:32:41', '', 1, 1, 220),
+(12348, '2026-05-14 21:41:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 2, 11, '2026-05-14 19:41:56', '2026-05-14 19:42:26', '', 1, 1, 220),
+(12365, '2026-05-15 09:58:00', NULL, 337, 1, NULL, NULL, '', 1600.000000, 2, 11, '2026-05-15 07:58:54', '2026-05-15 14:22:22', '', NULL, 0, NULL),
+(12379, '2026-05-15 09:42:00', 220, NULL, 0, NULL, NULL, '', 98.400000, 1, 11, '2026-05-15 08:42:35', '2026-05-15 08:42:35', '', 1, 1, 220),
+(12390, '2026-05-15 11:27:00', NULL, 337, 1, NULL, NULL, '', 940.000000, 2, 11, '2026-05-15 09:27:44', '2026-05-15 14:23:17', '', NULL, 0, NULL),
+(12394, '2026-05-15 10:39:00', 220, NULL, 0, NULL, NULL, '', 40672.000000, 1, 1, '2026-05-15 09:41:45', '2026-05-15 09:41:45', '', 1, 1, 220),
+(12397, '2026-05-15 10:52:00', NULL, 334, 1, NULL, NULL, '', 80.000000, 1, 11, '2026-05-15 09:52:45', '2026-05-15 09:52:45', '', NULL, 0, NULL),
+(12408, '2026-05-15 11:48:00', NULL, 337, 1, NULL, NULL, '', 840.000000, 1, 11, '2026-05-15 10:48:50', '2026-05-15 10:48:50', 'HASSAN', NULL, 0, NULL),
+(12409, '2026-05-15 12:58:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 1, 11, '2026-05-15 11:01:35', '2026-05-15 11:03:22', 'ALI SOUSSI', 1, 1, 220),
+(12424, '2026-05-15 16:10:00', NULL, 333, 1, NULL, NULL, '', 2176.000000, 1, 11, '2026-05-15 15:12:55', '2026-05-15 15:12:55', '', NULL, 0, NULL),
+(12430, '2026-05-15 19:00:00', NULL, 364, 1, NULL, NULL, '', 5076.000000, 2, 11, '2026-05-15 16:01:54', '2026-05-16 10:44:11', '', NULL, 0, NULL),
+(12443, '2026-05-16 09:38:00', NULL, 393, 1, NULL, NULL, '', 553.000000, 1, 11, '2026-05-16 07:38:45', '2026-05-16 07:39:05', 'HAMID (SAID)', NULL, 0, NULL),
+(12464, '2026-05-16 10:41:00', NULL, 364, 1, NULL, NULL, '', 300.000000, 1, 11, '2026-05-16 09:42:32', '2026-05-16 09:42:32', '', NULL, 0, NULL),
+(12469, '2026-05-16 12:09:00', NULL, 333, 1, NULL, NULL, '', 5490.000000, 1, 11, '2026-05-16 10:10:37', '2026-05-16 10:30:04', '', NULL, 0, NULL),
+(12472, '2026-05-16 11:22:00', NULL, 333, 1, NULL, NULL, '', 165.000000, 1, 11, '2026-05-16 10:22:39', '2026-05-16 10:22:39', 'LHAJ 3EMRANI CHACHA', NULL, 0, NULL),
+(12506, '2026-05-16 15:31:00', 220, NULL, 0, NULL, NULL, '', 1140.000000, 1, 11, '2026-05-16 13:31:52', '2026-05-16 13:32:19', 'awatef ahlan', 1, 0, NULL),
+(12511, '2026-05-16 16:34:00', NULL, 334, 1, NULL, NULL, '', 553.000000, 1, 11, '2026-05-16 14:34:48', '2026-05-16 14:34:48', '', NULL, 0, NULL),
+(12520, '2026-05-16 17:41:00', NULL, 393, 1, NULL, NULL, '', 500.000000, 1, 11, '2026-05-16 15:41:18', '2026-05-16 15:41:18', 'hamid', NULL, 0, NULL),
+(12524, '2026-05-16 17:37:00', NULL, 367, 1, NULL, NULL, '', 9190.000000, 1, 11, '2026-05-16 16:39:28', '2026-05-16 16:39:28', '', NULL, 0, NULL),
+(12531, '2026-05-16 18:34:00', NULL, 337, 1, NULL, NULL, '', 1390.000000, 1, 1, '2026-05-16 17:39:10', '2026-05-16 17:39:10', 'WADALEYANE ', NULL, 0, NULL);
+replace INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
+(12548, '2026-05-12 19:33:00', NULL, 333, 1, NULL, NULL, '', 3000.000000, 1, 11, '2026-05-16 18:34:05', '2026-05-16 18:34:05', '', NULL, 0, NULL);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-(12308, '2026-05-14 13:38:00', NULL, 335, 1, NULL, NULL, '', 1605.000000, 'Validé', 11, '2026-05-14 11:39:11', '2026-05-15 14:53:43', '', NULL, 0, NULL),
-
-
-
-
-
-
-(12315, '2026-05-14 15:39:00', 220, NULL, 0, NULL, NULL, '', 3063.230000, 'Validé', 11, '2026-05-14 12:44:29', '2026-05-14 19:30:25', '', 1, 1, 220),
-
-
-
-
-
-
-
-
-
-(12325, '2026-05-14 16:28:00', NULL, 362, 1, NULL, NULL, '', 890.000000, 'Annulé', 11, '2026-05-14 14:29:01', '2026-05-14 14:31:37', '', NULL, 0, NULL),
-
-(12327, '2026-05-14 19:48:00', 220, NULL, 0, NULL, NULL, '', 1920.000000, 'Validé', 1, '2026-05-14 14:54:50', '2026-05-14 19:35:50', '', 1, 1, 220),
-
-
-
-
-
-(12333, '2026-05-14 21:06:00', 220, NULL, 0, NULL, NULL, '', 3750.000000, 'Validé', 11, '2026-05-14 17:07:29', '2026-05-14 19:36:31', 'AWATEF RAHRAH', 1, 0, NULL),
-
-(12335, '2026-04-30 15:46:00', 220, NULL, 0, NULL, NULL, '', 1332.000000, 'Validé', 11, '2026-05-14 18:00:33', '2026-05-14 18:02:01', '', 1, 0, NULL),
-(12336, '2026-05-08 00:03:00', 220, NULL, 0, NULL, NULL, '', 5295.000000, 'Validé', 11, '2026-05-14 18:04:03', '2026-05-14 18:04:39', '', 1, 0, NULL),
-(12337, '2026-05-08 20:04:00', 220, NULL, 0, NULL, NULL, '', 150.000000, 'Validé', 11, '2026-05-14 18:05:22', '2026-05-14 18:05:34', '', 1, 1, 220),
-
-
-(12340, '2026-05-09 20:44:00', 220, NULL, 0, NULL, NULL, '', 320.000000, 'Validé', 11, '2026-05-14 18:44:49', '2026-05-14 18:48:40', '', 1, 1, 220),
-(12341, '2026-05-11 20:54:00', 220, NULL, 0, NULL, NULL, '', 170.000000, 'Validé', 11, '2026-05-14 18:55:08', '2026-05-14 18:55:45', '', 1, 1, 220),
-(12342, '2026-05-12 21:08:00', 220, NULL, 0, NULL, NULL, '', 190.000000, 'Validé', 11, '2026-05-14 19:09:25', '2026-05-14 19:09:40', '', 1, 1, 220),
-
-(12344, '2026-05-13 23:16:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 'Validé', 11, '2026-05-14 19:16:56', '2026-05-14 19:17:13', '', 1, 1, 220),
-(12345, '2026-05-13 23:17:00', 220, NULL, 0, NULL, NULL, '', 2592.000000, 'Validé', 11, '2026-05-14 19:17:45', '2026-05-14 19:17:51', '', 1, 1, 220),
-(12346, '2026-05-13 21:23:00', 220, NULL, 0, NULL, NULL, '', 220.000000, 'Validé', 11, '2026-05-14 19:24:08', '2026-05-14 19:24:18', '', 1, 1, 220),
-(12347, '2026-05-14 21:30:00', 220, NULL, 0, NULL, NULL, '', 135.000000, 'Validé', 11, '2026-05-14 19:31:32', '2026-05-14 19:32:41', '', 1, 1, 220),
-(12348, '2026-05-14 21:41:00', 220, NULL, 0, NULL, NULL, '', 420.000000, 'Validé', 11, '2026-05-14 19:41:56', '2026-05-14 19:42:26', '', 1, 1, 220),
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-(12365, '2026-05-15 09:58:00', NULL, 337, 1, NULL, NULL, '', 1600.000000, 'Validé', 11, '2026-05-15 07:58:54', '2026-05-15 14:22:22', '', NULL, 0, NULL),
-
-
-
-
-
-
-
-
-
-
-
-
-
-(12379, '2026-05-15 09:42:00', 220, NULL, 0, NULL, NULL, '', 98.400000, 'En attente', 11, '2026-05-15 08:42:35', '2026-05-15 08:42:35', '', 1, 1, 220),
-
-
-
-
-
-
-
-
-
-
-(12390, '2026-05-15 11:27:00', NULL, 337, 1, NULL, NULL, '', 940.000000, 'Validé', 11, '2026-05-15 09:27:44', '2026-05-15 14:23:17', '', NULL, 0, NULL),
-
-
-
-(12394, '2026-05-15 10:39:00', 220, NULL, 0, NULL, NULL, '', 40672.000000, 'En attente', 1, '2026-05-15 09:41:45', '2026-05-15 09:41:45', '', 1, 1, 220),
-
-
-(12397, '2026-05-15 10:52:00', NULL, 334, 1, NULL, NULL, '', 80.000000, 'En attente', 11, '2026-05-15 09:52:45', '2026-05-15 09:52:45', '', NULL, 0, NULL),
-
-
-
-
-
-
-
-
-
-
-(12408, '2026-05-15 11:48:00', NULL, 337, 1, NULL, NULL, '', 840.000000, 'En attente', 11, '2026-05-15 10:48:50', '2026-05-15 10:48:50', 'HASSAN', NULL, 0, NULL),
-(12409, '2026-05-15 12:58:00', 220, NULL, 0, NULL, NULL, '', 480.000000, 'En attente', 11, '2026-05-15 11:01:35', '2026-05-15 11:03:22', 'ALI SOUSSI', 1, 1, 220),
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-(12424, '2026-05-15 16:10:00', NULL, 333, 1, NULL, NULL, '', 2176.000000, 'En attente', 11, '2026-05-15 15:12:55', '2026-05-15 15:12:55', '', NULL, 0, NULL),
-
-
-
-
-
-(12430, '2026-05-15 19:00:00', NULL, 364, 1, NULL, NULL, '', 5076.000000, 'Validé', 11, '2026-05-15 16:01:54', '2026-05-16 10:44:11', '', NULL, 0, NULL),
-
-
-
-
-
-
-
-
-
-
-
-
-(12443, '2026-05-16 09:38:00', NULL, 393, 1, NULL, NULL, '', 553.000000, 'En attente', 11, '2026-05-16 07:38:45', '2026-05-16 07:39:05', 'HAMID (SAID)', NULL, 0, NULL),
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-(12464, '2026-05-16 10:41:00', NULL, 364, 1, NULL, NULL, '', 300.000000, 'En attente', 11, '2026-05-16 09:42:32', '2026-05-16 09:42:32', '', NULL, 0, NULL),
-
-
-
-
-(12469, '2026-05-16 12:09:00', NULL, 333, 1, NULL, NULL, '', 5490.000000, 'En attente', 11, '2026-05-16 10:10:37', '2026-05-16 10:30:04', '', NULL, 0, NULL),
-
-
-(12472, '2026-05-16 11:22:00', NULL, 333, 1, NULL, NULL, '', 165.000000, 'En attente', 11, '2026-05-16 10:22:39', '2026-05-16 10:22:39', 'LHAJ 3EMRANI CHACHA', NULL, 0, NULL),
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-(12506, '2026-05-16 15:31:00', 220, NULL, 0, NULL, NULL, '', 1140.000000, 'En attente', 11, '2026-05-16 13:31:52', '2026-05-16 13:32:19', 'awatef ahlan', 1, 0, NULL),
-
-
-
-
-(12511, '2026-05-16 16:34:00', NULL, 334, 1, NULL, NULL, '', 553.000000, 'En attente', 11, '2026-05-16 14:34:48', '2026-05-16 14:34:48', '', NULL, 0, NULL),
-
-
-
-
-
-
-
-
-(12520, '2026-05-16 17:41:00', NULL, 393, 1, NULL, NULL, '', 500.000000, 'En attente', 11, '2026-05-16 15:41:18', '2026-05-16 15:41:18', 'hamid', NULL, 0, NULL),
-
-
-
-(12524, '2026-05-16 17:37:00', NULL, 367, 1, NULL, NULL, '', 9190.000000, 'En attente', 11, '2026-05-16 16:39:28', '2026-05-16 16:39:28', '', NULL, 0, NULL),
-
-
-
-
-
-
-(12531, '2026-05-16 18:34:00', NULL, 337, 1, NULL, NULL, '', 1390.000000, 'En attente', 1, '2026-05-16 17:39:10', '2026-05-16 17:39:10', 'WADALEYANE ', NULL, 0, NULL),
-
-
-
-INSERT INTO `bons_sortie` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `vehicule_id`, `lieu_chargement`, `montant_total`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`, `remise_is_client`, `remise_id`) VALUES
-
-
-
-
-
-
-
-
-
-
-
-
-
-(12548, '2026-05-12 19:33:00', NULL, 333, 1, NULL, NULL, '', 3000.000000, 'En attente', 11, '2026-05-16 18:34:05', '2026-05-16 18:34:05', '', NULL, 0, NULL);

@@ -109,7 +109,6 @@ const isContactBlocked = (contact: any) => {
   return false;
 };
 
-// eslint-disable-next-line sonarjs/cognitive-complexity
 const BonsPage = () => {
   const navigate = useNavigate();
   const location = useLocation();

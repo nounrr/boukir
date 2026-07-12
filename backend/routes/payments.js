@@ -384,8 +384,10 @@ router.get('/', verifyToken, async (req, res) => {
       const s = `%${String(search)}%`;
       params.push(s, s, s, s, s, s, s);
     }
-    const sql = `SELECT * FROM payments ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC`;
-  const [rows] = await pool.query(sql, params);
+    const requestedLimit = Number.parseInt(String(req.query.limit || '5000'), 10);
+    const limit = Math.max(1, Math.min(Number.isFinite(requestedLimit) ? requestedLimit : 5000, 5000));
+    const sql = `SELECT * FROM payments ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC LIMIT ?`;
+  const [rows] = await pool.query(sql, [...params, limit]);
   res.json(rows.map(toPayment));
   } catch (err) {
     console.error('GET /payments error:', err);

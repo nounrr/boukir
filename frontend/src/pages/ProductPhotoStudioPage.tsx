@@ -148,7 +148,7 @@ const CameraModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+    <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col">
       <div className="flex items-center justify-between p-3 text-white">
         <span className="font-medium flex items-center gap-2">
           <Camera className="w-5 h-5" /> Prise de photos ({shots.length})
@@ -187,7 +187,7 @@ const CameraModal: React.FC<{
         </div>
       )}
 
-      <div className="flex items-center justify-center gap-8 p-4 bg-black">
+      <div className="flex items-center justify-center gap-8 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-black">
         <button
           onClick={capture}
           disabled={!!error}
@@ -241,7 +241,7 @@ const ProductPicker: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/50 flex items-start sm:items-center justify-center p-2 sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-start sm:items-center justify-center p-2 sm:p-6" onClick={onClose}>
       <div
         className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}

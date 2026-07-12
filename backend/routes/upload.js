@@ -3,6 +3,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { requireRole } from '../middleware/auth.js';
+import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -11,62 +13,62 @@ const uploadsRoot = path.join(__dirname, '..', 'uploads');
 const paymentsDir = path.join(uploadsRoot, 'payments');
 const employeeDocsDir = path.join(uploadsRoot, 'employee_docs');
 
-// Ensure directories exist
 for (const dir of [uploadsRoot, paymentsDir, employeeDocsDir]) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
-  destination: function (req, _file, cb) {
-    // If uploading employee doc, use employee_docs folder; else default to payments
-    if (req.path.includes('/employee-doc')) {
-      cb(null, employeeDocsDir);
-    } else {
-      cb(null, paymentsDir);
-    }
+  destination: (req, _file, cb) => {
+    cb(null, req.path.includes('/employee-doc') ? employeeDocsDir : paymentsDir);
   },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname) || '.jpg';
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
     const prefix = req.path.includes('/employee-doc') ? 'empdoc' : 'payment';
-    const unique = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1_000_000_000)}`;
-    cb(null, `${unique}${ext}`);
+    cb(null, `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1_000_000_000)}${ext}`);
   },
 });
 
 const upload = multer({
   storage,
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
-    if (!allowed.includes(file.mimetype)) return cb(new Error('Type de fichier non supporté'));
+    const extension = path.extname(file.originalname).toLowerCase();
+    const allowedMimes = ['image/jpeg', 'image/png', 'application/pdf'];
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.pdf'];
+    if (!allowedMimes.includes(file.mimetype) || !allowedExtensions.includes(extension)) {
+      return cb(new Error('Type de fichier non supporte'));
+    }
     cb(null, true);
   },
-  // Taille illimitée pour tous les fichiers
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 20 },
 });
 
-// POST /api/upload/payment-image - field name: image
-router.post('/payment-image', upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier reçu' });
-  const rel = `/uploads/payments/${req.file.filename}`;
-  res.status(201).json({ success: true, imageUrl: rel, filename: req.file.filename, message: 'Image uploadée' });
+router.post('/payment-image', upload.single('image'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier recu' });
+    await assertUploadedFileKind(req.file, ['jpeg', 'png']);
+    const rel = `/uploads/payments/${req.file.filename}`;
+    return res.status(201).json({ success: true, imageUrl: rel, filename: req.file.filename, message: 'Image uploadee' });
+  } catch (err) { return next(err); }
 });
 
-// POST /api/upload/employee-doc - field name: file
-router.post('/employee-doc', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier reçu' });
-  const rel = `/uploads/employee_docs/${req.file.filename}`;
-  res.status(201).json({ success: true, fileUrl: rel, filename: req.file.filename, message: 'Document uploadé' });
+router.post('/employee-doc', requireRole('PDG'), upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier recu' });
+    await assertUploadedFileKind(req.file, ['jpeg', 'png', 'pdf']);
+    const rel = `/uploads/employee_docs/${req.file.filename}`;
+    return res.status(201).json({ success: true, fileUrl: rel, filename: req.file.filename, message: 'Document uploade' });
+  } catch (err) { return next(err); }
 });
 
-// DELETE /api/upload/payment-image/:filename
 router.delete('/payment-image/:filename', (req, res) => {
   const { filename } = req.params;
+  if (!filename || filename.includes('..') || path.basename(filename) !== filename) {
+    return res.status(400).json({ success: false, message: 'Nom de fichier invalide' });
+  }
   const fp = path.join(paymentsDir, filename);
-  if (!filename || filename.includes('..')) return res.status(400).json({ success: false, message: 'Nom de fichier invalide' });
   try {
     if (fs.existsSync(fp)) fs.unlinkSync(fp);
-    return res.json({ success: true, message: 'Image supprimée' });
+    return res.json({ success: true, message: 'Image supprimee' });
   } catch (err) {
     console.error('Error deleting file', err);
     return res.status(500).json({ success: false, message: 'Erreur suppression image' });

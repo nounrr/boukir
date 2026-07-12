@@ -11,17 +11,16 @@ const ALLOW_WHEN_PASSWORD_CHANGE_REQUIRED = new Set([
   '/api/auth/check-access',
 ]);
 
-async function ensureEmployeeWeeklyRequirement(employeeId, now) {
-  void now;
-
-  // Use DB date/time to avoid timezone drift between Node and MySQL.
-  // MySQL: DAYOFWEEK() => 1=Sunday, 2=Monday, 3=Tuesday, ...
+async function ensureEmployeeWeeklyRequirement(employeeId) {
+  // Use DB date/time to avoid timezone drift between Node and MySQL. The
+  // obligation starts on Monday and remains active through Sunday until the
+  // employee has changed their password during that week.
   const [rows] = await pool.query(
     `
     SELECT
       id,
-      (DAYOFWEEK(CURDATE()) = 2) AS is_monday,
-      (password_changed_at IS NULL OR DATE(password_changed_at) < CURDATE()) AS needs_change
+      DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AS week_start,
+      (password_changed_at IS NULL OR DATE(password_changed_at) < DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)) AS needs_change
     FROM employees
     WHERE id = ? AND deleted_at IS NULL
     LIMIT 1
@@ -32,17 +31,12 @@ async function ensureEmployeeWeeklyRequirement(employeeId, now) {
   const row = rows[0];
   if (!row) return { exists: false, required: false };
 
-  const isMonday = Boolean(row.is_monday);
   const needsChange = Boolean(row.needs_change);
 
-  // Enforce ONLY on Monday.
-  if (!isMonday) return { exists: true, required: false };
-
   if (needsChange) {
-    // Optional tracking for admin/debug.
     await pool.query(
-      'UPDATE employees SET password_change_required_week_start = CURDATE() WHERE id = ? AND deleted_at IS NULL',
-      [employeeId]
+      'UPDATE employees SET password_change_required_week_start = ? WHERE id = ? AND deleted_at IS NULL',
+      [row.week_start, employeeId]
     );
     return { exists: true, required: true };
   }
@@ -59,12 +53,10 @@ export function enforceWeeklyPasswordChange(req, res, next) {
 
   if (ALLOW_WHEN_PASSWORD_CHANGE_REQUIRED.has(req.path)) return next();
 
-  const now = new Date();
-
   (async () => {
     const userId = payload.id;
 
-    const result = await ensureEmployeeWeeklyRequirement(userId, now);
+    const result = await ensureEmployeeWeeklyRequirement(userId);
 
     if (result.required) {
       return res.status(403).json({
@@ -77,8 +69,10 @@ export function enforceWeeklyPasswordChange(req, res, next) {
     return next();
   })().catch((err) => {
     console.error('Password policy middleware error:', err);
-    // Fail-open to avoid blocking the whole app if DB is down.
-    next();
+    return res.status(503).json({
+      message: 'Vérification de sécurité temporairement indisponible',
+      error_type: 'PASSWORD_POLICY_UNAVAILABLE',
+    });
   });
 }
 

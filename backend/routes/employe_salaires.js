@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
+import { verifyToken, requireRole, requireRoles, requireSelfOrRoles } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(verifyToken);
 
 // ==================== SALARY PRORATA HELPERS ====================
 // Working days = Monday..Saturday (Sunday excluded). day.getDay(): 0 = Sunday.
@@ -71,7 +74,7 @@ function computeMonthlyDue(emp, year, monthIndex) {
 }
 
 // List salary entries for an employee, optional month filter (YYYY-MM)
-router.get('/employees/:id/salaires', async (req, res, next) => {
+router.get('/employees/:id/salaires', requireSelfOrRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { month } = req.query; // format YYYY-MM
@@ -88,10 +91,10 @@ router.get('/employees/:id/salaires', async (req, res, next) => {
 });
 
 // Create salary entry for an employee
-router.post('/employees/:id/salaires', async (req, res, next) => {
+router.post('/employees/:id/salaires', requireRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
   try {
     const employe_id = Number(req.params.id);
-    const { montant, note, statut, created_by } = req.body;
+    const { montant, note, statut } = req.body;
     if (montant === undefined || isNaN(Number(montant))) {
       return res.status(400).json({ message: 'Montant invalide' });
     }
@@ -100,7 +103,7 @@ router.post('/employees/:id/salaires', async (req, res, next) => {
     const now = new Date();
     const [result] = await pool.query(
       'INSERT INTO employe_salaire (employe_id, montant, note, statut, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ',
-      [employe_id, Number(montant), note ?? null, finalStatut, created_by ?? null, created_by ?? null, now, now]
+      [employe_id, Number(montant), note ?? null, finalStatut, req.user.id, req.user.id, now, now]
     );
     const [rows] = await pool.query('SELECT id, employe_id, montant, note, statut, created_at, updated_at FROM employe_salaire WHERE id = ?', [result.insertId]);
     res.status(201).json(rows[0]);
@@ -108,7 +111,7 @@ router.post('/employees/:id/salaires', async (req, res, next) => {
 });
 
 // Monthly summary: total amount per employee for a given month
-router.get('/salaires/summary', async (req, res, next) => {
+router.get('/salaires/summary', requireRole('PDG'), async (req, res, next) => {
   try {
     const { month } = req.query; // YYYY-MM
     if (!month || typeof month !== 'string' || !/^\d{4}-\d{2}$/.test(month)) {
@@ -127,11 +130,11 @@ router.get('/salaires/summary', async (req, res, next) => {
 });
 
 // Update salary entry
-router.put('/employees/:id/salaires/:salaireId', async (req, res, next) => {
+router.put('/employees/:id/salaires/:salaireId', requireRole('PDG'), async (req, res, next) => {
   try {
     const employe_id = Number(req.params.id);
     const salaireId = Number(req.params.salaireId);
-    const { montant, note, statut, updated_by } = req.body;
+    const { montant, note, statut } = req.body;
 
     // Verify the salary entry exists and belongs to the employee
     const [existing] = await pool.query(
@@ -163,10 +166,8 @@ router.put('/employees/:id/salaires/:salaireId', async (req, res, next) => {
       updates.push('statut = ?');
       params.push(statut);
     }
-    if (updated_by !== undefined) {
-      updates.push('updated_by = ?');
-      params.push(updated_by);
-    }
+    updates.push('updated_by = ?');
+    params.push(req.user.id);
     
     updates.push('updated_at = ?');
     params.push(now);
@@ -185,7 +186,7 @@ router.put('/employees/:id/salaires/:salaireId', async (req, res, next) => {
 });
 
 // Delete salary entry
-router.delete('/employees/:id/salaires/:salaireId', async (req, res, next) => {
+router.delete('/employees/:id/salaires/:salaireId', requireRole('PDG'), async (req, res, next) => {
   try {
     const employe_id = Number(req.params.id);
     const salaireId = Number(req.params.salaireId);
@@ -224,7 +225,7 @@ async function fetchAllEmployeesWithDeleted() {
 
 // GET /api/salaires-global?month=YYYY-MM
 // One row per employee: prorated salary due for the month + total amount already paid (all-time and this month).
-router.get('/salaires-global', async (req, res, next) => {
+router.get('/salaires-global', requireRole('PDG'), async (req, res, next) => {
   try {
     const { month } = req.query; // YYYY-MM (defaults to current month)
     let year;
@@ -285,7 +286,7 @@ router.get('/salaires-global', async (req, res, next) => {
 
 // GET /api/salaires-global/:id/months?from=YYYY-MM&to=YYYY-MM
 // Month-by-month breakdown for a single employee (prorated due + paid per month).
-router.get('/salaires-global/:id/months', async (req, res, next) => {
+router.get('/salaires-global/:id/months', requireRole('PDG'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const employees = await fetchAllEmployeesWithDeleted();
@@ -361,7 +362,7 @@ router.get('/salaires-global/:id/months', async (req, res, next) => {
 
 // GET /api/salaires-global/by-month
 // One row per month (all employees combined): prorated due total + paid total + per-employee breakdown.
-router.get('/salaires-global/by-month', async (req, res, next) => {
+router.get('/salaires-global/by-month', requireRole('PDG'), async (req, res, next) => {
   try {
     const employees = await fetchAllEmployeesWithDeleted();
 

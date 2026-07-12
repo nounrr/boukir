@@ -138,7 +138,7 @@ const MonthEmployeesDetail: React.FC<{ row: SalairesByMonthRow }> = ({ row }) =>
 // Vue par mois (tous employés) — une ligne par mois, dépliable vers le détail par employé
 const MonthlyView: React.FC = () => {
   const { data, isLoading, isFetching } = useGetSalairesByMonthQueryServer();
-  const months = data?.months ?? [];
+  const months = useMemo(() => data?.months ?? [], [data?.months]);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const totals = useMemo(() => {
@@ -269,11 +269,9 @@ const MonthlyView: React.FC = () => {
 
 const SalairesPage: React.FC = () => {
   const { user } = useAuth();
+  const isDenied = user?.role !== 'PDG';
 
   // Accès réservé au PDG
-  if (user?.role !== 'PDG') {
-    return <Navigate to="/dashboard" replace />;
-  }
 
   // Vue par défaut: par mois. Le switch bascule vers la vue par employé.
   const [viewMode, setViewMode] = useState<'month' | 'employee'>('month');
@@ -284,8 +282,8 @@ const SalairesPage: React.FC = () => {
   });
   const [expanded, setExpanded] = useState<number | null>(null);
 
-  const { data, isLoading, isFetching } = useGetSalairesGlobalQueryServer({ month });
-  const employees = data?.employees ?? [];
+  const { data, isLoading, isFetching } = useGetSalairesGlobalQueryServer({ month }, { skip: isDenied });
+  const employees = useMemo(() => data?.employees ?? [], [data?.employees]);
 
   const totals = useMemo(() => {
     return employees.reduce(
@@ -298,6 +296,8 @@ const SalairesPage: React.FC = () => {
       { du: 0, paid: 0, reste: 0 }
     );
   }, [employees]);
+
+  if (isDenied) return <Navigate to="/dashboard" replace />;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">

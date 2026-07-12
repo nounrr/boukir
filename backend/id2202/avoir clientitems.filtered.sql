@@ -1,5 +1,5 @@
 ﻿
-INSERT INTO `avoir_client_items` (`id`, `avoir_client_id`, `product_id`, `quantite`, `prix_unitaire`, `remise_pourcentage`, `remise_montant`, `total`, `created_at`, `variant_id`, `unit_id`, `product_snapshot_id`, `is_indisponible`) VALUES
+Insert INTO `avoir_client_items` (`id`, `avoir_client_id`, `product_id`, `quantite`, `prix_unitaire`, `remise_pourcentage`, `remise_montant`, `total`, `created_at`, `variant_id`, `unit_id`, `product_snapshot_id`, `is_indisponible`) VALUES
 (2, 2, 2033, 20.00, 40.000000, 0.00, 0.000000, 800.000000, '2025-08-25 07:02:56', NULL, NULL, NULL, 0),
 (3, 3, 4457, 1.00, 1460.000000, 0.00, 0.000000, 1460.000000, '2025-08-25 07:58:34', NULL, NULL, NULL, 0),
 (25, 9, 4455, 6.00, 35.000000, 0.00, 0.000000, 210.000000, '2025-08-25 10:36:06', NULL, NULL, NULL, 0),

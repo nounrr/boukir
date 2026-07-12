@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
-import { verifyToken } from '../middleware/auth.js';
+import { verifyToken, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(verifyToken, requireRole('PDG'));
 
 // GET /api/access-schedules/detailed
 // Récupérer tous les horaires détaillés par employé

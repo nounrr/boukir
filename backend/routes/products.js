@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import * as XLSX from 'xlsx';
 import { createStockPdfStream } from '../utils/stockPdf.js';
+import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,7 +30,22 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage,
+  fileFilter: (_req, file, cb) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    if (!['image/jpeg', 'image/png'].includes(file.mimetype) || !['.jpg', '.jpeg', '.png'].includes(extension)) {
+      return cb(new Error('Seules les images JPG et PNG sont autorisées'));
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: 10 * 1024 * 1024, files: 11, fields: 80 },
+});
+
+async function validateProductUploadFiles(files) {
+  const list = Array.isArray(files) ? files : Object.values(files || {}).flat();
+  await Promise.all(list.map((file) => assertUploadedFileKind(file, ['jpeg', 'png'])));
+}
 
 function normalizeSearchText(value) {
   return String(value ?? '')
@@ -1854,7 +1870,7 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id(\\d+)', async (req, res, next) => {
   try {
     await ensureProductsColumns();
     const id = Number(req.params.id);
@@ -2152,6 +2168,7 @@ router.post('/', upload.fields([
   { name: 'gallery', maxCount: 10 }
 ]), async (req, res, next) => {
   try {
+    await validateProductUploadFiles(req.files);
     await ensureProductsColumns();
     const {
       designation,
@@ -2488,6 +2505,7 @@ router.put('/:id', upload.fields([
   { name: 'gallery', maxCount: 10 }
 ]), async (req, res, next) => {
   try {
+    await validateProductUploadFiles(req.files);
     await ensureProductsColumns();
     const id = Number(req.params.id);
     if (isNaN(id)) {
@@ -3104,6 +3122,7 @@ router.patch('/snapshots', async (req, res, next) => {
 // POST /products/:id/variants/:variantId/image — Upload / replace variant main image
 router.post('/:id/variants/:variantId/image', upload.single('image'), async (req, res, next) => {
   try {
+    await validateProductUploadFiles(req.file ? [req.file] : []);
     await ensureProductsColumns();
     const productId = Number(req.params.id);
     const variantId = Number(req.params.variantId);
@@ -3144,6 +3163,7 @@ router.post('/:id/variants/:variantId/image', upload.single('image'), async (req
 // PUT /products/:id/variants/:variantId/gallery — Upload new gallery images & delete specified ones
 router.put('/:id/variants/:variantId/gallery', upload.array('gallery', 10), async (req, res, next) => {
   try {
+    await validateProductUploadFiles(req.files);
     await ensureProductsColumns();
     const productId = Number(req.params.id);
     const variantId = Number(req.params.variantId);

@@ -1,9 +1,14 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
 import pool from '../db/pool.js';
-import { verifyToken, requireRole } from '../middleware/auth.js';
+import { verifyToken, requireRole, requireRoles } from '../middleware/auth.js';
 
 const router = Router();
+
+// AI calls can spend money and several endpoints update product/category data.
+// Keep this authorization at router level so new endpoints are protected by
+// default rather than relying on each handler to remember a guard.
+router.use(verifyToken, requireRoles('PDG', 'Manager', 'ManagerPlus'));
 
 // ----------------------------
 // Config

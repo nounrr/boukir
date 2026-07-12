@@ -4,7 +4,10 @@ import * as XLSX from 'xlsx';
 import pool from '../db/pool.js';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 20 },
+});
 
 const EXPECTED_HEADERS = [
   'Reference',
@@ -36,6 +39,7 @@ async function ensureTable() {
   };
 
   await addColumnIfMissing('products', 'designation_ar', 'VARCHAR(255) DEFAULT NULL');
+  await addColumnIfMissing('products', 'old_designation', 'VARCHAR(255) DEFAULT NULL');
   await addColumnIfMissing('product_variants', 'variant_name_ar', 'VARCHAR(255) DEFAULT NULL');
 
   await pool.query(`
@@ -545,27 +549,38 @@ router.post('/apply', async (req, res, next) => {
       await conn.beginTransaction();
       for (const row of rows) {
         if (row.matched_product_id && (row.designation_fr_pro || row.designation_ar_pro)) {
-          await conn.query(
+          const [productResult] = await conn.query(
             `UPDATE products
-             SET designation = COALESCE(?, designation),
+             SET old_designation = CASE
+                   WHEN NULLIF(TRIM(?), '') IS NOT NULL
+                   THEN COALESCE(NULLIF(TRIM(?), ''), designation)
+                   ELSE old_designation
+                 END,
+                 designation = COALESCE(NULLIF(TRIM(?), ''), designation),
                  designation_ar = COALESCE(?, designation_ar),
                  updated_at = NOW()
              WHERE id = ?`,
-            [row.designation_fr_pro, row.designation_ar_pro, row.matched_product_id]
+            [
+              row.designation_fr_pro,
+              row.ancienne_designation,
+              row.designation_fr_pro,
+              row.designation_ar_pro,
+              row.matched_product_id,
+            ]
           );
-          productsUpdated += 1;
+          productsUpdated += Number(productResult.affectedRows || 0);
         }
 
         if (row.matched_variant_id && (row.variante_fr_pro || row.variante_ar_pro)) {
-          await conn.query(
+          const [variantResult] = await conn.query(
             `UPDATE product_variants
-             SET variant_name = COALESCE(?, variant_name),
+             SET variant_name = COALESCE(NULLIF(TRIM(?), ''), variant_name),
                  variant_name_ar = COALESCE(?, variant_name_ar),
                  updated_at = NOW()
              WHERE id = ? AND product_id = ?`,
             [row.variante_fr_pro, row.variante_ar_pro, row.matched_variant_id, row.matched_product_id]
           );
-          variantsUpdated += 1;
+          variantsUpdated += Number(variantResult.affectedRows || 0);
         }
 
         await conn.query('UPDATE product_name_corrections SET applied_at = NOW() WHERE id = ?', [row.id]);

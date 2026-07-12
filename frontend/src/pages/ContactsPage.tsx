@@ -771,7 +771,7 @@ const ContactsPage: React.FC = () => {
       if (raw === '') return raw;
 
       // remove any leading 'pay', 'pa', 'p-' (case-insensitive) and optional separators
-      const suffix = raw.replace(/^(pay|pa|p-?)\s*[-:\s]*/i, '');
+      const suffix = raw.replace(/^(pay|pa|p-?)\s*(?:-|:|\s)*/i, '');
       return `PAY${suffix}`;
     } catch (e) {
       return String(payment?.numero ?? payment?.id ?? '');

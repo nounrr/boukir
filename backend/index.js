@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -11,7 +12,7 @@ import bcrypt from 'bcryptjs';
 import { initializeSocketServer } from './socket/socketServer.js';
 
 import pool, { requestContext } from './db/pool.js';
-import { verifyToken } from './middleware/auth.js';
+import { getJwtSecret, requireRole, verifyCurrentUserWithSchedule, verifyToken } from './middleware/auth.js';
 import { enforceWeeklyPasswordChange } from './middleware/passwordPolicy.js';
 import jwt from 'jsonwebtoken';
 
@@ -94,47 +95,57 @@ import { ensurePricePrecisionColumns } from './utils/ensurePricePrecisionSchema.
 import { ensureUniteSpecialColumns } from './utils/ensureUniteSpecialSchema.js';
 import { ensureUiSettingsTable } from './utils/uiSettings.js';
 import { ensureAccessScheduleTables } from './middleware/accessSchedule.js';
+import { getAllowedCorsOrigins, isCorsOriginAllowed } from './utils/corsOrigins.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
 
-// Ensure remise schema exists (safe to call on every boot)
-(async () => {
-  try {
-    await ensureCategoryColumns();
-    await ensureProductRemiseColumns();
-    await ensureContactsRemiseBalance();
-    await ensureContactsBloqueColumn();
-    await ensureBonsRemiseTargetColumns();
-    await ensureEcommerceOrdersRemiseColumns();
-    await ensureEcommerceOrderItemsRemiseColumns();
-    await ensureUniteSpecialColumns();
-    await ensurePricePrecisionColumns();
-    await ensureUiSettingsTable();
-    await ensureAccessScheduleTables();
-  } catch (e) {
-    console.error('ensureRemiseSchema@boot:', e);
-  }
-})();
+// Never start with a predictable JWT signing key. This is checked at boot so
+// every HTTP and Socket.IO path has the same safe configuration.
+getJwtSecret();
+
+async function ensureSchemas() {
+  await ensureCategoryColumns();
+  await ensureProductRemiseColumns();
+  await ensureContactsRemiseBalance();
+  await ensureContactsBloqueColumn();
+  await ensureBonsRemiseTargetColumns();
+  await ensureEcommerceOrdersRemiseColumns();
+  await ensureEcommerceOrderItemsRemiseColumns();
+  await ensureUniteSpecialColumns();
+  await ensurePricePrecisionColumns();
+  await ensureUiSettingsTable();
+  await ensureAccessScheduleTables();
+}
 
 const app = express();
 
-// Allow all CORS origins (reflect origin to support credentials)
+const allowedCorsOrigins = getAllowedCorsOrigins();
+
 const corsOptions = {
-  origin: true,
+  origin(origin, callback) {
+    if (isCorsOriginAllowed(origin, allowedCorsOrigins)) return callback(null, true);
+    const error = new Error('Origine non autorisée par CORS');
+    error.status = 403;
+    return callback(error);
+  },
   credentials: true,
 };
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
 app.use(cors(corsOptions));
 // Handle preflight requests for all routes
 app.options('*', cors(corsOptions));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Contexte par requête pour l'audit (userId + requestId)
 app.use((req, _res, next) => {
   requestContext.run(
     {
-      userId: req.headers['x-user-id'] || (req.user && req.user.id) || null,
+      // Never accept an identity from a client-controlled header. Protected
+      // requests replace this with the verified JWT identity below; guests
+      // are intentionally recorded with a null employee id.
+      userId: (req.user && req.user.id) || null,
       requestId: req.headers['x-request-id'] || randomUUID(),
     },
     () => next()
@@ -151,7 +162,7 @@ const optionalAuth = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    const decoded = jwt.verify(token, getJwtSecret());
     req.user = decoded;
 
     // Update context if available
@@ -170,8 +181,6 @@ const optionalAuth = (req, res, next) => {
 // Auth global (sauf endpoints publics) + sync userId après vérification
 const PUBLIC_PATHS = new Set([
   '/api/health',
-  '/api/db/ping',
-  '/api/db/info',
   '/api/auth/login',
   '/api/auth/register',
 
@@ -182,7 +191,6 @@ const PUBLIC_PATHS = new Set([
   '/api/users/auth/facebook',
 
   // Route de test WhatsApp sans token (peut être retirée en production)
-  '/api/notifications/whatsapp/bon-test',
 ]);
 
 // E-commerce public routes (no authentication required)
@@ -216,9 +224,6 @@ app.use((req, res, next) => {
 
   // Autoriser l'accès public aux fichiers statiques uploadés
   if (req.path.startsWith('/uploads/')) return next();
-  // Rendre publiques toutes les routes IA
-  if (req.path.startsWith('/api/ai')) return next();
-
   // Hero slides are public (homepage)
   if (req.path.startsWith('/api/hero-slides')) return next();
 
@@ -239,7 +244,7 @@ app.use((req, res, next) => {
     return next();
   }
 
-  verifyToken(req, res, () => {
+  verifyCurrentUserWithSchedule(req, res, () => {
     const store = requestContext.getStore();
     if (store && req.user?.id) {
       store.userId = req.user.id;
@@ -253,8 +258,10 @@ app.use(enforceWeeklyPasswordChange);
 
 app.use(morgan('dev'));
 
-// Static serving for uploaded files (images, etc.)
-// Serve uploads from backend/uploads
+// Personnel documents and payment proofs are private. Catalogue assets and
+// bon PDFs remain publicly served by the generic static mount below.
+app.use('/uploads/employee_docs', verifyCurrentUserWithSchedule, requireRole('PDG'), express.static(path.join(__dirname, 'uploads', 'employee_docs'), { fallthrough: false }));
+app.use('/uploads/payments', verifyCurrentUserWithSchedule, express.static(path.join(__dirname, 'uploads', 'payments'), { fallthrough: false }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Healthcheck
@@ -264,7 +271,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/ai', aiRouter);
 
 // DB connectivity check
-app.get('/api/db/ping', async (_req, res) => {
+app.get('/api/db/ping', requireRole('PDG'), async (_req, res) => {
   try {
     const conn = await pool.getConnection();
     try {
@@ -286,7 +293,7 @@ app.get('/api/db/ping', async (_req, res) => {
 });
 
 // DB info (no secrets)
-app.get('/api/db/info', (_req, res) => {
+app.get('/api/db/info', requireRole('PDG'), (_req, res) => {
   res.json({
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
@@ -422,6 +429,7 @@ const httpServer = createServer(app);
 initializeSocketServer(httpServer);
 
 ensureDb()
+  .then(() => ensureSchemas())
   .then(() => migratePasswords())
   .then(() => {
     httpServer.listen(PORT, () => {

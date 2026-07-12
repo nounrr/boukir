@@ -124,7 +124,7 @@ REPLACE INTO `bons_charge` (`id`, `date_creation`, `client_id`, `phone`, `adress
 
 
 
-REPLACE INTO `charge_items` (`id`, `bon_charge_id`, `product_id`, `variant_id`, `unit_id`, `product_snapshot_id`, `designation_custom`, `quantite`, `prix_achat`, `cout_revient`, `prix_gros`, `prix_unitaire`, `remise_pourcentage`, `remise_montant`, `total`, `created_at`, `updated_at`) VALUES
+insert INTO `charge_items` (`id`, `bon_charge_id`, `product_id`, `variant_id`, `unit_id`, `product_snapshot_id`, `designation_custom`, `quantite`, `prix_achat`, `cout_revient`, `prix_gros`, `prix_unitaire`, `remise_pourcentage`, `remise_montant`, `total`, `created_at`, `updated_at`) VALUES
 (1, 1, 2261, NULL, NULL, 1260, NULL, 1.5000, 12.0000, 0.0000, 0.0000, 12.0000, 0.0000, 0.0000, 18.0000, '2026-02-23 15:11:18', '2026-05-11 01:34:39'),
 (2, 1, 5164, NULL, NULL, 3669, NULL, 2.0000, 8.0000, 0.0000, 0.0000, 8.0000, 0.0000, 0.0000, 16.0000, '2026-02-23 15:11:18', '2026-05-11 01:34:39'),
 (3, 2, 4506, NULL, NULL, 3011, NULL, 1.0000, 12729.6000, 0.0000, 0.0000, 12729.6000, 0.0000, 0.0000, 12729.6000, '2026-02-23 15:12:17', '2026-05-11 01:34:39'),

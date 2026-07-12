@@ -89,7 +89,6 @@ function StatusBadgeToggle(props: Readonly<{
   );
 }
 
-// eslint-disable-next-line sonarjs/cognitive-complexity
 const TalonCaissePage = () => {
   // Data
   const { data: talons = [], isLoading: talonsLoading } = useGetTalonsQuery(undefined);
