@@ -308,9 +308,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     }
   };
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [deleteMainImage, setDeleteMainImage] = useState(false);
   const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
   const [deletedGalleryIds, setDeletedGalleryIds] = useState<number[]>([]);
   const [variantMainImages, setVariantMainImages] = useState<Record<number, File>>({});
+  const [variantDeleteMainImageMap, setVariantDeleteMainImageMap] = useState<Record<number, boolean>>({});
   const [variantGalleryFilesMap, setVariantGalleryFilesMap] = useState<Record<number, File[]>>({});
   const [variantDeletedGalleryIdsMap, setVariantDeletedGalleryIdsMap] = useState<Record<number, number[]>>({});
   const [variantUseProductRemise, setVariantUseProductRemise] = useState<Record<number, boolean>>({});
@@ -341,6 +343,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       setSelectedFile(event.target.files[0]);
+      setDeleteMainImage(false);
     }
   };
 
@@ -365,7 +368,10 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const onVariantMainImageChange = (variantId: number | undefined, e: React.ChangeEvent<HTMLInputElement>) => {
     if (!variantId) return;
     const file = e.target.files?.[0];
-    if (file) setVariantMainImages((prev) => ({ ...prev, [variantId]: file }));
+    if (file) {
+      setVariantMainImages((prev) => ({ ...prev, [variantId]: file }));
+      setVariantDeleteMainImageMap((prev) => ({ ...prev, [variantId]: false }));
+    }
   };
   const onVariantGalleryChange = (variantId: number | undefined, e: React.ChangeEvent<HTMLInputElement>) => {
     if (!variantId) return;
@@ -383,16 +389,32 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   const uploadVariantMedia = async (productId: number, variants: ProductVariant[]) => {
+    const fetchOrThrow = async (url: string, options: RequestInit) => {
+      const response = await fetch(url, options);
+      if (response.ok) return response;
+      let message = `Erreur HTTP ${response.status}`;
+      try {
+        const payload = await response.json();
+        if (payload?.message) message = payload.message;
+      } catch { }
+      throw new Error(message);
+    };
+
     for (const v of variants) {
       if (!v.id) continue;
       // main image
       if (variantMainImages[v.id]) {
         const fd = new FormData();
         fd.append('image', variantMainImages[v.id]);
-        await fetch(`/api/products/${productId}/variants/${v.id}/image`, {
+        await fetchOrThrow(`/api/products/${productId}/variants/${v.id}/image`, {
           method: 'POST',
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
           body: fd,
+        });
+      } else if (variantDeleteMainImageMap[v.id]) {
+        await fetchOrThrow(`/api/products/${productId}/variants/${v.id}/image`, {
+          method: 'DELETE',
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         });
       }
       // gallery
@@ -402,7 +424,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
         const fdG = new FormData();
         for (const f of galleryFiles) fdG.append('gallery', f);
         if (deletedIds.length > 0) fdG.append('deleted_gallery_ids', JSON.stringify(deletedIds));
-        await fetch(`/api/products/${productId}/variants/${v.id}/gallery`, {
+        await fetchOrThrow(`/api/products/${productId}/variants/${v.id}/gallery`, {
           method: 'PUT',
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
           body: fdG,
@@ -759,6 +781,9 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           if (selectedFile) {
             formData.append('image', selectedFile);
           }
+          if (deleteMainImage && !selectedFile) {
+            formData.append('delete_main_image', '1');
+          }
           // New gallery files
           if (galleryFiles && galleryFiles.length > 0) {
             for (const f of galleryFiles) formData.append('gallery', f);
@@ -774,15 +799,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           formData.append('fiche_technique_zh', ficheZh || '');
 
           const res = await updateProductMutation({ id: editingProduct.id, data: formData } as any).unwrap();
+          let updatedProduct = res;
 
           // Upload per-variant media if any
           if (res && (res as any).id && Array.isArray((res as any).variants)) {
-            try {
-              await uploadVariantMedia((res as any).id, (res as any).variants);
-            } catch (e) {
-              console.warn('Variant media upload failed (update)', e);
-              // Non-bloquant: on poursuit l'enregistrement produit
-            }
+            await uploadVariantMedia((res as any).id, (res as any).variants);
+            const refreshed = await refetchFullProduct();
+            if (refreshed.data) updatedProduct = refreshed.data;
           }
 
           // Also save snapshot edits if any
@@ -804,7 +827,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           }
 
           showSuccess('Produit mis à jour avec succès !');
-          if (onProductUpdated) onProductUpdated(res);
+          if (onProductUpdated) onProductUpdated(updatedProduct);
         } else {
           const formData = new FormData();
           formData.append('designation', productData.designation || '');
@@ -900,9 +923,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       onClose();
       formik.resetForm();
       setSelectedFile(null);
+      setDeleteMainImage(false);
       setGalleryFiles([]);
       setDeletedGalleryIds([]);
       setVariantMainImages({});
+      setVariantDeleteMainImageMap({});
       setVariantGalleryFilesMap({});
       setVariantDeletedGalleryIdsMap({});
       setSnapshotEdits({});
@@ -948,9 +973,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
     if (isOpen && !editingProduct) {
       formik.resetForm({ values: { ...initialValues, non_stockable: defaultNonStockable } as any });
       setSelectedFile(null);
+      setDeleteMainImage(false);
       setGalleryFiles([]);
       setDeletedGalleryIds([]);
       setVariantMainImages({});
+      setVariantDeleteMainImageMap({});
       setVariantGalleryFilesMap({});
       setVariantDeletedGalleryIdsMap({});
       setVariantUseProductRemise({});
@@ -971,6 +998,18 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setPriceRaw({ cout_revient: '', prix_gros: '', prix_vente: '' });
     }
   }, [isOpen, editingProduct]);
+
+  useEffect(() => {
+    if (!isOpen || !editingProduct?.id) return;
+    setSelectedFile(null);
+    setDeleteMainImage(false);
+    setGalleryFiles([]);
+    setDeletedGalleryIds([]);
+    setVariantMainImages({});
+    setVariantDeleteMainImageMap({});
+    setVariantGalleryFilesMap({});
+    setVariantDeletedGalleryIdsMap({});
+  }, [isOpen, editingProduct?.id]);
 
   const syncStockModeValidation = (nextIsService: boolean, nextNonStockable: boolean) => {
     const shareQty = toNum(formik.values.stock_partage_ecom_qty);
@@ -2105,13 +2144,21 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     </button>
                   </div>
                 ) : (
-                  editingProduct && (editingProduct as any).image_url ? (
-                    <div className="inline-block border rounded p-1">
+                  baseEdit && (baseEdit as any).image_url ? (
+                    <div className={`inline-block relative border rounded p-1 ${deleteMainImage ? 'opacity-50' : ''}`}>
                       <img
-                        src={toBackendUrl((editingProduct as any).image_url)}
+                        src={toBackendUrl((baseEdit as any).image_url)}
                         alt="image principale"
                         className="w-24 h-24 object-cover rounded"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setDeleteMainImage((value) => !value)}
+                        className={`absolute top-1 right-1 text-xs px-1.5 py-0.5 rounded text-white ${deleteMainImage ? 'bg-gray-600' : 'bg-red-600'}`}
+                        title={deleteMainImage ? 'Annuler la suppression' : "Supprimer l'image principale"}
+                      >
+                        {deleteMainImage ? 'Annuler' : 'Suppr'}
+                      </button>
                     </div>
                   ) : null
                 )}
@@ -2122,23 +2169,23 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             <div className="md:col-span-2">
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Galerie d'images</label>
               {(
-                (editingProduct && (editingProduct as any).image_url) ||
-                (editingProduct && Array.isArray((editingProduct as any).gallery) && (editingProduct as any).gallery.length > 0)
+                (baseEdit && (baseEdit as any).image_url) ||
+                (baseEdit && Array.isArray((baseEdit as any).gallery) && (baseEdit as any).gallery.length > 0)
               ) && (
                 <div className="mb-3">
                   <div className="text-xs text-gray-600 mb-1">Images existantes</div>
                   <div className="flex flex-wrap gap-3">
-                    {editingProduct && (editingProduct as any).image_url && (
-                      <div className="relative border rounded p-1">
+                    {baseEdit && (baseEdit as any).image_url && (
+                      <div className={`relative border rounded p-1 ${deleteMainImage ? 'opacity-50' : ''}`}>
                         <img
-                          src={toBackendUrl((editingProduct as any).image_url)}
+                          src={toBackendUrl((baseEdit as any).image_url)}
                           alt="image principale"
                           className="w-24 h-24 object-cover rounded"
                         />
                         <div className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white rounded px-1">Principale</div>
                       </div>
                     )}
-                    {Array.isArray((editingProduct as any)?.gallery) && (editingProduct as any).gallery.map((img: any) => {
+                    {Array.isArray((baseEdit as any)?.gallery) && (baseEdit as any).gallery.map((img: any) => {
                       const isMarked = deletedGalleryIds.includes(img.id);
                       return (
                         <div key={img.id} className={`relative border rounded p-1 ${isMarked ? 'opacity-50' : ''}`}>
@@ -2861,11 +2908,24 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                     </div>
                                   ) : (
                                     variant.image_url ? (
-                                      <img
-                                        src={toBackendUrl(variant.image_url)}
-                                        alt="variant"
-                                        className="w-16 h-16 object-cover rounded border"
-                                      />
+                                      <div className={`relative inline-block ${variantDeleteMainImageMap[variant.id as number] ? 'opacity-50' : ''}`}>
+                                        <img
+                                          src={toBackendUrl(variant.image_url)}
+                                          alt="variant"
+                                          className="w-16 h-16 object-cover rounded border"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => setVariantDeleteMainImageMap((prev) => ({
+                                            ...prev,
+                                            [variant.id as number]: !prev[variant.id as number],
+                                          }))}
+                                          className={`absolute -top-1 -right-1 text-[10px] px-1 py-0.5 rounded text-white ${variantDeleteMainImageMap[variant.id as number] ? 'bg-gray-600' : 'bg-red-600'}`}
+                                          title={variantDeleteMainImageMap[variant.id as number] ? 'Annuler la suppression' : "Supprimer l'image principale de la variante"}
+                                        >
+                                          {variantDeleteMainImageMap[variant.id as number] ? 'Annuler' : 'Suppr'}
+                                        </button>
+                                      </div>
                                     ) : null
                                   )}
                                   <input
@@ -2883,7 +2943,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                 {(variant.image_url || (Array.isArray((variant as any).gallery) && (variant as any).gallery.length > 0)) && (
                                   <div className="flex flex-wrap gap-2 mb-2">
                                     {variant.image_url && (
-                                      <div className="relative border rounded p-1">
+                                      <div className={`relative border rounded p-1 ${variantDeleteMainImageMap[variant.id as number] ? 'opacity-50' : ''}`}>
                                         <img src={toBackendUrl(variant.image_url)} alt="v-principale" className="w-16 h-16 object-cover rounded" />
                                         <div className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white rounded px-1">Principale</div>
                                       </div>
