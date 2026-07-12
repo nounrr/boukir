@@ -1,6 +1,14 @@
 import { api } from './apiSlice';
 
 export type PhotoShootStatus = 'pending' | 'processing' | 'processed' | 'attached' | 'error';
+export type AiImageModel = 'gpt-image-2' | 'gpt-image-1.5' | 'gpt-image-1-mini';
+export type AiImageQuality = 'low' | 'medium' | 'high';
+
+export interface ProcessPhotoShootsRequest {
+  shootIds: number[];
+  model: AiImageModel;
+  quality: AiImageQuality;
+}
 
 export interface PhotoShootImage {
   id: number;
@@ -73,7 +81,7 @@ const productPhotosApi = api.injectEndpoints({
       invalidatesTags: ['PhotoShoot'],
     }),
 
-    processPhotoShoots: builder.mutation<{ ok: boolean; processing: number[] }, { shootIds: number[] }>({
+    processPhotoShoots: builder.mutation<{ ok: boolean; processing: number[] }, ProcessPhotoShootsRequest>({
       query: (body) => ({
         url: '/product-photos/process',
         method: 'POST',
