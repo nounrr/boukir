@@ -10,6 +10,46 @@ import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const productUploadsDir = path.resolve(__dirname, '..', 'uploads', 'products');
+
+async function deleteProductUploadIfUnreferenced(imageUrl) {
+  const normalizedUrl = String(imageUrl || '').replace(/\\/g, '/');
+  const prefix = '/uploads/products/';
+  if (!normalizedUrl.startsWith(prefix)) return;
+
+  const relativePath = normalizedUrl.slice(prefix.length);
+  const absolutePath = path.resolve(productUploadsDir, ...relativePath.split('/'));
+  if (absolutePath !== productUploadsDir && !absolutePath.startsWith(`${productUploadsDir}${path.sep}`)) return;
+
+  try {
+    const [[references]] = await pool.query(
+      `SELECT
+         (SELECT COUNT(*) FROM products WHERE image_url = ?) +
+         (SELECT COUNT(*) FROM product_variants WHERE image_url = ?) +
+         (SELECT COUNT(*) FROM product_images WHERE image_url = ?) +
+         (SELECT COUNT(*) FROM variant_images WHERE image_url = ?) AS total`,
+      [normalizedUrl, normalizedUrl, normalizedUrl, normalizedUrl]
+    );
+    if (Number(references?.total || 0) > 0) return;
+
+    // Photo Studio may reference the same physical file after attaching it.
+    try {
+      const [[studioReferences]] = await pool.query(
+        'SELECT COUNT(*) AS total FROM product_photo_images WHERE image_url = ?',
+        [normalizedUrl]
+      );
+      if (Number(studioReferences?.total || 0) > 0) return;
+    } catch (error) {
+      const code = String(error?.code || '');
+      if (code !== 'ER_NO_SUCH_TABLE') throw error;
+    }
+
+    if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+  } catch (error) {
+    // Database state is authoritative; a cleanup failure must not undo a valid deletion.
+    console.warn('[Products] Impossible de nettoyer le fichier image:', normalizedUrl, error?.message || error);
+  }
+}
 
 // Configure Multer for product images
 const storage = multer.diskStorage({
@@ -2553,11 +2593,27 @@ router.put('/:id', upload.fields([
       fiche_technique_ar,
       fiche_technique_en,
       fiche_technique_zh,
+      delete_main_image,
+      deleted_gallery_ids: deletedGalleryIdsRaw,
       variants: variantsJson,
       units: unitsJson,
     } = req.body;
 
     const now = new Date();
+    let deletedGalleryIds = [];
+    if (deletedGalleryIdsRaw !== undefined && deletedGalleryIdsRaw !== null && deletedGalleryIdsRaw !== '') {
+      try {
+        const parsed = typeof deletedGalleryIdsRaw === 'string'
+          ? JSON.parse(deletedGalleryIdsRaw)
+          : deletedGalleryIdsRaw;
+        if (!Array.isArray(parsed)) throw new Error('not an array');
+        deletedGalleryIds = parsed
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0);
+      } catch {
+        return res.status(400).json({ message: 'deleted_gallery_ids invalide' });
+      }
+    }
 
     // Determine booleans
     const isService = (est_service !== undefined)
@@ -2661,7 +2717,12 @@ router.put('/:id', upload.fields([
 
     // Image handling
     const newImage = req.files?.['image']?.[0];
-    const image_url_val = newImage ? `/uploads/products/${newImage.filename}` : existing.image_url;
+    const shouldDeleteMainImage = delete_main_image === 'true' || delete_main_image === true || delete_main_image === '1' || delete_main_image === 1;
+    const image_url_val = newImage
+      ? `/uploads/products/${newImage.filename}`
+      : shouldDeleteMainImage
+        ? null
+        : existing.image_url;
 
     // Compute other fields
     const payload = {
@@ -2712,6 +2773,10 @@ router.put('/:id', upload.fields([
     const values = fields.map(f => payload[f]);
     values.push(id);
     await pool.query(`UPDATE products SET ${setClause} WHERE id = ?`, values);
+
+    if (existing.image_url && existing.image_url !== image_url_val) {
+      await deleteProductUploadIfUnreferenced(existing.image_url);
+    }
 
     // Variants + Units (optional sync) 
     // If the client sends these fields, treat them as the desired state and sync DB accordingly.
@@ -2906,6 +2971,23 @@ router.put('/:id', upload.fields([
               );
             }
           }
+        }
+      }
+    }
+
+    // Delete selected existing gallery images, scoped to this product.
+    if (deletedGalleryIds.length > 0) {
+      const [imagesToDelete] = await pool.query(
+        'SELECT id, image_url FROM product_images WHERE product_id = ? AND id IN (?)',
+        [id, deletedGalleryIds]
+      );
+      if (imagesToDelete.length > 0) {
+        await pool.query(
+          'DELETE FROM product_images WHERE product_id = ? AND id IN (?)',
+          [id, imagesToDelete.map((image) => image.id)]
+        );
+        for (const image of imagesToDelete) {
+          await deleteProductUploadIfUnreferenced(image.image_url);
         }
       }
     }
@@ -3145,18 +3227,39 @@ router.post('/:id/variants/:variantId/image', upload.single('image'), async (req
 
     const imageUrl = `/uploads/products/${req.file.filename}`;
 
-    // Delete old image file if exists
     const oldImageUrl = rows[0].image_url;
-    if (oldImageUrl) {
-      const oldPath = path.join(__dirname, '..', oldImageUrl);
-      if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath);
-      }
+    await pool.query('UPDATE product_variants SET image_url = ? WHERE id = ?', [imageUrl, variantId]);
+    if (oldImageUrl && oldImageUrl !== imageUrl) {
+      await deleteProductUploadIfUnreferenced(oldImageUrl);
     }
 
-    await pool.query('UPDATE product_variants SET image_url = ? WHERE id = ?', [imageUrl, variantId]);
-
     res.json({ success: true, image_url: imageUrl });
+  } catch (err) { next(err); }
+});
+
+// DELETE /products/:id/variants/:variantId/image — Remove variant main image
+router.delete('/:id/variants/:variantId/image', async (req, res, next) => {
+  try {
+    await ensureProductsColumns();
+    const productId = Number(req.params.id);
+    const variantId = Number(req.params.variantId);
+    if (isNaN(productId) || isNaN(variantId)) {
+      return res.status(400).json({ message: 'IDs invalides' });
+    }
+
+    const [rows] = await pool.query(
+      'SELECT id, image_url FROM product_variants WHERE id = ? AND product_id = ?',
+      [variantId, productId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Variante introuvable pour ce produit' });
+    }
+
+    const oldImageUrl = rows[0].image_url;
+    await pool.query('UPDATE product_variants SET image_url = NULL WHERE id = ? AND product_id = ?', [variantId, productId]);
+    if (oldImageUrl) await deleteProductUploadIfUnreferenced(oldImageUrl);
+
+    res.json({ success: true, image_url: null });
   } catch (err) { next(err); }
 });
 
@@ -3190,11 +3293,10 @@ router.put('/:id/variants/:variantId/gallery', upload.array('gallery', 10), asyn
           'SELECT id, image_url FROM variant_images WHERE id IN (?) AND variant_id = ?',
           [deletedIds, variantId]
         );
-        for (const img of oldImages) {
-          const filePath = path.join(__dirname, '..', img.image_url);
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        }
         await pool.query('DELETE FROM variant_images WHERE id IN (?) AND variant_id = ?', [deletedIds, variantId]);
+        for (const img of oldImages) {
+          await deleteProductUploadIfUnreferenced(img.image_url);
+        }
       }
     }
 
