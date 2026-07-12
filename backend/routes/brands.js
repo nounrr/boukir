@@ -4,6 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,7 +24,17 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage,
+  fileFilter: (_req, file, cb) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    if (!['image/jpeg', 'image/png'].includes(file.mimetype) || !['.jpg', '.jpeg', '.png'].includes(extension)) {
+      return cb(new Error('Seules les images JPG et PNG sont autorisées'));
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 20 },
+});
 
 // Ensure brands table exists (basic check)
 async function ensureBrandsTable() {
@@ -60,6 +71,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/', upload.single('image'), async (req, res, next) => {
   try {
+    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png']);
     await ensureBrandsTable();
     const { nom, description } = req.body;
     const image_url = req.file ? `/uploads/brands/${req.file.filename}` : null;
@@ -79,6 +91,7 @@ router.post('/', upload.single('image'), async (req, res, next) => {
 
 router.put('/:id', upload.single('image'), async (req, res, next) => {
   try {
+    if (req.file) await assertUploadedFileKind(req.file, ['jpeg', 'png']);
     await ensureBrandsTable();
     const id = Number(req.params.id);
     const { nom, description } = req.body;

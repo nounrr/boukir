@@ -1,7 +1,5 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Provider } from 'react-redux';
-import { store } from './store';
 import { initializeAuth, logout } from './store/slices/authSlice';
 import { setPasswordChangeRequired } from './store/slices/authSlice';
 import { useAppDispatch, useAuth } from './hooks/redux';
@@ -21,21 +19,16 @@ import EmployeePage from './pages/EmployeePage';
 import EmployeeSelfPage from './pages/EmployeeSelfPage';
 import EmployeeArchivePage from './pages/EmployeeArchivePage';
 import EmployeeDocumentsPage from './pages/EmployeeDocumentsPage';
-import StockPage from './pages/StockPage';
 import StockDepot2Page from './pages/StockDepot2Page';
-import ContactsPage from './pages/ContactsPage';
 import ClientsPage, { ClientDetailPage } from './pages/ClientsPage';
 import FournisseursPage, { FournisseurDetailPage } from './pages/FournisseursPage';
 import ChargesPage, { ChargeDetailPage } from './pages/ChargesPage';
 import GarantiesPage from './pages/GarantiesPage';
 import ContactArchiverPage from './pages/ContactArchiverPage';
-import BonsPage from './pages/BonsPage';
 import BonCreatePage from './pages/BonCreatePage';
 import VehiculesPage from './pages/VehiculesPage';
-import CaissePage from './pages/CaissePage';
 import FondCaissePage from './pages/FondCaissePage';
 import FondCaisseDetailPage from './pages/FondCaisseDetailPage';
-import ReportsPage from './pages/ReportsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import CategoryManagementPage from './pages/CategoryManagementPage';
 import BrandsPage from './pages/BrandsPage';
@@ -43,7 +36,6 @@ import StatsDetailPage from './pages/StatsDetailPage';
 import ExcelUploadPage from './pages/ImportExcelTabs';
 import ExportProducts from './pages/ExportProducts';
 import ExportContacts from './pages/ExportContacts';
-import RemisesPage from './pages/RemisesPage';
 import PromoCodesPage from './pages/PromoCodesPage';
 import HeroSlidesPage from './pages/HeroSlidesPage';
 import TalonsPage from './pages/TalonsPage';
@@ -58,13 +50,21 @@ import MultiDayAccessSchedulePage from './pages/MultiDayAccessSchedulePage';
 import ChiffreAffairesPage from './pages/ChiffreAffairesPage';
 import ChiffreAffairesDetailPage from './pages/ChiffreAffairesDetailPage';
 import WhatsAppTestPage from './pages/WhatsAppTestPage';
-import InventoryPage from './pages/InventoryPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
-import ProductsTranslatePage from './pages/ProductsTranslatePage';
-import ProductPhotoStudioPage from './pages/ProductPhotoStudioPage';
 import ProductNameCorrectionsPage from './pages/ProductNameCorrectionsPage';
 import UiSettingsPage from './pages/UiSettingsPage';
 import SolverPrixAchatPage from './pages/SolverPrixAchatPage';
+
+// Les pages les plus volumineuses sont chargées uniquement lorsqu'elles sont ouvertes.
+const StockPage = React.lazy(() => import('./pages/StockPage'));
+const ContactsPage = React.lazy(() => import('./pages/ContactsPage'));
+const BonsPage = React.lazy(() => import('./pages/BonsPage'));
+const CaissePage = React.lazy(() => import('./pages/CaissePage'));
+const ReportsPage = React.lazy(() => import('./pages/ReportsPage'));
+const InventoryPage = React.lazy(() => import('./pages/InventoryPage'));
+const ProductsTranslatePage = React.lazy(() => import('./pages/ProductsTranslatePage'));
+const ProductPhotoStudioPage = React.lazy(() => import('./pages/ProductPhotoStudioPage'));
+const RemisesPage = React.lazy(() => import('./pages/RemisesPage'));
 
 // Composant Layout avec accès aux fonctions de monitoring
 const LayoutWithAccessCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -112,7 +112,8 @@ const AppContent: React.FC = () => {
   return (
     <>
       <Router>
-        <Routes>
+        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-600">Chargement…</div>}>
+          <Routes>
           {/* Route de login */}
           <Route 
             path="/login" 
@@ -178,7 +179,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/employees/:id/documents"
           element={
-            <ProtectedRoute requiredRoles={['PDG']}>
+            <ProtectedRoute requiredRoles={['PDG', 'Employé']}>
               <LayoutWithAccessCheck>
                 <EmployeeDocumentsPage />
               </LayoutWithAccessCheck>
@@ -255,7 +256,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/products/translate"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRoles={['PDG', 'Manager', 'ManagerPlus']}>
               <LayoutWithAccessCheck>
                 <ProductsTranslatePage />
               </LayoutWithAccessCheck>
@@ -637,7 +638,7 @@ const AppContent: React.FC = () => {
         <Route
           path="/import"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredRoles={['PDG', 'Manager', 'ManagerPlus']}>
               <LayoutWithAccessCheck>
                 <ExcelUploadPage />
               </LayoutWithAccessCheck>
@@ -735,7 +736,8 @@ const AppContent: React.FC = () => {
             </div>
           }
         />
-      </Routes>
+          </Routes>
+        </React.Suspense>
     </Router>
     
     {/* Popup d'avertissement d'expiration d'accès */}
@@ -753,11 +755,7 @@ const AppContent: React.FC = () => {
 };
 
 function App() {
-  return (
-    <Provider store={store}>
-      <AppContent />
-    </Provider>
-  );
+  return <AppContent />;
 }
 
 export default App;

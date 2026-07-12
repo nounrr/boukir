@@ -1,6 +1,8 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import pool from '../db/pool.js';
+import { getJwtSecret } from '../middleware/auth.js';
+import { getAllowedCorsOrigins, isCorsOriginAllowed } from '../utils/corsOrigins.js';
 
 let io = null;
 
@@ -12,12 +14,15 @@ let io = null;
 export function initializeSocketServer(httpServer) {
   console.log('\n📡 Initializing Socket.IO server...');
   
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  console.log(`  → Frontend URL: ${frontendUrl}`);
+  const allowedOrigins = getAllowedCorsOrigins();
+  console.log(`  → Frontend origins: ${Array.from(allowedOrigins).join(', ')}`);
   
   io = new Server(httpServer, {
     cors: {
-      origin: frontendUrl,
+      origin(origin, callback) {
+        if (isCorsOriginAllowed(origin, allowedOrigins)) return callback(null, true);
+        return callback(new Error('Origine Socket.IO non autorisée par CORS'));
+      },
       credentials: true,
       methods: ['GET', 'POST']
     },
@@ -40,7 +45,7 @@ export function initializeSocketServer(httpServer) {
       }
 
       // Verify JWT token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+      const decoded = jwt.verify(token, getJwtSecret());
       
       // Get user from database
       // Check EMPLOYEES table first (for employee/PDG users)
@@ -117,7 +122,7 @@ export function initializeSocketServer(httpServer) {
     });
 
     // Handle custom events (optional)
-    socket.on('ping', () => {nom_complet || socket.user.
+    socket.on('ping', () => {
       socket.emit('pong', { timestamp: Date.now() });
     });
 

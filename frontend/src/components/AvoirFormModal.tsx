@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { Check, Plus } from 'lucide-react';
-import { addBon } from '../store/slices/bonsSlice';
 import { useCreateBonMutation } from '../store/api/bonsApi';
 import { generateBonReference } from '../utils/referenceUtils';
 import { showSuccess, showError } from '../utils/notifications';
@@ -103,7 +102,6 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
   bonOrigine,
   onAvoirCreated
 }) => {
-  const dispatch = useDispatch();
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isChefChauffeur = currentUser?.role === 'ChefChauffeur';
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
@@ -111,6 +109,7 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
   const [selectedBon, setSelectedBon] = useState<any>(bonOrigine || null);
   const [isContactModalOpen, setIsContactModalOpen] = useState<null | 'Client' | 'Fournisseur'>(null);
   const formikRef = useRef<FormikProps<any>>(null);
+  const [createBon] = useCreateBonMutation();
   
   const bons = useSelector((state: RootState) => state.bons.bons.filter(
     (bon: Bon) => bon.type === 'Commande' || bon.type === 'Sortie' || bon.type === 'Comptant'
@@ -135,7 +134,6 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
   if (!isOpen) return null;
 
   // Fonction pour créer un avoir complet
-  const [createBon] = useCreateBonMutation();
 
   const handleCreateFullAvoir = async () => {
     if (isChefChauffeur) {

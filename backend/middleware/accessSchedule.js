@@ -146,15 +146,19 @@ export const checkAccessSchedule = async (req, res, next) => {
       next();
     } catch (parseError) {
       console.error('Erreur parsing jours autorisés:', parseError);
-      // En cas d'erreur de parsing, autoriser l'accès par sécurité
-      next();
+      return res.status(503).json({
+        error: 'Configuration des horaires invalide',
+        access_denied: true,
+        reason: 'Vérification des horaires indisponible'
+      });
     }
   } catch (error) {
     console.error('Erreur middleware horaires d\'accès:', error);
     
-    // En cas d'erreur du middleware, autoriser l'accès par sécurité
-    // pour éviter de bloquer complètement l'application
-    next();
+    return res.status(503).json({
+      error: 'Vérification des horaires indisponible',
+      access_denied: true
+    });
   }
 };
 
@@ -316,6 +320,6 @@ export const checkUserAccess = async (userId) => {
     return { hasAccess: true, reason: 'Accès autorisé' };
   } catch (error) {
     console.error('Erreur vérification accès:', error);
-    return { hasAccess: true, reason: 'Erreur de vérification, accès autorisé par défaut' };
+    throw error;
   }
 };

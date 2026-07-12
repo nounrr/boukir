@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import pool from '../db/pool.js';
 import { emitToPDG } from '../socket/socketServer.js';
 import { getWhtspStatus, isWhtspServiceConfigured, sendWhtspMedia, sendWhtspText } from '../utils/whtspService.js';
+import { requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -213,7 +214,7 @@ router.post('/artisan-requests/:id/reject', async (req, res, next) => {
 // ----------------------------
 
 // GET /api/notifications/whatsapp/bon-test (public; allowlisted in index.js)
-router.get('/whatsapp/bon-test', async (_req, res) => {
+router.get('/whatsapp/bon-test', requireRole('PDG'), async (_req, res) => {
   try {
     const configured = isWhtspServiceConfigured();
     const status = configured ? await getWhtspStatus().catch((e) => ({ ok: false, error: e?.message || 'status_failed' })) : null;

@@ -4,12 +4,16 @@ import express from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import pool from "../db/pool.js";
+import { requireRoles } from '../middleware/auth.js';
 
 const router = express.Router();
+
+router.use(requireRoles('PDG', 'Manager', 'ManagerPlus'));
 
 // on garde le fichier en mémoire pour préserver l'encodage (arabe)
 const upload = multer({
   storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 20 },
   // Taille illimitée pour tous les fichiers
 });
 

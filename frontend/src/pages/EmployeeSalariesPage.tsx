@@ -16,18 +16,13 @@ const EmployeeSalariesPage: React.FC = () => {
   const params = useParams();
   const employeId = Number(params.id);
   const { user } = useAuth();
+  const managerDenied = user?.role === 'Manager';
+  const employeeDenied = user?.role === 'Employé' && user.id !== employeId;
+  const isDenied = managerDenied || employeeDenied;
   
   // Vérifier si l'utilisateur a accès aux salaires
   // Manager n'a pas accès du tout
-  if (user?.role === 'Manager') {
-    return <Navigate to="/employees" replace />;
-  }
-  
   // Vérifier si l'utilisateur est un employé et s'il essaie d'accéder aux salaires d'un autre employé
-  if (user?.role === 'Employé' && user.id !== employeId) {
-    return <Navigate to={`/employees/${user.id}/salaries`} replace />;
-  }
-  
   // Les employés et Manager+ ont accès en lecture seule
   const isReadOnly = user?.role === 'Employé' || user?.role === 'ManagerPlus';
   
@@ -40,8 +35,8 @@ const EmployeeSalariesPage: React.FC = () => {
     return `${d.getFullYear()}-${m}`; // YYYY-MM
   });
 
-  const { data: employee, isLoading: empLoading } = useGetEmployeeQuery(employeId, { skip: !employeId });
-  const { data: entries = [], isLoading } = useGetEmployeeSalaireEntriesQuery({ id: employeId, month }, { skip: !employeId });
+  const { data: employee, isLoading: empLoading } = useGetEmployeeQuery(employeId, { skip: !employeId || isDenied });
+  const { data: entries = [], isLoading } = useGetEmployeeSalaireEntriesQuery({ id: employeId, month }, { skip: !employeId || isDenied });
   const [addEntry, { isLoading: adding }] = useAddEmployeeSalaireEntryMutation();
   const [updateEntry] = useUpdateEmployeeSalaireEntryMutation();
   const [deleteEntry] = useDeleteEmployeeSalaireEntryMutation();
@@ -61,6 +56,9 @@ const EmployeeSalariesPage: React.FC = () => {
     const diff = salaireNum - totalMonth; // positif => reste à payer, négatif => dépassement
     return { diff, salaire: salaireNum, total: totalMonth };
   }, [employee?.salaire, totalMonth]);
+
+  if (managerDenied) return <Navigate to="/employees" replace />;
+  if (employeeDenied) return <Navigate to={`/employees/${user.id}/salaries`} replace />;
 
   const onAdd = async (e: React.FormEvent) => {
     e.preventDefault();

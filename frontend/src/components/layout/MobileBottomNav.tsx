@@ -39,6 +39,7 @@ const MobileBottomNav: React.FC = () => {
       key: 'produits', label: 'Produits', icon: Package,
       items: [
         { name: 'Stock', to: '/stock', show: true },
+        { name: 'Photos Produits', to: '/product-photos', show: true },
         { name: 'Produits Translate', to: '/products/translate', show: true },
         { name: 'Catégories', to: '/categories', show: true },
         { name: 'Produits archivés', to: '/products/archived', show: user?.role === 'PDG' },

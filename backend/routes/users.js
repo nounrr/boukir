@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import bcrypt from 'bcryptjs';
+import { getJwtSecret } from '../middleware/auth.js';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
@@ -34,7 +35,7 @@ function generateToken(user) {
     type_compte: user.type_compte,
     auth_provider: user.auth_provider,
   };
-  return jwt.sign(payload, process.env.JWT_SECRET || 'dev-secret', {
+  return jwt.sign(payload, getJwtSecret(), {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 }
@@ -455,7 +456,7 @@ router.post('/request-artisan', async (req, res, next) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+      decoded = jwt.verify(token, getJwtSecret());
     } catch (err) {
       return res.status(401).json({ message: 'Token invalide' });
     }
@@ -944,7 +945,7 @@ router.get('/me', async (req, res, next) => {
     let decoded;
     try {
       if (debug) console.log(`[auth/me][${reqId}] jwt.verify:start`);
-      decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+      decoded = jwt.verify(token, getJwtSecret());
       if (debug) console.log(`[auth/me][${reqId}] jwt.verify:ok userId=${decoded?.id}`);
     } catch (err) {
       if (debug) console.log(`[auth/me][${reqId}] jwt.verify:fail ${(err && err.message) ? err.message : err}`);
@@ -1058,7 +1059,7 @@ router.put('/me', async (req, res, next) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+      decoded = jwt.verify(token, getJwtSecret());
     } catch (err) {
       return res.status(401).json({ message: 'Token invalide' });
     }

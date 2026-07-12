@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import { useGetEmployeeDocsQuery, useCreateEmployeeDocMutation, useDeleteEmployeeDocMutation, useGetDocumentTypesQuery, useCreateDocumentTypeMutation } from '../store/api/employeeDocsApi';
-import { toBackendUrl } from '../utils/url';
 import { ArrowLeft, FileText, Plus, Upload, Trash2, File, FolderOpen, FileType } from 'lucide-react';
 import { showError, showSuccess, showConfirmation } from '../utils/notifications';
 import { useAuth } from '../hooks/redux';
@@ -10,17 +9,14 @@ const EmployeeDocumentsPage: React.FC = () => {
   const { user } = useAuth();
   const params = useParams();
   const employeId = Number(params.id);
+  const isDenied = user?.role === 'Employé' && user.id !== employeId;
   
   // Vérifier si l'utilisateur est un employé et s'il essaie d'accéder aux docs d'un autre employé
-  if (user?.role === 'Employé' && user.id !== employeId) {
-    return <Navigate to={`/employees/${user.id}/documents`} replace />;
-  }
-  
   // Les employés ont accès en lecture seule
   const isReadOnly = user?.role === 'Employé';
   
-  const { data: docs = [], isLoading } = useGetEmployeeDocsQuery(employeId, { skip: !employeId });
-  const { data: types = [] } = useGetDocumentTypesQuery();
+  const { data: docs = [], isLoading } = useGetEmployeeDocsQuery(employeId, { skip: !employeId || isDenied });
+  const { data: types = [] } = useGetDocumentTypesQuery(undefined, { skip: isDenied });
   const [createDoc] = useCreateEmployeeDocMutation();
   const [deleteDoc] = useDeleteEmployeeDocMutation();
   const [typeDocId, setTypeDocId] = useState<number | ''>('');
@@ -29,6 +25,32 @@ const EmployeeDocumentsPage: React.FC = () => {
   const [createType] = useCreateDocumentTypeMutation();
   const [uploadedFile, setUploadedFile] = useState<{name: string, path: string} | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  if (isDenied) {
+    return <Navigate to={`/employees/${user.id}/documents`} replace />;
+  }
+
+  const openDocument = async (documentId: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/documents/employees/${employeId}/${documentId}/download`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error('DOCUMENT_DOWNLOAD_FAILED');
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      console.error('Error opening document:', error);
+      showError('Impossible d’ouvrir le document');
+    }
+  };
 
   // Fonction pour déterminer le type de fichier et l'icône
   const getFileIcon = (filename: string) => {
@@ -55,7 +77,12 @@ const EmployeeDocumentsPage: React.FC = () => {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const resp = await fetch('/api/upload/employee-doc', { method: 'POST', body: formData });
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/upload/employee-doc', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
       if (!resp.ok) {
         showError('Erreur lors du téléchargement du fichier');
         return;
@@ -357,14 +384,13 @@ const EmployeeDocumentsPage: React.FC = () => {
                             {getFileIcon(doc.path)}
                           </div>
                           <div>
-                            <a 
-                              href={toBackendUrl(doc.path)} 
-                              target="_blank" 
-                              rel="noreferrer" 
+                            <button
+                              type="button"
+                              onClick={() => openDocument(doc.id)}
                               className="text-sm font-medium text-blue-600 hover:text-blue-800 underline"
                             >
                               {doc.path.split('/').pop()}
-                            </a>
+                            </button>
                           </div>
                         </div>
                       </td>

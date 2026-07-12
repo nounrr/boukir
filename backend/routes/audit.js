@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
+import { verifyToken, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(verifyToken, requireRole('PDG'));
 
 // Helper function to build pk filtering conditions
 function buildPkFilter(pk, tables, table, where, params) {

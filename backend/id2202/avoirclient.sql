@@ -1,7 +1,7 @@
 
 
 
-INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `montant_total`, `lieu_chargement`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`) VALUES
+REPLACE INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `montant_total`, `lieu_chargement`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`) VALUES
 (2, '2025-08-25 00:00:00', 220, NULL, 0, NULL, 800.00, 'a awatif', 'Validé', 1, '2025-08-25 08:02:32', '2025-08-27 19:07:59', '', NULL),
 (3, '2025-08-25 00:00:00', 220, NULL, 0, NULL, 1460.00, '', 'Validé', 1, '2025-08-25 08:58:34', '2025-08-27 19:08:29', '', NULL),
 (4, '2025-08-27 20:09:00', 220, NULL, 0, NULL, 4798.00, '', 'Validé', 1, '2025-08-25 09:04:49', '2025-08-27 19:09:37', 'playa', NULL),
@@ -372,8 +372,7 @@ INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id
 (380, '2025-10-14 12:25:00', 220, NULL, 0, NULL, 500.00, '', 'Validé', 11, '2025-10-14 09:26:28', '2025-10-18 18:02:36', 'bilal zelaygi', NULL),
 (381, '2025-10-14 13:26:00', 220, NULL, 0, NULL, 750.00, '', 'Validé', 7, '2025-10-14 09:28:53', '2025-10-18 17:41:54', 'dipo mesnan', NULL),
 (382, '2025-10-14 14:27:00', 220, NULL, 0, NULL, 450.00, '', 'Validé', 7, '2025-10-14 10:31:07', '2025-10-18 18:04:10', 'sebt zenat', NULL),
-(383, '2025-10-14 14:32:00', 220, NULL, 0, NULL, 6992.40, '', 'Annulé', 7, '2025-10-14 10:34:49', '2025-10-14 11:04:02', 'bo7ayra', NULL);
-INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `montant_total`, `lieu_chargement`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`) VALUES
+(383, '2025-10-14 14:32:00', 220, NULL, 0, NULL, 6992.40, '', 'Annulé', 7, '2025-10-14 10:34:49', '2025-10-14 11:04:02', 'bo7ayra', NULL),
 (384, '2025-10-14 15:11:00', 220, NULL, 0, NULL, 1400.00, '', 'Validé', 7, '2025-10-14 12:11:48', '2025-10-18 18:04:34', '', NULL),
 
 (386, '2025-10-15 09:52:00', 220, NULL, 0, NULL, 15.00, '', 'Validé', 7, '2025-10-15 07:54:40', '2025-10-18 18:15:40', 'hicham btr jbel kbir (bon 2966)', NULL),
@@ -748,7 +747,6 @@ INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id
 (755, '2025-12-06 19:33:00', 220, NULL, 0, NULL, 471.00, '', 'Validé', 7, '2025-12-06 11:35:28', '2025-12-25 15:03:31', 'hamza jbel kbir', 1),
 (756, '2025-12-06 16:37:00', 220, NULL, 0, NULL, 1570.00, '', 'Validé', 7, '2025-12-06 11:37:48', '2025-12-25 15:00:04', 'omar ghandori', 1),
 
-INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `montant_total`, `lieu_chargement`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`) VALUES
 
 (759, '2025-12-06 19:42:00', 220, NULL, 0, NULL, 96.03, '', 'Validé', 7, '2025-12-06 17:42:53', '2025-12-19 10:30:28', '', NULL),
 (760, '2025-12-08 14:36:00', 220, NULL, 0, NULL, 572.50, '', 'Validé', 1, '2025-12-08 09:37:29', '2025-12-25 13:58:19', '', 1),
@@ -1133,8 +1131,7 @@ INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id
 
 (1140, '2026-02-16 13:57:00', 220, NULL, 0, NULL, 1102.50, '', 'Validé', 7, '2026-02-16 13:58:24', '2026-02-19 11:18:36', '', 1),
 (1141, '2026-02-16 14:42:00', 220, NULL, 0, NULL, 800.00, '', 'Validé', 7, '2026-02-16 14:43:37', '2026-02-19 11:13:25', '', 1),
-(1142, '2026-02-16 14:53:00', 220, NULL, 0, NULL, 665.73, '', 'Validé', 7, '2026-02-16 14:54:48', '2026-02-19 11:12:45', '', 1);
-INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `montant_total`, `lieu_chargement`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`) VALUES
+(1142, '2026-02-16 14:53:00', 220, NULL, 0, NULL, 665.73, '', 'Validé', 7, '2026-02-16 14:54:48', '2026-02-19 11:12:45', '', 1),
 (1143, '2026-02-16 15:23:00', 220, NULL, 0, NULL, 240.00, '', 'Validé', 7, '2026-02-16 15:23:29', '2026-02-19 11:16:35', '', 1),
 (1144, '2026-02-16 15:29:00', 220, NULL, 0, NULL, 88.92, '', 'Validé', 7, '2026-02-16 15:29:57', '2026-02-19 11:17:28', '', 1),
 (1145, '2026-02-16 15:50:00', 220, NULL, 0, NULL, 1289.20, '', 'Validé', 7, '2026-02-16 15:51:55', '2026-02-19 11:11:09', '', 1),
@@ -1519,7 +1516,6 @@ INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id
 (1528, '2026-04-09 10:56:00', 220, NULL, 0, NULL, 11700.00, '', 'Annulé', 7, '2026-04-09 09:15:36', '2026-04-09 09:28:14', '', 1),
 (1529, '2026-04-09 13:41:00', 220, NULL, 0, NULL, 368.00, '', 'Validé', 11, '2026-04-09 09:41:40', '2026-04-09 17:26:02', '', 1),
 
-INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `montant_total`, `lieu_chargement`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`) VALUES
 (1531, '2026-04-09 13:02:00', 220, NULL, 0, NULL, 20.20, '', 'Validé', 1, '2026-04-09 10:03:38', '2026-04-09 17:26:55', '', 1),
 (1532, '2026-04-09 18:12:00', 220, NULL, 0, NULL, 105.00, '', 'Validé', 11, '2026-04-09 10:15:42', '2026-04-09 17:27:40', '', 1),
 (1533, '2026-04-09 11:53:00', 220, NULL, 0, NULL, 2550.00, '', 'Validé', 1, '2026-04-09 10:54:10', '2026-04-09 17:26:24', '', 1),
@@ -1901,7 +1897,6 @@ INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id
 (1916, '2026-05-15 09:49:00', 220, NULL, 0, NULL, 107.28, '', 'En attente', 11, '2026-05-15 08:49:21', '2026-05-15 08:49:21', '', 1),
 (1917, '2026-05-15 10:09:00', 220, NULL, 0, NULL, 330.00, '', 'En attente', 11, '2026-05-15 09:09:18', '2026-05-15 09:09:18', '', 1),
 
-INSERT INTO `avoirs_client` (`id`, `date_creation`, `client_id`, `fournisseur_id`, `vendre_au_fournisseur`, `phone`, `montant_total`, `lieu_chargement`, `statut`, `created_by`, `created_at`, `updated_at`, `adresse_livraison`, `isNotCalculated`) VALUES
 (1919, '2026-05-15 12:18:00', 220, NULL, 0, NULL, 670.00, '', 'En attente', 1, '2026-05-15 10:19:28', '2026-05-15 10:19:40', '', 1),
 (1920, '2026-05-15 12:37:00', 220, NULL, 0, NULL, 343.75, '', 'En attente', 1, '2026-05-15 11:38:20', '2026-05-15 11:38:20', '', 1),
 

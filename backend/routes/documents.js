@@ -1,7 +1,20 @@
 import { Router } from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import pool from '../db/pool.js';
+import { requireRole, verifyToken } from '../middleware/auth.js';
 
 const router = Router();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const employeeDocsDir = path.resolve(__dirname, '..', 'uploads', 'employee_docs');
+
+router.use(verifyToken);
+
+function requireOwnerOrPdg(req, res, next) {
+  const employeeId = Number(req.params.employe_id);
+  if (req.user?.role === 'PDG' || Number(req.user?.id) === employeeId) return next();
+  return res.status(403).json({ message: 'Accès refusé' });
+}
 
 // Document Types
 router.get('/types', async (_req, res, next) => {
@@ -11,7 +24,7 @@ router.get('/types', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/types', async (req, res, next) => {
+router.post('/types', requireRole('PDG'), async (req, res, next) => {
   try {
     const { nom, description } = req.body;
     if (!nom || !String(nom).trim()) return res.status(400).json({ message: 'Nom requis' });
@@ -22,7 +35,7 @@ router.post('/types', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.put('/types/:id', async (req, res, next) => {
+router.put('/types/:id', requireRole('PDG'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { nom, description } = req.body;
@@ -39,7 +52,7 @@ router.put('/types/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete('/types/:id', async (req, res, next) => {
+router.delete('/types/:id', requireRole('PDG'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     await pool.query('DELETE FROM document_types WHERE id = ?', [id]);
@@ -48,7 +61,7 @@ router.delete('/types/:id', async (req, res, next) => {
 });
 
 // Employee Documents
-router.get('/employees/:employe_id', async (req, res, next) => {
+router.get('/employees/:employe_id', requireOwnerOrPdg, async (req, res, next) => {
   try {
     const employe_id = Number(req.params.employe_id);
     const [rows] = await pool.query(
@@ -63,7 +76,7 @@ router.get('/employees/:employe_id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/employees/:employe_id', async (req, res, next) => {
+router.post('/employees/:employe_id', requireRole('PDG'), async (req, res, next) => {
   try {
     const employe_id = Number(req.params.employe_id);
     const { path, type_doc_id } = req.body;
@@ -84,7 +97,27 @@ router.post('/employees/:employe_id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete('/employees/:employe_id/:id', async (req, res, next) => {
+router.get('/employees/:employe_id/:id/download', requireOwnerOrPdg, async (req, res, next) => {
+  try {
+    const employeeId = Number(req.params.employe_id);
+    const documentId = Number(req.params.id);
+    const [rows] = await pool.query(
+      'SELECT path FROM employe_doc WHERE id = ? AND employe_id = ? LIMIT 1',
+      [documentId, employeeId]
+    );
+    const document = rows[0];
+    if (!document) return res.status(404).json({ message: 'Document introuvable' });
+
+    const filename = path.basename(String(document.path || ''));
+    const absolutePath = path.resolve(employeeDocsDir, filename);
+    if (!filename || path.dirname(absolutePath) !== employeeDocsDir) {
+      return res.status(400).json({ message: 'Chemin de document invalide' });
+    }
+    return res.sendFile(absolutePath, { headers: { 'Cache-Control': 'private, no-store' } });
+  } catch (err) { return next(err); }
+});
+
+router.delete('/employees/:employe_id/:id', requireRole('PDG'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     await pool.query('DELETE FROM employe_doc WHERE id = ?', [id]);

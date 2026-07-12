@@ -1,8 +1,10 @@
 import express from 'express';
 import pool from '../db/pool.js';
-import { verifyToken as auth } from '../middleware/auth.js';
+import { verifyToken as auth, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
+
+router.use(auth, requireRole('PDG'));
 
 // Récupérer tous les horaires d'accès
 router.get('/', auth, async (req, res) => {

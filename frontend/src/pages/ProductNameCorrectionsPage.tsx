@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, RefreshCw, Search, Upload, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, RefreshCw, Search, Upload, XCircle } from 'lucide-react';
 import {
   useApplyProductNameCorrectionsMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
@@ -43,6 +43,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [q, setQ] = useState('');
   const [message, setMessage] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
+  const [transitionedIds, setTransitionedIds] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
 
@@ -59,11 +61,14 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [bulkSetChecked, { isLoading: isBulkUpdating }] = useBulkSetProductNameCorrectionsCheckedMutation();
   const [applyCorrections, { isLoading: isApplying }] = useApplyProductNameCorrectionsMutation();
 
-  const rows = data?.rows || [];
+  const rows = useMemo(() => data?.rows || [], [data?.rows]);
   const summary = data?.summary;
   const meta = data?.meta;
 
-  const visibleRows = rows;
+  const visibleRows = useMemo(
+    () => activeTab === 'initial' ? rows.filter((row) => !transitionedIds.has(row.id)) : rows,
+    [activeTab, rows, transitionedIds]
+  );
 
   const visibleIds = useMemo(() => visibleRows.map((row) => row.id), [visibleRows]);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
@@ -114,12 +119,28 @@ const ProductNameCorrectionsPage: React.FC = () => {
   };
 
   const markRow = async (row: ProductNameCorrectionRow, checked: boolean) => {
-    if (row.applied_at) return;
+    if (row.applied_at || processingIds.has(row.id)) return;
     setMessage('');
+    setProcessingIds((prev) => new Set(prev).add(row.id));
     try {
       await setChecked({ id: row.id, checked }).unwrap();
+      setTransitionedIds((prev) => new Set(prev).add(row.id));
+      if (checked) {
+        const result = await applyCorrections({ ids: [row.id] }).unwrap();
+        setMessage(
+          `Correction appliquée: ${result.productsUpdated} produit(s), ${result.variantsUpdated} variante(s).`
+        );
+      } else {
+        setMessage('Ligne marquée comme fausse.');
+      }
     } catch (error: any) {
       setMessage(`Mise à jour échouée: ${getErrorMessage(error)}`);
+    } finally {
+      setProcessingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(row.id);
+        return next;
+      });
     }
   };
 
@@ -149,12 +170,27 @@ const ProductNameCorrectionsPage: React.FC = () => {
       .map((row) => row.id);
     if (!ids.length) return;
     setMessage('');
+    setProcessingIds((prev) => new Set([...prev, ...ids]));
     try {
       const result = await bulkSetChecked({ ids, checked }).unwrap();
+      setTransitionedIds((prev) => new Set([...prev, ...ids]));
       setSelectedIds(new Set());
-      setMessage(`${checked ? 'Correct' : 'Fausse'}: ${result.updated} lignes mises à jour.`);
+      if (checked) {
+        const applied = await applyCorrections({ ids }).unwrap();
+        setMessage(
+          `Correction appliquée: ${applied.productsUpdated} produit(s), ${applied.variantsUpdated} variante(s) sur ${result.updated} ligne(s).`
+        );
+      } else {
+        setMessage(`Fausse: ${result.updated} lignes mises à jour.`);
+      }
     } catch (error: any) {
       setMessage(`Mise à jour échouée: ${getErrorMessage(error)}`);
+    } finally {
+      setProcessingIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
     }
   };
 
@@ -268,16 +304,16 @@ const ProductNameCorrectionsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => markSelected(true)}
-              disabled={selectedIds.size === 0 || isBulkUpdating}
+              disabled={selectedIds.size === 0 || isBulkUpdating || isApplying}
               className="inline-flex items-center gap-2 rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:bg-gray-300"
             >
               <CheckCircle2 className="h-4 w-4" />
-              Correct
+              Corriger et enregistrer
             </button>
             <button
               type="button"
               onClick={() => markSelected(false)}
-              disabled={selectedIds.size === 0 || isBulkUpdating}
+              disabled={selectedIds.size === 0 || isBulkUpdating || isApplying}
               className="inline-flex items-center gap-2 rounded-md bg-red-700 px-3 py-2 text-sm font-medium text-white hover:bg-red-800 disabled:bg-gray-300"
             >
               <XCircle className="h-4 w-4" />
@@ -306,6 +342,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
                       if (input) input.indeterminate = !allVisibleSelected && someVisibleSelected;
                     }}
                     onChange={(event) => toggleSelectAllVisible(event.target.checked)}
+                    disabled={processingIds.size > 0}
                     className="h-4 w-4 rounded border-gray-300 text-emerald-700 focus:ring-emerald-600"
                     aria-label="Sélectionner les lignes visibles"
                   />
@@ -325,13 +362,14 @@ const ProductNameCorrectionsPage: React.FC = () => {
             <tbody className="divide-y divide-gray-200 bg-white">
               {visibleRows.map((row) => {
                 const isIssue = row.match_status !== 'matched';
+                const isProcessing = processingIds.has(row.id);
                 return (
                   <tr key={row.id} className={isIssue ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}>
                     <td className="px-3 py-3 align-top">
                       <input
                         type="checkbox"
                         checked={selectedIds.has(row.id)}
-                        disabled={Boolean(row.applied_at)}
+                        disabled={Boolean(row.applied_at) || isProcessing}
                         onChange={(event) => toggleSelectRow(row.id, event.target.checked)}
                         className="h-4 w-4 rounded border-gray-300 text-emerald-700 focus:ring-emerald-600 disabled:opacity-40"
                         aria-label={`Sélectionner ligne ${row.id}`}
@@ -342,17 +380,17 @@ const ProductNameCorrectionsPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => markRow(row, true)}
-                          disabled={Boolean(row.applied_at)}
+                          disabled={Boolean(row.applied_at) || isProcessing}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
                           title="Marquer correct"
                           aria-label={`Marquer la ligne ${row.id} correcte`}
                         >
-                          <CheckCircle2 className="h-4 w-4" />
+                          {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                         </button>
                         <button
                           type="button"
                           onClick={() => markRow(row, false)}
-                          disabled={Boolean(row.applied_at)}
+                          disabled={Boolean(row.applied_at) || isProcessing}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40"
                           title="Marquer fausse"
                           aria-label={`Marquer la ligne ${row.id} fausse`}

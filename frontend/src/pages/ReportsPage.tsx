@@ -220,7 +220,7 @@ const ReportsPage: React.FC = () => {
       if (raw === '') return raw;
       
       // remove any leading 'pay', 'pa' (case-insensitive) and optional separators
-      const suffix = raw.replace(/^(pay|pa)\s*[-:\s]*/i, '');
+      const suffix = raw.replace(/^(pay|pa)\s*(?:-|:|\s)*/i, '');
       return `PAY${suffix}`;
     } catch (e) {
       return String(payment?.numero ?? payment?.id ?? '');

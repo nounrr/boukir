@@ -404,7 +404,6 @@ const validationSchemaEdit = Yup.object({
   password: Yup.string().min(6, 'Mot de passe minimum 6 caractères').optional(),
 });
 
-// eslint-disable-next-line sonarjs/cognitive-complexity
 const EmployeePage: React.FC = () => { // NOSONAR
   // TOUS LES HOOKS DOIVENT ÊTRE APPELÉS EN PREMIER (avant toute condition de retour)
   const { user } = useAuth();

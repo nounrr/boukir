@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audit technique et logique — Bpukir</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #667085;
+      --line: #dfe4ec;
+      --paper: #ffffff;
+      --canvas: #f3f5f8;
+      --navy: #11284a;
+      --blue: #2463eb;
+      --red: #c72c41;
+      --orange: #d97706;
+      --green: #087a55;
+      --purple: #6842c2;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font: 15px/1.6 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--blue); }
+    .hero {
+      color: white;
+      background: linear-gradient(120deg, #0b1830, #153f70 68%, #2463eb);
+      padding: 56px 24px 72px;
+    }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+    .eyebrow { text-transform: uppercase; letter-spacing: .13em; font-size: 12px; font-weight: 800; opacity: .75; }
+    h1 { margin: 12px 0 10px; font-size: clamp(34px, 6vw, 64px); line-height: 1.03; max-width: 900px; }
+    .hero p { max-width: 790px; font-size: 18px; color: #d8e6ff; }
+    .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+    .meta span { border: 1px solid #ffffff38; background: #ffffff12; border-radius: 99px; padding: 7px 12px; }
+    main { margin-top: -36px; padding-bottom: 64px; }
+    .panel { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 10px 30px #1720330d; padding: 28px; margin-bottom: 20px; }
+    h2 { margin: 0 0 16px; font-size: 26px; line-height: 1.2; }
+    h3 { margin: 0 0 8px; font-size: 18px; line-height: 1.3; }
+    p { margin: 7px 0 14px; }
+    .lead { font-size: 17px; color: #344054; }
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .metric { border: 1px solid var(--line); border-radius: 14px; padding: 18px; background: #fbfcfe; }
+    .metric strong { display: block; font-size: 30px; line-height: 1; margin-bottom: 8px; }
+    .metric small { color: var(--muted); }
+    .verdict { border-left: 6px solid var(--red); background: #fff6f7; }
+    .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-items: stretch; }
+    .node { position: relative; border: 1px solid #cdd8e8; border-radius: 13px; padding: 16px 14px; background: #f8fbff; min-height: 120px; }
+    .node b { color: var(--navy); display: block; margin-bottom: 6px; }
+    .node:not(:last-child)::after { content: "→"; position: absolute; right: -16px; top: 42%; z-index: 2; font-size: 22px; color: var(--blue); font-weight: 800; }
+    .callout { margin-top: 15px; border-radius: 12px; padding: 14px 16px; background: #f1f5ff; border: 1px solid #d5e1ff; }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); margin-bottom: 16px; }
+    .dot { width: 10px; height: 10px; display: inline-block; border-radius: 50%; margin-right: 5px; }
+    .finding { display: grid; grid-template-columns: 72px 1fr; gap: 18px; padding: 22px 0; border-top: 1px solid var(--line); }
+    .finding:first-of-type { border-top: 0; }
+    .tag { align-self: start; color: white; text-align: center; font-weight: 900; border-radius: 8px; padding: 5px 7px; }
+    .p0 { background: var(--red); }
+    .p1 { background: var(--orange); }
+    .p2 { background: var(--purple); }
+    .p3 { background: var(--green); }
+    .finding p { margin: 5px 0; }
+    .evidence { color: #475467; font-size: 13px; background: #f6f7f9; border-radius: 8px; padding: 9px 11px; margin-top: 9px; overflow-wrap: anywhere; }
+    .solution { margin-top: 10px; padding-left: 13px; border-left: 3px solid var(--green); color: #194b3c; }
+    code { color: #344054; background: #edf0f5; border-radius: 4px; padding: 1px 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { color: #475467; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; background: #f8fafc; }
+    .phase { font-weight: 800; white-space: nowrap; }
+    ul, ol { padding-left: 21px; }
+    li { margin: 6px 0; }
+    .good { color: var(--green); font-weight: 700; }
+    .warn { color: var(--orange); font-weight: 700; }
+    footer { color: var(--muted); text-align: center; padding: 0 20px 44px; }
+    @media (max-width: 900px) {
+      .cards { grid-template-columns: repeat(2, 1fr); }
+      .flow { grid-template-columns: 1fr; }
+      .node:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -23px; }
+    }
+    @media (max-width: 580px) {
+      .panel { padding: 20px; border-radius: 12px; }
+      .cards { grid-template-columns: 1fr; }
+      .finding { grid-template-columns: 1fr; gap: 8px; }
+      .tag { width: 62px; }
+      table { display: block; overflow-x: auto; }
+    }
+    @media print {
+      body { background: white; }
+      .hero { padding: 28px 0 46px; }
+      main { margin-top: -24px; }
+      .panel { box-shadow: none; break-inside: avoid; }
+      .finding { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">Revue technique · sécurité · logique métier</div>
+      <h1>Audit de l’application Bpukir</h1>
+      <p>Cartographie du fonctionnement, contrôle des requêtes et routes, points faibles confirmés dans le code, puis solutions classées par urgence.</p>
+      <div class="meta">
+        <span>Audit du 10 juillet 2026</span>
+        <span>React 19 + TypeScript + Vite</span>
+        <span>Express 4 + MySQL</span>
+        <span>Analyse statique et build local</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel verdict">
+      <h2>Verdict : corrections critiques requises</h2>
+      <p class="lead">L’application possède une couverture fonctionnelle riche et le build de production réussit. Elle ne doit toutefois pas être exposée publiquement dans son état actuel : des API IA sont publiques et modifient la base, tandis que plusieurs opérations d’administration ne vérifient aucun rôle côté serveur.</p>
+      <p class="lead"><strong>Mise à jour du 10 juillet 2026 :</strong> les deux points P0 ont été corrigés dans le code : les routes IA exigent désormais un rôle autorisé et les API d’administration sensibles appliquent un contrôle de rôle côté serveur. Un redémarrage de l’API est requis pour activer ces changements.</p>
+      <p class="lead"><strong>Mise à jour P1 :</strong> secret JWT obligatoire, limites de connexion et uploads, fichiers employés privés, routes statiques accessibles, socket réparé et dépendances mises à jour. L’audit de production ne conserve qu’une alerte haute sur <code>xlsx</code>, sans correctif publié par npm ; ses imports sont limités à 10 Mo et réservés aux rôles de gestion.</p>
+      <p class="lead"><strong>Mise à jour P2 :</strong> le contexte d’audit ne fait plus confiance à <code>x-user-id</code>, les origines CORS sont configurables par liste blanche, Helmet et des limites de requête sont actifs, et la règle de mot de passe reste appliquée jusqu’au changement effectif durant la semaine.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Portée mesurée</h2>
+      <div class="cards">
+        <div class="metric"><strong>328</strong><small>endpoints Express détectés dans 58 fichiers de routes</small></div>
+        <div class="metric"><strong>59</strong><small>routes d’interface dans <code>App.tsx</code></small></div>
+        <div class="metric"><strong>337</strong><small>fichiers JS/TS/TSX examinables côté application</small></div>
+        <div class="metric"><strong>1</strong><small>alerte npm restante en dépendances de production (xlsx, sans correctif npm)</small></div>
+      </div>
+      <p><strong>Méthode.</strong> Lecture des points d’entrée, middlewares, authentification, routes sensibles, stockage frontend, uploads et sockets ; recherche de motifs à risque ; <code>node --check</code>, <code>npm run build</code>, <code>npm run lint</code> et <code>npm audit --omit=dev</code>. La logique nécessitant des données réelles n’a pas été modifiée ni rejouée sur la base de production.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Fonctionnement logique de l’application</h2>
+      <div class="flow" aria-label="Flux principal des requêtes">
+        <div class="node"><b>1. Interface React</b>Les 59 pages affichent stock, contacts, bons, paiements, caisse, rapports, e-commerce et administration.</div>
+        <div class="node"><b>2. État et session</b>Redux Toolkit / RTK Query gèrent les appels. Redux Persist et <code>localStorage</code> conservent le JWT et plusieurs données métier.</div>
+        <div class="node"><b>3. Requête HTTP</b>Le frontend appelle <code>/api/*</code>. En développement, Vite proxifie vers l’API sur le port 3001.</div>
+        <div class="node"><b>4. API Express</b>CORS, contexte d’audit, authentification JWT globale, politique de mot de passe, puis routeur métier.</div>
+        <div class="node"><b>5. MySQL / services</b>Les routeurs lisent ou modifient MySQL. Socket.IO pousse les notifications ; OpenAI et WhatsApp sont appelés selon le module.</div>
+      </div>
+      <div class="callout"><strong>Exceptions publiques prévues :</strong> login, catalogue e-commerce, recherche, promo, points de retrait, catégories/marques en lecture, hero slides, checkout invité et fichiers <code>/uploads</code>. <strong>Exception non sûre :</strong> tout <code>/api/ai</code> est aussi public.</div>
+      <h3 style="margin-top:20px">Cycle d’une requête authentifiée</h3>
+      <ol>
+        <li>Le JWT est lu depuis Redux/localStorage et envoyé dans <code>Authorization: Bearer …</code>.</li>
+        <li>Le middleware global vérifie la signature et place l’identité dans <code>req.user</code>.</li>
+        <li>La politique de changement de mot de passe du lundi peut bloquer la requête.</li>
+        <li>Le routeur valide partiellement les paramètres, exécute la requête SQL et renvoie du JSON.</li>
+        <li>RTK Query met à jour son cache ; Socket.IO peut notifier les utilisateurs concernés.</li>
+      </ol>
+      <p><span class="good">Points solides observés :</span> requêtes SQL généralement paramétrées, bcrypt pour les mots de passe, transactions présentes dans plusieurs workflows financiers, vérification du JWT côté socket, gestionnaire d’erreur central et build de production fonctionnel.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Points faibles confirmés et solutions</h2>
+      <div class="legend">
+        <span><i class="dot p0"></i>P0 critique</span><span><i class="dot p1"></i>P1 majeur</span><span><i class="dot p2"></i>P2 important</span><span><i class="dot p3"></i>P3 amélioration</span>
+      </div>
+
+      <article class="finding">
+        <div class="tag p0">P0</div>
+        <div><h3>Les API IA coûteuses et modificatrices sont publiques</h3>
+          <p>Le middleware autorise sans JWT tout chemin commençant par <code>/api/ai</code>. Or les routes de traduction et de génération appellent OpenAI, et plusieurs utilisent <code>commit = true</code> par défaut avant d’exécuter des <code>UPDATE</code> sur produits et catégories. Un visiteur anonyme peut donc consommer le budget API et altérer le catalogue.</p>
+          <div class="evidence">Preuves : backend/index.js:219-220 ; backend/routes/ai.js:734, 784, 795, 1250-1251, 1523, 1532, 1605-1606, 1871, 2080.</div>
+          <div class="solution"><strong>Solution :</strong> retirer l’exception publique ; appliquer <code>verifyToken</code> + <code>requireRoles('PDG','Manager')</code> au routeur entier ; limiter les modèles autorisés, la taille des lots et les appels par utilisateur/IP ; mettre <code>commit=false</code> par défaut et journaliser le coût.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p0">P0</div>
+        <div><h3>Contrôle des rôles absent sur des API d’administration</h3>
+          <p>Le frontend cache des pages via <code>ProtectedRoute</code>, mais cela n’est pas une barrière de sécurité. Côté API, tout employé possédant un JWT peut créer un autre employé PDG, changer rôles et mots de passe, consulter les salaires, modifier les horaires d’accès ou lire les journaux d’audit.</p>
+          <div class="evidence">Preuves : backend/routes/employees.js:17-148 sans garde de rôle ; backend/routes/employe_salaires.js:74-364 ; backend/routes/accessSchedules.js:8-448 vérifie seulement le token ; backend/routes/audit.js:59-242 sans garde PDG.</div>
+          <div class="solution"><strong>Solution :</strong> définir une matrice RBAC serveur par ressource/action, puis protéger les routeurs au niveau <code>router.use(requireRoles(...))</code>. Ignorer <code>created_by</code>/<code>updated_by</code> reçus du client et toujours utiliser <code>req.user.id</code>. Ajouter des tests d’autorisation 401/403 pour chaque rôle.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p1">P1</div>
+        <div><h3>Secret JWT de secours connu et durée de session longue</h3>
+          <p>Si <code>JWT_SECRET</code> manque, le serveur signe et accepte les tokens avec <code>dev-secret</code>. Une mauvaise configuration de production suffit alors pour fabriquer un token PDG. La durée par défaut est de 7 jours et aucun mécanisme de révocation n’est prévu.</p>
+          <div class="evidence">Preuves : backend/middleware/auth.js:10, 24-26 ; backend/routes/users.js:37-38 ; backend/socket/socketServer.js:43.</div>
+          <div class="solution"><strong>Solution :</strong> refuser le démarrage si le secret est absent ou faible ; séparer les audiences employé/e-commerce ; réduire la durée du token d’accès, ajouter refresh token rotatif et invalidation à la suppression/changement de rôle.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p1">P1</div>
+        <div><h3>Documents employés et justificatifs exposés publiquement</h3>
+          <p>Tout <code>/uploads/*</code> contourne l’authentification et le dossier complet est servi statiquement. Cela inclut <code>/uploads/employee_docs</code> et les images de paiements. Une URL obtenue par historique, journal, cache ou partage donne accès au fichier sans connexion.</p>
+          <div class="evidence">Preuves : backend/index.js:217-218, 256-258 ; backend/routes/upload.js:10-12, 55-59.</div>
+          <div class="solution"><strong>Solution :</strong> ne publier que les images catalogue. Placer les pièces privées hors du répertoire statique et fournir un endpoint de téléchargement protégé par rôle/propriétaire, avec nom opaque et en-têtes <code>Content-Disposition</code>, <code>nosniff</code> et cache privé.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p1">P1</div>
+        <div><h3>Vulnérabilités connues dans les dépendances de production</h3>
+          <p><code>npm audit --omit=dev</code> trouve 29 vulnérabilités : 1 critique, 16 hautes, 11 modérées et 1 faible. Les dépendances directes concernées incluent notamment jsPDF, Axios, Express, Multer, React Router DOM et xlsx.</p>
+          <div class="evidence">Résultat local du 10/07/2026 : 29 alertes sur 478 dépendances de production. Multer est en 2.0.2 ; React Router DOM en 7.7.1 ; xlsx en 0.18.5.</div>
+          <div class="solution"><strong>Solution :</strong> créer une branche dédiée, mettre à jour par petits lots avec tests de régression, commencer par Multer/Express/Axios/jsPDF/React Router. Remplacer ou isoler <code>xlsx</code> si aucune version npm corrigée n’est disponible, puis automatiser audit et Dependabot/Renovate.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p1">P1</div>
+        <div><h3>Uploads insuffisamment bornés et validés</h3>
+          <p>Les uploads génériques de produits n’ont ni limite de taille ni filtre de type. Les documents employés acceptent le MIME déclaré par le client et sont explicitement de taille illimitée. Cela permet épuisement disque/mémoire et fichiers déguisés.</p>
+          <div class="evidence">Preuves : backend/routes/products.js:13-32 ; backend/routes/upload.js:38-46. La dépendance Multer installée possède aussi des alertes DoS.</div>
+          <div class="solution"><strong>Solution :</strong> limites globales et par route (taille, nombre de fichiers, champs), détection du type réel par signature, réencodage des images, quotas, nettoyage en cas d’échec, stockage objet et antivirus pour PDF/documents.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p1">P1</div>
+        <div><h3>Absence de limitation sur le login employé</h3>
+          <p>Le login e-commerce gère les tentatives et le verrouillage, mais <code>/api/auth/login</code> pour les employés ne possède ni limitation par IP/CIN ni verrouillage progressif. Les identifiants peuvent être testés en continu.</p>
+          <div class="evidence">Preuves : backend/routes/auth.js:27-77 ; le verrouillage existe seulement dans backend/routes/users.js:340-395.</div>
+          <div class="solution"><strong>Solution :</strong> rate limit distribué (Redis si plusieurs instances), délai progressif, compteur par IP + identifiant, alerte après seuil, messages uniformes et MFA pour PDG/Manager.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p1">P1</div>
+        <div><h3>Routes Express inaccessibles à cause de l’ordre</h3>
+          <p><code>GET /employees/deleted/list</code> est déclaré après <code>GET /employees/:id</code> : “deleted” est traité comme un ID. Le même défaut touche <code>GET /products/last-commandes</code>, placé après <code>GET /products/:id</code>.</p>
+          <div class="evidence">Preuves : backend/routes/employees.js:24 puis 123 ; backend/routes/products.js:1857 puis 3211.</div>
+          <div class="solution"><strong>Solution :</strong> déclarer toutes les routes statiques avant <code>/:id</code> et contraindre l’ID avec une validation numérique. Ajouter un test de disponibilité de toutes les routes déclarées.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p1">P1</div>
+        <div><h3>Handler Socket.IO “ping” défectueux</h3>
+          <p>Le callback commence par <code>nom_complet || socket.user.socket.emit(...)</code>. <code>nom_complet</code> n’est pas défini ; recevoir l’événement peut déclencher une erreur d’exécution au lieu de répondre “pong”.</p>
+          <div class="evidence">Preuve : backend/socket/socketServer.js:120-122. Le fichier passe le parseur Node, mais le chemin est incorrect à l’exécution.</div>
+          <div class="solution"><strong>Solution :</strong> remplacer le corps par <code>socket.emit('pong', { timestamp: Date.now() })</code> et ajouter un test socket authentifié connexion/ping/déconnexion.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p2">P2</div>
+        <div><h3>Traçabilité falsifiable sur les routes publiques</h3>
+          <p>Le contexte d’audit accepte directement l’en-tête client <code>x-user-id</code>. Les routes protégées le remplacent après vérification du token, mais les écritures publiques (par exemple checkout invité) peuvent attribuer une opération à un ID employé choisi par l’appelant.</p>
+          <div class="evidence">Preuves : backend/index.js:133-138, 242-247 ; backend/db/pool.js:30-33.</div>
+          <div class="solution"><strong>Solution :</strong> ne jamais faire confiance à <code>x-user-id</code> venant d’Internet ; l’identité doit provenir exclusivement du JWT validé. Pour un invité, stocker <code>null</code> et un identifiant guest séparé.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p2">P2</div>
+        <div><h3>Politique de mot de passe incohérente et “fail open”</h3>
+          <p>Le changement est imposé uniquement le lundi. Un utilisateur qui ne se connecte pas ce jour-là n’est plus bloqué mardi. En cas d’erreur base, le middleware autorise l’accès. Changer chaque semaine incite aussi aux mots de passe prévisibles.</p>
+          <div class="evidence">Preuves : backend/middleware/passwordPolicy.js:23-39, 67-81.</div>
+          <div class="solution"><strong>Solution :</strong> préférer longueur forte, mots de passe compromis, MFA et rotation seulement en cas de risque. Si une règle périodique reste obligatoire, enregistrer une échéance persistante et la faire respecter tous les jours ; échouer de façon contrôlée sur les opérations sensibles.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p2">P2</div>
+        <div><h3>CORS trop permissif et protections HTTP absentes</h3>
+          <p>L’API reflète toute origine avec <code>credentials: true</code>. Aucun Helmet, HSTS, CSP ou limite globale de taille JSON n’est configuré. Le JWT dans l’en-tête réduit le risque CSRF classique, mais cette configuration élargit inutilement la surface.</p>
+          <div class="evidence">Preuves : backend/index.js:122-131 ; aucune dépendance Helmet/rate-limit globale dans package.json.</div>
+          <div class="solution"><strong>Solution :</strong> liste blanche d’origines par environnement, Helmet, limite JSON/URL-encoded, <code>trust proxy</code> explicite, TLS obligatoire et politique CSP adaptée au frontend.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p2">P2</div>
+        <div><h3>Qualité non bloquante : 3 945 alertes ESLint</h3>
+          <p>Le lint échoue avec 3 818 erreurs et 127 avertissements. Au-delà des nombreux <code>any</code>, un Hook React est appelé conditionnellement dans <code>AvoirFormModal</code>, ce qui peut associer le mauvais état entre deux rendus. Une règle ESLint Sonar référencée n’est même pas installée.</p>
+          <div class="evidence">Commande : <code>npm run lint</code>. Exemple fonctionnel : frontend/src/components/AvoirFormModal.tsx:138. Configuration cassée : backend/routes/employees.js:63.</div>
+          <div class="solution"><strong>Solution :</strong> corriger d’abord les règles fonctionnelles (Hooks, dépendances d’effets, variables non définies), établir une baseline pour les <code>any</code>, puis réduire progressivement. Bloquer seulement les nouvelles erreurs en CI durant la transition.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p2">P2</div>
+        <div><h3>Bundle frontend lourd et état dupliqué</h3>
+          <p>Le bundle principal généré fait 3,88 Mo minifié (1,03 Mo gzip). L’application importe beaucoup de pages sans découpage. Le store Redux est en plus fourni deux fois : dans <code>main.tsx</code> et dans <code>App.tsx</code>. Plusieurs grandes collections métier sont persistées localement, avec risque de données obsolètes et d’exposition en cas de XSS.</p>
+          <div class="evidence">Build Vite local ; frontend/src/main.tsx:22-23 ; frontend/src/App.tsx:755-759 ; frontend/src/store/index.ts:28-31.</div>
+          <div class="solution"><strong>Solution :</strong> un seul Provider ; lazy loading des pages et bibliothèques PDF/XLSX ; ne persister que la session minimale ; préférer cookie HttpOnly sécurisé pour l’authentification et cache RTK Query borné/invalidation serveur.</div>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="tag p3">P3</div>
+        <div><h3>Migrations de schéma lancées de façon asynchrone au démarrage</h3>
+          <p>Les fonctions <code>ensure…Schema</code> démarrent avant l’écoute, mais ne sont pas chaînées à <code>ensureDb()</code>. Le serveur peut donc accepter des requêtes alors qu’une migration continue ou a échoué, et plusieurs instances peuvent tenter le même DDL.</p>
+          <div class="evidence">Preuve : backend/index.js:88-116 puis démarrage indépendant à 424-430.</div>
+          <div class="solution"><strong>Solution :</strong> migrations versionnées exécutées comme étape de déploiement avec verrou ; démarrage refusé si la version attendue n’est pas présente ; retirer les ALTER TABLE automatiques des routes et du boot.</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>Plan de correction recommandé</h2>
+      <table>
+        <thead><tr><th>Phase</th><th>Délai cible</th><th>Actions</th><th>Critère de sortie</th></tr></thead>
+        <tbody>
+          <tr><td class="phase">Urgence</td><td>0–48 h</td><td>Fermer <code>/api/ai</code>, imposer RBAC sur employés/salaires/horaires/audit, supprimer <code>dev-secret</code>, protéger les documents privés.</td><td>Un invité reçoit 401 et un employé non autorisé reçoit 403 sur chaque API sensible.</td></tr>
+          <tr><td class="phase">Stabilisation</td><td>Semaine 1</td><td>Mettre à jour dépendances critiques, rate-limit des logins/IA, borner les uploads, corriger les routes masquées et le ping socket.</td><td>Audit sans critique ; scénarios login/upload/routes/socket automatisés et verts.</td></tr>
+          <tr><td class="phase">Fiabilité métier</td><td>Semaines 2–3</td><td>Tests d’intégration des bons, stock, paiements, avoirs, remises et caisse ; vérifier transactions, concurrence et idempotence.</td><td>Aucune écriture partielle après erreur ; stock et soldes restent cohérents sous requêtes concurrentes.</td></tr>
+          <tr><td class="phase">Qualité</td><td>Semaines 3–5</td><td>Corriger Hooks et erreurs runtime, baseline lint, découpage du bundle, nettoyage Redux Persist, migrations de déploiement.</td><td>CI obligatoire : build, lint ciblé, tests et audit ; bundle initial sous budget défini.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Tests à ajouter en priorité</h2>
+      <ul>
+        <li><strong>RBAC :</strong> matrice invité / Employé / Chauffeur / Manager / PDG × lecture / création / modification / suppression.</li>
+        <li><strong>Documents :</strong> un utilisateur non autorisé ne peut ni lister ni télécharger une pièce employé ou paiement.</li>
+        <li><strong>Stock et finance :</strong> double soumission, annulation répétée, paiement partiel, avoir, remise, stock insuffisant et concurrence.</li>
+        <li><strong>Routes :</strong> test “smoke” de chaque endpoint statique afin de détecter l’interception par <code>/:id</code>.</li>
+        <li><strong>IA :</strong> authentification, rôle, quota, lot maximal, modèle autorisé, preview sans écriture et commit explicite.</li>
+        <li><strong>Uploads :</strong> extension mensongère, MIME incorrect, fichier trop grand, requête interrompue, trop de fichiers et nettoyage.</li>
+        <li><strong>Frontend :</strong> navigation par rôle, expiration du token, changement de mot de passe, erreurs API, rendu mobile et chargement paresseux.</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>Conclusion</h2>
+      <p>La logique générale est compréhensible et plusieurs workflows utilisent de bonnes bases techniques. Le risque principal n’est pas le SQL, mais la frontière d’autorisation : l’interface applique des rôles que l’API ne réplique pas systématiquement. La priorité absolue est donc de sécuriser le serveur, puis de protéger les fichiers et les services coûteux avant toute optimisation visuelle ou refactorisation.</p>
+      <p><strong>Confiance de l’audit : élevée</strong> pour les constats accompagnés de lignes de code ; moyenne pour l’impact métier exact, qui doit être confirmé avec une base de test représentative et les règles métier officielles.</p>
+    </section>
+  </main>
+
+  <footer>Rapport autonome HTML — aucune ressource externe requise — dépôt Bpukir</footer>
+</body>
+</html>

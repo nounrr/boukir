@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audit final après corrections — Bpukir</title>
+  <style>
+    :root{--ink:#172033;--muted:#667085;--line:#dfe4ec;--bg:#f2f5f7;--paper:#fff;--green:#138a60;--orange:#d97706;--blue:#2867d9;--teal:#087f6d}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.62 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}code{background:#edf1f5;padding:1px 5px;border-radius:4px;color:#344054}.wrap{width:min(1160px,calc(100% - 32px));margin:auto}
+    .hero{padding:54px 24px 76px;color:#fff;background:radial-gradient(circle at 82% 18%,#19a68b55,transparent 28%),linear-gradient(125deg,#0b1d31,#124e61 72%,#0c8475)}.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:#a9e4d8}.hero h1{font-size:clamp(34px,6vw,62px);line-height:1.04;margin:12px 0}.hero p{max-width:840px;font-size:18px;color:#d6f1ec}.pills{display:flex;gap:9px;flex-wrap:wrap;margin-top:23px}.pills span{padding:7px 12px;border:1px solid #ffffff38;background:#ffffff12;border-radius:99px}
+    main{margin-top:-38px;padding-bottom:60px}.panel{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:28px;margin-bottom:20px;box-shadow:0 10px 28px #1720330c}.verdict{border-left:6px solid var(--green);background:#f5fffb}h2{font-size:26px;line-height:1.2;margin:0 0 16px}h3{font-size:18px;line-height:1.3;margin:0 0 7px}p{margin:7px 0 14px}.lead{font-size:17px;color:#344054}
+    .metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:11px}.metric{padding:18px;border:1px solid var(--line);border-radius:13px;background:#fafcfd}.metric strong{font-size:29px;line-height:1;display:block;margin-bottom:8px}.metric small{color:var(--muted)}
+    table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:#475467;text-transform:uppercase;background:#f8fafc}.done{color:var(--green);font-weight:800}.partial{color:var(--orange);font-weight:800}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{border:1px solid var(--line);border-radius:13px;padding:17px;background:#fbfcfd}.card ul{margin-bottom:0}ul{padding-left:21px}li{margin:6px 0}.note{padding:14px 16px;border:1px solid #cfe2de;border-radius:11px;background:#f1faf8}.warning{border-color:#f1d49f;background:#fff9ed}.small{font-size:13px;color:var(--muted)}footer{text-align:center;color:var(--muted);padding:0 20px 42px}
+    @media(max-width:900px){.metrics{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}@media(max-width:580px){.panel{padding:20px}.metrics{grid-template-columns:1fr}table{display:block;overflow-x:auto}}@media print{body{background:#fff}.panel{box-shadow:none;break-inside:avoid}}
+  </style>
+</head>
+<body>
+  <header class="hero"><div class="wrap">
+    <div class="eyebrow">Audit final technique et sécurité</div>
+    <h1>Bpukir — état après corrections</h1>
+    <p>Vérification du code courant après traitement de tous les constats P0, P1, P2 et du risque de démarrage classé P3.</p>
+    <div class="pills"><span>10 juillet 2026</span><span>React 19 + Vite</span><span>Express 4 + MySQL</span><span>Rapport autonome</span></div>
+  </div></header>
+
+  <main class="wrap">
+    <section class="panel verdict">
+      <h2>Verdict : aucun point critique ou majeur connu encore ouvert</h2>
+      <p class="lead">Les constats fonctionnels et de sécurité du contre-audit ont été corrigés dans le code. La compilation, le typage, le lint et l’audit npm de production passent. La validation dynamique complète contre une copie de la base reste nécessaire avant mise en production.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Résultats mesurés</h2>
+      <div class="metrics">
+        <div class="metric"><strong>0</strong><small>P0 ouverts</small></div>
+        <div class="metric"><strong>0</strong><small>P1 ouverts connus</small></div>
+        <div class="metric"><strong>0</strong><small>vulnérabilité npm production</small></div>
+        <div class="metric"><strong>0</strong><small>erreur ESLint</small></div>
+        <div class="metric"><strong>256 Ko</strong><small>JS initial gzip</small></div>
+      </div>
+      <p class="small">Le bundle principal est passé de 3,93 Mo à 1,18 Mo minifié, soit environ 256 Ko gzip. Les pages lourdes sont désormais chargées à la demande.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Suivi de tous les constats</h2>
+      <table>
+        <thead><tr><th>Constat précédent</th><th>État</th><th>Correction appliquée</th></tr></thead>
+        <tbody>
+          <tr><td>Horaires contournables par appel API</td><td class="done">Corrigé</td><td>Validation serveur globale des horaires sur chaque requête employé protégée, en mode fermé si la vérification échoue.</td></tr>
+          <tr><td>Rôle ou compte supprimé encore valide via JWT</td><td class="done">Corrigé</td><td>Utilisateur actif et rôle courant relus en base avant les routes protégées.</td></tr>
+          <tr><td>Documents personnels inaccessibles à leur propriétaire</td><td class="done">Corrigé</td><td>Lecture et téléchargement protégés pour le propriétaire ou le PDG ; écriture et suppression réservées au PDG.</td></tr>
+          <tr><td>Ordre invalide des Hooks React</td><td class="done">Corrigé</td><td>Hooks déplacés avant les retours conditionnels et requêtes conditionnées avec <code>skip</code>.</td></tr>
+          <tr><td><code>xlsx</code> vulnérable</td><td class="done">Corrigé</td><td>Passage à SheetJS 0.20.3 depuis la distribution officielle ; audit npm production à zéro.</td></tr>
+          <tr><td>Uploads incomplets ou non bornés</td><td class="done">Corrigé</td><td>Limites de taille/nombre, filtre de type et validation de signature sur produits, documents, marques, catégories et imports concernés.</td></tr>
+          <tr><td>Diagnostics DB et test WhatsApp publics</td><td class="done">Corrigé</td><td>Endpoints retirés de la liste publique et réservés au PDG.</td></tr>
+          <tr><td>Limiteur de connexion en mémoire locale</td><td class="done">Corrigé</td><td>Compteur persistant MySQL, clé hachée, fenêtre de 15 minutes et mise à jour atomique.</td></tr>
+          <tr><td>Lecture non bornée des paiements</td><td class="done">Corrigé</td><td>Plafond serveur dur à 5 000 lignes ; endpoint paginé conservé pour les écrans volumineux.</td></tr>
+          <tr><td>Dette lint, CSS invalide et bundle monolithique</td><td class="done">Corrigé au niveau bloquant</td><td>0 erreur lint, règle CSS corrigée, chunks fournisseurs et lazy-loading des neuf pages les plus lourdes.</td></tr>
+          <tr><td>Migrations lancées en parallèle du serveur</td><td class="done">Corrigé</td><td>Le serveur attend maintenant la connexion, les schémas et la migration des mots de passe avant d’écouter.</td></tr>
+          <tr><td>Routeurs très volumineux</td><td class="partial">Dette non bloquante</td><td>Pas de défaut fonctionnel isolé ; leur découpage reste une amélioration de maintenabilité à réaliser progressivement.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Contrôles exécutés après la dernière modification</h2>
+      <div class="grid2">
+        <div class="card"><h3>Réussis</h3><ul>
+          <li>Syntaxe Node de tous les fichiers backend modifiés</li>
+          <li><code>npx tsc --noEmit</code></li>
+          <li><code>npm run lint</code> : 0 erreur</li>
+          <li><code>npm run build</code> : 2 974 modules compilés</li>
+          <li><code>npm audit --omit=dev</code> : 0 vulnérabilité</li>
+          <li>Plus aucun avertissement de syntaxe CSS</li>
+        </ul></div>
+        <div class="card"><h3>Risques résiduels à surveiller</h3><ul>
+          <li>224 avertissements lint de dette historique</li>
+          <li>Trois chunks restent supérieurs à 500 Ko minifiés</li>
+          <li>Absence d’une suite d’intégration automatisée avec MySQL</li>
+          <li>Routeurs métier encore volumineux</li>
+          <li>Données Browserslist locales anciennes</li>
+        </ul></div>
+      </div>
+      <p class="note warning"><strong>Limite de validation :</strong> l’API n’a pas été démarrée contre la base réelle afin de ne pas modifier les données. Avant déploiement, exécuter sur une copie de base les scénarios login, changement de rôle, fin d’horaire, accès aux documents, upload invalide et paiements paginés.</p>
+    </section>
+  </main>
+  <footer>Rapport final autonome — état du workspace après traitement des constats</footer>
+</body>
+</html>

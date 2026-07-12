@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import bcrypt from 'bcryptjs';
+import { verifyToken, requireRole, requireRoles, requireSelfOrRoles } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(verifyToken);
 
 // Helper: convert undefined, null, or empty/whitespace-only strings to null; trim strings
 function clean(value) {
@@ -14,26 +17,32 @@ function clean(value) {
   return value;
 }
 
-router.get('/', async (_req, res, next) => {
+router.get('/', requireRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
   try {
     const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE deleted_at IS NULL ORDER BY id DESC');
+    if (req.user?.role !== 'PDG') {
+      rows.forEach((employee) => { employee.salaire = null; });
+    }
     res.json(rows);
   } catch (err) { next(err); }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id(\\d+)', requireSelfOrRoles('PDG', 'ManagerPlus'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ? AND deleted_at IS NULL', [id]);
     const emp = rows[0];
     if (!emp) return res.status(404).json({ message: 'Employé introuvable' });
+    if (req.user?.role !== 'PDG' && Number(req.user?.id) !== id) {
+      emp.salaire = null;
+    }
     res.json(emp);
   } catch (err) { next(err); }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', requireRole('PDG'), async (req, res, next) => {
   try {
-  const { nom_complet, cin, date_embauche, role, salaire, password, created_by } = req.body;
+  const { nom_complet, cin, date_embauche, role, salaire, password } = req.body;
 
     // Required: CIN and password
     const cinTrim = typeof cin === 'string' ? cin.trim() : cin;
@@ -52,7 +61,7 @@ router.post('/', async (req, res, next) => {
     const hashed = await bcrypt.hash(password.trim(), 10);
     const [result] = await pool.query(
       'INSERT INTO employees (nom_complet, cin, date_embauche, role, salaire, password, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [clean(nom_complet), cinTrim, clean(date_embauche), clean(role), clean(salaire), hashed, clean(created_by), now, now]
+      [clean(nom_complet), cinTrim, clean(date_embauche), clean(role), clean(salaire), hashed, req.user.id, now, now]
     );
     const id = result.insertId;
     const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
@@ -60,11 +69,10 @@ router.post('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// eslint-disable-next-line sonarjs/cognitive-complexity
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', requireRole('PDG'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { nom_complet, cin, date_embauche, role, salaire, password, updated_by } = req.body;
+    const { nom_complet, cin, date_embauche, role, salaire, password } = req.body;
     const [rows0] = await pool.query('SELECT * FROM employees WHERE id = ? AND deleted_at IS NULL', [id]);
     if (rows0.length === 0) return res.status(404).json({ message: 'Employé introuvable' });
     if (cin !== undefined) {
@@ -85,7 +93,7 @@ router.put('/:id', async (req, res, next) => {
       const hashed = await bcrypt.hash(password.trim(), 10);
       fields.push('password = ?'); values.push(hashed);
     }
-    if (updated_by !== undefined) { fields.push('updated_by = ?'); values.push(clean(updated_by)); }
+    fields.push('updated_by = ?'); values.push(req.user.id);
     fields.push('updated_at = ?'); values.push(now);
     if (fields.length === 0) {
       const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
@@ -99,11 +107,9 @@ router.put('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireRole('PDG'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { updated_by } = req.body;
-    
     const [empRows] = await pool.query('SELECT role FROM employees WHERE id = ? AND deleted_at IS NULL', [id]);
     if (empRows.length === 0) return res.status(404).json({ message: 'Employé introuvable' });
     
@@ -114,13 +120,13 @@ router.delete('/:id', async (req, res, next) => {
     
     // Soft delete: set deleted_at timestamp
     const now = new Date();
-    await pool.query('UPDATE employees SET deleted_at = ?, updated_by = ?, updated_at = ? WHERE id = ?', [now, updated_by, now, id]);
+    await pool.query('UPDATE employees SET deleted_at = ?, updated_by = ?, updated_at = ? WHERE id = ?', [now, req.user.id, now, id]);
     res.status(204).send();
   } catch (err) { next(err); }
 });
 
 // Route pour récupérer les employés supprimés (pour l'administration)
-router.get('/deleted/list', async (_req, res, next) => {
+router.get('/deleted/list', requireRole('PDG'), async (_req, res, next) => {
   try {
     const [rows] = await pool.query(
       'SELECT id, nom_complet, cin, date_embauche, role, salaire, deleted_at, updated_by FROM employees WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC'
@@ -130,16 +136,14 @@ router.get('/deleted/list', async (_req, res, next) => {
 });
 
 // Route pour restaurer un employé supprimé
-router.post('/:id/restore', async (req, res, next) => {
+router.post('/:id/restore', requireRole('PDG'), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    const { updated_by } = req.body;
-    
     const [empRows] = await pool.query('SELECT id FROM employees WHERE id = ? AND deleted_at IS NOT NULL', [id]);
     if (empRows.length === 0) return res.status(404).json({ message: 'Employé supprimé introuvable' });
     
     const now = new Date();
-    await pool.query('UPDATE employees SET deleted_at = NULL, updated_by = ?, updated_at = ? WHERE id = ?', [updated_by, now, id]);
+    await pool.query('UPDATE employees SET deleted_at = NULL, updated_by = ?, updated_at = ? WHERE id = ?', [req.user.id, now, id]);
     
     // Retourner l'employé restauré
     const [rows] = await pool.query('SELECT id, nom_complet, cin, date_embauche, role, salaire, created_by, updated_by, created_at, updated_at FROM employees WHERE id = ?', [id]);
