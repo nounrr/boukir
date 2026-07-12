@@ -21,17 +21,18 @@ function sleep(ms) {
 
 async function withSchemaLock(db, fn) {
   const lockName = 'boukir_schema_lock';
+  const ownsConnection = typeof db?.getConnection === 'function';
+  const connection = ownsConnection ? await db.getConnection() : db;
   try {
-    const [rows] = await db.execute('SELECT GET_LOCK(?, 15) AS ok', [lockName]);
-    const ok = Number(rows?.[0]?.ok || 0);
-    if (ok !== 1) return await fn();
-    return await fn();
+    await connection.execute('SELECT GET_LOCK(?, 15) AS ok', [lockName]);
+    return await fn(connection);
   } finally {
     try {
-      await db.execute('SELECT RELEASE_LOCK(?)', [lockName]);
+      await connection.execute('SELECT RELEASE_LOCK(?)', [lockName]);
     } catch {
       // ignore
     }
+    if (ownsConnection) connection.release();
   }
 }
 
@@ -59,19 +60,19 @@ export async function ensureCategoryColumns(db = pool) {
   }
 
   ensureState.categoriesColumns.inFlight = (async () => {
-    await withSchemaLock(db, async () => {
+    await withSchemaLock(db, async (connection) => {
       // Added by migrations (keep runtime guard for dev/prod drift)
-      if (!(await columnExists(db, 'categories', 'image_url'))) {
-        await execDdlWithRetry(db, `ALTER TABLE categories ADD COLUMN image_url VARCHAR(255) DEFAULT NULL`);
+      if (!(await columnExists(connection, 'categories', 'image_url'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN image_url VARCHAR(255) DEFAULT NULL`);
       }
-      if (!(await columnExists(db, 'categories', 'nom_ar'))) {
-        await execDdlWithRetry(db, `ALTER TABLE categories ADD COLUMN nom_ar VARCHAR(255) NULL`);
+      if (!(await columnExists(connection, 'categories', 'nom_ar'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN nom_ar VARCHAR(255) NULL`);
       }
-      if (!(await columnExists(db, 'categories', 'nom_en'))) {
-        await execDdlWithRetry(db, `ALTER TABLE categories ADD COLUMN nom_en VARCHAR(255) NULL`);
+      if (!(await columnExists(connection, 'categories', 'nom_en'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN nom_en VARCHAR(255) NULL`);
       }
-      if (!(await columnExists(db, 'categories', 'nom_zh'))) {
-        await execDdlWithRetry(db, `ALTER TABLE categories ADD COLUMN nom_zh VARCHAR(255) NULL`);
+      if (!(await columnExists(connection, 'categories', 'nom_zh'))) {
+        await execDdlWithRetry(connection, `ALTER TABLE categories ADD COLUMN nom_zh VARCHAR(255) NULL`);
       }
     });
 
