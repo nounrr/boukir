@@ -1,0 +1,10 @@
+ALTER TABLE product_photo_images ADD COLUMN ai_provider VARCHAR(32) NULL;
+ALTER TABLE product_photo_images ADD COLUMN ai_model VARCHAR(64) NULL;
+ALTER TABLE product_photo_images ADD COLUMN ai_quality VARCHAR(16) NULL;
+ALTER TABLE product_photo_images ADD COLUMN ai_size VARCHAR(32) NULL;
+ALTER TABLE product_photo_images ADD COLUMN ai_input_tokens INT UNSIGNED NULL;
+ALTER TABLE product_photo_images ADD COLUMN ai_input_text_tokens INT UNSIGNED NULL;
+ALTER TABLE product_photo_images ADD COLUMN ai_input_image_tokens INT UNSIGNED NULL;
+ALTER TABLE product_photo_images ADD COLUMN ai_output_tokens INT UNSIGNED NULL;
+ALTER TABLE product_photo_images ADD COLUMN ai_cost_usd DECIMAL(12,8) NULL;
+ALTER TABLE product_photo_images ADD COLUMN ai_pricing_version DATE NULL;

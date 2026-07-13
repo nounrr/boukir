@@ -88,10 +88,46 @@ async function ensureSchema() {
       source_image_id INT NULL,
       image_url VARCHAR(255) NOT NULL,
       position INT DEFAULT 0,
+      ai_provider VARCHAR(32) NULL,
+      ai_model VARCHAR(64) NULL,
+      ai_quality VARCHAR(16) NULL,
+      ai_size VARCHAR(32) NULL,
+      ai_input_tokens INT UNSIGNED NULL,
+      ai_input_text_tokens INT UNSIGNED NULL,
+      ai_input_image_tokens INT UNSIGNED NULL,
+      ai_output_tokens INT UNSIGNED NULL,
+      ai_cost_usd DECIMAL(12,8) NULL,
+      ai_pricing_version DATE NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT fk_photo_images_shoot FOREIGN KEY (shoot_id) REFERENCES product_photo_shoots(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
+
+  // Self-heal installations where the original table already exists.
+  const [imageColumns] = await pool.query('SHOW COLUMNS FROM product_photo_images');
+  const existingImageColumns = new Set(imageColumns.map((column) => column.Field));
+  const costColumns = [
+    ['ai_provider', 'VARCHAR(32) NULL'],
+    ['ai_model', 'VARCHAR(64) NULL'],
+    ['ai_quality', 'VARCHAR(16) NULL'],
+    ['ai_size', 'VARCHAR(32) NULL'],
+    ['ai_input_tokens', 'INT UNSIGNED NULL'],
+    ['ai_input_text_tokens', 'INT UNSIGNED NULL'],
+    ['ai_input_image_tokens', 'INT UNSIGNED NULL'],
+    ['ai_output_tokens', 'INT UNSIGNED NULL'],
+    ['ai_cost_usd', 'DECIMAL(12,8) NULL'],
+    ['ai_pricing_version', 'DATE NULL'],
+  ];
+  for (const [column, definition] of costColumns) {
+    if (!existingImageColumns.has(column)) {
+      try {
+        await pool.query(`ALTER TABLE product_photo_images ADD COLUMN ${column} ${definition}`);
+      } catch (error) {
+        // Another request may have completed the one-time schema initialization.
+        if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
+      }
+    }
+  }
 
   ensuredSchema = true;
 }
@@ -116,6 +152,15 @@ const DEFAULT_IMAGE_MODEL = ALLOWED_IMAGE_MODELS.has(process.env.AI_IMAGE_MODEL)
 const DEFAULT_IMAGE_QUALITY = ALLOWED_IMAGE_QUALITIES.has(process.env.AI_IMAGE_QUALITY)
   ? process.env.AI_IMAGE_QUALITY
   : 'medium';
+
+// USD per 1M tokens. Store this version with every result so historical costs
+// stay stable when provider pricing changes later.
+const IMAGE_PRICING_VERSION = '2026-07-13';
+const IMAGE_TOKEN_RATES = {
+  'gpt-image-2': { textInput: 5, imageInput: 8, imageOutput: 30 },
+  'gpt-image-1.5': { textInput: 5, imageInput: 8, imageOutput: 32 },
+  'gpt-image-1-mini': { textInput: 2, imageInput: 2.5, imageOutput: 8 },
+};
 const IMAGE_PROMPT =
   process.env.AI_IMAGE_PROMPT ||
   'Professional e-commerce studio product photo. ' +
@@ -130,6 +175,39 @@ const getOpenAIClient = () => {
   if (!key) return null;
   return new OpenAI({ apiKey: key, maxRetries: 2 });
 };
+
+function getImageBilling(result, { model, quality }) {
+  const usage = result?.usage;
+  const rates = IMAGE_TOKEN_RATES[model];
+  const inputTextTokens = Number(usage?.input_tokens_details?.text_tokens);
+  const inputImageTokens = Number(usage?.input_tokens_details?.image_tokens);
+  const outputTokens = Number(usage?.output_tokens);
+  const hasDetailedUsage =
+    rates &&
+    Number.isFinite(inputTextTokens) &&
+    Number.isFinite(inputImageTokens) &&
+    Number.isFinite(outputTokens);
+
+  const costUsd = hasDetailedUsage
+    ? (inputTextTokens * rates.textInput +
+        inputImageTokens * rates.imageInput +
+        outputTokens * rates.imageOutput) /
+      1_000_000
+    : null;
+
+  return {
+    provider: 'openai',
+    model,
+    quality: result?.quality || quality,
+    size: result?.size || null,
+    inputTokens: Number.isFinite(Number(usage?.input_tokens)) ? Number(usage.input_tokens) : null,
+    inputTextTokens: Number.isFinite(inputTextTokens) ? inputTextTokens : null,
+    inputImageTokens: Number.isFinite(inputImageTokens) ? inputImageTokens : null,
+    outputTokens: Number.isFinite(outputTokens) ? outputTokens : null,
+    costUsd,
+    pricingVersion: IMAGE_PRICING_VERSION,
+  };
+}
 
 async function processOneImage(client, image, { model, quality }) {
   const abs = absolutePathForUrl(image.image_url);
@@ -169,7 +247,10 @@ async function processOneImage(client, image, { model, quality }) {
 
   const filename = `ai-${Date.now()}-${Math.round(Math.random() * 1e9)}.png`;
   fs.writeFileSync(path.join(shootsDir, filename), Buffer.from(b64, 'base64'));
-  return publicUrlFor(filename);
+  return {
+    url: publicUrlFor(filename),
+    billing: getImageBilling(result, { model, quality }),
+  };
 }
 
 // Sequential background worker per request (avoids rate-limit bursts)
@@ -195,10 +276,31 @@ async function processShootsInBackground(shootIds, options) {
         );
         if (existing.length) continue;
 
-        const url = await processOneImage(client, img, options);
+        const processed = await processOneImage(client, img, options);
+        const billing = processed.billing;
         await pool.query(
-          `INSERT INTO product_photo_images (shoot_id, kind, source_image_id, image_url, position) VALUES (?, 'processed', ?, ?, ?)`,
-          [shootId, img.id, url, img.position]
+          `INSERT INTO product_photo_images (
+             shoot_id, kind, source_image_id, image_url, position,
+             ai_provider, ai_model, ai_quality, ai_size,
+             ai_input_tokens, ai_input_text_tokens, ai_input_image_tokens, ai_output_tokens,
+             ai_cost_usd, ai_pricing_version
+           ) VALUES (?, 'processed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            shootId,
+            img.id,
+            processed.url,
+            img.position,
+            billing.provider,
+            billing.model,
+            billing.quality,
+            billing.size,
+            billing.inputTokens,
+            billing.inputTextTokens,
+            billing.inputImageTokens,
+            billing.outputTokens,
+            billing.costUsd,
+            billing.pricingVersion,
+          ]
         );
       }
 
@@ -221,9 +323,21 @@ async function processShootsInBackground(shootIds, options) {
 // ----------------------------
 // Helpers
 // ----------------------------
-async function getShootsWithDetails({ ids = null, status = null, q = null, limit = 200 } = {}) {
+async function getShootsWithDetails({
+  ids = null,
+  status = null,
+  q = null,
+  sortBy = 'capture',
+  sortOrder = 'desc',
+  limit = 200,
+} = {}) {
   const where = [];
   const params = [];
+  const direction = sortOrder === 'asc' ? 'ASC' : 'DESC';
+  const orderBy =
+    sortBy === 'ai'
+      ? `(ai.ai_processed_at IS NULL) ASC, ai.ai_processed_at ${direction}, s.id ${direction}`
+      : `s.created_at ${direction}, s.id ${direction}`;
 
   if (Array.isArray(ids) && ids.length) {
     where.push('s.id IN (?)');
@@ -244,12 +358,19 @@ async function getShootsWithDetails({ ids = null, status = null, q = null, limit
             p.designation AS product_designation,
             p.image_url AS product_image_url,
             v.variant_name,
-            v.reference AS variant_reference
+            v.reference AS variant_reference,
+            ai.ai_processed_at
      FROM product_photo_shoots s
      JOIN products p ON p.id = s.product_id
      LEFT JOIN product_variants v ON v.id = s.variant_id
+     LEFT JOIN (
+       SELECT shoot_id, MAX(created_at) AS ai_processed_at
+       FROM product_photo_images
+       WHERE kind = 'processed'
+       GROUP BY shoot_id
+     ) ai ON ai.shoot_id = s.id
      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-     ORDER BY s.created_at DESC, s.id DESC
+     ORDER BY ${orderBy}
      LIMIT ?`,
     [...params, Number(limit) || 200]
   );
@@ -370,7 +491,9 @@ router.get('/shoots', async (req, res) => {
   try {
     const status = req.query.status ? String(req.query.status) : null;
     const q = req.query.q ? String(req.query.q) : null;
-    const shoots = await getShootsWithDetails({ status, q });
+    const sortBy = req.query.sortBy === 'ai' ? 'ai' : 'capture';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
+    const shoots = await getShootsWithDetails({ status, q, sortBy, sortOrder });
     res.json(shoots);
   } catch (err) {
     console.error('[ProductPhotos] list shoots error:', err);
