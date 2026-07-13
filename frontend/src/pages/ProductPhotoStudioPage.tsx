@@ -154,6 +154,13 @@ const formatDate = (s: string) => {
   }
 };
 
+const formatAiCostUsd = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined || value === '') return null;
+  const cost = Number(value);
+  if (!Number.isFinite(cost)) return null;
+  return cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3);
+};
+
 // ----------------------------------------------------------------------------
 // Camera modal (multi-capture via getUserMedia)
 // ----------------------------------------------------------------------------
@@ -605,6 +612,17 @@ const ShootCard: React.FC<{
 
   const statusInfo = STATUS_LABELS[shoot.status] || STATUS_LABELS.pending;
   const hasProcessed = shoot.processed.length > 0;
+  const sessionCost = useMemo(
+    () =>
+      shoot.processed.reduce((total, image) => {
+        const cost = Number(image.ai_cost_usd);
+        return Number.isFinite(cost) ? total + cost : total;
+      }, 0),
+    [shoot.processed]
+  );
+  const hasSessionCost = shoot.processed.some(
+    (image) => image.ai_cost_usd !== null && Number.isFinite(Number(image.ai_cost_usd))
+  );
 
   // Galerie finale = images IA si disponibles, sinon originales (ordre = position)
   const galleryImages = useMemo<PhotoShootImage[]>(
@@ -682,13 +700,22 @@ const ShootCard: React.FC<{
           <div className="text-xs text-gray-500">
             Réf: {shoot.product_id}
             {shoot.variant_name ? ` • Variante: ${shoot.variant_name}` : ''}
-            {' • '}{formatDate(shoot.created_at)}
+            {' • Prise/import : '}{formatDate(shoot.created_at)}
+            {shoot.ai_processed_at ? ` • IA : ${formatDate(shoot.ai_processed_at)}` : ''}
           </div>
         </div>
         <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusInfo.cls}`}>
           {shoot.status === 'processing' && <Loader2 className="w-3 h-3 inline animate-spin mr-1" />}
           {statusInfo.label}
         </span>
+        {hasSessionCost && (
+          <span
+            className="text-xs px-2 py-1 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+            title="Somme des coûts API estimés enregistrés pour cette session"
+          >
+            Coût IA ≈ ${sessionCost.toFixed(4)}
+          </span>
+        )}
         {(shoot.status === 'pending' || shoot.status === 'error') && (
           <button
             onClick={() => processShoots({ shootIds: [shoot.id], ...aiConfiguration })}
@@ -723,16 +750,30 @@ const ShootCard: React.FC<{
                     </div>
                     <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
                     {proc ? (
-                      <div className="relative group">
-                        <img src={proc.image_url} className="w-24 h-24 object-cover rounded-lg border-2 border-green-400" alt="après" />
-                        <span className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-[10px] text-center rounded-b-lg">Après IA</span>
-                        <button
-                          onClick={() => confirmDeleteImage(proc)}
-                          className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow"
-                          title="Supprimer le résultat IA"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="relative group">
+                          <img src={proc.image_url} className="w-24 h-24 object-cover rounded-lg border-2 border-green-400" alt="après" />
+                          <span className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-[10px] text-center rounded-b-lg">Après IA</span>
+                          <button
+                            onClick={() => confirmDeleteImage(proc)}
+                            className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow"
+                            title="Supprimer le résultat IA"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        {formatAiCostUsd(proc.ai_cost_usd) ? (
+                          <span
+                            className="text-[10px] font-semibold text-emerald-700"
+                            title={`${proc.ai_model || 'Modèle IA'} · ${proc.ai_quality || 'qualité inconnue'} · entrée ${proc.ai_input_tokens ?? '?'} tokens · sortie ${proc.ai_output_tokens ?? '?'} tokens · tarif ${proc.ai_pricing_version || 'inconnu'}`}
+                          >
+                            Coût ≈ ${formatAiCostUsd(proc.ai_cost_usd)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-400" title="La consommation n’a pas été enregistrée pour cette ancienne image">
+                            Coût indisponible
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <div className="w-24 h-24 rounded-lg border border-dashed flex items-center justify-center text-gray-300 text-xs">
@@ -838,6 +879,8 @@ const HistoryTab: React.FC<{
   onAiConfigurationChange: (next: AiConfiguration) => void;
 }> = ({ aiConfiguration, onAiConfigurationChange }) => {
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [sortBy, setSortBy] = useState<'capture' | 'ai'>('capture');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -848,7 +891,7 @@ const HistoryTab: React.FC<{
   }, [q]);
 
   const { data: allShoots = [], isFetching, refetch } = useGetPhotoShootsQuery(
-    { status: statusFilter || undefined, q: debouncedQ || undefined },
+    { status: statusFilter || undefined, q: debouncedQ || undefined, sortBy, sortOrder },
     { pollingInterval: 0 }
   );
   // L'historique ne montre que les sessions non attachées (les attachées ont leur propre onglet)
@@ -857,7 +900,7 @@ const HistoryTab: React.FC<{
   // Poll tant qu'un traitement IA est en cours
   const anyProcessing = shoots.some((s) => s.status === 'processing');
   useGetPhotoShootsQuery(
-    { status: statusFilter || undefined, q: debouncedQ || undefined },
+    { status: statusFilter || undefined, q: debouncedQ || undefined, sortBy, sortOrder },
     { pollingInterval: anyProcessing ? 4000 : 0, skip: !anyProcessing }
   );
 
@@ -937,6 +980,24 @@ const HistoryTab: React.FC<{
           <option value="processing">En traitement</option>
           <option value="processed">Traité par IA</option>
           <option value="error">Erreur</option>
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'capture' | 'ai')}
+          className="border rounded-lg px-3 py-2 text-sm"
+          aria-label="Critère de tri"
+        >
+          <option value="capture">Date de prise / importation</option>
+          <option value="ai">Date de traitement IA</option>
+        </select>
+        <select
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+          className="border rounded-lg px-3 py-2 text-sm"
+          aria-label="Ordre de tri"
+        >
+          <option value="desc">Plus récent d’abord</option>
+          <option value="asc">Plus ancien d’abord</option>
         </select>
         <button onClick={() => refetch()} className="p-2 border rounded-lg hover:bg-gray-50" title="Actualiser">
           <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />

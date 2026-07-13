@@ -17,6 +17,16 @@ export interface PhotoShootImage {
   source_image_id: number | null;
   image_url: string;
   position: number;
+  ai_provider: string | null;
+  ai_model: string | null;
+  ai_quality: string | null;
+  ai_size: string | null;
+  ai_input_tokens: number | null;
+  ai_input_text_tokens: number | null;
+  ai_input_image_tokens: number | null;
+  ai_output_tokens: number | null;
+  ai_cost_usd: number | string | null;
+  ai_pricing_version: string | null;
   created_at: string;
 }
 
@@ -29,6 +39,7 @@ export interface PhotoShoot {
   created_by: number | null;
   created_at: string;
   updated_at: string;
+  ai_processed_at: string | null;
   product_designation: string;
   product_image_url: string | null;
   variant_name: string | null;
@@ -39,7 +50,10 @@ export interface PhotoShoot {
 
 const productPhotosApi = api.injectEndpoints({
   endpoints: (builder) => ({
-    getPhotoShoots: builder.query<PhotoShoot[], { status?: string; q?: string } | void>({
+    getPhotoShoots: builder.query<
+      PhotoShoot[],
+      { status?: string; q?: string; sortBy?: 'capture' | 'ai'; sortOrder?: 'asc' | 'desc' } | void
+    >({
       query: (params) => ({
         url: '/product-photos/shoots',
         params: params || undefined,
