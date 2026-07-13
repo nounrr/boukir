@@ -45,6 +45,90 @@ function normalizeYmd(input) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function isValidYmd(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readSnapshotsFromDate(dateFolder, inventoryRoot) {
+  if (!isValidYmd(dateFolder)) return [];
+
+  const baseDir = path.join(inventoryRoot, dateFolder);
+  let entries;
+  try {
+    entries = fs.readdirSync(baseDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const grouped = new Map();
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const match = entry.name.match(/^snapshot-(\d+)\.(json|csv)$/i);
+    if (!match) continue;
+
+    const id = Number(match[1]);
+    if (!Number.isSafeInteger(id)) continue;
+
+    const type = match[2].toLowerCase();
+    const filePath = path.join(baseDir, entry.name);
+    let stat;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      continue;
+    }
+
+    const fallbackCreatedAt = (stat.birthtimeMs > 0 ? stat.birthtime : stat.mtime).toISOString();
+    const current = grouped.get(id) || {
+      id,
+      date: dateFolder,
+      created_at: fallbackCreatedAt,
+      files: [],
+      totals: null,
+    };
+
+    if (type === 'json') {
+      try {
+        const snapshot = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        if (snapshot?.created_at && Number.isFinite(Date.parse(snapshot.created_at))) {
+          current.created_at = snapshot.created_at;
+        }
+        if (snapshot?.totals && typeof snapshot.totals === 'object') {
+          current.totals = snapshot.totals;
+        }
+      } catch {
+        // Keep the file available with filesystem metadata when JSON is malformed.
+      }
+    }
+
+    current.files.push({
+      type,
+      url: `/uploads/inventory/${dateFolder}/${entry.name}`,
+    });
+    grouped.set(id, current);
+  }
+
+  return Array.from(grouped.values());
+}
+
+function snapshotSortValue(snapshot) {
+  const createdAt = Date.parse(snapshot.created_at || '');
+  if (Number.isFinite(createdAt)) return createdAt;
+  if (Number.isFinite(snapshot.id)) return Number(snapshot.id);
+  const date = Date.parse(`${snapshot.date}T00:00:00.000Z`);
+  return Number.isFinite(date) ? date : 0;
+}
+
 function toCsv(rows, headers) {
   const escape = (v) => {
     const s = v == null ? '' : String(v);
@@ -293,58 +377,57 @@ router.post('/snapshots/import-excel', requireSnapshotCreator, upload.single('fi
   }
 });
 
-// GET /api/inventory/snapshots?date=YYYY-MM-DD -> list snapshots for a date
+// GET /api/inventory/snapshots?date=YYYY-MM-DD&page=1&limit=100
+// Without a date, snapshots are aggregated from every valid date directory.
 router.get('/snapshots', async (req, res, next) => {
   try {
-    const date = String(req.query.date || '').trim();
-    const ymd = date || getLocalYmd();
-    const baseDir = path.join(__dirname, '..', 'uploads', 'inventory', ymd);
-    if (!fs.existsSync(baseDir)) return res.json({ ok: true, date: ymd, snapshots: [] });
-    const files = fs.readdirSync(baseDir).filter((f) => f.startsWith('snapshot-'));
-    const snaps = [];
-    for (const f of files) {
-      const p = path.join(baseDir, f);
-      const stat = fs.statSync(p);
-      const isJson = f.endsWith('.json');
-      const idMatch = f.match(/snapshot-(\d+)/);
-      const id = idMatch ? Number(idMatch[1]) : null;
-      const url = `/uploads/inventory/${ymd}/${f}`;
-      if (isJson) {
-        try {
-          const obj = JSON.parse(fs.readFileSync(p, 'utf8'));
-          snaps.push({ id, type: 'json', url, created_at: obj?.created_at, totals: obj?.totals });
-        } catch {
-          snaps.push({ id, type: 'json', url, created_at: stat.birthtime.toISOString() });
-        }
-      } else {
-        snaps.push({ id, type: 'csv', url, created_at: stat.birthtime.toISOString() });
+    const requestedDate = String(req.query.date || '').trim();
+    if (requestedDate && !isValidYmd(requestedDate)) {
+      return res.status(400).json({ ok: false, message: 'Invalid date. Use YYYY-MM-DD' });
+    }
+
+    const requestedPage = parsePositiveInteger(req.query.page, 1);
+    const limit = Math.min(500, parsePositiveInteger(req.query.limit, 100));
+    const inventoryRoot = path.join(__dirname, '..', 'uploads', 'inventory');
+    let dateFolders = [];
+
+    if (requestedDate) {
+      dateFolders = [requestedDate];
+    } else {
+      try {
+        dateFolders = fs.readdirSync(inventoryRoot, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory() && isValidYmd(entry.name))
+          .map((entry) => entry.name);
+      } catch {
+        dateFolders = [];
       }
     }
-    // Group by id
-    const grouped = Object.values(
-      snaps.reduce((acc, s) => {
-        const k = String(s.id);
-        if (!acc[k]) {
-          acc[k] = { 
-            id: s.id, 
-            created_at: s.created_at, 
-            files: [], 
-            totals: s.totals || null 
-          };
-        }
-        // Preserve totals from JSON files (they have the complete data)
-        if (s.type === 'json' && s.totals) {
-          acc[k].totals = s.totals;
-        }
-        // Preserve created_at from JSON if available
-        if (s.type === 'json' && s.created_at) {
-          acc[k].created_at = s.created_at;
-        }
-        acc[k].files.push({ type: s.type, url: s.url });
-        return acc;
-      }, {})
-    );
-    res.json({ ok: true, date: ymd, snapshots: grouped });
+
+    const allSnapshots = dateFolders
+      .flatMap((dateFolder) => readSnapshotsFromDate(dateFolder, inventoryRoot))
+      .sort((a, b) => {
+        const timeDifference = snapshotSortValue(b) - snapshotSortValue(a);
+        if (timeDifference !== 0) return timeDifference;
+        const idDifference = Number(b.id || 0) - Number(a.id || 0);
+        if (idDifference !== 0) return idDifference;
+        return String(b.date).localeCompare(String(a.date));
+      });
+
+    const total = allSnapshots.length;
+    const totalPages = total > 0 ? Math.ceil(total / limit) : 0;
+    const page = totalPages > 0 ? Math.min(requestedPage, totalPages) : 1;
+    const offset = (page - 1) * limit;
+    const snapshots = allSnapshots.slice(offset, offset + limit);
+
+    return res.json({
+      ok: true,
+      date: requestedDate || null,
+      snapshots,
+      page,
+      limit,
+      total,
+      totalPages,
+    });
   } catch (err) {
     next(err);
   }
@@ -354,7 +437,11 @@ router.get('/snapshots', async (req, res, next) => {
 router.get('/snapshots/:id', async (req, res, next) => {
   try {
     const id = String(req.params.id || '').trim();
-    const date = String(req.query.date || '').trim() || getLocalYmd();
+    const requestedDate = String(req.query.date || '').trim();
+    if (requestedDate && !isValidYmd(requestedDate)) {
+      return res.status(400).json({ ok: false, message: 'Invalid date. Use YYYY-MM-DD' });
+    }
+    const date = requestedDate || getLocalYmd();
     const baseDir = path.join(__dirname, '..', 'uploads', 'inventory', date);
     const file = path.join(baseDir, `snapshot-${id}.json`);
     if (!fs.existsSync(file)) return res.status(404).json({ ok: false, message: 'Snapshot introuvable' });

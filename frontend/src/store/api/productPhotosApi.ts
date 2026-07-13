@@ -6,6 +6,7 @@ export type AiImageQuality = 'low' | 'medium' | 'high';
 
 export interface ProcessPhotoShootsRequest {
   shootIds: number[];
+  replaceShootIds?: number[];
   model: AiImageModel;
   quality: AiImageQuality;
 }

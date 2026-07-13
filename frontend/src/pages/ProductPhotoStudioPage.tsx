@@ -599,60 +599,71 @@ const CaptureTab: React.FC<{
 // Carte d'une session (historique)
 // ----------------------------------------------------------------------------
 
-const ShootGalleryModal: React.FC<{
-  shoot: PhotoShoot;
-  initialIndex: number;
-  aiConfiguration: AiConfiguration;
-  onClose: () => void;
-}> = ({ shoot, initialIndex, aiConfiguration, onClose }) => {
-  const [index, setIndex] = useState(initialIndex);
-  const [reprocessImage, { isLoading: launchingReprocess }] = useReprocessPhotoImageMutation();
-  const originals = shoot.originals;
+interface HistoryGallerySelection {
+  shootId: number;
+  imageId: number;
+}
 
-  useEffect(() => {
-    setIndex(Math.min(Math.max(initialIndex, 0), Math.max(originals.length - 1, 0)));
-  }, [initialIndex, originals.length]);
+const ShootGalleryModal: React.FC<{
+  shoots: PhotoShoot[];
+  initialSelection: HistoryGallerySelection;
+  aiConfiguration: AiConfiguration;
+  onAiConfigurationChange: (next: AiConfiguration) => void;
+  onClose: () => void;
+}> = ({ shoots, initialSelection, aiConfiguration, onAiConfigurationChange, onClose }) => {
+  const entries = useMemo(
+    () =>
+      shoots.flatMap((shoot) =>
+        shoot.originals.map((original) => ({ shoot, original }))
+      ),
+    [shoots]
+  );
+  const [selection, setSelection] = useState<HistoryGallerySelection>(initialSelection);
+  const [reprocessImage, { isLoading: launchingReprocess }] = useReprocessPhotoImageMutation();
+
+  useEffect(() => setSelection(initialSelection), [initialSelection]);
+
+  const selectedIndex = Math.max(
+    0,
+    entries.findIndex(
+      (entry) => entry.shoot.id === selection.shootId && entry.original.id === selection.imageId
+    )
+  );
+  const currentEntry = entries[selectedIndex] || entries[0];
+
+  const move = (direction: -1 | 1) => {
+    if (entries.length <= 1) return;
+    const nextIndex = (selectedIndex + direction + entries.length) % entries.length;
+    const next = entries[nextIndex];
+    setSelection({ shootId: next.shoot.id, imageId: next.original.id });
+  };
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
-      if (event.key === 'ArrowLeft' && originals.length > 1) {
-        setIndex((current) => (current - 1 + originals.length) % originals.length);
-      }
-      if (event.key === 'ArrowRight' && originals.length > 1) {
-        setIndex((current) => (current + 1) % originals.length);
-      }
+      if (event.key === 'ArrowLeft') move(-1);
+      if (event.key === 'ArrowRight') move(1);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [onClose, originals.length]);
+  });
 
-  const processedBySource = useMemo(() => {
-    const map = new Map<number, PhotoShootImage>();
-    shoot.processed.forEach((image) => {
-      if (image.source_image_id) map.set(image.source_image_id, image);
-    });
-    return map;
-  }, [shoot.processed]);
+  if (!currentEntry) return null;
 
-  if (!originals.length) return null;
-
-  const currentOriginal = originals[index] || originals[0];
-  const currentProcessed = processedBySource.get(currentOriginal.id);
-  const move = (direction: -1 | 1) => {
-    if (originals.length <= 1) return;
-    setIndex((current) => (current + direction + originals.length) % originals.length);
-  };
+  const { shoot: currentShoot, original: currentOriginal } = currentEntry;
+  const currentProcessed = currentShoot.processed.find(
+    (image) => image.source_image_id === currentOriginal.id
+  );
 
   const reprocessCurrent = async () => {
     try {
       await reprocessImage({
-        shootId: shoot.id,
+        shootId: currentShoot.id,
         imageId: currentOriginal.id,
         ...aiConfiguration,
       }).unwrap();
@@ -662,16 +673,16 @@ const ShootGalleryModal: React.FC<{
     }
   };
 
-  const aiBusy = launchingReprocess || shoot.status === 'processing';
+  const aiBusy = launchingReprocess || currentShoot.status === 'processing';
 
   return (
-    <div className="fixed inset-0 z-[70] bg-gray-950/95 text-white flex flex-col" role="dialog" aria-modal="true" aria-label="Galerie avant et après IA">
+    <div className="fixed inset-0 z-[70] bg-gray-950/95 text-white flex flex-col" role="dialog" aria-modal="true" aria-label="Galerie globale avant et après IA">
       <div className="flex items-center gap-3 px-3 sm:px-5 py-3 border-b border-white/15 bg-black/30">
         <div className="flex-1 min-w-0">
-          <div className="font-semibold truncate">{shoot.product_designation}</div>
+          <div className="font-semibold truncate">{currentShoot.product_designation}</div>
           <div className="text-xs text-gray-300">
-            Image {index + 1} / {originals.length}
-            {shoot.variant_name ? ` · ${shoot.variant_name}` : ''}
+            Réf: {currentShoot.product_id} · Image {selectedIndex + 1} / {entries.length}
+            {currentShoot.variant_name ? ` · ${currentShoot.variant_name}` : ''}
           </div>
         </div>
         <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10" title="Fermer">
@@ -680,12 +691,7 @@ const ShootGalleryModal: React.FC<{
       </div>
 
       <div className="relative flex-1 min-h-0 flex items-center px-12 sm:px-16 py-4">
-        <button
-          onClick={() => move(-1)}
-          disabled={originals.length <= 1}
-          className="absolute left-2 sm:left-5 z-10 p-2 sm:p-3 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-20"
-          title="Image précédente"
-        >
+        <button onClick={() => move(-1)} disabled={entries.length <= 1} className="absolute left-2 sm:left-5 z-10 p-2 sm:p-3 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-20" title="Photo ou référence précédente">
           <ChevronLeft className="w-6 h-6" />
         </button>
 
@@ -717,39 +723,64 @@ const ShootGalleryModal: React.FC<{
           </div>
         </div>
 
-        <button
-          onClick={() => move(1)}
-          disabled={originals.length <= 1}
-          className="absolute right-2 sm:right-5 z-10 p-2 sm:p-3 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-20"
-          title="Image suivante"
-        >
+        <button onClick={() => move(1)} disabled={entries.length <= 1} className="absolute right-2 sm:right-5 z-10 p-2 sm:p-3 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-20" title="Photo ou référence suivante">
           <ChevronRight className="w-6 h-6" />
         </button>
       </div>
 
       <div className="border-t border-white/15 bg-black/40 p-3 space-y-3">
-        <div className="flex justify-center">
-          <button
-            onClick={reprocessCurrent}
-            disabled={aiBusy}
-            className="px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-700 disabled:opacity-50 font-medium flex items-center gap-2"
-          >
+        <div className="flex flex-wrap items-end justify-center gap-2 sm:gap-3">
+          <label className="text-xs text-gray-300">
+            <span className="block mb-1">Modèle IA</span>
+            <select
+              value={aiConfiguration.model}
+              onChange={(event) => onAiConfigurationChange({
+                ...aiConfiguration,
+                model: event.target.value as AiImageModel,
+              })}
+              disabled={aiBusy}
+              className="min-w-[190px] rounded-lg border border-white/20 bg-gray-900 text-white px-3 py-2.5 text-sm disabled:opacity-50"
+            >
+              <option value="gpt-image-2">GPT Image 2 — recommandé</option>
+              <option value="gpt-image-1.5">GPT Image 1.5 — ancien</option>
+              <option value="gpt-image-1-mini">GPT Image 1 mini — économique</option>
+            </select>
+          </label>
+          <label className="text-xs text-gray-300">
+            <span className="block mb-1">Qualité</span>
+            <select
+              value={aiConfiguration.quality}
+              onChange={(event) => onAiConfigurationChange({
+                ...aiConfiguration,
+                quality: event.target.value as AiImageQuality,
+              })}
+              disabled={aiBusy}
+              className="min-w-[160px] rounded-lg border border-white/20 bg-gray-900 text-white px-3 py-2.5 text-sm disabled:opacity-50"
+            >
+              <option value="low">Basse — économique</option>
+              <option value="medium">Moyenne — équilibrée</option>
+              <option value="high">Haute — maximale</option>
+            </select>
+          </label>
+          <button onClick={reprocessCurrent} disabled={aiBusy} className="px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-700 disabled:opacity-50 font-medium flex items-center gap-2">
             {aiBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
             {aiBusy ? 'Traitement IA en cours…' : currentProcessed ? 'Retraiter cette image par IA' : 'Traiter cette image par IA'}
           </button>
         </div>
-        <div className="flex gap-2 overflow-x-auto justify-start sm:justify-center pb-1">
-          {originals.map((original, imageIndex) => {
-            const processed = processedBySource.get(original.id);
+        <div className="flex gap-2 overflow-x-auto justify-start pb-1">
+          {entries.map((entry, entryIndex) => {
+            const processed = entry.shoot.processed.find(
+              (image) => image.source_image_id === entry.original.id
+            );
             return (
               <button
-                key={original.id}
-                onClick={() => setIndex(imageIndex)}
-                className={`relative flex-shrink-0 rounded-lg border-2 overflow-hidden ${imageIndex === index ? 'border-orange-400' : 'border-transparent opacity-70 hover:opacity-100'}`}
-                title={`Afficher l’image ${imageIndex + 1}`}
+                key={`${entry.shoot.id}-${entry.original.id}`}
+                onClick={() => setSelection({ shootId: entry.shoot.id, imageId: entry.original.id })}
+                className={`relative flex-shrink-0 rounded-lg border-2 overflow-hidden ${entryIndex === selectedIndex ? 'border-orange-400' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                title={`Réf ${entry.shoot.product_id} · ${entry.shoot.product_designation}`}
               >
-                <img src={processed?.image_url || original.image_url} className="w-14 h-14 sm:w-16 sm:h-16 object-cover" alt="" />
-                <span className="absolute bottom-0 right-0 bg-black/70 text-[10px] px-1">{imageIndex + 1}</span>
+                <img loading="lazy" src={processed?.image_url || entry.original.image_url} className="w-16 h-16 object-cover" alt="" />
+                <span className="absolute bottom-0 left-0 right-0 bg-black/75 text-[9px] leading-4 px-1 truncate">Réf {entry.shoot.product_id}</span>
                 {processed && <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-green-400" title="Traitée par IA" />}
               </button>
             );
@@ -764,14 +795,14 @@ const ShootCard: React.FC<{
   shoot: PhotoShoot;
   selected: boolean;
   onToggleSelect: () => void;
+  onOpenGallery: (imageIndex: number) => void;
   aiConfiguration: AiConfiguration;
-}> = ({ shoot, selected, onToggleSelect, aiConfiguration }) => {
+}> = ({ shoot, selected, onToggleSelect, onOpenGallery, aiConfiguration }) => {
   const [deleteShoot] = useDeletePhotoShootMutation();
   const [deleteImage] = useDeletePhotoImageMutation();
   const [processShoots, { isLoading: processing }] = useProcessPhotoShootsMutation();
   const [reorderImages] = useReorderPhotoImagesMutation();
   const [attachShoot, { isLoading: attaching }] = useAttachPhotoShootMutation();
-  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
 
   const statusInfo = STATUS_LABELS[shoot.status] || STATUS_LABELS.pending;
   const hasProcessed = shoot.processed.length > 0;
@@ -879,13 +910,17 @@ const ShootCard: React.FC<{
             Coût IA ≈ ${sessionCost.toFixed(4)}
           </span>
         )}
-        {(shoot.status === 'pending' || shoot.status === 'error') && (
+        {(shoot.status === 'pending' || shoot.status === 'error' || shoot.status === 'processed') && (
           <button
-            onClick={() => processShoots({ shootIds: [shoot.id], ...aiConfiguration })}
+            onClick={() => processShoots({
+              shootIds: [shoot.id],
+              replaceShootIds: shoot.status === 'processed' ? [shoot.id] : undefined,
+              ...aiConfiguration,
+            })}
             disabled={processing}
             className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-1.5"
           >
-            <Wand2 className="w-4 h-4" /> Traiter par IA
+            <Wand2 className="w-4 h-4" /> {shoot.status === 'processed' ? 'Retraiter par IA' : 'Traiter par IA'}
           </button>
         )}
         <button onClick={confirmDeleteShoot} className="p-2 text-red-500 hover:bg-red-50 rounded-lg" title="Supprimer la session">
@@ -909,7 +944,7 @@ const ShootCard: React.FC<{
                   <div key={orig.id} className="flex items-center gap-1 flex-shrink-0">
                     <button
                       type="button"
-                      onClick={() => setGalleryIndex(imageIndex)}
+                      onClick={() => onOpenGallery(imageIndex)}
                       className="relative cursor-zoom-in group"
                       title="Ouvrir la galerie Avant / Après"
                     >
@@ -923,7 +958,7 @@ const ShootCard: React.FC<{
                         <div className="relative group">
                           <button
                             type="button"
-                            onClick={() => setGalleryIndex(imageIndex)}
+                            onClick={() => onOpenGallery(imageIndex)}
                             className="block cursor-zoom-in"
                             title="Ouvrir la galerie Avant / Après"
                           >
@@ -970,7 +1005,7 @@ const ShootCard: React.FC<{
                 <div key={img.id} className="relative group flex-shrink-0">
                   <button
                     type="button"
-                    onClick={() => setGalleryIndex(imageIndex)}
+                    onClick={() => onOpenGallery(imageIndex)}
                     className="block cursor-zoom-in"
                     title="Ouvrir la galerie Avant / Après"
                   >
@@ -1051,14 +1086,6 @@ const ShootCard: React.FC<{
           </div>
         )}
       </div>
-      {galleryIndex !== null && (
-        <ShootGalleryModal
-          shoot={shoot}
-          initialIndex={galleryIndex}
-          aiConfiguration={aiConfiguration}
-          onClose={() => setGalleryIndex(null)}
-        />
-      )}
     </div>
   );
 };
@@ -1077,6 +1104,7 @@ const HistoryTab: React.FC<{
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [gallerySelection, setGallerySelection] = useState<HistoryGallerySelection | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), 300);
@@ -1114,7 +1142,11 @@ const HistoryTab: React.FC<{
   const batchProcess = async () => {
     if (!selectableForProcess.length) return;
     try {
-      await processShoots({ shootIds: selectableForProcess.map((s) => s.id), ...aiConfiguration }).unwrap();
+      await processShoots({
+        shootIds: selectableForProcess.map((s) => s.id),
+        replaceShootIds: selectableForProcess.filter((s) => s.status === 'processed').map((s) => s.id),
+        ...aiConfiguration,
+      }).unwrap();
       toast('success', `Traitement IA lancé pour ${selectableForProcess.length} session(s)`);
       setSelectedIds([]);
     } catch (e: any) {
@@ -1240,10 +1272,23 @@ const HistoryTab: React.FC<{
             shoot={s}
             selected={selectedIds.includes(s.id)}
             onToggleSelect={() => toggleSelect(s.id)}
+            onOpenGallery={(imageIndex) => {
+              const image = s.originals[imageIndex];
+              if (image) setGallerySelection({ shootId: s.id, imageId: image.id });
+            }}
             aiConfiguration={aiConfiguration}
           />
         ))}
       </div>
+      {gallerySelection && (
+        <ShootGalleryModal
+          shoots={shoots}
+          initialSelection={gallerySelection}
+          aiConfiguration={aiConfiguration}
+          onAiConfigurationChange={onAiConfigurationChange}
+          onClose={() => setGallerySelection(null)}
+        />
+      )}
     </div>
   );
 };

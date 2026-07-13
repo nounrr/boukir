@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { BarChart3, DollarSign, Download, Package, Search, TrendingUp } from 'lucide-react';
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, DollarSign, Download, Package, Search, TrendingUp, X } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import * as XLSX from 'xlsx';
@@ -12,6 +10,76 @@ import { formatDateTimeWithHour } from '../utils/dateUtils';
 import { showError, showSuccess } from '../utils/notifications';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
+
+interface PaginationControlsProps {
+  idPrefix: string;
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  onLimitChange: (limit: number) => void;
+}
+
+const PaginationControls: React.FC<PaginationControlsProps> = ({
+  idPrefix,
+  page,
+  limit,
+  total,
+  totalPages,
+  onPageChange,
+  onLimitChange,
+}) => {
+  const rangeStart = total === 0 ? 0 : (page - 1) * limit + 1;
+  const rangeEnd = total === 0 ? 0 : Math.min(page * limit, total);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+      <div className="font-medium text-slate-700" aria-live="polite">
+        <span className="text-slate-950">{rangeStart}–{rangeEnd}</span> sur {total} inventaire{total !== 1 ? 's' : ''}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor={`${idPrefix}-page-size`} className="text-slate-600">Afficher</label>
+        <select
+          id={`${idPrefix}-page-size`}
+          value={limit}
+          onChange={(event) => onLimitChange(Number(event.target.value))}
+          className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        >
+          {PAGE_SIZE_OPTIONS.map((option) => (
+            <option key={option} value={option}>{option} / page</option>
+          ))}
+        </select>
+        <div className="flex items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
+          <button
+            type="button"
+            onClick={() => onPageChange(page - 1)}
+            disabled={page <= 1 || total === 0}
+            className="p-2 text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Page précédente"
+            title="Page précédente"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <span className="min-w-[7.5rem] border-x border-slate-200 px-3 py-2 text-center font-medium text-slate-700">
+            Page {totalPages === 0 ? 0 : page} / {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPageChange(page + 1)}
+            disabled={totalPages === 0 || page >= totalPages}
+            className="p-2 text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Page suivante"
+            title="Page suivante"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const InventoryPage: React.FC = () => {
   const { user } = useAuth();
@@ -23,8 +91,15 @@ const InventoryPage: React.FC = () => {
     return `${y}-${m}-${d}`;
   }, []);
 
-  const [selectedDate, setSelectedDate] = useState(initialDate);
-  const { data, refetch, isFetching } = useListSnapshotsQuery({ date: selectedDate });
+  const [filterDate, setFilterDate] = useState('');
+  const [creationDate, setCreationDate] = useState(initialDate);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(100);
+  const { data, refetch, isFetching, isError } = useListSnapshotsQuery({
+    date: filterDate || undefined,
+    page,
+    limit,
+  });
   const [createSnapshot, { isLoading }] = useCreateSnapshotMutation();
   const [importSnapshotExcel, { isLoading: isImporting }] = useImportSnapshotExcelMutation();
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -33,7 +108,7 @@ const InventoryPage: React.FC = () => {
 
   const handleCreate = async () => {
     try {
-      const res = await createSnapshot({ date: selectedDate }).unwrap();
+      const res = await createSnapshot({ date: creationDate }).unwrap();
       showSuccess(`Inventaire enregistré: #${res.id}`);
       refetch();
     } catch (e: any) {
@@ -47,12 +122,12 @@ const InventoryPage: React.FC = () => {
         showError('Veuillez sélectionner un fichier Excel');
         return;
       }
-      if (!selectedDate) {
+      if (!creationDate) {
         showError('Veuillez choisir une date');
         return;
       }
 
-      const res = await importSnapshotExcel({ date: selectedDate, file: importFile }).unwrap();
+      const res = await importSnapshotExcel({ date: creationDate, file: importFile }).unwrap();
       const missing = Array.isArray((res as any)?.missingIds) ? (res as any).missingIds : [];
 
       if (missing.length > 0) {
@@ -68,42 +143,43 @@ const InventoryPage: React.FC = () => {
     }
   };
 
-  const snapshots = data?.snapshots || [];
-  
-  useEffect(() => {
-    console.log('[InventoryPage] Snapshots received:', snapshots);
-    snapshots.forEach(s => {
-      console.log(`  Snapshot #${s.id}:`, {
-        created_at: s.created_at,
-        totals: s.totals,
-        files: s.files
-      });
-    });
-  }, [snapshots]);
-  
-  const latestId = useMemo(() => {
-    if (!snapshots.length) return null;
-    return snapshots.reduce((max, s) => (s.id > max ? s.id : max), snapshots[0].id);
-  }, [snapshots]);
+  const snapshots = useMemo(() => data?.snapshots || [], [data?.snapshots]);
+  const total = data?.total || 0;
+  const totalPages = data?.totalPages || 0;
+  const latestSnapshot = snapshots[0] || null;
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedSnapshotDate, setSelectedSnapshotDate] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'charts'>('table');
   const [chartType, setChartType] = useState<'snapshots' | 'products' | 'categories'>('snapshots');
 
   useEffect(() => {
-    // Auto-select latest snapshot when list changes
-    if (latestId != null) setSelectedId(latestId);
-  }, [latestId]);
+    setPage(1);
+  }, [filterDate, limit]);
+
+  useEffect(() => {
+    if (data?.page && data.page !== page) setPage(data.page);
+  }, [data?.page, page]);
+
+  useEffect(() => {
+    if (latestSnapshot) {
+      setSelectedId(latestSnapshot.id);
+      setSelectedSnapshotDate(latestSnapshot.date);
+    } else {
+      setSelectedId(null);
+      setSelectedSnapshotDate('');
+    }
+  }, [latestSnapshot]);
 
   const { data: snapshotDetail } = useGetSnapshotQuery(
-    selectedId != null ? { id: String(selectedId), date: selectedDate } : { id: '', date: selectedDate },
+    selectedId != null ? { id: String(selectedId), date: selectedSnapshotDate } : { id: '', date: undefined },
     { skip: selectedId == null }
   );
 
   // Filters like Stock page
   const { data: productsApiData } = useGetProductsQuery();
   const { data: categoriesApiData } = useGetCategoriesQuery();
-  const products = productsApiData || [];
-  const categories = categoriesApiData || [];
+  const products = useMemo(() => productsApiData || [], [productsApiData]);
+  const categories = useMemo(() => categoriesApiData || [], [categoriesApiData]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -186,7 +262,12 @@ const InventoryPage: React.FC = () => {
 
   // Chart data: Compare snapshots
   const snapshotComparisonData = useMemo(() => {
-    const data = snapshots.map((s, idx, arr) => {
+    const chronologicalSnapshots = [...snapshots].sort((a, b) => {
+      const timeDifference = Date.parse(a.created_at || '') - Date.parse(b.created_at || '');
+      if (Number.isFinite(timeDifference) && timeDifference !== 0) return timeDifference;
+      return a.id - b.id;
+    });
+    const data = chronologicalSnapshots.map((s, idx, arr) => {
       const produits = s.totals?.totalProducts || 0;
       const quantité = Number(s.totals?.totalQty || 0);
       const totalAchat = Number(s.totals?.totalCost || 0);
@@ -294,7 +375,7 @@ const InventoryPage: React.FC = () => {
 
         return {
           SnapshotId: snapshotId,
-          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : selectedDate,
+          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : selectedSnapshotDate,
           ProduitId: it?.id,
           Designation: it?.designation,
           Categorie: categorie,
@@ -314,7 +395,7 @@ const InventoryPage: React.FC = () => {
       const resumeRows = [
         {
           SnapshotId: snapshotId,
-          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : selectedDate,
+          Date: snapshotCreatedAt ? formatDateTimeWithHour(snapshotCreatedAt) : selectedSnapshotDate,
           TotalProduits: Number(totals?.totalProducts || 0),
           TotalQuantite: Number(totals?.totalQty || 0),
           TotalVente: Number(totals?.totalSale || 0),
@@ -328,7 +409,7 @@ const InventoryPage: React.FC = () => {
       const ws2 = XLSX.utils.json_to_sheet(resumeRows);
       XLSX.utils.book_append_sheet(wb, ws2, 'Résumé');
 
-      const safeDate = String(selectedDate || '').replace(/[^0-9\-]/g, '');
+      const safeDate = String(selectedSnapshotDate || initialDate).replace(/[^0-9-]/g, '');
       const fileName = `inventaire_${safeDate}_snapshot_${snapshotId}.xlsx`;
 
       const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -348,56 +429,104 @@ const InventoryPage: React.FC = () => {
       console.error('[InventoryPage] Excel export failed', e);
       showError(e?.message || 'Échec export Excel');
     }
-  }, [categories, filterCategory, productById, searchTerm, selectedDate, selectedId, snapshotDetail, totalAchatSnapshot]);
+  }, [categories, filterCategory, initialDate, productById, searchTerm, selectedId, selectedSnapshotDate, snapshotDetail, totalAchatSnapshot]);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 bg-slate-50/60 p-4 sm:p-6">
       {/* Header with stats cards */}
       <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Inventaire</h1>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Date</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              />
-            </div>
+        <header className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950">Inventaire</h1>
+            <p className="mt-1 text-sm text-slate-600">Consultez, comparez et exportez les états de stock enregistrés.</p>
+          </div>
+          <div className={`mt-2 inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold sm:mt-0 ${filterDate ? 'border-indigo-200 bg-indigo-50 text-indigo-800' : 'border-blue-200 bg-blue-50 text-blue-800'}`}>
+            <CalendarDays size={17} aria-hidden="true" />
+            {filterDate ? `Date : ${filterDate}` : 'Toutes les dates'}
+          </div>
+        </header>
 
-            {canCreate && (
-              <div className="flex items-center gap-2">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="inventory-filter-title">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <h2 id="inventory-filter-title" className="text-sm font-semibold text-slate-900">Périmètre de consultation</h2>
+              <p className="mt-1 text-xs text-slate-500">Laissez la date vide pour parcourir tout l’historique.</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div>
+                <label htmlFor="inventory-filter-date" className="mb-1 block text-xs font-medium text-slate-600">Filtrer par date</label>
                 <input
+                  id="inventory-filter-date"
+                  type="date"
+                  value={filterDate}
+                  onChange={(event) => setFilterDate(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-auto"
+                />
+              </div>
+              {filterDate && (
+                <button
+                  type="button"
+                  onClick={() => setFilterDate('')}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <X size={16} aria-hidden="true" />
+                  Toutes les dates
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {canCreate && (
+          <section className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4" aria-labelledby="inventory-create-title">
+            <div className="mb-3">
+              <h2 id="inventory-create-title" className="text-sm font-semibold text-indigo-950">Créer ou importer un inventaire</h2>
+              <p className="mt-1 text-xs text-indigo-700">Cette date est indépendante du filtre de consultation.</p>
+            </div>
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+              <div>
+                <label htmlFor="inventory-creation-date" className="mb-1 block text-xs font-medium text-indigo-900">Date de création / import</label>
+              <input
+                id="inventory-creation-date"
+                type="date"
+                value={creationDate}
+                onChange={(event) => setCreationDate(event.target.value)}
+                className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-auto"
+              />
+              </div>
+              <div className="min-w-0 flex-1">
+                <label htmlFor="inventory-import-file" className="mb-1 block text-xs font-medium text-indigo-900">Fichier Excel ou CSV</label>
+                <input
+                  id="inventory-import-file"
                   type="file"
                   accept=".xlsx,.xls,.csv"
                   onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                  className="text-sm"
+                  className="block w-full rounded-lg border border-indigo-200 bg-white text-sm text-slate-600 shadow-sm file:mr-3 file:border-0 file:border-r file:border-indigo-100 file:bg-indigo-50 file:px-3 file:py-2 file:font-medium file:text-indigo-800 hover:file:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                 />
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <button
+                  type="button"
                   onClick={handleImportExcel}
-                  disabled={isImporting || !importFile}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                  title="Importer un Excel (colonne reference) pour créer un snapshot à la date choisie"
+                  disabled={isImporting || !importFile || !creationDate}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Importer un Excel (colonne référence) pour créer un snapshot à la date choisie"
                 >
                   {isImporting ? 'Import...' : 'Importer Excel'}
                 </button>
-              </div>
-            )}
-
-            {canCreate && (
               <button
+                type="button"
                 onClick={handleCreate}
-                disabled={isLoading}
-                className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                disabled={isLoading || !creationDate}
+                className="flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Package size={18} />
+                <Package size={18} aria-hidden="true" />
                 {isLoading ? 'Enregistrement...' : 'Enregistrer inventaire'}
               </button>
-            )}
-          </div>
-        </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Stats overview */}
         {snapshotDetail?.snapshot?.totals && (
@@ -428,34 +557,97 @@ const InventoryPage: React.FC = () => {
       </div>
 
       {/* Snapshots list */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-4 border-b">
-          <h2 className="text-lg font-semibold">Snapshots du {selectedDate}</h2>
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="inventory-history-title">
+        <div className="border-b border-slate-200 p-4 sm:p-5">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 id="inventory-history-title" className="text-lg font-semibold text-slate-950">Historique des inventaires</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {filterDate ? `Inventaires enregistrés le ${filterDate}` : 'Inventaires de toutes les dates, du plus récent au plus ancien'}
+              </p>
+            </div>
+            <span className="inline-flex w-fit items-center rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+              {total} résultat{total !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <PaginationControls
+            idPrefix="inventory-top"
+            page={page}
+            limit={limit}
+            total={total}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+          />
         </div>
-        <div className="p-4">
+        <div className="p-4 sm:p-5">
           {isFetching ? (
-            <div className="text-gray-500">Chargement...</div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label="Chargement des inventaires">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="h-40 animate-pulse rounded-lg border border-slate-200 bg-slate-50" />
+              ))}
+            </div>
+          ) : isError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-8 text-center">
+              <p className="font-medium text-red-800">Impossible de charger les inventaires.</p>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="mt-3 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+              >
+                Réessayer
+              </button>
+            </div>
           ) : snapshots.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">Aucun inventaire enregistré pour cette date.</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {snapshots.map((s) => (
-                <div
-                  key={s.id}
-                  className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
-                    selectedId === s.id
-                      ? 'border-indigo-500 bg-indigo-50'
-                      : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
-                  }`}
-                  onClick={() => setSelectedId(s.id)}
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center">
+              <CalendarDays className="mx-auto text-slate-400" size={30} aria-hidden="true" />
+              <p className="mt-3 font-medium text-slate-700">Aucun inventaire enregistré{filterDate ? ' pour cette date' : ''}.</p>
+              {filterDate && (
+                <button
+                  type="button"
+                  onClick={() => setFilterDate('')}
+                  className="mt-3 text-sm font-semibold text-indigo-700 hover:text-indigo-900 focus:outline-none focus:underline"
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="font-semibold text-lg text-gray-900">Snapshot #{s.id}</div>
-                    {selectedId === s.id && (
+                  Afficher toutes les dates
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {snapshots.map((s) => (
+                <article
+                  key={`${s.date}-${s.id}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selectedId === s.id && selectedSnapshotDate === s.date}
+                  className={`cursor-pointer rounded-lg border p-4 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    selectedId === s.id && selectedSnapshotDate === s.date
+                      ? 'border-indigo-400 bg-indigo-50 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50'
+                  }`}
+                  onClick={() => {
+                    setSelectedId(s.id);
+                    setSelectedSnapshotDate(s.date);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setSelectedId(s.id);
+                      setSelectedSnapshotDate(s.date);
+                    }
+                  }}
+                >
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div className="min-w-0 font-semibold text-slate-950">Inventaire #{s.id}</div>
+                    {selectedId === s.id && selectedSnapshotDate === s.date && (
                       <span className="px-2 py-1 text-xs bg-indigo-600 text-white rounded">Sélectionné</span>
                     )}
                   </div>
-                  <div className="text-sm text-gray-600 mb-3">{formatDateTimeWithHour(s.created_at)}</div>
+                  <div className="mb-3 text-xs text-slate-500">{formatDateTimeWithHour(s.created_at)}</div>
+                  <div className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
+                    <CalendarDays size={13} aria-hidden="true" />
+                    {s.date}
+                  </div>
                   {s?.totals && (
                     <div className="space-y-1 text-xs text-gray-700">
                       <div className="flex justify-between">
@@ -472,7 +664,7 @@ const InventoryPage: React.FC = () => {
                       </div>
                     </div>
                   )}
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     {s.files.map((f) => (
                       <a
                         key={f.url}
@@ -480,18 +672,32 @@ const InventoryPage: React.FC = () => {
                         target="_blank"
                         rel="noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
+                        onKeyDown={(e) => e.stopPropagation()}
+                        className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       >
                         {f.type.toUpperCase()}
                       </a>
                     ))}
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           )}
         </div>
-      </div>
+        {snapshots.length > 0 && !isFetching && !isError && (
+          <div className="border-t border-slate-200 bg-slate-50/70 p-4 sm:px-5">
+            <PaginationControls
+              idPrefix="inventory-bottom"
+              page={page}
+              limit={limit}
+              total={total}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              onLimitChange={setLimit}
+            />
+          </div>
+        )}
+      </section>
 
       {/* Snapshot details with tabs */}
       {selectedId != null && snapshotDetail?.snapshot && (

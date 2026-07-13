@@ -12,6 +12,38 @@ import {
 
 type TabKey = 'initial' | 'correct' | 'false';
 
+const PAGE_SIZE_STORAGE_KEY = 'productNameCorrections.pageSize';
+const PAGE_SIZE_OPTIONS = [50, 100, 200, 500] as const;
+
+function getStoredPageSize() {
+  try {
+    const stored = Number(window.localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    return PAGE_SIZE_OPTIONS.includes(stored as (typeof PAGE_SIZE_OPTIONS)[number]) ? stored : 50;
+  } catch {
+    return 50;
+  }
+}
+
+const PageSizeSelect: React.FC<{
+  value: number;
+  onChange: (value: number) => void;
+}> = ({ value, onChange }) => (
+  <label className="inline-flex items-center gap-2 whitespace-nowrap text-sm text-gray-600">
+    <span>Afficher</span>
+    <select
+      value={value}
+      onChange={(event) => onChange(Number(event.target.value))}
+      className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+      aria-label="Nombre de produits par page"
+    >
+      {PAGE_SIZE_OPTIONS.map((size) => (
+        <option key={size} value={size}>{size} produits</option>
+      ))}
+    </select>
+    <span>/ page</span>
+  </label>
+);
+
 const statusLabel: Record<string, string> = {
   all: 'Tous',
   matched: 'Match OK',
@@ -46,7 +78,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
   const [transitionedIds, setTransitionedIds] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(getStoredPageSize);
 
   const { data, isLoading, isFetching } = useGetProductNameCorrectionsQuery({
     status: 'all',
@@ -82,6 +114,14 @@ const ProductNameCorrectionsPage: React.FC = () => {
   useEffect(() => {
     setPage(1);
   }, [activeTab, q, limit]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(limit));
+    } catch {
+      // Storage can be unavailable in private/restricted browser contexts.
+    }
+  }, [limit]);
 
   const handleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -300,6 +340,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
           />
         </div>
           <div className="flex flex-wrap items-center gap-2">
+            <PageSizeSelect value={limit} onChange={setLimit} />
             <span className="text-sm text-gray-600">{selectedIds.size} sélection</span>
             <button
               type="button"
@@ -455,15 +496,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
               Page {meta.page} / {meta.totalPages} - {meta.total} lignes
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={limit}
-                onChange={(event) => setLimit(Number(event.target.value))}
-                className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              >
-                <option value={50}>50 / page</option>
-                <option value={100}>100 / page</option>
-                <option value={200}>200 / page</option>
-              </select>
+              <PageSizeSelect value={limit} onChange={setLimit} />
               <button
                 type="button"
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
