@@ -258,16 +258,20 @@ async function processOneImage(client, image, { model, quality }) {
 async function processShootsInBackground(
   shootIds,
   options,
-  { sourceImageIds = null, replaceExisting = false } = {}
+  { sourceImageIds = null, replaceExisting = false, replaceShootIds = null } = {}
 ) {
   const client = getOpenAIClient();
   const targetImageIds = Array.isArray(sourceImageIds)
     ? sourceImageIds.map(Number).filter(Number.isFinite)
     : null;
+  const replaceShootIdSet = new Set(
+    Array.isArray(replaceShootIds) ? replaceShootIds.map(Number).filter(Number.isFinite) : []
+  );
 
   for (const shootId of shootIds) {
     try {
       if (!client) throw new Error('OPENAI_API_KEY non configurée côté serveur');
+      const shouldReplaceExisting = replaceExisting || replaceShootIdSet.has(Number(shootId));
 
       const imageWhere = targetImageIds?.length ? ' AND id IN (?)' : '';
       const imageParams = targetImageIds?.length ? [shootId, targetImageIds] : [shootId];
@@ -288,7 +292,7 @@ async function processShootsInBackground(
            WHERE shoot_id = ? AND kind = 'processed' AND source_image_id = ?`,
           [shootId, img.id]
         );
-        if (existing.length && !replaceExisting) continue;
+        if (existing.length && !shouldReplaceExisting) continue;
 
         const processed = await processOneImage(client, img, options);
         const billing = processed.billing;
@@ -317,7 +321,7 @@ async function processShootsInBackground(
           ]
         );
 
-        if (replaceExisting && existing.length) {
+        if (shouldReplaceExisting && existing.length) {
           await pool.query('DELETE FROM product_photo_images WHERE id IN (?)', [existing.map((row) => row.id)]);
           existing.forEach((row) => deleteFileForUrl(row.image_url));
         }
@@ -598,6 +602,10 @@ router.post('/process', async (req, res) => {
 
     if (!shootIds.length) return res.status(400).json({ message: 'shootIds requis' });
 
+    const requestedReplaceShootIds = (Array.isArray(req.body?.replaceShootIds) ? req.body.replaceShootIds : [])
+      .map((x) => Number(x))
+      .filter((n) => Number.isFinite(n));
+
     const model = req.body?.model ?? DEFAULT_IMAGE_MODEL;
     const quality = req.body?.quality ?? DEFAULT_IMAGE_QUALITY;
     if (!ALLOWED_IMAGE_MODELS.has(model)) {
@@ -616,6 +624,8 @@ router.post('/process', async (req, res) => {
       [shootIds]
     );
     const validIds = rows.map((r) => r.id);
+    const validIdSet = new Set(validIds);
+    const replaceShootIds = requestedReplaceShootIds.filter((id) => validIdSet.has(id));
     if (!validIds.length) {
       return res.status(400).json({ message: 'Aucune session éligible (déjà en cours de traitement ?)' });
     }
@@ -626,7 +636,7 @@ router.post('/process', async (req, res) => {
     );
 
     // Fire-and-forget: frontend polls /shoots for status changes
-    processShootsInBackground(validIds, { model, quality });
+    processShootsInBackground(validIds, { model, quality }, { replaceShootIds });
 
     res.json({ ok: true, processing: validIds });
   } catch (err) {
