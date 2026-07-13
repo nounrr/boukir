@@ -253,28 +253,42 @@ async function processOneImage(client, image, { model, quality }) {
   };
 }
 
-// Sequential background worker per request (avoids rate-limit bursts)
-async function processShootsInBackground(shootIds, options) {
+// Sequential background worker per request (avoids rate-limit bursts).
+// sourceImageIds + replaceExisting are used by the single-image gallery action.
+async function processShootsInBackground(
+  shootIds,
+  options,
+  { sourceImageIds = null, replaceExisting = false } = {}
+) {
   const client = getOpenAIClient();
+  const targetImageIds = Array.isArray(sourceImageIds)
+    ? sourceImageIds.map(Number).filter(Number.isFinite)
+    : null;
 
   for (const shootId of shootIds) {
     try {
       if (!client) throw new Error('OPENAI_API_KEY non configurée côté serveur');
 
+      const imageWhere = targetImageIds?.length ? ' AND id IN (?)' : '';
+      const imageParams = targetImageIds?.length ? [shootId, targetImageIds] : [shootId];
       const [images] = await pool.query(
-        `SELECT * FROM product_photo_images WHERE shoot_id = ? AND kind = 'original' ORDER BY position ASC, id ASC`,
-        [shootId]
+        `SELECT * FROM product_photo_images
+         WHERE shoot_id = ? AND kind = 'original'${imageWhere}
+         ORDER BY position ASC, id ASC`,
+        imageParams
       );
 
       if (!images.length) throw new Error('Aucune image originale à traiter');
 
       for (const img of images) {
-        // Skip originals already processed (re-run only failures/new images)
+        // Normal batch processing skips completed images. A gallery reprocess
+        // creates the replacement first, then removes the previous result.
         const [existing] = await pool.query(
-          `SELECT id FROM product_photo_images WHERE shoot_id = ? AND kind = 'processed' AND source_image_id = ? LIMIT 1`,
+          `SELECT id, image_url FROM product_photo_images
+           WHERE shoot_id = ? AND kind = 'processed' AND source_image_id = ?`,
           [shootId, img.id]
         );
-        if (existing.length) continue;
+        if (existing.length && !replaceExisting) continue;
 
         const processed = await processOneImage(client, img, options);
         const billing = processed.billing;
@@ -302,11 +316,30 @@ async function processShootsInBackground(shootIds, options) {
             billing.pricingVersion,
           ]
         );
+
+        if (replaceExisting && existing.length) {
+          await pool.query('DELETE FROM product_photo_images WHERE id IN (?)', [existing.map((row) => row.id)]);
+          existing.forEach((row) => deleteFileForUrl(row.image_url));
+        }
       }
 
-      await pool.query(
-        `UPDATE product_photo_shoots SET status = 'processed', error_message = NULL WHERE id = ?`,
+      const [[{ missingCount }]] = await pool.query(
+        `SELECT COUNT(*) AS missingCount
+         FROM product_photo_images o
+         WHERE o.shoot_id = ?
+           AND o.kind = 'original'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM product_photo_images p
+             WHERE p.shoot_id = o.shoot_id
+               AND p.kind = 'processed'
+               AND p.source_image_id = o.id
+           )`,
         [shootId]
+      );
+      await pool.query(
+        `UPDATE product_photo_shoots SET status = ?, error_message = NULL WHERE id = ?`,
+        [Number(missingCount) === 0 ? 'processed' : 'pending', shootId]
       );
     } catch (e) {
       console.error(`[ProductPhotos] Erreur traitement IA shoot ${shootId}:`, e?.message);
@@ -599,6 +632,59 @@ router.post('/process', async (req, res) => {
   } catch (err) {
     console.error('[ProductPhotos] process error:', err);
     res.status(500).json({ message: err?.message || 'Erreur lancement traitement IA' });
+  }
+});
+
+// POST /api/product-photos/shoots/:shootId/images/:imageId/reprocess
+// Reprocesses only the selected original and replaces its previous AI result.
+router.post('/shoots/:shootId/images/:imageId/reprocess', async (req, res) => {
+  try {
+    const shootId = Number(req.params.shootId);
+    const imageId = Number(req.params.imageId);
+    if (!Number.isFinite(shootId) || !Number.isFinite(imageId)) {
+      return res.status(400).json({ message: 'Identifiants invalides' });
+    }
+
+    const model = req.body?.model ?? DEFAULT_IMAGE_MODEL;
+    const quality = req.body?.quality ?? DEFAULT_IMAGE_QUALITY;
+    if (!ALLOWED_IMAGE_MODELS.has(model)) {
+      return res.status(400).json({ message: 'Modèle IA non autorisé' });
+    }
+    if (!ALLOWED_IMAGE_QUALITIES.has(quality)) {
+      return res.status(400).json({ message: 'Qualité IA non autorisée' });
+    }
+    if (!getOpenAIClient()) {
+      return res.status(500).json({ message: 'OPENAI_API_KEY non configurée côté serveur' });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT i.id, s.status
+       FROM product_photo_images i
+       JOIN product_photo_shoots s ON s.id = i.shoot_id
+       WHERE i.id = ? AND i.shoot_id = ? AND i.kind = 'original'`,
+      [imageId, shootId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Image originale introuvable' });
+    }
+    if (rows[0].status === 'processing') {
+      return res.status(409).json({ message: 'Un traitement IA est déjà en cours pour cette session' });
+    }
+
+    await pool.query(
+      `UPDATE product_photo_shoots SET status = 'processing', error_message = NULL WHERE id = ?`,
+      [shootId]
+    );
+
+    processShootsInBackground([shootId], { model, quality }, {
+      sourceImageIds: [imageId],
+      replaceExisting: true,
+    });
+
+    res.json({ ok: true, processing: [shootId], imageId });
+  } catch (err) {
+    console.error('[ProductPhotos] reprocess image error:', err);
+    res.status(500).json({ message: err?.message || 'Erreur retraitement image IA' });
   }
 });
 
