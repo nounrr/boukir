@@ -104,6 +104,18 @@ const productPhotosApi = api.injectEndpoints({
       invalidatesTags: ['PhotoShoot'],
     }),
 
+    reprocessPhotoImage: builder.mutation<
+      { ok: boolean; processing: number[]; imageId: number },
+      { shootId: number; imageId: number; model: AiImageModel; quality: AiImageQuality }
+    >({
+      query: ({ shootId, imageId, model, quality }) => ({
+        url: `/product-photos/shoots/${shootId}/images/${imageId}/reprocess`,
+        method: 'POST',
+        body: { model, quality },
+      }),
+      invalidatesTags: ['PhotoShoot'],
+    }),
+
     reorderPhotoImages: builder.mutation<PhotoShoot, { shootId: number; imageIds: number[] }>({
       query: ({ shootId, imageIds }) => ({
         url: `/product-photos/shoots/${shootId}/order`,
@@ -135,6 +147,7 @@ export const {
   useDeletePhotoShootMutation,
   useDeletePhotoImageMutation,
   useProcessPhotoShootsMutation,
+  useReprocessPhotoImageMutation,
   useReorderPhotoImagesMutation,
   useAttachPhotoShootMutation,
 } = productPhotosApi;

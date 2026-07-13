@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import {
   Camera, X, Trash2, Wand2, Search, ImagePlus, Check,
-  Link2, RefreshCw, Star, ChevronRight, Loader2, History, Aperture
+  Link2, RefreshCw, Star, ChevronLeft, ChevronRight, Loader2, History, Aperture, ZoomIn
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -13,6 +13,7 @@ import {
   useDeletePhotoShootMutation,
   useDeletePhotoImageMutation,
   useProcessPhotoShootsMutation,
+  useReprocessPhotoImageMutation,
   useReorderPhotoImagesMutation,
   useAttachPhotoShootMutation,
 } from '../store/api/productPhotosApi';
@@ -598,6 +599,167 @@ const CaptureTab: React.FC<{
 // Carte d'une session (historique)
 // ----------------------------------------------------------------------------
 
+const ShootGalleryModal: React.FC<{
+  shoot: PhotoShoot;
+  initialIndex: number;
+  aiConfiguration: AiConfiguration;
+  onClose: () => void;
+}> = ({ shoot, initialIndex, aiConfiguration, onClose }) => {
+  const [index, setIndex] = useState(initialIndex);
+  const [reprocessImage, { isLoading: launchingReprocess }] = useReprocessPhotoImageMutation();
+  const originals = shoot.originals;
+
+  useEffect(() => {
+    setIndex(Math.min(Math.max(initialIndex, 0), Math.max(originals.length - 1, 0)));
+  }, [initialIndex, originals.length]);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'ArrowLeft' && originals.length > 1) {
+        setIndex((current) => (current - 1 + originals.length) % originals.length);
+      }
+      if (event.key === 'ArrowRight' && originals.length > 1) {
+        setIndex((current) => (current + 1) % originals.length);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onClose, originals.length]);
+
+  const processedBySource = useMemo(() => {
+    const map = new Map<number, PhotoShootImage>();
+    shoot.processed.forEach((image) => {
+      if (image.source_image_id) map.set(image.source_image_id, image);
+    });
+    return map;
+  }, [shoot.processed]);
+
+  if (!originals.length) return null;
+
+  const currentOriginal = originals[index] || originals[0];
+  const currentProcessed = processedBySource.get(currentOriginal.id);
+  const move = (direction: -1 | 1) => {
+    if (originals.length <= 1) return;
+    setIndex((current) => (current + direction + originals.length) % originals.length);
+  };
+
+  const reprocessCurrent = async () => {
+    try {
+      await reprocessImage({
+        shootId: shoot.id,
+        imageId: currentOriginal.id,
+        ...aiConfiguration,
+      }).unwrap();
+      toast('success', currentProcessed ? 'Retraitement IA lancé pour cette image' : 'Traitement IA lancé pour cette image');
+    } catch (error: any) {
+      toast('error', error?.data?.message || 'Impossible de traiter cette image');
+    }
+  };
+
+  const aiBusy = launchingReprocess || shoot.status === 'processing';
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-gray-950/95 text-white flex flex-col" role="dialog" aria-modal="true" aria-label="Galerie avant et après IA">
+      <div className="flex items-center gap-3 px-3 sm:px-5 py-3 border-b border-white/15 bg-black/30">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold truncate">{shoot.product_designation}</div>
+          <div className="text-xs text-gray-300">
+            Image {index + 1} / {originals.length}
+            {shoot.variant_name ? ` · ${shoot.variant_name}` : ''}
+          </div>
+        </div>
+        <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10" title="Fermer">
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+
+      <div className="relative flex-1 min-h-0 flex items-center px-12 sm:px-16 py-4">
+        <button
+          onClick={() => move(-1)}
+          disabled={originals.length <= 1}
+          className="absolute left-2 sm:left-5 z-10 p-2 sm:p-3 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-20"
+          title="Image précédente"
+        >
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+
+        <div className="w-full h-full max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-3 min-h-0">
+          <div className="min-h-0 rounded-xl border border-white/15 bg-black/30 flex flex-col overflow-hidden">
+            <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide bg-black/40">Avant · Original</div>
+            <div className="flex-1 min-h-0 p-2 flex items-center justify-center">
+              <img src={currentOriginal.image_url} className="max-w-full max-h-full object-contain rounded-lg" alt="Photo originale" />
+            </div>
+          </div>
+
+          <div className="min-h-0 rounded-xl border border-green-400/40 bg-black/30 flex flex-col overflow-hidden">
+            <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide bg-green-700/30 flex items-center justify-between gap-2">
+              <span>Après · IA</span>
+              {currentProcessed && formatAiCostUsd(currentProcessed.ai_cost_usd) && (
+                <span className="normal-case text-green-200">Coût ≈ ${formatAiCostUsd(currentProcessed.ai_cost_usd)}</span>
+              )}
+            </div>
+            <div className="flex-1 min-h-0 p-2 flex items-center justify-center">
+              {currentProcessed ? (
+                <img src={currentProcessed.image_url} className="max-w-full max-h-full object-contain rounded-lg" alt="Photo traitée par IA" />
+              ) : (
+                <div className="text-center text-gray-400">
+                  <ImagePlus className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  Cette image n’a pas encore de résultat IA
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => move(1)}
+          disabled={originals.length <= 1}
+          className="absolute right-2 sm:right-5 z-10 p-2 sm:p-3 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-20"
+          title="Image suivante"
+        >
+          <ChevronRight className="w-6 h-6" />
+        </button>
+      </div>
+
+      <div className="border-t border-white/15 bg-black/40 p-3 space-y-3">
+        <div className="flex justify-center">
+          <button
+            onClick={reprocessCurrent}
+            disabled={aiBusy}
+            className="px-4 py-2.5 rounded-lg bg-orange-600 hover:bg-orange-700 disabled:opacity-50 font-medium flex items-center gap-2"
+          >
+            {aiBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+            {aiBusy ? 'Traitement IA en cours…' : currentProcessed ? 'Retraiter cette image par IA' : 'Traiter cette image par IA'}
+          </button>
+        </div>
+        <div className="flex gap-2 overflow-x-auto justify-start sm:justify-center pb-1">
+          {originals.map((original, imageIndex) => {
+            const processed = processedBySource.get(original.id);
+            return (
+              <button
+                key={original.id}
+                onClick={() => setIndex(imageIndex)}
+                className={`relative flex-shrink-0 rounded-lg border-2 overflow-hidden ${imageIndex === index ? 'border-orange-400' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                title={`Afficher l’image ${imageIndex + 1}`}
+              >
+                <img src={processed?.image_url || original.image_url} className="w-14 h-14 sm:w-16 sm:h-16 object-cover" alt="" />
+                <span className="absolute bottom-0 right-0 bg-black/70 text-[10px] px-1">{imageIndex + 1}</span>
+                {processed && <span className="absolute top-1 left-1 w-2 h-2 rounded-full bg-green-400" title="Traitée par IA" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ShootCard: React.FC<{
   shoot: PhotoShoot;
   selected: boolean;
@@ -609,6 +771,7 @@ const ShootCard: React.FC<{
   const [processShoots, { isLoading: processing }] = useProcessPhotoShootsMutation();
   const [reorderImages] = useReorderPhotoImagesMutation();
   const [attachShoot, { isLoading: attaching }] = useAttachPhotoShootMutation();
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
 
   const statusInfo = STATUS_LABELS[shoot.status] || STATUS_LABELS.pending;
   const hasProcessed = shoot.processed.length > 0;
@@ -740,20 +903,34 @@ const ShootCard: React.FC<{
           <div className="space-y-2">
             <div className="text-xs font-semibold text-gray-500 uppercase">Avant / Après</div>
             <div className="flex gap-4 overflow-x-auto pb-2">
-              {shoot.originals.map((orig) => {
+              {shoot.originals.map((orig, imageIndex) => {
                 const proc = processedBySource.get(orig.id);
                 return (
                   <div key={orig.id} className="flex items-center gap-1 flex-shrink-0">
-                    <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setGalleryIndex(imageIndex)}
+                      className="relative cursor-zoom-in group"
+                      title="Ouvrir la galerie Avant / Après"
+                    >
                       <img src={orig.image_url} className="w-24 h-24 object-cover rounded-lg border" alt="avant" />
                       <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] text-center rounded-b-lg">Avant</span>
-                    </div>
+                      <ZoomIn className="absolute top-1 left-1 w-4 h-4 p-0.5 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100" />
+                    </button>
                     <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
                     {proc ? (
                       <div className="flex flex-col items-center gap-1">
                         <div className="relative group">
-                          <img src={proc.image_url} className="w-24 h-24 object-cover rounded-lg border-2 border-green-400" alt="après" />
-                          <span className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-[10px] text-center rounded-b-lg">Après IA</span>
+                          <button
+                            type="button"
+                            onClick={() => setGalleryIndex(imageIndex)}
+                            className="block cursor-zoom-in"
+                            title="Ouvrir la galerie Avant / Après"
+                          >
+                            <img src={proc.image_url} className="w-24 h-24 object-cover rounded-lg border-2 border-green-400" alt="après" />
+                            <span className="absolute bottom-0 left-0 right-0 bg-green-600/70 text-white text-[10px] text-center rounded-b-lg">Après IA</span>
+                            <ZoomIn className="absolute top-1 left-1 w-4 h-4 p-0.5 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100" />
+                          </button>
                           <button
                             onClick={() => confirmDeleteImage(proc)}
                             className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow"
@@ -789,9 +966,17 @@ const ShootCard: React.FC<{
           <div className="space-y-2">
             <div className="text-xs font-semibold text-gray-500 uppercase">Images originales</div>
             <div className="flex gap-2 overflow-x-auto pb-2">
-              {shoot.originals.map((img) => (
+              {shoot.originals.map((img, imageIndex) => (
                 <div key={img.id} className="relative group flex-shrink-0">
-                  <img src={img.image_url} className="w-24 h-24 object-cover rounded-lg border" alt="" />
+                  <button
+                    type="button"
+                    onClick={() => setGalleryIndex(imageIndex)}
+                    className="block cursor-zoom-in"
+                    title="Ouvrir la galerie Avant / Après"
+                  >
+                    <img src={img.image_url} className="w-24 h-24 object-cover rounded-lg border" alt="" />
+                    <ZoomIn className="absolute top-1 left-1 w-4 h-4 p-0.5 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100" />
+                  </button>
                   {shoot.status !== 'processing' && (
                     <button
                       onClick={() => confirmDeleteImage(img)}
@@ -866,6 +1051,14 @@ const ShootCard: React.FC<{
           </div>
         )}
       </div>
+      {galleryIndex !== null && (
+        <ShootGalleryModal
+          shoot={shoot}
+          initialIndex={galleryIndex}
+          aiConfiguration={aiConfiguration}
+          onClose={() => setGalleryIndex(null)}
+        />
+      )}
     </div>
   );
 };
