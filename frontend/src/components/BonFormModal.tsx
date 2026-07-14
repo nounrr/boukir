@@ -536,13 +536,17 @@ const resolveAverageSnapshotCoutRevient = (
 const getLatestSnapshotEntry = (entries: any[] = []) => {
   if (!Array.isArray(entries) || entries.length === 0) return null;
   return entries.reduce((latest: any, current: any) => {
+    const latestTime = new Date(
+      latest?.snapshot_created_at ?? latest?.created_at ?? latest?.date_creation ?? 0
+    ).getTime();
+    const currentTime = new Date(
+      current?.snapshot_created_at ?? current?.created_at ?? current?.date_creation ?? 0
+    ).getTime();
+    if (currentTime !== latestTime) return currentTime > latestTime ? current : latest;
+
     const latestId = Number(latest?.snapshot_id ?? latest?.id ?? 0) || 0;
     const currentId = Number(current?.snapshot_id ?? current?.id ?? 0) || 0;
-    if (currentId !== latestId) return currentId > latestId ? current : latest;
-
-    const latestTime = new Date(latest?.created_at ?? latest?.date_creation ?? 0).getTime();
-    const currentTime = new Date(current?.created_at ?? current?.date_creation ?? 0).getTime();
-    return currentTime > latestTime ? current : latest;
+    return currentId > latestId ? current : latest;
   });
 };
 
@@ -1171,7 +1175,10 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const { data: allProducts = [] } = useGetProductsQuery(undefined, { skip: !heavyDataReady });
   // Snapshot-expanded products for Sortie/Comptant/Avoir/Charge types
   const useSnapshotSelection = ['Sortie', 'Comptant', 'Charge', 'AvoirCharge', 'Avoir', 'AvoirComptant', 'AvoirFournisseur'].includes(currentTab);
-  const { data: allSnapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotSelection || !heavyDataReady });
+  // Commande keeps the normal product selector, but still needs snapshots to
+  // prefill the most recent purchase price.
+  const useSnapshotPricing = useSnapshotSelection || currentTab === 'Commande';
+  const { data: allSnapshotProducts = [] } = useGetProductsWithSnapshotsQuery(undefined, { skip: !useSnapshotPricing || !heavyDataReady });
   const remoteProductSearchEnabled = !heavyDataReady && debouncedProductSearchTerm.length >= 2;
   const { data: searchedProductsResponse, isFetching: isSearchingProducts } = useSearchBonProductsQuery(
     { q: debouncedProductSearchTerm, limit: 80 },
@@ -1179,7 +1186,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   );
   const { data: searchedSnapshotProducts = [], isFetching: isSearchingSnapshotProducts } = useSearchProductsWithSnapshotsQuery(
     { q: debouncedProductSearchTerm, limit: 120 },
-    { skip: !remoteProductSearchEnabled || !useSnapshotSelection }
+    { skip: !remoteProductSearchEnabled || !useSnapshotPricing }
   );
   const products = heavyDataReady
     ? allProducts
@@ -1242,10 +1249,8 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
         result.push(...withStock);
       } else {
         // TOUS les snapshots de cette variante ont qte <= 0 → afficher seulement le dernier
-        const latest = candidateSnapshots.reduce((a: any, b: any) => {
-          return Number(b.snapshot_id) > Number(a.snapshot_id) ? b : a;
-        });
-        result.push(latest);
+        const latest = getLatestSnapshotEntry(candidateSnapshots);
+        if (latest) result.push(latest);
       }
     }
     
@@ -1310,7 +1315,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     for (const p of products as any[]) {
       const ref = String(p.reference ?? p.id);
       const nom = p.designation ?? '';
-      const pa = Number(p.prix_achat || 0);
+      const pa = resolveOptionPrixAchat(p, null, snapshotProducts as any[]);
       const pv = Number(p.prix_vente || 0);
       const pv2Label = formatPrixVente2Option(p.prix_vente_2);
       const variants: any[] = p.variants ?? [];
@@ -1325,7 +1330,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
 
       // Show each variant as separate option
       for (const v of variants) {
-        const vpa = Number(v.prix_achat ?? pa);
+        const vpa = resolveOptionPrixAchat(p, v, snapshotProducts as any[]) || pa;
         const vpv = Number(v.prix_vente ?? pv);
         const variantPv2Label = formatPrixVente2Option(v.prix_vente_2 ?? p.prix_vente_2);
         // If single variant with same pricing as parent, skip duplicate
@@ -1340,7 +1345,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     }
 
     return options;
-  }, [products]);
+  }, [products, snapshotProducts]);
 
   const variantCatalogMap = useMemo(() => {
     const map = new Map<string, any>();
