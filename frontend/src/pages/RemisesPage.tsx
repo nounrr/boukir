@@ -119,7 +119,7 @@ const getAccountAvailableTotal = (account: any, fallbackEarned = 0): number => {
 
 type SortDirection = 'asc' | 'desc';
 type RemiseSortKey = 'nom' | 'type' | 'phone' | 'cin' | 'created_at' | 'ancien' | 'nouveau' | 'used' | 'final';
-type DirectSortKey = 'client' | 'societe' | 'telephone' | 'bons' | 'remise';
+type DirectSortKey = 'client' | 'societe' | 'telephone' | 'bons' | 'used' | 'remise';
 
 const normalizeSortValue = (value: any): string | number => {
   if (typeof value === 'number') return value;
@@ -324,7 +324,11 @@ const RemisesPage: React.FC = () => {
     for (const bal of contactBalances as any[]) {
       const contactId = Number(bal?.contact_id);
       if (!Number.isFinite(contactId) || map.has(contactId)) continue;
-      if (!Number(bal?.earned_separee_total || 0) && !Number(bal?.available_total || 0)) continue;
+      if (
+        !Number(bal?.earned_total || 0)
+        && !Number(bal?.used_total || 0)
+        && !Number(bal?.available_total || 0)
+      ) continue;
       map.set(contactId, {
         id: contactId,
         nom_complet: bal?.nom_complet || `#${contactId}`,
@@ -342,8 +346,12 @@ const RemisesPage: React.FC = () => {
     const list = directClientRows.filter((c: any) => {
       const id = Number(c?.id);
       if (!Number.isFinite(id)) return false;
-      const total = directAvailableByClientId.get(id) || 0;
-      if (!total) return false;
+      const balance = contactBalanceById.get(id);
+      const hasRemiseActivity = Number(directAvailableByClientId.get(id) || 0) !== 0
+        || Number(balance?.earned_total || 0) !== 0
+        || Number(balance?.used_total || 0) !== 0
+        || Number(directNewByClientId.totalById.get(id) || 0) !== 0;
+      if (!hasRemiseActivity) return false;
 
       if (!term) return true;
       return (
@@ -359,7 +367,7 @@ const RemisesPage: React.FC = () => {
       return tb - ta;
     });
     return list;
-  }, [directClientRows, directSearch, directAvailableByClientId]);
+  }, [directClientRows, directSearch, directAvailableByClientId, contactBalanceById, directNewByClientId]);
 
   const toggleRemiseSort = (key: RemiseSortKey) => {
     setRemiseSort((current) => {
@@ -386,6 +394,8 @@ const RemisesPage: React.FC = () => {
       const rightCount = directNewByClientId.countById.get(rightId) || 0;
       const leftRemise = directAvailableByClientId.get(leftId) || 0;
       const rightRemise = directAvailableByClientId.get(rightId) || 0;
+      const leftUsed = Number(contactBalanceById.get(leftId)?.used_total || 0);
+      const rightUsed = Number(contactBalanceById.get(rightId)?.used_total || 0);
 
       let result = 0;
       switch (directSort.key) {
@@ -401,6 +411,9 @@ const RemisesPage: React.FC = () => {
         case 'bons':
           result = compareSortValues(leftCount, rightCount);
           break;
+        case 'used':
+          result = compareSortValues(leftUsed, rightUsed);
+          break;
         case 'remise':
           result = compareSortValues(leftRemise, rightRemise);
           break;
@@ -410,7 +423,7 @@ const RemisesPage: React.FC = () => {
     });
 
     return list;
-  }, [filteredDirectClients, directSort, directNewByClientId, directAvailableByClientId]);
+  }, [filteredDirectClients, directSort, directNewByClientId, directAvailableByClientId, contactBalanceById]);
 
   const renderSortIcon = (isActive: boolean, direction: SortDirection | null, colorClass: string) => {
     if (!isActive || !direction) return <ArrowUpDown size={14} className={colorClass} />;
@@ -793,6 +806,12 @@ const RemisesPage: React.FC = () => {
                   <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Nouveau (bons)</th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">Séparée</th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                    <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('used')}>
+                      Utilisée
+                      {renderSortIcon(directSort?.key === 'used', directSort?.key === 'used' ? directSort.direction : null, 'text-blue-700')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-blue-700 uppercase tracking-wider">
                     <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleDirectSort('remise')}>
                       Final
                       {renderSortIcon(directSort?.key === 'remise', directSort?.key === 'remise' ? directSort.direction : null, 'text-blue-700')}
@@ -810,6 +829,7 @@ const RemisesPage: React.FC = () => {
                   const ancien = Number(ancienAbonneByContactId.get(id)?.total_remise || 0) + (c?._client_abonne_account ? getAccountOldTotal(c._client_abonne_account) : 0);
                   const nouveau = Number(bal?.earned_bons_total ?? directNewByClientId.totalById.get(id) ?? 0);
                   const separee = Number(bal?.earned_separee_total || 0);
+                  const used = Number(bal?.used_total || 0);
                   return (
                     <tr key={id} className="hover:bg-gradient-to-r hover:from-blue-25 hover:to-cyan-25 transition-all duration-200">
                       <td className="px-6 py-4 font-medium text-gray-900">{c.nom_complet || c.nom || `#${id}`}</td>
@@ -824,6 +844,9 @@ const RemisesPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className={`text-lg font-bold ${separee < 0 ? 'text-red-600' : separee > 0 ? 'text-green-600' : 'text-gray-400'}`}>{separee.toFixed(2)} DH</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="text-lg font-bold text-red-600">{used.toFixed(2)} DH</span>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-lg font-bold text-blue-600">{Number(total).toFixed(2)} DH</span>
@@ -848,7 +871,7 @@ const RemisesPage: React.FC = () => {
                 })}
                 {sortedDirectClients.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-6 py-10 text-center text-sm text-gray-500">
+                    <td colSpan={10} className="px-6 py-10 text-center text-sm text-gray-500">
                       Aucun client avec remise (nouveau système) trouvé.
                     </td>
                   </tr>

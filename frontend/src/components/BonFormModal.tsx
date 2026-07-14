@@ -510,7 +510,7 @@ const resolveAverageSnapshotCoutRevient = (
   productId: any,
   variantId: any
 ) => {
-  if (!productId || !Array.isArray(snapshotProducts) || snapshotProducts.length === 0) return 0;
+  if (!productId || !Array.isArray(snapshotProducts) || snapshotProducts.length === 0) return null;
   const variantKey = String(variantId || '');
   let weightedValue = 0;
   let totalQty = 0;
@@ -520,17 +520,21 @@ const resolveAverageSnapshotCoutRevient = (
     if (String(snap.id) !== String(productId)) continue;
     if (String(snap.variant_id || '') !== variantKey) continue;
 
-    const directAverage = Number(snap.cout_revient_moyen_snapshot ?? 0) || 0;
-    if (directAverage > 0) return directAverage;
+    const directAverageRaw = snap.cout_revient_moyen_snapshot;
+    if (directAverageRaw !== null && directAverageRaw !== undefined) {
+      const directAverage = Number(directAverageRaw);
+      if (Number.isFinite(directAverage)) return directAverage;
+    }
 
-    const qty = Number(snap.snapshot_commande_quantite ?? 0) || 0;
-    const cost = Number(snap.snapshot_cout_revient ?? snap.cout_revient ?? 0) || 0;
-    if (!qty || !cost) continue;
+    const qty = Number(snap.snapshot_commande_quantite ?? 0);
+    const costRaw = snap.snapshot_cout_revient ?? snap.cout_revient;
+    const cost = Number(costRaw);
+    if (!Number.isFinite(qty) || qty === 0 || costRaw == null || !Number.isFinite(cost)) continue;
     weightedValue += cost * qty;
     totalQty += qty;
   }
 
-  return totalQty > 0 ? weightedValue / totalQty : 0;
+  return totalQty !== 0 ? weightedValue / totalQty : null;
 };
 
 const getLatestSnapshotEntry = (entries: any[] = []) => {
@@ -727,7 +731,7 @@ const resolveItemCostContext = (
 
   const basePA = snapshotPA || variantPA || productPA || itemPA || 0;
   const isService = isServiceItem(item, product, snapshot);
-  const baseCR = isService ? 0 : (averageSnapshotCR || variantCR || productCR || snapshotCR || itemCR || basePA || 0);
+  const baseCR = isService ? 0 : (averageSnapshotCR ?? (variantCR || productCR || snapshotCR || itemCR || basePA || 0));
 
   return {
     product,
@@ -751,7 +755,7 @@ const resolveItemCostContext = (
     prix_achat: scaleDecimal(basePA, convFactor),
     cout_revient: isService ? 0 : scaleDecimal(baseCR, convFactor),
     isService,
-    source: isService ? 'service' : averageSnapshotCR ? 'snapshot_average' : variantPA || variantCR ? 'variant' : productPA || productCR ? 'product' : snapshotPA || snapshotCR ? 'snapshot' : 'item',
+    source: isService ? 'service' : averageSnapshotCR !== null ? 'snapshot_average' : variantPA || variantCR ? 'variant' : productPA || productCR ? 'product' : snapshotPA || snapshotCR ? 'snapshot' : 'item',
   };
 };
 
@@ -2474,10 +2478,6 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
         setShowRemisePanel(false);
       } else {
         setShowRemisePanel(true);
-        if (type === 'Comptant') {
-          // Comptant has no client_id in most cases
-          setRemiseTargetIsBonClient(false);
-        }
       }
     } else {
       setShowRemisePanel(false);
@@ -2580,7 +2580,7 @@ const [qtyRaw, setQtyRaw] = useState<Record<number, string>>({});
       const latestSnap = findLatestSnapshotForProductVariant(snapshotProducts as any[], item.product_id, item.variant_id);
       const averageSnapshotCR = resolveAverageSnapshotCoutRevient(snapshotProducts as any[], item.product_id, item.variant_id);
       const bestPA = Number(latestSnap?.prix_achat) || Number(variant?.prix_achat) || Number(prod?.prix_achat) || Number(snap?.prix_achat) || 0;
-      const bestCR = averageSnapshotCR || Number(variant?.cout_revient) || Number(prod?.cout_revient) || Number(snap?.cout_revient) || Number(latestSnap?.cout_revient) || Number(latestSnap?.prix_achat) || bestPA || 0;
+      const bestCR = averageSnapshotCR ?? (Number(variant?.cout_revient) || Number(prod?.cout_revient) || Number(snap?.cout_revient) || Number(latestSnap?.cout_revient) || Number(latestSnap?.prix_achat) || bestPA || 0);
 
       if (!bestPA && !bestCR) return;
 
@@ -2928,7 +2928,9 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       existingRemiseIdRaw == null || existingRemiseIdRaw === '' ? null : Number(existingRemiseIdRaw);
     const computeRemiseTargetFromUi = () => {
       if (requestType === 'Comptant') {
-        // Comptant often has no client_id; keep target as "other client remise".
+        if (remiseTargetIsBonClient) {
+          return { remise_is_client: 1, remise_id: null, remise_client_nom: undefined };
+        }
         return {
           remise_is_client: 0,
           remise_id: typeof selectedRemiseId === 'number' ? selectedRemiseId : null,
@@ -2965,7 +2967,6 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
           let rawIsClient = Number.isFinite(existingRemiseIsClient) ? (existingRemiseIsClient ? 1 : 0) : 0;
           // Safety: if it says is_client=1 but we have no client_id (e.g. Comptant or unlinked Sortie), force 0
           if (rawIsClient === 1) {
-             if (requestType === 'Comptant') rawIsClient = 0;
              if (requestType === 'Sortie' && !values.client_id) rawIsClient = 0;
           }
           return {
@@ -2988,7 +2989,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       isNotCalculated: values.isNotCalculated ? true : null,
       statut: values.statut || 'Brouillon',
   vendre_au_fournisseur: (requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur ? 1 : undefined,
-  client_id: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce' || ((requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur)) ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
+  client_id: (requestType === 'AvoirComptant' || requestType === 'AvoirEcommerce' || ((requestType === 'Sortie' || requestType === 'Avoir') && values.vendre_au_fournisseur)) ? undefined : (values.client_id ? parseInt(values.client_id) : undefined),
   client_nom: (requestType === 'Comptant' || requestType === 'AvoirComptant' || requestType === 'Devis') ? (values.client_nom || null) : undefined,
   montant_ignorer: requestType === 'Comptant' ? (Number(values.montant_ignorer || 0) || 0) : undefined,
   reste: (requestType === 'Comptant' && values.payer_partiellement) ? (values.reste || 0) : 0,
@@ -4904,8 +4905,8 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                           if (isQtyOnlyEdit) return;
                           const next = !showRemisePanel;
                           setShowRemisePanel(next);
-                          if (next && values.type === 'Comptant') {
-                            setRemiseTargetIsBonClient(false);
+                          if (next && values.type === 'Comptant' && !initialValues) {
+                            setRemiseTargetIsBonClient(true);
                           }
                         }}
                         className="flex items-center text-purple-600 hover:text-purple-800 disabled:opacity-60"
@@ -5623,6 +5624,11 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                           product.id,
                                           productVariantId
                                         );
+                                        const averageSnapshotCoutRevient = resolveAverageSnapshotCoutRevient(
+                                          snapshotProducts as any[],
+                                          product.id,
+                                          productVariantId
+                                        );
 
                                         const effectivePA = latestSnapshotForCost
                                           ? Number(latestSnapshotForCost.prix_achat ?? product.prix_achat ?? 0)
@@ -5632,11 +5638,13 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                         const effectivePV = catalogVariant
                                           ? Number(catalogVariant.prix_vente ?? catalogProduct?.prix_vente ?? product.prix_vente ?? 0)
                                           : Number((catalogProduct?.prix_vente ?? product.prix_vente) || 0);
-                                        const effectiveCR = latestSnapshotForCost
-                                          ? Number(latestSnapshotForCost.cout_revient ?? latestSnapshotForCost.prix_achat ?? product.cout_revient ?? 0)
-                                          : selectedVariant
-                                            ? Number(selectedVariant.cout_revient ?? product.cout_revient ?? 0)
-                                            : Number(product.cout_revient || 0);
+                                        const effectiveCR = averageSnapshotCoutRevient ?? (
+                                          latestSnapshotForCost
+                                            ? Number(latestSnapshotForCost.cout_revient ?? latestSnapshotForCost.prix_achat ?? product.cout_revient ?? 0)
+                                            : selectedVariant
+                                              ? Number(selectedVariant.cout_revient ?? product.cout_revient ?? 0)
+                                              : Number(product.cout_revient || 0)
+                                        );
 
                                         setFieldValue(`items.${index}.prix_achat`, effectivePA);
                                         setFieldValue(`items.${index}.cout_revient`, effectiveCR);
@@ -5748,19 +5756,33 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                   )
                                                 : null;
                                               setFieldValue(`items.${index}.product_snapshot_id`, snapshotProd?.snapshot_id || null);
+                                              const latestVariantSnapshot = findLatestSnapshotForProductVariant(
+                                                snapshotProducts as any[],
+                                                values.items[index].product_id,
+                                                vId
+                                              );
+                                              const pricingSnapshot = values.type === 'Commande'
+                                                ? latestVariantSnapshot
+                                                : snapshotProd;
+                                              const averageVariantCoutRevient = resolveAverageSnapshotCoutRevient(
+                                                snapshotProducts as any[],
+                                                values.items[index].product_id,
+                                                vId
+                                              );
                                               // Keep purchase/cost consistent avec variante + snapshot + unité
                                               // Use || (not ??) so that 0 values fall through to snapshot/product
                                               const baseAchat =
-                                                Number(snapshotProd?.prix_achat) ||
+                                                Number(pricingSnapshot?.prix_achat) ||
                                                 Number(variant.prix_achat) ||
                                                 Number(product?.prix_achat) ||
                                                 0;
-                                              const baseCoutRevient: number =
+                                              const baseCoutRevient: number = averageVariantCoutRevient ?? (
                                                 Number(snapshotProd?.cout_revient) ||
                                                 Number((variant as any).cout_revient) ||
                                                 Number(product?.cout_revient) ||
                                                 baseAchat ||
-                                                0;
+                                                0
+                                              );
                                               // 🔍 DEBUG: Variant selected
                                               console.log('🟡 [VARIANT SELECT]', {
                                                 row: index,
@@ -5791,7 +5813,7 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
 
                                               // Update price based on variant
                                               const variantBasePrice = values.type === 'Commande'
-                                                ? Number(variant.prix_achat || snapshotProd?.prix_achat || product?.prix_achat || 0)
+                                                ? baseAchat
                                                 : values.type === 'Charge'
                                                   ? baseCoutRevient
                                                   : getCatalogPrixVente(product, vId);
@@ -5838,9 +5860,21 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             setFieldValue(`items.${index}.product_snapshot_id`, null);
                                           }
 
-                                          const basePriceAchat = Number(snapshotProd2?.prix_achat) || Number(product?.prix_achat) || 0;
+                                          const latestProductSnapshot = findLatestSnapshotForProductVariant(
+                                            snapshotProducts as any[],
+                                            values.items[index].product_id,
+                                            null
+                                          );
+                                          const basePriceAchat = values.type === 'Commande'
+                                            ? (Number(latestProductSnapshot?.prix_achat) || Number(product?.prix_achat) || 0)
+                                            : (Number(snapshotProd2?.prix_achat) || Number(product?.prix_achat) || 0);
                                           const basePriceVente = getCatalogPrixVente(product);
-                                          const baseCoutRevient = Number(snapshotProd2?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
+                                          const averageProductCoutRevient = resolveAverageSnapshotCoutRevient(
+                                            snapshotProducts as any[],
+                                            values.items[index].product_id,
+                                            null
+                                          );
+                                          const baseCoutRevient = averageProductCoutRevient ?? (Number(snapshotProd2?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0);
 
                                           let effectivePrice = values.type === 'Commande'
                                             ? basePriceAchat
@@ -5959,9 +5993,14 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                               // If a variant is selected, use its base price instead of product's
                                               const selectedVariantId = values.items[index].variant_id;
                                               const variantsForProduct = product?.variants ?? [];
+                                              const averageUnitCoutRevient = resolveAverageSnapshotCoutRevient(
+                                                snapshotProducts as any[],
+                                                values.items[index].product_id,
+                                                selectedVariantId || null
+                                              );
                                               let baseA = basePriceAchat;
                                               let baseV = basePriceVente;
-                                              let baseCR = Number(snapshotProd?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
+                                              let baseCR = averageUnitCoutRevient ?? (Number(snapshotProd?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0);
                                               // 🔍 DEBUG: Unit selected (before variant override)
                                               console.log('🔵 [UNIT SELECT] base values', {
                                                 row: index,
@@ -5986,7 +6025,9 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                                 if (v) {
                                                   baseA = Number(v.prix_achat) || basePriceAchat || 0;
                                                   baseV = getCatalogPrixVente(product, selectedVariantId) || basePriceVente || 0;
-                                                  baseCR = Number((v as any).cout_revient) || baseCR;
+                                                  if (averageUnitCoutRevient === null) {
+                                                    baseCR = Number((v as any).cout_revient) || baseCR;
+                                                  }
                                                 }
                                               }
 
@@ -6032,15 +6073,22 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                             // If a variant is selected, revert to variant's base price; else product's base price
                                             const selectedVariantId = values.items[index].variant_id;
                                             const variantsForProduct = product?.variants ?? [];
+                                            const averageUnitCoutRevient = resolveAverageSnapshotCoutRevient(
+                                              snapshotProducts as any[],
+                                              values.items[index].product_id,
+                                              selectedVariantId || null
+                                            );
                                             let baseA = basePriceAchat;
                                             let baseV = basePriceVente;
-                                            let baseCR = Number(snapshotProd?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0;
+                                            let baseCR = averageUnitCoutRevient ?? (Number(snapshotProd?.cout_revient) || Number(product?.cout_revient) || basePriceAchat || 0);
                                             if (selectedVariantId) {
                                               const v = variantsForProduct.find((vv: any) => String(vv.id) === String(selectedVariantId));
                                               if (v) {
                                                 baseA = Number(v.prix_achat) || basePriceAchat || 0;
                                                 baseV = getCatalogPrixVente(product, selectedVariantId) || basePriceVente || 0;
-                                                baseCR = Number((v as any).cout_revient) || baseCR;
+                                                if (averageUnitCoutRevient === null) {
+                                                  baseCR = Number((v as any).cout_revient) || baseCR;
+                                                }
                                               }
                                             }
 
@@ -6375,14 +6423,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                       Number(variant?.prix_achat) ||
                                       Number(product?.prix_achat) ||
                                       0;
-                                    const baseCR =
+                                    const averageDisplayCoutRevient = resolveAverageSnapshotCoutRevient(
+                                      snapshotProducts as any[],
+                                      item.product_id,
+                                      variantId
+                                    );
+                                    const baseCR = averageDisplayCoutRevient ?? (
                                       Number(latestActiveSnapshot?.cout_revient) ||
                                       Number(latestActiveSnapshot?.prix_achat) ||
                                       Number(snapshotProd?.cout_revient) ||
                                       Number((variant as any)?.cout_revient) ||
                                       Number(product?.cout_revient) ||
                                       basePA ||
-                                      0;
+                                      0
+                                    );
                                     const basePV =
                                       Number(latestActiveSnapshot?.prix_vente) ||
                                       Number(snapshotProd?.prix_vente) ||

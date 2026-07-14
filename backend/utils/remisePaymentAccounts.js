@@ -132,6 +132,8 @@ async function getDirectBonRemiseTotalsByContact(db, contactIds) {
      INNER JOIN comptant_items items ON items.bon_comptant_id = bc.id
      WHERE (COALESCE(bc.remise_is_client, 1) = 1 OR bc.remise_id IS NULL)
        AND bc.client_id IN (${inClause})
+       AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+       AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
      GROUP BY bc.client_id`,
     params
   );
@@ -291,6 +293,8 @@ async function getDirectBonEarnedAll(db) {
      FROM bons_comptant bc
      INNER JOIN comptant_items items ON items.bon_comptant_id = bc.id
      WHERE (COALESCE(bc.remise_is_client, 1) = 1 OR bc.remise_id IS NULL) AND bc.client_id IS NOT NULL
+       AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+       AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
      GROUP BY bc.client_id`
   );
   const map = new Map();
@@ -407,7 +411,9 @@ export async function getDirectContactRemiseInfo(db, contactId) {
     `SELECT ${DIRECT_BON_AMOUNT_EXPR} AS total
      FROM bons_comptant bc
      INNER JOIN comptant_items items ON items.bon_comptant_id = bc.id
-     WHERE (COALESCE(bc.remise_is_client, 1) = 1 OR bc.remise_id IS NULL) AND bc.client_id = ?`,
+     WHERE (COALESCE(bc.remise_is_client, 1) = 1 OR bc.remise_id IS NULL) AND bc.client_id = ?
+       AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+       AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'`,
     [numId]
   );
   let oldEarned = 0;

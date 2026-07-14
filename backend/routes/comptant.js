@@ -87,6 +87,85 @@ const parseBooleanFlag = (value) => (
   (typeof value === 'string' && value.toLowerCase() === 'true')
 );
 
+const comptantRemisePaymentGroupId = (bonId) => `comptant-remise-${Number(bonId)}`;
+
+function computeComptantRemiseTotal(items) {
+  const total = (Array.isArray(items) ? items : []).reduce((sum, item) => {
+    const qte = Number(item?.quantite || 0);
+    const prixUnitaire = Number(item?.prix_unitaire || 0);
+    const remiseMontant = Number(item?.remise_montant || 0);
+    const remisePourcentage = Number(item?.remise_pourcentage || 0);
+    const remiseUnitaire = remiseMontant !== 0
+      ? remiseMontant
+      : (remisePourcentage !== 0 ? (prixUnitaire * remisePourcentage) / 100 : 0);
+    return sum + (qte * remiseUnitaire);
+  }, 0);
+  return Math.max(0, Math.round(total * 100) / 100);
+}
+
+async function createComptantRemiseContact(db, { bonId, clientNom, createdBy }) {
+  const effectiveName = String(clientNom || '').trim() || `client comptant_${Number(bonId)}`;
+  const [result] = await db.execute(
+    `INSERT INTO contacts (nom_complet, type, solde, created_by)
+     VALUES (?, 'Client', 0, ?)`,
+    [effectiveName, createdBy ?? null]
+  );
+  return { id: Number(result.insertId), name: effectiveName };
+}
+
+async function syncComptantDirectRemisePayment(db, {
+  bonId,
+  contactId,
+  contactName,
+  remiseIsClient,
+  remiseTotal,
+  bonStatut,
+  createdBy,
+}) {
+  const paymentGroupId = comptantRemisePaymentGroupId(bonId);
+  const isDirect = Number(remiseIsClient) === 1 && Number(contactId) > 0 && Number(remiseTotal) > 0;
+
+  if (!isDirect) {
+    await db.execute('DELETE FROM payments WHERE payment_group_id = ?', [paymentGroupId]);
+    return;
+  }
+
+  const normalizedStatus = String(bonStatut || '').toLowerCase();
+  const isCancelled = normalizedStatus.includes('annul') || normalizedStatus === 'avoir';
+  const paymentStatus = isCancelled ? 'Annulé' : 'Validé';
+  const designation = `Remise bon comptant COM${String(bonId).padStart(4, '0')}`;
+  const [existing] = await db.execute(
+    'SELECT id FROM payments WHERE payment_group_id = ? ORDER BY id ASC LIMIT 1 FOR UPDATE',
+    [paymentGroupId]
+  );
+
+  if (existing.length) {
+    const paymentId = Number(existing[0].id);
+    await db.execute(
+      `UPDATE payments SET
+         type_paiement = 'Client', contact_id = ?, remise_account_id = NULL,
+         remise_account_type = 'direct-client', remise_account_name = ?,
+         bon_id = ?, bon_type = 'Comptant', montant_total = ?, mode_paiement = 'Remise',
+         designation = ?, statut = ?, updated_by = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [contactId, contactName, bonId, remiseTotal, designation, paymentStatus, createdBy ?? null, paymentId]
+    );
+    await db.execute('DELETE FROM payments WHERE payment_group_id = ? AND id <> ?', [paymentGroupId, paymentId]);
+    return;
+  }
+
+  const [result] = await db.execute(
+    `INSERT INTO payments
+      (numero, payment_group_id, type_paiement, contact_id, remise_account_id,
+       remise_account_type, remise_account_name, bon_id, bon_type, montant_total,
+       mode_paiement, date_paiement, designation, statut, created_by, created_at)
+     VALUES ('', ?, 'Client', ?, NULL, 'direct-client', ?, ?, 'Comptant', ?,
+             'Remise', NOW(), ?, ?, ?, NOW())`,
+    [paymentGroupId, contactId, contactName, bonId, remiseTotal, designation, paymentStatus, createdBy ?? null]
+  );
+  await db.execute('UPDATE payments SET numero = CAST(id AS CHAR) WHERE id = ?', [result.insertId]);
+}
+
 async function sumComptantBonPayments(db, bonComptantId) {
   const [rows] = await db.execute(
     `SELECT COALESCE(SUM(montant), 0) AS total
@@ -584,7 +663,10 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       return res.status(400).json({ message: 'Champs requis manquants', missing });
     }
 
-    const cId  = client_id ?? null;
+    let cId  = client_id ?? null;
+    let effectiveClientNom = String(client_nom || '').trim() || null;
+    const comptantRemiseTotal = computeComptantRemiseTotal(items);
+    const wantsDirectComptantRemise = parseBooleanFlag(remise_is_client) && comptantRemiseTotal > 0;
     const blockedClient = await findBlockedClient(connection, cId);
     if (blockedClient) {
       await connection.rollback();
@@ -595,13 +677,15 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     const st   = statut ?? 'Brouillon';
     const montantIgnorer = Number.isFinite(Number(montant_ignorer)) ? Number(montant_ignorer) : 0;
 
-    const resolved = await resolveRemiseTarget({
-      db: connection,
-      clientId: cId,
-      remiseIsClient: remise_is_client,
-      remiseId: remise_id,
-      remiseClientNom: remise_client_nom,
-    });
+    const resolved = wantsDirectComptantRemise && !cId
+      ? { remise_is_client: 1, remise_id: null }
+      : await resolveRemiseTarget({
+          db: connection,
+          clientId: cId,
+          remiseIsClient: remise_is_client,
+          remiseId: remise_id,
+          remiseClientNom: remise_client_nom,
+        });
     if (resolved?.error) {
       await connection.rollback();
       return res.status(400).json({ message: resolved.error });
@@ -616,7 +700,7 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     `, [
       normalizedDateCreation,
       cId,
-      client_nom ?? null,
+      effectiveClientNom,
       phone,
       vId,
       lieu,
@@ -633,6 +717,25 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     ]);
 
     const comptantId = comptantResult.insertId;
+
+    if (wantsDirectComptantRemise && !cId) {
+      const createdContact = await createComptantRemiseContact(connection, {
+        bonId: comptantId,
+        clientNom: effectiveClientNom,
+        createdBy: req.user?.id ?? created_by ?? null,
+      });
+      cId = createdContact.id;
+      effectiveClientNom = createdContact.name;
+      resolved.remise_id = createdContact.id;
+      await connection.execute(
+        'UPDATE bons_comptant SET client_id = ?, client_nom = ?, remise_is_client = 1, remise_id = ? WHERE id = ?',
+        [createdContact.id, createdContact.name, createdContact.id, comptantId]
+      );
+    }
+    if (wantsDirectComptantRemise && cId && !effectiveClientNom) {
+      effectiveClientNom = `client comptant_${Number(comptantId)}`;
+      await connection.execute('UPDATE bons_comptant SET client_nom = ? WHERE id = ?', [effectiveClientNom, comptantId]);
+    }
 
     if (Array.isArray(livraisons) && livraisons.length) {
       for (const l of livraisons) {
@@ -709,6 +812,20 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       remiseIsClient: resolved.remise_is_client,
       remiseId: resolved.remise_id,
       items,
+    });
+
+    if (wantsDirectComptantRemise && cId && !resolved.remise_id) {
+      resolved.remise_id = cId;
+      await connection.execute('UPDATE bons_comptant SET remise_id = ? WHERE id = ?', [cId, comptantId]);
+    }
+    await syncComptantDirectRemisePayment(connection, {
+      bonId: comptantId,
+      contactId: cId,
+      contactName: effectiveClientNom || `client comptant_${Number(comptantId)}`,
+      remiseIsClient: resolved.remise_is_client,
+      remiseTotal: comptantRemiseTotal,
+      bonStatut: st,
+      createdBy: req.user?.id ?? created_by ?? null,
     });
 
     const initialNonPayePayments = nonPayeRequested && Array.isArray(paiements_non_payes)
@@ -876,7 +993,22 @@ router.put('/:id', async (req, res) => {
     }
 
     const normalizedDateCreation = normalizeSqlDateTime(date_creation);
-    const cId  = client_id ?? null;
+    const comptantRemiseTotal = computeComptantRemiseTotal(items);
+    const wantsDirectComptantRemise = parseBooleanFlag(remise_is_client) && comptantRemiseTotal > 0;
+    let cId  = client_id ?? (wantsDirectComptantRemise ? oldBon.client_id : null);
+    let effectiveClientNom = String(client_nom || oldBon.client_nom || '').trim() || null;
+    if (wantsDirectComptantRemise && !cId) {
+      const createdContact = await createComptantRemiseContact(connection, {
+        bonId: id,
+        clientNom: effectiveClientNom,
+        createdBy: req.user?.id ?? null,
+      });
+      cId = createdContact.id;
+      effectiveClientNom = createdContact.name;
+    }
+    if (wantsDirectComptantRemise && !effectiveClientNom) {
+      effectiveClientNom = `client comptant_${Number(id)}`;
+    }
     const blockedClient = await findBlockedClient(connection, cId);
     if (blockedClient) {
       await connection.rollback();
@@ -911,6 +1043,10 @@ router.put('/:id', async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: resolved.error });
     }
+    if (wantsDirectComptantRemise && cId) {
+      resolved.remise_is_client = 1;
+      resolved.remise_id = cId;
+    }
 
     const remiseExterneUpd = Number(resolved.remise_is_client) === 0
       && Number.isFinite(Number(resolved.remise_id))
@@ -931,7 +1067,7 @@ router.put('/:id', async (req, res) => {
     `, [
       normalizedDateCreation,
       cId,
-      client_nom ?? null,
+      effectiveClientNom,
       phone,
       vId,
       lieu,
@@ -1056,6 +1192,16 @@ router.put('/:id', async (req, res) => {
       items,
     });
 
+    await syncComptantDirectRemisePayment(connection, {
+      bonId: id,
+      contactId: cId,
+      contactName: effectiveClientNom || `client comptant_${Number(id)}`,
+      remiseIsClient: resolved.remise_is_client,
+      remiseTotal: comptantRemiseTotal,
+      bonStatut: st,
+      createdBy: req.user?.id ?? null,
+    });
+
     // Stock: Comptant => effet = -quantite au stock
     // On annule l'effet des anciens items (si pas Annulé), puis on applique les nouveaux (si pas Annulé)
     const deltas = buildStockDeltaMaps([], 1);
@@ -1134,6 +1280,7 @@ router.delete('/:id', async (req, res) => {
     }
 
     await connection.execute('DELETE FROM livraisons WHERE bon_type = "Comptant" AND bon_id = ?', [id]);
+    await connection.execute('DELETE FROM payments WHERE payment_group_id = ?', [comptantRemisePaymentGroupId(id)]);
     await connection.execute('DELETE FROM comptant_items WHERE bon_comptant_id = ?', [id]);
     await connection.execute('DELETE FROM bons_comptant WHERE id = ?', [id]);
 
@@ -1226,6 +1373,10 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
       await connection.execute(
         'UPDATE paiement_boncomptant_nonpaye SET statut = ?, updated_by = ?, updated_at = NOW() WHERE bon_comptant_id = ?',
         [enteringCancelled ? 'Annulé' : 'Validé', req.user?.id ?? null, id]
+      );
+      await connection.execute(
+        'UPDATE payments SET statut = ?, updated_by = ?, updated_at = NOW() WHERE payment_group_id = ?',
+        [statut, req.user?.id ?? null, comptantRemisePaymentGroupId(id)]
       );
     }
     if (enteringCancelled || leavingCancelled) {
@@ -1359,6 +1510,7 @@ router.post('/:id/mark-avoir', async (req, res) => {
     }
 
     await connection.execute('UPDATE bons_comptant SET statut = "Avoir", updated_at = NOW() WHERE id = ?', [id]);
+    await connection.execute('DELETE FROM payments WHERE payment_group_id = ?', [comptantRemisePaymentGroupId(id)]);
 
     await connection.commit();
   return res.json({ success: true, avoir_id: avoirId, numero: finalNumero });

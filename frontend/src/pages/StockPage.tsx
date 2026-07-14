@@ -177,6 +177,11 @@ const StockPage: React.FC = () => {
     rows: any[] | null;
   } => {
     const sd = p.snapshot_display;
+    const averageCoutRevientRaw = p?.cout_revient_moyen_snapshot;
+    const averageCoutRevient = averageCoutRevientRaw !== null && averageCoutRevientRaw !== undefined
+      && Number.isFinite(Number(averageCoutRevientRaw))
+      ? Number(averageCoutRevientRaw)
+      : null;
     const latestPrixAchat = sd?.latest?.prix_achat != null
       ? Number(sd.latest.prix_achat)
       : Number(p.prix_achat || 0);
@@ -184,7 +189,7 @@ const StockPage: React.FC = () => {
       return {
         mode: 'product',
         prix_achat: Number(p.prix_achat || 0),
-        cout_revient: Number(p.cout_revient || 0),
+        cout_revient: averageCoutRevient ?? Number(p.cout_revient || 0),
         prix_gros: Number(p.prix_gros || 0),
         prix_vente: Number(p.prix_vente || 0),
         rows: null,
@@ -195,7 +200,7 @@ const StockPage: React.FC = () => {
       return {
         mode: sd.mode,
         prix_achat: latestPrixAchat,
-        cout_revient: d?.cout_revient != null ? Number(d.cout_revient) : Number(p.cout_revient || 0),
+        cout_revient: averageCoutRevient ?? (d?.cout_revient != null ? Number(d.cout_revient) : Number(p.cout_revient || 0)),
         prix_gros: d?.prix_gros != null ? Number(d.prix_gros) : Number(p.prix_gros || 0),
         prix_vente: d?.prix_vente != null ? Number(d.prix_vente) : Number(p.prix_vente || 0),
         rows: null,
@@ -207,7 +212,7 @@ const StockPage: React.FC = () => {
         mode: 'multi_different',
         rows: sd.rows || [],
         prix_achat: latestPrixAchat,
-        cout_revient: oldestRow?.cout_revient != null ? Number(oldestRow.cout_revient) : Number(p.cout_revient || 0),
+        cout_revient: averageCoutRevient ?? (oldestRow?.cout_revient != null ? Number(oldestRow.cout_revient) : Number(p.cout_revient || 0)),
         prix_gros: oldestRow?.prix_gros != null ? Number(oldestRow.prix_gros) : Number(p.prix_gros || 0),
         prix_vente: oldestRow?.prix_vente != null
           ? Number(oldestRow.prix_vente)
@@ -217,7 +222,7 @@ const StockPage: React.FC = () => {
     return {
       mode: 'product',
       prix_achat: Number(p.prix_achat || 0),
-      cout_revient: Number(p.cout_revient || 0),
+      cout_revient: averageCoutRevient ?? Number(p.cout_revient || 0),
       prix_gros: Number(p.prix_gros || 0),
       prix_vente: Number(p.prix_vente || 0),
       rows: null,
@@ -334,6 +339,7 @@ const StockPage: React.FC = () => {
             snapshot_quantite_total: variant.snapshot_quantite_total ?? null,
             snapshot_prix_achat_old: variant.snapshot_prix_achat_old ?? null,
             snapshot_prix_vente_old: variant.snapshot_prix_vente_old ?? null,
+            cout_revient_moyen_snapshot: variant.cout_revient_moyen_snapshot ?? null,
             snapshot_display: variant.snapshot_display ?? null,
             isVariantRow: true,
             variant_image_url: variant.image_url || null,

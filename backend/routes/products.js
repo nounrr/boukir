@@ -150,6 +150,40 @@ async function hasProductSnapshotEnValidationColumn() {
   return cachedHasProductSnapshotEnValidationColumn;
 }
 
+const snapshotCostKey = (productId, variantId) => `${productId}:${variantId || ''}`;
+
+// Same weighted purchase-cost formula as Stats Detail:
+// SUM(snapshot cost * ordered quantity) / SUM(ordered quantity).
+async function loadAverageSnapshotCoutRevient(productIds) {
+  const ids = [...new Set((productIds || []).map(Number).filter(Number.isFinite))];
+  const averages = new Map();
+  if (ids.length === 0) return averages;
+
+  const [rows] = await pool.query(
+    `SELECT
+       ps.product_id,
+       ps.variant_id,
+       SUM(COALESCE(ps.cout_revient, 0) * ci.quantite) / NULLIF(SUM(ci.quantite), 0) AS cout_revient_moyen
+     FROM product_snapshot ps
+     JOIN commande_items ci ON ci.product_snapshot_id = ps.id
+     WHERE ps.product_id IN (?)
+       AND ci.quantite IS NOT NULL
+       AND ci.quantite <> 0
+       AND ps.cout_revient IS NOT NULL
+     GROUP BY ps.product_id, ps.variant_id`,
+    [ids]
+  );
+
+  for (const row of rows) {
+    if (row.cout_revient_moyen === null || row.cout_revient_moyen === undefined) continue;
+    averages.set(
+      snapshotCostKey(row.product_id, row.variant_id),
+      Number(row.cout_revient_moyen)
+    );
+  }
+  return averages;
+}
+
 // Ensure soft-delete and image_url columns exist
 let ensuredProductsColumns = false;
 async function ensureProductsColumns() {
@@ -991,6 +1025,7 @@ async function runProductSearch(query) {
     if (useSnapshot) {
       const productIds = products.map((product) => product.id);
       if (productIds.length > 0) {
+        const averageCostByProductVariant = await loadAverageSnapshotCoutRevient(productIds);
         const [allSnaps] = await pool.query(
           `SELECT ps.id, ps.product_id, ps.variant_id,
                   ps.prix_achat, ps.prix_vente, ps.cout_revient, ps.prix_gros,
@@ -1040,9 +1075,17 @@ async function runProductSearch(query) {
         };
 
         for (const product of products) {
+          const productAverageKey = snapshotCostKey(product.id, null);
+          product.cout_revient_moyen_snapshot = averageCostByProductVariant.has(productAverageKey)
+            ? Number(averageCostByProductVariant.get(productAverageKey))
+            : null;
           product.snapshot_display = computeSnapshotDisplay(snapGrouped[`${product.id}:0`]);
           if (Array.isArray(product.variants)) {
             for (const variant of product.variants) {
+              const variantAverageKey = snapshotCostKey(product.id, variant.id);
+              variant.cout_revient_moyen_snapshot = averageCostByProductVariant.has(variantAverageKey)
+                ? Number(averageCostByProductVariant.get(variantAverageKey))
+                : null;
               variant.snapshot_display = computeSnapshotDisplay(snapGrouped[`${product.id}:${variant.id}`]);
             }
           }
@@ -1346,20 +1389,9 @@ router.get('/with-snapshots', async (req, res, next) => {
     const productIdsWithSnapshots = new Set(snapRows.map(s => s.product_id));
 
     const result = [];
-    const averageCostByProductVariant = new Map();
-    for (const snap of snapRows) {
-      const qty = Number(snap.snapshot_commande_quantite ?? 0) || 0;
-      const cost = snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : 0;
-      if (qty === 0 || !Number.isFinite(qty) || !Number.isFinite(cost)) continue;
-      const key = `${snap.product_id}:${snap.variant_id || ''}`;
-      const current = averageCostByProductVariant.get(key) || { value: 0, qty: 0 };
-      current.value += cost * qty;
-      current.qty += qty;
-      averageCostByProductVariant.set(key, current);
-    }
-    for (const [key, entry] of averageCostByProductVariant.entries()) {
-      averageCostByProductVariant.set(key, entry.qty ? entry.value / entry.qty : 0);
-    }
+    const averageCostByProductVariant = await loadAverageSnapshotCoutRevient(
+      snapRows.map((snap) => snap.product_id)
+    );
 
     // FIFO priority counters per product+variant
     const fifoCounts = new Map(); // key "productId:variantId" -> counter
@@ -1382,8 +1414,10 @@ router.get('/with-snapshots', async (req, res, next) => {
       const fifoKey = `${snap.product_id}:${snap.variant_id || 0}`;
       const fifoNum = (fifoCounts.get(fifoKey) || 0) + 1;
       fifoCounts.set(fifoKey, fifoNum);
-      const averageCostKey = `${snap.product_id}:${snap.variant_id || ''}`;
-      const averageCoutRevient = Number(averageCostByProductVariant.get(averageCostKey) || 0) || 0;
+      const averageCostKey = snapshotCostKey(snap.product_id, snap.variant_id);
+      const averageCoutRevient = averageCostByProductVariant.has(averageCostKey)
+        ? Number(averageCostByProductVariant.get(averageCostKey))
+        : null;
 
       result.push({
         id: snap.product_id,
@@ -1409,7 +1443,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         prix_vente: originalPrixVente,
         prix_vente_2: originalPrixVente2,
         cout_revient: snap.snapshot_cout_revient !== null ? Number(snap.snapshot_cout_revient) : 0,
-        cout_revient_moyen_snapshot: averageCoutRevient || null,
+        cout_revient_moyen_snapshot: averageCoutRevient,
         cout_revient_pourcentage: snap.snapshot_cout_revient_pourcentage !== null ? Number(snap.snapshot_cout_revient_pourcentage) : 0,
         prix_gros: snap.snapshot_prix_gros !== null ? Number(snap.snapshot_prix_gros) : 0,
         prix_gros_pourcentage: snap.snapshot_prix_gros_pourcentage !== null ? Number(snap.snapshot_prix_gros_pourcentage) : 0,
@@ -1658,6 +1692,7 @@ router.get('/', async (req, res, next) => {
     if (useSnapshot) {
       const allProductIds = data.map(d => d.id);
       if (allProductIds.length > 0) {
+        const averageCostByProductVariant = await loadAverageSnapshotCoutRevient(allProductIds);
         const [allSnaps] = await pool.query(
           `SELECT ps.id, ps.product_id, ps.variant_id,
                   ps.prix_achat, ps.prix_vente, ps.cout_revient, ps.prix_gros,
@@ -1717,10 +1752,18 @@ router.get('/', async (req, res, next) => {
 
         for (const product of data) {
           const mainKey = `${product.id}:0`;
+          const productAverageKey = snapshotCostKey(product.id, null);
+          product.cout_revient_moyen_snapshot = averageCostByProductVariant.has(productAverageKey)
+            ? Number(averageCostByProductVariant.get(productAverageKey))
+            : null;
           product.snapshot_display = computeSnapshotDisplay(snapGrouped[mainKey]);
           if (product.variants && Array.isArray(product.variants)) {
             for (const variant of product.variants) {
               const varKey = `${product.id}:${variant.id}`;
+              const variantAverageKey = snapshotCostKey(product.id, variant.id);
+              variant.cout_revient_moyen_snapshot = averageCostByProductVariant.has(variantAverageKey)
+                ? Number(averageCostByProductVariant.get(variantAverageKey))
+                : null;
               variant.snapshot_display = computeSnapshotDisplay(snapGrouped[varKey]);
             }
           }

@@ -788,12 +788,26 @@ async function getCaisseMovementsByDay(dateFrom, dateTo) {
       label: 'sortie_remise',
       field: 'sortieRemise',
       sql: `
-        SELECT DATE(fce.opened_at) AS jour, COALESCE(SUM(fce.montant), 0) AS total
-          FROM fond_caisse_entries fce
-         WHERE DATE(fce.opened_at) BETWEEN ? AND ?
-           AND fce.entry_type = 'sortie_remise'
-           ${afterLatestCaisseStartSql('fce.opened_at')}
-         GROUP BY DATE(fce.opened_at)
+        SELECT mouvement.jour, COALESCE(SUM(mouvement.montant), 0) AS total
+          FROM (
+            SELECT DATE(fce.opened_at) AS jour, fce.montant
+              FROM fond_caisse_entries fce
+             WHERE fce.entry_type = 'sortie_remise'
+               ${afterLatestCaisseStartSql('fce.opened_at')}
+            UNION ALL
+            SELECT DATE(p.created_at) AS jour, p.montant_total AS montant
+              FROM payments p
+              INNER JOIN bons_comptant bc ON bc.id = p.bon_id AND p.bon_type = 'Comptant'
+             WHERE p.mode_paiement = 'Remise'
+               AND p.payment_group_id = CONCAT('comptant-remise-', p.bon_id)
+               AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
+               AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
+               AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+               AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+               ${afterLatestCaisseStartSql('p.created_at')}
+          ) mouvement
+         WHERE mouvement.jour BETWEEN ? AND ?
+         GROUP BY mouvement.jour
       `,
     },
     {
@@ -1100,6 +1114,35 @@ router.get('/days/:date', async (req, res) => {
             AND ${netAmountSql('p.montant_total', 'p.montant_ignorer')} > 0
             ${afterLatestCaisseStartSql('p.created_at')}
             AND p.type_paiement = 'Client'
+        `,
+      },
+      {
+        label: 'remise_bon_comptant',
+        sql: `
+          SELECT
+            p.bon_id AS id,
+            p.bon_id AS source_id,
+            p.created_at AS action_date,
+            'Remise bon comptant' AS type,
+            'SORTIE' AS direction,
+            p.montant_total AS amount,
+            CONCAT('Remise bon COM', ${paddedReferenceIdSql('p.bon_id')}) AS reference,
+            COALESCE(c.nom_complet, p.remise_account_name, bc.client_nom, '') AS actor,
+            p.statut,
+            p.mode_paiement AS mode_paiement,
+            COALESCE(p.designation, CONCAT('Remise prise sur le bon comptant COM', ${paddedReferenceIdSql('p.bon_id')})) AS description
+          FROM payments p
+          INNER JOIN bons_comptant bc ON bc.id = p.bon_id AND p.bon_type = 'Comptant'
+          LEFT JOIN contacts c ON c.id = p.contact_id
+          WHERE DATE(p.created_at) = ?
+            AND p.mode_paiement = 'Remise'
+            AND p.payment_group_id = CONCAT('comptant-remise-', p.bon_id)
+            AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
+            AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
+            AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+            AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+            AND COALESCE(p.montant_total, 0) > 0
+            ${afterLatestCaisseStartSql('p.created_at')}
         `,
       },
       {
@@ -1443,12 +1486,26 @@ router.get('/mouvements', async (req, res) => {
         label: 'sortie_remise',
         field: 'sortieRemise',
         sql: `
-          SELECT DATE(fce.opened_at) AS jour, COALESCE(SUM(fce.montant), 0) AS total
-           FROM fond_caisse_entries fce
-           WHERE DATE(fce.opened_at) BETWEEN ? AND ?
-             AND fce.entry_type = 'sortie_remise'
-             ${afterLatestCaisseStartSql('fce.opened_at')}
-           GROUP BY DATE(fce.opened_at)
+          SELECT mouvement.jour, COALESCE(SUM(mouvement.montant), 0) AS total
+            FROM (
+              SELECT DATE(fce.opened_at) AS jour, fce.montant
+                FROM fond_caisse_entries fce
+               WHERE fce.entry_type = 'sortie_remise'
+                 ${afterLatestCaisseStartSql('fce.opened_at')}
+              UNION ALL
+              SELECT DATE(p.created_at) AS jour, p.montant_total AS montant
+                FROM payments p
+                INNER JOIN bons_comptant bc ON bc.id = p.bon_id AND p.bon_type = 'Comptant'
+               WHERE p.mode_paiement = 'Remise'
+                 AND p.payment_group_id = CONCAT('comptant-remise-', p.bon_id)
+                 AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'annul%'
+                 AND LOWER(COALESCE(p.statut, '')) NOT LIKE 'refus%'
+                 AND LOWER(COALESCE(bc.statut, '')) NOT LIKE 'annul%'
+                 AND LOWER(COALESCE(bc.statut, '')) <> 'avoir'
+                 ${afterLatestCaisseStartSql('p.created_at')}
+            ) mouvement
+           WHERE mouvement.jour BETWEEN ? AND ?
+           GROUP BY mouvement.jour
         `,
       },
       {
