@@ -494,10 +494,12 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ON ci.bon_commande_id = ps.bon_commande_id
                AND ci.product_id = ps.product_id
                AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR ci.variant_id = ps.variant_id)
+              JOIN bons_commande bc ON bc.id = ps.bon_commande_id
              SET
                ps.en_validation = 1,
                ps.prix_achat = ci.prix_unitaire,
-               ps.quantite = ci.quantite
+               ps.quantite = ci.quantite,
+               ps.created_at = COALESCE(bc.date_creation, bc.created_at, ps.created_at)
              WHERE ps.bon_commande_id = ?`,
             [id]
           );
@@ -537,8 +539,9 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ci.quantite,
                 ci.bon_commande_id,
                 1 AS en_validation,
-                NOW() AS created_at
+                COALESCE(bc.date_creation, bc.created_at, NOW()) AS created_at
               FROM commande_items ci
+              JOIN bons_commande bc ON bc.id = ci.bon_commande_id
               JOIN products p ON p.id = ci.product_id
               LEFT JOIN product_variants pv ON pv.id = ci.variant_id
               LEFT JOIN product_snapshot ps
@@ -573,8 +576,9 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
                 ci.quantite,
                 ci.bon_commande_id,
                 1 AS en_validation,
-                NOW() AS created_at
+                COALESCE(bc.date_creation, bc.created_at, NOW()) AS created_at
               FROM commande_items ci
+              JOIN bons_commande bc ON bc.id = ci.bon_commande_id
               JOIN products p ON p.id = ci.product_id
               LEFT JOIN product_variants pv ON pv.id = ci.variant_id
               WHERE ci.bon_commande_id = ?`,
@@ -606,8 +610,9 @@ router.patch('/:id/statut', verifyToken, async (req, res) => {
               LEAST(GREATEST(COALESCE(pv.prix_vente_pourcentage, p.prix_vente_pourcentage, 0), -999.99), 999.99) AS prix_vente_pourcentage,
               ci.quantite,
               ci.bon_commande_id,
-              NOW() AS created_at
+              COALESCE(bc.date_creation, bc.created_at, NOW()) AS created_at
             FROM commande_items ci
+            JOIN bons_commande bc ON bc.id = ci.bon_commande_id
             JOIN products p ON p.id = ci.product_id
             LEFT JOIN product_variants pv ON pv.id = ci.variant_id
             WHERE ci.bon_commande_id = ?`,
@@ -1017,8 +1022,9 @@ router.put('/:id', verifyToken, async (req, res) => {
             ci.quantite,
             ci.bon_commande_id,
             ? AS en_validation,
-            NOW() AS created_at
+            COALESCE(bc.date_creation, bc.created_at, NOW()) AS created_at
           FROM commande_items ci
+          JOIN bons_commande bc ON bc.id = ci.bon_commande_id
           JOIN products p ON p.id = ci.product_id
           LEFT JOIN product_variants pv ON pv.id = ci.variant_id
           LEFT JOIN product_snapshot ps
@@ -1044,10 +1050,12 @@ router.put('/:id', verifyToken, async (req, res) => {
              ON ci.bon_commande_id = ps.bon_commande_id
             AND ci.product_id = ps.product_id
             AND ((ci.variant_id IS NULL AND ps.variant_id IS NULL) OR (ci.variant_id = ps.variant_id))
+           JOIN bons_commande bc ON bc.id = ps.bon_commande_id
           SET
             ps.prix_achat = ci.prix_unitaire,
             ps.quantite = ci.quantite,
             ps.en_validation = ?,
+            ps.created_at = COALESCE(bc.date_creation, bc.created_at, ps.created_at),
             ps.cout_revient = CASE
               WHEN ci.prix_unitaire IS NULL OR ci.prix_unitaire = 0 THEN ps.cout_revient
               ELSE ci.prix_unitaire * (1 + (COALESCE(ps.cout_revient_pourcentage, 0) / 100))
