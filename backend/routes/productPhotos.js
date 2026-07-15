@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import OpenAI, { toFile } from 'openai';
+import { assertUploadedFileKind } from '../utils/uploadValidation.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -13,10 +14,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Storage
 // ----------------------------
 const shootsDir = path.join(__dirname, '..', 'uploads', 'products', 'shoots');
+const manualDir = path.join(__dirname, '..', 'uploads', 'products', 'manual');
 const ensureDir = (dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 };
 ensureDir(shootsDir);
+ensureDir(manualDir);
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -42,7 +45,32 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024, files: 30 },
 });
 
+const manualStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    ensureDir(manualDir);
+    cb(null, manualDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = file.mimetype === 'image/png' ? '.png' : '.jpg';
+    cb(null, `manual-${uniqueSuffix}${ext}`);
+  },
+});
+
+const manualUpload = multer({
+  storage: manualStorage,
+  fileFilter: (_req, file, cb) => {
+    if (!/^image\//.test(file.mimetype)) {
+      cb(new Error('Seules les images sont acceptées'));
+    } else {
+      cb(null, true);
+    }
+  },
+  limits: { fileSize: 25 * 1024 * 1024, files: 30 },
+});
+
 const publicUrlFor = (filename) => path.posix.join('/uploads/products/shoots', filename);
+const publicUrlForManual = (filename) => path.posix.join('/uploads/products/manual', filename);
 const absolutePathForUrl = (imageUrl) => {
   const rel = String(imageUrl || '').replace(/^\//, '');
   if (!rel.startsWith('uploads/')) return null;
@@ -56,6 +84,25 @@ const deleteFileForUrl = (imageUrl) => {
   } catch (e) {
     console.warn('[ProductPhotos] Impossible de supprimer le fichier:', imageUrl, e?.message);
   }
+};
+
+const deleteUploadedFiles = (files) => {
+  for (const file of Array.isArray(files) ? files : []) {
+    try {
+      if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+    } catch (error) {
+      console.warn('[ProductPhotos] Impossible de nettoyer un upload manuel:', error?.message);
+    }
+  }
+};
+
+const receiveManualImages = (req, res, next) => {
+  manualUpload.array('images', 30)(req, res, (error) => {
+    if (!error) return next();
+    deleteUploadedFiles(req.files);
+    const status = error?.code === 'LIMIT_FILE_SIZE' || error?.code === 'LIMIT_FILE_COUNT' ? 400 : 415;
+    return res.status(status).json({ message: error?.message || 'Images invalides' });
+  });
 };
 
 // ----------------------------
@@ -476,6 +523,152 @@ async function getShootStatusCounts(q = null) {
 // ----------------------------
 // Routes
 // ----------------------------
+
+// GET /api/product-photos/manual-products — paginated products for direct photo assignment
+router.get('/manual-products', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const imageStatus = ['missing', 'present', 'all'].includes(String(req.query.imageStatus))
+      ? String(req.query.imageStatus)
+      : 'missing';
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(10, Number.parseInt(req.query.limit, 10) || 20));
+    const where = ['COALESCE(p.is_deleted, 0) = 0'];
+    const params = [];
+
+    const hasMainImage = "NULLIF(TRIM(COALESCE(p.image_url, '')), '') IS NOT NULL";
+    const hasGalleryImage = `EXISTS (
+      SELECT 1 FROM product_images pi
+      WHERE pi.product_id = p.id AND NULLIF(TRIM(COALESCE(pi.image_url, '')), '') IS NOT NULL
+    )`;
+    if (imageStatus === 'missing') where.push(`NOT (${hasMainImage}) AND NOT (${hasGalleryImage})`);
+    if (imageStatus === 'present') where.push(`((${hasMainImage}) OR (${hasGalleryImage}))`);
+
+    if (q) {
+      const like = `%${q}%`;
+      where.push(`(
+        CAST(p.id AS CHAR) LIKE ? OR p.designation LIKE ? OR
+        EXISTS (
+          SELECT 1 FROM product_variants pv
+          WHERE pv.product_id = p.id
+            AND COALESCE(pv.is_deleted, 0) = 0
+            AND (pv.reference LIKE ? OR pv.variant_name LIKE ?)
+        )
+      )`);
+      params.push(like, like, like, like);
+    }
+
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+    const [[countRow]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM products p ${whereSql}`,
+      params
+    );
+    const total = Number(countRow?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, totalPages);
+    const safeOffset = (safePage - 1) * limit;
+
+    const [rows] = await pool.query(
+      `SELECT
+         p.id,
+         CAST(p.id AS CHAR) AS reference,
+         p.designation,
+         p.image_url,
+         (SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = p.id) AS gallery_count
+       FROM products p
+       ${whereSql}
+       ORDER BY p.id DESC
+       LIMIT ${limit} OFFSET ${safeOffset}`,
+      params
+    );
+
+    res.json({
+      data: rows.map((row) => ({ ...row, gallery_count: Number(row.gallery_count || 0) })),
+      meta: { page: safePage, limit, total, totalPages },
+    });
+  } catch (error) {
+    console.error('[ProductPhotos] manual products list error:', error);
+    res.status(500).json({ message: error?.message || 'Erreur chargement des produits' });
+  }
+});
+
+// POST /api/product-photos/manual-products/:productId/attach
+// Multipart image order is authoritative: first file is the new main image.
+router.post('/manual-products/:productId/attach', receiveManualImages, async (req, res) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+  let conn;
+  let committed = false;
+  try {
+    const productId = Number(req.params.productId);
+    if (!Number.isFinite(productId)) {
+      const error = new Error('Identifiant produit invalide');
+      error.status = 400;
+      throw error;
+    }
+    if (!files.length) {
+      const error = new Error('Aucune image reçue');
+      error.status = 400;
+      throw error;
+    }
+
+    for (const file of files) await assertUploadedFileKind(file, ['jpeg', 'png']);
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [products] = await conn.query(
+      'SELECT id FROM products WHERE id = ? AND COALESCE(is_deleted, 0) = 0 FOR UPDATE',
+      [productId]
+    );
+    if (!products.length) {
+      const error = new Error('Produit introuvable ou supprimé');
+      error.status = 404;
+      throw error;
+    }
+
+    const [[positionRow]] = await conn.query(
+      'SELECT COALESCE(MAX(position), -1) AS maxPos FROM product_images WHERE product_id = ?',
+      [productId]
+    );
+    let position = Number(positionRow?.maxPos ?? -1) + 1;
+    const urls = files.map((file) => publicUrlForManual(file.filename));
+
+    for (const imageUrl of urls) {
+      await conn.query(
+        'INSERT INTO product_images (product_id, image_url, position) VALUES (?, ?, ?)',
+        [productId, imageUrl, position++]
+      );
+    }
+    await conn.query('UPDATE products SET image_url = ? WHERE id = ?', [urls[0], productId]);
+
+    const [[updated]] = await conn.query(
+      `SELECT
+         p.id,
+         CAST(p.id AS CHAR) AS reference,
+         p.designation,
+         p.image_url,
+         (SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = p.id) AS gallery_count
+      FROM products p WHERE p.id = ?`,
+      [productId]
+    );
+    await conn.commit();
+    committed = true;
+    res.json({
+      ok: true,
+      attached: files.length,
+      product: { ...updated, gallery_count: Number(updated?.gallery_count || 0) },
+    });
+  } catch (error) {
+    if (conn && !committed) {
+      try { await conn.rollback(); } catch (_) {}
+    }
+    if (!committed) deleteUploadedFiles(files);
+    console.error('[ProductPhotos] manual attach error:', error);
+    res.status(Number(error?.status) || 500).json({ message: error?.message || 'Erreur attachement images' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
 
 // POST /api/product-photos/shoots — create a shoot with images
 router.post('/shoots', upload.array('images', 30), async (req, res) => {

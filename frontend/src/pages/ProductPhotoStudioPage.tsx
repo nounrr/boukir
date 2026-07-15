@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 import {
   Camera, X, Trash2, Wand2, Search, ImagePlus, Check,
-  Link2, RefreshCw, Star, ChevronLeft, ChevronRight, Loader2, History, Aperture, ZoomIn
+  Link2, RefreshCw, Star, ChevronLeft, ChevronRight, Loader2, History, Aperture, ZoomIn,
+  ImageOff, Upload
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -10,6 +11,7 @@ import { useSearchBonProductsQuery } from '../store/api/productsApi';
 import {
   useGetPhotoShootsQuery,
   useGetPhotoShootStatusCountsQuery,
+  useGetManualPhotoProductsQuery,
   useCreatePhotoShootMutation,
   useDeletePhotoShootMutation,
   useDeletePhotoImageMutation,
@@ -17,6 +19,7 @@ import {
   useReprocessPhotoImageMutation,
   useReorderPhotoImagesMutation,
   useAttachPhotoShootMutation,
+  useAttachManualProductPhotosMutation,
 } from '../store/api/productPhotosApi';
 import type {
   AiImageModel,
@@ -24,6 +27,7 @@ import type {
   PhotoShoot,
   PhotoShootImage,
   PhotoShootStatus,
+  ManualProductImageStatus,
 } from '../store/api/productPhotosApi';
 import { useAuth } from '../hooks/redux';
 import type { Product, ProductVariant } from '../types';
@@ -1491,15 +1495,453 @@ const AttachedTab: React.FC = () => {
 // Page
 // ----------------------------------------------------------------------------
 
+type ManualPhotoQueues = Record<number, PendingPhoto[]>;
+
+const ManualPhotosTab: React.FC = () => {
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [imageStatus, setImageStatus] = useState<ManualProductImageStatus>('missing');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [queues, setQueues] = useState<ManualPhotoQueues>({});
+  const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
+  const queuesRef = useRef<ManualPhotoQueues>({});
+  const savingIdsRef = useRef<Set<number>>(new Set());
+  const mountedRef = useRef(true);
+
+  const { data, isLoading, isFetching, isError, error, refetch } = useGetManualPhotoProductsQuery({
+    q: debouncedSearch || undefined,
+    imageStatus,
+    page,
+    limit,
+  });
+  const [attachManualProductPhotos] = useAttachManualProductPhotosMutation();
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      Object.values(queuesRef.current).flat().forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    };
+  }, []);
+
+  const updateQueues = (updater: (current: ManualPhotoQueues) => ManualPhotoQueues) => {
+    setQueues((current) => {
+      const next = updater(current);
+      queuesRef.current = next;
+      return next;
+    });
+  };
+
+  const addFiles = async (productId: number, fileList: FileList | File[]) => {
+    if (savingIdsRef.current.has(productId)) return;
+    const imageFiles = Array.from(fileList).filter((file) => file.type.startsWith('image/'));
+    if (!imageFiles.length) {
+      toast('error', 'Sélectionnez uniquement des fichiers image');
+      return;
+    }
+    try {
+      const compressed = await Promise.all(imageFiles.map((file) => compressImage(file)));
+      const pending = compressed.map(makePendingPhoto);
+      if (!mountedRef.current || savingIdsRef.current.has(productId)) {
+        pending.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+        return;
+      }
+      updateQueues((current) => ({
+        ...current,
+        [productId]: [...(current[productId] || []), ...pending],
+      }));
+    } catch {
+      toast('error', 'Impossible de préparer les images');
+    }
+  };
+
+  const removePhoto = (productId: number, photoId: string) => {
+    if (savingIdsRef.current.has(productId)) return;
+    const target = queuesRef.current[productId]?.find((photo) => photo.id === photoId);
+    if (target) URL.revokeObjectURL(target.previewUrl);
+    updateQueues((current) => ({
+      ...current,
+      [productId]: (current[productId] || []).filter((photo) => photo.id !== photoId),
+    }));
+  };
+
+  const clearQueue = (productId: number, force = false) => {
+    if (!force && savingIdsRef.current.has(productId)) return;
+    (queuesRef.current[productId] || []).forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    updateQueues((current) => {
+      const next = { ...current };
+      delete next[productId];
+      return next;
+    });
+  };
+
+  const onDragEnd = (result: DropResult) => {
+    if (!result.destination || result.source.droppableId !== result.destination.droppableId) return;
+    const productId = Number(result.source.droppableId.replace('manual-queue-', ''));
+    if (!Number.isFinite(productId) || savingIdsRef.current.has(productId)) return;
+    updateQueues((current) => {
+      const reordered = [...(current[productId] || [])];
+      const [moved] = reordered.splice(result.source.index, 1);
+      if (!moved) return current;
+      reordered.splice(result.destination!.index, 0, moved);
+      return { ...current, [productId]: reordered };
+    });
+  };
+
+  const attach = async (productId: number) => {
+    const photos = queuesRef.current[productId] || [];
+    if (!photos.length || savingIdsRef.current.has(productId)) return;
+    const nextSavingIds = new Set(savingIdsRef.current).add(productId);
+    savingIdsRef.current = nextSavingIds;
+    setSavingIds(nextSavingIds);
+    const body = new FormData();
+    photos.forEach((photo, index) => {
+      const isPng = photo.blob.type === 'image/png';
+      body.append(
+        'images',
+        new File([photo.blob], `produit-${productId}-${index + 1}.${isPng ? 'png' : 'jpg'}`, {
+          type: isPng ? 'image/png' : 'image/jpeg',
+        })
+      );
+    });
+    try {
+      const response = await attachManualProductPhotos({ productId, body }).unwrap();
+      clearQueue(productId, true);
+      toast('success', `${response.attached} image(s) attachée(s) au produit`);
+    } catch (requestError: any) {
+      toast('error', requestError?.data?.message || 'Erreur lors de l’attachement');
+    } finally {
+      if (mountedRef.current) {
+        setSavingIds((current) => {
+          const next = new Set(current);
+          next.delete(productId);
+          savingIdsRef.current = next;
+          return next;
+        });
+      } else {
+        const next = new Set(savingIdsRef.current);
+        next.delete(productId);
+        savingIdsRef.current = next;
+      }
+    }
+  };
+
+  const errorMessage = (error as { data?: { message?: string } } | undefined)?.data?.message;
+  const products = data?.data || [];
+  const meta = data?.meta;
+
+  return (
+    <section className="space-y-4" aria-label="Photos recherche manuelle">
+      <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          <label className="relative flex-1 min-w-0">
+            <span className="sr-only">Rechercher par référence, produit ou variante</span>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Référence, nom du produit ou variante…"
+              className="w-full h-10 pl-9 pr-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
+            />
+          </label>
+
+          <div className="grid grid-cols-3 bg-gray-100 p-1 rounded-lg" aria-label="Filtrer selon les images">
+            {([
+              ['missing', 'Sans image'],
+              ['present', 'Avec image'],
+              ['all', 'Tous'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  setImageStatus(value);
+                  setPage(1);
+                }}
+                className={`min-h-10 px-3 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+                  imageStatus === value ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                }`}
+                aria-pressed={imageStatus === value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="h-10 px-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> Actualiser
+          </button>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-gray-500">
+          <span>{meta ? `${meta.total} produit(s)` : 'Recherche dans tout le catalogue'}</span>
+          <span>La première image de la file devient l’image principale.</span>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="bg-white rounded-xl border p-10 flex items-center justify-center gap-2 text-sm text-gray-500">
+          <Loader2 className="w-5 h-5 animate-spin text-orange-500" /> Chargement des produits…
+        </div>
+      ) : isError ? (
+        <div className="bg-white rounded-xl border border-red-200 p-8 text-center">
+          <p className="text-sm font-medium text-red-700">{errorMessage || 'Impossible de charger les produits'}</p>
+          <button onClick={() => refetch()} className="mt-3 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">
+            Réessayer
+          </button>
+        </div>
+      ) : products.length === 0 ? (
+        <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
+          <ImageOff className="w-9 h-9 mx-auto text-gray-300" />
+          <p className="mt-3 text-sm font-semibold text-gray-700">Aucun produit trouvé</p>
+          <p className="mt-1 text-xs text-gray-500">
+            {imageStatus === 'missing' ? 'Tous les produits correspondants ont déjà une image.' : 'Modifiez la recherche ou le filtre.'}
+          </p>
+        </div>
+      ) : (
+        <DragDropContext onDragEnd={onDragEnd}>
+          <div className={`space-y-3 transition-opacity ${isFetching ? 'opacity-60' : ''}`}>
+            {products.map((product) => {
+              const photos = queues[product.id] || [];
+              const saving = savingIds.has(product.id);
+              const draggingFiles = !saving && dragOverId === product.id;
+              return (
+                <article
+                  key={product.id}
+                  className={`bg-white rounded-xl border p-3 md:p-4 transition-colors ${
+                    draggingFiles ? 'border-orange-500 bg-orange-50/40 ring-2 ring-orange-200' : 'border-gray-200'
+                  }`}
+                  onDragEnter={(event) => {
+                    if (!saving && event.dataTransfer.types.includes('Files')) setDragOverId(product.id);
+                  }}
+                  onDragOver={(event) => {
+                    if (!event.dataTransfer.types.includes('Files')) return;
+                    event.preventDefault();
+                    if (saving) {
+                      event.dataTransfer.dropEffect = 'none';
+                      return;
+                    }
+                    event.dataTransfer.dropEffect = 'copy';
+                    setDragOverId(product.id);
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOverId(null);
+                  }}
+                  onDrop={(event) => {
+                    if (!event.dataTransfer.files.length) return;
+                    event.preventDefault();
+                    setDragOverId(null);
+                    if (saving) return;
+                    void addFiles(product.id, event.dataTransfer.files);
+                  }}
+                >
+                  <div className="grid lg:grid-cols-[220px_minmax(0,1fr)_170px] gap-4 items-center">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {product.image_url ? (
+                        <img
+                          src={product.image_url}
+                          alt=""
+                          className="w-16 h-16 flex-none rounded-lg object-cover border border-gray-200 bg-gray-50"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 flex-none rounded-lg border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center text-gray-400">
+                          <ImageOff className="w-5 h-5" />
+                          <span className="text-[9px] mt-1">Sans image</span>
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-gray-900 line-clamp-2">{product.designation}</p>
+                        <p className="mt-1 text-xs text-gray-500">Réf. {product.reference || product.id}</p>
+                        <p className="text-xs text-gray-500">Galerie : {product.gallery_count} image(s)</p>
+                      </div>
+                    </div>
+
+                    <div
+                      aria-disabled={saving}
+                      className={`min-w-0 rounded-xl border-2 border-dashed px-3 py-3 ${
+                        draggingFiles
+                          ? 'border-orange-500 bg-white'
+                          : saving
+                            ? 'border-gray-200 bg-gray-100/70 opacity-70'
+                            : 'border-gray-300 bg-gray-50/60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-gray-700">Glissez les images ici</p>
+                          <p className="text-[11px] text-gray-500">Plusieurs images acceptées · ordre modifiable</p>
+                        </div>
+                        <label className={`h-10 px-3 flex-none rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 ${
+                          saving
+                            ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'border-orange-300 bg-white text-orange-700 hover:bg-orange-50 cursor-pointer'
+                        }`}>
+                          <Upload className="w-3.5 h-3.5" /> Parcourir
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={saving}
+                            className="sr-only"
+                            onChange={(event) => {
+                              if (event.target.files) void addFiles(product.id, event.target.files);
+                              event.currentTarget.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <Droppable droppableId={`manual-queue-${product.id}`} direction="horizontal">
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className={`flex min-h-[76px] gap-2 overflow-x-auto py-1 ${snapshot.isDraggingOver ? 'bg-orange-50' : ''}`}
+                          >
+                            {photos.length === 0 && (
+                              <div className="w-full min-h-[68px] flex items-center justify-center text-xs text-gray-400">
+                                La file d’images est vide
+                              </div>
+                            )}
+                            {photos.map((photo, index) => (
+                              <Draggable key={photo.id} draggableId={photo.id} index={index} isDragDisabled={saving}>
+                                {(dragProvided, dragSnapshot) => (
+                                  <div
+                                    ref={dragProvided.innerRef}
+                                    {...dragProvided.draggableProps}
+                                    {...dragProvided.dragHandleProps}
+                                    className={`relative w-20 h-20 flex-none rounded-lg bg-white ${
+                                      dragSnapshot.isDragging ? 'shadow-xl ring-2 ring-orange-400' : ''
+                                    }`}
+                                  >
+                                    <img src={photo.previewUrl} alt={`Image ${index + 1}`} className="w-full h-full object-cover rounded-lg border" />
+                                    {index === 0 && (
+                                      <span
+                                        className="absolute -top-1.5 -left-1.5 bg-yellow-400 text-yellow-900 rounded-full p-1 shadow"
+                                        title="Image principale"
+                                      >
+                                        <Star className="w-3 h-3 fill-current" />
+                                      </span>
+                                    )}
+                                    <span className="absolute bottom-1 left-1 text-[10px] font-bold bg-gray-900/75 text-white px-1.5 py-0.5 rounded">
+                                      {index + 1}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removePhoto(product.id, photo.id)}
+                                      disabled={saving}
+                                      className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-red-600 text-white shadow flex items-center justify-center hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                      title="Retirer cette image"
+                                      aria-label={`Retirer l'image ${index + 1}`}
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    </div>
+
+                    <div className="flex flex-col gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={() => void attach(product.id)}
+                        disabled={!photos.length || saving}
+                        className="min-h-10 w-full px-3 rounded-lg bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                        {saving ? 'Attachement…' : 'Attacher au produit'}
+                      </button>
+                      {photos.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => clearQueue(product.id)}
+                          disabled={saving}
+                          className="min-h-10 w-full px-3 rounded-lg border border-gray-300 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Vider ({photos.length})
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </DragDropContext>
+      )}
+
+      {meta && meta.total > 0 && (
+        <footer className="bg-white rounded-xl border px-3 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <span>Page {meta.page} sur {meta.totalPages}</span>
+            <label className="flex items-center gap-1.5">
+              <span>Afficher</span>
+              <select
+                value={limit}
+                onChange={(event) => {
+                  setLimit(Number(event.target.value));
+                  setPage(1);
+                }}
+                className="h-9 border border-gray-300 rounded-lg py-0 pl-2 pr-7 text-xs focus:ring-orange-400 focus:border-orange-400"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={40}>40</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={meta.page <= 1 || isFetching}
+              className="h-10 px-3 border rounded-lg text-sm disabled:opacity-40 hover:bg-gray-50 flex items-center gap-1"
+            >
+              <ChevronLeft className="w-4 h-4" /> Précédent
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(meta.totalPages, current + 1))}
+              disabled={meta.page >= meta.totalPages || isFetching}
+              className="h-10 px-3 border rounded-lg text-sm disabled:opacity-40 hover:bg-gray-50 flex items-center gap-1"
+            >
+              Suivant <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </footer>
+      )}
+    </section>
+  );
+};
+
 const ProductPhotoStudioPage: React.FC = () => {
-  const [tab, setTab] = useState<'capture' | 'history' | 'attached'>('capture');
+  const [tab, setTab] = useState<'capture' | 'history' | 'attached' | 'manual'>('capture');
   const [aiConfiguration, setAiConfiguration] = useState<AiConfiguration>({
     model: 'gpt-image-2',
     quality: 'medium',
   });
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div className={`p-4 md:p-6 mx-auto ${tab === 'manual' ? 'max-w-7xl' : 'max-w-5xl'}`}>
       <div className="flex items-center gap-3 mb-4">
         <div className="p-2 bg-orange-100 rounded-lg">
           <Camera className="w-6 h-6 text-orange-600" />
@@ -1510,7 +1952,7 @@ const ProductPhotoStudioPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-4 w-fit">
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-4 w-full sm:w-fit overflow-x-auto">
         <button
           onClick={() => setTab('capture')}
           className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${tab === 'capture' ? 'bg-white shadow text-orange-600' : 'text-gray-600 hover:text-gray-800'}`}
@@ -1529,6 +1971,13 @@ const ProductPhotoStudioPage: React.FC = () => {
         >
           <Link2 className="w-4 h-4" /> Attachés
         </button>
+        <button
+          onClick={() => setTab('manual')}
+          aria-label="Photos recherche manuelle"
+          className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 whitespace-nowrap ${tab === 'manual' ? 'bg-white shadow text-orange-600' : 'text-gray-600 hover:text-gray-800'}`}
+        >
+          <ImagePlus className="w-4 h-4" /> <span className="hidden md:inline">Photos recherche manuelle</span><span className="md:hidden">Recherche manuelle</span>
+        </button>
       </div>
 
       {tab === 'capture' && (
@@ -1538,6 +1987,7 @@ const ProductPhotoStudioPage: React.FC = () => {
         <HistoryTab aiConfiguration={aiConfiguration} onAiConfigurationChange={setAiConfiguration} />
       )}
       {tab === 'attached' && <AttachedTab />}
+      {tab === 'manual' && <ManualPhotosTab />}
     </div>
   );
 };

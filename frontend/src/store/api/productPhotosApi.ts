@@ -58,6 +58,26 @@ export interface PhotoShootStatusCounts {
   attached: number;
 }
 
+export type ManualProductImageStatus = 'missing' | 'present' | 'all';
+
+export interface ManualPhotoProduct {
+  id: number;
+  reference: string;
+  designation: string;
+  image_url: string | null;
+  gallery_count: number;
+}
+
+export interface ManualPhotoProductsResponse {
+  data: ManualPhotoProduct[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 const productPhotosApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getPhotoShoots: builder.query<
@@ -77,6 +97,17 @@ const productPhotosApi = api.injectEndpoints({
         params: params || undefined,
       }),
       providesTags: ['PhotoShoot'],
+    }),
+
+    getManualPhotoProducts: builder.query<
+      ManualPhotoProductsResponse,
+      { q?: string; imageStatus: ManualProductImageStatus; page: number; limit: number }
+    >({
+      query: (params) => ({
+        url: '/product-photos/manual-products',
+        params,
+      }),
+      providesTags: ['Product'],
     }),
 
     createPhotoShoot: builder.mutation<PhotoShoot, FormData>({
@@ -154,6 +185,18 @@ const productPhotosApi = api.injectEndpoints({
       }),
       invalidatesTags: ['PhotoShoot', 'Product'],
     }),
+
+    attachManualProductPhotos: builder.mutation<
+      { ok: boolean; attached: number; product: ManualPhotoProduct },
+      { productId: number; body: FormData }
+    >({
+      query: ({ productId, body }) => ({
+        url: `/product-photos/manual-products/${productId}/attach`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Product', 'PhotoShoot'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -161,6 +204,7 @@ const productPhotosApi = api.injectEndpoints({
 export const {
   useGetPhotoShootsQuery,
   useGetPhotoShootStatusCountsQuery,
+  useGetManualPhotoProductsQuery,
   useCreatePhotoShootMutation,
   useAddPhotoShootImagesMutation,
   useDeletePhotoShootMutation,
@@ -169,6 +213,7 @@ export const {
   useReprocessPhotoImageMutation,
   useReorderPhotoImagesMutation,
   useAttachPhotoShootMutation,
+  useAttachManualProductPhotosMutation,
 } = productPhotosApi;
 
 export default productPhotosApi;
