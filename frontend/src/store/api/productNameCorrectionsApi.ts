@@ -23,6 +23,8 @@ export interface ProductNameCorrectionRow {
   image: string | null;
   matched_product_id: number | null;
   matched_variant_id: number | null;
+  product_categorie_id: number | null;
+  is_variant_row: boolean;
   match_status: ProductNameCorrectionStatus;
   match_message: string | null;
   is_checked: boolean;
@@ -119,6 +121,18 @@ export const productNameCorrectionsApi = api.injectEndpoints({
       }),
       invalidatesTags: ['ProductNameCorrection', 'Product'],
     }),
+
+    updateProductCorrectionCategory: builder.mutation<
+      { ok: boolean; productId: number; categoryId: number | null },
+      { productId: number; categoryId: number | null }
+    >({
+      query: ({ productId, categoryId }) => ({
+        url: `/product-name-corrections/products/${productId}/category`,
+        method: 'PATCH',
+        body: { category_id: categoryId },
+      }),
+      invalidatesTags: ['Product'],
+    }),
   }),
 });
 
@@ -129,4 +143,5 @@ export const {
   useSetProductNameCorrectionCheckedMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
   useApplyProductNameCorrectionsMutation,
+  useUpdateProductCorrectionCategoryMutation,
 } = productNameCorrectionsApi;

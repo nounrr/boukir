@@ -131,6 +131,18 @@ function parseRef(value) {
   return Number.isFinite(numeric) ? String(Math.trunc(numeric)) : text;
 }
 
+function isVariantCorrectionRow(row) {
+  const reference = parseRef(row.reference);
+  const variantReference = parseRef(row.ref_variant);
+  return Boolean(
+    row.matched_variant_id ||
+    clean(row.variante_originale) ||
+    clean(row.variante_fr_pro) ||
+    clean(row.variante_ar_pro) ||
+    (variantReference && variantReference !== reference)
+  );
+}
+
 async function matchCorrection(row, connection = pool) {
   const reference = parseRef(row.reference);
   const refVariant = parseRef(row.ref_variant);
@@ -160,6 +172,15 @@ async function matchCorrection(row, connection = pool) {
   }
 
   const product = products[0];
+  if (!isVariantCorrectionRow(row)) {
+    return {
+      matched_product_id: product.id,
+      matched_variant_id: null,
+      match_status: 'matched',
+      match_message: 'Produit matchÃ© par rÃ©fÃ©rence',
+    };
+  }
+
   const [variants] = await connection.query(
     `SELECT id, product_id, variant_name, variant_name_ar, reference
      FROM product_variants
@@ -171,8 +192,8 @@ async function matchCorrection(row, connection = pool) {
     return {
       matched_product_id: product.id,
       matched_variant_id: null,
-      match_status: 'matched',
-      match_message: 'Produit sans variantes',
+      match_status: 'variant_no_match',
+      match_message: 'No match: ce produit ne contient aucune variante',
     };
   }
 
@@ -327,6 +348,7 @@ function serialize(row) {
   return {
     ...row,
     is_checked: Boolean(row.is_checked),
+    is_variant_row: isVariantCorrectionRow(row),
     can_apply: row.match_status === 'matched' && Boolean(row.is_checked) && !row.applied_at,
   };
 }
@@ -348,19 +370,19 @@ router.get('/', async (req, res, next) => {
     const where = [];
 
     if (status && status !== 'all') {
-      where.push('match_status = ?');
+      where.push('pnc.match_status = ?');
       params.push(status);
     }
 
     if (reviewStatus && reviewStatus !== 'all') {
-      where.push('review_status = ?');
+      where.push('pnc.review_status = ?');
       params.push(reviewStatus);
     }
 
     if (q) {
       where.push(`(
-        reference LIKE ? OR ref_variant LIKE ? OR ancienne_designation LIKE ? OR
-        designation_fr_pro LIKE ? OR designation_ar_pro LIKE ? OR variante_originale LIKE ?
+        pnc.reference LIKE ? OR pnc.ref_variant LIKE ? OR pnc.ancienne_designation LIKE ? OR
+        pnc.designation_fr_pro LIKE ? OR pnc.designation_ar_pro LIKE ? OR pnc.variante_originale LIKE ?
       )`);
       const like = `%${q}%`;
       params.push(like, like, like, like, like, like);
@@ -368,13 +390,18 @@ router.get('/', async (req, res, next) => {
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const [countRows] = await pool.query(
-      `SELECT COUNT(*) AS total FROM product_name_corrections ${whereSql}`,
+      `SELECT COUNT(*) AS total FROM product_name_corrections pnc ${whereSql}`,
       params
     );
     const filteredTotal = Number(countRows?.[0]?.total || 0);
 
     const [rows] = await pool.query(
-      `SELECT * FROM product_name_corrections ${whereSql} ORDER BY row_index ASC, id ASC LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT pnc.*, p.categorie_id AS product_categorie_id
+       FROM product_name_corrections pnc
+       LEFT JOIN products p ON p.id = pnc.matched_product_id
+       ${whereSql}
+       ORDER BY pnc.row_index ASC, pnc.id ASC
+       LIMIT ${limit} OFFSET ${offset}`,
       params
     );
 
@@ -530,6 +557,58 @@ router.patch('/:id/check', async (req, res, next) => {
   }
 });
 
+router.patch('/products/:productId/category', async (req, res, next) => {
+  try {
+    await ensureTable();
+    const productId = Number(req.params.productId);
+    if (!Number.isInteger(productId) || productId <= 0) {
+      return res.status(400).json({ message: 'Produit invalide' });
+    }
+
+    const rawCategoryId = req.body?.category_id;
+    const parsedCategoryId = rawCategoryId === null || rawCategoryId === '' || Number(rawCategoryId) === 0
+      ? null
+      : Number(rawCategoryId);
+    if (parsedCategoryId !== null && (!Number.isInteger(parsedCategoryId) || parsedCategoryId <= 0)) {
+      return res.status(400).json({ message: 'CatÃ©gorie invalide' });
+    }
+
+    if (parsedCategoryId !== null) {
+      const [categories] = await pool.query(
+        `SELECT c.id, EXISTS(
+           SELECT 1 FROM categories child WHERE child.parent_id = c.id
+         ) AS has_children
+         FROM categories c
+         WHERE c.id = ?`,
+        [parsedCategoryId]
+      );
+      if (!categories.length) {
+        return res.status(400).json({ message: 'CatÃ©gorie introuvable' });
+      }
+      if (Boolean(categories[0].has_children)) {
+        return res.status(400).json({
+          message: 'Impossible: veuillez sÃ©lectionner une catÃ©gorie finale (sans sous-catÃ©gories)',
+        });
+      }
+    }
+
+    const updatedBy = req.user?.id ?? null;
+    const [result] = await pool.query(
+      `UPDATE products
+       SET categorie_id = ?, updated_at = NOW(), updated_by = COALESCE(?, updated_by)
+       WHERE id = ? AND COALESCE(is_deleted, 0) = 0`,
+      [parsedCategoryId, updatedBy, productId]
+    );
+    if (!result.affectedRows) {
+      return res.status(404).json({ message: 'Produit introuvable' });
+    }
+
+    res.json({ ok: true, productId, categoryId: parsedCategoryId });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/apply', async (req, res, next) => {
   try {
     await ensureTable();
@@ -548,7 +627,8 @@ router.post('/apply', async (req, res, next) => {
     try {
       await conn.beginTransaction();
       for (const row of rows) {
-        if (row.matched_product_id && (row.designation_fr_pro || row.designation_ar_pro)) {
+        const isVariantRow = isVariantCorrectionRow(row);
+        if (!isVariantRow && row.matched_product_id && (row.designation_fr_pro || row.designation_ar_pro)) {
           const [productResult] = await conn.query(
             `UPDATE products
              SET old_designation = CASE
@@ -571,7 +651,7 @@ router.post('/apply', async (req, res, next) => {
           productsUpdated += Number(productResult.affectedRows || 0);
         }
 
-        if (row.matched_variant_id && (row.variante_fr_pro || row.variante_ar_pro)) {
+        if (isVariantRow && row.matched_variant_id && (row.variante_fr_pro || row.variante_ar_pro)) {
           const [variantResult] = await conn.query(
             `UPDATE product_variants
              SET variant_name = COALESCE(NULLIF(TRIM(?), ''), variant_name),

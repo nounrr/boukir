@@ -6,9 +6,11 @@ import {
   useGetProductNameCorrectionsQuery,
   useRematchProductNameCorrectionsMutation,
   useSetProductNameCorrectionCheckedMutation,
+  useUpdateProductCorrectionCategoryMutation,
   useUploadProductNameCorrectionsMutation,
   type ProductNameCorrectionRow,
 } from '../store/api/productNameCorrectionsApi';
+import { useGetCategoriesQuery } from '../store/api/categoriesApi';
 
 type TabKey = 'initial' | 'correct' | 'false';
 
@@ -77,6 +79,8 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
   const [transitionedIds, setTransitionedIds] = useState<Set<number>>(new Set());
+  const [categoryValues, setCategoryValues] = useState<Record<number, number | null>>({});
+  const [savingCategoryProductIds, setSavingCategoryProductIds] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(getStoredPageSize);
 
@@ -92,6 +96,12 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [setChecked] = useSetProductNameCorrectionCheckedMutation();
   const [bulkSetChecked, { isLoading: isBulkUpdating }] = useBulkSetProductNameCorrectionsCheckedMutation();
   const [applyCorrections, { isLoading: isApplying }] = useApplyProductNameCorrectionsMutation();
+  const [updateProductCategory] = useUpdateProductCorrectionCategoryMutation();
+  const {
+    data: categories = [],
+    isLoading: isCategoriesLoading,
+    isError: isCategoriesError,
+  } = useGetCategoriesQuery();
 
   const rows = useMemo(() => data?.rows || [], [data?.rows]);
   const summary = data?.summary;
@@ -106,6 +116,14 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
   const selectedRows = useMemo(() => rows.filter((row) => selectedIds.has(row.id)), [rows, selectedIds]);
+  const parentCategoryIds = useMemo(
+    () => new Set(categories.map((category) => category.parent_id).filter((id): id is number => id != null)),
+    [categories]
+  );
+  const sortedCategories = useMemo(
+    () => [...categories].sort((a, b) => a.nom.localeCompare(b.nom, 'fr')),
+    [categories]
+  );
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -155,6 +173,41 @@ const ProductNameCorrectionsPage: React.FC = () => {
       );
     } catch (error: any) {
       setMessage(`Remplacement échoué: ${getErrorMessage(error)}`);
+    }
+  };
+
+  const getProductCategoryValue = (row: ProductNameCorrectionRow) => {
+    const productId = row.matched_product_id;
+    if (!productId) return null;
+    if (Object.prototype.hasOwnProperty.call(categoryValues, productId)) {
+      return categoryValues[productId];
+    }
+    const categoryId = Number(row.product_categorie_id);
+    return Number.isInteger(categoryId) && categoryId > 0 ? categoryId : null;
+  };
+
+  const changeProductCategory = async (row: ProductNameCorrectionRow, categoryId: number | null) => {
+    const productId = row.matched_product_id;
+    if (!productId || row.is_variant_row || savingCategoryProductIds.has(productId)) return;
+
+    const previousCategoryId = getProductCategoryValue(row);
+    if (previousCategoryId === categoryId) return;
+
+    setMessage('');
+    setCategoryValues((previous) => ({ ...previous, [productId]: categoryId }));
+    setSavingCategoryProductIds((previous) => new Set(previous).add(productId));
+    try {
+      await updateProductCategory({ productId, categoryId }).unwrap();
+      setMessage(`Catégorie du produit ${productId} mise à jour.`);
+    } catch (error: any) {
+      setCategoryValues((previous) => ({ ...previous, [productId]: previousCategoryId }));
+      setMessage(`Mise à jour de la catégorie échouée: ${getErrorMessage(error)}`);
+    } finally {
+      setSavingCategoryProductIds((previous) => {
+        const next = new Set(previous);
+        next.delete(productId);
+        return next;
+      });
     }
   };
 
@@ -372,7 +425,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
 
       <div className="overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
         <div className="responsive-table-container">
-          <table className="min-w-[1320px] w-full divide-y divide-gray-200 text-sm">
+          <table className="min-w-[1500px] w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">
@@ -394,6 +447,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Ancienne désignation</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Désignation FR pro</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Désignation AR pro</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Catégorie</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Variante originale</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Variante FR/AR pro</th>
                 <th className="px-3 py-3 text-left font-semibold text-gray-700">Match système</th>
@@ -404,6 +458,9 @@ const ProductNameCorrectionsPage: React.FC = () => {
               {visibleRows.map((row) => {
                 const isIssue = row.match_status !== 'matched';
                 const isProcessing = processingIds.has(row.id);
+                const isVariantRow = row.is_variant_row;
+                const productId = row.matched_product_id;
+                const isSavingCategory = Boolean(productId && savingCategoryProductIds.has(productId));
                 return (
                   <tr key={row.id} className={isIssue ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}>
                     <td className="px-3 py-3 align-top">
@@ -442,13 +499,55 @@ const ProductNameCorrectionsPage: React.FC = () => {
                     </td>
                     <td className="px-3 py-3 align-top font-medium text-gray-900">{fmt(row.reference)}</td>
                     <td className="px-3 py-3 align-top text-gray-700">{fmt(row.ref_variant)}</td>
-                    <td className="px-3 py-3 align-top text-gray-800">{fmt(row.ancienne_designation)}</td>
-                    <td className="px-3 py-3 align-top text-gray-900">{fmt(row.designation_fr_pro)}</td>
-                    <td className="px-3 py-3 align-top text-gray-900" dir="rtl">{fmt(row.designation_ar_pro)}</td>
-                    <td className="px-3 py-3 align-top text-gray-700">{fmt(row.variante_originale)}</td>
+                    <td className="px-3 py-3 align-top text-gray-800">{isVariantRow ? '-' : fmt(row.ancienne_designation)}</td>
+                    <td className="px-3 py-3 align-top text-gray-900">{isVariantRow ? '-' : fmt(row.designation_fr_pro)}</td>
+                    <td className="px-3 py-3 align-top text-gray-900" dir="rtl">{isVariantRow ? '-' : fmt(row.designation_ar_pro)}</td>
                     <td className="px-3 py-3 align-top">
-                      <div className="text-gray-900">{fmt(row.variante_fr_pro)}</div>
-                      <div className="mt-1 text-gray-900" dir="rtl">{fmt(row.variante_ar_pro)}</div>
+                      {!isVariantRow && productId ? (
+                        <div className="flex min-w-[190px] items-center gap-2">
+                          <select
+                            value={getProductCategoryValue(row) ?? 0}
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              void changeProductCategory(row, value > 0 ? value : null);
+                            }}
+                            disabled={isSavingCategory || isCategoriesLoading || isCategoriesError}
+                            className={`w-full rounded-md border px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-1 disabled:bg-gray-100 disabled:text-gray-500 ${
+                              isSavingCategory
+                                ? 'border-emerald-400 bg-emerald-50 focus:border-emerald-500 focus:ring-emerald-500'
+                                : 'border-gray-300 focus:border-emerald-500 focus:ring-emerald-500'
+                            }`}
+                            aria-label={`Catégorie du produit ${productId}`}
+                          >
+                            <option value={0}>Uncategorized</option>
+                            {sortedCategories.map((category) => (
+                              <option
+                                key={category.id}
+                                value={category.id}
+                                disabled={parentCategoryIds.has(category.id)}
+                              >
+                                {category.nom}
+                              </option>
+                            ))}
+                          </select>
+                          {isSavingCategory && (
+                            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-700" aria-label="Enregistrement" />
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 align-top text-gray-700">{isVariantRow ? fmt(row.variante_originale) : '-'}</td>
+                    <td className="px-3 py-3 align-top">
+                      {isVariantRow ? (
+                        <>
+                          <div className="text-gray-900">{fmt(row.variante_fr_pro)}</div>
+                          <div className="mt-1 text-gray-900" dir="rtl">{fmt(row.variante_ar_pro)}</div>
+                        </>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-3 py-3 align-top">
                       <div className="flex flex-col gap-1">
@@ -477,7 +576,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
 
               {!isLoading && visibleRows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-6 py-10 text-center text-sm text-gray-500">
+                  <td colSpan={12} className="px-6 py-10 text-center text-sm text-gray-500">
                     Aucune ligne enregistrée. Uploadez le fichier Excel pour démarrer.
                   </td>
                 </tr>
