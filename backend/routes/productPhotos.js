@@ -435,6 +435,44 @@ async function getShootsWithDetails({
   });
 }
 
+async function getShootStatusCounts(q = null) {
+  const where = [];
+  const params = [];
+
+  if (q) {
+    where.push('(p.designation LIKE ? OR CAST(p.id AS CHAR) LIKE ? OR v.variant_name LIKE ?)');
+    const like = `%${q}%`;
+    params.push(like, like, like);
+  }
+
+  const [rows] = await pool.query(
+    `SELECT s.status, COUNT(*) AS item_count
+     FROM product_photo_shoots s
+     JOIN products p ON p.id = s.product_id
+     LEFT JOIN product_variants v ON v.id = s.variant_id
+     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+     GROUP BY s.status`,
+    params
+  );
+
+  const counts = {
+    history_total: 0,
+    pending: 0,
+    processing: 0,
+    processed: 0,
+    error: 0,
+    attached: 0,
+  };
+
+  for (const row of rows) {
+    if (Object.prototype.hasOwnProperty.call(counts, row.status)) {
+      counts[row.status] = Number(row.item_count || 0);
+    }
+  }
+  counts.history_total = counts.pending + counts.processing + counts.processed + counts.error;
+  return counts;
+}
+
 // ----------------------------
 // Routes
 // ----------------------------
@@ -535,6 +573,18 @@ router.get('/shoots', async (req, res) => {
   } catch (err) {
     console.error('[ProductPhotos] list shoots error:', err);
     res.status(500).json({ message: err?.message || 'Erreur chargement historique' });
+  }
+});
+
+// GET /api/product-photos/shoots/status-counts — exact counts for history filters
+router.get('/shoots/status-counts', async (req, res) => {
+  try {
+    const q = req.query.q ? String(req.query.q) : null;
+    const counts = await getShootStatusCounts(q);
+    res.json(counts);
+  } catch (err) {
+    console.error('[ProductPhotos] status counts error:', err);
+    res.status(500).json({ message: err?.message || 'Erreur chargement compteurs historique' });
   }
 });
 

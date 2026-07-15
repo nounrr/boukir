@@ -49,6 +49,15 @@ export interface PhotoShoot {
   processed: PhotoShootImage[];
 }
 
+export interface PhotoShootStatusCounts {
+  history_total: number;
+  pending: number;
+  processing: number;
+  processed: number;
+  error: number;
+  attached: number;
+}
+
 const productPhotosApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getPhotoShoots: builder.query<
@@ -57,6 +66,14 @@ const productPhotosApi = api.injectEndpoints({
     >({
       query: (params) => ({
         url: '/product-photos/shoots',
+        params: params || undefined,
+      }),
+      providesTags: ['PhotoShoot'],
+    }),
+
+    getPhotoShootStatusCounts: builder.query<PhotoShootStatusCounts, { q?: string } | void>({
+      query: (params) => ({
+        url: '/product-photos/shoots/status-counts',
         params: params || undefined,
       }),
       providesTags: ['PhotoShoot'],
@@ -143,6 +160,7 @@ const productPhotosApi = api.injectEndpoints({
 
 export const {
   useGetPhotoShootsQuery,
+  useGetPhotoShootStatusCountsQuery,
   useCreatePhotoShootMutation,
   useAddPhotoShootImagesMutation,
   useDeletePhotoShootMutation,

@@ -9,6 +9,7 @@ import type { DropResult } from '@hello-pangea/dnd';
 import { useSearchBonProductsQuery } from '../store/api/productsApi';
 import {
   useGetPhotoShootsQuery,
+  useGetPhotoShootStatusCountsQuery,
   useCreatePhotoShootMutation,
   useDeletePhotoShootMutation,
   useDeletePhotoImageMutation,
@@ -1104,6 +1105,7 @@ const HistoryTab: React.FC<{
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [quickSelectionCount, setQuickSelectionCount] = useState('40');
   const [gallerySelection, setGallerySelection] = useState<HistoryGallerySelection | null>(null);
 
   useEffect(() => {
@@ -1111,12 +1113,28 @@ const HistoryTab: React.FC<{
     return () => clearTimeout(t);
   }, [q]);
 
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [statusFilter, debouncedQ]);
+
   const { data: allShoots = [], isFetching, refetch } = useGetPhotoShootsQuery(
     { status: statusFilter || undefined, q: debouncedQ || undefined, sortBy, sortOrder },
     { pollingInterval: 0 }
   );
   // L'historique ne montre que les sessions non attachées (les attachées ont leur propre onglet)
   const shoots = useMemo(() => allShoots.filter((s) => s.status !== 'attached'), [allShoots]);
+  const statusCountArgs = { q: debouncedQ || undefined };
+  const {
+    data: statusCounts,
+    isFetching: isFetchingStatusCounts,
+    refetch: refetchStatusCounts,
+  } = useGetPhotoShootStatusCountsQuery(statusCountArgs);
+
+  // Keep counters current while an AI job is moving between statuses.
+  useGetPhotoShootStatusCountsQuery(statusCountArgs, {
+    pollingInterval: Number(statusCounts?.processing || 0) > 0 ? 4000 : 0,
+    skip: Number(statusCounts?.processing || 0) === 0,
+  });
 
   // Poll tant qu'un traitement IA est en cours
   const anyProcessing = shoots.some((s) => s.status === 'processing');
@@ -1131,6 +1149,24 @@ const HistoryTab: React.FC<{
 
   const toggleSelect = (id: number) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const selectAllVisible = () => {
+    setSelectedIds(shoots.map((shoot) => shoot.id));
+  };
+
+  const selectVisibleCount = () => {
+    const requestedCount = Math.floor(Number(quickSelectionCount));
+    if (!Number.isFinite(requestedCount) || requestedCount <= 0) {
+      toast('error', 'Saisissez un nombre de produits supérieur à 0');
+      return;
+    }
+
+    const selected = shoots.slice(0, requestedCount).map((shoot) => shoot.id);
+    setSelectedIds(selected);
+    if (requestedCount > shoots.length) {
+      toast('info', `${shoots.length} produit(s) disponible(s) ont été sélectionné(s)`);
+    }
+  };
 
   const selectableForProcess = shoots.filter(
     (s) => selectedIds.includes(s.id) && (s.status === 'pending' || s.status === 'error' || s.status === 'processed')
@@ -1200,11 +1236,11 @@ const HistoryTab: React.FC<{
           onChange={(e) => setStatusFilter(e.target.value)}
           className="border rounded-lg px-3 py-2 text-sm"
         >
-          <option value="">Tous les statuts</option>
-          <option value="pending">Non traité</option>
-          <option value="processing">En traitement</option>
-          <option value="processed">Traité par IA</option>
-          <option value="error">Erreur</option>
+          <option value="">Tous les statuts ({Number(statusCounts?.history_total || 0)})</option>
+          <option value="pending">Non traité ({Number(statusCounts?.pending || 0)})</option>
+          <option value="processing">En traitement ({Number(statusCounts?.processing || 0)})</option>
+          <option value="processed">Traité par IA ({Number(statusCounts?.processed || 0)})</option>
+          <option value="error">Erreur ({Number(statusCounts?.error || 0)})</option>
         </select>
         <select
           value={sortBy}
@@ -1224,8 +1260,52 @@ const HistoryTab: React.FC<{
           <option value="desc">Plus récent d’abord</option>
           <option value="asc">Plus ancien d’abord</option>
         </select>
-        <button onClick={() => refetch()} className="p-2 border rounded-lg hover:bg-gray-50" title="Actualiser">
-          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+        <button
+          onClick={() => {
+            void refetch();
+            void refetchStatusCounts();
+          }}
+          className="p-2 border rounded-lg hover:bg-gray-50"
+          title="Actualiser"
+        >
+          <RefreshCw className={`w-4 h-4 ${isFetching || isFetchingStatusCounts ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      {/* Sélection rapide des sessions affichées */}
+      <div className="bg-white rounded-xl border p-3 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-gray-700 mr-1">Sélection rapide</span>
+        <button
+          type="button"
+          onClick={selectAllVisible}
+          disabled={shoots.length === 0}
+          className="px-3 py-2 text-sm border border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Tout sélectionner ({shoots.length})
+        </button>
+        <label className="inline-flex items-center gap-2 text-sm text-gray-600">
+          <span>Nombre de produits</span>
+          <input
+            type="number"
+            min={1}
+            max={Math.max(1, shoots.length)}
+            step={1}
+            value={quickSelectionCount}
+            onChange={(event) => setQuickSelectionCount(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') selectVisibleCount();
+            }}
+            className="w-24 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            aria-label="Nombre de produits à sélectionner"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={selectVisibleCount}
+          disabled={shoots.length === 0}
+          className="px-3 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Sélectionner {quickSelectionCount || ''}
         </button>
       </div>
 

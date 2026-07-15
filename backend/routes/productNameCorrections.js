@@ -107,6 +107,31 @@ function clean(value) {
   return text.length ? text : null;
 }
 
+const EMPTY_CORRECTION_VALUES = new Set([
+  '-',
+  '–',
+  '—',
+  'n/a',
+  'na',
+  'null',
+  'none',
+  'undefined',
+]);
+
+function cleanCorrectionValue(value) {
+  const text = clean(value);
+  if (!text) return null;
+  return EMPTY_CORRECTION_VALUES.has(text.toLowerCase()) ? null : text;
+}
+
+function firstCorrectionValue(...values) {
+  for (const value of values) {
+    const text = cleanCorrectionValue(value);
+    if (text) return text;
+  }
+  return null;
+}
+
 function rowPicker(row) {
   const map = new Map();
   for (const [key, value] of Object.entries(row)) {
@@ -125,7 +150,7 @@ function rowPicker(row) {
 }
 
 function parseRef(value) {
-  const text = clean(value);
+  const text = cleanCorrectionValue(value);
   if (!text) return null;
   const numeric = Number(text);
   return Number.isFinite(numeric) ? String(Math.trunc(numeric)) : text;
@@ -136,9 +161,9 @@ function isVariantCorrectionRow(row) {
   const variantReference = parseRef(row.ref_variant);
   return Boolean(
     row.matched_variant_id ||
-    clean(row.variante_originale) ||
-    clean(row.variante_fr_pro) ||
-    clean(row.variante_ar_pro) ||
+    cleanCorrectionValue(row.variante_originale) ||
+    cleanCorrectionValue(row.variante_fr_pro) ||
+    cleanCorrectionValue(row.variante_ar_pro) ||
     (variantReference && variantReference !== reference)
   );
 }
@@ -217,7 +242,11 @@ async function matchCorrection(row, connection = pool) {
     }
   }
 
-  const variantName = normalizeText(row.variante_originale || row.variante_fr_pro || row.variante_ar_pro);
+  const variantName = normalizeText(firstCorrectionValue(
+    row.variante_originale,
+    row.variante_fr_pro,
+    row.variante_ar_pro
+  ));
   if (!variantName) {
     return {
       matched_product_id: product.id,
@@ -264,9 +293,9 @@ function mapExcelRow(row, index) {
     row_index: index,
     reference: parseRef(pick(['Reference', 'Référence', 'Ref'], ['reference'])),
     ref_variant: parseRef(pick(['Ref variant', 'Reference variant', 'Référence variante'], ['refvariant', 'referencevariant'])),
-    variante_originale: pick(['Variante originale', 'Variant originale', 'Original variant'], ['varianteoriginale', 'variantoriginale', 'originalvariant']),
-    variante_fr_pro: pick(['Variante FR pro', 'Variante FR', 'Variant FR pro'], ['variantefrpro', 'variantefr', 'variantfrpro']),
-    variante_ar_pro: pick(['Variante AR pro', 'Variante AR', 'Variant AR pro'], ['variantearpro', 'variantear', 'variantarpro']),
+    variante_originale: cleanCorrectionValue(pick(['Variante originale', 'Variant originale', 'Original variant'], ['varianteoriginale', 'variantoriginale', 'originalvariant'])),
+    variante_fr_pro: cleanCorrectionValue(pick(['Variante FR pro', 'Variante FR', 'Variant FR pro'], ['variantefrpro', 'variantefr', 'variantfrpro'])),
+    variante_ar_pro: cleanCorrectionValue(pick(['Variante AR pro', 'Variante AR', 'Variant AR pro'], ['variantearpro', 'variantear', 'variantarpro'])),
     ancienne_designation: pick(['Ancienne désignation', 'Ancienne designation', 'Old designation'], ['anciennedesignation', 'olddesignation']),
     designation_fr_pro: pick(['Désignation FR pro', 'Designation FR pro', 'Désignation FR'], ['designationfrpro', 'designationfr']),
     designation_ar_pro: pick(['Désignation AR pro', 'Designation AR pro', 'Désignation AR'], ['designationarpro', 'designationar']),
