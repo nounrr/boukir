@@ -58,7 +58,7 @@ export interface PhotoShootStatusCounts {
   attached: number;
 }
 
-export type ManualProductImageStatus = 'missing' | 'present' | 'all';
+export type ManualProductImageStatus = 'missing' | 'present';
 
 export interface ManualProductPhoto {
   id: number;

@@ -1664,11 +1664,10 @@ const ManualPhotosTab: React.FC = () => {
             />
           </label>
 
-          <div className="grid grid-cols-3 bg-gray-100 p-1 rounded-lg" aria-label="Filtrer selon les images">
+          <div className="grid grid-cols-2 bg-gray-100 p-1 rounded-lg" aria-label="Filtrer selon les photos manuelles attachées">
             {([
-              ['missing', 'Sans image'],
-              ['present', 'Avec image'],
-              ['all', 'Tous'],
+              ['missing', 'Sans photo manuelle'],
+              ['present', 'Avec photos manuelles'],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
@@ -1718,7 +1717,9 @@ const ManualPhotosTab: React.FC = () => {
           <ImageOff className="w-9 h-9 mx-auto text-gray-300" />
           <p className="mt-3 text-sm font-semibold text-gray-700">Aucun produit trouvé</p>
           <p className="mt-1 text-xs text-gray-500">
-            {imageStatus === 'missing' ? 'Tous les produits correspondants ont déjà une image.' : 'Modifiez la recherche ou le filtre.'}
+            {imageStatus === 'missing'
+              ? 'Tous les produits correspondants ont déjà des photos manuelles attachées.'
+              : 'Aucun produit correspondant ne possède de photo importée et attachée manuellement.'}
           </p>
         </div>
       ) : (

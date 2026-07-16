@@ -544,7 +544,7 @@ async function getShootStatusCounts(q = null) {
 router.get('/manual-products', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
-    const imageStatus = ['missing', 'present', 'all'].includes(String(req.query.imageStatus))
+    const imageStatus = ['missing', 'present'].includes(String(req.query.imageStatus))
       ? String(req.query.imageStatus)
       : 'missing';
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
@@ -552,13 +552,17 @@ router.get('/manual-products', async (req, res) => {
     const where = ['COALESCE(p.is_deleted, 0) = 0'];
     const params = [];
 
-    const hasMainImage = "NULLIF(TRIM(COALESCE(p.image_url, '')), '') IS NOT NULL";
-    const hasGalleryImage = `EXISTS (
-      SELECT 1 FROM product_images pi
-      WHERE pi.product_id = p.id AND NULLIF(TRIM(COALESCE(pi.image_url, '')), '') IS NOT NULL
+    // This filter belongs to the manual-photo workflow. A product only counts as
+    // having photos here after manually uploaded photos have actually been attached.
+    // Its pre-existing main/gallery images must not affect this queue.
+    const hasAttachedManualPhoto = `EXISTS (
+      SELECT 1 FROM manual_product_photos mpp
+      WHERE mpp.product_id = p.id
+        AND mpp.status = 'attached'
+        AND NULLIF(TRIM(COALESCE(mpp.image_url, '')), '') IS NOT NULL
     )`;
-    if (imageStatus === 'missing') where.push(`NOT (${hasMainImage}) AND NOT (${hasGalleryImage})`);
-    if (imageStatus === 'present') where.push(`((${hasMainImage}) OR (${hasGalleryImage}))`);
+    if (imageStatus === 'missing') where.push(`NOT (${hasAttachedManualPhoto})`);
+    if (imageStatus === 'present') where.push(hasAttachedManualPhoto);
 
     if (q) {
       const like = `%${q}%`;
