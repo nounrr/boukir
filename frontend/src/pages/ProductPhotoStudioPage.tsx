@@ -3,7 +3,7 @@ import Swal from 'sweetalert2';
 import {
   Camera, X, Trash2, Wand2, Search, ImagePlus, Check,
   Link2, RefreshCw, Star, ChevronLeft, ChevronRight, Loader2, History, Aperture, ZoomIn,
-  ImageOff, Upload
+  ImageOff, Upload, FolderUp, AlertTriangle
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -21,6 +21,7 @@ import {
   useAttachPhotoShootMutation,
   useAttachManualProductPhotosMutation,
   useUploadManualProductPhotosMutation,
+  useUploadManualProductPhotosBatchMutation,
   useDeleteManualProductPhotoMutation,
   useRejectManualProductPhotoMutation,
 } from '../store/api/productPhotosApi';
@@ -32,6 +33,7 @@ import type {
   PhotoShootStatus,
   ManualProductImageStatus,
   ManualProductPhoto,
+  ManualPhotoBatchResponse,
 } from '../store/api/productPhotosApi';
 import { useAuth } from '../hooks/redux';
 import type { Product, ProductVariant } from '../types';
@@ -1513,6 +1515,9 @@ const ManualPhotosTab: React.FC = () => {
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
   const [rejectingIds, setRejectingIds] = useState<Set<number>>(new Set());
   const [dragOverId, setDragOverId] = useState<number | null>(null);
+  const [batchDragOver, setBatchDragOver] = useState(false);
+  const [batchUploading, setBatchUploading] = useState(false);
+  const [batchResult, setBatchResult] = useState<ManualPhotoBatchResponse | null>(null);
   const queuesRef = useRef<ManualPhotoQueues>({});
 
   const { data, isLoading, isFetching, isError, error, refetch } = useGetManualPhotoProductsQuery({
@@ -1523,6 +1528,7 @@ const ManualPhotosTab: React.FC = () => {
   });
   const [attachManualProductPhotos] = useAttachManualProductPhotosMutation();
   const [uploadManualProductPhotos] = useUploadManualProductPhotosMutation();
+  const [uploadManualProductPhotosBatch] = useUploadManualProductPhotosBatchMutation();
   const [deleteManualProductPhoto] = useDeleteManualProductPhotoMutation();
   const [rejectManualProductPhoto] = useRejectManualProductPhotoMutation();
 
@@ -1579,6 +1585,58 @@ const ManualPhotosTab: React.FC = () => {
         next.delete(productId);
         return next;
       });
+    }
+  };
+
+  const importBatch = async (fileList: FileList | File[]) => {
+    if (batchUploading) return;
+    const selectedFiles = Array.from(fileList);
+    const invalidFiles = selectedFiles.filter((file) => !file.type.startsWith('image/'));
+    if (invalidFiles.length) {
+      toast('error', `Lot refusé : ${invalidFiles.length} fichier(s) ne sont pas des images`);
+      return;
+    }
+    if (!selectedFiles.length) {
+      toast('error', 'Sélectionnez au moins une image');
+      return;
+    }
+    if (selectedFiles.length > 30) {
+      toast('error', 'Vous pouvez importer au maximum 30 images à la fois');
+      return;
+    }
+
+    setBatchUploading(true);
+    setBatchResult(null);
+    try {
+      const compressed = await Promise.all(selectedFiles.map((file) => compressImage(file)));
+      const body = new FormData();
+      compressed.forEach((blob, index) => {
+        const originalName = selectedFiles[index].name;
+        const lastDot = originalName.lastIndexOf('.');
+        const referenceBasename = lastDot >= 0 ? originalName.slice(0, lastDot) : originalName;
+        body.append('images', new File([blob], `${referenceBasename}.jpg`, { type: 'image/jpeg' }));
+      });
+      const response = await uploadManualProductPhotosBatch(body).unwrap();
+      const visibleProductIds = new Set((data?.data || []).map((product) => product.id));
+      updateQueues((current) => {
+        const next = { ...current };
+        for (const importedProduct of response.products) {
+          if (!visibleProductIds.has(importedProduct.product_id)) continue;
+          const existing = next[importedProduct.product_id] || [];
+          next[importedProduct.product_id] = [
+            ...existing,
+            ...importedProduct.photos.filter((photo) => !existing.some((item) => item.id === photo.id)),
+          ];
+        }
+        return next;
+      });
+      setBatchResult(response);
+      if (response.uploaded) toast('success', `${response.uploaded} image(s) ajoutée(s) aux files manuelles`);
+    } catch (requestError: any) {
+      toast('error', requestError?.data?.message || 'Impossible d’importer ce lot d’images');
+    } finally {
+      setBatchUploading(false);
+      setBatchDragOver(false);
     }
   };
 
@@ -1683,6 +1741,143 @@ const ManualPhotosTab: React.FC = () => {
 
   return (
     <section className="space-y-4" aria-label="Photos recherche manuelle">
+      <div className="bg-white rounded-xl border border-orange-200 overflow-hidden shadow-sm">
+        <div className="px-3 py-3 md:px-4 border-b border-orange-100 bg-orange-50/70 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+          <div className="flex gap-3 min-w-0">
+            <span className="w-9 h-9 flex-none rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center">
+              <FolderUp className="w-5 h-5" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Import groupé par référence</h2>
+              <p className="mt-0.5 text-xs text-gray-600">
+                Le nom du fichier doit être exactement la référence produit : <strong className="text-gray-800">1234.jpg → réf. 1234</strong>
+              </p>
+            </div>
+          </div>
+          <span className="self-start rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
+            Variantes : affectation manuelle uniquement
+          </span>
+        </div>
+
+        <div className="p-3 md:p-4 grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.8fr)] gap-3">
+          <div
+            onDragEnter={(event) => {
+              if (!batchUploading && event.dataTransfer.types.includes('Files')) setBatchDragOver(true);
+            }}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes('Files')) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = batchUploading ? 'none' : 'copy';
+              if (!batchUploading) setBatchDragOver(true);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node)) setBatchDragOver(false);
+            }}
+            onDrop={(event) => {
+              if (!event.dataTransfer.files.length) return;
+              event.preventDefault();
+              setBatchDragOver(false);
+              if (!batchUploading) void importBatch(event.dataTransfer.files);
+            }}
+            aria-busy={batchUploading}
+            className={`min-h-[116px] rounded-xl border-2 border-dashed p-4 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left transition-colors ${
+              batchUploading
+                ? 'border-gray-200 bg-gray-100/70'
+                : batchDragOver
+                  ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-100'
+                  : 'border-gray-300 bg-gray-50/70 hover:border-orange-300'
+            }`}
+          >
+            {batchUploading ? (
+              <Loader2 className="w-8 h-8 flex-none animate-spin text-orange-600" aria-hidden="true" />
+            ) : (
+              <Upload className={`w-8 h-8 flex-none ${batchDragOver ? 'text-orange-600' : 'text-gray-400'}`} aria-hidden="true" />
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800">
+                {batchUploading ? 'Préparation et import des images…' : 'Glissez jusqu’à 30 images ici'}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">JPEG ou PNG réel · 25 Mo maximum par fichier</p>
+            </div>
+            <label className={`min-h-10 px-3 flex-none rounded-lg text-xs font-semibold inline-flex items-center gap-2 focus-within:ring-2 focus-within:ring-orange-400 focus-within:ring-offset-2 ${
+              batchUploading
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-orange-600 text-white hover:bg-orange-700 cursor-pointer'
+            }`}>
+              <ImagePlus className="w-4 h-4" aria-hidden="true" />
+              Sélectionner un lot
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={batchUploading}
+                className="sr-only"
+                aria-label="Sélectionner plusieurs images à importer par référence"
+                onChange={(event) => {
+                  if (event.target.files) void importBatch(event.target.files);
+                  event.currentTarget.value = '';
+                }}
+              />
+            </label>
+          </div>
+
+          <aside className={`rounded-xl border p-3 ${batchResult ? 'border-gray-200 bg-white' : 'border-dashed border-gray-200 bg-gray-50/50'}`} aria-live="polite">
+            {!batchResult ? (
+              <div className="h-full min-h-[90px] flex flex-col items-center justify-center text-center text-gray-500">
+                <Check className="w-5 h-5 text-gray-300" aria-hidden="true" />
+                <p className="mt-2 text-xs font-medium">Le bilan de correspondance apparaîtra ici</p>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Bilan du lot</p>
+                    <p className="mt-0.5 text-[11px] text-gray-500">{batchResult.total} fichier(s) traité(s)</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBatchResult(null)}
+                    className="min-h-8 px-2 rounded-md text-xs font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    aria-label="Effacer le bilan d’import"
+                  >
+                    Effacer
+                  </button>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                    <p className="text-lg leading-none font-bold text-green-700">{batchResult.uploaded}</p>
+                    <p className="mt-1 text-[11px] font-medium text-green-800">images importées</p>
+                  </div>
+                  <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                    <p className="text-lg leading-none font-bold text-green-700">{batchResult.products.length}</p>
+                    <p className="mt-1 text-[11px] font-medium text-green-800">produits trouvés</p>
+                  </div>
+                </div>
+                {batchResult.unmatched.length > 0 ? (
+                  <details className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    <summary className="cursor-pointer text-xs font-semibold text-amber-900 focus:outline-none focus:ring-2 focus:ring-orange-400 rounded">
+                      {batchResult.unmatched.length} fichier(s) non reconnu(s)
+                    </summary>
+                    <ul className="mt-2 max-h-28 overflow-y-auto space-y-1" aria-label="Fichiers non reconnus">
+                      {batchResult.unmatched.map((file, index) => (
+                        <li key={`${file.filename}-${index}`} className="flex items-start gap-1.5 text-[11px] text-amber-900">
+                          <AlertTriangle className="mt-0.5 w-3 h-3 flex-none" aria-hidden="true" />
+                          <span className="break-all"><strong>{file.filename}</strong> — {file.reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : (
+                  <p className="mt-2 text-xs font-medium text-green-700 flex items-center gap-1.5">
+                    <Check className="w-4 h-4" aria-hidden="true" /> Toutes les images ont été reconnues.
+                  </p>
+                )}
+              </div>
+            )}
+          </aside>
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-200 p-3 md:p-4">
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <label className="relative flex-1 min-w-0">
@@ -1699,10 +1894,10 @@ const ManualPhotosTab: React.FC = () => {
             />
           </label>
 
-          <div className="grid grid-cols-2 bg-gray-100 p-1 rounded-lg" aria-label="Filtrer selon les photos manuelles attachées">
+          <div className="grid grid-cols-2 bg-gray-100 p-1 rounded-lg" aria-label="Filtrer selon les photos manuelles importées">
             {([
               ['missing', 'Sans photo manuelle'],
-              ['present', 'Avec photos manuelles'],
+              ['present', 'Photos en attente'],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
@@ -1753,8 +1948,8 @@ const ManualPhotosTab: React.FC = () => {
           <p className="mt-3 text-sm font-semibold text-gray-700">Aucun produit trouvé</p>
           <p className="mt-1 text-xs text-gray-500">
             {imageStatus === 'missing'
-              ? 'Tous les produits correspondants ont déjà des photos manuelles attachées.'
-              : 'Aucun produit correspondant ne possède de photo importée et attachée manuellement.'}
+              ? 'Tous les produits correspondants ont déjà des photos manuelles ou des photos en attente.'
+              : 'Aucun produit correspondant ne possède de photo uploadée en attente d’attachement.'}
           </p>
         </div>
       ) : (

@@ -89,6 +89,26 @@ export interface ManualPhotoProductsResponse {
   };
 }
 
+export interface ManualPhotoBatchUnmatchedFile {
+  filename: string;
+  reference: string;
+  reason: string;
+}
+
+export interface ManualPhotoBatchProduct {
+  product_id: number;
+  reference: string;
+  photos: ManualProductPhoto[];
+}
+
+export interface ManualPhotoBatchResponse {
+  ok: boolean;
+  total: number;
+  uploaded: number;
+  products: ManualPhotoBatchProduct[];
+  unmatched: ManualPhotoBatchUnmatchedFile[];
+}
+
 const productPhotosApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getPhotoShoots: builder.query<
@@ -221,6 +241,15 @@ const productPhotosApi = api.injectEndpoints({
       invalidatesTags: ['Product'],
     }),
 
+    uploadManualProductPhotosBatch: builder.mutation<ManualPhotoBatchResponse, FormData>({
+      query: (body) => ({
+        url: '/product-photos/manual-products/images/batch',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Product'],
+    }),
+
     deleteManualProductPhoto: builder.mutation<{ ok: boolean }, number>({
       query: (imageId) => ({
         url: `/product-photos/manual-images/${imageId}`,
@@ -257,6 +286,7 @@ export const {
   useAttachPhotoShootMutation,
   useAttachManualProductPhotosMutation,
   useUploadManualProductPhotosMutation,
+  useUploadManualProductPhotosBatchMutation,
   useDeleteManualProductPhotoMutation,
   useRejectManualProductPhotoMutation,
 } = productPhotosApi;

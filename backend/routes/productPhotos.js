@@ -569,17 +569,25 @@ router.get('/manual-products', async (req, res) => {
     const where = ['COALESCE(p.is_deleted, 0) = 0'];
     const params = [];
 
-    // This filter belongs to the manual-photo workflow. A product only counts as
-    // having photos here after manually uploaded photos have actually been attached.
-    // Its pre-existing main/gallery images must not affect this queue.
+    // The "present" view is an action queue: it only contains products with
+    // manually uploaded images that are still waiting to be attached.
+    const hasPendingManualPhoto = `EXISTS (
+      SELECT 1 FROM manual_product_photos mpp
+      WHERE mpp.product_id = p.id
+        AND mpp.status = 'uploaded'
+        AND NULLIF(TRIM(COALESCE(mpp.image_url, '')), '') IS NOT NULL
+    )`;
     const hasAttachedManualPhoto = `EXISTS (
       SELECT 1 FROM manual_product_photos mpp
       WHERE mpp.product_id = p.id
         AND mpp.status = 'attached'
         AND NULLIF(TRIM(COALESCE(mpp.image_url, '')), '') IS NOT NULL
     )`;
-    if (imageStatus === 'missing') where.push(`NOT (${hasAttachedManualPhoto})`);
-    if (imageStatus === 'present') where.push(hasAttachedManualPhoto);
+    if (imageStatus === 'missing') {
+      where.push(`NOT (${hasPendingManualPhoto})`);
+      where.push(`NOT (${hasAttachedManualPhoto})`);
+    }
+    if (imageStatus === 'present') where.push(hasPendingManualPhoto);
 
     if (q) {
       const like = `%${q}%`;
@@ -647,6 +655,150 @@ router.get('/manual-products', async (req, res) => {
   } catch (error) {
     console.error('[ProductPhotos] manual products list error:', error);
     res.status(500).json({ message: error?.message || 'Erreur chargement des produits' });
+  }
+});
+
+// POST /api/product-photos/manual-products/images/batch
+// Matches each filename (without its final extension) to an active product id.
+// Variants are intentionally excluded: their assignment remains fully manual.
+router.post('/manual-products/images/batch', receiveManualImages, async (req, res) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+  let conn;
+  let committed = false;
+  let unmatchedFiles = [];
+  try {
+    if (!files.length) {
+      const error = new Error('Aucune image reçue');
+      error.status = 400;
+      throw error;
+    }
+    for (const file of files) await assertUploadedFileKind(file, ['jpeg', 'png']);
+
+    const uploads = files.map((file, index) => {
+      const originalName = String(file.originalname || '').trim();
+      const extension = path.extname(originalName);
+      const reference = (extension ? originalName.slice(0, -extension.length) : originalName).trim();
+      return { file, index, originalName, reference };
+    });
+    const references = [...new Set(uploads.map((uploadItem) => uploadItem.reference).filter(Boolean))];
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [productRows] = references.length
+      ? await conn.query(
+          `SELECT id, CAST(id AS CHAR) AS reference
+           FROM products
+           WHERE COALESCE(is_deleted, 0) = 0
+             AND CAST(id AS CHAR) IN (?)
+           FOR UPDATE`,
+          [references]
+        )
+      : [[]];
+    const productsByReference = new Map(
+      productRows.map((product) => [String(product.reference), Number(product.id)])
+    );
+
+    const recognizedByProduct = new Map();
+    unmatchedFiles = [];
+    for (const uploadItem of uploads) {
+      const productId = productsByReference.get(uploadItem.reference);
+      if (!productId) {
+        unmatchedFiles.push(uploadItem);
+        continue;
+      }
+      if (!recognizedByProduct.has(productId)) recognizedByProduct.set(productId, []);
+      recognizedByProduct.get(productId).push(uploadItem);
+    }
+
+    const productIds = [...recognizedByProduct.keys()];
+    const [positionRows] = productIds.length
+      ? await conn.query(
+          `SELECT product_id, COALESCE(MAX(position), -1) AS maxPos
+           FROM manual_product_photos
+           WHERE product_id IN (?)
+           GROUP BY product_id`,
+          [productIds]
+        )
+      : [[]];
+    const nextPositionByProduct = new Map(
+      positionRows.map((row) => [Number(row.product_id), Number(row.maxPos ?? -1) + 1])
+    );
+    const createdBy = Number(req.user?.id);
+    const insertedByProduct = new Map();
+    const insertedIds = [];
+
+    // Maps preserve first-seen product order and each product array preserves lot order.
+    for (const [productId, productUploads] of recognizedByProduct) {
+      let position = nextPositionByProduct.get(productId) ?? 0;
+      const productInsertedIds = [];
+      for (const uploadItem of productUploads) {
+        const [result] = await conn.query(
+          `INSERT INTO manual_product_photos (product_id, image_url, position, status, created_by)
+           VALUES (?, ?, ?, 'uploaded', ?)`,
+          [
+            productId,
+            publicUrlForManual(uploadItem.file.filename),
+            position++,
+            Number.isFinite(createdBy) ? createdBy : null,
+          ]
+        );
+        const insertedId = Number(result.insertId);
+        insertedIds.push(insertedId);
+        productInsertedIds.push(insertedId);
+      }
+      insertedByProduct.set(productId, productInsertedIds);
+    }
+
+    const [photoRows] = insertedIds.length
+      ? await conn.query(
+          `SELECT id, product_id, image_url, position, status, created_at, attached_at
+           FROM manual_product_photos
+           WHERE id IN (?)
+           ORDER BY position ASC, id ASC`,
+          [insertedIds]
+        )
+      : [[]];
+    const photosById = new Map(
+      photoRows.map((photo) => [Number(photo.id), {
+        ...photo,
+        id: Number(photo.id),
+        product_id: Number(photo.product_id),
+        position: Number(photo.position || 0),
+      }])
+    );
+    const importedProducts = [...insertedByProduct].map(([productId, ids]) => ({
+      product_id: productId,
+      reference: String(productId),
+      photos: ids.map((id) => photosById.get(id)).filter(Boolean),
+    }));
+
+    await conn.commit();
+    committed = true;
+    deleteUploadedFiles(unmatchedFiles.map((item) => item.file));
+
+    res.status(201).json({
+      ok: true,
+      total: files.length,
+      uploaded: insertedIds.length,
+      products: importedProducts,
+      unmatched: unmatchedFiles.map((item) => ({
+        filename: item.originalName,
+        reference: item.reference,
+        reason: item.reference
+          ? 'Aucun produit actif avec cette référence'
+          : 'Nom de fichier sans référence',
+      })),
+    });
+  } catch (error) {
+    if (conn && !committed) {
+      try { await conn.rollback(); } catch (_) {}
+    }
+    if (!committed) deleteUploadedFiles(files);
+    console.error('[ProductPhotos] manual batch upload error:', error);
+    res.status(Number(error?.status) || 500).json({ message: error?.message || 'Erreur import groupé des images' });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
