@@ -4,7 +4,6 @@ import { forbidRoles } from '../middleware/auth.js';
 import { verifyToken } from '../middleware/auth.js';
 import { applyStockDeltas, buildStockDeltaMaps, mergeStockDeltaMaps } from '../utils/stock.js';
 import { computeMouvementCalc } from '../utils/mouvementCalc.js';
-import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.js';
 
 const router = express.Router();
 
@@ -179,11 +178,6 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Client requis' });
     }
-    const blockedClient = await findBlockedClient(connection, cId);
-    if (blockedClient) {
-      await connection.rollback();
-      return res.status(400).json(blockedClientPayload(blockedClient));
-    }
     const lieu = lieu_chargement ?? null;
     const st = statut ?? 'En attente';
 
@@ -349,11 +343,6 @@ router.put('/:id', async (req, res) => {
     if (!isChefChauffeur && !vendreAuFournisseur && !cId) {
       await connection.rollback();
       return res.status(400).json({ message: 'Client requis' });
-    }
-    const blockedClient = await findBlockedClient(connection, cId);
-    if (blockedClient) {
-      await connection.rollback();
-      return res.status(400).json(blockedClientPayload(blockedClient));
     }
     const lieu = lieu_chargement ?? null;
     const st = statut ?? null;

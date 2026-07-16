@@ -88,14 +88,6 @@ const validationSchema = Yup.object({
   })
 });
 
-const isContactBlocked = (contact: any) => {
-  const value = contact?.bloque;
-  if (value === true) return true;
-  if (typeof value === 'number') return value === 1;
-  if (typeof value === 'string') return value === '1' || value.toLowerCase() === 'true';
-  return false;
-};
-
 const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
   isOpen,
   onClose,
@@ -305,10 +297,6 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                   avoirType = 'AvoirFournisseur';
                 } else {
                   const client = clients.find((c: Contact) => c.id.toString() === values.client_id.toString());
-                  if (client && isContactBlocked(client)) {
-                    showError(`Client bloque: ${client.nom_complet || values.client_id}. Vous ne pouvez pas creer un avoir pour ce client.`);
-                    return;
-                  }
                   contactId = Number(values.client_id);
                   contactNom = client?.nom_complet || '';
                   avoirType = 'Avoir';
@@ -353,10 +341,6 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
               } else if (values.type_avoir === 'avoir_client') {
                 // Créer un avoir client
                 const client = clients.find((c: Contact) => c.id.toString() === values.client_id.toString());
-                if (client && isContactBlocked(client)) {
-                  showError(`Client bloque: ${client.nom_complet || values.client_id}. Vous ne pouvez pas creer un avoir pour ce client.`);
-                  return;
-                }
                 
                 const newAvoir = {
                   id: Date.now(),
@@ -544,8 +528,8 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                           >
                             <option value="">Sélectionnez un client</option>
                             {clients.map((c: Contact) => (
-                              <option key={c.id} value={c.id} disabled={isContactBlocked(c)} title={isContactBlocked(c) ? 'Client bloque' : undefined}>
-                                {c.nom_complet} {c.reference ? `(${c.reference})` : ''}{isContactBlocked(c) ? ' - Client bloque' : ''}
+                              <option key={c.id} value={c.id}>
+                                {c.nom_complet} {c.reference ? `(${c.reference})` : ''}
                               </option>
                             ))}
                           </Field>
@@ -674,8 +658,8 @@ const AvoirFormModal: React.FC<AvoirFormModalProps> = ({
                         >
                           <option value="">Sélectionnez un client</option>
                           {clients.map((c: Contact) => (
-                            <option key={c.id} value={c.id} disabled={isContactBlocked(c)} title={isContactBlocked(c) ? 'Client bloque' : undefined}>
-                              {c.nom_complet} {c.reference ? `(${c.reference})` : ''}{isContactBlocked(c) ? ' - Client bloque' : ''}
+                            <option key={c.id} value={c.id}>
+                              {c.nom_complet} {c.reference ? `(${c.reference})` : ''}
                             </option>
                           ))}
                         </Field>

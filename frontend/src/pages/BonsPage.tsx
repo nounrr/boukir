@@ -2311,7 +2311,7 @@ const BonsPage = () => {
           return false;
         })();
 
-        if (duplicateType === 'client' || duplicateType === 'avoirClient') {
+        if (duplicateType === 'client') {
           const selectedClient = (clients as any[]).find((c: any) => String(c?.id) === String(selectedContactForDuplicate));
           if (selectedClient && isContactBlocked(selectedClient)) {
             showError(`Client bloque: ${selectedClient.nom_complet || selectedContactForDuplicate}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
@@ -5094,7 +5094,7 @@ const BonsPage = () => {
                       id="client-select"
                       options={clients.map((client: any) => {
                         const reference = client.reference ? `(${client.reference})` : '';
-                        const blocked = isContactBlocked(client);
+                        const blocked = duplicateType !== 'avoirClient' && isContactBlocked(client);
                         return {
                           value: client.id.toString(),
                           label: `${client.nom_complet} ${reference}${blocked ? ' - Client bloque' : ''}`,
@@ -5105,7 +5105,7 @@ const BonsPage = () => {
                       value={selectedContactForDuplicate}
                       onChange={(value) => {
                         const selectedClient = (clients as any[]).find((client: any) => String(client?.id) === String(value));
-                        if (selectedClient && isContactBlocked(selectedClient)) {
+                        if (duplicateType !== 'avoirClient' && selectedClient && isContactBlocked(selectedClient)) {
                           showError(`Client bloque: ${selectedClient.nom_complet || value}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
                           return;
                         }

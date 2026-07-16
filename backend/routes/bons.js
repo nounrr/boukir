@@ -5,6 +5,9 @@ import { blockedClientPayload, findBlockedClient } from '../utils/contactBlock.j
 
 const router = express.Router();
 
+const isClientCreditNoteType = (type) =>
+  ['Avoir', 'AvoirComptant', 'AvoirEcommerce'].includes(String(type || ''));
+
 const clampInt = (value, fallback, min, max) => {
   const n = Number.parseInt(value, 10);
   if (!Number.isFinite(n)) return fallback;
@@ -1016,7 +1019,9 @@ router.post('/', forbidRoles('ChefChauffeur'), async (req, res) => {
     // Créer le bon (numero supprimé du schéma/insert)
     // reste: pour Bon Comptant payé partiellement
     const resteVal = (type === 'Comptant' && payer_partiellement) ? (Number(reste) || 0) : 0;
-    const blockedClient = await findBlockedClient(connection, client_id);
+    const blockedClient = isClientCreditNoteType(type)
+      ? null
+      : await findBlockedClient(connection, client_id);
     if (blockedClient) {
       await connection.rollback();
       return res.status(400).json(blockedClientPayload(blockedClient));
@@ -1154,7 +1159,10 @@ router.patch('/:id', async (req, res) => {
     }
 
     const effectiveClientId = client_id !== undefined ? client_id : existingBon[0].client_id;
-    const blockedClient = await findBlockedClient(connection, effectiveClientId);
+    const effectiveType = type || existingBon[0].type;
+    const blockedClient = isClientCreditNoteType(effectiveType)
+      ? null
+      : await findBlockedClient(connection, effectiveClientId);
     if (blockedClient) {
       await connection.rollback();
       return res.status(400).json(blockedClientPayload(blockedClient));

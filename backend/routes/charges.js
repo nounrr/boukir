@@ -413,7 +413,9 @@ router.post('/', async (req, res) => {
       await connection.rollback();
       return res.status(400).json({ message: 'Champs requis manquants ou lignes invalides' });
     }
-    const blockedClient = await findBlockedClient(connection, clientId);
+    const blockedClient = operationType === 'avoir'
+      ? null
+      : await findBlockedClient(connection, clientId);
     if (blockedClient) {
       await connection.rollback();
       return res.status(400).json(blockedClientPayload(blockedClient));
@@ -515,7 +517,9 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ message: 'Données invalides' });
     }
 
-    const blockedClient = await findBlockedClient(connection, clientId);
+    const blockedClient = operationType === 'avoir'
+      ? null
+      : await findBlockedClient(connection, clientId);
     if (blockedClient) {
       await connection.rollback();
       return res.status(400).json(blockedClientPayload(blockedClient));

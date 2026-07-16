@@ -22,6 +22,7 @@ import {
   useAttachManualProductPhotosMutation,
   useUploadManualProductPhotosMutation,
   useDeleteManualProductPhotoMutation,
+  useRejectManualProductPhotoMutation,
 } from '../store/api/productPhotosApi';
 import type {
   AiImageModel,
@@ -1510,6 +1511,7 @@ const ManualPhotosTab: React.FC = () => {
   const [uploadingIds, setUploadingIds] = useState<Set<number>>(new Set());
   const [attachingIds, setAttachingIds] = useState<Set<number>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [rejectingIds, setRejectingIds] = useState<Set<number>>(new Set());
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const queuesRef = useRef<ManualPhotoQueues>({});
 
@@ -1522,6 +1524,7 @@ const ManualPhotosTab: React.FC = () => {
   const [attachManualProductPhotos] = useAttachManualProductPhotosMutation();
   const [uploadManualProductPhotos] = useUploadManualProductPhotosMutation();
   const [deleteManualProductPhoto] = useDeleteManualProductPhotoMutation();
+  const [rejectManualProductPhoto] = useRejectManualProductPhotoMutation();
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 350);
@@ -1603,6 +1606,38 @@ const ManualPhotosTab: React.FC = () => {
     const removable = (queuesRef.current[productId] || []).filter((photo) => photo.status === 'uploaded');
     if (!removable.length || attachingIds.has(productId)) return;
     for (const photo of removable) await removePhoto(productId, photo.id);
+  };
+
+  const rejectPhoto = async (productId: number, photoId: number) => {
+    if (rejectingIds.has(photoId) || attachingIds.has(productId)) return;
+    const confirmation = await Swal.fire({
+      title: 'Marquer cette image comme fausse ?',
+      text: 'Elle sera retirée du produit et conservée dans l’historique interne.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Oui, image fausse',
+      cancelButtonText: 'Annuler',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!confirmation.isConfirmed) return;
+
+    setRejectingIds((current) => new Set(current).add(photoId));
+    try {
+      await rejectManualProductPhoto(photoId).unwrap();
+      updateQueues((current) => ({
+        ...current,
+        [productId]: (current[productId] || []).filter((photo) => photo.id !== photoId),
+      }));
+      toast('success', 'Image marquée comme fausse et retirée du produit');
+    } catch (requestError: any) {
+      toast('error', requestError?.data?.message || 'Impossible de marquer cette image comme fausse');
+    } finally {
+      setRejectingIds((current) => {
+        const next = new Set(current);
+        next.delete(photoId);
+        return next;
+      });
+    }
   };
 
   const onDragEnd = (result: DropResult) => {
@@ -1864,6 +1899,19 @@ const ManualPhotosTab: React.FC = () => {
                                         aria-label={`Supprimer l'image ${index + 1}`}
                                       >
                                         {deletingIds.has(photo.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                                      </button>
+                                    )}
+                                    {photo.status === 'attached' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void rejectPhoto(product.id, photo.id)}
+                                        disabled={busy || rejectingIds.has(photo.id)}
+                                        className="absolute -top-2 -right-2 min-h-8 px-2 rounded-full bg-red-600 text-white shadow flex items-center justify-center gap-1 text-[10px] font-bold hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                        title="Marquer cette image comme fausse"
+                                        aria-label={`Marquer l'image ${index + 1} comme fausse`}
+                                      >
+                                        {rejectingIds.has(photo.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                        Fausse
                                       </button>
                                     )}
                                   </div>

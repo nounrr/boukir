@@ -228,6 +228,17 @@ const productPhotosApi = api.injectEndpoints({
       }),
       invalidatesTags: ['Product'],
     }),
+
+    rejectManualProductPhoto: builder.mutation<
+      { ok: boolean; product_id: number; image_id: number },
+      number
+    >({
+      query: (imageId) => ({
+        url: `/product-photos/manual-images/${imageId}/reject`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Product', 'PhotoShoot'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -247,6 +258,7 @@ export const {
   useAttachManualProductPhotosMutation,
   useUploadManualProductPhotosMutation,
   useDeleteManualProductPhotoMutation,
+  useRejectManualProductPhotoMutation,
 } = productPhotosApi;
 
 export default productPhotosApi;

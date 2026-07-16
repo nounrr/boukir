@@ -156,9 +156,10 @@ async function ensureSchema() {
       product_id INT NOT NULL,
       image_url VARCHAR(255) NOT NULL,
       position INT NOT NULL DEFAULT 0,
-      status ENUM('uploaded','attached') NOT NULL DEFAULT 'uploaded',
+      status ENUM('uploaded','attached','rejected') NOT NULL DEFAULT 'uploaded',
       created_by INT NULL,
       attached_at DATETIME NULL,
+      rejected_at DATETIME NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_manual_product_photos_product_status (product_id, status, position),
@@ -190,6 +191,22 @@ async function ensureSchema() {
         if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
       }
     }
+  }
+
+  const [manualPhotoColumns] = await pool.query('SHOW COLUMNS FROM manual_product_photos');
+  const manualPhotoColumnsByName = new Map(manualPhotoColumns.map((column) => [column.Field, column]));
+  if (!manualPhotoColumnsByName.has('rejected_at')) {
+    try {
+      await pool.query('ALTER TABLE manual_product_photos ADD COLUMN rejected_at DATETIME NULL AFTER attached_at');
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME') throw error;
+    }
+  }
+  const manualPhotoStatusType = String(manualPhotoColumnsByName.get('status')?.Type || '');
+  if (!manualPhotoStatusType.includes("'rejected'")) {
+    await pool.query(
+      "ALTER TABLE manual_product_photos MODIFY COLUMN status ENUM('uploaded','attached','rejected') NOT NULL DEFAULT 'uploaded'"
+    );
   }
 
   ensuredSchema = true;
@@ -607,7 +624,7 @@ router.get('/manual-products', async (req, res) => {
       ? await pool.query(
           `SELECT id, product_id, image_url, position, status, created_at, attached_at
            FROM manual_product_photos
-           WHERE product_id IN (?)
+           WHERE product_id IN (?) AND status IN ('uploaded', 'attached')
            ORDER BY product_id ASC, position ASC, id ASC`,
           [productIds]
         )
@@ -745,6 +762,84 @@ router.delete('/manual-images/:imageId', async (req, res) => {
     }
     console.error('[ProductPhotos] manual image delete error:', error);
     res.status(Number(error?.status) || 500).json({ message: error?.message || 'Erreur suppression image' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+// POST /api/product-photos/manual-images/:imageId/reject
+// Marks a wrong manually attached image as rejected and removes it from the
+// product's public gallery without deleting the audit record or uploaded file.
+router.post('/manual-images/:imageId/reject', async (req, res) => {
+  let conn;
+  let committed = false;
+  try {
+    const imageId = Number(req.params.imageId);
+    if (!Number.isFinite(imageId)) return res.status(400).json({ message: 'Identifiant image invalide' });
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [photos] = await conn.query(
+      `SELECT id, product_id, image_url, status
+       FROM manual_product_photos
+       WHERE id = ? FOR UPDATE`,
+      [imageId]
+    );
+    if (!photos.length) {
+      const error = new Error('Image manuelle introuvable');
+      error.status = 404;
+      throw error;
+    }
+    const photo = photos[0];
+    if (photo.status !== 'attached') {
+      const error = new Error('Seule une image manuelle attachée peut être marquée comme fausse');
+      error.status = 409;
+      throw error;
+    }
+
+    const [products] = await conn.query(
+      'SELECT id, image_url FROM products WHERE id = ? FOR UPDATE',
+      [photo.product_id]
+    );
+    if (!products.length) {
+      const error = new Error('Produit introuvable');
+      error.status = 404;
+      throw error;
+    }
+
+    await conn.query(
+      'DELETE FROM product_images WHERE product_id = ? AND image_url = ?',
+      [photo.product_id, photo.image_url]
+    );
+    await conn.query(
+      `UPDATE manual_product_photos
+       SET status = 'rejected', rejected_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [imageId]
+    );
+
+    if (String(products[0].image_url || '') === String(photo.image_url || '')) {
+      const [replacementImages] = await conn.query(
+        `SELECT image_url FROM product_images
+         WHERE product_id = ? AND NULLIF(TRIM(COALESCE(image_url, '')), '') IS NOT NULL
+         ORDER BY position ASC, id ASC LIMIT 1`,
+        [photo.product_id]
+      );
+      await conn.query(
+        'UPDATE products SET image_url = ? WHERE id = ?',
+        [replacementImages[0]?.image_url || null, photo.product_id]
+      );
+    }
+
+    await conn.commit();
+    committed = true;
+    res.json({ ok: true, product_id: Number(photo.product_id), image_id: imageId });
+  } catch (error) {
+    if (conn && !committed) {
+      try { await conn.rollback(); } catch (_) {}
+    }
+    console.error('[ProductPhotos] manual image reject error:', error);
+    res.status(Number(error?.status) || 500).json({ message: error?.message || 'Erreur lors du rejet de l’image' });
   } finally {
     if (conn) conn.release();
   }

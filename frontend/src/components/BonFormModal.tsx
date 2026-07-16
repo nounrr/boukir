@@ -978,6 +978,11 @@ const isContactBlocked = (contact: any) => {
   return false;
 };
 
+// Un avoir crédite le compte client : il réduit le solde dû et ne doit donc
+// jamais être soumis aux blocages prévus pour les nouvelles ventes à crédit.
+const isClientCreditNoteType = (type: unknown) =>
+  ['Avoir', 'AvoirComptant', 'AvoirEcommerce', 'AvoirCharge'].includes(String(type || ''));
+
 /* --------------------------------- Composant -------------------------------- */
 interface BonFormModalProps {
   isOpen: boolean;
@@ -1530,24 +1535,25 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
     [chargeClients, clients, currentTab, initialValues]
   );
   const buildClientOption = (c: Contact) => {
+    const allowCreditNote = isClientCreditNoteType(currentModalType);
     const soldeCumule = getContactTotalCumule(c);
     const creditLimit = getContactCreditLimit(c);
     const limite = creditLimit?.amount ?? 0;
     const isOverLimit = Boolean(creditLimit && soldeCumule > limite);
     const depassement = isOverLimit ? soldeCumule - limite : 0;
     const isBlocked = isContactBlocked(c);
-    const isDisabled = isBlocked || (isOverLimit && user?.role !== 'PDG');
-    const blockedLabel = isBlocked ? ' - Client bloque' : '';
-    const disabledReason = isBlocked
+    const isDisabled = !allowCreditNote && (isBlocked || (isOverLimit && user?.role !== 'PDG'));
+    const blockedLabel = !allowCreditNote && isBlocked ? ' - Client bloque' : '';
+    const disabledReason = !allowCreditNote && isBlocked
       ? 'Client bloque'
-      : isOverLimit && user?.role !== 'PDG'
+      : !allowCreditNote && isOverLimit && user?.role !== 'PDG'
         ? 'Client non selectionnable - Plafond depasse'
         : undefined;
     const baseLabel = `${c.nom_complet} ${c.reference ? `(${c.reference})` : ''}${blockedLabel}`;
 
     return {
       value: c.id.toString(),
-      label: isOverLimit ? `${baseLabel} - DEPASSE de ${depassement.toFixed(2)} DH` : baseLabel,
+      label: !allowCreditNote && isOverLimit ? `${baseLabel} - DEPASSE de ${depassement.toFixed(2)} DH` : baseLabel,
       data: { ...c, disabledReason },
       disabled: isDisabled,
     };
@@ -1557,7 +1563,7 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
   const clientOptions = useMemo(
     () => (selectableClients as Contact[]).map(buildClientOption),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectableClients, user?.role]
+    [selectableClients, user?.role, currentModalType]
   );
   // PERF: options fournisseur mémoïsées (évite .map(fournisseurs) à chaque render).
   const fournisseurOptions = useMemo(
@@ -1650,14 +1656,11 @@ const BonFormModal: React.FC<BonFormModalProps> = ({
       const name = String(c?.nom_complet || '').trim();
       const ref = String(c?.reference || '').trim();
       const phone = String(c?.telephone || c?.phone || '').trim();
-      const blocked = isContactBlocked(c);
       const labelParts = [name, ref ? `(${ref})` : '', phone ? `• ${phone}` : ''].filter(Boolean);
-      if (blocked) labelParts.push('- Client bloque');
       return {
         value: name,
         label: labelParts.join(' ').replace(/\s+/g, ' ').trim(),
-        data: { ...c, disabledReason: blocked ? 'Client bloque' : undefined },
-        disabled: blocked,
+        data: c,
       };
     });
   }, [clients]);
@@ -2745,7 +2748,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
     const selectedClient = selectedClientId
       ? allClients.find((c: any) => Number(c?.id) === selectedClientId)
       : null;
-    if (selectedClient && isContactBlocked(selectedClient)) {
+    if (selectedClient && !isClientCreditNoteType(values.type) && isContactBlocked(selectedClient)) {
       showError(`Client bloque: ${selectedClient.nom_complet || selectedClientId}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
       setSubmitting(false);
       return;
@@ -3376,7 +3379,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
       // (voir backend/routes/commandes.js PATCH /:id/statut)
     } else {
       // Vérification de la limite plafond/garantie pour les bons clients.
-      if (['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(requestType) && cleanBonData.client_id) {
+      if (['Sortie', 'Comptant'].includes(requestType) && cleanBonData.client_id) {
         const client = clients.find((c: any) => Number(c.id) === cleanBonData.client_id);
         const creditLimit = getContactCreditLimit(client);
         if (client && creditLimit) {
@@ -4080,7 +4083,7 @@ const handleSubmit = async (values: any, { setSubmitting, setFieldError }: any) 
   // Fonction utilitaire pour vérifier la limite de crédit en temps réel
   const checkClientCreditLimitRealTime = async (values: any) => {
     // Vérifier seulement pour les bons clients avec plafond ou garantie
-    if (!['Sortie', 'Comptant', 'Avoir', 'AvoirComptant'].includes(values.type) || !values.client_id) {
+    if (!['Sortie', 'Comptant'].includes(values.type) || !values.client_id) {
       return true;
     }
 
@@ -4471,11 +4474,20 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         setFieldValue('client_id', clientId);
                         return;
                       }
-                      if (isContactBlocked(client)) {
+                      if (!isClientCreditNoteType(values.type) && isContactBlocked(client)) {
                         showError(`Client bloque: ${client.nom_complet || clientId}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
                         return;
                       }
                       
+                      if (isClientCreditNoteType(values.type)) {
+                        setFieldValue('client_id', clientId);
+                        setFieldValue('client_nom', client.nom_complet);
+                        setFieldValue('client_adresse', client.adresse || '');
+                        setFieldValue('client_societe', (client as any).societe || '');
+                        setPdgApprovedOverLimit(null);
+                        return;
+                      }
+
                       const soldeCumule = getContactTotalCumule(client);
                       const creditLimit = getContactCreditLimit(client);
                       const limite = creditLimit?.amount ?? 0;
@@ -4611,10 +4623,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                         if (!v) return;
                         const opt = (ecommerceClientOptions || []).find((x) => x.value === v);
                         const c = opt?.data;
-                        if (c && isContactBlocked(c)) {
-                          showError(`Client bloque: ${c.nom_complet || v}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
-                          return;
-                        }
                         setFieldValue('client_nom', v);
                         if (c) {
                           setFieldValue('customer_email', c.email || values.customer_email || '');
@@ -4678,11 +4686,6 @@ const applyProductToRow = async (rowIndex: number, product: any) => {
                                   return normalizeHumanName(cName) === normalizeHumanName(orderName);
                                 });
                                 if (matched) {
-                                  if (isContactBlocked(matched)) {
-                                    showError(`Client bloque: ${matched.nom_complet || orderName}. Vous ne pouvez pas creer un bon ou un avoir pour ce client.`);
-                                    setFieldValue('client_nom', '');
-                                    return;
-                                  }
                                   setFieldValue('client_nom', String(matched.nom_complet || ''));
                                   setFieldValue('customer_email', matched.email || values.customer_email || '');
                                   setFieldValue('phone', (matched as any).telephone || (matched as any).phone || (values as any).phone || '');
