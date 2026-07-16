@@ -20,6 +20,8 @@ import {
   useReorderPhotoImagesMutation,
   useAttachPhotoShootMutation,
   useAttachManualProductPhotosMutation,
+  useUploadManualProductPhotosMutation,
+  useDeleteManualProductPhotoMutation,
 } from '../store/api/productPhotosApi';
 import type {
   AiImageModel,
@@ -28,6 +30,7 @@ import type {
   PhotoShootImage,
   PhotoShootStatus,
   ManualProductImageStatus,
+  ManualProductPhoto,
 } from '../store/api/productPhotosApi';
 import { useAuth } from '../hooks/redux';
 import type { Product, ProductVariant } from '../types';
@@ -1495,7 +1498,7 @@ const AttachedTab: React.FC = () => {
 // Page
 // ----------------------------------------------------------------------------
 
-type ManualPhotoQueues = Record<number, PendingPhoto[]>;
+type ManualPhotoQueues = Record<number, ManualProductPhoto[]>;
 
 const ManualPhotosTab: React.FC = () => {
   const [search, setSearch] = useState('');
@@ -1504,11 +1507,11 @@ const ManualPhotosTab: React.FC = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [queues, setQueues] = useState<ManualPhotoQueues>({});
-  const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+  const [uploadingIds, setUploadingIds] = useState<Set<number>>(new Set());
+  const [attachingIds, setAttachingIds] = useState<Set<number>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const queuesRef = useRef<ManualPhotoQueues>({});
-  const savingIdsRef = useRef<Set<number>>(new Set());
-  const mountedRef = useRef(true);
 
   const { data, isLoading, isFetching, isError, error, refetch } = useGetManualPhotoProductsQuery({
     q: debouncedSearch || undefined,
@@ -1517,19 +1520,13 @@ const ManualPhotosTab: React.FC = () => {
     limit,
   });
   const [attachManualProductPhotos] = useAttachManualProductPhotosMutation();
+  const [uploadManualProductPhotos] = useUploadManualProductPhotosMutation();
+  const [deleteManualProductPhoto] = useDeleteManualProductPhotoMutation();
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 350);
     return () => window.clearTimeout(timer);
   }, [search]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      Object.values(queuesRef.current).flat().forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
-    };
-  }, []);
 
   const updateQueues = (updater: (current: ManualPhotoQueues) => ManualPhotoQueues) => {
     setQueues((current) => {
@@ -1539,53 +1536,79 @@ const ManualPhotosTab: React.FC = () => {
     });
   };
 
+  useEffect(() => {
+    if (!data?.data) return;
+    updateQueues((current) => {
+      const next = { ...current };
+      for (const product of data.data) next[product.id] = product.manual_photos || [];
+      return next;
+    });
+  }, [data]);
+
   const addFiles = async (productId: number, fileList: FileList | File[]) => {
-    if (savingIdsRef.current.has(productId)) return;
+    if (uploadingIds.has(productId) || attachingIds.has(productId)) return;
     const imageFiles = Array.from(fileList).filter((file) => file.type.startsWith('image/'));
     if (!imageFiles.length) {
       toast('error', 'Sélectionnez uniquement des fichiers image');
       return;
     }
+    setUploadingIds((current) => new Set(current).add(productId));
     try {
       const compressed = await Promise.all(imageFiles.map((file) => compressImage(file)));
-      const pending = compressed.map(makePendingPhoto);
-      if (!mountedRef.current || savingIdsRef.current.has(productId)) {
-        pending.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
-        return;
-      }
+      const body = new FormData();
+      compressed.forEach((blob, index) => {
+        body.append('images', new File([blob], `produit-${productId}-${index + 1}.jpg`, { type: 'image/jpeg' }));
+      });
+      const response = await uploadManualProductPhotos({ productId, body }).unwrap();
       updateQueues((current) => ({
         ...current,
-        [productId]: [...(current[productId] || []), ...pending],
+        [productId]: [
+          ...(current[productId] || []),
+          ...response.photos.filter((photo) => !(current[productId] || []).some((existing) => existing.id === photo.id)),
+        ],
       }));
-    } catch {
-      toast('error', 'Impossible de préparer les images');
+      toast('success', `${response.uploaded} image(s) uploadée(s) et enregistrée(s)`);
+    } catch (requestError: any) {
+      toast('error', requestError?.data?.message || 'Impossible d’uploader les images');
+    } finally {
+      setUploadingIds((current) => {
+        const next = new Set(current);
+        next.delete(productId);
+        return next;
+      });
     }
   };
 
-  const removePhoto = (productId: number, photoId: string) => {
-    if (savingIdsRef.current.has(productId)) return;
-    const target = queuesRef.current[productId]?.find((photo) => photo.id === photoId);
-    if (target) URL.revokeObjectURL(target.previewUrl);
-    updateQueues((current) => ({
-      ...current,
-      [productId]: (current[productId] || []).filter((photo) => photo.id !== photoId),
-    }));
+  const removePhoto = async (productId: number, photoId: number) => {
+    if (deletingIds.has(photoId) || attachingIds.has(productId)) return;
+    setDeletingIds((current) => new Set(current).add(photoId));
+    try {
+      await deleteManualProductPhoto(photoId).unwrap();
+      updateQueues((current) => ({
+        ...current,
+        [productId]: (current[productId] || []).filter((photo) => photo.id !== photoId),
+      }));
+    } catch (requestError: any) {
+      toast('error', requestError?.data?.message || 'Impossible de supprimer cette image');
+    } finally {
+      setDeletingIds((current) => {
+        const next = new Set(current);
+        next.delete(photoId);
+        return next;
+      });
+    }
   };
 
-  const clearQueue = (productId: number, force = false) => {
-    if (!force && savingIdsRef.current.has(productId)) return;
-    (queuesRef.current[productId] || []).forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
-    updateQueues((current) => {
-      const next = { ...current };
-      delete next[productId];
-      return next;
-    });
+  const clearQueue = async (productId: number) => {
+    const removable = (queuesRef.current[productId] || []).filter((photo) => photo.status === 'uploaded');
+    if (!removable.length || attachingIds.has(productId)) return;
+    for (const photo of removable) await removePhoto(productId, photo.id);
   };
 
   const onDragEnd = (result: DropResult) => {
     if (!result.destination || result.source.droppableId !== result.destination.droppableId) return;
     const productId = Number(result.source.droppableId.replace('manual-queue-', ''));
-    if (!Number.isFinite(productId) || savingIdsRef.current.has(productId)) return;
+    if (!Number.isFinite(productId) || uploadingIds.has(productId) || attachingIds.has(productId)) return;
     updateQueues((current) => {
       const reordered = [...(current[productId] || [])];
       const [moved] = reordered.splice(result.source.index, 1);
@@ -1596,40 +1619,26 @@ const ManualPhotosTab: React.FC = () => {
   };
 
   const attach = async (productId: number) => {
-    const photos = queuesRef.current[productId] || [];
-    if (!photos.length || savingIdsRef.current.has(productId)) return;
-    const nextSavingIds = new Set(savingIdsRef.current).add(productId);
-    savingIdsRef.current = nextSavingIds;
-    setSavingIds(nextSavingIds);
-    const body = new FormData();
-    photos.forEach((photo, index) => {
-      const isPng = photo.blob.type === 'image/png';
-      body.append(
-        'images',
-        new File([photo.blob], `produit-${productId}-${index + 1}.${isPng ? 'png' : 'jpg'}`, {
-          type: isPng ? 'image/png' : 'image/jpeg',
-        })
-      );
-    });
+    const photos = (queuesRef.current[productId] || []).filter((photo) => photo.status === 'uploaded');
+    if (!photos.length || attachingIds.has(productId) || uploadingIds.has(productId)) return;
+    setAttachingIds((current) => new Set(current).add(productId));
     try {
-      const response = await attachManualProductPhotos({ productId, body }).unwrap();
-      clearQueue(productId, true);
+      const response = await attachManualProductPhotos({ productId, imageIds: photos.map((photo) => photo.id) }).unwrap();
+      updateQueues((current) => ({
+        ...current,
+        [productId]: (current[productId] || []).map((photo) =>
+          photos.some((attached) => attached.id === photo.id) ? { ...photo, status: 'attached' as const } : photo
+        ),
+      }));
       toast('success', `${response.attached} image(s) attachée(s) au produit`);
     } catch (requestError: any) {
       toast('error', requestError?.data?.message || 'Erreur lors de l’attachement');
     } finally {
-      if (mountedRef.current) {
-        setSavingIds((current) => {
-          const next = new Set(current);
-          next.delete(productId);
-          savingIdsRef.current = next;
-          return next;
-        });
-      } else {
-        const next = new Set(savingIdsRef.current);
+      setAttachingIds((current) => {
+        const next = new Set(current);
         next.delete(productId);
-        savingIdsRef.current = next;
-      }
+        return next;
+      });
     }
   };
 
@@ -1689,7 +1698,7 @@ const ManualPhotosTab: React.FC = () => {
         </div>
         <div className="mt-3 flex items-center justify-between gap-3 text-xs text-gray-500">
           <span>{meta ? `${meta.total} produit(s)` : 'Recherche dans tout le catalogue'}</span>
-          <span>La première image de la file devient l’image principale.</span>
+          <span>Les images sont enregistrées dès l’upload et restent après actualisation.</span>
         </div>
       </div>
 
@@ -1717,8 +1726,11 @@ const ManualPhotosTab: React.FC = () => {
           <div className={`space-y-3 transition-opacity ${isFetching ? 'opacity-60' : ''}`}>
             {products.map((product) => {
               const photos = queues[product.id] || [];
-              const saving = savingIds.has(product.id);
-              const draggingFiles = !saving && dragOverId === product.id;
+              const pendingPhotos = photos.filter((photo) => photo.status === 'uploaded');
+              const uploading = uploadingIds.has(product.id);
+              const attaching = attachingIds.has(product.id);
+              const busy = uploading || attaching;
+              const draggingFiles = !busy && dragOverId === product.id;
               return (
                 <article
                   key={product.id}
@@ -1726,12 +1738,12 @@ const ManualPhotosTab: React.FC = () => {
                     draggingFiles ? 'border-orange-500 bg-orange-50/40 ring-2 ring-orange-200' : 'border-gray-200'
                   }`}
                   onDragEnter={(event) => {
-                    if (!saving && event.dataTransfer.types.includes('Files')) setDragOverId(product.id);
+                    if (!busy && event.dataTransfer.types.includes('Files')) setDragOverId(product.id);
                   }}
                   onDragOver={(event) => {
                     if (!event.dataTransfer.types.includes('Files')) return;
                     event.preventDefault();
-                    if (saving) {
+                    if (busy) {
                       event.dataTransfer.dropEffect = 'none';
                       return;
                     }
@@ -1745,7 +1757,7 @@ const ManualPhotosTab: React.FC = () => {
                     if (!event.dataTransfer.files.length) return;
                     event.preventDefault();
                     setDragOverId(null);
-                    if (saving) return;
+                    if (busy) return;
                     void addFiles(product.id, event.dataTransfer.files);
                   }}
                 >
@@ -1771,11 +1783,11 @@ const ManualPhotosTab: React.FC = () => {
                     </div>
 
                     <div
-                      aria-disabled={saving}
+                      aria-disabled={busy}
                       className={`min-w-0 rounded-xl border-2 border-dashed px-3 py-3 ${
                         draggingFiles
                           ? 'border-orange-500 bg-white'
-                          : saving
+                          : busy
                             ? 'border-gray-200 bg-gray-100/70 opacity-70'
                             : 'border-gray-300 bg-gray-50/60'
                       }`}
@@ -1783,19 +1795,20 @@ const ManualPhotosTab: React.FC = () => {
                       <div className="flex items-center justify-between gap-3 mb-2">
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-gray-700">Glissez les images ici</p>
-                          <p className="text-[11px] text-gray-500">Plusieurs images acceptées · ordre modifiable</p>
+                          <p className="text-[11px] text-gray-500">Upload immédiat en base · ordre modifiable avant attachement</p>
                         </div>
                         <label className={`h-10 px-3 flex-none rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 ${
-                          saving
+                          busy
                             ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
                             : 'border-orange-300 bg-white text-orange-700 hover:bg-orange-50 cursor-pointer'
                         }`}>
-                          <Upload className="w-3.5 h-3.5" /> Parcourir
+                          {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                          {uploading ? 'Upload…' : 'Uploader'}
                           <input
                             type="file"
                             accept="image/*"
                             multiple
-                            disabled={saving}
+                            disabled={busy}
                             className="sr-only"
                             onChange={(event) => {
                               if (event.target.files) void addFiles(product.id, event.target.files);
@@ -1818,7 +1831,7 @@ const ManualPhotosTab: React.FC = () => {
                               </div>
                             )}
                             {photos.map((photo, index) => (
-                              <Draggable key={photo.id} draggableId={photo.id} index={index} isDragDisabled={saving}>
+                              <Draggable key={photo.id} draggableId={String(photo.id)} index={index} isDragDisabled={busy}>
                                 {(dragProvided, dragSnapshot) => (
                                   <div
                                     ref={dragProvided.innerRef}
@@ -1828,8 +1841,8 @@ const ManualPhotosTab: React.FC = () => {
                                       dragSnapshot.isDragging ? 'shadow-xl ring-2 ring-orange-400' : ''
                                     }`}
                                   >
-                                    <img src={photo.previewUrl} alt={`Image ${index + 1}`} className="w-full h-full object-cover rounded-lg border" />
-                                    {index === 0 && (
+                                    <img src={photo.image_url} alt={`Image ${index + 1}`} className="w-full h-full object-cover rounded-lg border" />
+                                    {photo.id === pendingPhotos[0]?.id && (
                                       <span
                                         className="absolute -top-1.5 -left-1.5 bg-yellow-400 text-yellow-900 rounded-full p-1 shadow"
                                         title="Image principale"
@@ -1838,18 +1851,20 @@ const ManualPhotosTab: React.FC = () => {
                                       </span>
                                     )}
                                     <span className="absolute bottom-1 left-1 text-[10px] font-bold bg-gray-900/75 text-white px-1.5 py-0.5 rounded">
-                                      {index + 1}
+                                      {photo.status === 'attached' ? 'Attachée' : index + 1}
                                     </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => removePhoto(product.id, photo.id)}
-                                      disabled={saving}
-                                      className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-red-600 text-white shadow flex items-center justify-center hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                                      title="Retirer cette image"
-                                      aria-label={`Retirer l'image ${index + 1}`}
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
+                                    {photo.status === 'uploaded' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void removePhoto(product.id, photo.id)}
+                                        disabled={busy || deletingIds.has(photo.id)}
+                                        className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-red-600 text-white shadow flex items-center justify-center hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                        title="Supprimer cette image uploadée"
+                                        aria-label={`Supprimer l'image ${index + 1}`}
+                                      >
+                                        {deletingIds.has(photo.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </Draggable>
@@ -1864,20 +1879,20 @@ const ManualPhotosTab: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => void attach(product.id)}
-                        disabled={!photos.length || saving}
+                        disabled={!pendingPhotos.length || busy}
                         className="min-h-10 w-full px-3 rounded-lg bg-orange-600 text-white text-sm font-semibold hover:bg-orange-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
-                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-                        {saving ? 'Attachement…' : 'Attacher au produit'}
+                        {attaching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                        {attaching ? 'Attachement…' : `Attacher au produit (${pendingPhotos.length})`}
                       </button>
-                      {photos.length > 0 && (
+                      {pendingPhotos.length > 0 && (
                         <button
                           type="button"
-                          onClick={() => clearQueue(product.id)}
-                          disabled={saving}
+                          onClick={() => void clearQueue(product.id)}
+                          disabled={busy}
                           className="min-h-10 w-full px-3 rounded-lg border border-gray-300 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                         >
-                          Vider ({photos.length})
+                          Vider les uploads ({pendingPhotos.length})
                         </button>
                       )}
                     </div>

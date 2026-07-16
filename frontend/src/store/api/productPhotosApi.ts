@@ -60,12 +60,23 @@ export interface PhotoShootStatusCounts {
 
 export type ManualProductImageStatus = 'missing' | 'present' | 'all';
 
+export interface ManualProductPhoto {
+  id: number;
+  product_id: number;
+  image_url: string;
+  position: number;
+  status: 'uploaded' | 'attached';
+  created_at: string;
+  attached_at: string | null;
+}
+
 export interface ManualPhotoProduct {
   id: number;
   reference: string;
   designation: string;
   image_url: string | null;
   gallery_count: number;
+  manual_photos: ManualProductPhoto[];
 }
 
 export interface ManualPhotoProductsResponse {
@@ -188,14 +199,34 @@ const productPhotosApi = api.injectEndpoints({
 
     attachManualProductPhotos: builder.mutation<
       { ok: boolean; attached: number; product: ManualPhotoProduct },
+      { productId: number; imageIds: number[] }
+    >({
+      query: ({ productId, imageIds }) => ({
+        url: `/product-photos/manual-products/${productId}/attach`,
+        method: 'POST',
+        body: { imageIds },
+      }),
+      invalidatesTags: ['Product', 'PhotoShoot'],
+    }),
+
+    uploadManualProductPhotos: builder.mutation<
+      { ok: boolean; uploaded: number; photos: ManualProductPhoto[] },
       { productId: number; body: FormData }
     >({
       query: ({ productId, body }) => ({
-        url: `/product-photos/manual-products/${productId}/attach`,
+        url: `/product-photos/manual-products/${productId}/images`,
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['Product', 'PhotoShoot'],
+      invalidatesTags: ['Product'],
+    }),
+
+    deleteManualProductPhoto: builder.mutation<{ ok: boolean }, number>({
+      query: (imageId) => ({
+        url: `/product-photos/manual-images/${imageId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Product'],
     }),
   }),
   overrideExisting: false,
@@ -214,6 +245,8 @@ export const {
   useReorderPhotoImagesMutation,
   useAttachPhotoShootMutation,
   useAttachManualProductPhotosMutation,
+  useUploadManualProductPhotosMutation,
+  useDeleteManualProductPhotoMutation,
 } = productPhotosApi;
 
 export default productPhotosApi;

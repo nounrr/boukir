@@ -150,6 +150,22 @@ async function ensureSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS manual_product_photos (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      product_id INT NOT NULL,
+      image_url VARCHAR(255) NOT NULL,
+      position INT NOT NULL DEFAULT 0,
+      status ENUM('uploaded','attached') NOT NULL DEFAULT 'uploaded',
+      created_by INT NULL,
+      attached_at DATETIME NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_manual_product_photos_product_status (product_id, status, position),
+      CONSTRAINT fk_manual_product_photos_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+
   // Self-heal installations where the original table already exists.
   const [imageColumns] = await pool.query('SHOW COLUMNS FROM product_photo_images');
   const existingImageColumns = new Set(imageColumns.map((column) => column.Field));
@@ -582,8 +598,29 @@ router.get('/manual-products', async (req, res) => {
       params
     );
 
+    const productIds = rows.map((row) => Number(row.id));
+    const [manualPhotos] = productIds.length
+      ? await pool.query(
+          `SELECT id, product_id, image_url, position, status, created_at, attached_at
+           FROM manual_product_photos
+           WHERE product_id IN (?)
+           ORDER BY product_id ASC, position ASC, id ASC`,
+          [productIds]
+        )
+      : [[]];
+    const photosByProduct = new Map();
+    for (const photo of manualPhotos) {
+      const productId = Number(photo.product_id);
+      if (!photosByProduct.has(productId)) photosByProduct.set(productId, []);
+      photosByProduct.get(productId).push({ ...photo, id: Number(photo.id), product_id: productId, position: Number(photo.position || 0) });
+    }
+
     res.json({
-      data: rows.map((row) => ({ ...row, gallery_count: Number(row.gallery_count || 0) })),
+      data: rows.map((row) => ({
+        ...row,
+        gallery_count: Number(row.gallery_count || 0),
+        manual_photos: photosByProduct.get(Number(row.id)) || [],
+      })),
       meta: { page: safePage, limit, total, totalPages },
     });
   } catch (error) {
@@ -592,9 +629,9 @@ router.get('/manual-products', async (req, res) => {
   }
 });
 
-// POST /api/product-photos/manual-products/:productId/attach
-// Multipart image order is authoritative: first file is the new main image.
-router.post('/manual-products/:productId/attach', receiveManualImages, async (req, res) => {
+// POST /api/product-photos/manual-products/:productId/images
+// Uploads are persisted immediately so the manual queue survives a refresh.
+router.post('/manual-products/:productId/images', receiveManualImages, async (req, res) => {
   const files = Array.isArray(req.files) ? req.files : [];
   let conn;
   let committed = false;
@@ -610,8 +647,125 @@ router.post('/manual-products/:productId/attach', receiveManualImages, async (re
       error.status = 400;
       throw error;
     }
-
     for (const file of files) await assertUploadedFileKind(file, ['jpeg', 'png']);
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [products] = await conn.query(
+      'SELECT id FROM products WHERE id = ? AND COALESCE(is_deleted, 0) = 0 FOR UPDATE',
+      [productId]
+    );
+    if (!products.length) {
+      const error = new Error('Produit introuvable ou supprimé');
+      error.status = 404;
+      throw error;
+    }
+
+    const [[positionRow]] = await conn.query(
+      'SELECT COALESCE(MAX(position), -1) AS maxPos FROM manual_product_photos WHERE product_id = ?',
+      [productId]
+    );
+    let position = Number(positionRow?.maxPos ?? -1) + 1;
+    const createdBy = Number(req.user?.id);
+    const insertedIds = [];
+    for (const file of files) {
+      const [result] = await conn.query(
+        `INSERT INTO manual_product_photos (product_id, image_url, position, created_by)
+         VALUES (?, ?, ?, ?)`,
+        [productId, publicUrlForManual(file.filename), position++, Number.isFinite(createdBy) ? createdBy : null]
+      );
+      insertedIds.push(Number(result.insertId));
+    }
+    const [photos] = await conn.query(
+      `SELECT id, product_id, image_url, position, status, created_at, attached_at
+       FROM manual_product_photos WHERE id IN (?) ORDER BY position ASC, id ASC`,
+      [insertedIds]
+    );
+    await conn.commit();
+    committed = true;
+    res.status(201).json({
+      ok: true,
+      uploaded: photos.length,
+      photos: photos.map((photo) => ({
+        ...photo,
+        id: Number(photo.id),
+        product_id: Number(photo.product_id),
+        position: Number(photo.position || 0),
+      })),
+    });
+  } catch (error) {
+    if (conn && !committed) {
+      try { await conn.rollback(); } catch (_) {}
+    }
+    if (!committed) deleteUploadedFiles(files);
+    console.error('[ProductPhotos] manual upload error:', error);
+    res.status(Number(error?.status) || 500).json({ message: error?.message || 'Erreur upload images' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+// DELETE /api/product-photos/manual-images/:imageId
+router.delete('/manual-images/:imageId', async (req, res) => {
+  let conn;
+  let imageUrl = null;
+  let committed = false;
+  try {
+    const imageId = Number(req.params.imageId);
+    if (!Number.isFinite(imageId)) return res.status(400).json({ message: 'Identifiant image invalide' });
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const [photos] = await conn.query(
+      'SELECT id, image_url, status FROM manual_product_photos WHERE id = ? FOR UPDATE',
+      [imageId]
+    );
+    if (!photos.length) {
+      const error = new Error('Image manuelle introuvable');
+      error.status = 404;
+      throw error;
+    }
+    if (photos[0].status === 'attached') {
+      const error = new Error('Une image déjà attachée ne peut pas être retirée de la file manuelle');
+      error.status = 409;
+      throw error;
+    }
+    imageUrl = photos[0].image_url;
+    await conn.query('DELETE FROM manual_product_photos WHERE id = ?', [imageId]);
+    await conn.commit();
+    committed = true;
+    deleteFileForUrl(imageUrl);
+    res.json({ ok: true });
+  } catch (error) {
+    if (conn && !committed) {
+      try { await conn.rollback(); } catch (_) {}
+    }
+    console.error('[ProductPhotos] manual image delete error:', error);
+    res.status(Number(error?.status) || 500).json({ message: error?.message || 'Erreur suppression image' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+// POST /api/product-photos/manual-products/:productId/attach
+// The image id order is authoritative: first image becomes the main image.
+router.post('/manual-products/:productId/attach', async (req, res) => {
+  let conn;
+  let committed = false;
+  try {
+    const productId = Number(req.params.productId);
+    if (!Number.isFinite(productId)) {
+      const error = new Error('Identifiant produit invalide');
+      error.status = 400;
+      throw error;
+    }
+    const imageIds = [...new Set(
+      (Array.isArray(req.body?.imageIds) ? req.body.imageIds : []).map(Number).filter(Number.isFinite)
+    )];
+    if (!imageIds.length) {
+      const error = new Error('Aucune image uploadée à attacher');
+      error.status = 400;
+      throw error;
+    }
 
     conn = await pool.getConnection();
     await conn.beginTransaction();
@@ -626,12 +780,27 @@ router.post('/manual-products/:productId/attach', receiveManualImages, async (re
       throw error;
     }
 
+    const [storedPhotos] = await conn.query(
+      `SELECT id, image_url
+       FROM manual_product_photos
+       WHERE product_id = ? AND status = 'uploaded' AND id IN (?)
+       FOR UPDATE`,
+      [productId, imageIds]
+    );
+    const photosById = new Map(storedPhotos.map((photo) => [Number(photo.id), photo]));
+    const photos = imageIds.map((id) => photosById.get(id)).filter(Boolean);
+    if (photos.length !== imageIds.length) {
+      const error = new Error('Certaines images sont introuvables ou déjà attachées');
+      error.status = 409;
+      throw error;
+    }
+
     const [[positionRow]] = await conn.query(
       'SELECT COALESCE(MAX(position), -1) AS maxPos FROM product_images WHERE product_id = ?',
       [productId]
     );
     let position = Number(positionRow?.maxPos ?? -1) + 1;
-    const urls = files.map((file) => publicUrlForManual(file.filename));
+    const urls = photos.map((photo) => photo.image_url);
 
     for (const imageUrl of urls) {
       await conn.query(
@@ -640,6 +809,14 @@ router.post('/manual-products/:productId/attach', receiveManualImages, async (re
       );
     }
     await conn.query('UPDATE products SET image_url = ? WHERE id = ?', [urls[0], productId]);
+    for (let index = 0; index < imageIds.length; index += 1) {
+      await conn.query(
+        `UPDATE manual_product_photos
+         SET status = 'attached', attached_at = CURRENT_TIMESTAMP, position = ?
+         WHERE id = ?`,
+        [index, imageIds[index]]
+      );
+    }
 
     const [[updated]] = await conn.query(
       `SELECT
@@ -655,14 +832,13 @@ router.post('/manual-products/:productId/attach', receiveManualImages, async (re
     committed = true;
     res.json({
       ok: true,
-      attached: files.length,
+      attached: photos.length,
       product: { ...updated, gallery_count: Number(updated?.gallery_count || 0) },
     });
   } catch (error) {
     if (conn && !committed) {
       try { await conn.rollback(); } catch (_) {}
     }
-    if (!committed) deleteUploadedFiles(files);
     console.error('[ProductPhotos] manual attach error:', error);
     res.status(Number(error?.status) || 500).json({ message: error?.message || 'Erreur attachement images' });
   } finally {
