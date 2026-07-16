@@ -158,6 +158,10 @@ function buildDocDefinition(products, opts = {}) {
   for (const product of rows) {
     const dp = getSnapshotDisplayPrices(product);
     const isService = product.est_service === true || product.est_service === 1;
+    if (isService) {
+      dp.prix_achat = 0;
+      dp.cout_revient = 0;
+    }
     const isNonStock = product.non_stockable === true || product.non_stockable === 1;
     const qte = (isService || isNonStock) ? '-' : formatNum(getSnapshotAwareQuantite(product));
     const type = isService ? 'Service' : isNonStock ? 'Non stock' : (product.isVariantRow ? 'Variante' : 'Produit');

@@ -1380,6 +1380,7 @@ router.get('/:id/history', async (req, res) => {
               'reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'product_reference', COALESCE(CAST(p.id AS CHAR), CAST(chi.product_id AS CHAR)),
               'designation', COALESCE(NULLIF(chi.designation_custom, ''), p.designation),
+              'est_service', p.est_service,
               'prix_achat', COALESCE(ps.prix_achat, p.prix_achat),
               'cout_revient', ${averageSnapshotCoutRevientExpr('chi')},
               'quantite', chi.quantite,

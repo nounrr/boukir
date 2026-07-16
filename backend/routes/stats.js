@@ -564,6 +564,12 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
     const unitNameExpr = type === 'Ecommerce'
       ? unionCoalesce('pu.unit_name', `${itemAlias}.unit_name`)
       : unionText('pu.unit_name');
+    const unitPriceExpr = type === 'Commande'
+      ? `CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE ${itemAlias}.prix_unitaire END`
+      : (type === 'Ecommerce' ? `${itemAlias}.unit_price` : `${itemAlias}.prix_unitaire`);
+    const totalExpr = type === 'Commande'
+      ? `CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(${itemAlias}.total, ${itemAlias}.prix_unitaire * ${itemAlias}.quantite) END`
+      : `COALESCE(${type === 'Ecommerce' ? `${itemAlias}.subtotal` : `${itemAlias}.total`}, ${type === 'Ecommerce' ? `${itemAlias}.unit_price * ${itemAlias}.quantity` : `${itemAlias}.prix_unitaire * ${itemAlias}.quantite`})`;
 
     return `
       SELECT
@@ -587,8 +593,8 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         ${unitNameExpr} AS unit_name,
         COALESCE(pu.conversion_factor, 1) AS conversion_factor,
         ${type === 'Ecommerce' ? `${itemAlias}.quantity` : `${itemAlias}.quantite`} AS quantite,
-        ${type === 'Ecommerce' ? `${itemAlias}.unit_price` : `${itemAlias}.prix_unitaire`} AS prix_unitaire,
-        COALESCE(${type === 'Ecommerce' ? `${itemAlias}.subtotal` : `${itemAlias}.total`}, ${type === 'Ecommerce' ? `${itemAlias}.unit_price * ${itemAlias}.quantity` : `${itemAlias}.prix_unitaire * ${itemAlias}.quantite`}) AS total,
+        ${unitPriceExpr} AS prix_unitaire,
+        ${totalExpr} AS total,
         ${type === 'Ecommerce' ? `COALESCE(${itemAlias}.remise_amount, 0)` : `COALESCE(${itemAlias}.remise_montant, 0)`} AS remise_montant,
         ${buildConvertedCostExpr('p', 'ps', 'pv', 'pu')} AS cout_revient
     `;
@@ -685,8 +691,8 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         ${unionText('pu.unit_name')} AS unit_name,
         COALESCE(pu.conversion_factor, 1) AS conversion_factor,
         chi.quantite AS quantite,
-        chi.prix_achat AS prix_unitaire,
-        COALESCE(chi.total, chi.prix_achat * chi.quantite) AS total,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE chi.prix_achat END AS prix_unitaire,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(chi.total, chi.prix_achat * chi.quantite) END AS total,
         COALESCE(chi.remise_montant, 0) AS remise_montant,
         0 AS cout_revient
         FROM bons_charge bch
@@ -786,8 +792,8 @@ function buildStatsDetailSqlParts({ dateFrom, dateTo, includeVentes, includeComm
         ${unionText('pu.unit_name')} AS unit_name,
         COALESCE(pu.conversion_factor, 1) AS conversion_factor,
         achi.quantite AS quantite,
-        achi.prix_achat AS prix_unitaire,
-        COALESCE(achi.total, achi.prix_achat * achi.quantite) AS total,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE achi.prix_achat END AS prix_unitaire,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(achi.total, achi.prix_achat * achi.quantite) END AS total,
         COALESCE(achi.remise_montant, 0) AS remise_montant,
         0 AS cout_revient
         FROM avoirs_charge ach
@@ -811,12 +817,12 @@ function buildVariantIdExpr(itemAlias, snapshotAlias = 'ps') {
 }
 
 function buildBasePrixAchatExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv') {
-  return `COALESCE(${snapshotAlias}.prix_achat, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.cout_revient, ${variantAlias}.cout_revient, ${productAlias}.cout_revient, 0)`;
+  return `(CASE WHEN COALESCE(${productAlias}.est_service, 0) = 1 THEN 0 ELSE COALESCE(${snapshotAlias}.prix_achat, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.cout_revient, ${variantAlias}.cout_revient, ${productAlias}.cout_revient, 0) END)`;
 }
 
 function buildBaseCoutRevientExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv') {
   const variantIdExpr = `COALESCE(${variantAlias}.id, ${snapshotAlias}.variant_id)`;
-  return `COALESCE((
+  return `(CASE WHEN COALESCE(${productAlias}.est_service, 0) = 1 THEN 0 ELSE COALESCE((
     SELECT SUM(COALESCE(ps_avg.cout_revient, 0) * ci_avg.quantite) / NULLIF(SUM(ci_avg.quantite), 0)
     FROM product_snapshot ps_avg
     JOIN commande_items ci_avg ON ci_avg.product_snapshot_id = ps_avg.id
@@ -825,7 +831,7 @@ function buildBaseCoutRevientExpr(productAlias = 'p', snapshotAlias = 'ps', vari
       AND ci_avg.quantite IS NOT NULL
       AND ci_avg.quantite <> 0
       AND ps_avg.cout_revient IS NOT NULL
-  ), ${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.cout_revient, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.prix_achat, 0)`;
+  ), ${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.cout_revient, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.prix_achat, 0) END)`;
 }
 
 function buildConvertedCostExpr(productAlias = 'p', snapshotAlias = 'ps', variantAlias = 'pv', unitAlias = 'pu') {
@@ -1759,15 +1765,15 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
         (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
         pu.unit_name AS unit_name,
         chi.quantite AS quantite,
-        chi.prix_achat AS prix_unitaire,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE chi.prix_achat END AS prix_unitaire,
         ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
-        chi.prix_achat AS prix_achat,
-        COALESCE(chi.total, (chi.prix_achat * chi.quantite)) AS montant_ligne,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE chi.prix_achat END AS prix_achat,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(chi.total, (chi.prix_achat * chi.quantite)) END AS montant_ligne,
         COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-        -COALESCE(chi.total, (chi.prix_achat * chi.quantite)) AS profitBrut,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE -COALESCE(chi.total, (chi.prix_achat * chi.quantite)) END AS profitBrut,
         COALESCE(chi.remise_montant, 0) AS remise_unitaire,
         (COALESCE(chi.remise_montant, 0) * chi.quantite) AS remise_total,
-        -(COALESCE(chi.total, (chi.prix_achat * chi.quantite))) AS profit
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE -(COALESCE(chi.total, (chi.prix_achat * chi.quantite))) END AS profit
       FROM bons_charge bch
       LEFT JOIN contacts ct_bch ON ct_bch.id = bch.client_id
       LEFT JOIN charge_items chi ON chi.bon_charge_id = bch.id
@@ -1792,15 +1798,15 @@ router.get('/chiffre-affaires/detail/:date', async (req, res) => {
         (pv.variant_name COLLATE ${UNION_COLLATION}) AS variant_name,
         pu.unit_name AS unit_name,
         achi.quantite AS quantite,
-        achi.prix_achat AS prix_unitaire,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE achi.prix_achat END AS prix_unitaire,
         ${buildBaseCoutRevientExpr('p', 'ps', 'pv')} AS cout_revient,
-        achi.prix_achat AS prix_achat,
-        COALESCE(achi.total, (achi.prix_achat * achi.quantite)) AS montant_ligne,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE achi.prix_achat END AS prix_achat,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(achi.total, (achi.prix_achat * achi.quantite)) END AS montant_ligne,
         COALESCE(pu.conversion_factor, 1) AS conversion_factor,
-        COALESCE(achi.total, (achi.prix_achat * achi.quantite)) AS profitBrut,
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(achi.total, (achi.prix_achat * achi.quantite)) END AS profitBrut,
         COALESCE(achi.remise_montant, 0) AS remise_unitaire,
         (COALESCE(achi.remise_montant, 0) * achi.quantite) AS remise_total,
-        COALESCE(achi.total, (achi.prix_achat * achi.quantite)) AS profit
+        CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(achi.total, (achi.prix_achat * achi.quantite)) END AS profit
       FROM avoirs_charge ach
       LEFT JOIN contacts ct_ach ON ct_ach.id = ach.client_id
       LEFT JOIN items_avoir_charge achi ON achi.avoir_charge_id = ach.id

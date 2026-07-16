@@ -150,7 +150,9 @@ router.post('/snapshots', requireSnapshotCreator, async (req, res, next) => {
   try {
     // Fetch current products with basic stock and pricing
     const [rows] = await pool.query(`
-      SELECT id, designation, quantite, prix_achat, prix_vente, kg
+      SELECT id, designation, quantite,
+             CASE WHEN COALESCE(est_service, 0) = 1 THEN 0 ELSE prix_achat END AS prix_achat,
+             prix_vente, kg
       FROM products
       WHERE COALESCE(is_deleted,0) = 0
       ORDER BY id ASC
@@ -296,7 +298,9 @@ router.post('/snapshots/import-excel', requireSnapshotCreator, upload.single('fi
 
     const [prodRows] = await pool.query(
       `
-      SELECT id, designation, quantite, prix_achat, prix_vente, kg
+      SELECT id, designation, quantite,
+             CASE WHEN COALESCE(est_service, 0) = 1 THEN 0 ELSE prix_achat END AS prix_achat,
+             prix_vente, kg
       FROM products
       WHERE COALESCE(is_deleted,0) = 0
         AND id IN (?)

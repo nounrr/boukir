@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, RefreshCw, Search, Upload, XCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Pencil, RefreshCw, Search, Upload, XCircle } from 'lucide-react';
 import {
   useApplyProductNameCorrectionsMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
   useGetProductNameCorrectionsQuery,
   useRematchProductNameCorrectionsMutation,
   useSetProductNameCorrectionCheckedMutation,
+  useUpdateProductCorrectionNamesMutation,
   useUpdateProductCorrectionCategoryMutation,
   useUploadProductNameCorrectionsMutation,
   type ProductNameCorrectionRow,
@@ -72,6 +73,103 @@ function getErrorMessage(error: any) {
   return String(error?.data?.message || error?.message || 'Erreur inconnue');
 }
 
+const EditableCorrectionName: React.FC<{
+  value: string | null;
+  label: string;
+  dir?: 'ltr' | 'rtl';
+  disabled?: boolean;
+  onSave: (value: string | null) => Promise<void>;
+}> = ({ value, label, dir = 'ltr', disabled = false, onSave }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || '');
+  const [displayValue, setDisplayValue] = useState(value || '');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    const nextValue = value || '';
+    setDraft(nextValue);
+    setDisplayValue(nextValue);
+  }, [value]);
+
+  const startEditing = () => {
+    if (disabled || savingRef.current) return;
+    setDraft(displayValue);
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    if (savingRef.current) return;
+    setDraft(displayValue);
+    setEditing(false);
+  };
+
+  const commit = async () => {
+    if (savingRef.current) return;
+    const normalized = draft.trim();
+    if (normalized === displayValue.trim()) {
+      setEditing(false);
+      return;
+    }
+
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await onSave(normalized || null);
+      setDisplayValue(normalized);
+      setDraft(normalized);
+      setEditing(false);
+    } catch {
+      // Keep the input open so the user can adjust or retry the staged value.
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="relative min-w-[180px]">
+        <input
+          autoFocus
+          value={draft}
+          dir={dir}
+          maxLength={255}
+          disabled={saving}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              cancelEditing();
+            } else if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              void commit();
+            }
+          }}
+          className="w-full rounded-md border border-emerald-500 bg-white px-2 py-1.5 pr-8 text-sm text-gray-900 outline-none ring-2 ring-emerald-100 disabled:bg-gray-100"
+          aria-label={`Modifier ${label}`}
+        />
+        {saving && <Loader2 className="absolute right-2 top-2 h-4 w-4 animate-spin text-emerald-700" />}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      dir={dir}
+      onDoubleClick={startEditing}
+      disabled={disabled}
+      title={disabled ? undefined : `Double-cliquer pour modifier ${label}`}
+      className="group flex min-h-8 w-full min-w-[180px] items-start justify-between gap-2 rounded px-1 py-1 text-left text-gray-900 hover:bg-emerald-50 disabled:cursor-default disabled:hover:bg-transparent"
+    >
+      <span className={!displayValue.trim() ? 'text-gray-400' : ''}>{fmt(displayValue)}</span>
+      {!disabled && <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-300 opacity-0 group-hover:opacity-100" />}
+    </button>
+  );
+};
+
 const ProductNameCorrectionsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('initial');
   const [q, setQ] = useState('');
@@ -95,6 +193,7 @@ const ProductNameCorrectionsPage: React.FC = () => {
   const [rematch, { isLoading: isRematching }] = useRematchProductNameCorrectionsMutation();
   const [setChecked] = useSetProductNameCorrectionCheckedMutation();
   const [bulkSetChecked, { isLoading: isBulkUpdating }] = useBulkSetProductNameCorrectionsCheckedMutation();
+  const [updateCorrectionNames] = useUpdateProductCorrectionNamesMutation();
   const [applyCorrections, { isLoading: isApplying }] = useApplyProductNameCorrectionsMutation();
   const [updateProductCategory] = useUpdateProductCorrectionCategoryMutation();
   const {
@@ -208,6 +307,23 @@ const ProductNameCorrectionsPage: React.FC = () => {
         next.delete(productId);
         return next;
       });
+    }
+  };
+
+  const saveCorrectionName = async (
+    row: ProductNameCorrectionRow,
+    field: 'designation_fr_pro' | 'designation_ar_pro',
+    value: string | null
+  ) => {
+    setMessage('');
+    try {
+      await updateCorrectionNames({ id: row.id, [field]: value }).unwrap();
+      setMessage(
+        `${field === 'designation_fr_pro' ? 'Nom FR Pro' : 'Nom AR Pro'} enregistré dans la correction. Le produit original reste inchangé jusqu'au clic sur Corriger.`
+      );
+    } catch (error: any) {
+      setMessage(`Enregistrement du nom échoué : ${getErrorMessage(error)}`);
+      throw error;
     }
   };
 
@@ -423,6 +539,11 @@ const ProductNameCorrectionsPage: React.FC = () => {
         </div>
       )}
 
+      <div className="flex items-center gap-2 text-xs text-gray-600">
+        <Pencil className="h-3.5 w-3.5" />
+        Double-cliquez sur un nom FR Pro ou AR Pro pour le modifier. Le produit original ne change qu'après validation avec le bouton Corriger.
+      </div>
+
       <div className="overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
         <div className="responsive-table-container">
           <table className="min-w-[1500px] w-full divide-y divide-gray-200 text-sm">
@@ -500,8 +621,27 @@ const ProductNameCorrectionsPage: React.FC = () => {
                     <td className="px-3 py-3 align-top font-medium text-gray-900">{fmt(row.reference)}</td>
                     <td className="px-3 py-3 align-top text-gray-700">{fmt(row.ref_variant)}</td>
                     <td className="px-3 py-3 align-top text-gray-800">{isVariantRow ? '-' : fmt(row.ancienne_designation)}</td>
-                    <td className="px-3 py-3 align-top text-gray-900">{isVariantRow ? '-' : fmt(row.designation_fr_pro)}</td>
-                    <td className="px-3 py-3 align-top text-gray-900" dir="rtl">{isVariantRow ? '-' : fmt(row.designation_ar_pro)}</td>
+                    <td className="px-3 py-3 align-top text-gray-900">
+                      {isVariantRow ? '-' : (
+                        <EditableCorrectionName
+                          value={row.designation_fr_pro}
+                          label="le nom FR Pro"
+                          disabled={Boolean(row.applied_at) || isProcessing}
+                          onSave={(value) => saveCorrectionName(row, 'designation_fr_pro', value)}
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-3 align-top text-gray-900">
+                      {isVariantRow ? '-' : (
+                        <EditableCorrectionName
+                          value={row.designation_ar_pro}
+                          label="le nom AR Pro"
+                          dir="rtl"
+                          disabled={Boolean(row.applied_at) || isProcessing}
+                          onSave={(value) => saveCorrectionName(row, 'designation_ar_pro', value)}
+                        />
+                      )}
+                    </td>
                     <td className="px-3 py-3 align-top">
                       {!isVariantRow && productId ? (
                         <div className="flex min-w-[190px] items-center gap-2">

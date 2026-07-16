@@ -96,6 +96,7 @@ import { ensureUniteSpecialColumns } from './utils/ensureUniteSpecialSchema.js';
 import { ensureUiSettingsTable } from './utils/uiSettings.js';
 import { ensureAccessScheduleTables } from './middleware/accessSchedule.js';
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from './utils/corsOrigins.js';
+import { enforceServicePricingResponse } from './utils/servicePricing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -137,6 +138,9 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// Last server-side guard: a service product and all of its nested variants or
+// snapshots must always leave the API with zero purchase/cost values.
+app.use(enforceServicePricingResponse);
 
 // Contexte par requête pour l'audit (userId + requestId)
 app.use((req, _res, next) => {

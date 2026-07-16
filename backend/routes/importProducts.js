@@ -141,7 +141,10 @@ router.post("/", upload.single("file"), async (req, res) => {
         ON DUPLICATE KEY UPDATE
           designation = COALESCE(VALUES(designation), designation),
           quantite = COALESCE(VALUES(quantite), quantite),
-          prix_achat = COALESCE(VALUES(prix_achat), prix_achat)
+          prix_achat = CASE
+            WHEN COALESCE(est_service, 0) = 1 THEN 0
+            ELSE COALESCE(VALUES(prix_achat), prix_achat)
+          END
       `;
       await conn.query(sql, [cleaned]);
 

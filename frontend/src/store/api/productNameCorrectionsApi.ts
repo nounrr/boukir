@@ -110,6 +110,27 @@ export const productNameCorrectionsApi = api.injectEndpoints({
       invalidatesTags: ['ProductNameCorrection'],
     }),
 
+    updateProductCorrectionNames: builder.mutation<
+      {
+        ok: boolean;
+        id: number;
+        designation_fr_pro: string | null;
+        designation_ar_pro: string | null;
+      },
+      {
+        id: number;
+        designation_fr_pro?: string | null;
+        designation_ar_pro?: string | null;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/product-name-corrections/${id}/names`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['ProductNameCorrection'],
+    }),
+
     applyProductNameCorrections: builder.mutation<
       { ok: boolean; rows: number; productsUpdated: number; variantsUpdated: number },
       { ids?: number[] } | void
@@ -142,6 +163,7 @@ export const {
   useRematchProductNameCorrectionsMutation,
   useSetProductNameCorrectionCheckedMutation,
   useBulkSetProductNameCorrectionsCheckedMutation,
+  useUpdateProductCorrectionNamesMutation,
   useApplyProductNameCorrectionsMutation,
   useUpdateProductCorrectionCategoryMutation,
 } = productNameCorrectionsApi;

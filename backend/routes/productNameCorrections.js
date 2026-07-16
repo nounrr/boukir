@@ -569,6 +569,66 @@ router.patch('/bulk/check', async (req, res, next) => {
   }
 });
 
+// Inline editing only updates the staged correction. The real product name is
+// intentionally changed later by POST /apply after the user validates the row.
+router.patch('/:id/names', async (req, res, next) => {
+  try {
+    await ensureTable();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Ligne invalide' });
+    }
+
+    const hasFr = Object.prototype.hasOwnProperty.call(req.body || {}, 'designation_fr_pro');
+    const hasAr = Object.prototype.hasOwnProperty.call(req.body || {}, 'designation_ar_pro');
+    if (!hasFr && !hasAr) {
+      return res.status(400).json({ message: 'Nom FR Pro ou AR Pro requis' });
+    }
+
+    const designationFrPro = hasFr ? cleanCorrectionValue(req.body.designation_fr_pro) : undefined;
+    const designationArPro = hasAr ? cleanCorrectionValue(req.body.designation_ar_pro) : undefined;
+    if ((designationFrPro?.length || 0) > 255 || (designationArPro?.length || 0) > 255) {
+      return res.status(400).json({ message: 'Le nom professionnel ne peut pas depasser 255 caracteres' });
+    }
+
+    const [rows] = await pool.query('SELECT * FROM product_name_corrections WHERE id = ? LIMIT 1', [id]);
+    const row = rows[0];
+    if (!row) return res.status(404).json({ message: 'Ligne introuvable' });
+    if (row.applied_at) {
+      return res.status(409).json({ message: 'Cette correction a deja ete appliquee' });
+    }
+    if (isVariantCorrectionRow(row)) {
+      return res.status(400).json({ message: 'Cette ligne correspond a une variante' });
+    }
+
+    const sets = [];
+    const params = [];
+    if (hasFr) {
+      sets.push('designation_fr_pro = ?');
+      params.push(designationFrPro ?? null);
+    }
+    if (hasAr) {
+      sets.push('designation_ar_pro = ?');
+      params.push(designationArPro ?? null);
+    }
+    params.push(id);
+
+    await pool.query(
+      `UPDATE product_name_corrections SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ?`,
+      params
+    );
+
+    res.json({
+      ok: true,
+      id,
+      designation_fr_pro: hasFr ? (designationFrPro ?? null) : row.designation_fr_pro,
+      designation_ar_pro: hasAr ? (designationArPro ?? null) : row.designation_ar_pro,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/:id/check', async (req, res, next) => {
   try {
     await ensureTable();

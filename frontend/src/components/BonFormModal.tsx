@@ -123,15 +123,18 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Multi-word search: every token typed must be present in the label (order-independent)
-  const norm = (s: string) => s.toLowerCase();
+  // Accent-insensitive: "coud ferme" matches "Coude fermé" (é→e, à→a, ç→c, ...)
+  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const tokens = norm(searchTerm).split(/\s+/).filter(Boolean);
-  const matchLabel = (label: string) => {
-    const L = norm(label);
+  const matchOption = (option: { label: string; data?: any }) => {
     if (tokens.length === 0) return true;
+    // Also match against the old designation (ancienne désignation) when available
+    const oldDesignation = String(option.data?.old_designation ?? '').trim();
+    const L = norm(oldDesignation ? `${option.label} ${oldDesignation}` : option.label);
     return tokens.every((t) => L.includes(t));
   };
 
-  const allMatches = options.filter((option) => matchLabel(option.label));
+  const allMatches = options.filter(matchOption);
   const filteredOptions = allMatches.slice(0, displayCount);
   const hasMoreItems = allMatches.length > displayCount;
 

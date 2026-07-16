@@ -18,7 +18,7 @@ const parseCsv = (value) => String(value || '').split(',').map((v) => v.trim()).
 const SEARCH_COLLATION = 'utf8mb4_unicode_ci';
 const searchText = (expr) => `CONVERT((${expr}) USING utf8mb4) COLLATE ${SEARCH_COLLATION}`;
 
-const averageSnapshotCoutRevientExpr = (itemAlias, snapshotAlias = 'ps', productAlias = 'p', variantAlias = 'pv') => `COALESCE((
+const averageSnapshotCoutRevientExpr = (itemAlias, snapshotAlias = 'ps', productAlias = 'p', variantAlias = 'pv') => `(CASE WHEN COALESCE(${productAlias}.est_service, 0) = 1 THEN 0 ELSE COALESCE((
   SELECT SUM(COALESCE(ps_avg.cout_revient, 0) * ci_avg.quantite) / NULLIF(SUM(ci_avg.quantite), 0)
   FROM product_snapshot ps_avg
   JOIN commande_items ci_avg ON ci_avg.product_snapshot_id = ps_avg.id
@@ -28,7 +28,7 @@ const averageSnapshotCoutRevientExpr = (itemAlias, snapshotAlias = 'ps', product
     AND ci_avg.quantite IS NOT NULL
     AND ci_avg.quantite <> 0
     AND ps_avg.cout_revient IS NOT NULL
-), ${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.cout_revient, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.prix_achat, 0)`;
+), ${variantAlias}.cout_revient, ${productAlias}.cout_revient, ${snapshotAlias}.cout_revient, ${variantAlias}.prix_achat, ${productAlias}.prix_achat, ${snapshotAlias}.prix_achat, 0) END)`;
 
 const bonPagedConfigs = {
   Commande: {
@@ -46,7 +46,7 @@ const bonPagedConfigs = {
     itemFk: 'bon_commande_id',
     itemAlias: 'i',
     itemSnapshot: true,
-    itemPriceJsonFields: `'prix_achat', ${'i'}.prix_unitaire, 'cout_revient', ${averageSnapshotCoutRevientExpr('i')}, 'product_snapshot_id', ${'i'}.product_snapshot_id,`,
+    itemPriceJsonFields: `'prix_achat', CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE ${'i'}.prix_unitaire END, 'cout_revient', ${averageSnapshotCoutRevientExpr('i')}, 'product_snapshot_id', ${'i'}.product_snapshot_id,`,
     livraisonType: 'Commande',
   },
   Sortie: {
@@ -138,7 +138,7 @@ const bonPagedConfigs = {
     itemFk: 'devis_id',
     itemAlias: 'i',
     itemSnapshot: false,
-    itemPriceJsonFields: `'prix_achat', COALESCE(pv.prix_achat, p.prix_achat, 0), 'cout_revient', COALESCE(pv.cout_revient, p.cout_revient, pv.prix_achat, p.prix_achat, 0),`,
+    itemPriceJsonFields: `'prix_achat', CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(pv.prix_achat, p.prix_achat, 0) END, 'cout_revient', CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(pv.cout_revient, p.cout_revient, pv.prix_achat, p.prix_achat, 0) END,`,
   },
   Avoir: {
     type: 'Avoir',
@@ -233,25 +233,32 @@ const buildItemsSql = (cfg) => {
   const priceFields = cfg.itemPriceJsonFields
     ? cfg.itemPriceJsonFields.replaceAll("'i'.", `${i}.`)
     : cfg.itemSnapshot
-    ? `'prix_achat', COALESCE(ps.prix_achat, p.prix_achat), 'cout_revient', ${averageSnapshotCoutRevientExpr(i)}, 'product_snapshot_id', ${i}.product_snapshot_id,`
+    ? `'prix_achat', CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE COALESCE(ps.prix_achat, p.prix_achat) END, 'cout_revient', ${averageSnapshotCoutRevientExpr(i)}, 'product_snapshot_id', ${i}.product_snapshot_id,`
     : '';
   const variantUnitFields = cfg.itemHasVariantUnit === false ? '' : `'variant_id', ${i}.variant_id, 'variant_name', pv.variant_name, 'variant_reference', pv.reference, 'unit_id', ${i}.unit_id, 'unite', pu.unit_name, 'conversion_factor', pu.conversion_factor,`;
   const designationExpr = cfg.itemDesignationExpr || 'p.designation';
   const extraJsonFields = cfg.itemExtraJsonFields || '';
+  const unitPriceExpr = cfg.type === 'Commande'
+    ? `CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE ${i}.prix_unitaire END`
+    : `${i}.prix_unitaire`;
+  const totalExpr = cfg.type === 'Commande'
+    ? `CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE ${i}.total END`
+    : `${i}.total`;
   return `COALESCE((
     SELECT JSON_ARRAYAGG(JSON_OBJECT(
       'id', ${i}.id,
       'product_id', ${i}.product_id,
+      'est_service', p.est_service,
       ${variantUnitFields}
       'designation', ${designationExpr},
       'quantite', ${i}.quantite,
-      'prix_unitaire', ${i}.prix_unitaire,
+      'prix_unitaire', ${unitPriceExpr},
       ${priceFields}
       ${extraJsonFields}
       'remise_pourcentage', ${i}.remise_pourcentage,
       'remise_montant', ${i}.remise_montant,
-      'total', ${i}.total,
-      'montant_ligne', ${i}.total
+      'total', ${totalExpr},
+      'montant_ligne', ${totalExpr}
     ))
     FROM ${cfg.itemTable} ${i}
     LEFT JOIN products p ON p.id = ${i}.product_id

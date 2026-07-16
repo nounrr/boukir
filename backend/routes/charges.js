@@ -208,7 +208,7 @@ const priceChargeProductItemsAtCost = async (connection, items = []) => {
   const unitIds = toPositiveIds(productItems, 'unit_id');
 
   const [productRows] = productIds.length
-    ? await connection.query('SELECT id, prix_achat, cout_revient FROM products WHERE id IN (?)', [productIds])
+    ? await connection.query('SELECT id, prix_achat, cout_revient, est_service FROM products WHERE id IN (?)', [productIds])
     : [[]];
   const [variantRows] = variantIds.length
     ? await connection.query('SELECT id, prix_achat, cout_revient FROM product_variants WHERE id IN (?)', [variantIds])
@@ -235,8 +235,9 @@ const priceChargeProductItemsAtCost = async (connection, items = []) => {
     const variant = variantsById.get(Number(item.variant_id));
     const snapshot = snapshotsById.get(Number(item.product_snapshot_id));
     const unit = unitsById.get(Number(item.unit_id));
+    const isService = Number(product?.est_service || 0) === 1;
 
-    const baseCost = parseNumeric(snapshot?.cout_revient, 0)
+    const baseCost = isService ? 0 : parseNumeric(snapshot?.cout_revient, 0)
       || parseNumeric(snapshot?.prix_achat, 0)
       || parseNumeric(variant?.cout_revient, 0)
       || parseNumeric(variant?.prix_achat, 0)
@@ -251,6 +252,8 @@ const priceChargeProductItemsAtCost = async (connection, items = []) => {
 
     return {
       ...item,
+      est_service: isService ? 1 : 0,
+      prix_achat: isService ? 0 : item.prix_achat,
       cout_revient: cost,
       prix_unitaire: cost,
       total: Number((parseNumeric(item.quantite, 0) * cost).toFixed(4)),
@@ -341,6 +344,7 @@ const buildChargeSelect = (whereSql = '', params = [], operationType = 'charge')
           'product_snapshot_id', ci.product_snapshot_id,
           'designation', COALESCE(NULLIF(ci.designation_custom, ''), p.designation),
           'designation_custom', ci.designation_custom,
+          'est_service', p.est_service,
           'quantite', ci.quantite,
           'prix_achat', ci.prix_achat,
           'cout_revient', ci.cout_revient,

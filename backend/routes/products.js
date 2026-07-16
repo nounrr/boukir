@@ -255,6 +255,15 @@ async function ensureProductsColumns() {
     await pool.query(`ALTER TABLE products ADD COLUMN designation_zh VARCHAR(255) DEFAULT NULL`);
   }
 
+  // Check old_designation (ancienne désignation — kept when a product is renamed, searchable)
+  const [colsOldDes] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'old_designation'`
+  );
+  if (!colsOldDes.length) {
+    await pool.query(`ALTER TABLE products ADD COLUMN old_designation VARCHAR(255) DEFAULT NULL`);
+  }
+
   // Check description multilingual
   const [colsDescAr] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -704,7 +713,7 @@ async function runProductSearch(query) {
 
     if (qTerms.length > 0) {
       const termConditions = qTerms.map(() => `(
-        ${accentFoldSql("CONCAT_WS(' ', p.id, p.designation, p.designation_ar, p.designation_en, p.designation_zh)")} LIKE ?
+        ${accentFoldSql("CONCAT_WS(' ', p.id, p.designation, p.old_designation, p.designation_ar, p.designation_en, p.designation_zh)")} LIKE ?
         OR EXISTS (
           SELECT 1 FROM product_variants pv_search
           WHERE pv_search.product_id = p.id
@@ -1257,7 +1266,7 @@ router.get('/with-snapshots', async (req, res, next) => {
       if (qTerms.length === 0) return { sql: '', params: [] };
       const termSql = qTerms.map(() => {
         return `(
-          ${accentFoldSql(`CONCAT_WS(' ', ${alias}.id, ${alias}.designation, ${alias}.designation_ar, ${alias}.designation_en, ${alias}.designation_zh)`)} LIKE ?
+          ${accentFoldSql(`CONCAT_WS(' ', ${alias}.id, ${alias}.designation, ${alias}.old_designation, ${alias}.designation_ar, ${alias}.designation_en, ${alias}.designation_zh)`)} LIKE ?
           OR EXISTS (
             SELECT 1 FROM product_variants pv_search
             WHERE pv_search.product_id = ${alias}.id
@@ -1278,7 +1287,7 @@ router.get('/with-snapshots', async (req, res, next) => {
     if (!useSnapshot) {
       // Fallback: just return normal product list without snapshot expansion
       const [rows] = await pool.query(
-        `SELECT p.id, p.designation, p.prix_achat, p.prix_vente, p.cout_revient,
+        `SELECT p.id, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
                 p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
                 p.prix_vente_pourcentage, p.quantite, p.est_service, p.non_stockable, p.image_url,
                 p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
@@ -1331,6 +1340,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         ps.bon_commande_id,
         ps.created_at AS snapshot_created_at,
         p.designation,
+        p.old_designation,
         p.image_url,
         p.est_service,
         p.non_stockable,
@@ -1360,7 +1370,7 @@ router.get('/with-snapshots', async (req, res, next) => {
 
     // Also get all products (for items that don't have snapshots, or services)
     const [allProducts] = await pool.query(`
-      SELECT p.id, p.designation, p.prix_achat, p.prix_vente, p.cout_revient,
+      SELECT p.id, p.designation, p.old_designation, p.prix_achat, p.prix_vente, p.cout_revient,
              p.cout_revient_pourcentage, p.prix_gros, p.prix_gros_pourcentage,
              p.prix_vente_pourcentage, p.quantite, p.est_service, p.non_stockable, p.image_url,
              p.kg, p.base_unit, p.has_variants, p.is_obligatoire_variant,
@@ -1423,6 +1433,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         id: snap.product_id,
         reference: String(snap.product_id),
         designation: snap.designation,
+        old_designation: snap.old_designation ?? null,
         variant_id: snap.variant_id || null,
         variant_name: snap.variant_name || null,
         snapshot_id: snap.snapshot_id,
@@ -1472,6 +1483,7 @@ router.get('/with-snapshots', async (req, res, next) => {
         id: p.id,
         reference: String(p.id),
         designation: p.designation,
+        old_designation: p.old_designation ?? null,
         variant_id: null,
         variant_name: null,
         snapshot_id: null,
@@ -2293,8 +2305,7 @@ router.post('/', upload.fields([
     const fiche_technique_en = req.body?.fiche_technique_en ?? null;
     const fiche_technique_zh = req.body?.fiche_technique_zh ?? null;
 
-    const pa = Number(prix_achat ?? 0);
-    const crp = Number(cout_revient_pourcentage ?? 0);
+    const requestedPrixAchat = Number(prix_achat ?? 0);
     const pgp = Number(prix_gros_pourcentage ?? 0);
     const pvp = Number(prix_vente_pourcentage ?? 0);
 
@@ -2303,6 +2314,8 @@ router.post('/', upload.fields([
     const isEcomPublished = ecom_published === 'true' || ecom_published === true || ecom_published === '1' || ecom_published === 1;
     const isStockPartage = stock_partage_ecom === 'true' || stock_partage_ecom === true || stock_partage_ecom === '1' || stock_partage_ecom === 1;
     const isHasVariants = has_variants === 'true' || has_variants === true || has_variants === '1' || has_variants === 1;
+    const pa = isService ? 0 : requestedPrixAchat;
+    const crp = isService ? 0 : Number(cout_revient_pourcentage ?? 0);
 
     const obligVarRaw = req.body?.isObligatoireVariant ?? req.body?.is_obligatoire_variant;
     const isObligatoireVariant = obligVarRaw === 'true' || obligVarRaw === true || obligVarRaw === '1' || obligVarRaw === 1;
@@ -2314,7 +2327,7 @@ router.post('/', upload.fields([
       return res.status(400).json({ message: 'La quantité partagée ne peut pas dépasser la quantité totale' });
     }
 
-    const cr = pa * (1 + crp / 100);
+    const cr = isService ? 0 : pa * (1 + crp / 100);
     const pg = pa * (1 + pgp / 100);
     const pvExplicit = prix_vente !== undefined && prix_vente !== null && prix_vente !== '' ? Number(prix_vente) : null;
     const pv = pvExplicit !== null && Number.isFinite(pvExplicit) ? pvExplicit : pa * (1 + pvp / 100);
@@ -2469,9 +2482,9 @@ router.post('/', upload.fields([
               v.variant_name_zh || null,
               v.variant_type || 'Autre',
               v.reference,
-              Number(v.prix_achat ?? 0),
-              Number(v.cout_revient ?? 0),
-              Number(v.cout_revient_pourcentage ?? 0),
+              isService ? 0 : Number(v.prix_achat ?? 0),
+              isService ? 0 : Number(v.cout_revient ?? 0),
+              isService ? 0 : Number(v.cout_revient_pourcentage ?? 0),
               Number(v.prix_gros ?? 0),
               Number(v.prix_gros_pourcentage ?? 0),
               variantPrixVentePourcentage,
@@ -2692,13 +2705,13 @@ router.put('/:id', upload.fields([
     }
 
     // Pricing
-    const pa = (prix_achat !== undefined && prix_achat !== null && prix_achat !== '') ? Number(prix_achat) : Number(existing.prix_achat ?? 0);
-    const crp = canEditCoutRevient && cout_revient_pourcentage !== undefined && cout_revient_pourcentage !== null && cout_revient_pourcentage !== ''
+    const pa = isService ? 0 : ((prix_achat !== undefined && prix_achat !== null && prix_achat !== '') ? Number(prix_achat) : Number(existing.prix_achat ?? 0));
+    const crp = isService ? 0 : (canEditCoutRevient && cout_revient_pourcentage !== undefined && cout_revient_pourcentage !== null && cout_revient_pourcentage !== ''
       ? Number(cout_revient_pourcentage)
-      : Number(existing.cout_revient_pourcentage ?? 0);
+      : Number(existing.cout_revient_pourcentage ?? 0));
     const pgp = (prix_gros_pourcentage !== undefined && prix_gros_pourcentage !== null && prix_gros_pourcentage !== '') ? Number(prix_gros_pourcentage) : Number(existing.prix_gros_pourcentage ?? 0);
     const pvp = (prix_vente_pourcentage !== undefined && prix_vente_pourcentage !== null && prix_vente_pourcentage !== '') ? Number(prix_vente_pourcentage) : Number(existing.prix_vente_pourcentage ?? 0);
-    const cr = canEditCoutRevient
+    const cr = isService ? 0 : canEditCoutRevient
       ? pa * (1 + crp / 100)
       : Number(existing.cout_revient ?? 0);
     const pg = pa * (1 + pgp / 100);
@@ -2817,6 +2830,22 @@ router.put('/:id', upload.fields([
     values.push(id);
     await pool.query(`UPDATE products SET ${setClause} WHERE id = ?`, values);
 
+    // A product can be converted to a service without resending its variants.
+    // Clear every historical cost source immediately so later calculations
+    // cannot recover a stale value from a variant or snapshot.
+    if (isService) {
+      await pool.query(
+        'UPDATE product_variants SET prix_achat = 0, cout_revient = 0, cout_revient_pourcentage = 0 WHERE product_id = ?',
+        [id]
+      );
+      if (await hasProductSnapshotTable()) {
+        await pool.query(
+          'UPDATE product_snapshot SET prix_achat = 0, cout_revient = 0, cout_revient_pourcentage = 0 WHERE product_id = ?',
+          [id]
+        );
+      }
+    }
+
     if (existing.image_url && existing.image_url !== image_url_val) {
       await deleteProductUploadIfUnreferenced(existing.image_url);
     }
@@ -2875,10 +2904,10 @@ router.put('/:id', upload.fields([
           for (const v of parsed) {
             const variantId = Number(v?.id ?? 0);
             const existingVariant = existingVariantsById.get(variantId);
-            const variantCoutRevient = canEditCoutRevient
+            const variantCoutRevient = isService ? 0 : canEditCoutRevient
               ? Number(v?.cout_revient ?? 0)
               : Number(existingVariant?.cout_revient ?? existing.cout_revient ?? 0);
-            const variantCoutRevientPourcentage = canEditCoutRevient
+            const variantCoutRevientPourcentage = isService ? 0 : canEditCoutRevient
               ? Number(v?.cout_revient_pourcentage ?? 0)
               : Number(existingVariant?.cout_revient_pourcentage ?? existing.cout_revient_pourcentage ?? 0);
             const variantPrixVentePourcentage = lockVariantPrixVente ? 0 : Number(v?.prix_vente_pourcentage ?? 0);
@@ -2893,7 +2922,7 @@ router.put('/:id', upload.fields([
               v?.variant_name_zh || null,
               v?.variant_type || 'Autre',
               v?.reference,
-              Number(v?.prix_achat ?? 0),
+              isService ? 0 : Number(v?.prix_achat ?? 0),
               variantCoutRevient,
               variantCoutRevientPourcentage,
               Number(v?.prix_gros ?? 0),
@@ -3223,7 +3252,8 @@ router.patch('/snapshots', async (req, res, next) => {
 
       for (const f of fields) {
         if (s[f] !== undefined && s[f] !== null) {
-          sets.push(`${f} = ?`);
+          const isCostField = f.includes('prix_achat') || f.includes('cout_revient');
+          sets.push(`ps.${f} = ${isCostField ? 'CASE WHEN COALESCE(p.est_service, 0) = 1 THEN 0 ELSE ? END' : '?'}`);
           params.push(Number(s[f]));
         }
       }
@@ -3232,7 +3262,10 @@ router.patch('/snapshots', async (req, res, next) => {
 
       params.push(id);
       await pool.query(
-        `UPDATE product_snapshot SET ${sets.join(', ')} WHERE id = ?`,
+        `UPDATE product_snapshot ps
+         JOIN products p ON p.id = ps.product_id
+         SET ${sets.join(', ')}
+         WHERE ps.id = ?`,
         params
       );
       updated++;

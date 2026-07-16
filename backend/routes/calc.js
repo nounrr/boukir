@@ -168,6 +168,11 @@ router.post('/mouvement', verifyToken, async (req, res) => {
       const avgSnapshotCost = Number.isFinite(pid)
         ? (averageSnapshotCostByKey.get(`${pid}:${Number.isFinite(varId) ? String(varId) : ''}`) || 0)
         : 0;
+      const isService =
+        it?.est_service === true ||
+        it?.est_service === 1 ||
+        it?.est_service === '1' ||
+        fromCatalog?.est_service === true;
 
       // Priority: snapshot → variant → item → product catalog (base values)
       const basePrixAchat =
@@ -188,8 +193,8 @@ router.post('/mouvement', verifyToken, async (req, res) => {
       // Apply unit conversion factor to cost fields
       const unitId = Number(it?.unit_id);
       const convFactor = (Number.isFinite(unitId) && unitId > 0) ? (unitFactorById.get(unitId) || 1) : 1;
-      const prix_achat = Number((basePrixAchat * convFactor).toFixed(2));
-      const cout_revient = Number((baseCoutRevient * convFactor).toFixed(2));
+      const prix_achat = isService ? 0 : Number((basePrixAchat * convFactor).toFixed(2));
+      const cout_revient = isService ? 0 : Number((baseCoutRevient * convFactor).toFixed(2));
 
       return {
         ...it,
@@ -198,11 +203,7 @@ router.post('/mouvement', verifyToken, async (req, res) => {
         remise_montant: Number(it?.remise_montant ?? it?.remise_valeur ?? it?.remise_amount ?? 0) || 0,
         prix_achat,
         cout_revient,
-        est_service:
-          it?.est_service === true ||
-          it?.est_service === 1 ||
-          it?.est_service === '1' ||
-          fromCatalog?.est_service === true,
+        est_service: isService,
       };
     });
 

@@ -29,6 +29,31 @@ const clampPercentage = (value) => {
   return Math.min(999.99, Math.max(-999.99, n));
 };
 
+async function normalizeServiceCommandeItems(connection, rawItems) {
+  const items = Array.isArray(rawItems) ? rawItems : [];
+  const productIds = [...new Set(items.map((item) => Number(item?.product_id)).filter((id) => Number.isFinite(id) && id > 0))];
+  if (productIds.length === 0) return items;
+
+  const [rows] = await connection.query(
+    'SELECT id, est_service FROM products WHERE id IN (?)',
+    [productIds]
+  );
+  const serviceIds = new Set(rows.filter((row) => Number(row.est_service) === 1).map((row) => Number(row.id)));
+
+  return items.map((item) => serviceIds.has(Number(item?.product_id))
+    ? {
+        ...item,
+        est_service: 1,
+        prix_achat: 0,
+        prix_unitaire: 0,
+        cout_revient: 0,
+        remise_pourcentage: 0,
+        remise_montant: 0,
+        total: 0,
+      }
+    : item);
+}
+
 // GET /commandes - Obtenir tous les bons de commande
 // GET /commandes - liste
 router.get('/', verifyToken, forbidRoles('ChefChauffeur'), async (_req, res) => {
@@ -47,7 +72,7 @@ router.get('/', verifyToken, forbidRoles('ChefChauffeur'), async (_req, res) => 
     // 2) Charger tous les items liés en une requête
     const ids = rows.map((r) => r.id);
     const [items] = await pool.query(
-      `SELECT ci.*, p.designation, p.kg AS product_kg
+      `SELECT ci.*, p.designation, p.kg AS product_kg, p.est_service
          FROM commande_items ci
          LEFT JOIN products p ON p.id = ci.product_id
         WHERE ci.bon_commande_id IN (?)`,
@@ -64,11 +89,12 @@ router.get('/', verifyToken, forbidRoles('ChefChauffeur'), async (_req, res) => 
         unit_id: it.unit_id,
         designation: it.designation,
         quantite: it.quantite,
-        prix_achat: it.prix_unitaire,
-        prix_unitaire: it.prix_unitaire,
+        est_service: Number(it.est_service || 0),
+        prix_achat: Number(it.est_service) === 1 ? 0 : it.prix_unitaire,
+        prix_unitaire: Number(it.est_service) === 1 ? 0 : it.prix_unitaire,
         remise_pourcentage: it.remise_pourcentage,
         remise_montant: it.remise_montant,
-        total: it.total,
+        total: Number(it.est_service) === 1 ? 0 : it.total,
         unite_special: Number(it.unite_special || 0),
         nbr_barre: it.nbr_barre,
         facteur_barre: it.facteur_barre,
@@ -130,7 +156,7 @@ router.get('/:id', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) =
 
     // 2) Items de la commande
     const [items] = await pool.query(
-      `SELECT ci.*, p.designation, p.kg AS product_kg
+      `SELECT ci.*, p.designation, p.kg AS product_kg, p.est_service
          FROM commande_items ci
          LEFT JOIN products p ON p.id = ci.product_id
         WHERE ci.bon_commande_id = ?`,
@@ -156,11 +182,12 @@ router.get('/:id', verifyToken, forbidRoles('ChefChauffeur'), async (req, res) =
         unit_id: it.unit_id,
         designation: it.designation,
         quantite: it.quantite,
-        prix_achat: it.prix_unitaire,
-        prix_unitaire: it.prix_unitaire,
+        est_service: Number(it.est_service || 0),
+        prix_achat: Number(it.est_service) === 1 ? 0 : it.prix_unitaire,
+        prix_unitaire: Number(it.est_service) === 1 ? 0 : it.prix_unitaire,
         remise_pourcentage: it.remise_pourcentage,
         remise_montant: it.remise_montant,
-        total: it.total,
+        total: Number(it.est_service) === 1 ? 0 : it.total,
         unite_special: Number(it.unite_special || 0),
         nbr_barre: it.nbr_barre,
         facteur_barre: it.facteur_barre,
@@ -205,11 +232,15 @@ router.post('/', verifyToken, async (req, res) => {
     const phone = req.body?.phone ?? null;
     const isNotCalculated = req.body?.isNotCalculated === true ? true : null;
     const inclusEnCaisse = req.body?.inclus_en_caisse ? 1 : 0;
+    const normalizedItems = await normalizeServiceCommandeItems(connection, items);
+    const effectiveMontantTotal = normalizedItems.length
+      ? normalizedItems.reduce((sum, item) => sum + (Number(item?.total) || 0), 0)
+      : Number(montant_total || 0);
 
     // Validation des champs requis (détaillée)
     const missing = [];
     if (!date_creation) missing.push('date_creation');
-    if (!(typeof montant_total === 'number' ? montant_total > 0 : !!montant_total)) missing.push('montant_total');
+    if (montant_total === undefined || montant_total === null || montant_total === '') missing.push('montant_total');
     if (!created_by) missing.push('created_by');
     if (missing.length) {
       await connection.rollback();
@@ -227,7 +258,7 @@ router.post('/', verifyToken, async (req, res) => {
         date_creation, fournisseur_id, phone, vehicule_id,
         lieu_chargement, adresse_livraison, montant_total, statut, created_by, isNotCalculated, inclus_en_caisse
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, montant_total, st, created_by, isNotCalculated, inclusEnCaisse]);
+    `, [date_creation, fId, phone, vId, lieu, adresse_livraison ?? null, effectiveMontantTotal, st, created_by, isNotCalculated, inclusEnCaisse]);
 
     const commandeId = commandeResult.insertId;
 
@@ -245,7 +276,7 @@ router.post('/', verifyToken, async (req, res) => {
     }
 
     // Items (facultatifs)
-    for (const item of items) {
+    for (const item of normalizedItems) {
       const {
         product_id,
         quantite,
@@ -301,7 +332,7 @@ router.post('/', verifyToken, async (req, res) => {
     // Stock (nouvelle règle): Commande => ajoute au stock dès la création (même "En attente")
     // Sauf si créé directement en "Annulé".
     if (st !== 'Annulé') {
-      const deltas = buildStockDeltaMaps(items, +1);
+      const deltas = buildStockDeltaMaps(normalizedItems, +1);
       await applyStockDeltas(connection, deltas, req.user?.id ?? null);
     }
 
@@ -864,6 +895,11 @@ router.put('/:id', verifyToken, async (req, res) => {
       inclusEnCaisse = oldBon.inclus_en_caisse ? 1 : 0;
       // ignore livraisons changes
       livraisons = undefined;
+    }
+
+    items = await normalizeServiceCommandeItems(connection, items);
+    if (items.length > 0) {
+      montant_total = items.reduce((sum, item) => sum + (Number(item?.total) || 0), 0);
     }
 
     // validations minimales (détaillées)
